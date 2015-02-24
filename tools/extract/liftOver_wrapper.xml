@@ -6,7 +6,7 @@
   "$out_file1" 
   "$out_file2" 
   $dbkey 
-  $to_dbkey 
+  ${to_dbkey.fields.path}
   #if isinstance( $input.datatype, $__app__.datatypes_registry.get_datatype_by_extension('gff').__class__) or isinstance( $input.datatype, $__app__.datatypes_registry.get_datatype_by_extension('gtf').__class__):
         "gff"
   #else:
@@ -22,7 +22,8 @@
     <param name="to_dbkey" type="select" label="To">
       <options from_file="liftOver.loc">
         <column name="name" index="1"/>
-        <column name="value" index="2"/>
+        <column name="value" index="1"/>
+        <column name="path" index="2"/>
         <column name="dbkey" index="0"/>
         <filter type="data_meta" ref="input" key="dbkey" column="0" />
       </options>
