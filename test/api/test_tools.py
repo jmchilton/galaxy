@@ -219,9 +219,7 @@ class ToolsTestCase( api.ApiTestCase ):
             'col': "' ; echo 'moo",
         }
         response = self._run( "column_param", history_id, inputs )
-        if response.status_code == 200:
-            message = "Known, high priority issue. Column parameters are sanitized but invalid values should prevent execution and doesn't."
-            raise AssertionError(message)
+        assert response.status_code != 200
 
     @skip_without_tool( "collection_paired_test" )
     def test_collection_parameter( self ):

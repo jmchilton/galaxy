@@ -42,7 +42,7 @@ def visit_input_values( inputs, input_values, callback, name_prefix="", label_pr
                 input_values[input.name] = new_value
 
 
-def check_param( trans, param, incoming_value, param_values, source='html' ):
+def check_param( trans, param, incoming_value, param_values, source='html', allow_late_validation=True ):
     """
     Check the value of a single parameter `param`. The value in
     `incoming_value` is converted from its HTML encoding and validated.
@@ -50,6 +50,10 @@ def check_param( trans, param, incoming_value, param_values, source='html' ):
     previous parameters (this may actually be an ExpressionContext
     when dealing with grouping scenarios).
     """
+    if not allow_late_validation and not isinstance( param, SelectToolParameter ):
+        # TODO: address allow_late_validation for remaining paramter types.
+        allow_late_validation = True
+
     value = incoming_value
     error = None
     try:
@@ -59,12 +63,16 @@ def check_param( trans, param, incoming_value, param_values, source='html' ):
                 value = param.from_html( value, trans, param_values )
             else:
                 value = param.from_json( value, trans, param_values )
-            # Only validate if late validation is not needed
-            if not param.need_late_validation( trans, param_values ):
+            # Only validate if late validation is not needed or not
+            # allowed.
+            if not allow_late_validation or not param.need_late_validation( trans, param_values ):
                 # Allow the value to be converted if necessary
                 filtered_value = param.filter_value( value, trans, param_values )
+                if isinstance( filtered_value, UnvalidatedValue ):
+                    filtered_value = filtered_value.value
                 # Then do any further validation on the value
                 param.validate( filtered_value, trans.history )
+                value = filtered_value
         elif value is None and isinstance( param, SelectToolParameter ):
             # An empty select list or column list
             param.validate( value, trans.history )

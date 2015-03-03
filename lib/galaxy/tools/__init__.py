@@ -1373,7 +1373,7 @@ class Tool( object, Dictifiable ):
                 errors = self.update_state( trans, inputs, state.inputs, incoming, old_errors=old_errors or {}, source=source )
             elif process_state == "populate":
                 inputs = self.inputs
-                errors = self.populate_state( trans, inputs, state.inputs, incoming, history, source=source )
+                errors = self.populate_state( trans, inputs, state.inputs, incoming, history, source=source, allow_late_validation=False )
             else:
                 raise Exception("Unknown process_state type %s" % process_state)
             # If the tool provides a `validate_input` hook, call it.
@@ -1422,7 +1422,7 @@ class Tool( object, Dictifiable ):
             message='Your upload was interrupted. If this was uninentional, please retry it.',
             refresh_frames=[], cont=None )
 
-    def populate_state( self, trans, inputs, state, incoming, history=None, source="html", prefix="", context=None ):
+    def populate_state( self, trans, inputs, state, incoming, history=None, source="html", prefix="", context=None, allow_late_validation=True ):
         errors = dict()
         # Push this level onto the context stack
         context = ExpressionContext( state, context )
@@ -1452,7 +1452,8 @@ class Tool( object, Dictifiable ):
                                                     history,
                                                     source,
                                                     prefix=rep_name + "|",
-                                                    context=context )
+                                                    context=context,
+                                                    allow_late_validation=allow_late_validation )
                         if rep_errors:
                             any_group_errors = True
                             group_errors[rep_index].update( rep_errors )
@@ -1478,7 +1479,8 @@ class Tool( object, Dictifiable ):
                                                                      incoming,
                                                                      test_param_key,
                                                                      context,
-                                                                     source )
+                                                                     source,
+                                                                     allow_late_validation )
 
                 if test_param_error:
                     errors[ input.name ] = [ test_param_error ]
@@ -1498,6 +1500,7 @@ class Tool( object, Dictifiable ):
                                                         source,
                                                         prefix=group_prefix,
                                                         context=context,
+                                                        allow_late_validation=allow_late_validation,
                     )
                     if group_errors:
                         errors[ input.name ] = group_errors
@@ -1535,7 +1538,8 @@ class Tool( object, Dictifiable ):
                                                     history,
                                                     source,
                                                     prefix=rep_prefix,
-                                                    context=context)
+                                                    context=context,
+                                                    allow_late_validation= allow_late_validation )
                     if rep_errors:
                         any_group_errors = True
                         group_errors.append( rep_errors )
@@ -1545,7 +1549,7 @@ class Tool( object, Dictifiable ):
                 if any_group_errors:
                     errors[input.name] = group_errors
             else:
-                value, error = check_param_from_incoming( trans, state, input, incoming, key, context, source )
+                value, error = check_param_from_incoming( trans, state, input, incoming, key, context, source, allow_late_validation )
                 if error:
                     errors[ input.name ] = error
                 state[ input.name ] = value
@@ -2984,7 +2988,7 @@ def json_fix( val ):
         return val
 
 
-def check_param_from_incoming( trans, state, input, incoming, key, context, source ):
+def check_param_from_incoming( trans, state, input, incoming, key, context, source, allow_late_validation ):
     """
     Unlike "update" state, this preserves default if no incoming value found.
     This lets API user specify just a subset of params and allow defaults to be
@@ -2992,7 +2996,7 @@ def check_param_from_incoming( trans, state, input, incoming, key, context, sour
     """
     default_input_value = state.get( input.name, None )
     incoming_value = get_incoming_value( incoming, key, default_input_value )
-    value, error = check_param( trans, input, incoming_value, context, source=source )
+    value, error = check_param( trans, input, incoming_value, context, source=source, allow_late_validation=allow_late_validation )
     return value, error
 
 

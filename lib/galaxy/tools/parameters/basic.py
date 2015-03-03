@@ -1219,8 +1219,20 @@ class ColumnListParameter( SelectToolParameter ):
         Label convention prepends column number with a 'c', but tool uses the integer. This
         removes the 'c' when entered into a workflow.
         """
+        value = self._parse_clean_value( value )
+        return super( ColumnListParameter, self ).from_html( value, trans, context )
+
+    @staticmethod
+    def _strip_c(column):
+        if isinstance(column, basestring):
+            if column.startswith( 'c' ):
+                column = column.strip().lower()[1:]
+        return column
+
+    def _parse_clean_value(self, value):
+        # split on commas and newlines and grab clean values
         if self.multiple:
-            #split on newline and ,
+            # split on newline and ,
             if isinstance( value, list ) or isinstance( value, basestring ):
                 column_list = []
                 if not isinstance( value, list ):
@@ -1238,14 +1250,7 @@ class ColumnListParameter( SelectToolParameter ):
                 value = ColumnListParameter._strip_c( value )
             else:
                 value = None
-        return super( ColumnListParameter, self ).from_html( value, trans, context )
-
-    @staticmethod
-    def _strip_c(column):
-        if isinstance(column, basestring):
-            if column.startswith( 'c' ):
-                column = column.strip().lower()[1:]
-        return column
+        return value
 
     def get_column_list( self, trans, other_values ):
         """
@@ -1378,6 +1383,19 @@ class ColumnListParameter( SelectToolParameter ):
 
         # return
         return d
+
+    def validate( self, value, history=None ):
+        if value == "" and self.optional:
+            return
+        if value:
+            value = self._parse_clean_value( value )
+            for identifier in value.split(","):
+                identifier_clean = ColumnListParameter._strip_c(identifier)
+                int(identifier_clean)
+        elif self.optional:
+            raise ValueError("No value for non-optional column specified.")
+        for validator in self.validators:
+            validator.validate( value, history )
 
 
 class DrillDownSelectToolParameter( SelectToolParameter ):
