@@ -12,6 +12,7 @@ log = logging.getLogger( __name__ )
 
 DEFAULT_PROXY_TO_HOST = "localhost"
 SECURE_COOKIE = "galaxysession"
+UNIQUE_SESSIONS = False
 
 
 class ProxyManager(object):
@@ -159,10 +160,16 @@ class SqliteProxyIpc(object):
                     # Create table
                     c.execute('''CREATE TABLE gxproxy
                                  (key text PRIMARY_KEY, secret text)''')
+                    if UNIQUE_SESSIONS:
+                        c.execute('''CREATE UNIQUE INDEX secret ON gxproxy(secret)''')
                 except Exception:
                     pass
-                insert_tmpl = '''INSERT INTO gxproxy (key, secret) VALUES ('%s', '%s');'''
-                insert = insert_tmpl % (key, secure_id)
+                if UNIQUE_SESSIONS:
+                    op = "REPLACE"
+                else:
+                    op = "INSERT"
+                insert_tmpl = '''%s INTO gxproxy (key, secret) VALUES ('%s', '%s');'''
+                insert = insert_tmpl % (op, key, secure_id)
                 c.execute(insert)
                 conn.commit()
             finally:
