@@ -1267,7 +1267,7 @@ class JobWrapper( object ):
         param_dict.update({'__collected_datasets__': collected_datasets})
         # Certain tools require tasks to be completed after job execution
         # ( this used to be performed in the "exec_after_process" hook, but hooks are deprecated ).
-        self.tool.exec_after_process( self.queue.app, inp_data, out_data, param_dict, job=job, working_directory=self.working_directory )
+        self.tool.exec_after_process( self.queue.app, inp_data, out_data, param_dict, job=job )
         # Call 'exec_after_process' hook
         self.tool.call_hook( 'exec_after_process', self.queue.app, inp_data=inp_data,
                              out_data=out_data, param_dict=param_dict,

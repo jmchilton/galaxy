@@ -1,47 +1,70 @@
+""" This module provides proxy objects around objects from the common
+workflow language reference implementation library cwltool. These proxies
+adapt cwltool to Galaxy features and abstract the library away from the rest
+of the framework.
+"""
 from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 import json
 import os
 
-try:
-    from cwltool import (
-        ref_resolver,
-        draft1tool,
-        draft2tool,
-    )
-except ImportError as e:
-    ref_resolver = None
-    draft1tool = None
-    draft2tool = None
+from .cwltool_deps import (
+    draft1tool,
+    draft2tool,
+    ref_resolver,
+    ensure_cwltool_available,
+)
 
 from galaxy.util.bunch import Bunch
+
+JOB_JSON_FILE = ".cwl_job.json"
 
 
 def tool_proxy(tool_path):
     """ Provide a proxy object to cwltool data structures to just
     grab relevant data.
     """
+    ensure_cwltool_available()
     tool = to_cwl_tool_object(tool_path)
     return tool
+
+
+def load_job_proxy(job_directory):
+    ensure_cwltool_available()
+    job_objects_path = os.path.join(job_directory, JOB_JSON_FILE)
+    job_objects = json.load(open(job_objects_path, "r"))
+    tool_path = job_objects["tool_path"]
+    job_inputs = job_objects["job_inputs"]
+    cwl_tool = tool_proxy(tool_path)
+    cwl_job = cwl_tool.job_proxy(job_inputs, job_directory=job_directory)
+    return cwl_job
 
 
 def to_cwl_tool_object(tool_path):
     if ref_resolver is None:
         raise Exception("Using CWL tools requires cwltool module.")
+    proxy_class = None
+    cwl_tool = None
     toolpath_object = ref_resolver.from_url(tool_path)
     if "schema" in toolpath_object:
-        return Draft1ToolProxy(draft1tool.Tool(toolpath_object))
+        proxy_class = Draft1ToolProxy
+        cwl_tool = draft1tool.Tool(toolpath_object)
     if "class" in toolpath_object:
         if toolpath_object["class"] == "CommandLineTool":
-            return Draft2ToolProxy(draft2tool.CommandLineTool(toolpath_object))
-    raise Exception("Unsupported CWL object encountered.")
+            proxy_class = Draft2ToolProxy
+            cwl_tool = draft2tool.CommandLineTool(toolpath_object)
+    if proxy_class is None:
+        raise Exception("Unsupported CWL object encountered.")
+    proxy = proxy_class(cwl_tool, tool_path)
+    return proxy
 
 
 class ToolProxy( object ):
     __metaclass__ = ABCMeta
 
-    def __init__(self, tool):
+    def __init__(self, tool, tool_path):
         self._tool = tool
+        self._tool_path = tool_path
 
     def job_proxy(self, input_dict, job_directory="."):
         """ Build a cwltool.job.Job describing computation using a input_json
@@ -49,12 +72,6 @@ class ToolProxy( object ):
         a cwltool compatible variant.
         """
         return JobProxy(self, input_dict, job_directory=job_directory)
-
-    def save_job(self, job_proxy):
-        job_proxy.save_job()
-
-    def load_job(self, job_directory):
-        return JobProxy.load_job(self, job_directory)
 
     @abstractmethod
     def input_instances(self):
@@ -123,17 +140,21 @@ class JobProxy(object):
 
     def save_job(self):
         job_file = JobProxy._job_file(self._job_directory)
-        json.dump(self._input_dict, open(job_file, "w"))
+        job_objects = {
+            "tool_path": os.path.abspath(self._tool_proxy._tool_path),
+            "job_inputs": self._input_dict,
+        }
+        json.dump(job_objects, open(job_file, "w"))
 
-    @staticmethod
-    def load_job(tool_proxy, job_directory):
-        job_file = JobProxy._job_file(job_directory)
-        input_dict = json.load(open(job_file, "r"))
-        return JobProxy(tool_proxy, input_dict, job_directory)
+    # @staticmethod
+    # def load_job(tool_proxy, job_directory):
+    #     job_file = JobProxy._job_file(job_directory)
+    #     input_dict = json.load(open(job_file, "r"))
+    #     return JobProxy(tool_proxy, input_dict, job_directory)
 
     @staticmethod
     def _job_file(job_directory):
-        return os.path.join(job_directory, ".cwl_job.json")
+        return os.path.join(job_directory, JOB_JSON_FILE)
 
 
 def _simple_field_to_input(field):
@@ -181,3 +202,9 @@ class OutputInstance(object):
         self.name = name
         self.output_type = output_type
         self.path = path
+
+
+__all__ = [
+    'tool_proxy',
+    'load_job_proxy',
+]

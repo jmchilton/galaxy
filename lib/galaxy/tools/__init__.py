@@ -2866,7 +2866,7 @@ class SetMetadataTool( Tool ):
             inp_data = {}
             for dataset_assoc in job.input_datasets:
                 inp_data[dataset_assoc.name] = dataset_assoc.dataset
-            return self.exec_after_process( job_wrapper.app, inp_data, {}, job_wrapper.get_param_dict(), job=job, working_directory=job_wrapper.working_directory )
+            return self.exec_after_process( job_wrapper.app, inp_data, {}, job_wrapper.get_param_dict(), job=job )
 
 
 class ExportHistoryTool( Tool ):
@@ -2902,7 +2902,9 @@ class CwlTool( Tool ):
         if param_dict is None:
             raise Exception("Internal error - param_dict is empty.")
         cwl_job_proxy = self._cwl_tool_proxy.job_proxy(input_json, local_working_directory)
-        self._cwl_tool_proxy.save_job(cwl_job_proxy)
+        # Write representation to disk that can be reloaded at runtime
+        # and outputs collected before Galaxy metadata is gathered.
+        cwl_job_proxy.save_job()
         cwl_job = cwl_job_proxy.cwl_job()
         command_line = " ".join(cwl_job.command_line)
         if cwl_job.stdin:
@@ -2912,17 +2914,6 @@ class CwlTool( Tool ):
         # TODO: handle generatefiles
         param_dict["__cwl_command"] = command_line
         log.info("CwlTool.exec_before_job() generated command_line %s" % command_line)
-
-    def exec_after_process( self, app, inp_data, out_data, param_dict, working_directory, **kwds ):
-        super( CwlTool, self ).exec_after_process( app, inp_data, out_data, param_dict, working_directory=working_directory, **kwds )
-        cwl_job_proxy = self._cwl_tool_proxy.load_job(working_directory)
-        cwl_job = cwl_job_proxy.cwl_job()
-        outputs = cwl_job.collect_outputs(working_directory)
-        for output_name, output in outputs.iteritems():
-            if output_name in out_data:
-                shutil.move(output["path"], out_data[output_name].dataset.file_name)
-        log.info("outputs are %s" % outputs)
-        log.info("have cwl_job!!!")
 
     def parse( self, tool_source, guid=None ):
         super( CwlTool, self ).parse( tool_source, guid=guid )

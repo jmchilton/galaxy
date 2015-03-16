@@ -8,7 +8,7 @@ from .interface import InputSource
 from .yaml import YamlInputSource
 
 from galaxy.tools.deps import requirements
-from galaxy.tools.cwl import parser
+from galaxy.tools.cwl import tool_proxy
 
 import galaxy.tools
 
@@ -22,7 +22,7 @@ class CwlToolSource(ToolSource):
     def __init__(self, tool_file):
         self._cwl_tool_file = tool_file
         self._id, _ = os.path.splitext(os.path.basename(tool_file))
-        self._tool_proxy = parser.tool_proxy(tool_file)
+        self._tool_proxy = tool_proxy(tool_file)
 
     @property
     def tool_proxy(self):
@@ -96,7 +96,7 @@ class CwlToolSource(ToolSource):
         output.count = None
         output.filters = []
         output.tool = tool
-        output.from_work_dir = None
+        output.from_work_dir = "__cwl_output_%s" % name
         output.hidden = ""
         output.dataset_collectors = []
         output.actions = galaxy.tools.ToolOutputActionGroup( output, None )
