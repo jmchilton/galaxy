@@ -103,8 +103,15 @@ class CwlToolSource(ToolSource):
         return output
 
     def parse_requirements_and_containers(self):
-        # TODO: get docker container.
-        return requirements.parse_requirements_from_dict({})
+        containers = []
+        docker_identifier = self._tool_proxy.docker_identifier()
+        if docker_identifier:
+            containers.append({"type": "docker",
+                               "identifier": docker_identifier})
+        return requirements.parse_requirements_from_dict(dict(
+            requirements=[],  # TODO: enable via extensions
+            containers=containers,
+        ))
 
 
 class CwlPageSource(PageSource):

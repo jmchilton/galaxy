@@ -1,10 +1,4 @@
- - Rework moving outputs (needs to happen before metadata collection).
-   - If working_directory/.cwl_job.json exists, collect outputs in set metadata.
-     for name, output in collected_outputs:
-         shutil.move(output["path"], job_working_directory/__cwl_output_${name})
-     For each output, set output job_work_dir to __cwl_output_${name}.       
-   
- - Docker container extraction.
+ - Sniff the outputs so Galaxy can generate the correct dataytpes.
  - More parameter types (for bwa mem implementation).
  - More parameter types (for tmap implementation).
 

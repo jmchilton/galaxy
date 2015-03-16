@@ -81,14 +81,31 @@ class ToolProxy( object ):
     def output_instances(self):
         """ Return OutputInstance objects describing mapping to Galaxy inputs. """
 
+    @abstractmethod
+    def docker_identifier(self):
+        """ Return docker identifier for embedding in tool description. """
+
 
 class Draft1ToolProxy(ToolProxy):
 
     def input_instances(self):
+        # TODO
         return self._tool.tool["inputs"]
 
     def output_instances(self):
+        # TODO
         return []
+
+    def docker_identifier(self):
+        tool = self._tool
+        requirements = tool.get("requirements", {})
+        environment = requirements.get("environment", {})
+        container = environment.get("container", {})
+        container_type = container.get("type", "docker")
+        if container_type != "docker":
+            return None
+        else:
+            return container.get("uri", None)
 
 
 class Draft2ToolProxy(ToolProxy):
@@ -122,6 +139,17 @@ class Draft2ToolProxy(ToolProxy):
                 rval.append(_simple_field_to_output(output))
 
         return rval
+
+    def docker_identifier(self):
+        tool = self._tool.tool
+        reqs_and_hints = tool.get("requirements", []) + tool.get("hints", [])
+        for hint in reqs_and_hints:
+            if hint["class"] == "DockerRequirement":
+                if "dockerImageId" in hint:
+                    return hint["dockerImageId"]
+                else:
+                    return hint["dockerPull"]
+        return None
 
 
 class JobProxy(object):

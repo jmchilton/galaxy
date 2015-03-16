@@ -1,6 +1,6 @@
 import os
 
-from galaxy.tools.cwl import parser
+from galaxy.tools.cwl import tool_proxy
 from galaxy.tools.parser.factory import get_tool_source
 
 
@@ -9,8 +9,8 @@ CWL_TOOLS_DIRECTORY = os.path.join(TESTS_DIRECTORY, "cwl_tools")
 
 
 def test_proxy():
-    print parser.tool_proxy(_cwl_tool_path("draft1/cat1-tool.json"))
-    print parser.tool_proxy(_cwl_tool_path("draft2/cat3-tool.cwl"))
+    print tool_proxy(_cwl_tool_path("draft1/cat1-tool.json"))
+    print tool_proxy(_cwl_tool_path("draft2/cat3-tool.cwl"))
     assert False
 
 
@@ -27,6 +27,9 @@ def test_load_proxy():
 
     outputs, output_collections = tool_source.parse_outputs(None)
     assert len(outputs) == 1
+
+    _, containers = tool_source.parse_requirements_and_containers()
+    assert len(containers) == 1
 
 
 def _cwl_tool_path(path):
