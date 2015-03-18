@@ -17,6 +17,9 @@ def test_proxy():
 def test_load_proxy_simple():
     cat3 = _cwl_tool_path("draft2/cat3-tool.cwl")
     tool_source = get_tool_source(cat3)
+
+    assert tool_source.parse_description() == "Print the contents of a file to stdout using 'cat' running in a docker container."
+
     input_sources = _inputs(tool_source)
     assert len(input_sources) == 1
 

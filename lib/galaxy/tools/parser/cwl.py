@@ -65,7 +65,7 @@ class CwlToolSource(ToolSource):
         return "0.0.1"
 
     def parse_description(self):
-        return ""
+        return self._tool_proxy.description() or ""
 
     def parse_input_pages(self):
         page_source = CwlPageSource(self._tool_proxy)

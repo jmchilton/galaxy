@@ -85,6 +85,10 @@ class ToolProxy( object ):
     def docker_identifier(self):
         """ Return docker identifier for embedding in tool description. """
 
+    @abstractmethod
+    def description(self):
+        """ Return description to tool. """
+
 
 class Draft1ToolProxy(ToolProxy):
 
@@ -109,6 +113,11 @@ class Draft1ToolProxy(ToolProxy):
 
 
 class Draft2ToolProxy(ToolProxy):
+
+    def description(self):
+        # Feels like I should be getting some abstract namespaced thing
+        # not actually description, is this correct?
+        return self._tool.tool.get('description')
 
     def input_instances(self):
         return self._find_inputs(self._tool.inputs_record_schema)
