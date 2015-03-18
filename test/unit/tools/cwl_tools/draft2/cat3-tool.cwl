@@ -13,6 +13,9 @@
         {
             "id": "#file1",
             "type": "File",
+            "label": "Input File",
+            "description": "The file to cat",
+            "bad_property": "This a bad property",
             "commandLineBinding": {"position": 1}
         }
     ],

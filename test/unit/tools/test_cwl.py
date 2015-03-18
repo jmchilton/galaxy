@@ -23,6 +23,10 @@ def test_load_proxy_simple():
     input_sources = _inputs(tool_source)
     assert len(input_sources) == 1
 
+    input_source = input_sources[0]
+    assert input_source.parse_help() == "The file to cat"
+    assert input_source.parse_label() == "Input File"
+
     outputs, output_collections = tool_source.parse_outputs(None)
     assert len(outputs) == 1
 

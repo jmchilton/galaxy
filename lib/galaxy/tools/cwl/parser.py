@@ -196,9 +196,10 @@ class JobProxy(object):
 
 
 def _simple_field_to_input(field):
-    print field
     name = field["name"]
     field_type = field["type"]
+    label = field.get("label", None)
+    description = field.get("description", None)
     if isinstance(field_type, dict):
         field_type = field_type["type"]
 
@@ -213,7 +214,7 @@ def _simple_field_to_input(field):
             input_type = INPUT_TYPE.DATA
         else:
             input_type = INPUT_TYPE.INTEGER
-        return InputInstance(name, input_type)
+        return InputInstance(name, label, description, input_type)
     elif field_type == "array":
         if isinstance(field["type"], dict):
             array_type = field["type"]["items"]
@@ -226,7 +227,7 @@ def _simple_field_to_input(field):
                 input_type = INPUT_TYPE.INTEGER
             else:
                 raise Exception("Unhandled array type encountered - [%s]." % array_type)
-        return InputInstance(name, input_type, array=True)
+        return InputInstance(name, label, description, input_type, array=True)
     else:
         raise Exception("Unhandled field type encountered - [%s]." % field_type)
 
@@ -245,16 +246,19 @@ INPUT_TYPE = Bunch(
 
 class InputInstance(object):
 
-    def __init__(self, name, input_type, array=False):
+    def __init__(self, name, label, description, input_type, array=False):
         self.input_type = input_type
         self.name = name
+        self.label = label
+        self.description = description
         self.required = True
         self.array = array
 
     def to_dict(self):
         as_dict = dict(
             name=self.name,
-            label=self.name,
+            label=self.label or self.name,
+            help=self.description,
             type=self.input_type,
             optional=not self.required,
         )
