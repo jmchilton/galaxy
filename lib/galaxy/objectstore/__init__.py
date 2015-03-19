@@ -343,7 +343,15 @@ class DiskObjectStore(ObjectStore):
                 if preserve_symlinks and os.path.islink( file_name ):
                     force_symlink( os.readlink( file_name ), self.get_filename( obj, **kwargs ) )
                 else:
-                    shutil.copy( file_name, self.get_filename( obj, **kwargs ) )
+                    destination = self.get_filename( obj, **kwargs )
+                    shutil.copy( file_name, destination )
+                    try:
+                        # Attempt to circumvent file caching like in
+                        # job wrapper.
+                        os.stat( destination )
+                        os.chown( destination, os.getuid(), -1 )
+                    except Exception:
+                        pass
             except IOError, ex:
                 log.critical('Error copying %s to %s: %s' % (file_name, self._get_filename(obj, **kwargs), ex))
                 raise ex
