@@ -1258,6 +1258,7 @@ class JobWrapper( object ):
             'children': self.tool.collect_child_datasets(out_data, self.working_directory),
             'primary': self.tool.collect_primary_datasets(out_data, self.working_directory, input_ext)
         }
+        log.info("extra_files collected - job state is %s" % job.state)
         self.tool.collect_dynamic_collections(
             out_collections,
             job_working_directory=self.working_directory,
@@ -1289,6 +1290,7 @@ class JobWrapper( object ):
 
         # Finally set the job state.  This should only happen *after* all
         # dataset creation, and will allow us to eliminate force_history_refresh.
+        log.info("setting final job state to %s, current state is %s" % (final_job_state, job.state))
         job.set_final_state( final_job_state )
         if not job.tasks:
             # If job was composed of tasks, don't attempt to recollect statisitcs

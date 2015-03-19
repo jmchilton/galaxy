@@ -279,11 +279,13 @@ def collect_primary_datasets( tool, output, job_working_directory, input_ext ):
                     for root, dirs, files in os.walk( extra_files_path_joined ):
                         extra_dir = os.path.join( primary_data.extra_files_path, root.replace( extra_files_path_joined, '', 1 ).lstrip( os.path.sep ) )
                         for f in files:
+                            file_name = os.path.join( root, f )
+                            log.info("updating object store with file %s" % file_name)
                             app.object_store.update_from_file(
                                 primary_data.dataset,
                                 extra_dir=extra_dir,
                                 alt_name=f,
-                                file_name=os.path.join( root, f ),
+                                file_name=file_name,
                                 create=True,
                                 dir_only=True,
                                 preserve_symlinks=True

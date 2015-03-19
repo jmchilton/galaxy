@@ -2125,10 +2125,12 @@ class Tool( object, Dictifiable ):
                 for root, dirs, files in os.walk( temp_file_path ):
                     extra_dir = root.replace(job_working_directory, '', 1).lstrip(os.path.sep)
                     for f in files:
+                        file_name = os.path.join(root, f)
+                        log.info("updating object store for file %s" % file_name)
                         self.app.object_store.update_from_file(hda.dataset,
                             extra_dir=extra_dir,
                             alt_name=f,
-                            file_name=os.path.join(root, f),
+                            file_name=file_name,
                             create=True,
                             preserve_symlinks=True
                         )
