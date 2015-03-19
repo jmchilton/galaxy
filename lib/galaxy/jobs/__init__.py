@@ -739,6 +739,7 @@ class JobWrapper( object ):
         self.queue = queue
         self.app = queue.app
         self.sa_session = self.app.model.context
+        self.file_flusher = FileFlusher( self.app )
         self.extra_filenames = []
         self.command_line = None
         # Tool versioning variables
@@ -1109,17 +1110,7 @@ class JobWrapper( object ):
             # lets not allow this to occur
             # need to update all associated output hdas, i.e. history was shared with job running
             for dataset in dataset_assoc.dataset.dataset.history_associations + dataset_assoc.dataset.dataset.library_associations:
-                trynum = 0
-                while trynum < self.app.config.retry_job_output_collection:
-                    try:
-                        # Attempt to short circuit NFS attribute caching
-                        os.stat( dataset.dataset.file_name )
-                        os.chown( dataset.dataset.file_name, os.getuid(), -1 )
-                        trynum = self.app.config.retry_job_output_collection
-                    except ( OSError, ObjectNotFound ), e:
-                        trynum += 1
-                        log.warning( 'Error accessing %s, will retry: %s', dataset.dataset.file_name, e )
-                        time.sleep( 2 )
+                self.file_flusher.flush( dataset.dataset.file_name )
                 if getattr( dataset, "hidden_beneath_collection_instance", None ):
                     dataset.visible = False
                 dataset.blurb = 'done'
@@ -1844,6 +1835,25 @@ class ComputeEnvironment( object ):
         this function to determine both if its input is a path and if it should
         be rewritten.)
         """
+
+
+class FileFlusher(object):
+
+    def __init__(self, app):
+        self.app = app
+
+    def flush(self, path):
+        trynum = 0
+        while trynum < self.app.config.retry_job_output_collection:
+            try:
+                # Attempt to short circuit NFS attribute caching
+                os.stat( path )
+                os.chown( path, os.getuid(), -1 )
+                trynum = self.app.config.retry_job_output_collection
+            except ( OSError, ObjectNotFound ), e:
+                trynum += 1
+                log.warning( 'Error accessing %s, will retry: %s', path, e )
+                time.sleep( 2 )
 
 
 class SimpleComputeEnvironment( object ):
