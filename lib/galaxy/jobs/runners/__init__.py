@@ -105,9 +105,9 @@ class BaseJobRunner( object ):
         """
         put_timer = ExecutionTimer()
         # Change to queued state before handing to worker thread so the runner won't pick it up again
-        job_wrapper.change_state( model.Job.states.QUEUED )
+        job = job_wrapper.change_state( model.Job.states.QUEUED, flush=False )
         # Persist the destination so that the job will be included in counts if using concurrency limits
-        job_wrapper.set_job_destination( job_wrapper.job_destination, None )
+        job_wrapper.set_job_destination( job_wrapper.job_destination, None, job=job )
         self.mark_as_queued(job_wrapper)
         log.debug("Job [%s] queued %s" % (job_wrapper.job_id, put_timer))
 

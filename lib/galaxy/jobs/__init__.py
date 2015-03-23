@@ -995,22 +995,21 @@ class JobWrapper( object ):
         self.sa_session.add( job )
         self.sa_session.flush()
 
-    def change_state( self, state, info=False ):
+    def change_state( self, state, info=False, flush=True ):
         job = self.get_job()
-        self.sa_session.refresh( job )
         for dataset_assoc in job.output_datasets + job.output_library_datasets:
             dataset = dataset_assoc.dataset
-            self.sa_session.refresh( dataset )
             dataset.state = state
             if info:
                 dataset.info = info
             self.sa_session.add( dataset )
-            self.sa_session.flush()
         if info:
             job.info = info
         job.set_state( state )
-        self.sa_session.add( job )
-        self.sa_session.flush()
+        if flush:
+            self.sa_session.add( job )
+            self.sa_session.flush()
+        return job
 
     def get_state( self ):
         job = self.get_job()
@@ -1021,15 +1020,16 @@ class JobWrapper( object ):
         log.warning('set_runner() is deprecated, use set_job_destination()')
         self.set_job_destination(self.job_destination, external_id)
 
-    def set_job_destination( self, job_destination, external_id=None ):
+    def set_job_destination( self, job_destination, external_id=None, job=None ):
         """
         Persist job destination params in the database for recovery.
 
         self.job_destination is not used because a runner may choose to rewrite
         parts of the destination (e.g. the params).
         """
-        job = self.get_job()
-        self.sa_session.refresh(job)
+        if job is None:
+            job = self.get_job()
+            self.sa_session.refresh(job)
         log.debug('(%s) Persisting job destination (destination id: %s)' % (job.id, job_destination.id))
         job.destination_id = job_destination.id
         job.destination_params = job_destination.params
@@ -1683,14 +1683,16 @@ class TaskWrapper(JobWrapper):
         self.status = 'error'
         # How do we want to handle task failure?  Fail the job and let it clean up?
 
-    def change_state( self, state, info=False ):
+    def change_state( self, state, info=False, flush=True ):
         task = self.get_task()
         self.sa_session.refresh( task )
         if info:
             task.info = info
         task.state = state
-        self.sa_session.add( task )
-        self.sa_session.flush()
+        if flush:
+            self.sa_session.add( task )
+            self.sa_session.flush()
+        return task
 
     def get_state( self ):
         task = self.get_task()
