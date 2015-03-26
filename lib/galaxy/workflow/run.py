@@ -91,7 +91,6 @@ def __invoke( trans, workflow, workflow_run_config, workflow_invocation=None, po
             # Running workflow invocation in background, just mark
             # persistent workflow invocation as failed.
             workflow_invocation.fail()
-            trans.sa_session.add( workflow_invocation )
         else:
             # Running new transient workflow invocation in legacy
             # controller action - propage the exception up.
@@ -125,6 +124,7 @@ class WorkflowInvoker( object ):
             invocation_uuid = uuid.uuid1()
 
             workflow_invocation = model.WorkflowInvocation()
+            self.new_invocation = True
             workflow_invocation.workflow = self.workflow
 
             # In one way or another, following attributes will become persistent
@@ -135,6 +135,7 @@ class WorkflowInvoker( object ):
             self.workflow_invocation = workflow_invocation
         else:
             self.workflow_invocation = workflow_invocation
+            self.new_invocation = False
 
         self.workflow_invocation.copy_inputs_to_history = workflow_run_config.copy_inputs_to_history
         self.workflow_invocation.replacement_dict = workflow_run_config.replacement_dict
@@ -171,7 +172,8 @@ class WorkflowInvoker( object ):
         workflow_invocation.state = state
 
         # All jobs ran successfully, so we can save now
-        self.trans.sa_session.add( workflow_invocation )
+        if self.new_invocation:
+            self.trans.sa_session.add( workflow_invocation )
 
         # Not flushing in here, because web controller may create multiple
         # invocations.
