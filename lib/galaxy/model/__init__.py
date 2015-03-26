@@ -42,7 +42,6 @@ from galaxy.web.framework.helpers import to_unicode
 from galaxy.web.form_builder import (AddressField, CheckboxField, HistoryField,
                                      PasswordField, SelectField, TextArea, TextField, WorkflowField,
                                      WorkflowMappingField)
-
 log = logging.getLogger( __name__ )
 
 datatypes_registry = galaxy.datatypes.registry.Registry()
@@ -195,6 +194,12 @@ class User( object, Dictifiable ):
         self.disk_usage = bytes
 
     total_disk_usage = property( get_disk_usage, set_disk_usage )
+
+    def adjust_total_disk_usage( self, amount ):
+        self.disk_usage = func.coalesce(self.table.c.disk_usage, 0) + amount
+
+    def reduce_total_disk_usage( self, amount ):
+        self.disk_usage = func.coalesce(self.table.c.disk_usage, 0) - amount
 
     @property
     def nice_total_disk_usage( self ):
@@ -1092,7 +1097,7 @@ class History( object, Dictifiable, UsesAnnotations, HasName ):
             if set_hid:
                 dataset.hid = self._next_hid()
         if quota and self.user:
-            self.user.total_disk_usage += dataset.quota_amount( self.user )
+            self.user.adjust_total_disk_usage( dataset.quota_amount( self.user ) )
         dataset.history = self
         if genome_build not in [None, '?']:
             self.genome_build = genome_build
