@@ -127,6 +127,14 @@ class ToolExecutionTracker( object ):
 
             child_element_identifiers = element_identifiers[ "element_identifiers" ]
             collection_type = element_identifiers[ "collection_type" ]
+
+            def build_connections( dataset_collection_instance ):
+                for job in self.successful_jobs:
+                    # TODO: Think through this, may only want this for output
+                    # collections - or we may be already recording data in some
+                    # other way.
+                    job.add_output_dataset_collection( output_name, dataset_collection_instance )
+
             collection = trans.app.dataset_collections_service.create(
                 trans=trans,
                 parent=history,
@@ -134,12 +142,8 @@ class ToolExecutionTracker( object ):
                 element_identifiers=child_element_identifiers,
                 collection_type=collection_type,
                 implicit_collection_info=implicit_collection_info,
+                build_connections=build_connections,
             )
-            for job in self.successful_jobs:
-                # TODO: Think through this, may only want this for output
-                # collections - or we may be already recording data in some
-                # other way.
-                job.add_output_dataset_collection( output_name, collection )
             collections[ output_name ] = collection
 
         self.implicit_collections = collections
