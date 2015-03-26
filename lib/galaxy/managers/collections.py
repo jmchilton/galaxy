@@ -48,6 +48,7 @@ class DatasetCollectionManager( object ):
         element_identifiers=None,
         elements=None,
         implicit_collection_info=None,
+        build_connections=lambda c: None,
     ):
         """
         """
@@ -97,7 +98,9 @@ class DatasetCollectionManager( object ):
             message = "Internal logic error - create called with unknown parent type %s" % type( parent )
             log.exception( message )
             raise MessageException( message )
-
+        # Provide an oppertunity to attach job outputs to collection
+        # within the same transaction.
+        build_connections( dataset_collection_instance )
         return self.__persist( dataset_collection_instance )
 
     def create_dataset_collection(
