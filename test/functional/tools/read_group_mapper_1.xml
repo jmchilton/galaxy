@@ -1,0 +1,27 @@
+<tool id="read_group_mapper_1" name="read_group_mapper_1">
+	<macros>
+		<import>read_group_macros.xml</import>
+	</macros>
+    <command>
+        @define_read_group_helpers@
+        #set $use_rg = str($rg.rg_selector) == "set"
+        #set $rg_auto_name = clean(identifier_or_name($input))
+        @set_read_group_vars@
+        echo '$rg_id' '$rg_sm' '$rg_pl'
+    </command>
+    <inputs>
+    	<param type="data" name="input1" format="data" />
+    	<expand macro="read_group_conditional" />
+    </inputs>
+    <outputs>
+        <data name="out_file1" format="input" metadata_source="input1"/>
+    </outputs>
+    <tests>
+    	<test>
+    		<param name="input1" value="simple_line.txt" />
+            <assert_command>
+                <has_text text="echo '' '' ''" />
+            </assert_command>
+    	</test>
+    </tests>
+</tool>
