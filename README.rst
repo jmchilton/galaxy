@@ -1,79 +1,80 @@
-.. figure:: https://wiki.galaxyproject.org/Images/GalaxyLogo?action=AttachFile&do=get&target=galaxy_project_logo.jpg
-   :alt: Galaxy Logo
+.. image:: https://img.shields.io/coveralls/ipython/ipython.svg 
+    :target: https://coveralls.io/r/ipython/ipython?branch=master
 
-The latest information about Galaxy is available via `http://galaxyproject.org/ <http://galaxyproject.org/>`__
+.. image:: https://img.shields.io/pypi/dm/IPython.svg           
+    :target: https://pypi.python.org/pypi/ipython
 
-Galaxy Quickstart
-=================
+.. image:: https://img.shields.io/pypi/v/IPython.svg            
+    :target: https://pypi.python.org/pypi/ipython
 
-Galaxy requires Python 2.6 or 2.7. To check your python version, run:
-
-.. code:: console
-
-    $ python -V
-    Python 2.7.3
-
-Start Galaxy:
-
-.. code:: console
-
-    $ sh run.sh
-
-Once Galaxy completes startup, you should be able to view Galaxy in your
-browser at:
-
-http://localhost:8080
-
-You may wish to make changes from the default configuration. This can be
-done in the ``config/galaxy.ini`` file. Tools can be either installed
-from the Tool Shed or added manually. For details please see the Galaxy
-wiki:
-
-https://wiki.galaxyproject.org/Admin/Tools/AddToolFromToolShedTutorial
-
-Not all dependencies are included for the tools provided in the sample
-``tool_conf.xml``. A full list of external dependencies is available at:
-
-https://wiki.galaxyproject.org/Admin/Tools/ToolDependencies
-
-Issues
-======
-
-Issues can be submitted to trello via the `galaxyproject
-website <http://galaxyproject.org/trello/>`__ and viewed on the `Galaxy
-Trello Board <https://trello.com/b/75c1kASa/galaxy-development>`__
+.. image:: https://img.shields.io/travis/ipython/ipython.svg    
+    :target: https://travis-ci.org/ipython/ipython
 
 
-Galaxy Development
-==================
+===========================================
+ IPython: Productive Interactive Computing
+===========================================
 
-Galaxy welcomes new development! There is extensive documentation on developing
-with Galaxy on the `wiki <https://wiki.galaxyproject.org/Develop>`__.
+Overview
+========
 
-Source Repository
------------------
+Welcome to IPython.  Our full documentation is available on `our website
+<http://ipython.org/documentation.html>`_; if you downloaded a built source
+distribution the ``docs/source`` directory contains the plaintext version of
+these manuals.  If you have Sphinx installed, you can build them by typing
+``cd docs; make html`` for local browsing.
 
-Galaxy development has moved to `Github
-<https://github.com/galaxyproject/galaxy>`__.
 
-**Developers** should develop against the ``dev`` branch in the Github
-repository.
+Dependencies and supported Python versions
+==========================================
 
-**Deployers** can continue to pull Galaxy changes from Bitbucket without
-interruption. Alternatively, deployers can track the ``master`` branch in
-Github.
+For full details, see the installation section of the manual.  The basic parts
+of IPython only need the Python standard library, but much of its more advanced
+functionality requires extra packages.
 
-Syncing a Fork
---------------
+Officially, IPython requires Python version 2.7, or 3.3 and above.
+IPython 1.x is the last IPython version to support Python 2.6 and 3.2.
 
-If you fork Galaxy to work on it, you may be interested in keeping your copy
-up to date with respect to the main repository. Github has `good documentation
-<https://help.github.com/articles/syncing-a-fork/>`__ on this.
 
-.. code:: console
+Instant running
+===============
 
-    $ git remote add upstream https://github.com/galaxyproject/galaxy
-    $ git fetch upstream
-    $ git checkout dev
-    $ git merge upstream/dev
+You can run IPython from this directory without even installing it system-wide
+by typing at the terminal::
 
+   $ python -m IPython
+
+
+Development installation
+========================
+
+If you want to hack on certain parts, e.g. the IPython notebook, in a clean
+environment (such as a virtualenv) you can use ``pip`` to grab the necessary
+dependencies quickly::
+
+   $ git clone --recursive https://github.com/ipython/ipython.git
+   $ cd ipython
+   $ pip install -e ".[notebook]" --user
+
+This installs the necessary packages and symlinks IPython into your current
+environment so that you can work on your local repo copy and run it from anywhere::
+
+   $ ipython notebook
+
+The same process applies for other parts, such as the qtconsole (the
+``extras_require`` attribute in the setup.py file lists all the possibilities).
+
+Git Hooks and Submodules
+************************
+
+IPython now uses git submodules to ship its javascript dependencies.
+If you run IPython from git master, you may need to update submodules once in a while with::
+
+    $ git submodule update
+
+or::
+
+    $ python setup.py submodule
+
+We have some git hooks for helping keep your submodules always in sync,
+see our ``git-hooks`` directory for more info.

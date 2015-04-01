@@ -1,105 +1,45 @@
-# Contributing
+## Opening an Issue
 
-This document briefly describes how to contribute to the [core
-galaxy project](https://github.com/galaxyproject/galaxy) -
-also checkout our 2013 Galaxy Community
-Conference presentation on the topic
-([video](http://vimeo.com/channels/581875/73486255),
-[presentation](https://wiki.galaxyproject.org/Documents/Presentations/GCC2013?action=AttachFile&do=view&target=BakerContribute.pdf)). For
-information on contributing more broadly to the Galaxy ecosystem and a
-deeper discussion of some of these points - please see the
-[Develop](https://wiki.galaxyproject.org/Develop/) section of the
-[Galaxy Wiki](https://wiki.galaxyproject.org/).
+When opening a new Issue, please take the following steps:
 
-## Before you Begin
+1. Search GitHub and/or Google for your issue to avoid duplicate reports.
+   Keyword searches for your error messages are most helpful.
+2. If possible, try updating to master and reproducing your issue,
+   because we may have already fixed it.
+3. Try to include a minimal reproducible test case
+4. Include relevant system information.  Start with the output of:
 
-If you have an idea for a feature to add or an approach for a bugfix -
-it is best to communicate with Galaxy developers early. The most
-common venue for this is the [Galaxy Trello
-board](https://wiki.galaxyproject.org/Issues). Browse through existing
-cards [here](http://bit.ly/gxytrello) and if one seems related comment
-on it. If no existing cards seem appropriate, a new issue can be
-opened using [this form](http://galaxyproject.org/trello). Galaxy
-developers are also generally available via
-[IRC](https://wiki.galaxyproject.org/GetInvolved#IRC_Channel) and on
-the [development mailing list](http://dev.list.galaxyproject.org/).
+        python -c "import IPython; print(IPython.sys_info())"
 
-## How to Contribute
+   And include any relevant package versions, depending on the issue,
+   such as matplotlib, numpy, Qt, Qt bindings (PyQt/PySide), tornado, web browser, etc.
 
-* All changes to the [core galaxy project](https://github.com/galaxyproject/galaxy)
-  should be made through pull requests to this repository except when
-  serious security vulnerabilities must simulatenously be made to multiple
-  previously released versions of Galaxy.
+## Pull Requests
 
-* If you are new to Git - please check out the very useful tutorials on the [GitHub training hub](https://training.github.com/kit/)
+Some guidelines on contributing to IPython:
 
-* Make sure you have a free [GitHub account](https://github.com/)
+* All work is submitted via Pull Requests.
+* Pull Requests can be submitted as soon as there is code worth discussing.
+  Pull Requests track the branch, so you can continue to work after the PR is submitted.
+  Review and discussion can begin well before the work is complete,
+  and the more discussion the better.
+  The worst case is that the PR is closed.
+* Pull Requests should generally be made against master
+* Pull Requests should be tested, if feasible:
+    - bugfixes should include regression tests
+    - new behavior should at least get minimal exercise
+* New features and backwards-incompatible changes should be documented by adding
+  a new file to the [pr](docs/source/whatsnew/pr) directory, see [the README.md
+  there](docs/source/whatsnew/pr/README.md) for details.
+* Don't make 'cleanup' pull requests just to change code style.
+  We don't follow any style guide strictly, and we consider formatting changes
+  unnecessary noise.
+  If you're making functional changes, you can clean up the specific pieces of
+  code you're working on.
 
-* Fork the galaxy repository on
-  [GitHub](https://github.com/galaxyproject/galaxy) to make your changes.
-  (While many Galaxy instances track
-  [galaxy-dist](https://bitbucket.org/galaxy/galaxy-dist), active development
-  happens in the galaxy GitHub repository and this is where pull requests
-  should be made).
+[Travis](http://travis-ci.org/#!/ipython/ipython) does a pretty good job testing IPython and Pull Requests,
+but it may make sense to manually perform tests (possibly with our `test_pr` script),
+particularly for PRs that affect `IPython.parallel` or Windows.
 
-* Choose the correct branch to develop your changes against.
+For more detailed information, see our [GitHub Workflow](https://github.com/ipython/ipython/wiki/Dev:-GitHub-workflow).
 
-  * Additions to the code base should be pushed to the `dev` branch (`git
-    checkout dev`).
-
-  * Most bug fixes to previously release components (things in galaxy-dist)
-    should be made against the recent `release_XX.XX` branch (`git checkout release_XX.XX`).
-
-  * Serious security problems should not be fixed via pull request -
-    please responsibly disclose these by e-mailing them (with or
-    without patches) to galaxy-lab@bx.psu.edu. The Galaxy core
-    development team will issue patches to public servers before
-    announcing the issue to ensure there is time to patch and
-    highlight these fixes widely. We will provide you credit for the
-    discovery when publicly disclosing the issue.
-
-* If your changes modify code - please ensure the resulting files
-  conform to Galaxy [style
-  guidelines](https://wiki.galaxyproject.org/Develop/BestPractices).
-
-* Galaxy contains hundreds of tests of different types and complexity
-  and running each is difficult and probably not reasonable at this
-  time (someday we will provide a holistic test procedure to make this
-  possible). For now, please just review the [running tests
-  documentation](https://wiki.galaxyproject.org/Admin/RunningTests)
-  and run any that seem relevant. Developers reviewing your pull
-  request will be happy to help guide you to running the most relevant
-  tests as part of the pull request review process and may request the
-  output of these tests.
-
-* Commit and push your changes to your
-  [fork](https://help.github.com/articles/pushing-to-a-remote/).
-
-* Open a [pull
-  request](https://help.github.com/articles/creating-a-pull-request/)
-  with these changes. You pull request message ideally should include:
-
-   * A description of why the change should be made.
-
-   * A description of implementation of the change.
-
-   * A description of how to test the change.
-
-## Ideas
-
-Galaxy's [Trello board](http://bit.ly/gxytrello) is filled with bugs and ideas
-for enhancements, but we maintain a [card](https://trello.com/c/eFdPIdIB) with
-links to smaller issues we believe would make the best entry points for new
-developers.
-
-## A Quick Note about Tools
-
-  For the most part, Galaxy tools should be published to the
-  [ToolShed](https://wiki.galaxyproject.org/ToolShed) and not in this
-  repository directly. If you are looking to supply fixes for migrated
-  core tools that used to exist in this repository - please checkout
-  the [tools-devteam](https://github.com/galaxyproject/tools-devteam)
-  repository on GitHub.
-
-  More information about tool development can be found [on the
-  wiki](https://wiki.galaxyproject.org/Develop).
