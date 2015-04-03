@@ -233,6 +233,11 @@ class FromParamToolOutputActionOption( ToolOutputActionOption ):
             # artifical 'first' attribute_name. For example: .. param_attribute="first.input_mate1.ext"
             if isinstance(value, list) and attr_name == 'first':
                 value = value[0]
+            elif hasattr(value, "dataset_instance") and attr_name in ['dbkey', 'ext']:
+                # If we are accessing dataset instance parameters on a non-
+                # dataset value (specifically a collection element) proxy the
+                # request to the actual dataset instance.
+                value = value.dataset_instance
             elif isinstance(value, dict):
                 value = value[ attr_name ]
             else:
