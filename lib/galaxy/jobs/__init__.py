@@ -1589,9 +1589,12 @@ class JobWrapper( object ):
         if self.app.config.external_chown_script and job.user is not None:
             try:
                 self._change_ownership( self.user_system_pwent[0], str( self.user_system_pwent[3] ) )
-            except:
-                log.exception( '(%s) Failed to change ownership of %s, making world-writable instead' % ( job.id, self.working_directory ) )
-                os.chmod( self.working_directory, 0777 )
+            except Exception:
+                if self.app.config.external_chown_insecure_fallback:
+                    log.exception( '(%s) Failed to change ownership of %s, making world-writable instead' % ( job.id, self.working_directory ) )
+                    os.chmod( self.working_directory, 0777 )
+                else:
+                    log.exception( '(%s) Failed to change ownership of %s, job will likely fail' % ( job.id, self.working_directory ) )
 
     def reclaim_ownership( self ):
         job = self.get_job()
