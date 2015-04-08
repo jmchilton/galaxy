@@ -1,4 +1,5 @@
 # Test tools API.
+import json
 from base import api
 from operator import itemgetter
 from .helpers import DatasetPopulator
@@ -95,6 +96,14 @@ class ToolsTestCase( api.ApiTestCase ):
         result_content = self._upload_and_get_content( table )
         self.assertEquals( result_content, table )
 
+    @skip_without_tool( "simple_constructs" )
+    def test_basic_build( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = self.dataset_populator.new_dataset( history_id, content='1\t2\t3' )
+        self.dataset_populator.wait_for_history( history_id, assert_ok=True )
+        params = self._build( history_id=history_id, tool_id="simple_constructs" )
+        assert len(params["inputs"]["4"]["inputs"][0]["options"]["hda"]) == 1
+
     @skip_without_tool( "multi_select" )
     def test_multi_select_as_list( self ):
         history_id = self.dataset_populator.new_history()
@@ -105,6 +114,36 @@ class ToolsTestCase( api.ApiTestCase ):
         output = response[ "outputs" ][ 0 ]
         output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output )
         assert output1_content == "--ex1,ex2"
+
+    @skip_without_tool( "simple_constructs" )
+    def test_multi_select_non_selections( self ):
+
+        def _check_for_default(inputs, default_present):
+            history_id = self.dataset_populator.new_history()
+            response = self._run( "simple_constructs", history_id, inputs, assert_ok=True )
+            output = response[ "outputs" ][ 0 ]
+            output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output )
+            if default_present:
+                assert "a_check" in output1_content
+            else:
+                assert "a_check" not in output1_content
+
+        # If option not specified, default is used.
+        _check_for_default({}, True)
+
+        # If explicitly set the default - either by itself or in a list
+        # it will be used.
+        _check_for_default({"check_select": "a_check"}, True)
+        _check_for_default({"check_select": ["a_check"]}, True)
+
+        # If option specified as [], default is not used.
+        _check_for_default({"check_select": []}, False)
+        # If option specified as None, default is not used.
+        # This one could go either way in my mind.
+        _check_for_default({"check_select": None}, False)
+        # If option specified as "", default is not used, really
+        # would prefer this was an exception.
+        _check_for_default({"check_select": []}, False)
 
     @skip_without_tool( "multi_select" )
     def test_multi_select_optional( self ):
@@ -589,6 +628,20 @@ class ToolsTestCase( api.ApiTestCase ):
         contents = [bed1_contents, bed2_contents]
         hdca = self.dataset_collection_populator.create_list_in_history( history_id, contents=contents ).json()
         return hdca["id"]
+
+    def _build( self, history_id, tool_id, inputs=None, assert_ok=True ):
+        params = {
+            'history_id': history_id,
+            'tool_id': tool_id,
+        }
+        if inputs is not None:
+            params[ 'inputs' ] = json.dumps( inputs )
+        build_response = self._get( "tools/%s/build" % tool_id, params )
+        if assert_ok:
+            self._assert_status_code_is( build_response, 200 )
+            return build_response.json()
+        else:
+            return build_response
 
     def _run_and_check_simple_collection_mapping( self, history_id, inputs ):
         create = self._run_cat1( history_id, inputs=inputs, assert_ok=True )
