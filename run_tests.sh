@@ -1,5 +1,8 @@
 #!/bin/sh
 
+pwd_dir=$(pwd)
+cd `dirname $0`
+
 ./scripts/common_startup.sh
 
 # A good place to look for nose info: http://somethingaboutorange.com/mrl/projects/nose/
@@ -336,3 +339,5 @@ else
     # functional tests.
     grunt --gruntfile=$gruntfile $grunt_task $grunt_args
 fi
+
+cd $pwd_dir
