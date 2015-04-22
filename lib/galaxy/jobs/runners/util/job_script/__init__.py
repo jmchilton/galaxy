@@ -12,6 +12,25 @@ SLOTS_STATEMENT_SINGLE = """
 GALAXY_SLOTS="1"
 """
 
+ADD_GALAXY_TO_PATH = """
+GALAXY_LIB="%s";
+if [ "$GALAXY_LIB" != "None" ]; then
+    if [ -n "$PYTHONPATH" ]; then
+        PYTHONPATH="$GALAXY_LIB:$PYTHONPATH";
+    else
+        PYTHONPATH="$GALAXY_LIB";
+    fi;
+    export PYTHONPATH;
+fi;
+"""
+
+
+def add_galaxy_to_path(galaxy_lib, expanded=False):
+    command = ADD_GALAXY_TO_PATH % galaxy_lib
+    if not expanded:
+        command = command.replace("\n", "")
+    return command
+
 REQUIRED_TEMPLATE_PARAMS = ['working_directory', 'command', 'exit_code_path']
 OPTIONAL_TEMPLATE_PARAMS = {
     'galaxy_lib': None,
@@ -57,6 +76,8 @@ def job_script(template=DEFAULT_JOB_FILE_TEMPLATE, **kwds):
         kwds["instrument_post_commands"] = job_instrumenter.post_execute_commands(working_directory) or ''
 
     template_params = OPTIONAL_TEMPLATE_PARAMS.copy()
+    galaxy_lib = kwds.get("galaxy_lib", None)
+    template_params["add_galaxy_to_path"] = add_galaxy_to_path(galaxy_lib, expanded=True)
     template_params.update(**kwds)
     env_setup_commands_str = "\n".join(template_params["env_setup_commands"])
     template_params["env_setup_commands"] = env_setup_commands_str

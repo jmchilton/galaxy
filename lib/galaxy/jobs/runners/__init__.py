@@ -20,7 +20,10 @@ from galaxy.util import DATABASE_MAX_STRING_SIZE, shrink_stream_by_size
 from galaxy.util import in_directory
 from galaxy.util import ParamsWithSpecs
 from galaxy.util.bunch import Bunch
-from galaxy.jobs.runners.util.job_script import job_script
+from galaxy.jobs.runners.util.job_script import (
+    job_script,
+    add_galaxy_to_path,
+)
 from galaxy.jobs.runners.util.env import env_to_statement
 
 from .state_handler_factory import build_state_handlers
@@ -33,8 +36,6 @@ STOP_SIGNAL = object()
 JOB_RUNNER_PARAMETER_UNKNOWN_MESSAGE = "Invalid job runner parameter for this plugin: %s"
 JOB_RUNNER_PARAMETER_MAP_PROBLEM_MESSAGE = "Job runner parameter '%s' value '%s' could not be converted to the correct type"
 JOB_RUNNER_PARAMETER_VALIDATION_FAILED_MESSAGE = "Job runner parameter %s failed validation"
-
-GALAXY_LIB_ADJUST_TEMPLATE = """GALAXY_LIB="%s"; if [ "$GALAXY_LIB" != "None" ]; then if [ -n "$PYTHONPATH" ]; then PYTHONPATH="$GALAXY_LIB:$PYTHONPATH"; else PYTHONPATH="$GALAXY_LIB"; fi; export PYTHONPATH; fi;"""
 
 
 class RunnerParams( ParamsWithSpecs ):
@@ -252,7 +253,7 @@ class BaseJobRunner( object ):
         #this is terminate-able when output dataset/job is deleted
         #so that long running set_meta()s can be canceled without having to reboot the server
         if job_wrapper.get_state() not in [ model.Job.states.ERROR, model.Job.states.DELETED ] and job_wrapper.output_paths:
-            lib_adjust = GALAXY_LIB_ADJUST_TEMPLATE % job_wrapper.galaxy_lib_dir
+            lib_adjust = add_galaxy_to_path(job_wrapper.galaxy_lib_dir)
             external_metadata_script = job_wrapper.setup_external_metadata( output_fnames=job_wrapper.get_output_fnames(),
                                                                             set_extension=True,
                                                                             tmp_dir=job_wrapper.working_directory,
