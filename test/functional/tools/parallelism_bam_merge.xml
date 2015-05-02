@@ -1,0 +1,23 @@
+<tool id="parallelism_bam_merge" name="parallelism_bam_merge" version="1.0.0">
+    <parallelism method="multi" split_inputs="input2" split_mode="number_of_parts" split_size="2" merge_outputs="out" />
+    <command>
+        filter=`cat $input2`;
+        samtools view $input1 | grep \$filter | samtools view -b - > $out
+    </command>
+    <inputs>
+        <param name="input1" type="data" format="bam" label="Dataset" />
+        <param name="input2" type="data" format="txt" label="Dataset Headers" />
+    </inputs>
+    <outputs>
+        <data name="out" format="bam" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input1" value="1.bam"/>
+            <param name="input2" value="bam_filter.txt"/>
+            <output name="out_file1" file="bam_merge.bam" ftype="bam" />
+        </test>
+    </tests>
+    <help>
+    </help>
+</tool>
