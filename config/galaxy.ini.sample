@@ -360,6 +360,12 @@ paste.app_factory = galaxy.web.buildapp:app_factory
 # misconfiguration and other events user may encounter.
 #error_email_to = None
 
+# Dataset error e-mails will be set with Galaxy's email_from address configured
+# as the "from" address. In certain use cases (such as when dealing with ticketing
+# systems) it may be beneficial for this to appear to be coming from the Galaxy
+# user instead - set this attribute to True to enable that.
+#error_email_as_user = False
+
 # Email address to use in the 'From' field when sending emails for
 # account activations, workflow step notifications and password resets.
 # We recommend using string in the following format:

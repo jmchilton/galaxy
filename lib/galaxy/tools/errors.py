@@ -123,7 +123,11 @@ class EmailErrorReporter( ErrorReporter ):
         to_address = self.app.config.error_email_to
         assert to_address, ValueError( "Error reporting has been disabled for this galaxy instance" )
 
+        email_as_user = getattr(self.app.config, "error_email_as_user", False)
         frm = to_address
+        if email_as_user and email:
+            frm = email
+
         # Check email a bit
         email = email or ''
         email = email.strip()
