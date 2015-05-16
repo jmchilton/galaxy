@@ -30,10 +30,10 @@
       <display file="igb/bedgraph.xml" />
     </datatype>
     <datatype extension="bedstrict" type="galaxy.datatypes.interval:BedStrict" />
-    <datatype extension="bed6" type="galaxy.datatypes.interval:Bed6" edam="format_3003">
+    <datatype extension="bed6" type="galaxy.datatypes.interval:Bed6">
     </datatype>
-    <datatype extension="bed12" type="galaxy.datatypes.interval:Bed12"  edam="format_3003"/>
-    <datatype extension="len" type="galaxy.datatypes.chrominfo:ChromInfo" display_in_upload="true" edam="format_3475">
+    <datatype extension="bed12" type="galaxy.datatypes.interval:Bed12" />
+    <datatype extension="len" type="galaxy.datatypes.chrominfo:ChromInfo" display_in_upload="true">
       <converter file="len_to_linecount.xml" target_datatype="linecount" />
     </datatype>
     <datatype extension="bigbed" type="galaxy.datatypes.binary:BigBed" mimetype="application/octet-stream" display_in_upload="true" edam="format_3004">
@@ -51,14 +51,14 @@
       <converter file="bed_gff_or_vcf_to_bigwig_converter.xml" target_datatype="bigwig"/>
     </datatype>
     <!-- MSI added Datatypes -->
-    <datatype extension="csv" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="true" edam="format_3475" /> <!-- FIXME: csv is 'tabular'ized data, but not 'tab-delimited'; the class used here is intended for 'tab-delimited' -->
+    <datatype extension="csv" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="true" /> <!-- FIXME: csv is 'tabular'ized data, but not 'tab-delimited'; the class used here is intended for 'tab-delimited' -->
     <!-- End MSI added Datatypes -->
     <datatype extension="customtrack" type="galaxy.datatypes.interval:CustomTrack"/>
     <datatype extension="bowtie_color_index" type="galaxy.datatypes.ngsindex:BowtieColorIndex" mimetype="text/html" display_in_upload="False"/>
     <datatype extension="bowtie_base_index" type="galaxy.datatypes.ngsindex:BowtieBaseIndex" mimetype="text/html" display_in_upload="False"/>
     <datatype extension="csfasta" type="galaxy.datatypes.sequence:csFasta" display_in_upload="true"/>
     <datatype extension="data" type="galaxy.datatypes.data:Data" mimetype="application/octet-stream" max_optional_metadata_filesize="1048576" edam="format_1915"/>
-    <datatype extension="data_manager_json" type="galaxy.datatypes.data:Text" mimetype="application/json" subclass="True" display_in_upload="False" edam="format_3464"/>
+    <datatype extension="data_manager_json" type="galaxy.datatypes.data:Text" mimetype="application/json" subclass="True" display_in_upload="False" />
     <datatype extension="fasta" type="galaxy.datatypes.sequence:Fasta" display_in_upload="true" description="A sequence in FASTA format consists of a single-line description, followed by lines of sequence data. The first character of the description line is a greater-than ('>') symbol in the first column. All lines should be shorter than 80 characters." description_url="https://wiki.galaxyproject.org/Learn/Datatypes#Fasta" edam="format_1929">
       <converter file="fasta_to_tabular_converter.xml" target_datatype="tabular"/>
       <converter file="fasta_to_bowtie_base_index_converter.xml" target_datatype="bowtie_base_index"/>
@@ -82,8 +82,8 @@
         <converter file="fastq_to_fqtoc.xml" target_datatype="fqtoc"/>
     </datatype>
     <datatype extension="fqtoc" type="galaxy.datatypes.sequence:SequenceSplitLocations" display_in_upload="true"/>
-    <datatype extension="eland" type="galaxy.datatypes.tabular:Eland" display_in_upload="true" edam="format_3475"/>
-    <datatype extension="elandmulti" type="galaxy.datatypes.tabular:ElandMulti" display_in_upload="true" edam="format_3475"/>
+    <datatype extension="eland" type="galaxy.datatypes.tabular:Eland" display_in_upload="true" />
+    <datatype extension="elandmulti" type="galaxy.datatypes.tabular:ElandMulti" display_in_upload="true" />
     <datatype extension="genetrack" type="galaxy.datatypes.tracks:GeneTrack">
       <!-- <display file="genetrack.xml" /> -->
     </datatype>
@@ -119,14 +119,14 @@
       <display file="gbrowse/gbrowse_interval_as_bed.xml" inherit="True"/>
       <display file="rviewer/bed.xml" inherit="True"/>
     </datatype>
-    <datatype extension="picard_interval_list" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True" edam="format_3475">
+    <datatype extension="picard_interval_list" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True">
       <converter file="picard_interval_list_to_bed6_converter.xml" target_datatype="bed6"/>
     </datatype>
     <datatype extension="gatk_interval" type="galaxy.datatypes.data:Text" subclass="True" display_in_upload="True" edam="format_2330"/>
     <datatype extension="gatk_report" type="galaxy.datatypes.data:Text" subclass="True" display_in_upload="True" edam="format_2330"/>
-    <datatype extension="gatk_dbsnp" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True" edam="format_3475"/>
-    <datatype extension="gatk_tranche" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True" edam="format_3475"/>
-    <datatype extension="gatk_recal" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True" edam="format_3475"/>
+    <datatype extension="gatk_dbsnp" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True"/>
+    <datatype extension="gatk_tranche" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True"/>
+    <datatype extension="gatk_recal" type="galaxy.datatypes.tabular:Tabular" subclass="True" display_in_upload="True"/>
     <datatype extension="jpg" type="galaxy.datatypes.images:Jpg" mimetype="image/jpeg"/>
     <datatype extension="tiff" type="galaxy.datatypes.images:Tiff" mimetype="image/tiff"/>
     <datatype extension="bmp" type="galaxy.datatypes.images:Bmp" mimetype="image/bmp"/>
@@ -151,7 +151,7 @@
       <converter file="maf_to_fasta_converter.xml" target_datatype="fasta"/>
       <converter file="maf_to_interval_converter.xml" target_datatype="interval"/>
     </datatype>
-    <datatype extension="mafcustomtrack" type="galaxy.datatypes.sequence:MafCustomTrack" edam="format_3008">
+    <datatype extension="mafcustomtrack" type="galaxy.datatypes.sequence:MafCustomTrack">
       <display file="ucsc/maf_customtrack.xml" />
     </datatype>
     <datatype extension="encodepeak" type="galaxy.datatypes.interval:ENCODEPeak" display_in_upload="True">
@@ -185,16 +185,16 @@
         <converter file="tabular_to_dbnsfp.xml" target_datatype="snpsiftdbnsfp"/>
     </datatype>
     <datatype extension="sff" type="galaxy.datatypes.binary:Sff" mimetype="application/octet-stream" display_in_upload="true" description="A binary file in 'Standard Flowgram Format' with a '.sff' file extension." description_url="https://wiki.galaxyproject.org/Learn/Datatypes#Sff" edam="format_3284"/>
-    <datatype extension="svg" type="galaxy.datatypes.images:Image" mimetype="image/svg+xml" edam="format_2332"/>
-    <datatype extension="taxonomy" type="galaxy.datatypes.tabular:Taxonomy" display_in_upload="true" edam="format_3475"/>
+    <datatype extension="svg" type="galaxy.datatypes.images:Image" mimetype="image/svg+xml"/>
+    <datatype extension="taxonomy" type="galaxy.datatypes.tabular:Taxonomy" display_in_upload="true"/>
     <datatype extension="tabular" type="galaxy.datatypes.tabular:Tabular" display_in_upload="true" description="Any data in tab delimited format (tabular)." description_url="https://wiki.galaxyproject.org/Learn/Datatypes#Tabular_.28tab_delimited.29" edam="format_3475"/>
     <datatype extension="twobit" type="galaxy.datatypes.binary:TwoBit" mimetype="application/octet-stream" display_in_upload="true" edam="format_3009"/>
     <datatype extension="sqlite" type="galaxy.datatypes.binary:SQlite" mimetype="application/octet-stream" display_in_upload="true"/>
     <datatype extension="gemini.sqlite" type="galaxy.datatypes.binary:GeminiSQLite" mimetype="application/octet-stream" display_in_upload="True" />
     <datatype extension="txt" type="galaxy.datatypes.data:Text" display_in_upload="true" description="Any text file." description_url="https://wiki.galaxyproject.org/Learn/Datatypes#Plain_text" edam="format_2330"/>
     <datatype extension="linecount" type="galaxy.datatypes.data:LineCount" display_in_upload="false"/>
-    <datatype extension="memexml" type="galaxy.datatypes.xml:MEMEXml" mimetype="application/xml" display_in_upload="true" edam="format_2332"/>
-    <datatype extension="cisml" type="galaxy.datatypes.xml:CisML" mimetype="application/xml" display_in_upload="true" edam="format_2332"/>
+    <datatype extension="memexml" type="galaxy.datatypes.xml:MEMEXml" mimetype="application/xml" display_in_upload="true"/>
+    <datatype extension="cisml" type="galaxy.datatypes.xml:CisML" mimetype="application/xml" display_in_upload="true"/>
     <datatype extension="xml" type="galaxy.datatypes.xml:GenericXml" mimetype="application/xml" display_in_upload="true" edam="format_2332"/>
     <datatype extension="vcf" type="galaxy.datatypes.tabular:Vcf" display_in_upload="true" edam="format_3016">
       <converter file="vcf_to_bgzip_converter.xml" target_datatype="bgzip"/>
@@ -221,7 +221,7 @@
       <converter file="vcf_bgzip_to_tabix_converter.xml" target_datatype="tabix"/>
     </datatype>
     <!-- Phylogenetic tree datatypes -->
-    <datatype extension="phyloxml" type="galaxy.datatypes.xml:Phyloxml" display_in_upload="true" edam="format_2332" />
+    <datatype extension="phyloxml" type="galaxy.datatypes.xml:Phyloxml" display_in_upload="true" />
     <datatype extension="nhx" type="galaxy.datatypes.data:Newick" display_in_upload="true" edam="format_1910"/>
     <datatype extension="nex" type="galaxy.datatypes.data:Nexus" display_in_upload="true" edam="format_1912"/>
     <!-- Start RGenetics Datatypes -->
@@ -259,9 +259,9 @@
     <datatype extension="rgenetics" type="galaxy.datatypes.genetics:Rgenetics"/>
     <datatype extension="snptest" type="galaxy.datatypes.genetics:Snptest" display_in_upload="true"/>
     <datatype extension="snpmatrix" type="galaxy.datatypes.genetics:SNPMatrix" display_in_upload="true"/>
-    <datatype extension="xls" type="galaxy.datatypes.tabular:Tabular" edam="format_3475"/>
+    <datatype extension="xls" type="galaxy.datatypes.tabular:Tabular"/>
     <!-- End RGenetics Datatypes -->
-    <datatype extension="ipynb" type="galaxy.datatypes.text:Ipynb" display_in_upload="True" edam="format_3464"/>
+    <datatype extension="ipynb" type="galaxy.datatypes.text:Ipynb" display_in_upload="True"/>
     <datatype extension="json" type="galaxy.datatypes.text:Json" display_in_upload="True" edam="format_3464" />
     <!-- graph datatypes -->
     <datatype extension="xgmml" type="galaxy.datatypes.graph:Xgmml" display_in_upload="true"/>
