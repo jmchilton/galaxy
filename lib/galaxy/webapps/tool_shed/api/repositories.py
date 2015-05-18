@@ -88,7 +88,7 @@ class RepositoriesController( BaseAPIController ):
             % ( name, owner )
         return response_dict
 
-    @web.expose_api_anonymous
+    @expose_api_anonymous_and_sessionless
     def get_ordered_installable_revisions( self, trans, name, owner, **kwd ):
         """
         GET /api/repositories/get_ordered_installable_revisions
@@ -316,7 +316,7 @@ class RepositoriesController( BaseAPIController ):
             return_dict[ key ] = val
         return return_dict
 
-    @web.expose_api_anonymous
+    @expose_api_anonymous_and_sessionless
     def index( self, trans, deleted=False, owner=None, name=None, **kwd ):
         """
         GET /api/repositories
