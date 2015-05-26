@@ -13,8 +13,8 @@
   </outputs>
     <tests>
         <test>
-            <param name="input1" value="2.bam"/>
-            <output name="out_file" file="2_filt.bam"/>
+            <param name="input" value="1.bam"/>
+            <output name="outfile" file="1_filt.bam"/>
         </test>
     </tests>
   <help></help>
