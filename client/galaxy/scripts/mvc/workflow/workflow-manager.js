@@ -215,7 +215,7 @@ define(['utils/utils', 'mvc/tools/tools-form-workflow', 'mvc/workflow/workflow-o
             this.terminalMapping.disableMapOver();
         },
 
-        resetMappingIfNeeded: function( ) {}, // Subclasses should override this...
+        resetMappingIfNeeded: function( ) {} // Subclasses should override this...
 
     } );
 
@@ -2002,8 +2002,29 @@ define(['utils/utils', 'mvc/tools/tools-form-workflow', 'mvc/workflow/workflow-o
     });
 
     return {
-        CanvasManager           : CanvasManager,
-        Workflow                : Workflow,
-        populate_datatype_info  : populate_datatype_info
+        // Public API...
+        CanvasManager                    : CanvasManager,
+        Workflow                         : Workflow,
+        populate_datatype_info           : populate_datatype_info,
+        // Exposed for testing...
+        InputTerminal                    : InputTerminal,
+        OutputTerminal                   : OutputTerminal,
+        InputCollectionTerminal          : InputCollectionTerminal,
+        OutputCollectionTerminal         : OutputCollectionTerminal,
+        InputTerminalView                : InputTerminalView,
+        OutputTerminalView               : OutputTerminalView,
+        InputCollectionTerminalView      : InputCollectionTerminalView,
+        OutputCollectionTerminalView     : OutputCollectionTerminalView,
+        InputTerminalMapping             : InputTerminalMapping,
+        OutputTerminalMapping            : OutputTerminalMapping,
+        InputCollectionTerminalMapping   : InputTerminalMapping,
+        OutputCollectionTerminalMapping  : OutputCollectionTerminalMapping,
+        Connector                        : Connector,
+        CollectionTypeDescription        : CollectionTypeDescription,
+        TerminalMapping                  : TerminalMapping,
+        NULL_COLLECTION_TYPE_DESCRIPTION :  NULL_COLLECTION_TYPE_DESCRIPTION,
+        ANY_COLLECTION_TYPE_DESCRIPTION  : ANY_COLLECTION_TYPE_DESCRIPTION,
+        Node                             : Node,
+        NodeView                         : NodeView
     }
 });

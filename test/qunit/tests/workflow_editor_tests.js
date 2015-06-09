@@ -1,26 +1,30 @@
 /* global define, QUnit, module, test, ok, equal, deepEqual, notEqual */
-/* global Workflow, CanvasManager, InputTerminal, Connector, add_node */
 define([
-    "galaxy.workflow_editor.canvas",
+    "mvc/workflow/workflow-manager",
+    "mvc/workflow/workflow",
+    "mvc/workflow/workflow-objects",
     "jquery",
     "libs/bootstrap",  // Required by galaxy.workflow_editor.canvas
     "sinon-qunit"
 ], function(
     workflowEditor,
+    Workflow,
+    Shared,
     $,
     bootstrap,
     sinon
 ){
     "use strict";
+    module( "Workflow editor tests" );
 
     // globals cosumed by workflow editor
-    window.show_form_for_tool = sinon.spy();
-    window.workflow = null;
-    window.canvas_manager = null;
+    workflowEditor.show_form_for_tool = sinon.spy();
+    workflowEditor.workflow = null;
+    workflowEditor.canvas_manager = null;
 
 
     QUnit.moduleStart(function() {
-        window.populate_datatype_info({
+        workflowEditor.populate_datatype_info({
             ext_to_class_name: {
                 'txt': 'Text',
                 'data': 'Data',
@@ -50,22 +54,22 @@ define([
         var canvas_viewport = $( "<div id='canvas-viewport'><div id='canvas-container'></div></div>" );
 
         $("body").append( overview, canvas_viewport );
-        window.canvas_manager = new CanvasManager( canvas_viewport, overview );
+        Shared.canvas_manager = new workflowEditor.CanvasManager( canvas_viewport, overview );
         with_canvas_container( function( canvas_container ) {
-            window.workflow = new Workflow( canvas_container );
-            f( window.workflow );
-            window.workflow = null;
+            Shared.workflow = new Workflow( canvas_container );
+            f( Shared.workflow );
+            Shared.workflow = null;
         } );
-        window.canvas_manager = null;
+        Shared.canvas_manager = null;
         overview.remove();
         canvas_viewport.remove();
     };
 
     module( "Input terminal model test", {
         setup: function( ) {
-            this.node = new Node( {  } );
+            this.node = new workflowEditor.Node( {  } );
             this.input = { extensions: [ "txt" ], multiple: false };
-            this.input_terminal = new InputTerminal( { input: this.input } );
+            this.input_terminal = new workflowEditor.InputTerminal( { input: this.input } );
             this.input_terminal.node = this.node;
         },
         multiple: function( ) {
@@ -73,11 +77,11 @@ define([
             this.input_terminal.update( this.input );
         },
         test_connector: function( ) {
-            var outputTerminal = new OutputTerminal( { datatypes: [ 'input' ] } );
+            var outputTerminal = new workflowEditor.OutputTerminal( { datatypes: [ 'input' ] } );
             var inputTerminal = this.input_terminal;
             var connector;
             with_workflow_global( function() {
-                connector = new Connector( outputTerminal, inputTerminal );
+                connector = new workflowEditor.Connector( outputTerminal, inputTerminal );
             } );
             return connector;
         },
@@ -92,7 +96,7 @@ define([
         test_accept: function( other ) {
             other = other || { node: {}, datatypes: [ "txt" ] };
             if( ! other.mapOver ) {
-                other.mapOver = function() { return NULL_COLLECTION_TYPE_DESCRIPTION; };
+                other.mapOver = function() { return workflowEditor.NULL_COLLECTION_TYPE_DESCRIPTION; };
             }
             return this.input_terminal.canAccept( other );
         },
@@ -233,14 +237,14 @@ define([
     } );
 
     test( "can accept list collection for empty multiple inputs", function() {
-        var other = { node: {}, datatypes: [ "tabular" ], mapOver: function() { return new CollectionTypeDescription( "list" ) } };
+        var other = { node: {}, datatypes: [ "tabular" ], mapOver: function() { return new workflowEditor.CollectionTypeDescription( "list" ) } };
         var self = this;
         this.multiple();
         ok( self.test_accept( other ) );
     } );
 
     test( "cannot accept list collection for multiple input if collection already connected", function() {
-        var other = { node: {}, datatypes: [ "tabular" ], mapOver: function() { return new CollectionTypeDescription( "list" ) } };
+        var other = { node: {}, datatypes: [ "tabular" ], mapOver: function() { return new workflowEditor.CollectionTypeDescription( "list" ) } };
         var self = this;
         this.multiple();
         this.with_test_connector( function() {
@@ -255,13 +259,13 @@ define([
     test( "connects only if both valid handles", function() {
         var input = { connect: sinon.spy() };
         var output = { connect: sinon.spy() };
-        new Connector( input, null );
-        new Connector( null, output );
+        new workflowEditor.Connector( input, null );
+        new workflowEditor.Connector( null, output );
         // Not attempts to connect...
         ok( ! input.connect.called );
         ok( ! output.connect.called );
 
-        new Connector( input, output );
+        new workflowEditor.Connector( input, output );
         ok( input.connect.called );
         ok( output.connect.called );
     });
@@ -269,7 +273,7 @@ define([
     test( "default attributes", function() {
         var input = { connect: sinon.spy() };
         var output = { connect: sinon.spy() };
-        var connector = new Connector( input, output );
+        var connector = new workflowEditor.Connector( input, output );
 
         equal( connector.dragging, false );
         equal( connector.canvas, null );
@@ -280,7 +284,7 @@ define([
     test( "destroy", function() {
         var input = { connect: sinon.spy(), disconnect: sinon.spy() };
         var output = { connect: sinon.spy(), disconnect: sinon.spy() };
-        var connector = new Connector( input, output );
+        var connector = new workflowEditor.Connector( input, output );
 
         connector.destroy();
         ok( input.disconnect.called );
@@ -291,7 +295,7 @@ define([
         with_canvas_container( function( canvas_container ) {
             var input = { connect: sinon.spy(), element: $("<div>"), isMappedOver: function() { return false; } };
             var output = { connect: sinon.spy(), element: $("<div>"), isMappedOver: function() { return false; } };
-            var connector = new Connector( input, output );
+            var connector = new workflowEditor.Connector( input, output );
 
             connector.redraw();
             // Ensure canvas gets set
@@ -303,9 +307,9 @@ define([
 
     module( "Input collection terminal model test", {
         setup: function( ) {
-            this.node = new Node( {  } );
+            this.node = new workflowEditor.Node( {  } );
             this.input = { extensions: [ "txt" ], collection_type: "list" };
-            this.input_terminal = new InputCollectionTerminal( { input: this.input } );
+            this.input_terminal = new workflowEditor.InputCollectionTerminal( { input: this.input } );
             this.input_terminal.node = this.node;
         }
     } );
@@ -313,7 +317,7 @@ define([
     test( "Collection output can connect to same collection input type", function() {
         var self = this;
         var inputTerminal = self.input_terminal;
-        var outputTerminal = new OutputCollectionTerminal( {
+        var outputTerminal = new workflowEditor.OutputCollectionTerminal( {
             datatypes: 'txt',
             collection_type: 'list'
         } );
@@ -324,7 +328,7 @@ define([
     test( "Collection output cannot connect to different collection input type", function() {
         var self = this;
         var inputTerminal = self.input_terminal;
-        var outputTerminal = new OutputCollectionTerminal( {
+        var outputTerminal = new workflowEditor.OutputCollectionTerminal( {
             datatypes: 'txt',
             collection_type: 'paired'
         } );
@@ -337,7 +341,7 @@ define([
             this.input_terminal = { destroy: sinon.spy(), redraw: sinon.spy() };
             this.output_terminal = { destroy: sinon.spy(), redraw: sinon.spy() };
             this.element = $("<div><div class='toolFormBody'></div></div>");
-            this.node = new Node( { element: this.element } );
+            this.node = new workflowEditor.Node( { element: this.element } );
             this.node.input_terminals.i1 = this.input_terminal;
             this.node.output_terminals.o1 = this.output_terminal;
         },
@@ -466,7 +470,7 @@ define([
             // Call init with one input and output.
             test.init_field_data_simple();
 
-            var connector = new Connector();
+            var connector = new workflowEditor.Connector();
             var old_input_terminal = node.input_terminals.input1;
             old_input_terminal.connectors.push( connector );
 
@@ -519,16 +523,16 @@ define([
         },
         set_for_node: function( node ) {
             var element = $("<div><div class='toolFormBody'></div></div>");
-            this.view = new NodeView( { node: node, el: element[ 0 ] } );
+            this.view = new workflowEditor.NodeView( { node: node, el: element[ 0 ] } );
         },
         connectAttachedTerminal: function( inputType, outputType ) {
             this.view.addDataInput( { name: "TestName", extensions: [ inputType ] } );
             var terminal = this.view.node.input_terminals[ "TestName" ];
 
-            var outputTerminal = new OutputTerminal( { name: "TestOuptut", datatypes: [ outputType ] } );
+            var outputTerminal = new workflowEditor.OutputTerminal( { name: "TestOuptut", datatypes: [ outputType ] } );
             outputTerminal.node = { markChanged: function() {}, post_job_actions: [], hasMappedOverInputTerminals: function() { return false; }, hasConnectedOutputTerminals: function() { return true; } };
             outputTerminal.terminalMapping = { disableMapOver: function() {}, mapOver: NULL_COLLECTION_TYPE_DESCRIPTION }; 
-            var c = new Connector( outputTerminal, terminal );
+            var c = new workflowEditor.Connector( outputTerminal, terminal );
 
             return c;
         },
@@ -536,10 +540,10 @@ define([
             this.view.addDataInput( { name: "TestName", extensions: [ inputType ], multiple: true } );
             var terminal = this.view.node.input_terminals[ "TestName" ];
 
-            var outputTerminal = new OutputTerminal( { name: "TestOuptut", datatypes: [ "txt" ] } );
+            var outputTerminal = new workflowEditor.OutputTerminal( { name: "TestOuptut", datatypes: [ "txt" ] } );
             outputTerminal.node = { markChanged: function() {}, post_job_actions: [], hasMappedOverInputTerminals: function() { return false; }, hasConnectedOutputTerminals: function() { return true; } };
-            outputTerminal.terminalMapping = { disableMapOver: function() {}, mapOver: new CollectionTypeDescription( "list" ) };
-            var c = new Connector( outputTerminal, terminal );
+            outputTerminal.terminalMapping = { disableMapOver: function() {}, mapOver: new workflowEditor.CollectionTypeDescription( "list" ) };
+            var c = new workflowEditor.Connector( outputTerminal, terminal );
 
             return c;
         },
@@ -547,10 +551,10 @@ define([
             this.view.addDataInput( { name: "TestName", extensions: [ "txt" ], input_type: "dataset_collection" } );
             var terminal = this.view.node.input_terminals[ "TestName" ];
 
-            var outputTerminal = new OutputTerminal( { name: "TestOuptut", datatypes: [ "txt" ] } );
+            var outputTerminal = new workflowEditor.OutputTerminal( { name: "TestOuptut", datatypes: [ "txt" ] } );
             outputTerminal.node = { markChanged: function() {}, post_job_actions: [], hasMappedOverInputTerminals: function() { return false; }, hasConnectedOutputTerminals: function() { return true; } };
-            outputTerminal.terminalMapping = { disableMapOver: function() {}, mapOver: new CollectionTypeDescription( "list" ) }; 
-            var c = new Connector( outputTerminal, terminal );
+            outputTerminal.terminalMapping = { disableMapOver: function() {}, mapOver: new workflowEditor.CollectionTypeDescription( "list" ) }; 
+            var c = new workflowEditor.Connector( outputTerminal, terminal );
 
             return c;
         }
@@ -641,7 +645,7 @@ define([
         setup: function() {
             this.node = { input_terminals: [] };
             this.input = { name: "i1", extensions: "txt", multiple: false };
-            this.view = new InputTerminalView( {
+            this.view = new workflowEditor.InputTerminalView( {
                 node: this.node,
                 input: this.input,
             });
@@ -667,7 +671,7 @@ define([
         setup: function() {
             this.node = { output_terminals: [] };
             this.output = { name: "o1", extensions: "txt" };
-            this.view = new OutputTerminalView( {
+            this.view = new workflowEditor.OutputTerminalView( {
                 node: this.node,
                 output: this.output,
             });
@@ -689,13 +693,13 @@ define([
 
     module( "CollectionTypeDescription", {
         listType: function() {
-            return new CollectionTypeDescription( "list" );
+            return new workflowEditor.CollectionTypeDescription( "list" );
         },
         pairedType: function() {
-            return new CollectionTypeDescription( "paired" );
+            return new workflowEditor.CollectionTypeDescription( "paired" );
         },
         pairedListType: function() {
-            return new CollectionTypeDescription( "list:paired" );            
+            return new workflowEditor.CollectionTypeDescription( "list:paired" );
         }
     } );
 
@@ -764,20 +768,20 @@ define([
 
     test( "default constructor", function() {
         var terminal = {};
-        var mapping = new TerminalMapping( { terminal: terminal } );
+        var mapping = new workflowEditor.TerminalMapping( { terminal: terminal } );
         ok( terminal.terminalMapping === mapping );
         ok( mapping.mapOver === NULL_COLLECTION_TYPE_DESCRIPTION );
     } );
 
     test( "constructing with mapOver", function() {
         var terminal = {};
-        var mapping = new TerminalMapping( { terminal: terminal, mapOver: new CollectionTypeDescription( "list" ) } );
+        var mapping = new workflowEditor.TerminalMapping( { terminal: terminal, mapOver: new workflowEditor.CollectionTypeDescription( "list" ) } );
         ok( mapping.mapOver.collectionType == "list" );
     } );
 
     test( "disableMapOver", function() {
         var terminal = {};
-        var mapping = new TerminalMapping( { terminal: terminal, mapOver: new CollectionTypeDescription( "list" ) } );
+        var mapping = new workflowEditor.TerminalMapping( { terminal: terminal, mapOver: new workflowEditor.CollectionTypeDescription( "list" ) } );
         var changeSpy = sinon.spy();
         mapping.bind( "change", changeSpy );
         mapping.disableMapOver();
@@ -793,11 +797,11 @@ define([
                 input[ 'extensions'] = [ 'data' ];
             }
             var inputEl = $("<div>")[ 0 ];
-            var inputTerminal = new InputTerminal( { element: inputEl, input: input } );
-            var inputTerminalMapping = new InputTerminalMapping( { terminal: inputTerminal } );
+            var inputTerminal = new workflowEditor.InputTerminal( { element: inputEl, input: input } );
+            var inputTerminalMapping = new workflowEditor.InputTerminalMapping( { terminal: inputTerminal } );
             inputTerminal.node = node;
             if( mapOver ) {
-                inputTerminal.setMapOver( new CollectionTypeDescription( mapOver ) );
+                inputTerminal.setMapOver( new workflowEditor.CollectionTypeDescription( mapOver ) );
             }
             return inputTerminal;
         },
@@ -808,8 +812,8 @@ define([
                 input[ 'extensions'] = [ 'data' ];
             }
             var inputEl = $("<div>")[ 0 ];
-            var inputTerminal = new InputCollectionTerminal( { element: inputEl, input: input } );
-            var inputTerminalMapping = new InputCollectionTerminalMapping( { terminal: inputTerminal } );
+            var inputTerminal = new workflowEditor.InputCollectionTerminal( { element: inputEl, input: input } );
+            var inputTerminalMapping = new workflowEditor.InputCollectionTerminalMapping( { terminal: inputTerminal } );
             inputTerminal.node = node;
             return inputTerminal;
         },
@@ -820,11 +824,11 @@ define([
                 output[ 'extensions'] = [ 'data' ];
             }
             var outputEl = $("<div>")[ 0 ];
-            var outputTerminal = new OutputTerminal( { element: outputEl, datatypes: output.extensions } );
-            var outputTerminalMapping = new OutputTerminalMapping( { terminal: outputTerminal } );
+            var outputTerminal = new workflowEditor.OutputTerminal( { element: outputEl, datatypes: output.extensions } );
+            var outputTerminalMapping = new workflowEditor.OutputTerminalMapping( { terminal: outputTerminal } );
             outputTerminal.node = node;
             if( mapOver ) {
-                outputTerminal.setMapOver( new CollectionTypeDescription( mapOver ) );
+                outputTerminal.setMapOver( new workflowEditor.CollectionTypeDescription( mapOver ) );
             }
             return outputTerminal;
         },
@@ -836,17 +840,17 @@ define([
                 output[ 'extensions'] = [ 'data' ];
             }
             var outputEl = $("<div>")[ 0 ];
-            var outputTerminal = new OutputCollectionTerminal( { element: outputEl, datatypes: output.extensions, collection_type: collectionType } );
-            var outputTerminalMapping = new OutputCollectionTerminalMapping( { terminal: outputTerminal } );
+            var outputTerminal = new workflowEditor.OutputCollectionTerminal( { element: outputEl, datatypes: output.extensions, collection_type: collectionType } );
+            var outputTerminalMapping = new workflowEditor.OutputCollectionTerminalMapping( { terminal: outputTerminal } );
             outputTerminal.node = node;
             if( mapOver ) {
-                outputTerminal.setMapOver( new CollectionTypeDescription( mapOver ) );
+                outputTerminal.setMapOver( new workflowEditor.CollectionTypeDescription( mapOver ) );
             }
             return outputTerminal;
         },
         newNode: function( ) {
             var nodeEl = $("<div>")[ 0 ];
-            var node = new Node( { element: nodeEl } );
+            var node = new workflowEditor.Node( { element: nodeEl } );
             return node;
         },
         _addExistingOutput: function( terminal, output, connected ) {
@@ -855,7 +859,7 @@ define([
             if( connected ) {
                 with_workflow_global( function() {
                     var inputTerminal = self.newInputTerminal();
-                    new Connector( inputTerminal, output );
+                    new workflowEditor.Connector( inputTerminal, output );
                 } );
             }
             this._addTerminalTo( output, node.output_terminals );
@@ -882,7 +886,7 @@ define([
             var node = terminal.node;
             with_workflow_global( function() {
                 var outputTerminal = self.newOutputTerminal();
-                new Connector( connectedInput, outputTerminal );
+                new workflowEditor.Connector( connectedInput, outputTerminal );
             } );
             this._addTerminalTo( connectedInput, node.input_terminals );
             return connectedInput;
@@ -939,14 +943,14 @@ define([
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
         var connectedInput2 = this.addConnectedInput( inputTerminal1 );
-        connectedInput2.setMapOver( new CollectionTypeDescription( "list") );
+        connectedInput2.setMapOver( new workflowEditor.CollectionTypeDescription( "list") );
         this.verifyAttachable( inputTerminal1, "list" );
     } );
 
     test( "unmapped input cannot be mapped over if not matching connected input terminals map type", function() {
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput = this.addConnectedInput( inputTerminal1 );
-        connectedInput.setMapOver( new CollectionTypeDescription( "paired" ) );
+        connectedInput.setMapOver( new workflowEditor.CollectionTypeDescription( "paired" ) );
         this.verifyNotAttachable( inputTerminal1, "list" );
     } );
 
@@ -954,7 +958,7 @@ define([
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
         var connectedInput2 = this.addConnectedInput( inputTerminal1 );
-        connectedInput2.setMapOver( new CollectionTypeDescription( "list") );
+        connectedInput2.setMapOver( new workflowEditor.CollectionTypeDescription( "list") );
         var outputTerminal = this.newOutputCollectionTerminal( "list" );
         this.verifyAttachable( inputTerminal1, outputTerminal );
     } );
@@ -963,7 +967,7 @@ define([
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
         var connectedInput2 = this.addConnectedInput( inputTerminal1 );
-        connectedInput2.setMapOver( new CollectionTypeDescription( "list") );
+        connectedInput2.setMapOver( new workflowEditor.CollectionTypeDescription( "list") );
         var outputTerminal = this.newOutputCollectionTerminal( "paired" );
         this.verifyNotAttachable( inputTerminal1, outputTerminal );
     } );
@@ -972,9 +976,9 @@ define([
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
         var connectedInput2 = this.addConnectedInput( inputTerminal1 );
-        connectedInput2.setMapOver( new CollectionTypeDescription( "list:paired") );
+        connectedInput2.setMapOver( new workflowEditor.CollectionTypeDescription( "list:paired") );
         var outputTerminal = this.newOutputCollectionTerminal( "paired" );
-        outputTerminal.setMapOver( new CollectionTypeDescription( "list" ) );
+        outputTerminal.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         this.verifyAttachable( inputTerminal1, outputTerminal );
     } );
 
@@ -982,9 +986,9 @@ define([
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
         var connectedInput2 = this.addConnectedInput( inputTerminal1 );
-        connectedInput2.setMapOver( new CollectionTypeDescription( "list:paired") );
+        connectedInput2.setMapOver( new workflowEditor.CollectionTypeDescription( "list:paired") );
         var outputTerminal = this.newOutputCollectionTerminal( "list" );
-        outputTerminal.setMapOver( new CollectionTypeDescription( "list" ) );
+        outputTerminal.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         this.verifyNotAttachable( inputTerminal1, outputTerminal );
     } );
 
@@ -992,9 +996,9 @@ define([
         var inputTerminal1 = this.newInputTerminal();
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
         var connectedInput2 = this.addConnectedInput( inputTerminal1 );
-        connectedInput2.setMapOver( new CollectionTypeDescription( "list:paired") );
+        connectedInput2.setMapOver( new workflowEditor.CollectionTypeDescription( "list:paired") );
         var outputTerminal = this.newOutputCollectionTerminal( "list" );
-        outputTerminal.setMapOver( new CollectionTypeDescription( "paired" ) );
+        outputTerminal.setMapOver( new workflowEditor.CollectionTypeDescription( "paired" ) );
         this.verifyNotAttachable( inputTerminal1, outputTerminal );
     } );
 
@@ -1013,7 +1017,7 @@ define([
         // to check that though.
         var inputTerminal1 = this.newInputTerminal();
         var connectedOutput = this.addConnectedOutput( inputTerminal1 );
-        connectedOutput.setMapOver( new CollectionTypeDescription( "list" ) );
+        connectedOutput.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         this.verifyAttachable( inputTerminal1, "list" );
     } );
 
@@ -1023,19 +1027,19 @@ define([
         // to check that though.
         var inputTerminal1 = this.newInputTerminal();
         var connectedOutput = this.addConnectedOutput( inputTerminal1 );
-        connectedOutput.setMapOver( new CollectionTypeDescription( "paired" ) );
+        connectedOutput.setMapOver( new workflowEditor.CollectionTypeDescription( "paired" ) );
         this.verifyNotAttachable( inputTerminal1, "list" );
     } );
 
     test( "explicitly constrained input can not be mapped over by incompatible collection type", function() {
         var inputTerminal1 = this.newInputTerminal();
-        inputTerminal1.setMapOver( new CollectionTypeDescription( "paired" ) );
+        inputTerminal1.setMapOver( new workflowEditor.CollectionTypeDescription( "paired" ) );
         this.verifyNotAttachable( inputTerminal1, "list" );
     } );
 
     test( "explicitly constrained input can be mapped over by compatible collection type", function() {
         var inputTerminal1 = this.newInputTerminal();
-        inputTerminal1.setMapOver( new CollectionTypeDescription( "list" ) );
+        inputTerminal1.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         this.verifyAttachable( inputTerminal1, "list" );
     } );
 
@@ -1051,13 +1055,13 @@ define([
 
     test( "explicitly mapped over collection input can be attached by explicit mapping", function() {
         var inputTerminal1 = this.newInputCollectionTerminal( { collection_type: "paired" } );
-        inputTerminal1.setMapOver( new CollectionTypeDescription( "list" ) );
+        inputTerminal1.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         this.verifyAttachable( inputTerminal1, "list:paired" );
     } );
 
     test( "explicitly mapped over collection input can be attached by explicit mapping", function() {
         var inputTerminal1 = this.newInputCollectionTerminal( { collection_type: "list:paired" } );
-        inputTerminal1.setMapOver( new CollectionTypeDescription( "list" ) );
+        inputTerminal1.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         // effectively input is list:list:paired so shouldn't be able to attach
         this.verifyNotAttachable( inputTerminal1, "list:paired" );
     } );
@@ -1095,7 +1099,7 @@ define([
     test( "resetMappingIfNeeded does not reset if connected output depends on being mapped", function() {
         var inputTerminal1 = this.newInputTerminal( "list" );
         var connectedOutput = this.addConnectedOutput( inputTerminal1 );
-        connectedOutput.setMapOver( new CollectionTypeDescription( "list" ) );
+        connectedOutput.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         inputTerminal1.resetMappingIfNeeded();
         this.verifyMappedOver( inputTerminal1 );
     } );
@@ -1103,7 +1107,7 @@ define([
     test( "resetMappingIfNeeded resets if node outputs are not connected to anything", function() {
         var inputTerminal1 = this.newInputTerminal( "list" );
         var output = this.addOutput( inputTerminal1 );
-        output.setMapOver( new CollectionTypeDescription( "list" ) );
+        output.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         inputTerminal1.resetMappingIfNeeded();
         this.verifyNotMappedOver( inputTerminal1 );
     } );
@@ -1111,7 +1115,7 @@ define([
     test( "resetMappingIfNeeded an input resets node outputs if they not connected to anything", function() {
         var inputTerminal1 = this.newInputTerminal( "list" );
         var output = this.addOutput( inputTerminal1 );
-        output.setMapOver( new CollectionTypeDescription( "list" ) );
+        output.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         inputTerminal1.resetMappingIfNeeded();
         this.verifyNotMappedOver( output );
     } );
@@ -1119,7 +1123,7 @@ define([
     test( "resetMappingIfNeeded an input resets node collection outputs if they not connected to anything", function() {
         var inputTerminal1 = this.newInputTerminal( "list" );
         var output = this.addCollectionOutput( inputTerminal1 );
-        output.setMapOver( new CollectionTypeDescription( "list" ) );
+        output.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         inputTerminal1.resetMappingIfNeeded();
         this.verifyNotMappedOver( output );
     } );
@@ -1129,9 +1133,9 @@ define([
         // over so don't need to disconnect output nodes.
         var inputTerminal1 = this.newInputTerminal( "list" );
         var connectedInput1 = this.addConnectedInput( inputTerminal1 );
-        connectedInput1.setMapOver( new CollectionTypeDescription( "list" ) );
+        connectedInput1.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         var connectedOutput = this.addConnectedOutput( inputTerminal1 );
-        connectedOutput.setMapOver( new CollectionTypeDescription( "list" ) );
+        connectedOutput.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
         inputTerminal1.resetMappingIfNeeded();
         // inputTerminal1 can be reset because connectedInput1
         // is still forcing connectedOutput to be mapped over,
@@ -1145,7 +1149,7 @@ define([
     test( "simple mapping over collection outputs works correctly", function() {
         var inputTerminal1 = this.newInputTerminal();
         var connectedOutput = this.addConnectedCollectionOutput( inputTerminal1 );
-        inputTerminal1.setMapOver( new CollectionTypeDescription( "list" ) );
+        inputTerminal1.setMapOver( new workflowEditor.CollectionTypeDescription( "list" ) );
 
         // Can attach list output of collection type list that is being mapped
         // over another list to a list:list (because this is what it is) but not
