@@ -73,6 +73,7 @@
                 <div class="toolSectionTitle">Server</div>
                 <div class="toolSectionBody">
                     <div class="toolSectionBg">
+                        <div class="toolTitle"><a href="${h.url_for( controller='admin', action='tool_errors' )}" target="galaxy_main">View Tool Error Logs</a></div>
                         <div class="toolTitle"><a href="${h.url_for( controller='admin', action='view_datatypes_registry' )}" target="galaxy_main">View data types registry</a></div>
                         <div class="toolTitle"><a href="${h.url_for( controller='admin', action='view_tool_data_tables' )}" target="galaxy_main">View data tables registry</a></div>
                         <div class="toolTitle"><a href="${h.url_for( controller='admin', action='display_applications' )}" target="galaxy_main">View display applications</a></div>
