@@ -4,10 +4,12 @@ import os
 from .interface import ToolSource
 from .interface import PagesSource
 from .interface import PageSource
+from .interface import ToolStdioExitCode
 from .yaml import YamlInputSource
 
 from galaxy.tools.deps import requirements
 from galaxy.tools.cwl import tool_proxy
+from galaxy.tools.parameters.output import ToolOutputActionGroup
 
 import galaxy.tools
 
@@ -40,6 +42,10 @@ class CwlToolSource(ToolSource):
     def parse_command(self):
         return "$__cwl_command"
 
+    def parse_environment_variables(self):
+        # TODO
+        return []
+
     def parse_help(self):
         return ""
 
@@ -48,11 +54,11 @@ class CwlToolSource(ToolSource):
         from galaxy.jobs.error_level import StdioErrorLevel
 
         # New format - starting out just using exit code.
-        exit_code_lower = galaxy.tools.ToolStdioExitCode()
+        exit_code_lower = ToolStdioExitCode()
         exit_code_lower.range_start = float("-inf")
         exit_code_lower.range_end = -1
         exit_code_lower.error_level = StdioErrorLevel.FATAL
-        exit_code_high = galaxy.tools.ToolStdioExitCode()
+        exit_code_high = ToolStdioExitCode()
         exit_code_high.range_start = 1
         exit_code_high.range_end = float("inf")
         exit_code_lower.error_level = StdioErrorLevel.FATAL
@@ -86,7 +92,7 @@ class CwlToolSource(ToolSource):
         name = output_instance.name
         # TODO: handle filters, actions, change_format
         output = galaxy.tools.ToolOutput( name )
-        output.format = "auto"
+        output.format = "_sniff_"
         output.change_format = []
         output.format_source = None
         output.metadata_source = ""
@@ -98,7 +104,7 @@ class CwlToolSource(ToolSource):
         output.from_work_dir = "__cwl_output_%s" % name
         output.hidden = ""
         output.dataset_collectors = []
-        output.actions = galaxy.tools.ToolOutputActionGroup( output, None )
+        output.actions = ToolOutputActionGroup( output, None )
         return output
 
     def parse_requirements_and_containers(self):

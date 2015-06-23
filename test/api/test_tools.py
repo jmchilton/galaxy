@@ -999,6 +999,33 @@ class ToolsTestCase( api.ApiTestCase ):
         output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
         assert output1_content == "1\t2\t3\n", output1_content
 
+    @skip_without_tool( "sorttool" )
+    def test_cwl_sorttool( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\n2\n3' ) )
+        inputs = {
+            "reverse": False,
+            "input": hda1
+        }
+        response = self._run( "sorttool", history_id, inputs, assert_ok=True )
+        output1 = response[ "outputs" ][ 0 ]
+        output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
+        assert output1_content == "1\t2\t3\n", output1_content
+
+
+    @skip_without_tool( "sorttool" )
+    def test_cwl_sorttool_reverse( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\n2\n3' ) )
+        inputs = {
+            "reverse": True,
+            "input": hda1
+        }
+        response = self._run( "sorttool", history_id, inputs, assert_ok=True )
+        output1 = response[ "outputs" ][ 0 ]
+        output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
+        assert output1_content == "3\n2\n1\n", output1_content
+
     def _check_combined_mapping_and_subcollection_mapping( self, history_id, inputs ):
         self.dataset_populator.wait_for_history( history_id, assert_ok=True )
         outputs = self._run_and_get_outputs( "collection_mixed_param", history_id, inputs )

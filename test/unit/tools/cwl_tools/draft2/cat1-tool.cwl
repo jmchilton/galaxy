@@ -1,6 +1,5 @@
 #!/usr/bin/env cwl-runner
 {
-    "@context": "https://raw.githubusercontent.com/common-workflow-language/common-workflow-language/master/schemas/draft-2/cwl-context.json",
     "class": "CommandLineTool",
     "description": "Print the contents of a file to stdout using 'cat' running in a docker container.",
     "hints": [
@@ -13,12 +12,12 @@
         {
             "id": "#file1",
             "type": "File",
-            "commandLineBinding": {"position": 1}
+            "inputBinding": {"position": 1}
         },
         {
             "id": "#numbering",
             "type": ["null", "boolean"],
-            "commandLineBinding": {
+            "inputBinding": {
                 "position": 0,
                 "prefix": "-n"
             }

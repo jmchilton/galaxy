@@ -15,19 +15,15 @@ except ImportError:
 
 try:
     from cwltool import (
-        ref_resolver,
-        draft1tool,
         draft2tool,
     )
-except ImportError as e:
-    ref_resolver = None
-    draft1tool = None
+except ImportError:
     draft2tool = None
 
 try:
-    import jsonschema
+    from cwltool.avro_ld import ref_resolver
 except ImportError:
-    jsonschema = None
+    ref_resolver = None
 
 try:
     import avro
@@ -36,12 +32,10 @@ except ImportError:
 
 
 def ensure_cwltool_available():
-    if ref_resolver is None:
+    if ref_resolver is None or draft2tool is None :
         message = "This feature requires cwltool and dependencies to be available, they are not."
         if avro is None:
             message += " Library avro unavailable."
-        if jsonschema is None:
-            message += " Library jsonschema unavailable."
         if requests is None:
             message += " Library requests unavailable."
         raise ImportError(message)
@@ -49,7 +43,6 @@ def ensure_cwltool_available():
 
 __all__ = [
     'ref_resolver',
-    'draft1tool',
     'draft2tool',
     'ensure_cwltool_available',
 ]

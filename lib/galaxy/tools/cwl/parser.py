@@ -9,7 +9,6 @@ import json
 import os
 
 from .cwltool_deps import (
-    draft1tool,
     draft2tool,
     ref_resolver,
     ensure_cwltool_available,
@@ -45,14 +44,12 @@ def to_cwl_tool_object(tool_path):
         raise Exception("Using CWL tools requires cwltool module.")
     proxy_class = None
     cwl_tool = None
-    toolpath_object = ref_resolver.from_url(tool_path)
-    if "schema" in toolpath_object:
-        proxy_class = Draft1ToolProxy
-        cwl_tool = draft1tool.Tool(toolpath_object)
+    toolpath_object = ref_resolver.loader.resolve_ref(tool_path)
     if "class" in toolpath_object:
         if toolpath_object["class"] == "CommandLineTool":
             proxy_class = Draft2ToolProxy
-            cwl_tool = draft2tool.CommandLineTool(toolpath_object)
+            tool_dir = os.path.dirname(tool_path)
+            cwl_tool = draft2tool.CommandLineTool(toolpath_object, tool_dir)
     if proxy_class is None:
         raise Exception("Unsupported CWL object encountered.")
     proxy = proxy_class(cwl_tool, tool_path)
@@ -88,28 +85,6 @@ class ToolProxy( object ):
     @abstractmethod
     def description(self):
         """ Return description to tool. """
-
-
-class Draft1ToolProxy(ToolProxy):
-
-    def input_instances(self):
-        # TODO
-        return self._tool.tool["inputs"]
-
-    def output_instances(self):
-        # TODO
-        return []
-
-    def docker_identifier(self):
-        tool = self._tool
-        requirements = tool.get("requirements", {})
-        environment = requirements.get("environment", {})
-        container = environment.get("container", {})
-        container_type = container.get("type", "docker")
-        if container_type != "docker":
-            return None
-        else:
-            return container.get("uri", None)
 
 
 class Draft2ToolProxy(ToolProxy):
@@ -172,9 +147,13 @@ class JobProxy(object):
     def cwl_job(self):
         return self._tool_proxy._tool.job(
             self._input_dict,
-            basedir=self._job_directory,
+            self._job_directory,
+            self._output_callback,
             use_container=False
-        )
+        ).next()
+
+    def _output_callback(self, out):
+        pass
 
     def save_job(self):
         job_file = JobProxy._job_file(self._job_directory)
@@ -209,24 +188,23 @@ def _simple_field_to_input(field):
         else:
             field_type = field_type[0]
 
-    if field_type in ("File", "int"):
-        if field_type == "File":
-            input_type = INPUT_TYPE.DATA
-        else:
-            input_type = INPUT_TYPE.INTEGER
+    simple_map_type_map = {
+        "File": INPUT_TYPE.DATA,
+        "int": INPUT_TYPE.INTEGER,
+        "string": INPUT_TYPE.STRING,
+        "boolean": INPUT_TYPE.BOOLEAN,
+    }
+
+    if field_type in simple_map_type_map.keys():
+        input_type = simple_map_type_map[field_type]
         return InputInstance(name, label, description, input_type)
     elif field_type == "array":
         if isinstance(field["type"], dict):
             array_type = field["type"]["items"]
         else:
             array_type = field["items"]
-        if array_type in ("File", "int"):
-            if array_type == "File":
-                input_type = INPUT_TYPE.DATA
-            elif array_type == "int":
-                input_type = INPUT_TYPE.INTEGER
-            else:
-                raise Exception("Unhandled array type encountered - [%s]." % array_type)
+        if array_type in simple_map_type_map.keys():
+            input_type = simple_map_type_map[field_type]
         return InputInstance(name, label, description, input_type, array=True)
     else:
         raise Exception("Unhandled field type encountered - [%s]." % field_type)
@@ -241,6 +219,8 @@ def _simple_field_to_output(field):
 INPUT_TYPE = Bunch(
     DATA="data",
     INTEGER="integer",
+    STRING="string",
+    BOOLEAN="boolean",
 )
 
 

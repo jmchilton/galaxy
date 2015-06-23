@@ -11,7 +11,7 @@ CWL_TOOLS_DIRECTORY = os.path.join(TESTS_DIRECTORY, "cwl_tools")
 def test_proxy():
     print tool_proxy(_cwl_tool_path("draft1/cat1-tool.json"))
     print tool_proxy(_cwl_tool_path("draft2/cat3-tool.cwl"))
-    assert False
+    print tool_proxy(_cwl_tool_path("draft2/env-tool1.cwl"))
 
 
 def test_load_proxy_simple():
@@ -37,8 +37,19 @@ def test_load_proxy_simple():
 def test_load_proxy_bwa_mem():
     bwa_mem = _cwl_tool_path("draft2/bwa-mem-tool.cwl")
     tool_source = get_tool_source(bwa_mem)
-    input_sources = _inputs(tool_source)
-    assert False
+    _inputs(tool_source)
+
+
+def test_env_tool1():
+    env_tool1 = _cwl_tool_path("draft2/env-tool1.cwl")
+    tool_source = get_tool_source(env_tool1)
+    _inputs(tool_source)
+
+
+def test_sorttool():
+    env_tool1 = _cwl_tool_path("draft2/sorttool.cwl")
+    tool_source = get_tool_source(env_tool1)
+    _inputs(tool_source)
 
 
 def _inputs(tool_source):

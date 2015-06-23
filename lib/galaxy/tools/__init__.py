@@ -35,7 +35,7 @@ from galaxy.tools.actions.data_manager import DataManagerToolAction
 from galaxy.tools.deps import build_dependency_manager
 from galaxy.tools.parameters import params_to_incoming, check_param, params_from_strings, params_to_strings, visit_input_values
 from galaxy.tools.parameters import output_collect
-from galaxy.tools.parameters.basic import (BaseURLToolParameter,
+from galaxy.tools.parameters.basic import (BaseURLToolParameter, IntegerToolParameter, BooleanToolParameter,
                                            DataToolParameter, DataCollectionToolParameter, HiddenToolParameter,
                                            SelectToolParameter, ToolParameter, UnvalidatedValue)
 from galaxy.tools.parameters.grouping import Conditional, ConditionalWhen, Repeat, Section, UploadDataset
@@ -2997,9 +2997,11 @@ class CwlTool( Tool ):
 
         def simple_value(input, param_dict_value):
             if isinstance(input, DataToolParameter):
-                return {"path": str(param_dict_value)}
+                return {"path": str(param_dict_value), "class": "File"}
             elif isinstance(input, IntegerToolParameter):
                 return int(str(param_dict_value))
+            elif isinstance(input, BooleanToolParameter):
+                return string_as_bool(param_dict_value)
             else:
                 return str(param_dict_value)
 
