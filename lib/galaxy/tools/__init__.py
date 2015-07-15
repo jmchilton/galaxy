@@ -35,7 +35,7 @@ from galaxy.tools.actions.data_manager import DataManagerToolAction
 from galaxy.tools.deps import build_dependency_manager
 from galaxy.tools.parameters import params_to_incoming, check_param, params_from_strings, params_to_strings, visit_input_values
 from galaxy.tools.parameters import output_collect
-from galaxy.tools.parameters.basic import (BaseURLToolParameter,
+from galaxy.tools.parameters.basic import (BaseURLToolParameter, IntegerToolParameter, BooleanToolParameter,
                                            DataToolParameter, DataCollectionToolParameter, HiddenToolParameter,
                                            SelectToolParameter, ToolParameter, UnvalidatedValue)
 from galaxy.tools.parameters.grouping import Conditional, ConditionalWhen, Repeat, Section, UploadDataset
@@ -2187,7 +2187,7 @@ class Tool( object, Dictifiable ):
     def exec_before_job( self, app, inp_data, out_data, param_dict={} ):
         pass
 
-    def exec_after_process( self, app, inp_data, out_data, param_dict, job=None ):
+    def exec_after_process( self, app, inp_data, out_data, param_dict, job=None, **kwds ):
         pass
 
     def job_failed( self, job_wrapper, message, exception=False ):
@@ -2940,7 +2940,7 @@ class SetMetadataTool( Tool ):
     tool_type = 'set_metadata'
     requires_setting_metadata = False
 
-    def exec_after_process( self, app, inp_data, out_data, param_dict, job=None ):
+    def exec_after_process( self, app, inp_data, out_data, param_dict, job=None, **kwds ):
         for name, dataset in inp_data.iteritems():
             external_metadata = JobExternalOutputMetadataWrapper( job )
             if external_metadata.external_metadata_set_successfully( dataset, app.model.context ):
@@ -2983,6 +2983,64 @@ class ImportHistoryTool( Tool ):
 
 class GenomeIndexTool( Tool ):
     tool_type = 'index_genome'
+
+
+class CwlTool( Tool ):
+    tool_type = 'cwl'
+
+    def exec_before_job( self, app, inp_data, out_data, param_dict=None ):
+        super( CwlTool, self ).exec_before_job( app, inp_data, out_data, param_dict=param_dict )
+        # Working directory on Galaxy server (instead of remote compute).
+        local_working_directory = param_dict["__local_working_directory__"]
+        log.info("exec_before_job for CWL tool")
+        input_json = {}
+
+        def simple_value(input, param_dict_value):
+            if isinstance(input, DataToolParameter):
+                return {"path": str(param_dict_value), "class": "File"}
+            elif isinstance(input, IntegerToolParameter):
+                return int(str(param_dict_value))
+            elif isinstance(input, BooleanToolParameter):
+                return string_as_bool(param_dict_value)
+            else:
+                return str(param_dict_value)
+
+        for input_name, input in self.inputs.iteritems():
+            if isinstance(input, Repeat):
+                only_input = input.inputs.values()[0]
+                array_value = []
+                for instance in param_dict[input_name]:
+                    array_value.append(simple_value(only_input, instance[input_name[:-len("_repeat")]]))
+                input_json[input_name[:-len("_repeat")]] = array_value
+            else:
+                input_json[input_name] = simple_value(input, param_dict[input_name])
+
+        log.info("input_json is %s" % input_json)
+        input_json["allocatedResources"] = {
+            "cpu": "$GALAXY_SLOTS",
+        }
+        if param_dict is None:
+            raise Exception("Internal error - param_dict is empty.")
+        cwl_job_proxy = self._cwl_tool_proxy.job_proxy(input_json, local_working_directory)
+        # Write representation to disk that can be reloaded at runtime
+        # and outputs collected before Galaxy metadata is gathered.
+        cwl_job_proxy.save_job()
+        cwl_job = cwl_job_proxy.cwl_job()
+        command_line = " ".join(cwl_job.command_line)
+        if cwl_job.stdin:
+            command_line += '< "' + cwl_job.stdin + '"'
+        if cwl_job.stdout:
+            command_line += '> "' + cwl_job.stdout + '"'
+        # TODO: handle generatefiles
+        param_dict["__cwl_command"] = command_line
+        log.info("CwlTool.exec_before_job() generated command_line %s" % command_line)
+
+    def parse( self, tool_source, guid=None ):
+        super( CwlTool, self ).parse( tool_source, guid=guid )
+        cwl_tool_proxy = getattr( tool_source, 'tool_proxy', None )
+        if cwl_tool_proxy is None:
+            raise Exception("CwlTool.parse() called on tool source not defining a proxy object to underlying CWL tool.")
+        self._cwl_tool_proxy = cwl_tool_proxy
 
 
 class DataManagerTool( OutputParameterJSONTool ):
@@ -3066,7 +3124,7 @@ class DataManagerTool( OutputParameterJSONTool ):
 tool_types = {}
 for tool_class in [ Tool, SetMetadataTool, OutputParameterJSONTool,
                     DataManagerTool, DataSourceTool, AsyncDataSourceTool,
-                    DataDestinationTool ]:
+                    DataDestinationTool, CwlTool ]:
     tool_types[ tool_class.tool_type ] = tool_class
 
 
