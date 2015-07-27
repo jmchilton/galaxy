@@ -519,6 +519,13 @@ class Job( object, HasJobMetrics, Dictifiable ):
     def add_input_dataset( self, name, dataset ):
         self.input_datasets.append( JobToInputDatasetAssociation( name, dataset ) )
 
+    def add_input_datasets( self, items ):
+        """ Items should be a list of (name, dataset) tuples.
+        """
+        if not items:
+            return
+        self.input_datasets.extend( map( JobToInputDatasetAssociation, items ) )
+
     def add_output_dataset( self, name, dataset ):
         self.output_datasets.append( JobToOutputDatasetAssociation( name, dataset ) )
 
