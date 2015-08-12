@@ -20,6 +20,17 @@ def execute( trans, tool, param_combinations, history, rerun_remap_job_id=None, 
     failures, etc...).
     """
     execution_tracker = ToolExecutionTracker( tool, param_combinations, collection_info )
+    tool_action = tool.action
+    if hasattr( tool_action, "check_inputs_ready" ):
+        for params in execution_tracker.param_combinations:
+            # This will throw an exception if the tool is not ready.
+            tool_action.check_inputs_ready(
+                tool,
+                trans,
+                params,
+                history
+            )
+
     for params in execution_tracker.param_combinations:
         job_timer = ExecutionTimer()
         if workflow_invocation_uuid:

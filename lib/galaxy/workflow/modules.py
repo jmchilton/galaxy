@@ -19,6 +19,7 @@ from galaxy.tools.parameters import check_param, visit_input_values
 from galaxy.tools.parameters.basic import DataCollectionToolParameter, DataToolParameter, DummyDataset, RuntimeValue
 from galaxy.tools.parameters.wrapped import make_dict_copy
 from galaxy.tools.execute import execute
+from galaxy.tools import ToolInputsNotReadyException
 from galaxy.util.bunch import Bunch
 from galaxy.util import odict
 from galaxy.util.json import loads
@@ -834,6 +835,7 @@ class ToolModule( WorkflowModule ):
                 raise exceptions.MessageException( message )
             param_combinations.append( execution_state.inputs )
 
+        # TODO: it needs to check the input of everything all at once.
         execution_tracker = execute(
             trans=self.trans,
             tool=tool,
@@ -851,6 +853,12 @@ class ToolModule( WorkflowModule ):
         jobs = execution_tracker.successful_jobs
         for job in jobs:
             self._handle_post_job_actions( step, job, invocation.replacement_dict )
+        log.info("Errors are %s" % execution_tracker.execution_errors)
+        for execution_error in execution_tracker.execution_errors:
+            log.info("Error is %s" % execution_error)
+            if isinstance( execution_error, ToolInputsNotReadyException ):
+                raise DelayedWorkflowEvaluation()
+        log.info("Not delayed...")
         return jobs
 
     def _find_collections_to_match( self, tool, progress, step ):
