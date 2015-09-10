@@ -2,7 +2,10 @@ from abc import ABCMeta
 from abc import abstractmethod
 from string import Template
 
-from six import BytesIO
+try:
+    from StringIO import StringIO as BytesIO
+except ImportError:
+    from io import BytesIO
 try:
     from six import text_type
 except ImportError:
@@ -142,7 +145,7 @@ class LocalPulsarInterface(PulsarInterface):
 
     def __build_body(self, data, input_path):
         if data is not None:
-            return BytesIO(data)
+            return BytesIO(data.encode('utf-8'))
         elif input_path is not None:
             return open(input_path, 'rb')
         else:
