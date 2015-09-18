@@ -1951,21 +1951,23 @@ class DataToolParameter( BaseDataToolParameter ):
             rval = []
             found_hdca = False
             for single_value in value:
-                if found_hdca:
-                    raise ValueError("Only one collection may be supplied to parameter.")
                 if isinstance( single_value, dict ) and 'src' in single_value and 'id' in single_value:
                     if single_value['src'] == 'hda':
                         rval.append(trans.sa_session.query( trans.app.model.HistoryDatasetAssociation ).get( trans.app.security.decode_id(single_value['id']) ))
                     elif single_value['src'] == 'hdca':
                         found_hdca = True
                         decoded_id = trans.app.security.decode_id( single_value[ 'id' ] )
-                        rval = trans.sa_session.query( trans.app.model.HistoryDatasetCollectionAssociation ).get( decoded_id )
+                        rval.append( trans.sa_session.query( trans.app.model.HistoryDatasetCollectionAssociation ).get( decoded_id ) )
                     else:
                         raise ValueError("Unknown input source %s passed to job submission API." % single_value['src'])
                 elif isinstance( single_value, trans.app.model.HistoryDatasetAssociation ):
                     rval.append( single_value )
                 else:
                     rval.append( trans.sa_session.query( trans.app.model.HistoryDatasetAssociation ).get( single_value ) )
+            if found_hdca:
+                for val in rval:
+                    if not isinstance( val, trans.app.model.HistoryDatasetCollectionAssociation ):
+                        raise ValueError( "If collections are supplied to multiple data input parameter, only collections may be used." )
         elif isinstance( value, trans.app.model.HistoryDatasetAssociation ):
             rval = value
         elif isinstance( value, dict ) and 'src' in value and 'id' in value:
@@ -2054,11 +2056,14 @@ class DataToolParameter( BaseDataToolParameter ):
     def validate( self, value, history=None ):
         for validator in self.validators:
             if value and self.multiple:
-                if isinstance(value, list):
-                    for v in value:
-                        validator.validate( v, history )
-                elif isinstance(value, galaxy.model.HistoryDatasetCollectionAssociation):
-                    for v in value.collection.dataset_instances:
+                if not isinstance( value, list ):
+                    value = [ value ]
+                for v in value:
+                    if isinstance(value, galaxy.model.HistoryDatasetCollectionAssociation):
+                        for v in value.collection.dataset_instances:
+                            log.info("v is %s" % v)
+                            validator.validate( v, history )
+                    else:
                         validator.validate( v, history )
             else:
                 validator.validate( value, history )

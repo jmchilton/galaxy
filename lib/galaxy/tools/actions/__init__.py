@@ -129,20 +129,30 @@ class DefaultToolAction( object ):
         return input_datasets
 
     def collect_input_dataset_collections( self, tool, param_values ):
+        def append_to_key( the_dict, key, value ):
+            if key not in the_dict:
+                the_dict[ key ] = []
+            the_dict[ key ].append( value )
+
         input_dataset_collections = dict()
 
         def visitor( prefix, input, value, parent=None ):
             if isinstance( input, DataToolParameter ):
-                if isinstance( value, model.HistoryDatasetCollectionAssociation ):
-                    input_dataset_collections[ prefix + input.name ] = ( value, True )
-                    target_dict = parent
-                    if not target_dict:
-                        target_dict = param_values
-                    # This is just a DataToolParameter, so replace this
-                    # collection with individual datasets. Database will still
-                    # record collection which should be enought for workflow
-                    # extraction and tool rerun.
-                    target_dict[ input.name ] = value.collection.dataset_instances[:]  # shallow copy
+                values = value
+                if not isinstance( values, list ):
+                    values = [ value ]
+                for value in values:
+                    if isinstance( value, model.HistoryDatasetCollectionAssociation ):
+                        append_to_key( input_dataset_collections, prefix + input.name, ( value, True ) )
+                        target_dict = parent
+                        if not target_dict:
+                            target_dict = param_values
+                        # This is just a DataToolParameter, so replace this
+                        # collection with individual datasets. Database will still
+                        # record collection which should be enought for workflow
+                        # extraction and tool rerun.
+                        dataset_instances = value.collection.dataset_instances[:]  # shallow copy
+                        append_to_key( target_dict, input.name, dataset_instances )
             elif isinstance( input, DataCollectionToolParameter ):
                 input_dataset_collections[ prefix + input.name ] = ( value, False )
 
@@ -291,7 +301,7 @@ class DefaultToolAction( object ):
                     assert set_output_history, "Cannot create dataset collection for this kind of tool."
 
                     element_identifiers = []
-                    input_collections = dict( [ (k, v[0]) for k, v in inp_dataset_collections.iteritems() ] )
+                    input_collections = dict( [ (k, v[0][0]) for k, v in inp_dataset_collections.iteritems() ] )
                     known_outputs = output.known_outputs( input_collections, collections_manager.type_registry )
                     # Just to echo TODO elsewhere - this should be restructured to allow
                     # nested collections.
@@ -398,13 +408,15 @@ class DefaultToolAction( object ):
         # FIXME: Don't need all of incoming here, just the defined parameters
         #        from the tool. We need to deal with tools that pass all post
         #        parameters to the command as a special case.
-        for name, ( dataset_collection, reduced ) in inp_dataset_collections.iteritems():
-            # TODO: Does this work if nested in repeat/conditional?
-            if reduced:
-                incoming[ name ] = "__collection_reduce__|%s" % dataset_collection.id
-            # Should verify security? We check security of individual
-            # datasets below?
-            job.add_input_dataset_collection( name, dataset_collection )
+        for name, ( dataset_collections, reduced ) in inp_dataset_collections.iteritems():
+            for dataset_collection in dataset_collections:
+                # TODO: Does this work if nested in repeat/conditional?
+                if reduced:
+                    incoming[ name ] = "__collection_reduce__|%s" % dataset_collection.id
+                # Should verify security? We check security of individual
+                # datasets below?
+                # TODO: verify can have multiple with same name, don't want to loose tracability
+                job.add_input_dataset_collection( name, dataset_collection )
         for name, value in tool.params_to_strings( incoming, trans.app ).iteritems():
             job.add_parameter( name, value )
         current_user_roles = trans.get_current_user_roles()
