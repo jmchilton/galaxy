@@ -1764,6 +1764,22 @@ class DataToolParameter( BaseDataToolParameter ):
             self.validators.append( validation.MetadataValidator() )
         self._parse_formats( trans, tool, input_source )
         self.multiple = input_source.get_bool('multiple', False)
+        self.min = input_source.get( 'min' )
+        self.max = input_source.get( 'max' )
+        if self.min:
+            try:
+                self.min = int( self.min )
+            except:
+                raise ValueError( "An integer is required for min property." )
+        if self.max:
+            try:
+                self.max = int( self.max )
+            except:
+                raise ValueError( "An integer is required for max property." )
+        if not self.multiple and (self.min is not None):
+            raise ValueError( "Cannot specify min property on single data parameter '%s'. Set multiple=\"true\" to enable this option." % self.name )
+        if not self.multiple and (self.max is not None):
+            raise ValueError( "Cannot specify max property on single data parameter '%s'. Set multiple=\"true\" to enable this option." % self.name )
         self.is_dynamic = True
         self._parse_options( input_source )
         # Load conversions required for the dataset input
@@ -2129,6 +2145,10 @@ class DataToolParameter( BaseDataToolParameter ):
         d['extensions'] = extensions
         d['edam_formats'] = edam_formats
         d['multiple'] = self.multiple
+        if self.multiple:
+            # For consistency, should these just always be in the dict?
+            d['min'] = self.min
+            d['max'] = self.max
         d['options'] = {'hda': [], 'hdca': []}
 
         # return default content if context is not available
