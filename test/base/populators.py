@@ -300,8 +300,8 @@ class WorkflowPopulator( BaseWorkflowPopulator, ImporterGalaxyInterface ):
         self.galaxy_interactor = galaxy_interactor
         self.dataset_populator = DatasetPopulator( galaxy_interactor )
 
-    def _post( self, route, data={} ):
-        return self.galaxy_interactor.post( route, data )
+    def _post( self, route, data={}, admin=False ):
+        return self.galaxy_interactor.post( route, data, admin=admin )
 
     def _get( self, route ):
         return self.galaxy_interactor.get( route )
@@ -317,6 +317,22 @@ class WorkflowPopulator( BaseWorkflowPopulator, ImporterGalaxyInterface ):
         upload_response = self._post( "workflows", data=data )
         assert upload_response.status_code == 200, upload_response
         return upload_response.json()
+
+    def import_tool(self, tool):
+        """ Import a workflow via POST /api/workflows or
+        comparable interface into Galaxy.
+        """
+        upload_response = self._import_tool_response(tool)
+        assert upload_response.status_code == 200, upload_response
+        return upload_response.json()
+
+    def _import_tool_response(self, tool):
+        tool_str = json.dumps(tool, indent=4)
+        data = {
+            'representation': tool_str
+        }
+        upload_response = self._post( "dynamic_tools", data=data, admin=True )
+        return upload_response
 
 
 class LibraryPopulator( object ):
