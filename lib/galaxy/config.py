@@ -797,6 +797,9 @@ class ConfiguresGalaxyMixin:
         from galaxy.tools.toolbox.cache import ToolCache
         self.tool_cache = ToolCache()
 
+        from galaxy.managers.tools import DynamicToolManager
+        self.dynamic_tools_manager = DynamicToolManager( self )
+
         self._toolbox_lock = threading.Lock()
         self.toolbox = None
         self.reload_toolbox()

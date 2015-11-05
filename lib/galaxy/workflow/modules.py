@@ -238,6 +238,7 @@ class SimpleWorkflowModule( WorkflowModule ):
         step.type = self.type
         step.tool_id = None
         step.tool_version = None
+        step.tool_hash = None
         step.tool_inputs = self.state
 
     def get_state( self, secure=True ):
@@ -791,7 +792,7 @@ class ToolModule( WorkflowModule ):
 
     type = "tool"
 
-    def __init__( self, trans, tool_id, tool_version=None ):
+    def __init__( self, trans, tool_id, tool_version=None, tool_hash=None ):
         self.trans = trans
         self.tool_id = tool_id
         self.tool = trans.app.toolbox.get_tool( tool_id, tool_version=tool_version )
@@ -822,7 +823,8 @@ class ToolModule( WorkflowModule ):
         if tool_id is None:
             tool_id = d.get( 'tool_id', None )  # Older workflows will have exported this as tool_id.
         tool_version = str( d.get( 'tool_version', None ) )
-        module = Class( trans, tool_id, tool_version=tool_version )
+        tool_hash = str( d.get( 'tool_hash', None ) )
+        module = Class( trans, tool_id, tool_version=tool_version, tool_hash=tool_hash )
         module.state = galaxy.tools.DefaultToolState()
         module.label = d.get("label", None) or None
         if module.tool is not None:
@@ -857,7 +859,8 @@ class ToolModule( WorkflowModule ):
                 # tool being previously unavailable.
                 return module_factory.from_dict(trans, loads(step.config), secure=False)
             tool_version = step.tool_version
-            module = Class( trans, tool_id, tool_version=tool_version )
+            tool_hash = step.tool_hash
+            module = Class( trans, tool_id, tool_version=tool_version, tool_hash=tool_hash )
             message = ""
             if step.tool_id != module.tool_id:  # This means the exact version of the tool is not installed. We inform the user.
                 old_tool_shed = step.tool_id.split( "/repos/" )[0]
@@ -915,9 +918,11 @@ class ToolModule( WorkflowModule ):
         step.tool_id = self.tool_id
         if self.tool:
             step.tool_version = self.get_tool_version()
+            step.tool_hash = self.tool.tool_hash
             step.tool_inputs = self.tool.params_to_strings( self.state.inputs, self.trans.app )
         else:
             step.tool_version = None
+            step.tool_hash = None
             step.tool_inputs = None
         step.tool_errors = self.errors
         for k, v in self.post_job_actions.iteritems():

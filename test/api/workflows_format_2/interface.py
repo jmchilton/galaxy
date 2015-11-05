@@ -18,6 +18,13 @@ class ImporterGalaxyInterface(object):
         """
         pass
 
+    @abc.abstractmethod
+    def import_tool(self, tool):
+        """ Import a workflow via POST /api/workflows or
+        comparable interface into Galaxy.
+        """
+        pass
+
 
 class BioBlendImporterGalaxyInterface(object):
 
@@ -67,4 +74,4 @@ class BioBlendImporterGalaxyInterface(object):
         )
 
     def import_tool(self, tool_representation):
-        pass
+        raise NotImplementedError()

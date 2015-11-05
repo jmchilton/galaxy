@@ -52,6 +52,15 @@ def ordered_load(stream):
     return yaml.load(stream, OrderedLoader)
 
 
+def get_tool_source_from_representation(tool_format, tool_representation):
+    # TODO: make sure whatever is consuming this method uses ordered load.
+    log.info("Loading dynamic tool - this is experimental - tool may not function in future.")
+    if tool_format == "GalaxyTool":
+        return YamlToolSource(tool_representation)
+    else:
+        raise Exception("Unknown tool representation format [%s]." % tool_format)
+
+
 def get_input_source(content):
     """ Wraps XML elements in a XmlInputSource until everything
     is consumed using the tool source interface.
