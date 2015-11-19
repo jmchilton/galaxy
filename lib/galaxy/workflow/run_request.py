@@ -81,7 +81,7 @@ def normalize_inputs(steps, inputs, inputs_by):
     return normalized_inputs
 
 
-def normalize_step_parameters(steps, param_map):
+def normalize_step_parameters(steps, param_map, legacy=False):
     """ Take a complex param_map that can reference parameters by
     step_id in the new flexible way or in the old one-parameter
     per tep fashion or by tool id and normalize the parameters so
@@ -89,19 +89,41 @@ def normalize_step_parameters(steps, param_map):
     """
     normalized_param_map = {}
     for step in steps:
-        param_dict = _step_parameters(step, param_map)
+        if legacy:
+            param_dict = _step_parameters_legacy(step, param_map)
+        else:
+            param_dict = _step_parameters_modern(step, param_map)
         if param_dict:
             normalized_param_map[step.id] = param_dict
     return normalized_param_map
 
 
-def _step_parameters(step, param_map):
+def _step_parameters_modern(step, param_map):
     """
     Update ``step`` parameters based on the user-provided ``param_map`` dict.
 
     ``param_map`` should be structured as follows::
 
-      PARAM_MAP = {STEP_ID: PARAM_DICT, ...}
+      PARAM_MAP = {STEP_ORDER_INDEX_OR_UUID: PARAM_DICT, ...}
+      PARAM_DICT = {NAME: VALUE, ...}
+    """
+    param_dict = {}
+    param_dict.update(param_map.get(str(step.order_index), {}))
+    step_uuid = step.uuid
+    if step_uuid:
+        uuid_params = param_map.get(str(step_uuid), {})
+        param_dict.update(uuid_params)
+    new_params = _flatten_step_params( param_dict )
+    return new_params
+
+
+def _step_parameters_legacy(step, param_map):
+    """
+    Update ``step`` parameters based on the user-provided ``param_map`` dict.
+
+    ``param_map`` should be structured as follows::
+
+      PARAM_MAP = {STEP_ID_OR_UUID: PARAM_DICT, ...}
       PARAM_DICT = {NAME: VALUE, ...}
 
     For backwards compatibility, the following (deprecated) format is
@@ -163,15 +185,33 @@ def build_workflow_run_config( trans, workflow, payload ):
     app = trans.app
     history_manager = histories.HistoryManager( app )
 
-    # Pull other parameters out of payload.
-    param_map = payload.get( 'parameters', {} )
-    param_map = normalize_step_parameters( workflow.steps, param_map )
+    if "step_parameters" in payload and "parameters" in payload:
+        message = "Cannot specify both legacy parameters and step_parameters attributes."
+        raise exceptions.RequestParameterInvalidException( message )
+
+    if "inputs" in payload and "ds_map" in payload:
+        message = "Cannot specify both legacy ds_map and input attributes."
+        raise exceptions.RequestParameterInvalidException( message )
+
+    if "parameters" in payload:
+        log.warn("Using deprecated parameters attribute when running workflow, switch to step_parameters.")
+        param_map = payload.get( 'parameters', {} )
+        legacy_param_map = True
+    else:
+        # Pull other parameters out of payload.
+        param_map = payload.get( 'step_parameters', {} )
+        legacy_param_map = False
+
+    param_map = normalize_step_parameters( workflow.steps, param_map, legacy=legacy_param_map )
+
     inputs = payload.get( 'inputs', None )
     inputs_by = payload.get( 'inputs_by', None )
     if inputs is None:
         # Default to legacy behavior - read ds_map and reference steps
         # by unencoded step id (a raw database id).
         inputs = payload.get( 'ds_map', {} )
+        if inputs:
+            log.warn("Using deprecated ds_map attribute when running workflow, switch to inputs.")
         inputs_by = inputs_by or 'step_id|step_uuid'
     else:
         inputs = inputs or {}
