@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 from collections import namedtuple
 import json
+import logging
 
 from galaxy import model
 from galaxy import exceptions
@@ -15,6 +16,8 @@ from galaxy.workflow.modules import module_factory, is_tool_module_type, ToolMod
 from galaxy.tools.parameters.basic import DataToolParameter, DataCollectionToolParameter
 from galaxy.tools.parameters import visit_input_values
 from galaxy.web import url_for
+
+log = logging.getLogger( __name__ )
 
 
 class WorkflowsManager( object ):
@@ -272,8 +275,11 @@ class WorkflowContentsManager(UsesAnnotations):
         """
         if style == "editor":
             return self._workflow_to_dict_editor( trans, stored )
-        elif style == "instance":
-            return self._workflow_to_dict_instance( trans, stored )
+        elif style in ["instance", "legacy"]:
+            log.warn("Building legacy workflow representation, specify style='future'.")
+            return self._workflow_to_dict_instance( trans, stored, legacy=True )
+        elif style == "future":
+            return self._workflow_to_dict_instance( trans, stored, legacy=False )
         else:
             return self._workflow_to_dict_export( trans, stored )
 
@@ -518,7 +524,7 @@ class WorkflowContentsManager(UsesAnnotations):
             data['steps'][step.order_index] = step_dict
         return data
 
-    def _workflow_to_dict_instance(self, trans, stored):
+    def _workflow_to_dict_instance(self, trans, stored, legacy=True):
         item = stored.to_dict( view='element', value_mapper={ 'id': trans.security.encode_id } )
         workflow = stored.latest_workflow
         item['url'] = url_for('workflow', id=item['id'])
@@ -535,7 +541,12 @@ class WorkflowContentsManager(UsesAnnotations):
                     label = "Input Dataset Collection"
                 else:
                     raise ValueError("Invalid step_type %s" % step_type)
-                inputs[step.id] = {'label': label, 'value': ""}
+                if legacy:
+                    index = step.id
+                else:
+                    index = step.order_index
+                uuid = str(step.uuid) if step.uuid else None
+                inputs[index] = {'label': label, 'value': "", "uuid": uuid}
             else:
                 pass
                 # Eventually, allow regular tool parameters to be inserted and modified at runtime.
@@ -543,8 +554,15 @@ class WorkflowContentsManager(UsesAnnotations):
         item['inputs'] = inputs
         item['annotation'] = self.get_item_annotation_str( trans.sa_session, stored.user, stored )
         steps = {}
+        steps_to_order_index = {}
         for step in workflow.steps:
-            steps[step.id] = {'id': step.id,
+            steps_to_order_index[step.id] = step.order_index
+        for step in workflow.steps:
+            uuid = str(step.uuid) if step.uuid else None
+            step_id = step.id if legacy else step.order_index
+            steps[step_id] = {'id': step_id,
+                              'uuid': uuid,
+                              'order_index': step.order_index,
                               'type': step.type,
                               'tool_id': step.tool_id,
                               'tool_version': step.tool_version,
@@ -552,7 +570,10 @@ class WorkflowContentsManager(UsesAnnotations):
                               'tool_inputs': step.tool_inputs,
                               'input_steps': {}}
             for conn in step.input_connections:
-                steps[step.id]['input_steps'][conn.input_name] = {'source_step': conn.output_step_id,
+                step_id = step.id if legacy else step.order_index
+                source_id = conn.output_step_id
+                source_step = source_id if legacy else steps_to_order_index[source_id]
+                steps[step_id]['input_steps'][conn.input_name] = {'source_step': source_step,
                                                                   'step_output': conn.output_name}
         item['steps'] = steps
         return item
