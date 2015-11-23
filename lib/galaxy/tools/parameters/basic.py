@@ -1950,6 +1950,20 @@ class DataToolParameter( BaseDataToolParameter ):
         return ''
 
     def from_html( self, value, trans, other_values={} ):
+        sa_session = trans.sa_session
+        model = trans.app.model
+        from sqlalchemy.orm import joinedload
+
+        def load_hda(raw_id):
+            log.info("In load_hda")
+            return sa_session.query(
+                model.HistoryDatasetAssociation
+            ).options(
+                joinedload("dataset"),
+                joinedload("dataset.actions"),
+                joinedload("dataset.actions.role")
+            ).get( raw_id )
+
         # Can't look at history in workflow mode, skip validation and such,
         # although, this should never be called in workflow mode right?
         if trans.workflow_building_mode:
@@ -1968,7 +1982,7 @@ class DataToolParameter( BaseDataToolParameter ):
                     raise ValueError("Only one collection may be supplied to parameter.")
                 if isinstance( single_value, dict ) and 'src' in single_value and 'id' in single_value:
                     if single_value['src'] == 'hda':
-                        rval.append(trans.sa_session.query( trans.app.model.HistoryDatasetAssociation ).get( trans.app.security.decode_id(single_value['id']) ))
+                        rval.append(load_hda( trans.app.security.decode_id(single_value['id']) ))
                     elif single_value['src'] == 'hdca':
                         found_hdca = True
                         decoded_id = trans.app.security.decode_id( single_value[ 'id' ] )
@@ -1978,12 +1992,12 @@ class DataToolParameter( BaseDataToolParameter ):
                 elif isinstance( single_value, trans.app.model.HistoryDatasetAssociation ):
                     rval.append( single_value )
                 else:
-                    rval.append( trans.sa_session.query( trans.app.model.HistoryDatasetAssociation ).get( single_value ) )
+                    rval.append( load_hda( single_value ) )
         elif isinstance( value, trans.app.model.HistoryDatasetAssociation ):
             rval = value
         elif isinstance( value, dict ) and 'src' in value and 'id' in value:
             if value['src'] == 'hda':
-                rval = trans.sa_session.query( trans.app.model.HistoryDatasetAssociation ).get( trans.app.security.decode_id(value['id']) )
+                rval = load_hda( trans.app.security.decode_id(value['id']) )
             elif value['src'] == 'hdca':
                 decoded_id = trans.app.security.decode_id( value[ 'id' ] )
                 rval = trans.sa_session.query( trans.app.model.HistoryDatasetCollectionAssociation ).get( decoded_id )
@@ -1996,7 +2010,7 @@ class DataToolParameter( BaseDataToolParameter ):
         elif isinstance( value, trans.app.model.HistoryDatasetCollectionAssociation ):
             rval = value
         else:
-            rval = trans.sa_session.query( trans.app.model.HistoryDatasetAssociation ).get( value )
+            rval = load_hda( value )
         if isinstance( rval, list ):
             values = rval
         else:
