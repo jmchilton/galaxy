@@ -559,6 +559,12 @@ class Job( object, JobLike, Dictifiable ):
     def add_input_dataset( self, name, dataset ):
         self.input_datasets.append( JobToInputDatasetAssociation( name, dataset ) )
 
+    def add_input_datasets( self, input_datasets ):
+        def to_association(input_dataset_pair):
+            return JobToInputDatasetAssociation(input_dataset_pair[0], input_dataset_pair[1])
+
+        self.input_datasets.extend( map(to_association, input_datasets ) )
+
     def add_output_dataset( self, name, dataset ):
         self.output_datasets.append( JobToOutputDatasetAssociation( name, dataset ) )
 
