@@ -56,6 +56,10 @@ class RBACAgent:
     def can_access_dataset( self, roles, dataset ):
         raise "Unimplemented Method"
 
+    def can_access_dataset_instances( self, roles, dataset_instances ):
+        for dataset_instance in dataset_instances:
+            self.can_access_dataset( roles, dataset_instance.dataset )
+
     def can_manage_dataset( self, roles, dataset ):
         raise "Unimplemented Method"
 

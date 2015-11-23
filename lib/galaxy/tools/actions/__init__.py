@@ -422,13 +422,23 @@ class DefaultToolAction( object ):
         current_user_roles = trans.get_current_user_roles()
         access_timer = ExecutionTimer()
         input_datasets = []
+        dataset_instances = []
         for name, dataset in inp_data.iteritems():
             if dataset:
-                if not trans.app.security_agent.can_access_dataset( current_user_roles, dataset.dataset ):
-                    raise Exception("User does not have permission to use a dataset (%s) provided for input." % data.id)
-                input_datasets.append( (name, dataset ) )
+                dataset_instances.append(dataset)
+                input_datasets.append( (name, dataset) )
             else:
-                input_datasets.append( (name, None ) )
+                input_datasets.append( (name, None) )
+
+        # Batch check all input dataests together at the same time...
+        if dataset_instances:
+            can_access = trans.app.security_agent.can_access_dataset_instances( current_user_roles, dataset_instances )
+            if not can_access:
+                # but if any are not accessible, check individually for best error message.
+                for dataset_instance in dataset_instances:
+                    if not trans.app.security_agent.can_access_dataset( current_user_roles, dataset_instance.dataset ):
+                        raise Exception("User does not have permission to use a dataset (%s) provided for input." % dataset_instance.dataset.id)
+
         job.add_input_datasets( input_datasets )
         log.info("Verified access to datasets %s" % access_timer)
         for name, dataset in out_data.iteritems():
