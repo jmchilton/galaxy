@@ -7,6 +7,7 @@ define([
     'mvc/workflow/workflow-node',
     'mvc/tool/tools-form-workflow',
     'utils/async-save-text',
+    'ui/editable-text',
 ], function( Utils, Globals, Workflow, WorkflowCanvas, Node, ToolsForm, async_save_text ){
 
 // Reset tool search to start state.
@@ -78,13 +79,14 @@ EditorFormView = Backbone.View.extend({
         if (node && node.id != 'no-node') {
             $el.find('table:first').after(this._genericStepAttributesTemplate( node ));
             var nodeType = node.type;
-<<<<<<< HEAD
-            var iconStyle = NODE_ICONS[nodeType];
-            if(iconStyle) {
-                var $icon = $('<i class="icon fa">&nbsp;</i>').addClass(iconStyle);
-                $el.find('.portlet-title-text').before($icon);
-            }
             add_node_icon($el.find('.portlet-title-text'), nodeType);
+            $el.find(".portlet-title-text").make_text_editable({
+                on_finish: function( newLabel ){
+                    // TODO: check label.
+                    $el.find("input[name='label']").val(newLabel);
+                    $el.find('form').submit();
+                }
+            });
             ($el.find( 'form' ).length > 0) && $el.find( 'form' ).ajaxForm( {
                 type: 'POST',
                 dataType: 'json',
@@ -729,8 +731,9 @@ EditorFormView = Backbone.View.extend({
             var node = new Node( this, { element: f } );
             node.type = type;
             node.content_id = content_id;
-            var title = $("<div class='toolFormTitle unselectable'>" + title_text + "</div>" );
-            f.append( title );
+            var $title = $("<div class='toolFormTitle unselectable'><span class='nodeTitle'>" + title_text + "</div></div>" );
+            add_node_icon($title.find('.nodeTitle'), type);
+            f.append( $title );
             f.css( "left", $(window).scrollLeft() + 20 ); f.css( "top", $(window).scrollTop() + 20 );
             var b = $("<div class='toolFormBody'></div>");
             var tmp = "<div><img height='16' align='middle' src='" + Galaxy.root + "static/images/loading_small_white_bg.gif'/> loading tool info...</div>";
@@ -751,7 +754,7 @@ EditorFormView = Backbone.View.extend({
             var width = f.width();
             var height = f.height();
             f.css( { left: ( - o.left ) + ( p.width() / 2 ) - ( width / 2 ), top: ( - o.top ) + ( p.height() / 2 ) - ( height / 2 ) } );
-            buttons.prependTo( title );
+            buttons.prependTo( $title );
             width += ( buttons.width() + 10 );
             f.css( "width", width );
             $(f).bind( "dragstart", function() {

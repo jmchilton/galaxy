@@ -165,6 +165,7 @@ define(['mvc/workflow/workflow-view-node'], function( NodeView ) {
             this.form_html = data.form_html;
             this.tool_errors = data.tool_errors;
             this.annotation = data['annotation'];
+            this.label = data['label'] || null;
             if( "post_job_actions" in data ) {
                 // Won't be present in response for data inputs
                 var pja_in = $.parseJSON(data.post_job_actions);
@@ -184,6 +185,7 @@ define(['mvc/workflow/workflow-view-node'], function( NodeView ) {
                 unusedView.el.terminal.destroy();
             } );
             nodeView.terminalViews = newTerminalViews;
+            node.nodeView.render();
             // In general workflow editor assumes tool outputs don't change in # or
             // type (not really valid right?) but adding special logic here for
             // data collection input parameters that can have their collection
