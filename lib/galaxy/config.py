@@ -177,6 +177,7 @@ class Configuration( object ):
         self.jobs_directory = resolve_path( kwargs.get( "jobs_directory", default_jobs_directory ), self.root )
         self.default_job_shell = kwargs.get( "default_job_shell", "/bin/bash" )
         self.cleanup_job = kwargs.get( "cleanup_job", "always" )
+        self.nodejs_path = kwargs.get( "nodejs_path", None )
         self.container_image_cache_path = self.resolve_path( kwargs.get( "container_image_cache_path", "database/container_images" ) )
         self.outputs_to_working_directory = string_as_bool( kwargs.get( 'outputs_to_working_directory', False ) )
         self.output_size_limit = int( kwargs.get( 'output_size_limit', 0 ) )
