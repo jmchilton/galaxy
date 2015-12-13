@@ -13,7 +13,6 @@ constructed automatically).
 
 import cPickle
 import json
-import logging
 import os
 import sys
 
@@ -22,17 +21,13 @@ sys.path.insert( 1, os.path.abspath( os.path.join( os.path.dirname( __file__ ), 
 
 from sqlalchemy.orm import clear_mappers
 
-import galaxy.model.mapping  # need to load this before we unpickle, in order to setup properties assigned by the mappers
+import galaxy.scripts
 from galaxy.model.custom_types import total_size
 from galaxy.util import stringify_dictionary_keys
 
-# ensure supported version
-assert sys.version_info[:2] >= ( 2, 6 ) and sys.version_info[:2] <= ( 2, 7 ), 'Python version must be 2.6 or 2.7, this is: %s' % sys.version
+log = galaxy.scripts.get_and_setup_log(__name__)
 
-logging.basicConfig()
-log = logging.getLogger( __name__ )
-
-galaxy.model.Job()  # this looks REAL stupid, but it is REQUIRED in order for SA to insert parameters into the classes defined by the mappers --> it appears that instantiating ANY mapper'ed class would suffice here
+galaxy.scripts.setup_mapping()
 
 
 def set_meta_with_tool_provided( dataset_instance, file_dict, set_meta_kwds, datatypes_registry ):
@@ -66,8 +61,7 @@ def set_meta_with_tool_provided( dataset_instance, file_dict, set_meta_kwds, dat
 
 def set_metadata():
     # locate galaxy_root for loading datatypes
-    galaxy_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir))
-    galaxy.datatypes.metadata.MetadataTempFile.tmp_dir = tool_job_working_directory = os.path.abspath(os.getcwd())
+    tool_job_working_directory = galaxy.scripts.get_tmp_dir()
 
     # This is ugly, but to transition from existing jobs without this parameter
     # to ones with, smoothly, it has to be the last optional parameter and we
@@ -81,9 +75,7 @@ def set_metadata():
 
     # Set up datatypes registry
     datatypes_config = sys.argv.pop( 1 )
-    datatypes_registry = galaxy.datatypes.registry.Registry()
-    datatypes_registry.load_datatypes( root_dir=galaxy_root, config=datatypes_config )
-    galaxy.model.set_datatypes_registry( datatypes_registry )
+    datatypes_registry = galaxy.scripts.get_datatypes_registry(datatypes_config)
 
     job_metadata = sys.argv.pop( 1 )
     existing_job_metadata_dict = {}

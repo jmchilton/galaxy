@@ -7,19 +7,16 @@ on a gid in a scatter-gather mode. This does part of the scatter.
 
 """
 import json
-import logging
 import os
 import sys
 new_path = [ os.path.join( os.getcwd(), "lib" ) ]
 new_path.extend( sys.path[1:] )  # remove scripts/ from the path
 sys.path = new_path
 
-# This junk is here to prevent loading errors
-import galaxy.model.mapping  # need to load this before we unpickle, in order to setup properties assigned by the mappers
-galaxy.model.Job()  # this looks REAL stupid, but it is REQUIRED in order for SA to insert parameters into the classes defined by the mappers --> it appears that instantiating ANY mapper'ed class would suffice here
+import galaxy.scripts
 
-logging.basicConfig()
-log = logging.getLogger( __name__ )
+galaxy.scripts.setup_mapping()
+log = galaxy.scripts.get_and_setup_log(__name__)
 
 
 def __main__():
