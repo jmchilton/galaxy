@@ -2127,6 +2127,10 @@ class DatasetInstance( object ):
         return True
 
     @property
+    def is_ok(self):
+        return self.state == self.states.OK
+
+    @property
     def is_pending( self ):
         """
         Return true if the dataset is neither ready nor in error
