@@ -94,7 +94,7 @@ class YamlToolSource(ToolSource):
         # TODO: implement tool output action group fixes
         output.actions = ToolOutputActionGroup( output, None )
         discover_datasets_dicts = output_dict.get( "discover_datasets", [] )
-        if isinstance( discover_datasets_dicts, dict ):
+        if _is_dict(discover_datasets_dicts):
             discover_datasets_dicts = [ discover_datasets_dicts ]
         output.dataset_collector_descriptions = dataset_collector_descriptions_from_list( discover_datasets_dicts )
         return output
@@ -113,7 +113,7 @@ class YamlToolSource(ToolSource):
 
 def _parse_test(i, test_dict):
     inputs = test_dict["inputs"]
-    if isinstance(inputs, dict):
+    if _is_dict(inputs):
         new_inputs = []
         for key, value in inputs.iteritems():
             new_inputs.append((key, value, {}))
@@ -122,9 +122,9 @@ def _parse_test(i, test_dict):
     outputs = test_dict["outputs"]
 
     new_outputs = []
-    if isinstance(outputs, dict):
+    if _is_dict(outputs):
         for key, value in outputs.iteritems():
-            if isinstance(value, dict):
+            if _is_dict(value):
                 attributes = value
                 file = attributes.get("file")
             else:
@@ -167,6 +167,10 @@ def _parse_test(i, test_dict):
     return test_dict
 
 
+def _is_dict(item):
+    return isinstance(item, dict) or isinstance(item, odict)
+
+
 def __to_test_assert_list(assertions):
     def expand_dict_form(item):
         key, value = item
@@ -174,7 +178,7 @@ def __to_test_assert_list(assertions):
         new_value["that"] = key
         return new_value
 
-    if isinstance( assertions, dict ):
+    if _is_dict(assertions):
         assertions = map(expand_dict_form, assertions.items() )
 
     assert_list = []
