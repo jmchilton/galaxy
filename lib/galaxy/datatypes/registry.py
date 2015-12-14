@@ -31,6 +31,8 @@ class Registry( object ):
         self.log.addHandler( logging.NullHandler() )
         self.datatypes_by_extension = {}
         self.mimetypes_by_extension = {}
+        self.merge_methods_by_extension = {}
+        self.split_methods_by_extension = {}
         self.datatype_converters = odict()
         # Converters defined in local datatypes_conf.xml
         self.converters = []
@@ -120,6 +122,12 @@ class Registry( object ):
                 if extension:
                     extension = extension.lower()
                 dtype = elem.get( 'type', None )
+                register_merge = galaxy.util.string_as_bool( elem.get( 'merge_tool', False ) )
+                if register_merge:
+                    self.merge_methods_by_extension[extension] = True
+                register_split = galaxy.util.string_as_bool( elem.get( 'split_tool', False ) )
+                if register_split:
+                    self.split_methods_by_extension[extension] = True
                 type_extension = elem.get( 'type_extension', None )
                 mimetype = elem.get( 'mimetype', None )
                 display_in_upload = galaxy.util.string_as_bool( elem.get( 'display_in_upload', False ) )
@@ -631,6 +639,15 @@ class Registry( object ):
                 failed.append( display_application_id )
         return ( reloaded, failed )
 
+    def load_split_merge_tools( self, toolbox ):
+        self.log.info("\n\n\n\n\n%s\n\n\n\n\n\n\n" % self.split_methods_by_extension)
+        for split_extension in self.split_methods_by_extension:
+            tool_dict = self._build_split_tool(split_extension)
+            toolbox.load_hidden_tool_from_dict(tool_dict)
+        for merge_extension in self.merge_methods_by_extension:
+            tool_dict = self._build_merge_tool(split_extension)
+            toolbox.load_hidden_tool_from_dict(tool_dict)
+
     def load_external_metadata_tool( self, toolbox ):
         """Adds a tool which is used to set external metadata"""
         # We need to be able to add a job to the queue to set metadata. The queue will currently only accept jobs with an associated
@@ -858,3 +875,37 @@ class Registry( object ):
         os.write( fd, '</datatypes>\n' )
         os.close( fd )
         os.chmod( self.xml_filename, 0o644 )
+
+    def _build_split_tool(self, extension):
+        datatype = self.datatypes_by_extension[extension]
+        split_inputs = getattr(datatype, 'split_inputs', [])
+        split_version = getattr(datatype, 'split_inputs_version', '1.0.0')
+        inputs = []
+        outputs = {}
+        tool_dict = {
+            'class': 'GalaxyTool',
+            'id': '__split_%s__' % extension,
+            'name': 'Split a %s dataset' % extension,
+            'description': 'into a list %s datasets.' % extension,
+            'version': split_version,
+            'inputs': inputs,
+            'outputs': outputs,
+        }
+        return tool_dict
+
+    def _build_merge_tool(self, extension):
+        datatype = self.datatypes_by_extension[extension]
+        merge_inputs = getattr(datatype, 'merge_inputs', [])
+        merge_version = getattr(datatype, 'merge_inputs_version', '1.0.0')
+        inputs = []
+        outputs = {}
+        tool_dict = {
+            'class': 'GalaxyTool',
+            'id': '__merge_%s__' % extension,
+            'name': 'Merge a %s list' % extension,
+            'description': 'into a single %s dataset.' % extension,
+            'version': merge_version,
+            'inputs': inputs,
+            'outputs': outputs,
+        }
+        return tool_dict

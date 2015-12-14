@@ -112,12 +112,16 @@ class ToolBox( AbstractToolBox ):
         # Deprecated method, TODO - eliminate calls to this in test/.
         return self._tools_by_id
 
-    def create_tool( self, config_file, repository_id=None, guid=None, **kwds ):
+    def create_tool( self, config_source, repository_id=None, guid=None, **kwds ):
+        config_file = None
+        if isinstance(config_source, basestring):
+            config_file = config_source
         try:
-            tool_source = get_tool_source( config_file, getattr( self.app.config, "enable_beta_tool_formats", False ) )
+            tool_source = get_tool_source( config_source, getattr( self.app.config, "enable_beta_tool_formats", False ) )
         except Exception, e:
             # capture and log parsing errors
-            global_tool_errors.add_error(config_file, "Tool XML parsing", e)
+            if config_file:
+                global_tool_errors.add_error(config_file, "Tool XML parsing", e)
             raise e
         # Allow specifying a different tool subclass to instantiate
         tool_module = tool_source.parse_tool_module()
@@ -455,8 +459,12 @@ class Tool( object, Dictifiable ):
     def __init__( self, config_file, tool_source, app, guid=None, repository_id=None, allow_code_files=True ):
         """Load a tool from the config named by `config_file`"""
         # Determine the full path of the directory where the tool config is
-        self.config_file = config_file
-        self.tool_dir = os.path.dirname( config_file )
+        if config_file is not None:
+            self.config_file = config_file
+            self.tool_dir = os.path.dirname( config_file )
+        else:
+            self.config_file = None
+            self.tool_dir = None
         self.app = app
         self.repository_id = repository_id
         self._allow_code_files = allow_code_files

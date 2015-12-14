@@ -76,6 +76,9 @@ class ToolsTestCase( api.ApiTestCase ):
         assert f2_info["min"] is None
         assert f2_info["max"] is None
 
+    def test_show_split_tool( self ):
+        tool_info = self._show_valid_tool( "__split_txt__" )
+
     def _show_valid_tool( self, tool_id ):
         tool_show_response = self._get( "tools/%s" % tool_id, data=dict( io_details=True ) )
         self._assert_status_code_is( tool_show_response, 200 )

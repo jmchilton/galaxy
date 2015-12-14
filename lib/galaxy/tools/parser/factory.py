@@ -16,7 +16,13 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def get_tool_source(config_file, enable_beta_formats=True):
+def get_tool_source(config_source, enable_beta_formats=True):
+    if isinstance(config_source, dict):
+        return YamlToolSource(config_source)
+
+    # else it is file path
+    config_file = config_source
+
     if not enable_beta_formats:
         tree = load_tool_xml(config_file)
         root = tree.getroot()

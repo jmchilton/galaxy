@@ -748,7 +748,7 @@ class AbstractToolBox( object, Dictifiable, ManagesIntegratedToolPanelMixin ):
     def load_tool( self, config_file, guid=None, repository_id=None, **kwds ):
         """Load a single tool from the file named by `config_file` and return an instance of `Tool`."""
         # Parse XML configuration file and get the root element
-        tool = self.create_tool( config_file=config_file, repository_id=repository_id, guid=guid, **kwds )
+        tool = self.create_tool( config_file, repository_id=repository_id, guid=guid, **kwds )
         tool_id = tool.id
         if not tool_id.startswith("__"):
             # do not monitor special tools written to tmp directory - no reason
@@ -759,6 +759,11 @@ class AbstractToolBox( object, Dictifiable, ManagesIntegratedToolPanelMixin ):
     def load_hidden_lib_tool( self, path ):
         tool_xml = os.path.join( os.getcwd(), "lib", path )
         return self.load_hidden_tool( tool_xml )
+
+    def load_hidden_tool_from_dict( self, tool_dict ):
+        tool = self.create_tool(tool_dict)
+        self.register_tool( tool )
+        return tool
 
     def load_hidden_tool( self, config_file, **kwds ):
         """ Load a hidden tool (in this context meaning one that does not
