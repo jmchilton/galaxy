@@ -163,6 +163,14 @@ EditorFormView = Backbone.View.extend({
 
 });
 
+SubworkflowEditorFormView = EditorFormView({
+
+    initialize: function(options) {
+        EditorFormView.prototype.initialize.call(this, options);
+        this.$(".form-row").first().before("<p>Workflow Name</p>");
+    }
+
+});
 
 
     // create form view
@@ -783,7 +791,13 @@ EditorFormView = Backbone.View.extend({
                         node: node,
                         workflowView: this
                     };
-                    formView = new EditorFormView(options);
+                    var viewClass;
+                    if (node.type == 'subworkflow') {
+                        viewClass = SubworkflowEditorFormView;
+                    } else {
+                        viewClass = EditorFormView;
+                    }
+                    formView = new viewClass(options);
                 }
                 $el.append(formView.$el);
                 $container.append($el);
