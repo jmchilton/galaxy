@@ -20,6 +20,29 @@ class ConcurrentWriteException(Exception):
 FORCE_WRITE = object()
 
 
+class ManagedConfView(object):
+    """ Adapt a ManagedConf object with a RESTful-like web pattern
+    ready to be integrated by the Galaxy web framework or something
+    lighter weight and standalone.
+    """
+
+    def __init__(self, managed_conf):
+        self.managed_conf = managed_conf
+
+    def get(self):
+        hash, contents = self.managed_conf.read()
+        return {"hash": hash, "contents": contents}
+
+    def update(self, payload):
+        if "hash" in payload and "contents" in payload:
+            previous_hash = payload["hash"]
+            contents = payload["contents"]
+            self.managed_conf.update(contents, previous_hash)
+        elif "actions" in payload:
+            actions = payload["actions"]
+            self.managed_conf.handle_actions(actions)
+
+
 # TODO: Even more concurrency protection with file locks.
 # TODO: Atomic actions that can be retried.
 class ManagedConf(object):
