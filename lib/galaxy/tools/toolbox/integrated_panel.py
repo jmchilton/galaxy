@@ -26,12 +26,15 @@ its section) modify that file and restart Galaxy.
 class ManagesIntegratedToolPanelMixin:
 
     def _init_integrated_tool_panel(self, config):
-        self.update_integrated_tool_panel = config.update_integrated_tool_panel
-        self._integrated_tool_panel_config = config.integrated_tool_panel_config
+        self.update_integrated_tool_panel = getattr(config, "update_integrated_tool_panel", False)
+        self._integrated_tool_panel_config = getattr(config, "integrated_tool_panel_config", None)
         self._integrated_tool_panel_tracking_directory = getattr( config, "integrated_tool_panel_tracking_directory", None )
         # In-memory dictionary that defines the layout of the tool_panel.xml file on disk.
         self._integrated_tool_panel = ToolPanelElements()
-        self._integrated_tool_panel_config_has_contents = os.path.exists( self._integrated_tool_panel_config ) and os.stat( self._integrated_tool_panel_config ).st_size > 0
+        if self._integrated_tool_panel_config is not None:
+            self._integrated_tool_panel_config_has_contents = os.path.exists( self._integrated_tool_panel_config ) and os.stat( self._integrated_tool_panel_config ).st_size > 0
+        else:
+            self._integrated_tool_panel_config_has_contents = False
         if self._integrated_tool_panel_config_has_contents:
             self._load_integrated_tool_panel_keys()
 
