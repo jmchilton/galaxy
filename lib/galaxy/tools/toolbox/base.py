@@ -465,8 +465,15 @@ class AbstractToolBox( Dictifiable, ManagesIntegratedToolPanelMixin, object ):
                 return [ tool ]
         return []
 
-    def tools( self ):
-        return iteritems(self._tools_by_id)
+    def tools( self, all_versions=False ):
+        if not all_versions:
+            for item in iteritems(self._tools_by_id):
+                yield item
+        else:
+            for tool_id in self._tool_versions_by_id:
+                versions = self._tool_versions_by_id[tool_id]
+                for version in versions:
+                    yield versions[version]
 
     def dynamic_confs( self, include_migrated_tool_conf=False ):
         confs = []

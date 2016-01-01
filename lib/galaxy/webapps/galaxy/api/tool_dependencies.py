@@ -47,6 +47,23 @@ class ToolDependenciesAPIController( BaseAPIController ):
 
     @expose_api
     @require_admin
+    def toolbox_summary(self, trans, **kwds):
+        """
+        GET /api/dependencies_resolvers/toolbox
+
+        Generate a summary of simple requirements across all tools in the toolbox,
+        the query parameter include_dependency_info controls whether
+        dependency resolution is included for each requirement.
+
+        Since this is requirement focused, this is only meant for tools with "simple"
+        dependency resolution (where the requirements define the complete dependency
+        resolution ext) so tools installed via the tool shed are excluded from this
+        summary.
+        """
+        return self._view.toolbox_summary(**kwds)
+
+    @expose_api
+    @require_admin
     def resolver_dependency(self, trans, id, **kwds):
         """
         GET /api/dependencies_resolver/{index}/dependency
