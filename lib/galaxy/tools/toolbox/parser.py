@@ -28,6 +28,9 @@ class ToolConfSource(object):
         reload. """
         return DEFAULT_MONITOR
 
+    def parsing_shed_tool_conf(self):
+        return False
+
 
 class XmlToolConfSource(ToolConfSource):
 
@@ -43,6 +46,11 @@ class XmlToolConfSource(ToolConfSource):
 
     def parse_monitor(self):
         return string_as_bool(self.root.get('monitor', DEFAULT_MONITOR))
+
+    def parsing_shed_tool_conf(self):
+        # If it is an XML file with a tool_path, assume it is a shed tool
+        # conf, but allow disabling with shed_tool_conf flag.
+        return bool(self.root.get('tool_path')) and string_as_bool(self.root.get('shed_tool_conf', True))
 
 
 class YamlToolConfSource(ToolConfSource):
