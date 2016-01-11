@@ -23,6 +23,7 @@ from galaxy.exceptions import ObjectInvalid, ObjectNotFound
 from galaxy.jobs.actions.post import ActionBox
 from galaxy.jobs.mapper import JobRunnerMapper
 from galaxy.jobs.runners import BaseJobRunner, JobState
+from galaxy.jobs.command_factory import DEFAULT_JOB_SHELL
 from galaxy.util.bunch import Bunch
 from galaxy.util.expressions import ExpressionContext
 from galaxy.util.json import loads
@@ -55,6 +56,7 @@ class JobDestination( Bunch ):
         self['runner'] = None
         self['legacy'] = False
         self['converted'] = False
+        self['shell'] = DEFAULT_JOB_SHELL
         self['env'] = []
         self['resubmit'] = []
         # dict is appropriate (rather than a bunch) since keys may not be valid as attributes

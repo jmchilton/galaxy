@@ -163,10 +163,12 @@ class BaseJobRunner( object ):
         # Prepare the job
         try:
             job_wrapper.prepare()
+            shell = job_wrapper.job_destination.shell
             job_wrapper.runner_command_line = self.build_command_line(
                 job_wrapper,
                 include_metadata=include_metadata,
-                include_work_dir_outputs=include_work_dir_outputs
+                include_work_dir_outputs=include_work_dir_outputs,
+                shell=shell,
             )
         except:
             log.exception("(%s) Failure preparing job" % job_id)
