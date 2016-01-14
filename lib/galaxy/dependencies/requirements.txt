@@ -43,7 +43,7 @@ sqlalchemy-migrate
 decorator
 Tempita
 sqlparse
-six
+six>=1.9.0
 Parsley
 nose
 SVGFig
