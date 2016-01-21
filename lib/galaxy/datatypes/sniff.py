@@ -259,40 +259,21 @@ def guess_ext( fname, sniff_order, is_multi_byte=False ):
     Returns an extension that can be used in the datatype factory to
     generate a data for the 'fname' file
 
-    >>> fname = get_test_fname('megablast_xml_parser_test1.blastxml')
     >>> from galaxy.datatypes import registry
     >>> datatypes_registry = registry.Registry()
-    >>> datatypes_registry.load_datatypes()
+    >>> from galaxy.util import galaxy_directory
+    >>> DEFAULT_DATATYPES = os.path.join(galaxy_directory(), "config", "datatypes_conf.xml.sample")
+    >>> datatypes_registry.load_datatypes(root_dir=galaxy_directory(), config=DEFAULT_DATATYPES)
     >>> sniff_order = datatypes_registry.sniff_order
-    >>> guess_ext(fname, sniff_order)
-    'xml'
-    >>> fname = get_test_fname('interval.interval')
-    >>> guess_ext(fname, sniff_order)
-    'interval'
-    >>> fname = get_test_fname('interval1.bed')
-    >>> guess_ext(fname, sniff_order)
-    'bed'
-    >>> fname = get_test_fname('test_tab.bed')
-    >>> guess_ext(fname, sniff_order)
-    'bed'
-    >>> fname = get_test_fname('sequence.maf')
-    >>> guess_ext(fname, sniff_order)
-    'maf'
-    >>> fname = get_test_fname('sequence.fasta')
-    >>> guess_ext(fname, sniff_order)
-    'fasta'
-    >>> fname = get_test_fname('file.html')
-    >>> guess_ext(fname, sniff_order)
-    'html'
-    >>> fname = get_test_fname('test.gtf')
-    >>> guess_ext(fname, sniff_order)
-    'gtf'
-    >>> fname = get_test_fname('test.gff')
-    >>> guess_ext(fname, sniff_order)
-    'gff'
-    >>> fname = get_test_fname('gff_version_3.gff')
-    >>> guess_ext(fname, sniff_order)
-    'gff3'
+    >>> import yaml
+    >>> sniff_yml_path = get_test_fname('sniff.yml')
+    >>> with open(sniff_yml_path, "r") as f: sniff_tests = yaml.load(f)
+    >>> for sniff_test in sniff_tests:
+    ...     fname = sniff_test['path']
+    ...     expected_ext = sniff_test['ext']
+    ...     ext = guess_ext(get_test_fname(fname), sniff_order)
+    ...     if expected_ext != ext:
+    ...          raise AssertionError("%s sniffed as %s and not expected %s" % (fname, ext, expected_ext))
     >>> fname = get_test_fname('temp.txt')
     >>> file(fname, 'wt').write("a\\t2\\nc\\t1\\nd\\t0")
     >>> guess_ext(fname, sniff_order)
@@ -301,27 +282,6 @@ def guess_ext( fname, sniff_order, is_multi_byte=False ):
     >>> file(fname, 'wt').write("a 1 2 x\\nb 3 4 y\\nc 5 6 z")
     >>> guess_ext(fname, sniff_order)
     'txt'
-    >>> fname = get_test_fname('test_tab1.tabular')
-    >>> guess_ext(fname, sniff_order)
-    'tabular'
-    >>> fname = get_test_fname('alignment.lav')
-    >>> guess_ext(fname, sniff_order)
-    'lav'
-    >>> fname = get_test_fname('1.sff')
-    >>> guess_ext(fname, sniff_order)
-    'sff'
-    >>> fname = get_test_fname('1.bam')
-    >>> guess_ext(fname, sniff_order)
-    'bam'
-    >>> fname = get_test_fname('3unsorted.bam')
-    >>> guess_ext(fname, sniff_order)
-    'bam'
-    >>> fname = get_test_fname('test.idpDB')
-    >>> guess_ext(fname, sniff_order)
-    'idpdb'
-    >>> fname = get_test_fname('test.mz5')
-    >>> guess_ext(fname, sniff_order)
-    'h5'
     """
     for datatype in sniff_order:
         """
