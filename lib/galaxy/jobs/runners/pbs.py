@@ -233,9 +233,10 @@ class PBSJobRunner( AsynchronousJobRunner ):
             return
 
         # define job attributes
-        ofile = "%s/%s.o" % (self.app.config.cluster_files_directory, job_wrapper.job_id)
-        efile = "%s/%s.e" % (self.app.config.cluster_files_directory, job_wrapper.job_id)
-        ecfile = "%s/%s.ec" % (self.app.config.cluster_files_directory, job_wrapper.job_id)
+        job_directory = job_wrapper.job_working_directory
+        ofile = "%s/%s.o" % (job_directory, job_wrapper.job_id)
+        efile = "%s/%s.e" % (job_directory, job_wrapper.job_id)
+        ecfile = "%s/%s.ec" % (job_directory, job_wrapper.job_id)
 
         output_fnames = job_wrapper.get_output_fnames()
 
@@ -286,7 +287,7 @@ class PBSJobRunner( AsynchronousJobRunner ):
 
         env_setup_commands = [ stage_commands ]
         script = self.get_job_file(job_wrapper, exit_code_path=ecfile, env_setup_commands=env_setup_commands)
-        job_file = "%s/%s.sh" % (self.app.config.cluster_files_directory, job_wrapper.job_id)
+        job_file = "%s/%s.sh" % (job_directory, job_wrapper.job_id)
         self.write_executable_script( job_file, script )
         # job was deleted while we were preparing it
         if job_wrapper.get_state() == model.Job.states.DELETED:
@@ -584,10 +585,11 @@ class PBSJobRunner( AsynchronousJobRunner ):
         """Recovers jobs stuck in the queued/running state when Galaxy started"""
         job_id = job.get_job_runner_external_id()
         pbs_job_state = AsynchronousJobState()
-        pbs_job_state.output_file = "%s/%s.o" % (self.app.config.cluster_files_directory, job.id)
-        pbs_job_state.error_file = "%s/%s.e" % (self.app.config.cluster_files_directory, job.id)
-        pbs_job_state.exit_code_file = "%s/%s.ec" % (self.app.config.cluster_files_directory, job.id)
-        pbs_job_state.job_file = "%s/%s.sh" % (self.app.config.cluster_files_directory, job.id)
+        job_directory = job_wrapper.job_working_directory
+        pbs_job_state.output_file = "%s/%s.o" % (job_directory, job.id)
+        pbs_job_state.error_file = "%s/%s.e" % (job_directory, job.id)
+        pbs_job_state.exit_code_file = "%s/%s.ec" % (job_directory, job.id)
+        pbs_job_state.job_file = "%s/%s.sh" % (job_directory, job.id)
         pbs_job_state.job_id = str( job_id )
         pbs_job_state.runner_url = job_wrapper.get_job_runner_url()
         pbs_job_state.job_destination = job_wrapper.job_destination

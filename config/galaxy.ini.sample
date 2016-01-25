@@ -290,10 +290,6 @@ paste.app_factory = galaxy.web.buildapp:app_factory
 # created.
 #job_working_directory = database/job_working_directory
 
-# If using a cluster, Galaxy will write job scripts and stdout/stderr to this
-# directory.
-#cluster_files_directory = database/pbs
-
 # Mako templates are compiled as needed and cached for reuse, this directory is
 # used for the cache
 #template_cache_path = database/compiled_templates

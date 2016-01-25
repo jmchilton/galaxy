@@ -185,7 +185,7 @@ class ShellJobRunner( AsynchronousJobRunner ):
             job_state.output_file = old_ofile
             job_state.error_file = "%s.gjerr" % os.path.join(job_state.job_wrapper.working_directory, job_state.job_wrapper.get_id_tag())
             job_state.exit_code_file = "%s.gjec" % os.path.join(job_state.job_wrapper.working_directory, job_state.job_wrapper.get_id_tag())
-            job_state.job_file = "%s/galaxy_%s.sh" % (self.app.config.cluster_files_directory, job_state.job_wrapper.get_id_tag())
+            job_state.job_file = "%s/galaxy_%s.sh" % (job_state.job_wrapper.working_directory, job_state.job_wrapper.get_id_tag())
         super( ShellJobRunner, self ).finish_job( job_state )
 
     def stop_job( self, job ):

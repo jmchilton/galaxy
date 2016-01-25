@@ -347,7 +347,7 @@ class DRMAAJobRunner( AsynchronousJobRunner ):
         """ Stores the content of a DRMAA JobTemplate object in a file as a JSON string.
         Path is hard-coded, but it's no worse than other path in this module.
         Uses Galaxy's JobID, so file is expected to be unique."""
-        filename = "%s/%s.jt_json" % (self.app.config.cluster_files_directory, job_wrapper.get_id_tag())
+        filename = "%s/%s.jt_json" % (job_wrapper.working_directory, job_wrapper.get_id_tag())
         data = {}
         for attr in DRMAA_jobTemplate_attributes:
             try:
