@@ -55,17 +55,22 @@ Enhancements
 
 .. major_feature
 
+
 .. feature
+
 
 .. enhancement
 
+
 .. small_enhancement
+
 
 
 Fixes
 -------------------------------
 
 .. major_bug
+
 
 .. bug
 
