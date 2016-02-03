@@ -1,4 +1,6 @@
+import os
 import pipes
+import tempfile
 from galaxy import exceptions
 from galaxy.util.none_like import NoneDataset
 from galaxy.util import odict
@@ -262,6 +264,13 @@ class HasDatasets:
             if real_path in dataset_paths:
                 wrapper_kwds[ "dataset_path" ] = dataset_paths[ real_path ]
         return DatasetFilenameWrapper( dataset, **wrapper_kwds )
+
+    def paths_as_file(self, sep="\n"):
+        handle, filepath = tempfile.mkstemp(prefix="gx_file_list", dir=self.job_working_directory)
+        contents = sep.join(map(str, self))
+        handle.write(contents)
+        handle.close()
+        return filepath
 
 
 class DatasetListWrapper( list, ToolParameterValueWrapper, HasDatasets ):
