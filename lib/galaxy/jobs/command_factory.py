@@ -1,6 +1,7 @@
 from os import getcwd
 from os.path import join
 from os.path import abspath
+import tempfile
 
 from galaxy import util
 from galaxy.jobs.runners.util.job_script import (
@@ -123,8 +124,13 @@ def __handle_work_dir_outputs(commands_builder, job_wrapper, runner, remote_comm
     if 'working_directory' in remote_command_params:
         work_dir_outputs_kwds['job_working_directory'] = remote_command_params['working_directory']
     work_dir_outputs = runner.get_work_dir_outputs( job_wrapper, **work_dir_outputs_kwds )
-    if work_dir_outputs:
+    if work_dir_outputs or job_wrapper.is_cwl_job:
         commands_builder.capture_return_code()
+        if job_wrapper.is_cwl_job:
+            metadata_script_file = join(job_wrapper.working_directory, "relocate_dynamic_outputs.py")
+            relocate_contents = 'from galaxy_ext.metadata.set_metadata import relocate_dynamic_outputs; relocate_dynamic_outputs()'
+            write_script(metadata_script_file, relocate_contents, job_wrapper.app.config)
+            commands_builder.append_command("python %s" % metadata_script_file)
         copy_commands = map(__copy_if_exists_command, work_dir_outputs)
         commands_builder.append_commands(copy_commands)
 
@@ -193,7 +199,7 @@ class CommandsBuilder(object):
                                      command)
 
     def append_commands(self, commands):
-        self.append_command(u"; ".join(commands))
+        self.append_command(u"; ".join([c for c in commands if c]))
 
     def capture_return_code(self):
         if not self.return_code_captured:

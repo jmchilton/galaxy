@@ -1225,6 +1225,134 @@ class ToolsTestCase( api.ApiTestCase ):
         }
         self._check_combined_mapping_and_subcollection_mapping( history_id, inputs )
 
+    @skip_without_tool( "cat1-tool" )
+    def test_cwl_cat1_number( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\n2\n3' ) )
+        inputs = {
+            "file1": hda1,
+            "numbering|_cwl__type_": "boolean",
+            "numbering|_cwl__value_": True,
+        }
+        stdout = self._run_and_get_stdout( "cat1-tool", history_id, inputs, assert_ok=True )
+        self.assertEquals(stdout, "     1\t1\n     2\t2\n     3\t3\n")
+
+    @skip_without_tool( "cat1-tool" )
+    def test_cwl_cat1_number_cwl_json( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\n2\n3' ) )
+        inputs = {
+            "file1": hda1,
+            "numbering": True,
+        }
+        stdout = self._run_and_get_stdout( "cat1-tool", history_id, inputs, assert_ok=True, inputs_representation="cwl" )
+        self.assertEquals(stdout, "     1\t1\n     2\t2\n     3\t3\n")
+
+    @skip_without_tool( "cat1-tool" )
+    def test_cwl_cat1_number_cwl_json_file( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "cat1-tool", "test/functional/tools/cwl_tools/draft2/cat-job.json")
+        stdout = self._get_job_stdout( run_object.job_id )
+        self.assertEquals(stdout, "Hello World!\n")
+
+    @skip_without_tool( "cat1-tool" )
+    def test_cwl_cat1_number_cwl_n_json_file( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "cat1-tool", "test/functional/tools/cwl_tools/draft2/cat-n-job.json")
+        stdout = self._get_job_stdout( run_object.job_id )
+        self.assertEquals(stdout, "     1\tHello World!\n")
+
+    @skip_without_tool( "cat2-tool" )
+    def test_cwl_cat2( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "cat2-tool", "test/functional/tools/cwl_tools/draft2/cat-job.json")
+        stdout = self._get_job_stdout( run_object.job_id )
+        self.assertEquals(stdout, "Hello World!\n")
+
+    @skip_without_tool( "cat4-tool" )
+    def test_cwl_cat4( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "cat4-tool", "test/functional/tools/cwl_tools/draft2/cat-job.json")
+        output1_content = self.dataset_populator.get_history_dataset_content( run_object.history_id )
+        self.assertEquals(output1_content, "Hello World!\n")
+
+    @skip_without_tool( "wc-tool" )
+    def test_cwl_wc( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "wc-tool", "test/functional/tools/cwl_tools/draft2/wc-job.json")
+        output1_content = self.dataset_populator.get_history_dataset_content( run_object.history_id )
+        self.assertEquals(output1_content, "  16  198 1111\n")
+
+    @skip_without_tool( "wc2-tool" )
+    def test_cwl_wc2( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "wc2-tool", "test/functional/tools/cwl_tools/draft2/wc-job.json")
+        output1_content = self.dataset_populator.get_history_dataset_content( run_object.history_id )
+        self.assertEquals(output1_content, "  16  198 1111\n")
+
+    def _run_and_get_stdout( self, tool_id, history_id, inputs, **kwds):
+        response = self._run( tool_id, history_id, inputs, **kwds )
+        assert "jobs" in response
+        job = response[ "jobs" ][ 0 ]
+        job_id = job["id"]
+        final_state = self.dataset_populator.wait_for_job( job_id )
+        assert final_state == "ok"
+        return self.get_stdout( job_id )
+
+    def _get_job_stdout(self, job_id):
+        job_details = self.dataset_populator.get_job_details( job_id, full=True )
+        stdout = job_details.json()["stdout"]
+        return stdout
+
+    @skip_without_tool( "cat3-tool" )
+    def test_cwl_cat3( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\t2\t3' ) )
+        inputs = {
+            "f1": hda1,
+        }
+        response = self._run( "cat3-tool", history_id, inputs, assert_ok=True )
+        output1 = response[ "outputs" ][ 0 ]
+        output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
+        assert output1_content == "1\t2\t3\n", output1_content
+
+    @skip_without_tool( "sorttool" )
+    def test_cwl_sorttool( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\n2\n3' ) )
+        inputs = {
+            "reverse": False,
+            "input": hda1
+        }
+        response = self._run( "sorttool", history_id, inputs, assert_ok=True )
+        output1 = response[ "outputs" ][ 0 ]
+        output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
+        assert output1_content == "1\n2\n3\n", output1_content
+
+    @skip_without_tool( "sorttool" )
+    def test_cwl_sorttool_reverse( self ):
+        history_id = self.dataset_populator.new_history()
+        hda1 = dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\n2\n3' ) )
+        inputs = {
+            "reverse": True,
+            "input": hda1
+        }
+        response = self._run( "sorttool", history_id, inputs, assert_ok=True )
+        output1 = response[ "outputs" ][ 0 ]
+        output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
+        assert output1_content == "3\n2\n1\n", output1_content
+
+    @skip_without_tool( "env-tool1" )
+    def test_cwl_env_tool1( self ):
+        history_id = self.dataset_populator.new_history()
+        inputs = {
+            "in": "Hello World",
+        }
+        response = self._run( "env-tool1", history_id, inputs, assert_ok=True )
+        output1 = response[ "outputs" ][ 0 ]
+        output1_content = self.dataset_populator.get_history_dataset_content( history_id, dataset=output1 )
+        self.assertEquals(output1_content, "Hello World\n")
+
+    @skip_without_tool( "env-tool2" )
+    def test_cwl_env_tool2( self ):
+        run_object = self.dataset_populator.run_cwl_tool( "env-tool2", "test/functional/tools/cwl_tools/draft2/env-job.json")
+        output1_content = self.dataset_populator.get_history_dataset_content( run_object.history_id )
+        self.assertEquals(output1_content, "hello test env\n")
+
     def _check_combined_mapping_and_subcollection_mapping( self, history_id, inputs ):
         self.dataset_populator.wait_for_history( history_id, assert_ok=True )
         outputs = self._run_and_get_outputs( "collection_mixed_param", history_id, inputs )
@@ -1249,11 +1377,12 @@ class ToolsTestCase( api.ApiTestCase ):
     def _run_cat1( self, history_id, inputs, assert_ok=False ):
         return self._run( 'cat1', history_id, inputs, assert_ok=assert_ok )
 
-    def _run( self, tool_id, history_id, inputs, assert_ok=False, tool_version=None ):
+    def _run( self, tool_id, history_id, inputs, assert_ok=False, tool_version=None, inputs_representation=None ):
         payload = self.dataset_populator.run_tool_payload(
             tool_id=tool_id,
             inputs=inputs,
             history_id=history_id,
+            inputs_representation=inputs_representation,
         )
         if tool_version is not None:
             payload[ "tool_version" ] = tool_version

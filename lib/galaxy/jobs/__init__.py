@@ -778,6 +778,10 @@ class JobWrapper( object ):
             dataset_path_rewriter = NullDatasetPathRewriter( )
         return dataset_path_rewriter
 
+    @property
+    def is_cwl_job( self ):
+        return self.tool.tool_type == "cwl"
+
     def can_split( self ):
         # Should the job handler split this job up?
         return self.app.config.use_tasked_jobs and self.tool.parallelism
@@ -875,10 +879,13 @@ class JobWrapper( object ):
         # We need command_line persisted to the db in order for Galaxy to re-queue the job
         # if the server was stopped and restarted before the job finished
         job.command_line = unicodify(self.command_line)
+        param_dict = tool_evaluator.param_dict
+        job.cwl_command_state = param_dict.get('__cwl_command_state', None)
+        job.cwl_command_state_version = param_dict.get('__cwl_command_state_version', None)
         self.sa_session.add( job )
         self.sa_session.flush()
         # Return list of all extra files
-        self.param_dict = tool_evaluator.param_dict
+        self.param_dict = param_dict
         version_string_cmd = self.tool.version_string_cmd
         if version_string_cmd:
             self.write_version_cmd = "%s > %s 2>&1" % ( version_string_cmd, compute_environment.version_path() )

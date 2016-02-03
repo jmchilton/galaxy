@@ -11,6 +11,7 @@ from galaxy.web.base.controller import UsesVisualizationMixin
 from galaxy.visualization.genomes import GenomeRegion
 from galaxy.util.json import dumps
 from galaxy.managers.collections_util import dictify_dataset_collection_instance
+from galaxy.tools.cwl import to_galaxy_parameters
 
 import galaxy.queue_worker
 
@@ -239,6 +240,11 @@ class ToolsController( BaseAPIController, UsesVisualizationMixin ):
 
         # Set up inputs.
         inputs = payload.get( 'inputs', {} )
+
+        inputs_representation = payload.get( 'inputs_representation', 'galaxy' )
+        if inputs_representation == "cwl":
+            inputs = to_galaxy_parameters( tool, inputs )
+
         # Find files coming in as multipart file data and add to inputs.
         for k, v in payload.iteritems():
             if k.startswith('files_') or k.startswith('__files_'):

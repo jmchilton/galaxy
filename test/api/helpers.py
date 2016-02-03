@@ -1,3 +1,4 @@
+import os.path
 from base import api_asserts
 from operator import itemgetter
 
@@ -63,6 +64,17 @@ class TestsDatasets:
 
     def _run_tool_payload( self, tool_id, inputs, history_id, **kwds ):
         return DatasetPopulator( self.galaxy_interactor ).run_tool_payload( tool_id, inputs, history_id, **kwds )
+
+
+class CwlToolRun( object ):
+
+    def __init__( self, history_id, run_response ):
+        self.history_id = history_id
+        self.run_response = run_response
+
+    @property
+    def job_id( self ):
+        return self.run_response[ "jobs" ][ 0 ][ "id" ]
 
 
 class BaseDatasetPopulator( object ):
@@ -131,6 +143,10 @@ class BaseDatasetPopulator( object ):
             kwds[ "__files" ] = { "files_0|file_data": inputs[ "files_0|file_data" ] }
             del inputs[ "files_0|file_data" ]
 
+        ir = kwds.get("inputs_representation", None)
+        if ir is None and "inputs_representation" in kwds:
+            del kwds["inputs_representation"]
+
         return dict(
             tool_id=tool_id,
             inputs=json.dumps(inputs),
@@ -143,6 +159,47 @@ class BaseDatasetPopulator( object ):
         tool_response = self._post( "tools", data=payload )
         api_asserts.assert_status_code_is( tool_response, 200 )
         return tool_response.json()
+
+    def run_cwl_tool( self, tool_id, json_path ):
+        with open( json_path, "r" ) as f:
+            job_as_dict = json.load( f )
+
+        history_id = self.new_history()
+
+        replace_keys = {}
+        datasets_uploaded = False
+        for key, value in job_as_dict.iteritems():
+            if isinstance( value, dict ):
+                type_class = value.get("class", None)
+                if type_class != "File":
+                    continue
+
+                path = value.get("path", None)
+                if path is None:
+                    continue
+
+                if not os.path.isabs(path):
+                    directory = os.path.dirname(json_path)
+                    path = os.path.join(directory, path)
+
+                with open( path, "rb" ) as f:
+                    content = f.read()
+                # TODO: actually just upload the files instead of reading it
+                datasets_uploaded = True
+                dataset_id = self.new_dataset(
+                    history_id=history_id,
+                    content=content
+                )["id"]
+                replace_keys[key] = {"src": "hda", "id": dataset_id}
+
+        job_as_dict.update(replace_keys)
+        if datasets_uploaded:
+            self.wait_for_history( history_id=history_id, assert_ok=True )
+        run_response = self.run_tool( tool_id, job_as_dict, history_id, inputs_representation="cwl" )
+        run_object = CwlToolRun( history_id, run_response )
+        final_state = self.wait_for_job( run_object.job_id )
+        assert final_state == "ok"
+        return run_object
 
     def get_history_dataset_content( self, history_id, wait=True, **kwds ):
         dataset_id = self.__history_content_id( history_id, wait=wait, **kwds )

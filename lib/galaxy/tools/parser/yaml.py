@@ -298,6 +298,7 @@ class YamlInputSource(InputSource):
         input_dict = self.input_dict
 
         sources = []
+        # whens could be odict to order these...
         for value, block in input_dict.get("when", {}).items():
             if value is True:
                 value = "true"
