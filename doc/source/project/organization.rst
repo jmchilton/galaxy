@@ -35,7 +35,6 @@ Members
 - Dave Bouvier (@davebx)
 - Martin Čech (@martenson)
 - John Chilton (@jmchilton)
-- Dave Clements (@tnabtaf)
 - Nate Coraor (@natefoo)
 - Carl Eberhard (@carlfeberhard)
 - Jeremy Goecks (@jgoecks)
