@@ -138,6 +138,12 @@ class SelectToolParameterWrapper( ToolParameterValueWrapper ):
     def __getattr__( self, key ):
         return getattr( self.input, key )
 
+    def __eq__(self, other):
+        if isinstance(other, basestring):
+            return str(self) == other
+        else:
+            return super(SelectToolParameterWrapper, self) == other
+
 
 class DatasetFilenameWrapper( ToolParameterValueWrapper ):
     """
