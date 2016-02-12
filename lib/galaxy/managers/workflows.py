@@ -458,13 +458,14 @@ class WorkflowContentsManager(UsesAnnotations):
 
             # workflow outputs
             outputs = []
-            for output in step.unique_workflow_outputs:
-                output_label = output.label
+            output_names = {}
+            for output in self.workflow_outputs:
                 output_name = output.output_name
-                output_uuid = str(output.uuid) if output.uuid else None
-                outputs.append({"output_name": output_name,
-                                "uuid": output_uuid,
-                                "label": output_label})
+                if not output_name in output_names:
+                    output_names[ output_name ] = True
+                    outputs.append({"output_name": output_name,
+                                    "uuid": str(output.uuid) if output.uuid else None,
+                                    "label": output.label})
             step_dict['workflow_outputs'] = outputs
 
             # Encode input connections as dictionary
