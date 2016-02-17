@@ -1296,18 +1296,15 @@ class JobWrapper( object ):
         input_dbkey = '?'
         for _, data in inp_data.items():
             # For loop odd, but sort simulating behavior in galaxy.tools.actions
-            if not data:
-                continue
-            input_ext = data.ext
-            input_dbkey = data.dbkey or '?'
+            if data:
+                input_ext = data.ext
+                input_dbkey = data.dbkey or '?'
         # why not re-use self.param_dict here?
         param_dict = dict( [ ( p.name, p.value ) for p in job.parameters ] )
         param_dict = self.tool.params_from_strings( param_dict, self.app )
         # Create generated output children and primary datasets and add to param_dict
-        collected_datasets = {
-            'children': self.tool.collect_child_datasets(out_data, self.working_directory),
-            'primary': self.tool.collect_primary_datasets(out_data, self.working_directory, input_ext, input_dbkey)
-        }
+        self.tool.collect_child_datasets( out_data, self.working_directory )
+        self.tool.collect_primary_datasets( out_data, self.working_directory, input_ext, input_dbkey )
         self.tool.collect_dynamic_collections(
             out_collections,
             job_working_directory=self.working_directory,
@@ -1315,7 +1312,6 @@ class JobWrapper( object ):
             job=job,
             input_dbkey=input_dbkey,
         )
-        param_dict.update({'__collected_datasets__': collected_datasets})
         # Certain tools require tasks to be completed after job execution
         # ( this used to be performed in the "exec_after_process" hook, but hooks are deprecated ).
         self.tool.exec_after_process( self.queue.app, inp_data, out_data, param_dict, job=job )
