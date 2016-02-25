@@ -634,6 +634,10 @@ class Conditional( Group ):
         return cond_dict
 
     @property
+    def case_strings(self):
+        return [c.value for c in self.cases]
+
+    @property
     def is_job_resource_conditional(self):
         return self.name == "__job_resource"
 

@@ -57,7 +57,7 @@ class ToolRunner( BaseUIController ):
                                                           status='info',
                                                           message='You must be logged in to use this tool.',
                                                           redirect=redirect ) )
-        if tool.tool_type == 'default':
+        if tool.tool_type in ['default', 'cwl']:
             return trans.response.send_redirect( url_for( controller='root', tool_id=tool_id ) )
 
         # execute tool without displaying form (used for datasource tools)
