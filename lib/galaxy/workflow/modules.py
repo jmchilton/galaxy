@@ -567,26 +567,57 @@ class InputModule( SimpleWorkflowModule ):
 
 
 class InputDataModule( InputModule ):
+    default_name = "Input Dataset"
+    default_optional = False
+    default_datatype = ""
+
     type = "data_input"
     name = "Input dataset"
-    default_name = "Input Dataset"
-    state_fields = [ "name" ]
+    optional = default_optional
+    datatype = default_datatype
+
+    state_fields = [ "name", "optional", "datatype" ]
 
     @classmethod
     def default_state( Class ):
-        return dict( name=Class.default_name )
+        return dict(
+            name=Class.default_name,
+            optional=Class.default_optional,
+            datatype=Class.default_datatype,
+        )
 
     def _abstract_config_form( self ):
-        form = formbuilder.FormBuilder( title=self.name ) \
-            .add_text( "name", "Name", value=self.state['name'] )
+        # TODO: Enhance editor_generic_form
+        form = formbuilder.FormBuilder(
+            title=self.name
+        ).add_text(
+            "name", "Name", value=self.state['name']
+        ).add_text(
+            "datatype", "Datatype", value=self.state['datatype']
+        ).add_text(
+            "optional", "Optional", value=self.state['optional'],
+        )
         return form
 
     def get_data_outputs( self ):
-        return [ dict( name='output', extensions=['input'] ) ]
+        datatype_format = self.state.get( "datatype", self.default_datatype )
+        if datatype_format is None:
+            extensions = "input"
+        else:
+            extensions = [datatype_format]
+        return [ dict( name='output', extensions=extensions ) ]
 
     def get_runtime_inputs( self, filter_set=['data'] ):
-        label = self.state.get( "name", "Input Dataset" )
-        return dict( input=DataToolParameter( None, Element( "param", name="input", label=label, multiple=True, type="data", format=', '.join(filter_set) ), self.trans ) )
+        label = self.state.get( "name", self.default_optional )
+        optional = self.state.get( "optional", self.default_optional )
+        datatype_format = self.state.get( "datatype", self.default_datatype )
+        if datatype_format is None:
+            datatype_format = ', '.join(filter_set)
+        param_el = Element(
+            "param", name="input", label=label, multiple=True, type="data", format=datatype_format, optional=optional
+        )
+        param = DataToolParameter( None, param_el, self.trans )
+        return dict( input=param )
 
 
 class InputDataCollectionModule( InputModule ):

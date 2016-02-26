@@ -33,7 +33,7 @@
                       extra_attributes += " %s=\"%s\"" % ( key, value )
                   type_attribute = ""
                   if input.type:
-                    type_attribute = "type=\"input.type\""
+                    type_attribute = "type=\"" + input.type + "\""
                   %>
                   <tr class="${cls}"><td><div class="ui-table-form-element">
                     <div class="ui-table-form-title">
