@@ -4,11 +4,15 @@ galaxyFS_base_dir: /opt/galaxy
 # TODO: use GALAXY_ROOT via cmd line instead
 galaxy_server_dir: "/galaxy"
 galaxy_venv_dir: "{{ galaxyFS_base_dir }}/.venv"
-galaxy_repo: https://bitbucket.org/galaxy/galaxy-central
-galaxy_changeset_id: stable
+
+galaxy_vcs: git
+galaxy_git_repo: https://github.com/galaxyproject/galaxy.git
+galaxy_changeset_id: master
+galaxy_download_url: https://codeload.github.com/galaxyproject/galaxy/tar.gz/master
 galaxy_manage_clone: no
 galaxy_manage_download: yes
 galaxy_root: "{{ galaxy_server_dir}}"
+
 galaxy_db_dir: "{{ galaxyFS_base_dir }}/db"
 galaxy_db_port: 5930
 galaxy_db_log: /tmp/pSQL.log
@@ -26,7 +30,6 @@ galaxy_web_processes: 1
 galaxy_handler_processes: 2
 galaxy_log_dir: "/root"
 
-supervisor_nodaemon: true
 supervisor_postgres_database_path: "{{ galaxy_db_dir }}"
 
 galaxy_extras_config_nginx: true
