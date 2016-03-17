@@ -35,8 +35,11 @@ def main(argv=None):
 
     arg_parser.add_argument("--collection_size", type=int, default=20)
     arg_parser.add_argument("--workflow_depth", type=int, default=10)
-    arg_parser.add_argument("--two_outputs", default=False, action="store_true")
     arg_parser.add_argument("--workflow_count", type=int, default=1)
+
+    group = arg_parser.add_mutually_exclusive_group()
+    group.add_argument("--two_outputs", default=False, action="store_true")
+    group.add_argument("--wave_simple", default=False, action="store_true")
 
     args = arg_parser.parse_args(argv)
     uuid = str(uuid4())
@@ -131,6 +134,8 @@ class GiWorkflowPopulator(helpers.BaseWorkflowPopulator, GiPostGetMixin):
 def _workflow_struct(args, input_uuid):
     if args.two_outputs:
         return _workflow_struct_two_outputs(args, input_uuid)
+    elif args.wave_simple:
+        return _workflow_struct_wave(args, input_uuid)
     else:
         return _workflow_struct_simple(args, input_uuid)
 
@@ -163,6 +168,22 @@ def _workflow_struct_two_outputs(args, input_uuid):
         workflow_struct.append(
             {"tool_id": "cat", "state": {"input1": _link(link1), "input2": _link(link2)}}
         )
+    return workflow_struct
+
+
+def _workflow_struct_wave(args, input_uuid):
+    workflow_struct = [
+        {"type": "input_collection", "uuid": input_uuid},
+        {"tool_id": "cat_list", "state": {"input1": _link(0)}}
+    ]
+
+    workflow_depth = args.workflow_depth
+    for i in range(workflow_depth):
+        step = i + 2
+        if step % 2 == 1:
+            workflow_struct += [{"tool_id": "cat_list", "state": {"input1": _link(str(step - 1) + "#output")}}]
+        else:
+            workflow_struct += [{"tool_id": "split", "state": {"input1": _link(str(step - 1) + "#out_file1") }}]
     return workflow_struct
 
 
