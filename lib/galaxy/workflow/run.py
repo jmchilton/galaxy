@@ -1,4 +1,8 @@
+from abc import ABCMeta
+from abc import abstractmethod
+
 import uuid
+import time
 
 from galaxy import model
 from galaxy import util
@@ -13,6 +17,34 @@ import logging
 log = logging.getLogger( __name__ )
 
 
+class WorkflowProgressChecker(object):
+    """Interface to allow external influence of workflow scheduler."""
+
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def check_progress(self, workflow_progress):
+        """Callback used by scheduler each iteration.
+
+        Implementations should throw something like ``DelayedWorkflowEvaluation``
+        ``CancelWorkflowEvaluation`` to influence scheduling of the workflow.
+        """
+
+
+class NullWorkflowProgressChecker(WorkflowProgressChecker):
+    """A null or no-op checker for workflow progress.
+
+    This is the default checker used by the workflow evaluation code.
+    """
+
+    def check_progress(self, workflow_progress):
+        """Do nothing, this checker doesn't influence evaluation."""
+        pass
+
+
+NULL_WORKFLOW_PROGRESS_CHECKER = NullWorkflowProgressChecker()
+
+
 # Entry point for direct invoke via controllers. Deprecated to some degree.
 def invoke( trans, workflow, workflow_run_config, workflow_invocation=None, populate_state=False ):
     if force_queue( trans, workflow ):
@@ -23,8 +55,8 @@ def invoke( trans, workflow, workflow_run_config, workflow_invocation=None, popu
 
 
 # Entry point for core workflow scheduler.
-def schedule( trans, workflow, workflow_run_config, workflow_invocation ):
-    return __invoke( trans, workflow, workflow_run_config, workflow_invocation )
+def schedule( trans, workflow, workflow_run_config, workflow_invocation, workflow_progress_checker=NULL_WORKFLOW_PROGRESS_CHECKER ):
+    return __invoke( trans, workflow, workflow_run_config, workflow_invocation, workflow_progress_checker=workflow_progress_checker  )
 
 
 BASIC_WORKFLOW_STEP_TYPES = [ None, "tool", "data_input", "data_collection_input" ]
@@ -66,7 +98,7 @@ def force_queue( trans, workflow ):
     return False
 
 
-def __invoke( trans, workflow, workflow_run_config, workflow_invocation=None, populate_state=False ):
+def __invoke( trans, workflow, workflow_run_config, workflow_invocation=None, populate_state=False, workflow_progress_checker=NULL_WORKFLOW_PROGRESS_CHECKER ):
     """ Run the supplied workflow in the supplied target_history.
     """
     if populate_state:
@@ -77,6 +109,7 @@ def __invoke( trans, workflow, workflow_run_config, workflow_invocation=None, po
         workflow,
         workflow_run_config,
         workflow_invocation=workflow_invocation,
+        workflow_progress_checker=workflow_progress_checker,
     )
     try:
         outputs = invoker.invoke()
@@ -118,7 +151,7 @@ def queue_invoke( trans, workflow, workflow_run_config, request_params={}, popul
 
 class WorkflowInvoker( object ):
 
-    def __init__( self, trans, workflow, workflow_run_config, workflow_invocation=None, progress=None ):
+    def __init__( self, trans, workflow, workflow_run_config, workflow_invocation=None, progress=None, workflow_progress_checker=NULL_WORKFLOW_PROGRESS_CHECKER ):
         self.trans = trans
         self.workflow = workflow
         if progress is not None:
@@ -147,6 +180,8 @@ class WorkflowInvoker( object ):
         if progress is None:
             progress = WorkflowProgress( self.workflow_invocation, workflow_run_config.inputs, module_injector )
         self.progress = progress
+        self.__progress_checker = workflow_progress_checker
+
 
     def invoke( self ):
         workflow_invocation = self.workflow_invocation
@@ -178,6 +213,13 @@ class WorkflowInvoker( object ):
                 raise
 
             log.debug("Workflow step %s of invocation %s invoked %s" % (step.id, workflow_invocation.id, step_timer))
+
+            # Check with plugin to see if it is time to take a break and
+            # work on scheduling a different workflow.
+            try:
+                self.__progress_checker.check_progress(self.progress)
+            except modules.DelayedWorkflowEvaluation:
+                break
 
         if delayed_steps:
             state = model.WorkflowInvocation.states.READY
@@ -226,6 +268,7 @@ class WorkflowInvoker( object ):
 
     def _invoke_step( self, step ):
         jobs = step.module.execute( self.trans, self.progress, self.workflow_invocation, step )
+        self.progress.record_step_invoked(jobs)
         return jobs
 
 STEP_OUTPUT_DELAYED = object()
@@ -238,6 +281,14 @@ class WorkflowProgress( object ):
         self.module_injector = module_injector
         self.workflow_invocation = workflow_invocation
         self.inputs_by_step_id = inputs_by_step_id
+        self.iteration_step_count = 0
+        self.iteration_job_count = 0
+        self.iteration_start_time = time.time()
+
+    def record_step_invoked(self, jobs):
+        self.iteration_step_count += 1
+        if jobs:
+            self.iteration_job_count += len(jobs)
 
     def remaining_steps(self):
         # Previously computed and persisted step states.
