@@ -34,6 +34,8 @@ def main(argv=None):
     arg_parser.add_argument("--host", default="http://localhost:8080/")
 
     arg_parser.add_argument("--collection_size", type=int, default=20)
+
+    arg_parser.add_argument("--schedule_only_test", default=False, action="store_true")
     arg_parser.add_argument("--workflow_depth", type=int, default=10)
     arg_parser.add_argument("--workflow_count", type=int, default=1)
 
@@ -83,7 +85,19 @@ def _run(args, gi, workflow_id, uuid):
     invoke_response = dataset_populator._post( url, data=workflow_request ).json()
     invocation_id = invoke_response["id"]
     workflow_populator = GiWorkflowPopulator(gi)
-    workflow_populator.wait_for_workflow( workflow_id, invocation_id, history_id, timeout=LONG_TIMEOUT )
+    if args.schedule_only_test:
+        workflow_populator.wait_for_invocation(
+            workflow_id,
+            invocation_id,
+            timeout=LONG_TIMEOUT,
+        )
+    else:
+        workflow_populator.wait_for_workflow(
+            workflow_id,
+            invocation_id,
+            history_id,
+            timeout=LONG_TIMEOUT,
+        )
 
 
 class GiPostGetMixin:
