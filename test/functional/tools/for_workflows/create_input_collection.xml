@@ -1,7 +1,7 @@
 <tool id="create_input_collection" name="create_input_collection" version="0.1.0">
   <description>This tool is used to create a collection of text files.</description>
   <command detect_errors="exit_code">
-    mkdir $outputs; cd $outputs; python $script
+    mkdir outputs; cd outputs; python $script
   </command>
   <configfiles>
     <configfile name="script">
@@ -15,7 +15,7 @@ for i in range($collection_size):
 </configfile>
   </configfiles>
   <inputs>
-    <param name="collection_size" type="data" format="txt" label="Collection Size" />
+    <param name="collection_size" type="integer" format="txt" label="Collection Size" value="1" />
   </inputs>
   <outputs>
     <collection name="output" type="list" label="lines">
@@ -30,6 +30,7 @@ for i in range($collection_size):
           <assert_contents>
             <has_line line="File number 0" />
           </assert_contents>
+        </element>
         <element name="1">
           <assert_contents>
             <has_line line="File number 1" />
