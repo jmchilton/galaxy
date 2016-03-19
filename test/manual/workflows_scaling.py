@@ -44,8 +44,14 @@ def main(argv=None):
     group.add_argument("--wave_simple", default=False, action="store_true")
 
     args = arg_parser.parse_args(argv)
+
     uuid = str(uuid4())
     workflow_struct = _workflow_struct(args, uuid)
+
+    has_input = any([s.get("type", "tool") == "input_collection" for s in workflow_struct])
+    if not has_input:
+        uuid = None
+
     gi = _gi(args)
 
     workflow = yaml_to_workflow.python_to_workflow(workflow_struct)
@@ -69,13 +75,16 @@ def _run(args, gi, workflow_id, uuid):
     dataset_collection_populator = GiDatasetCollectionPopulator(gi)
 
     history_id = dataset_populator.new_history()
-    contents = []
-    for i in range(args.collection_size):
-        contents.append("random dataset number #%d" % i)
-    hdca = dataset_collection_populator.create_list_in_history( history_id, contents=contents ).json()
-    label_map = {
-        uuid: {"src": "hdca", "id": hdca["id"]},
-    }
+    if uuid is not None:
+        contents = []
+        for i in range(args.collection_size):
+            contents.append("random dataset number #%d" % i)
+        hdca = dataset_collection_populator.create_list_in_history( history_id, contents=contents ).json()
+        label_map = {
+            uuid: {"src": "hdca", "id": hdca["id"]},
+        }
+    else:
+        label_map = {}
 
     workflow_request = dict(
         history="hist_id=%s" % history_id,
@@ -156,7 +165,7 @@ def _workflow_struct(args, input_uuid):
 
 def _workflow_struct_simple(args, input_uuid):
     workflow_struct = [
-        {"type": "input_collection", "uuid": input_uuid},
+        {"tool_id": "create_input_collection", "state": {"collection_size": args.collection_size}},
         {"tool_id": "cat", "state": {"input1": _link(0)}}
     ]
 
