@@ -45,6 +45,7 @@ NAME=`basename $WORK_DIR`
 GALAXY_HANDLER_NUMPROCS=${GALAXY_HANDLER_NUMPROCS:-1}
 
 DOCKER_ENVIRONMENT="\
+-e NONUSE=nodejs,proftp,reports \
 -e GALAXY_HANDLER_NUMPROCS=$GALAXY_HANDLER_NUMPROCS \
 -e GALAXY_CONFIG_OVERRIDE_TOOL_CONFIG_FILE=$DOCKER_GALAXY_ROOT/test/functional/tools/samples_tool_conf.xml \
 -e GALAXY_CONFIG_ENABLE_BETA_WORKFLOW_MODULES=true \
@@ -53,7 +54,7 @@ DOCKER_ENVIRONMENT="\
 
 if [ $manual_test_script == "workflows_scaling" ];
 then
-    DOCKER_ENVIRONMENT="$DOCKER_ENVIRONMENT -e $DOCKER_SCRIPT_DIR/workflow_job_conf.xml "
+    DOCKER_ENVIRONMENT="$DOCKER_ENVIRONMENT -e GALAXY_CONFIG_JOB_CONFIG_FILE=$DOCKER_SCRIPT_DIR/workflow_job_conf.xml "
 fi
 
 # Mount logs, local galaxy changes, and local galaxy config.

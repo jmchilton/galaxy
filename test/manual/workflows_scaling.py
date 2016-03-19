@@ -166,7 +166,7 @@ def _workflow_struct(args, input_uuid):
 def _workflow_struct_simple(args, input_uuid):
     workflow_struct = [
         {"tool_id": "create_input_collection", "state": {"collection_size": args.collection_size}},
-        {"tool_id": "cat", "state": {"input1": _link(0)}}
+        {"tool_id": "cat", "state": {"input1": _link(0, "output")}}
     ]
 
     workflow_depth = args.workflow_depth
@@ -204,13 +204,15 @@ def _workflow_struct_wave(args, input_uuid):
     for i in range(workflow_depth):
         step = i + 2
         if step % 2 == 1:
-            workflow_struct += [{"tool_id": "cat_list", "state": {"input1": _link(str(step - 1) + "#output")}}]
+            workflow_struct += [{"tool_id": "cat_list", "state": {"input1": _link(step - 1, "output")}}]
         else:
-            workflow_struct += [{"tool_id": "split", "state": {"input1": _link(str(step - 1) + "#out_file1") }}]
+            workflow_struct += [{"tool_id": "split", "state": {"input1": _link(step - 1, "out_file1") }}]
     return workflow_struct
 
 
-def _link(link):
+def _link(link, output_name=None):
+    if output_name is not None:
+        link = str(link) + "#" + output_name
     return {"$link": link}
 
 
