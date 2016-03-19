@@ -145,20 +145,13 @@ class JobContext( object ):
         app = self.app
         sa_session = self.sa_session
 
+        primary_data = _new_hda(app, sa_session, ext, designation, visible, dbkey, self.permissions)
+
         # Copy metadata from one of the inputs if requested.
         metadata_source = None
         if metadata_source_name:
             metadata_source = self.inp_data[ metadata_source_name ]
 
-        # Create new primary dataset
-        primary_data = app.model.HistoryDatasetAssociation( extension=ext,
-                                                            designation=designation,
-                                                            visible=visible,
-                                                            dbkey=dbkey,
-                                                            create_dataset=True,
-                                                            sa_session=sa_session )
-        app.security_agent.set_all_dataset_permissions( primary_data.dataset, self.permissions )
-        sa_session.add( primary_data )
         sa_session.flush()
         # Move data from temp location to dataset location
         app.object_store.update_from_file(primary_data.dataset, file_name=filename, create=True)
@@ -237,14 +230,8 @@ def collect_primary_datasets( tool, output, job_working_directory, input_ext ):
                 ext = input_ext
             dbkey = fields_match.dbkey
             # Create new primary dataset
-            primary_data = app.model.HistoryDatasetAssociation( extension=ext,
-                                                                designation=designation,
-                                                                visible=visible,
-                                                                dbkey=dbkey,
-                                                                create_dataset=True,
-                                                                sa_session=sa_session )
+            primary_data = _new_hda(app, sa_session, ext, designation, visible, dbkey)
             app.security_agent.copy_dataset_permissions( outdata.dataset, primary_data.dataset )
-            sa_session.add( primary_data )
             sa_session.flush()
             # Move data from temp location to dataset location
             app.object_store.update_from_file(primary_data.dataset, file_name=filename, create=True)
@@ -441,6 +428,33 @@ class CollectedDatasetMatch( object ):
             return self.re_match.group( "visible" ).lower() == "visible"
         except IndexError:
             return self.collector.default_visible
+
+UNSET = object()
+
+
+def _new_hda(
+    app,
+    sa_session,
+    ext,
+    designation,
+    visible,
+    dbkey,
+    permissions=UNSET,
+):
+    """Return a new unflushed HDA with dataset and permissions setup.
+    """
+    # Create new primary dataset
+    primary_data = app.model.HistoryDatasetAssociation( extension=ext,
+                                                        designation=designation,
+                                                        visible=visible,
+                                                        dbkey=dbkey,
+                                                        create_dataset=True,
+                                                        flush=False,
+                                                        sa_session=sa_session )
+    if permissions is not UNSET:
+        app.security_agent.set_all_dataset_permissions( primary_data.dataset, permissions, new=True, flush=False )
+    sa_session.add( primary_data )
+    return primary_data
 
 
 DEFAULT_DATASET_COLLECTOR = DatasetCollector(DEFAULT_DATASET_COLLECTOR_DESCRIPTION)
