@@ -434,6 +434,7 @@ class DefaultToolAction( object ):
                     handle_output( name, output )
                     log.info("Handled output named %s for tool %s %s" % (name, tool.id, handle_output_timer))
 
+        add_datasets_timer = ExecutionTimer()
         # Add all the top-level (non-child) datasets to the history unless otherwise specified
         datasets_to_persist = []
         for name in out_data.keys():
@@ -456,6 +457,8 @@ class DefaultToolAction( object ):
             child_dataset = out_data[ child_name ]
             parent_dataset.children.append( child_dataset )
 
+        log.info("Added output datasets to history %s" % add_datasets_timer)
+        job_setup_timer = ExecutionTimer()
         # Create the job object
         job, galaxy_session = self._new_job_for_session( trans, tool, history )
         self._record_inputs( trans, tool, job, incoming, inp_data, inp_dataset_collections, current_user_roles )
@@ -503,6 +506,8 @@ class DefaultToolAction( object ):
                     trans.sa_session.add(jtod)
             except Exception:
                 log.exception('Cannot remap rerun dependencies.')
+
+        log.info("Setup for job %s complete, ready to flush %s" % (job.log_str(), job_setup_timer))
 
         job_flush_timer = ExecutionTimer()
         trans.sa_session.flush()
