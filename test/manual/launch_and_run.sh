@@ -67,6 +67,8 @@ DOCKER_RUN_ARGS="$DOCKER_RUN_EXTRA_ARGS -d -p ${GALAXY_PORT}:80 -i -t $DOCKER_VO
 
 docker_image_id=`docker $DOCKER_EXTRA_ARGS run $DOCKER_RUN_ARGS ${DOCKER_IMAGE}`
 
+echo "Docker container with id $docker_image_id launched. Inspect with 'docker exec -i -t $docker_image_id /bin/bash'."
+
 # Wait for Galaxy to be available
 for i in {1..40}; do curl --silent --fail ${GALAXY_URL}/api/version && break || sleep 5; done
 
