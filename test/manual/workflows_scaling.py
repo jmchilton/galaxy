@@ -196,8 +196,8 @@ def _workflow_struct_two_outputs(args, input_uuid):
 
 def _workflow_struct_wave(args, input_uuid):
     workflow_struct = [
-        {"type": "input_collection", "uuid": input_uuid},
-        {"tool_id": "cat_list", "state": {"input1": _link(0)}}
+        {"tool_id": "create_input_collection", "state": {"collection_size": args.collection_size}},
+        {"tool_id": "cat_list", "state": {"input1": _link(0, "output")}}
     ]
 
     workflow_depth = args.workflow_depth
