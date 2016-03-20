@@ -97,15 +97,13 @@ class JobContext( object ):
         dataset_collectors = map(dataset_collector, output_collection_def.dataset_collector_descriptions)
         filenames = self.find_files( collection, dataset_collectors )
 
+        element_datasets = []
         for filename, extra_file_collector in filenames.iteritems():
             create_dataset_timer = ExecutionTimer()
             fields_match = extra_file_collector.match( collection, os.path.basename( filename ) )
             if not fields_match:
                 raise Exception( "Problem parsing metadata fields for file %s" % filename )
             element_identifiers = fields_match.element_identifiers
-            current_builder = root_collection_builder
-            for element_identifier in element_identifiers[:-1]:
-                current_builder = current_builder.get_level(element_identifier)
             designation = fields_match.designation
             visible = fields_match.visible
             ext = fields_match.ext
@@ -130,7 +128,39 @@ class JobContext( object ):
                 output_collection_def.name,
                 create_dataset_timer,
             )
+            element_datasets.append((element_identifiers, dataset))
+
+        app = self.app
+        sa_session = self.sa_session
+        job = self.job
+        
+        if job:
+            add_datasets_timer = ExecutionTimer()
+            job.history.add_datasets(sa_session, [d for (ei, d) in element_datasets])
+            log.debug(
+                "(%s) Add dynamic collection datsets to history for output [%s] %s",
+                self.job.id,
+                output_collection_def.name,
+                add_datasets_timer,
+            )
+
+        for (element_identifiers, dataset) in element_datasets:
+            current_builder = root_collection_builder
+            for element_identifier in element_identifiers[:-1]:
+                current_builder = current_builder.get_level(element_identifier)
             current_builder.add_dataset( element_identifiers[-1], dataset )
+
+            # Associate new dataset with job
+            if job:
+                element_identifier_str = ":".join(element_identifiers)
+                assoc = app.model.JobToOutputDatasetAssociation( '__collection_element_%s|%s__' % ( name, element_identifier_str ), dataset )
+                assoc.job = self.job
+            sa_session.add( assoc )
+
+            dataset.raw_set_dataset_state('ok')
+
+        sa_session.flush()
+
 
     def create_dataset(
         self,
@@ -165,16 +195,6 @@ class JobContext( object ):
         else:
             primary_data.init_meta()
 
-        # Associate new dataset with job
-        if self.job:
-            self.job.history.add_dataset( primary_data )
-
-            assoc = app.model.JobToOutputDatasetAssociation( '__new_primary_file_%s|%s__' % ( name, designation ), primary_data )
-            assoc.job = self.job
-            sa_session.add( assoc )
-            sa_session.flush()
-
-        primary_data.state = 'ok'
         return primary_data
 
 
