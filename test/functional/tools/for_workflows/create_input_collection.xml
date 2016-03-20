@@ -8,7 +8,7 @@
 import os
 
 for i in range($collection_size):
-    template = "File number %s"
+    template = "File number %s\n"
     contents = template % i
     with open(str(i), "w") as f:
         f.write(contents)
