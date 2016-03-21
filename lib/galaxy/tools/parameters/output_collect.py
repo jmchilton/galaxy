@@ -153,7 +153,8 @@ class JobContext( object ):
             # Associate new dataset with job
             if job:
                 element_identifier_str = ":".join(element_identifiers)
-                assoc = app.model.JobToOutputDatasetAssociation( '__collection_element_%s|%s__' % ( name, element_identifier_str ), dataset )
+                # Below was changed from '__new_primary_file_%s|%s__' % ( name, designation )
+                assoc = app.model.JobToOutputDatasetAssociation( '__new_primary_file_%s|%s__' % ( name, element_identifier_str ), dataset )
                 assoc.job = self.job
             sa_session.add( assoc )
 
