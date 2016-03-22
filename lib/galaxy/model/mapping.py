@@ -14,6 +14,7 @@ from sqlalchemy.orm import backref, object_session, relation, mapper, class_mapp
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from galaxy import model
+from galaxy.util import ExecutionTimer
 from galaxy.model.orm.engine_factory import build_engine
 from galaxy.model.orm.now import now
 from galaxy.model.custom_types import JSONType, MetadataType, TrimmedString, UUIDType
@@ -2513,6 +2514,7 @@ def db_next_hid( self, n=1 ):
     :rtype:     int
     :returns:   the next history id
     """
+    method_timer = ExecutionTimer()
     conn = object_session( self ).connection()
     table = self.table
     trans = conn.begin()
@@ -2524,6 +2526,8 @@ def db_next_hid( self, n=1 ):
     except:
         trans.rollback()
         raise
+    finally:
+        log.info("history.db_next_hid executed %s" % method_timer)
 
 model.History._next_hid = db_next_hid
 

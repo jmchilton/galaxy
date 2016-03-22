@@ -35,6 +35,7 @@ from galaxy.security import get_permitted_actions
 from galaxy.util import Params, restore_text, send_mail
 from galaxy.util import ready_name_for_url, unique_id
 from galaxy.util import unicodify
+from galaxy.util import ExecutionTimer
 from galaxy.util.multi_byte import is_multi_byte
 from galaxy.util.hash_util import new_secure_hash
 from galaxy.util.bunch import Bunch
@@ -1151,6 +1152,7 @@ class History( object, Dictifiable, UsesAnnotations, HasName ):
 
     def add_dataset( self, dataset, parent_id=None, genome_build=None, set_hid=True, quota=True ):
         if isinstance( dataset, Dataset ):
+            log.info("history.dataset not given an HDA")
             dataset = HistoryDatasetAssociation(dataset=dataset)
             object_session( self ).add( dataset )
             object_session( self ).flush()
@@ -1158,6 +1160,7 @@ class History( object, Dictifiable, UsesAnnotations, HasName ):
             raise TypeError( "You can only add Dataset and HistoryDatasetAssociation instances to a history" +
                              " ( you tried to add %s )." % str( dataset ) )
         if parent_id:
+            log.info("history.add_dataset called with non-None parent_id, this functionality is deprecated")
             for data in self.datasets:
                 if data.id == parent_id:
                     dataset.hid = data.hid
@@ -1169,30 +1172,41 @@ class History( object, Dictifiable, UsesAnnotations, HasName ):
             if set_hid:
                 dataset.hid = self._next_hid()
         if quota and self.user:
+            quota_timer = ExecutionTimer()
             self.user.adjust_total_disk_usage(dataset.quota_amount(self.user))
+            log.info("Updating user quota for history dataset %s" % quota_timer)
         dataset.history = self
         if genome_build not in [None, '?']:
             self.genome_build = genome_build
+        extend_timer = ExecutionTimer()
         self.datasets.append( dataset )
+        log.info("history.datasets.append executed %s" % extend_timer)
         return dataset
 
     def add_datasets( self, sa_session, datasets, parent_id=None, genome_build=None, set_hid=True, quota=True, flush=False ):
         """ Optimized version of add_dataset above that minimizes database
         interactions when adding many datasets to history at once.
         """
+        method_timer = ExecutionTimer()
         all_hdas = all( imap( is_hda, datasets ) )
         optimize = len( datasets) > 1 and parent_id is None and all_hdas and set_hid and not quota
+        log.info("Optimizing addition of datasets to history? %s" % optimize)
         if optimize:
+            add_datasets_optimized_timer = ExecutionTimer()
             self.__add_datasets_optimized( datasets, genome_build=genome_build )
+            log.info("Optimized addition of datasets to history %s" % add_datasets_optimized_timer)
             sa_session.add_all( datasets )
             if flush:
                 sa_session.flush()
         else:
             for dataset in datasets:
+                add_dataset_timer = ExecutionTimer()
                 self.add_dataset( dataset, parent_id=parent_id, genome_build=genome_build, set_hid=set_hid, quota=quota )
+                log.info("history.add_dataset executed %s" % add_dataset_timer)
                 sa_session.add( dataset )
                 if flush:
                     sa_session.flush()
+        log.info("history.add_datasets executed %s" % method_timer)
 
     def __add_datasets_optimized( self, datasets, genome_build=None ):
         """ Optimized version of add_dataset above that minimizes database
