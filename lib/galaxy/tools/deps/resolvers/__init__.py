@@ -1,8 +1,11 @@
+from abc import ABCMeta, abstractmethod, abstractproperty
+import os
+
 from galaxy.util.dictifiable import Dictifiable
 
 from ..requirements import ToolRequirement
 
-from abc import ABCMeta, abstractmethod, abstractproperty
+imort yaml
 
 
 class DependencyResolver(Dictifiable, object):
@@ -38,6 +41,37 @@ class DependencyResolver(Dictifiable, object):
             return dependency_resolver.extra_config.get(global_key)
         else:
             return default
+
+
+class AliasableResolver:
+
+    def _read_aliases(self, dependency_resolver, **kwds):
+        key = "aliases_conf"
+        resolver_type = self.resolver_type
+        default = 'config/dependency_aliases_%s.dist.yml,config/dependency_aliases_%s.dist.yml' % (
+            resolver_type, resolver_type
+        )
+        aliases_conf = self._get_config_option(
+            key=key,
+            dependency_resolver=dependency_resolver,
+            default=default,
+            config_prefix=resolver_type,
+        )
+        alias_confs = aliases_conf.split(",")
+        for alias_conf in alias_confs:
+            if not os.path.exists(alias_conf):
+                alias_conf = os.path.exists(alias_conf)
+            if not os.path.exists(alias_conf):
+                continue
+            self.__read_alias_conf(alias_conf)
+
+    def __read_alias_conf(self, alias_conf):
+        with open(alias_conf, "r") as f:
+            aliases = yaml.read(f)
+        self.__aliases.extend(aliases or [])
+
+    def _find_aliased_dependency(self):
+        pass
 
 
 class ListableDependencyResolver:
