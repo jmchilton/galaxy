@@ -1,6 +1,7 @@
 """
 Classes encapsulating Galaxy tool parameters.
 """
+import logging
 import re
 from json import dumps, loads
 
@@ -10,6 +11,8 @@ from galaxy.util.expressions import ExpressionContext
 from galaxy.util.json import json_fix
 
 REPLACE_ON_TRUTHY = object()
+
+log = logging.getLogger(__name__)
 
 # Some tools use the code tag and access the code base, expecting certain tool parameters to be available here.
 __all__ = [ DataCollectionToolParameter, DataToolParameter, SelectToolParameter ]
@@ -211,3 +214,32 @@ def update_param( prefixed_name, input_values, new_value ):
                 update_param( match.group( 1 ), input_values[ key ], new_value )
             elif prefixed_name == key:
                 input_values[ key ] = new_value
+
+
+def evaluate_format_source(output_def, input_datasets, input_dataset_collections):
+    ext = None
+    format_source = output.format_source
+    if format_source is not None and format_source in input_datasets:
+        try:
+            input_dataset = input_datasets[output.format_source]
+            input_extension = input_dataset.ext
+            ext = input_extension
+        except Exception:
+            pass
+    elif format_source is not None:
+        if re.match(r"^[^\[\]]*\[[^\[\]]*\]$", format_source):
+            collection_name, element_index = format_source[0:-1].split("[")
+            # Treat as json to interpret "forward" vs 0 with type
+            # Make it feel more like Python, single quote better in XML also.
+            element_index = element_index.replace("'", '"')
+            element_index = json.loads(element_index)
+
+            if collection_name in input_dataset_collections:
+                try:
+                    input_collection = input_dataset_collections[collection_name][0][0]
+                    input_dataset = input_collection.collection[element_index].element_object
+                    input_extension = input_dataset.ext
+                    ext = input_extension
+                except Exception as e:
+                    log.debug("Exception while trying to determine format_source: %s", e)
+    return None

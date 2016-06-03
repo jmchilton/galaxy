@@ -14,6 +14,8 @@ from galaxy.tools.parser.output_collection_def import (
     DEFAULT_DATASET_COLLECTOR_DESCRIPTION,
     INPUT_DBKEY_TOKEN,
 )
+from .parameters import evaluate_format_source
+
 
 DATASET_ID_TOKEN = "DATASET_ID"
 
@@ -43,6 +45,7 @@ def collect_dynamic_collections(
         if name not in tool.output_collections:
             continue
         output_collection_def = tool.output_collections[ name ]
+        evaluate_format_source(output_collection_def, inp_data, input_collections)
         if not output_collection_def.dynamic_structure:
             continue
 
@@ -114,6 +117,9 @@ class JobContext( object ):
             designation = fields_match.designation
             visible = fields_match.visible
             ext = fields_match.ext
+            if ext is None:
+
+                pass
             dbkey = fields_match.dbkey
             if dbkey == INPUT_DBKEY_TOKEN:
                 dbkey = self.input_dbkey
