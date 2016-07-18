@@ -63,5 +63,10 @@ class ModelOperationToolAction( DefaultToolAction ):
 
     def _produce_outputs( self, trans, tool, out_data, output_collections, incoming, history, **kwargs ):
         tool.produce_outputs( trans, out_data, output_collections, incoming, history=history )
+        log.info("Produced outputs...")
         trans.sa_session.add_all( out_data.values() )
+        out_collections = output_collections.out_collections.values()
+        out_collection_instances = output_collections.out_collection_instances.values()
+        trans.sa_session.add_all( out_collections )
+        trans.sa_session.add_all( out_collection_instances )
         trans.sa_session.flush()

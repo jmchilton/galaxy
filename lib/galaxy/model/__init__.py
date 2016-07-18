@@ -716,6 +716,16 @@ class Job( object, JobLike, Dictifiable ):
             config_value = default
         return config_value
 
+    def log_str(self):
+        extra = ""
+        if self.tool_id:
+            extra += "tool_id=%s" % self.tool_id
+        if self.id is None:
+            id_str = "unflushed"
+        else:
+            id_str = "id=%d" % self.id
+        return "Job[%s%s]" % (id_str, extra)
+
 
 class Task( object, JobLike ):
     """

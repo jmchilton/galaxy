@@ -208,6 +208,7 @@ class DefaultToolAction( object ):
         submitting the job to the job queue. If history is not specified, use
         trans.history as destination for tool's output datasets.
         """
+        log.info("mapping_over_collection=%s" % mapping_over_collection)
         self._check_access( tool, trans )
         app = trans.app
         if execution_cache is None:
@@ -581,8 +582,10 @@ class DefaultToolAction( object ):
         for name, dataset in out_data.iteritems():
             job.add_output_dataset( name, dataset )
         for name, dataset_collection in out_collections.iteritems():
+            log.info("Adding implicit output dataset collection for %s" % name)
             job.add_implicit_output_dataset_collection( name, dataset_collection )
         for name, dataset_collection_instance in out_collection_instances.iteritems():
+            log.info("Adding output dataset collection for %s" % name)
             job.add_output_dataset_collection( name, dataset_collection_instance )
 
     def _check_input_data_access( self, trans, job, inp_data, current_user_roles ):
@@ -675,6 +678,7 @@ class OutputCollections(object):
         self.out_collection_instances = {}
 
     def create_collection(self, output, name, **element_kwds):
+        log.info("Creating collection for %s" % name)
         input_collections = self.input_collections
         collections_manager = self.trans.app.dataset_collections_service
         collection_type = output.structure.collection_type
@@ -695,6 +699,7 @@ class OutputCollections(object):
                 collection_type=collection_type,
                 **element_kwds
             )
+            log.info("Mapping over a collection, setting implicit output for name %s" % name)
             self.out_collections[ name ] = dc
         else:
             hdca_name = self.tool_action.get_output_name(
@@ -719,6 +724,7 @@ class OutputCollections(object):
             # name here is name of the output element - not name
             # of the hdca.
             self.out_collection_instances[ name ] = hdca
+            log.info("Created a HDCA for %s" % name)
 
 
 def on_text_for_names( input_names ):

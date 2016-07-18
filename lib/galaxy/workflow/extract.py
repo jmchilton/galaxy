@@ -74,6 +74,7 @@ def extract_steps( trans, history=None, job_ids=None, dataset_ids=None, dataset_
     # associated witha job in the current history.
     summary = WorkflowSummary( trans, history )
     jobs = summary.jobs
+    log.info("Jobs are [%s]" % jobs)
     jobs_by_id = dict( ( job.id, job ) for job in jobs.keys() )
     steps = []
     steps_by_job_id = {}
@@ -134,13 +135,16 @@ def extract_steps( trans, history=None, job_ids=None, dataset_ids=None, dataset_
                 continue
             if job in summary.implicit_map_jobs:
                 hid = None
+                log.info("---------")
                 for implicit_pair in jobs[ job ]:
                     query_assoc_name, dataset_collection = implicit_pair
+                    log.info(query_assoc_name)
+                    log.info(dataset_collection.hid)
                     if query_assoc_name == assoc_name:
                         hid = dataset_collection.hid
                 if hid is None:
                     template = "Failed to find matching implicit job - job is %s, jobs are %s, assoc_name is %s."
-                    message = template % ( job.id, jobs, assoc.name )
+                    message = template % ( job.log_str(), map( lambda j: j.log_str(), jobs ), assoc.name )
                     log.warning( message )
                     raise Exception( "Failed to extract job." )
             else:
@@ -161,6 +165,9 @@ class FakeJob( object ):
         self.is_fake = True
         self.id = "fake_%s" % dataset.id
 
+    def log_str( self ):
+        return "DatasetInputPseudoJob[id=%s]" % self.id
+
 
 class DatasetCollectionCreationJob( object ):
 
@@ -174,6 +181,9 @@ class DatasetCollectionCreationJob( object ):
     def set_jobs( self, jobs ):
         assert jobs is not None
         self.from_jobs = jobs
+
+    def log_str( self ):
+        return "CollectionInputPseudoJob[id=%s]" % self.id
 
 
 def summarize( trans, history=None ):
@@ -206,10 +216,12 @@ class WorkflowSummary( object ):
         # mapping during extraction - you get the collection or nothing.
         for content in self.history.active_contents:
             self.__summarize_content( content )
+        log.info(self.jobs)
 
     def __summarize_content( self, content ):
         # Update internal state for history content (either an HDA or
         # an HDCA).
+        log.info("sc for %s" % content.hid)
         if content.history_content_type == "dataset_collection":
             self.__summarize_dataset_collection( content )
         else:
@@ -220,10 +232,13 @@ class WorkflowSummary( object ):
         dataset_collection = content
         hid = content.hid
         self.collection_types[ hid ] = content.collection.collection_type
+        log.info("cja %s" % content.creating_job_associations)
         if content.creating_job_associations:
             for assoc in content.creating_job_associations:
+                log.info("assoc name for %s: %s" % (hid, assoc.name))
                 job = assoc.job
                 if job not in self.jobs or self.jobs[ job ][ 0 ][ 1 ].history_content_type == "dataset":
+                    log.info("Registering job with id %s" % job.id)
                     self.jobs[ job ] = [ ( assoc.name, dataset_collection ) ]
                     if content.implicit_output_name:
                         self.implicit_map_jobs.append( job )
@@ -234,6 +249,7 @@ class WorkflowSummary( object ):
         elif content.implicit_output_name:
             # TODO: Optimize db call
             dataset_instance = dataset_collection.collection.dataset_instances[ 0 ]
+            log.info("Have implicit output name for HDA %s" % dataset_instance.hid)
             if not self.__check_state( dataset_instance ):
                 # Just checking the state of one instance, don't need more but
                 # makes me wonder if even need this check at all?
@@ -248,6 +264,7 @@ class WorkflowSummary( object ):
             for assoc in job_hda.creating_job_associations:
                 job = assoc.job
                 if job not in self.jobs or self.jobs[ job ][ 0 ][ 1 ].history_content_type == "dataset":
+                    log.info("Registering job with id %s" % job.id)
                     self.jobs[ job ] = [ ( assoc.name, dataset_collection ) ]
                     self.implicit_map_jobs.append( job )
                 else:

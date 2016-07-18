@@ -183,6 +183,28 @@ test_data:
         collection_step_state = loads( collection_step[ "tool_state" ] )
         self.assertEquals( collection_step_state[ "collection_type" ], u"list:paired" )
 
+    @skip_without_tool( "__UNZIP_COLLECTION__" )
+    def test_extract_unzip( self ):
+        jobs_summary = self._run_jobs("""
+class: GalaxyWorkflow
+steps:
+  - label: text_input1
+    type: input_collection
+  - label: unzip
+    tool_id: __UNZIP_COLLECTION__
+    state:
+      input:
+        $link: text_input1
+test_data:
+  text_input1:
+    type: "list:paired"
+        """)
+        job1_id = self._job_id_for_tool( jobs_summary.jobs, "__UNZIP_COLLECTION__" )
+        downloaded_workflow = self._extract_and_download_workflow(
+            dataset_collection_ids=[ jobs_summary.inputs["text_input1"]["hid"] ],
+            job_ids=[ job1_id ],
+        )
+
     @skip_without_tool( "collection_split_on_column" )
     def test_extract_workflow_with_output_collections( self ):
         jobs_summary = self._run_jobs("""
