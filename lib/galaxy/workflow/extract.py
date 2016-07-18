@@ -232,18 +232,18 @@ class WorkflowSummary( object ):
         dataset_collection = content
         hid = content.hid
         self.collection_types[ hid ] = content.collection.collection_type
-        log.info("cja %s" % content.creating_job_associations)
-        if content.creating_job_associations:
-            for assoc in content.creating_job_associations:
-                log.info("assoc name for %s: %s" % (hid, assoc.name))
-                job = assoc.job
-                if job not in self.jobs or self.jobs[ job ][ 0 ][ 1 ].history_content_type == "dataset":
-                    log.info("Registering job with id %s" % job.id)
-                    self.jobs[ job ] = [ ( assoc.name, dataset_collection ) ]
-                    if content.implicit_output_name:
-                        self.implicit_map_jobs.append( job )
-                else:
-                    self.jobs[ job ].append( ( assoc.name, dataset_collection ) )
+        cja = content.creating_job_associations
+        if cja:
+            # Use the first job to represent all mapped jobs.
+            representive_job_assoc = content.creating_job_associations[0]
+            job = representive_job_assoc.job
+            if job not in self.jobs or self.jobs[ job ][ 0 ][ 1 ].history_content_type == "dataset":
+                log.info("Registering job with id %s" % job.id)
+                self.jobs[ job ] = [ ( representive_job_assoc.name, dataset_collection ) ]
+                if content.implicit_output_name:
+                    self.implicit_map_jobs.append( job )
+            else:
+                self.jobs[ job ].append( ( representive_job_assoc.name, dataset_collection ) )
         # This whole elif condition may no longer be needed do to additional
         # tracking with creating_job_associations. Will delete at some point.
         elif content.implicit_output_name:
