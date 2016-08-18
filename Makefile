@@ -32,6 +32,9 @@ open-project: ## open project on github
 lint: ## check style using tox and flake8 for Python 2 and Python 3
 	$(IN_VENV) tox -e py27-lint && tox -e py34-lint
 
+lint-config:
+	$(IN_VENV) pykwalify -d config/galaxy.yml -s lib/galaxy/config_schema.yml
+
 release-ensure-upstream: ## Ensure upstream branch for release commands setup
 ifeq (shell git remote -v | grep $(RELEASE_UPSTREAM), )
 	git remote add $(RELEASE_UPSTREAM) git@github.com:galaxyproject/galaxy.git
