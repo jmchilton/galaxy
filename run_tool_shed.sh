@@ -1,23 +1,12 @@
 #!/bin/sh
 
-cd `dirname $0`
+cd "$(dirname "$0")"
 
-: ${GALAXY_VIRTUAL_ENV:=.venv}
-
-if [ -d "$GALAXY_VIRTUAL_ENV" ];
-then
-    . "$GALAXY_VIRTUAL_ENV/bin/activate"
-fi
+. ./scripts/common_startup_functions.sh
 
 ./scripts/common_startup.sh
 
-: ${GALAXY_VIRTUAL_ENV:=.venv}
-
-if [ -d "$GALAXY_VIRTUAL_ENV" ];
-then
-    . "$GALAXY_VIRTUAL_ENV/bin/activate"
-fi
-
+setup_python
 
 tool_shed=`./scripts/tool_shed/bootstrap_tool_shed/parse_run_sh_args.sh $@`
 args=$@
