@@ -4,13 +4,14 @@ found_app_main = False
 current_section_desc = []
 current_section_options = []
 
+
 def dump_option(option):
     def print_line(line):
         print (" " * 6) + line
     if "=" not in option:
         print option
     key, default = [s.strip() for s in option.split("=", 1)]
-    key = key[1:] # strip #
+    key = key[1:]  # strip #
     if default.isdigit():
         type = "int"
     else:
@@ -30,7 +31,7 @@ for line in open("config/galaxy.ini.sample", "r"):
     if is_app_main:
         found_app_main = True
         continue
-    
+
     line = line.strip()
     if not line.startswith("#"):
         for section_option in current_section_options:
