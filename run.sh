@@ -114,6 +114,8 @@ if [ -z "$GALAXY_CONFIG_FILE" ]; then
         GALAXY_CONFIG_FILE=universe_wsgi.ini
     elif [ -f config/galaxy.ini ]; then
         GALAXY_CONFIG_FILE=config/galaxy.ini
+    if [ -f config/galaxy.yml ]; then
+        GALAXY_CONFIG_FILE=config/galaxy.yml
     else
         GALAXY_CONFIG_FILE=config/galaxy.ini.sample
     fi
@@ -126,7 +128,7 @@ if [ -n "$GALAXY_RUN_ALL" ]; then
     exit 1
 fi
 
-# Look for uws
+# Look for uwsgi
 if [ -z "$skip_venv" -a -x $GALAXY_VIRTUAL_ENV/bin/uwsgi ]; then
     UWSGI=$GALAXY_VIRTUAL_ENV/bin/uwsgi
 elif command -v uwsgi >/dev/null 2>&1; then
@@ -136,4 +138,4 @@ else
     exit 1
 fi
 
-$UWSGI --ini-paste $GALAXY_CONFIG_FILE $uwsgi_args 
+$UWSGI --yaml $GALAXY_CONFIG_FILE $uwsgi_args 

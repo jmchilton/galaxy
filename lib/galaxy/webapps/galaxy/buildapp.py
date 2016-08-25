@@ -39,12 +39,13 @@ def app_factory( global_conf, **kwargs ):
     return paste_app_factory( global_conf, **kwargs )
 
 
-def paste_app_factory( global_conf, **kwargs ):
+def paste_app_factory( global_conf, load_app_kwds={}, **kwargs ):
     """
     Return a wsgi application serving the root object
     """
     kwargs = load_app_properties(
-        kwds=kwargs
+        kwds=kwargs,
+        **load_app_kwds
     )
     # Create the Galaxy application unless passed in
     if 'app' in kwargs:
@@ -815,3 +816,14 @@ def wrap_in_static( app, global_conf, plugin_frameworks=None, **local_conf ):
 
     # URL mapper becomes the root webapp
     return urlmap
+
+try:
+    import uwsgi
+
+    config_file = uwsgi.opt.get("yaml")
+    uwsgi_app = app_factory(uwsgi.opt, load_app_kwds={
+        "ini_file": config_file,
+        "ini_section": "galaxy",
+    })
+except ImportError:
+    pass
