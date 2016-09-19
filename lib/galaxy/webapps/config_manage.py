@@ -33,6 +33,7 @@ APP_DESCRIPTION = """Application to target for operation (i.e. galaxy, tool_shed
 DRY_RUN_DESCRIPTION = """If this action modifies files, just print what would be the result and continue."""
 UNKNOWN_OPTION_MESSAGE = "Option [%s] not found in schema - either it is invalid or the Galaxy team hasn't documented it. If invalid, you should manually remove it. If the option is valid but undocumented, please file an issue with the Galaxy team."
 USING_SAMPLE_MESSAGE = "Path [%s] not a file, using sample."
+NO_APP_MAIN_MESSAGE = "No app:main section found, using application defaults throughout."
 YAML_COMMENT_WRAPPER = TextWrapper(initial_indent="# ", subsequent_indent="# ")
 RST_DESCRIPTION_WRAPPER = TextWrapper(initial_indent="    ", subsequent_indent="    ")
 UWSGI_SCHEMA_PATH = "lib/galaxy/webapps/uwsgi_schema.yml"
@@ -78,6 +79,49 @@ UWSGI_OPTIONS = OrderedDict([
         'type': 'str',
     })
 ])
+
+DROP_OPTION_VALUE = object()
+
+
+class _OptionAction(object):
+
+    def converted(self):
+        pass
+
+    def lint(self):
+        pass
+
+
+class _DeprecatedAndDroppedAction(_OptionAction):
+
+    def converted(self, args, app_desc, key, value):
+        print("Option [%s] has been deprecated and dropped. It is not included in converted configuration." % key)
+        return DROP_OPTION_VALUE
+
+    def lint(self, args, app_desc, key, value):
+        print("Option [%s] has been deprecated. Option should be dropped without replacement." % key)
+
+
+class _PasteAppFactoryAction(_OptionAction):
+
+    def converted(self, args, app_desc, key, value):
+        if value not in app_desc.expected_app_factories:
+            raise Exception("Ending convert process - unknown paste factory encountered [%s]" % value)
+        return DROP_OPTION_VALUE
+
+    def lint(self, args, app_desc, key, value):
+        if value not in app_desc.expected_app_factories:
+            print("Problem - unknown paste app factory encountered [%s]" % value)
+
+
+OPTION_ACTIONS = {
+    'use_beaker_session': _DeprecatedAndDroppedAction(),
+    'session_type': _DeprecatedAndDroppedAction(),
+    'session_data_dir': _DeprecatedAndDroppedAction(),
+    'session_key': _DeprecatedAndDroppedAction(),
+    'session_secret': _DeprecatedAndDroppedAction(),
+    'paste.app_factory': _PasteAppFactoryAction()
+}
 
 
 def _app_name(self):
@@ -269,14 +313,61 @@ def _build_uwsgi_schema(args, app_desc):
     _write_to_file(args, contents, path)
 
 
-def _validate(args, app_desc):
+def _find_config(args, app_desc):
     path = os.path.join(args.galaxy_root, app_desc.destination)
     if not os.path.exists(path):
+        path = None
+
+        for possible_ini_config_rel in app_desc.config_paths:
+            possible_ini_config = os.path.join(args.galaxy_root, possible_ini_config_rel)
+            if os.path.exists(possible_ini_config):
+                path = possible_ini_config
+
+    if path is None:
         _warn(USING_SAMPLE_MESSAGE % path)
         path = os.path.join(args.galaxy_root, app_desc.sample_destination)
+
+    return path
+
+
+def _find_app_options(app_desc, path):
+    """Load app (as opposed to server) options from specified path.
+
+    Supplied ``path`` may be either YAML or ini file.
+    """
+    if _is_ini(path):
+        p = nice_config_parser(path)
+        app_items = _find_app_options_from_config_parser(p)
+    else:
+        raw_config = _order_load_path(path)
+        app_items = raw_config.get(app_desc.app_name, None) or {}
+    return app_items
+
+
+def _find_app_options_from_config_parser(p):
+    if not p.has_section("app:main"):
+        _warn(NO_APP_MAIN_MESSAGE)
+        app_items = OrderedDict()
+    else:
+        app_items = OrderedDict(p.items("app:main"))
+
+    return app_items
+
+
+def _lint(args, app_desc):
+    path = _find_config(args, app_desc)
+    app_items = _find_app_options(app_desc, path)
+    for key, value in app_items.items():
+        option_action = OPTION_ACTIONS.get(key)
+        if option_action is not None:
+            option_action.lint()
+
+
+def _validate(args, app_desc):
+    path = _find_config(args, app_desc)
     with open(path, "r") as f:
         # Allow empty mapping (not allowed by pykawlify)
-        raw_config = _ordered_load(f)
+        raw_config = _order_load_path(f)
         if raw_config.get(app_desc.app_name, None) is None:
             raw_config[app_desc.app_name] = {}
             config_p = tempfile.NamedTemporaryFile(delete=False, suffix=".yml")
@@ -298,21 +389,16 @@ def _validate(args, app_desc):
 
 
 def _run_conversion(args, app_desc):
-    ini_config = None
-    for possible_ini_config_rel in app_desc.config_paths:
-        possible_ini_config = os.path.join(args.galaxy_root, possible_ini_config_rel)
-        if os.path.exists(possible_ini_config):
-            ini_config = possible_ini_config
-
-    if not ini_config:
+    ini_config = _find_config(args, app_desc)
+    if ini_config and not _is_ini(ini_config):
+        _warn("Cannot convert YAML file %s, this option is only for ini config files." % ini_config)
+        sys.exit(1)
+    elif not ini_config:
         _warn("Failed to find a config to convert - exiting without changes.")
         sys.exit(1)
 
     p = nice_config_parser(ini_config)
-
     server_section = None
-    app_main_found = False
-
     for section in p.sections():
         if section.startswith("server:"):
             if server_section:
@@ -320,8 +406,6 @@ def _run_conversion(args, app_desc):
                 _warn(message % (server_section, section))
             else:
                 server_section = section
-        elif section == "app:main":
-            app_main_found = True
 
     if not server_section:
         _warn("No server section found, using default uwsgi server definition.")
@@ -329,19 +413,20 @@ def _run_conversion(args, app_desc):
     else:
         server_config = OrderedDict(p.items(server_section))
 
+    app_items = _find_app_options_from_config_parser(p)
     uwsgi_dict = _server_paste_to_uwsgi(app_desc, server_config)
-
-    if not app_main_found:
-        _warn("No app:main section found, using application defaults throughout.")
-        app_items = OrderedDict()
-    else:
-        app_items = OrderedDict(p.items("app:main"))
 
     app_dict = OrderedDict({})
     schema = app_desc.schema
     for key, value in app_items.items():
-        if key == "paste.app_factory":
-            assert value in app_desc.expected_app_factories
+        if key in ["__file__", "here"]:
+            continue
+
+        if key in OPTION_ACTIONS:
+            option_action = OPTION_ACTIONS.get(key)
+            value = option_action.converted(args, app_desc, key, value)
+
+        if value is DROP_OPTION_VALUE:
             continue
 
         option = schema.get_app_option(key)
@@ -356,6 +441,10 @@ def _run_conversion(args, app_desc):
     _write_section(args, f, app_desc.app_name, app_dict)
     destination = os.path.join(args.galaxy_root, app_desc.destination)
     _replace_file(args, f, app_desc, ini_config, destination)
+
+
+def _is_ini(path):
+    return path.endswith(".ini") or path.endswith(".ini.sample")
 
 
 def _replace_file(args, f, app_desc, from_path, to_path):
@@ -406,6 +495,14 @@ def _write_to_file(args, f, path):
         safe_makedirs(os.path.dirname(path))
         with open(path, "w") as to_f:
             to_f.write(contents)
+
+
+def _order_load_path(path):
+    """Load (with ``_ordered_load``) on specified path (a YAML file)."""
+    with open(path, "r") as f:
+        # Allow empty mapping (not allowed by pykawlify)
+        raw_config = _ordered_load(f)
+        return raw_config
 
 
 def _write_sample_section(args, f, section_header, schema, as_comment=True):
@@ -461,7 +558,7 @@ def _server_paste_to_uwsgi(app_desc, server_config):
 
     uwsgi_dict["http"] = "%s:%s" % (host, port)
     # default changing from 10 to 8
-    uwsgi_dict["threads"] = server_config.get("threadpool_workers", "8")
+    uwsgi_dict["threads"] = int(server_config.get("threadpool_workers", 8))
     # required for static...
     uwsgi_dict["http-raw-body"] = True
     uwsgi_dict["offload-threads"] = 8
@@ -513,6 +610,7 @@ ACTIONS = {
     "convert": _run_conversion,
     "build_sample_yaml": _build_sample_yaml,
     "validate": _validate,
+    "lint": _lint,
     "build_uwsgi_yaml": _build_uwsgi_schema,
     "build_rst": _to_rst,
 }

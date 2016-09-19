@@ -16,6 +16,11 @@ def test_reports_conversion_1607_sample():
         config_dir.assert_not_exists("config/reports.ini")
         config_dir.assert_is_yaml("config/reports.yml")
         config_dir.assert_moved("config/reports.ini", "config/reports.ini.backup")
+        with open("config/reports.yml") as f:
+            config = yaml.load(f)
+        assert "reports" in config
+        reports_config = config["reports"] or {}
+        assert "use_beaker_session" not in reports_config
 
 
 def test_reports_build_sample():
