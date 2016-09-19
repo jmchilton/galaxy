@@ -30,10 +30,6 @@ def load_app_properties(
             if config_section is None:
                 config_section = "app:main"
             parser = nice_config_parser(config_file)
-            parser.optionxform = str  # Don't lower-case keys
-            with open(config_file) as f:
-                parser.read_file(f)
-
             properties.update( dict( parser.items( config_section ) ) )
         else:
             if config_section is None:
@@ -62,6 +58,9 @@ def nice_config_parser(path):
         '__file__': os.path.abspath(path)
     }
     parser = NicerConfigParser(path, defaults=defaults)
+    parser.optionxform = str  # Don't lower-case keys
+    with open(path) as f:
+        parser.read_file(f)
     return parser
 
 
