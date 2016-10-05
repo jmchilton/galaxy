@@ -148,15 +148,6 @@ def directory_hash_id( id ):
         return list(iter(s[0:3]))
 
 
-def get_charset_from_http_headers( headers, default=None ):
-    rval = headers.get('content-type', None )
-    if rval and 'charset=' in rval:
-        rval = rval.split('charset=')[-1].split(';')[0].strip()
-        if rval:
-            return rval
-    return default
-
-
 def synchronized(func):
     """This wrapper will serialize access to 'func' to a single thread. Use it as a decorator."""
     def caller(*params, **kparams):
