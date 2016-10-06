@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-Utility functions used systemwide.
+"""Generic utility functions used systemwide.
 
+If utility functions apply to just one component of Galaxy, consider placing
+that utility logic closer to the relevant module.
 """
 from __future__ import absolute_import
 
@@ -71,8 +72,10 @@ FILENAME_VALID_CHARS = '.,^_-()[]0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJK
 
 
 def remove_protocol_from_url( url ):
-    """ Supplied URL may be null, if not ensure http:// or https://
-    etc... is stripped off.
+    """Strip URL prefix off of supplied url.
+
+    Supplied URL may be null, if not ensure prefix (e.g. ``http://``,
+    ``https://``, etc...) is stripped off.
     """
     if url is None:
         return url
@@ -86,9 +89,12 @@ def remove_protocol_from_url( url ):
 
 
 def is_binary( value, binary_chars=None ):
-    """
-    File is binary if it contains a null-byte by default (e.g. behavior of grep, etc.).
-    This may fail for utf-16 files, but so would ASCII encoding.
+    """Predicate to determine if file is binary.
+
+    A file is considered binary if it contains a null-byte by default (e.g.
+    behavior of grep, etc.). This may fail for utf-16 files, but so would
+    ASCII encoding.
+
     >>> is_binary( string.printable )
     False
     >>> is_binary( '\\xce\\x94' )
@@ -105,8 +111,8 @@ def is_binary( value, binary_chars=None ):
 
 
 def is_uuid( value ):
-    """
-    This method returns True if value is a UUID, otherwise False.
+    """This method returns True if value is a UUID, otherwise False.
+
     >>> is_uuid( "123e4567-e89b-12d3-a456-426655440000" )
     True
     >>> is_uuid( "0x3242340298902834" )
@@ -120,7 +126,11 @@ def is_uuid( value ):
 
 
 def directory_hash_id( id ):
-    """
+    """Build a consistent hash list of increasing depth for integer IDs.
+
+    This is used to determine a file structure for files with corresponding
+    integer IDs. The increasing depth helps balance the number of files in
+    any given directory and the maximum depth of any given file.
 
     >>> directory_hash_id( 100 )
     ['000']
@@ -158,7 +168,7 @@ def get_charset_from_http_headers( headers, default=None ):
 
 
 def synchronized(func):
-    """This wrapper will serialize access to 'func' to a single thread. Use it as a decorator."""
+    """This decorator will serialize access to ``func`` to a single thread."""
     def caller(*params, **kparams):
         _lock.acquire(True)  # Wait
         try:
