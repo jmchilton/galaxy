@@ -37,14 +37,8 @@ def build_dependency_manager( config ):
         dependency_manager_kwds = {
             'default_base_path': config.tool_dependency_dir,
             'conf_file': config.dependency_resolvers_config_file,
+            'app_config': config,
         }
-        for key, default_value in EXTRA_CONFIG_KWDS.items():
-            value = getattr(config, key, CONFIG_VAL_NOT_FOUND)
-            if value is CONFIG_VAL_NOT_FOUND and hasattr(config, "config_dict"):
-                value = config.config_dict.get(key, CONFIG_VAL_NOT_FOUND)
-            if value is CONFIG_VAL_NOT_FOUND:
-                value = default_value
-            dependency_manager_kwds[key] = value
         dependency_manager = DependencyManager( **dependency_manager_kwds )
     else:
         dependency_manager = NullDependencyManager()
@@ -76,7 +70,7 @@ class DependencyManager( object ):
     and should each contain a file 'env.sh' which can be sourced to make the
     dependency available in the current shell environment.
     """
-    def __init__( self, default_base_path, conf_file=None, **extra_config ):
+    def __init__( self, default_base_path, conf_file=None, app_config ):
         """
         Create a new dependency manager looking for packages under the paths listed
         in `base_paths`.  The default base path is app.config.tool_dependency_dir.
@@ -85,10 +79,25 @@ class DependencyManager( object ):
             log.warning( "Path '%s' does not exist, ignoring", default_base_path )
         if not os.path.isdir( default_base_path ):
             log.warning( "Path '%s' is not directory, ignoring", default_base_path )
-        self.extra_config = extra_config
+        self.__app_config = app_config
         self.default_base_path = os.path.abspath( default_base_path )
         self.resolver_classes = self.__resolvers_dict()
         self.dependency_resolvers = self.__build_dependency_resolvers( conf_file )
+
+    def get_resolver_option(self, resolver, key, explicit_resolver_options={}, default=None):
+        """Look in resolver-specific settings for option and then fallback to global settings.
+        """
+        config_prefix = resolver.resolver_type
+        global_key = "%s_%s" % (config_prefix, key)
+        value = explicit_resolver_options.get(key, CONFIG_VAL_NOT_FOUND)
+        if value is CONFIG_VAL_NOT_FOUND:
+            value = getattr(self.__app_config, key, CONFIG_VAL_NOT_FOUND)
+        if value is CONFIG_VAL_NOT_FOUND and hasattr(config, "config_dict"):
+            value = config.config_dict.get(key, CONFIG_VAL_NOT_FOUND)
+        if value is CONFIG_VAL_NOT_FOUND:
+            value = default
+
+        return value
 
     def dependency_shell_commands( self, requirements, **kwds ):
         requirement_to_dependency = self.requirements_to_dependencies(requirements, **kwds)
