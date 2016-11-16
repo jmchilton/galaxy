@@ -294,6 +294,7 @@ class WorkflowContentsManager(UsesAnnotations):
 
         for step_dict in self.__walk_step_dicts( data ):
             module, step = self.__track_module_from_dict( trans, steps, steps_by_external_id, step_dict )
+            step.workflow = workflow
             is_tool = is_tool_module_type( module.type )
             if is_tool and module.tool is None:
                 # A required tool is not available in the local Galaxy instance.
