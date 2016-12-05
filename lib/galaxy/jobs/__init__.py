@@ -824,6 +824,27 @@ class JobWrapper( object ):
     def requires_containerization(self):
         return util.asbool(self.get_destination_configuration("require_container", "False"))
 
+    def get_resource_parameters( self, job=None ):
+        # Find the dymically inserted resource parameters and give them
+        # to rule.
+
+        if job is None:
+            job = self.get_job()
+
+        app = self.app
+        param_values = job.get_param_values( app, ignore_errors=True )
+        log.info("all param values are [%s]" % param_values)
+        resource_params = {}
+        try:
+            resource_params_raw = param_values[ "__job_resource" ]
+            if resource_params_raw[ "__job_resource__select" ].lower() in [ "1", "yes", "true" ]:
+                for key, value in resource_params_raw.iteritems():
+                    resource_params[ key ] = value
+        except KeyError:
+            pass
+
+        return resource_params
+
     def can_split( self ):
         # Should the job handler split this job up?
         return self.app.config.use_tasked_jobs and self.tool.parallelism
