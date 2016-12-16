@@ -203,7 +203,8 @@ paste.app_factory = galaxy.web.buildapp:app_factory
 # Pass debug flag to conda commands.
 #conda_debug = False
 # conda channels to enable by default (http://conda.pydata.org/docs/custom-channels.html)
-#conda_ensure_channels = conda-forge,r,bioconda,iuc
+# the recommended channel order is the one from BioConda (https://github.com/bioconda/bioconda-recipes/blob/master/config.yml#L8)
+#conda_ensure_channels = iuc,bioconda,r,defaults,conda-forge
 # Set to True to instruct Galaxy to look for and install missing tool
 # dependencies before each job runs.
 #conda_auto_install = False
@@ -216,6 +217,18 @@ paste.app_factory = galaxy.web.buildapp:app_factory
 # This will prevent problems with some specific packages (perl, R), at the cost
 # of extra disk space usage and extra time spent copying packages.
 #conda_copy_dependencies = False
+
+# Certain dependency resolvers (namely Conda) take a considerable amount of
+# time to build an isolated job environment in the job_working_directory if the
+# job working directory is on a network share.  Set the following option to True
+# to cache the dependencies in a folder. This option is beta and should only be
+# used if you experience long waiting times before a job is actually submitted
+# to your cluster.
+#use_cached_dependency_manager = False
+
+# By default the tool_dependency_cache_dir is the _cache directory
+# of the tool dependency directory
+#tool_dependency_cache_dir = <tool_dependency_dir>/_cache
 
 # File containing the Galaxy Tool Sheds that should be made available to
 # install from in the admin interface (.sample used if default does not exist).
@@ -772,8 +785,8 @@ nglims_config_file = tool-data/nglims.yaml
 # notebooks in Galaxy histories.  This process may allow users to execute
 # arbitrary code or serve arbitrary HTML.  If enabled, IPython must be
 # available and on Galaxy's PATH, to do this run
-# `pip install jinja2 pygments ipython` in Galaxy's virtualenv.
-#trust_ipython_notebook_conversion = False
+# `pip install jinja2 pygments jupyter` in Galaxy's virtualenv.
+#trust_jupyter_notebook_conversion = False
 
 # Debug enables access to various config options useful for development and
 # debugging: use_lint, use_profile, use_printdebug and use_interactive.  It
@@ -991,6 +1004,9 @@ use_interactive = True
 
 # Enable new run workflow form
 #run_workflow_toolform_upgrade = True
+
+# Enable new preferences which showcases new UI for the user preferences
+#enable_new_user_preferences = False
 
 # Enable Galaxy to communicate directly with a sequencer
 #enable_sequencer_communication = False
