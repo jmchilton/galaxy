@@ -1,6 +1,9 @@
 import json
 import time
+
 from operator import itemgetter
+
+import requests
 
 from pkg_resources import resource_string
 from six import StringIO
@@ -470,6 +473,54 @@ def wait_on_state( state_func, assert_ok=False, timeout=DEFAULT_TIMEOUT ):
         else:
             return None
     return wait_on( get_state, desc="state", timeout=timeout)
+
+
+class GiPostGetMixin:
+    """Mixin for adapting Galaxy testing populators helpers to bioblend."""
+
+    def _get(self, route):
+        return self._gi.make_get_request(self.__url(route))
+
+    def _post(self, route, data={}):
+        data = data.copy()
+        data['key'] = self._gi.key
+        return requests.post(self.__url(route), data=data)
+
+    def __url(self, route):
+        return self._gi.url + "/" + route
+
+
+class GiDatasetPopulator(BaseDatasetPopulator, GiPostGetMixin):
+
+    """Implementation of BaseDatasetPopulator backed by bioblend."""
+
+    def __init__(self, gi):
+        """Construct a dataset populator from a bioblend GalaxyInstance."""
+        self._gi = gi
+
+
+class GiDatasetCollectionPopulator(BaseDatasetCollectionPopulator, GiPostGetMixin):
+
+    """Implementation of BaseDatasetCollectionPopulator backed by bioblend."""
+
+    def __init__(self, gi):
+        """Construct a dataset collection populator from a bioblend GalaxyInstance."""
+        self._gi = gi
+        self.dataset_populator = GiDatasetPopulator(gi)
+
+    def _create_collection(self, payload):
+        create_response = self._post( "dataset_collections", data=payload )
+        return create_response
+
+
+class GiWorkflowPopulator(BaseWorkflowPopulator, GiPostGetMixin):
+
+    """Implementation of BaseWorkflowPopulator backed by bioblend."""
+
+    def __init__(self, gi):
+        """Construct a workflow populator from a bioblend GalaxyInstance."""
+        self._gi = gi
+        self.dataset_populator = GiDatasetPopulator(gi)
 
 
 def wait_on( function, desc, timeout=DEFAULT_TIMEOUT ):
