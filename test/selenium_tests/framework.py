@@ -75,6 +75,7 @@ def selenium_test(f):
 class SeleniumTestCase(FunctionalTestCase, NavigatesGalaxy):
 
     framework_tool_and_types = True
+    ensure_registered = False
 
     def setUp(self):
         super(SeleniumTestCase, self).setUp()
@@ -86,6 +87,9 @@ class SeleniumTestCase(FunctionalTestCase, NavigatesGalaxy):
             self.target_url_from_selenium = self.url
         self.display = driver_factory.virtual_display_if_enabled(headless_selenium())
         self.driver = get_driver()
+
+        if self.ensure_registered:
+            self.register()
 
     def tearDown(self):
         exception = None
