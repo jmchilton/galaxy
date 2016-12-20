@@ -7,6 +7,8 @@ import os
 
 from functools import wraps
 
+import requests
+
 from galaxy_selenium import (
     driver_factory,
 )
@@ -19,8 +21,9 @@ except ImportError:
 
 from six.moves.urllib.parse import urljoin
 
-from base.twilltestcase import FunctionalTestCase
+from base import populators
 from base.driver_util import classproperty, DEFAULT_WEB_HOST, get_ip_address
+from base.twilltestcase import FunctionalTestCase
 
 from galaxy.util import asbool
 
@@ -75,6 +78,7 @@ def selenium_test(f):
 class SeleniumTestCase(FunctionalTestCase, NavigatesGalaxy):
 
     framework_tool_and_types = True
+    ensure_registered = False
 
     def setUp(self):
         super(SeleniumTestCase, self).setUp()
@@ -86,6 +90,9 @@ class SeleniumTestCase(FunctionalTestCase, NavigatesGalaxy):
             self.target_url_from_selenium = self.url
         self.display = driver_factory.virtual_display_if_enabled(headless_selenium())
         self.driver = get_driver()
+
+        if self.ensure_registered:
+            self.register()
 
     def tearDown(self):
         exception = None
@@ -148,6 +155,10 @@ class SeleniumTestCase(FunctionalTestCase, NavigatesGalaxy):
         assert empty_msg_element.is_displayed()
         assert empty_msg_str in empty_msg_element.text
 
+    @property
+    def workflow_populator(self):
+        return SeleniumSessionWorkflowPopulator(self)
+
 
 def default_web_host_for_selenium_tests():
     if asbool(GALAXY_TEST_SELENIUM_REMOTE):
@@ -190,3 +201,51 @@ def get_remote_driver():
         port=GALAXY_TEST_SELENIUM_REMOTE_PORT,
         browser=GALAXY_TEST_SELENIUM_BROWSER,
     )
+
+
+class SeleniumSessionGetPostMixin:
+    """Mixin for adapting Galaxy testing populators helpers to Selenium session backed bioblend."""
+
+    def _get(self, route):
+        return self.selenium_test_case.api_get(route)
+
+    def _post(self, route, data={}):
+        full_url = self.selenium_test_case.build_url("api/" + route, for_selenium=False)
+        response = requests.post(full_url, data=data, cookies=self.selenium_test_case.selenium_to_requests_cookies())
+        return response
+
+    def __url(self, route):
+        return self._gi.url + "/" + route
+
+
+class SeleniumSessionDatasetPopulator(populators.BaseDatasetPopulator, SeleniumSessionGetPostMixin):
+
+    """Implementation of BaseDatasetPopulator backed by bioblend."""
+
+    def __init__(self, selenium_test_case):
+        """Construct a dataset populator from a bioblend GalaxyInstance."""
+        self.selenium_test_case = selenium_test_case
+
+
+class SeleniumSessionDatasetCollectionPopulator(populators.BaseDatasetCollectionPopulator, SeleniumSessionGetPostMixin):
+
+    """Implementation of BaseDatasetCollectionPopulator backed by bioblend."""
+
+    def __init__(self, selenium_test_case):
+        """Construct a dataset collection populator from a bioblend GalaxyInstance."""
+        self.selenium_test_case = selenium_test_case
+        self.dataset_populator = SeleniumSessionDatasetPopulator(selenium_test_case)
+
+    def _create_collection(self, payload):
+        create_response = self._post( "dataset_collections", data=payload )
+        return create_response
+
+
+class SeleniumSessionWorkflowPopulator(populators.BaseWorkflowPopulator, SeleniumSessionGetPostMixin):
+
+    """Implementation of BaseWorkflowPopulator backed by bioblend."""
+
+    def __init__(self, selenium_test_case):
+        """Construct a workflow populator from a bioblend GalaxyInstance."""
+        self.selenium_test_case = selenium_test_case
+        self.dataset_populator = SeleniumSessionDatasetPopulator(selenium_test_case)

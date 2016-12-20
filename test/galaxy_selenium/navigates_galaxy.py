@@ -200,6 +200,33 @@ class NavigatesGalaxy(HasDriver):
         close_button = self.wait_for_selector("button#btn-close")
         close_button.click()
 
+    def workflow_index_open(self):
+        self.home()
+        self.click_masthead_workflow()
+
+    def workflow_index_table_elements(self):
+        self.wait_for_selector_visible(".manage-table tbody")
+        table_elements = self.driver.find_elements_by_css_selector(".manage-table tbody > tr")
+        # drop header
+        return table_elements[1:]
+
+    def workflow_index_click_option(self, option_title, workflow_index=0):
+        table_elements = self.workflow_index_table_elements()
+        workflow_row = table_elements[workflow_index]
+        workflow_button = workflow_row.find_element_by_css_selector(".menubutton")
+        workflow_button.click()
+        menu_element = self.wait_for_selector_visible(".popmenu-wrapper .dropdown-menu")
+        menu_options = menu_element.find_elements_by_css_selector("li a")
+        found_option = False
+        for menu_option in menu_options:
+            if option_title in menu_option.text:
+                menu_option.click()
+                found_option = True
+                break
+
+        if not found_option:
+            raise AssertionError("Failed to find workflow action option with title [%s]" % option_title)
+
     def tool_open(self, tool_id):
         link_element = self.wait_for_selector('a[href$="tool_runner?tool_id=%s"]' % tool_id)
         link_element.click()
