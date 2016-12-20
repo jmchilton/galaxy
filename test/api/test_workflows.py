@@ -9,11 +9,15 @@ import yaml
 from requests import delete, put
 
 from base import api
+from base.populators import (
+    DatasetCollectionPopulator,
+    DatasetPopulator,
+    skip_without_tool,
+    WorkflowPopulator
+)
 from galaxy.exceptions import error_codes
 from galaxy.tools.verify.test_data import TestDataResolver
 
-from .helpers import (DatasetCollectionPopulator, DatasetPopulator,
-    skip_without_tool, WorkflowPopulator)
 from .workflows_format_2 import (
     convert_and_import_workflow,
     ImporterGalaxyInterface,
