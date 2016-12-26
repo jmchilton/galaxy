@@ -18,7 +18,7 @@ from base.populators import (
 from galaxy.exceptions import error_codes
 from galaxy.tools.verify.test_data import TestDataResolver
 
-from .workflows_format_2 import (
+from base.workflows_format_2 import (
     convert_and_import_workflow,
     ImporterGalaxyInterface,
 )
