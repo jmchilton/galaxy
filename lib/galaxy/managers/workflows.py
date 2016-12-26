@@ -392,7 +392,7 @@ class WorkflowContentsManager(UsesAnnotations):
             else:
                 inputs = step.module.get_runtime_inputs( connections=step.output_connections )
                 step_model = {
-                    'name'   : step.module.name,
+                    'name'   : step.module.label or step.module.name,
                     'inputs' : [ input.to_dict( trans ) for input in inputs.itervalues() ]
                 }
             step_model[ 'step_type' ] = step.type

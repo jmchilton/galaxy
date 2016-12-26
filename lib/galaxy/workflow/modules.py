@@ -540,8 +540,14 @@ class InputDataModule( InputModule ):
         return ', '.join( filter_set )
 
     def get_runtime_inputs( self, connections=None ):
-        label = self.state.get( "name", "Input Dataset" )
-        return dict( input=DataToolParameter( None, Element( "param", name="input", label=label, multiple=False, type="data", format=self.get_filter_set( connections ) ), self.trans ) )
+        if not self.label:
+            form_input_label = self.state.get( "name", "Input Dataset" )
+            form_input_name = "input"
+        else:
+            form_input_label = self.label
+            form_input_name = self.label
+
+        return dict( input=DataToolParameter( None, Element( "param", name=form_input_name, label=form_input_label, multiple=False, type="data", format=self.get_filter_set( connections ) ), self.trans ) )
 
 
 class InputDataCollectionModule( InputModule ):
