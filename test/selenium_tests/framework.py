@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 import datetime
+import json
 import os
 
 from functools import wraps
@@ -24,6 +25,10 @@ from six.moves.urllib.parse import urljoin
 from base import populators
 from base.driver_util import classproperty, DEFAULT_WEB_HOST, get_ip_address
 from base.twilltestcase import FunctionalTestCase
+from base.workflows_format_2 import (
+    ImporterGalaxyInterface,
+    convert_and_import_workflow,
+)
 
 from galaxy.util import asbool
 
@@ -241,7 +246,7 @@ class SeleniumSessionDatasetCollectionPopulator(populators.BaseDatasetCollection
         return create_response
 
 
-class SeleniumSessionWorkflowPopulator(populators.BaseWorkflowPopulator, SeleniumSessionGetPostMixin):
+class SeleniumSessionWorkflowPopulator(populators.BaseWorkflowPopulator, SeleniumSessionGetPostMixin, ImporterGalaxyInterface):
 
     """Implementation of BaseWorkflowPopulator backed by bioblend."""
 
@@ -249,3 +254,17 @@ class SeleniumSessionWorkflowPopulator(populators.BaseWorkflowPopulator, Seleniu
         """Construct a workflow populator from a bioblend GalaxyInstance."""
         self.selenium_test_case = selenium_test_case
         self.dataset_populator = SeleniumSessionDatasetPopulator(selenium_test_case)
+
+    def import_workflow(self, workflow, **kwds):
+        workflow_str = json.dumps(workflow, indent=4)
+        data = {
+            'workflow': workflow_str,
+        }
+        data.update(**kwds)
+        upload_response = self._post("workflows", data=data)
+        assert upload_response.status_code == 200
+        return upload_response.json()
+
+    def upload_yaml_workflow(self, has_yaml, **kwds):
+        workflow = convert_and_import_workflow(has_yaml, galaxy_interface=self, **kwds)
+        return workflow[ "id" ]
