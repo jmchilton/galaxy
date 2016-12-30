@@ -70,6 +70,17 @@ class WorkflowEditorTestCase(SeleniumTestCase):
         assert "Using default: '1'" in text, text
 
     @selenium_test
+    def test_editor_label_upgrade_message(self):
+        workflow_populator = self.workflow_populator
+        workflow = workflow_populator.load_workflow_from_resource("test_workflow_1_with_framework_tools")
+        workflow_populator.create_workflow(workflow)
+        self.workflow_index_open()
+        self.workflow_index_click_option("Edit")
+        time.sleep(1)
+        modal_element = self.wait_for_selector_visible(self.modal_body_selector())
+        assert "input name into a step label" in modal_element.text
+
+    @selenium_test
     def test_missing_tools(self):
         workflow_populator = self.workflow_populator
         workflow_populator.upload_yaml_workflow("""
