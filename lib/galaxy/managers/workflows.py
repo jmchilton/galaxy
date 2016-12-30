@@ -19,7 +19,14 @@ from .base import decode_id
 # For WorkflowContentManager
 from galaxy.util.sanitize_html import sanitize_html
 from galaxy.workflow.steps import attach_ordered_steps
-from galaxy.workflow.modules import module_factory, is_tool_module_type, ToolModule, WorkflowModuleInjector, MissingToolException
+from galaxy.workflow.modules import (
+    is_tool_module_type,
+    MissingToolException,
+    module_factory,
+    ToolModule,
+    UpdateContext,
+    WorkflowModuleInjector,
+)
 from galaxy.tools.parameters.basic import DataToolParameter, DataCollectionToolParameter, workflow_building_modes
 from galaxy.tools.parameters import visit_input_values, params_to_incoming
 from galaxy.jobs.actions.post import ActionBox
@@ -423,6 +430,9 @@ class WorkflowContentsManager(UsesAnnotations):
         """
         """
         workflow = stored.latest_workflow
+
+        update_context = UpdateContext(update_for_editor=True)
+
         # Pack workflow data into a dictionary and return
         data = {}
         data['name'] = workflow.name
@@ -467,7 +477,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 data['steps'][step.order_index] = step_dict
                 continue
             # Fix any missing parameters
-            upgrade_message = module.check_and_update_state()
+            upgrade_message = module.check_and_update_state(update_context)
             if upgrade_message:
                 data['upgrade_messages'][step.order_index] = upgrade_message
             if (hasattr(module, "version_changes")) and (module.version_changes):
@@ -500,7 +510,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 'annotation': annotation_str,
                 'post_job_actions': {},
                 'uuid': str(step.uuid) if step.uuid else None,
-                'label': step.label or None,
+                'label': module.label or None,
                 'workflow_outputs': []
             }
             # Connections
@@ -571,6 +581,8 @@ class WorkflowContentsManager(UsesAnnotations):
         if workflow is None:
             assert stored is not None
             workflow = stored.latest_workflow
+
+        update_context = UpdateContext()
 
         annotation_str = ""
         if stored is not None:
@@ -676,7 +688,7 @@ class WorkflowContentsManager(UsesAnnotations):
                     if isinstance( input, DataToolParameter ) or isinstance( input, DataCollectionToolParameter ):
                         data_input_names[ prefixed_name ] = True
                 # FIXME: this updates modules silently right now; messages from updates should be provided.
-                module.check_and_update_state()
+                module.check_and_update_state( update_context )
                 visit_input_values( module.tool.inputs, module.state.inputs, callback )
                 # Filter
                 # FIXME: this removes connection without displaying a message currently!

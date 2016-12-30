@@ -313,7 +313,7 @@ class DataTransfer( object ):
                 # Restore the tool state for the step
                 step.module = module_factory.from_workflow_step( fk_trans, step )
                 # Fix any missing parameters
-                step.upgrade_messages = step.module.check_and_update_state()
+                step.upgrade_messages = step.module.check_and_update_state( None )
                 # Any connected input needs to have value DummyDataset (these
                 # are not persisted so we need to do it every time)
                 step.module.add_dummy_datasets( connections=step.input_connections )

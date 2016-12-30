@@ -125,7 +125,7 @@ class WorkflowModule( object ):
         """
         raise TypeError( "Abstract method" )
 
-    def check_and_update_state( self ):
+    def check_and_update_state( self, update_context ):
         """
         If the state is not in sync with the current implementation of the
         module, try to update. Returns a list of messages to be displayed
@@ -410,7 +410,7 @@ class SubWorkflowModule( WorkflowModule ):
         form = formbuilder.FormBuilder( title=self.get_name() )
         return form
 
-    def check_and_update_state( self ):
+    def check_and_update_state( self, update_context ):
         """
         If the state is not in sync with the current implementation of the
         module, try to update. Returns a list of messages to be displayed
@@ -471,6 +471,23 @@ class InputModule( SimpleWorkflowModule ):
         state.inputs = dict( input=None )
         return state
 
+    def check_and_update_state( self, update_context ):
+        """
+        If the state is not in sync with the current implementation of the
+        module, try to update. Returns a list of messages to be displayed
+        """
+        # Drop older names in favor of labels but only for the editor. Provides
+        # backward compat. behavior for non-editor use cases (API)
+        if not update_context.update_for_editor:
+            return False
+
+        name = self.state.get("name", self.default_name)
+        name_not_default = self.default_name != name
+        if self.label is None and name_not_default:
+            self.state["name"] = self.default_name
+            self.label = name
+            return ["Changed input name into a step label."]
+
     def get_runtime_input_dicts( self, step_annotation ):
         name = self.state.get( "name", self.default_name )
         return [ dict( name=name, description=step_annotation ) ]
@@ -521,8 +538,11 @@ class InputDataModule( InputModule ):
         return dict( name=Class.default_name )
 
     def _abstract_config_form( self ):
-        form = formbuilder.FormBuilder( title=self.name ) \
-            .add_text( "name", "Name", value=self.state['name'] )
+        form = formbuilder.FormBuilder( title=self.name )
+        # Only show the form is the name has ever been modified and cannot be safely upgraded
+        # to a label during check_and_update_state.
+        if self.state['name'] != self.default_name:
+            form.add_text( "name", "Name", value=self.state['name'] )
         return form
 
     def get_data_outputs( self ):
@@ -577,9 +597,11 @@ class InputDataCollectionModule( InputModule ):
         )
         form = formbuilder.FormBuilder(
             title=self.name
-        ).add_text(
-            "name", "Name", value=self.state['name']
         )
+        # Only show the form is the name has ever been modified and cannot be safely upgraded
+        # to a label during check_and_update_state.
+        if self.state['name'] != self.default_name:
+            form.add_text( "name", "Name", value=self.state['name'] )
         form.inputs.append( type_input )
         return form
 
@@ -997,7 +1019,7 @@ class ToolModule( WorkflowModule ):
     def update_state( self, incoming ):
         self.recover_state( incoming )
 
-    def check_and_update_state( self ):
+    def check_and_update_state( self, update_context ):
         inputs = self.state.inputs
         return self.tool.check_and_update_param_values( inputs, self.trans, workflow_building_mode=True )
 
@@ -1296,6 +1318,30 @@ def load_module_sections( trans ):
     return module_sections
 
 
+class UpdateContext(object):
+    """Used to track step state across workflow while upgrade individual steps.
+
+    Introduced to allow uniquely labelling nodes.
+    """
+
+    def __init__(self, update_for_editor=False):
+        self.labels = set([])
+        self.update_for_editor = update_for_editor
+
+    def get_label(self, legacy_name):
+        label = legacy_name
+        if label in self.labels:
+            i = 1
+            while True:
+                label = "%s_%d" % (legacy_name, i)
+                if label in self.labels:
+                    continue
+
+                break
+        self.labels.add(label)
+        return label
+
+
 class MissingToolException( Exception ):
     """ WorkflowModuleInjector will raise this if the tool corresponding to the
     module is missing. """
@@ -1316,6 +1362,7 @@ class WorkflowModuleInjector(object):
     def __init__( self, trans, allow_tool_state_corrections=False ):
         self.trans = trans
         self.allow_tool_state_corrections = allow_tool_state_corrections
+        self.update_context = UpdateContext()
 
     def inject( self, step, step_args=None, steps=None ):
         """ Pre-condition: `step` is an ORM object coming from the database, if
@@ -1343,7 +1390,7 @@ class WorkflowModuleInjector(object):
             raise MissingToolException(step.tool_id)
 
         # Fix any missing parameters
-        step.upgrade_messages = module.check_and_update_state()
+        step.upgrade_messages = module.check_and_update_state( self.update_context )
 
         # Any connected input needs to have value DummyDataset (these
         # are not persisted so we need to do it every time)
