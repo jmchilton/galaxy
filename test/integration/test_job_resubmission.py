@@ -14,12 +14,12 @@ class _BaseResubmissionIntegerationTestCase(integration_util.IntegrationTestCase
     framework_tool_and_types = True
 
     def _assert_job_passes(self, resource_parameters):
-        self._run_tool_test("simple_constructs", resource_parameters=resource_parameters)
+        self._run_tool_test("environment_variables", resource_parameters=resource_parameters)
 
     def _assert_job_fails(self, resource_parameters):
         exception_thrown = False
         try:
-            self._run_tool_test("simple_constructs", resource_parameters=resource_parameters)
+            self._run_tool_test("environment_variables", resource_parameters=resource_parameters)
         except Exception:
             exception_thrown = True
 
@@ -36,7 +36,7 @@ class JobResubmissionIntegrationTestCase(_BaseResubmissionIntegerationTestCase):
         config["job_resource_params_file"] = JOB_RESUBMISSION_JOB_RESOURCES_CONFIG_FILE
 
     def test_retry_tools_have_resource_params(self):
-        tool_show = self._get("tools/simple_constructs", data=dict(io_details=True)).json()
+        tool_show = self._get("tools/environment_variables", data=dict(io_details=True)).json()
         tool_inputs = tool_show["inputs"]
         input_names = map(lambda x: x["name"], tool_inputs)
         assert "__job_resource" in input_names
