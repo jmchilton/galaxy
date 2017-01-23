@@ -1,22 +1,18 @@
+.. _conda_faq:
+
 ===========================
 Conda for Tool Dependencies
 ===========================
 
-Galaxy tools (also called wrappers) traditionally use Tool Shed package
-recipes to install their dependencies. At the tool's installation time
-the recipe is downloaded and executed in order to provide the underlying
-software executables. Introduction of these Galaxy-specific recipes was
-a necessary step at the time, however nowadays there are other more
-mature and stable options to install software in a similar manner. The
+Galaxy tools (also called wrappers) have tradionally used Tool Shed package
+recipes to install their dependencies. These were too tightly tied to Galaxy
+and to the Tool Shed and so have been replaced with Conda as the package
+management solution of choice for newer best practice tools. The
 Galaxy community has taken steps to improve the tool dependency system
-in order to enable new features and expand its reach. This document aims
-to describe these and answer the FAQ.
-
-Galaxy has adopted a new standard for tool dependencies: Conda packages!
-
-Not only do Conda packages make tool dependencies more reliable and
-stable, they are also easier to test and faster to develop than the
-traditional Tool Shed package recipes.
+in order to enable new features and expand its reach. Not only do Conda packages
+make tool dependencies more reliable and stable, they are also easier to test
+and faster to develop than the traditional Tool Shed package recipes. This
+document aims to describe these and answer frequently asked questions.
 
 Conda is a package manager like ``apt-get``, ``yum``, ``pip``, ``brew`` or
 ``guix``. We don't want to argue about the relative merits of various package
@@ -25,8 +21,8 @@ community contributions (such as implementing a Guix package manager or
 enhancing the existing brew support to bring it on par with Conda).
 
 As a community, we have decided that Conda is the one that best fulfills
-community's needs. The following are some of the crucial Conda features that led
-to this decision:
+community's current needs. The following are some of the crucial Conda features
+that led to this decision:
 
 -  Installation of packages does not require *root* privileges
    (installation at any location the Galaxy user has write access to)
@@ -48,14 +44,19 @@ Below we answer some common questions (collected by Lance Parsons):
 1. How do I enable Conda dependency resolution for Galaxy jobs?
 ***************************************************************
 
-Galaxy's dependency job resolution is managed via
-``dependency_resolvers_conf.xml`` configuration file. Most Galaxy administrators
-should be using Galaxy's default dependency resolvers configuration file
-( ``dependency_resolvers_conf.xml.sample`` ). With
+The short answer is that as of 17.01, Galaxy should install Conda the first
+time it starts up and be configured to use it by default.
+
+The long answer is that Galaxy's dependency job resolution is managed via
+``dependency_resolvers_conf.xml`` configuration file. This configuration
+file is discussed in detail in the :ref:`Dependency Resolvers <dependency_resolvers>`
+documentation. Most Galaxy administrators will be using Galaxy's default dependency
+resolvers configuration file (``dependency_resolvers_conf.xml.sample``). With
 release 16.04, Galaxy has enabled Conda dependency resolution by default when
-Conda was already installed on the system. Having Conda enabled in
-``dependency_resolvers_conf.xml`` means that Galaxy can look for job
-dependencies using the Conda system when it attempts to run tools.
+Conda was already installed on the system. As of 17.01 Galaxy will also install
+Conda as needed when starting up. Having Conda enabled in ``dependency_resolvers_conf.xml``
+means that Galaxy can look for job dependencies using the Conda system when it
+attempts to run tools.
 
 Note that the order of resolvers in the file matters and the ``<tool_shed_packages />``
 entry should remain first. This means that tools that have specified Tool Shed packages
@@ -75,16 +76,18 @@ See `galaxy.ini.sample`_ for the complete list.
 |                          |                          | installed                 |
 |                          |                          |                           |
 |                          |                          | IMPORTANT : Due to a      |
-|                          |                          | current limitation in     |
-|                          |                          | Conda, the total length   |
-|                          |                          | of the                    |
+|                          |                          | limitation in older Conda |
+|                          |                          | releases, the total       |
+|                          |                          | length of the             |
 |                          |                          |                           |
 |                          |                          | ``conda_prefix`` and the  |
 |                          |                          | ``job_working_directory`` |
-|                          |                          | path should be less       |
-|                          |                          | than 50 characters!       |
+|                          |                          | path may need to be less  |
+|                          |                          | than 50 characters for    |
+|                          |                          | certain packages to       |
+|                          |                          | install successfully.     |
 +--------------------------+--------------------------+---------------------------+
-| ``conda_auto_init``      | False                    | Set to True to instruct   |
+| ``conda_auto_init``      | True                     | Set to True to instruct   |
 |                          |                          | Galaxy to install Conda   |
 |                          |                          | (the package manager)     |
 |                          |                          | automatically if it       |
