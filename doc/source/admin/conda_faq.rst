@@ -68,25 +68,6 @@ See `galaxy.ini.sample`_ for the complete list.
 +--------------------------+--------------------------+---------------------------+
 | Setting                  | Default setting          | Meaning                   |
 +--------------------------+--------------------------+---------------------------+
-| ``conda_prefix``         | <tool\_dependency\_dir>/ | the location              |
-|                          | \_conda                  | on the                    |
-|                          |                          | filesystem where Conda    |
-|                          |                          | packages and              |
-|                          |                          | environments are          |
-|                          |                          | installed                 |
-|                          |                          |                           |
-|                          |                          | IMPORTANT : Due to a      |
-|                          |                          | limitation in older Conda |
-|                          |                          | releases, the total       |
-|                          |                          | length of the             |
-|                          |                          |                           |
-|                          |                          | ``conda_prefix`` and the  |
-|                          |                          | ``job_working_directory`` |
-|                          |                          | path may need to be less  |
-|                          |                          | than 50 characters for    |
-|                          |                          | certain packages to       |
-|                          |                          | install successfully.     |
-+--------------------------+--------------------------+---------------------------+
 | ``conda_auto_init``      | True                     | Set to True to instruct   |
 |                          |                          | Galaxy to install Conda   |
 |                          |                          | (the package manager)     |
@@ -100,6 +81,13 @@ See `galaxy.ini.sample`_ for the complete list.
 |                          |                          | for missing tool          |
 |                          |                          | dependencies before       |
 |                          |                          | running a job.            |
++--------------------------+--------------------------+---------------------------+
+| ``conda_prefix``         | <tool\_dependency\_dir>/ | the location              |
+|                          | \_conda                  | on the                    |
+|                          |                          | filesystem where Conda    |
+|                          |                          | packages and              |
+|                          |                          | environments are          |
+|                          |                          | installed                 |
 +--------------------------+--------------------------+---------------------------+
 
 *Table 1: Commonly used configuration options for Conda in Galaxy.*
@@ -128,6 +116,11 @@ To summarize, there are four ways to manage Conda dependencies for use
 with Galaxy. For all of these options, Conda dependency management must
 be configured in the ``dependency_resolvers_conf.xml`` and the ``galaxy.ini`` file.
 
+#. Galaxy Admin Interface (>= 16.07) - Galaxy will install Conda tool
+   dependencies when tools are installed from the Tool Shed if the
+   option “When available, install externally managed dependencies (e.g.
+   Conda)? Beta” is checked. Admins may also view and manage Conda
+   dependencies via the Admin interface.
 #. Manual Install - Conda dependencies may be installed by
    administrators from the command line. Conda (and thus the Conda
    environments) should be installed in the location specified by the
@@ -144,11 +137,6 @@ be configured in the ``dependency_resolvers_conf.xml`` and the ``galaxy.ini`` fi
 
    Tools that require samtools version 0.1.19 will then be able to find
    and use the installed Conda package.
-#. Galaxy Admin Interface (>= 16.07) - Galaxy will install Conda tool
-   dependencies when tools are installed from the Tool Shed if the
-   option “When available, install externally managed dependencies (e.g.
-   Conda)? Beta” is checked. Admins may also view and manage Conda
-   dependencies via the Admin interface.
 #. Automatically at tool run time - When a tool is run and a dependency
    is not found, Galaxy will attempt to install the dependency using
    Conda if ``conda_auto_install`` is activated in the configuration.
@@ -160,15 +148,13 @@ be configured in the ``dependency_resolvers_conf.xml`` and the ``galaxy.ini`` fi
 **************************************************************************************************
 
 The minimum required version of Galaxy to use Conda is 16.01, however
-version 16.07 or greater is recommended. The 16.07 release of Galaxy has
+version 17.01 or greater is recommended. The 16.07 release of Galaxy has
 a graphical user interface to manage packages, but this is not
 required to have Conda dependencies managed and used by Galaxy.
 
 Conda packages should work on all compatible operating systems with
-*glibc* version 2.5 or newer (this includes Centos 5). We will most
-likely switch soon to *glibc* version 2.12 as a minimum requirement (this
-includes CentOS 6). So all packages will run on all \*nix operating
-systems newer than 2007.
+*glibc* version 2.12 or newer (this includes Centos 6). So all packages
+will run on all major \*nix operating systems newer than 2007.
 
 
 4. If I have Conda enabled, what do I need to do to install tools using it? For example, how can I install the latest Trinity? And how will I know the dependencies are installed?
@@ -217,6 +203,10 @@ The order in which resolvers are tried is listed in the
 The first system that satisfies a requirement will be used. See
 `resolver docs`_ for detailed documentation.
 
+This however is not recommended, ideally tools will target and test
+against Conda for all dependencies. Also resolving all requirements
+with Conda gives Conda a chance to select compatibile versions of
+dependencies.
 
 6. How do I know what system is being used by a given tool?
 ***********************************************************
@@ -304,26 +294,48 @@ leave the old versions as they are – simply because of time.
 
 Old tools will use the traditional installation system; this system will
 stay and will be supported for installing old tools to guarantee sustainability
-and reproducibility. New tools from the IUC, may be Conda only.
+and reproducibility. New tools from the IUC and other best practices sources
+are Conda only.
 
 
-13. What can I do if Conda doesn't work for me?
+13. What does this placehold error mean?
 ***********************************************
 
-There is currently a limitation in the way Conda packages are being
-built. This limitation will be addressed shortly by the Conda community,
-however this requires all packages to be rebuilt.
-
-To work around this limitation, please make sure that the total length
-of the ``conda_prefix`` and ``job_working_directory`` path is less than 50
-characters long.
-
-If this is your problem, you should see a warning similar to the
-following in your galaxy log files:
+If you see a warning similar to the following in your galaxy log files:
 
 .. code-block:: bash
 
    ERROR: placeholder '/home/ray/r_3_3_1-x64-3.5/envs/_build_placehold_placehold_placehold_placehold_pl' too short
+
+This means you are very likely using an older version of Conda. This
+bug has been fixed with the Conda release that is targeted by Galaxy
+17.01 or newer.
+
+In the past, the work around for this limitation, was to make sure that the total length
+of the ``conda_prefix`` and ``job_working_directory`` path was less than 50
+characters long.
+
+
+14. What do linking errors mean?
+***********************************************
+
+If Galaxy jobs run on filesystems that cannot softlink Conda packages managed
+by Galaxy, these linking errors may occur. There are two tricks to address this.
+
+First, you may wish to enable cached dependencies. This can be done by setting
+``use_c
+
+# Certain dependency resolvers (namely Conda) take a considerable amount of
+# time to build an isolated job environment in the job_working_directory if the
+# job working directory is on a network share.  Set the following option to True
+# to cache the dependencies in a folder. This option is beta and should only be
+# used if you experience long waiting times before a job is actually submitted
+# to your cluster.
+#use_cached_dependency_manager = False
+
+
+15. What can I do if Conda doesn't work for me?
+***********************************************
 
 In rare cases Conda may not have been properly installed by Galaxy.
 A symptom for this is if there is no activate script in
@@ -331,7 +343,7 @@ A symptom for this is if there is no activate script in
 and restart Galaxy, which will again attempt to install Conda.
 
 If this does not solve your problem or you have any trouble following
-the instructions, please ask on the Galaxy mailing list or the Galaxy
+the instructions, please ask on the Galaxy developing mailing list or the Galaxy
 IRC channel.
 
 .. _Conda documentation: http://conda.pydata.org/docs/building/build.html
