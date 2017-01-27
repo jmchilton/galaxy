@@ -485,6 +485,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
             raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
 
         invocations = []
+        last_invocation = None
         for run_config in run_configs:
             workflow_scheduler_id = payload.get('scheduler', None)
             # TODO: workflow scheduler hints
@@ -493,9 +494,12 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
                 trans=trans,
                 workflow=workflow,
                 workflow_run_config=run_config,
-                request_params=work_request_params
+                request_params=work_request_params,
+                dependent_workflow_invocation=last_invocation if self.app.config.force_serial_workflow_scheduling else None,
             )
+            last_invocation = workflow_invocation
             invocation = self.encode_all_ids(trans, workflow_invocation.to_dict(), recursive=True)
+
             invocations.append(invocation)
 
         if is_batch:

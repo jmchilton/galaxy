@@ -103,11 +103,13 @@ def __invoke( trans, workflow, workflow_run_config, workflow_invocation=None, po
     return outputs, invoker.workflow_invocation
 
 
-def queue_invoke( trans, workflow, workflow_run_config, request_params={}, populate_state=True ):
+def queue_invoke( trans, workflow, workflow_run_config, request_params={}, populate_state=True, dependent_workflow_invocation=None ):
     if populate_state:
         modules.populate_module_and_state( trans, workflow, workflow_run_config.param_map, allow_tool_state_corrections=workflow_run_config.allow_tool_state_corrections )
     workflow_invocation = workflow_run_config_to_request( trans, workflow_run_config, workflow )
     workflow_invocation.workflow = workflow
+    if dependent_workflow_invocation:
+        workflow_invocation.dependent_workflow_invocation = dependent_workflow_invocation
     return trans.app.workflow_scheduling_manager.queue( workflow_invocation, request_params )
 
 
@@ -145,6 +147,23 @@ class WorkflowInvoker( object ):
 
     def invoke( self ):
         workflow_invocation = self.workflow_invocation
+        if workflow_invocation.dependent_workflow_invocation:
+            dependent_state = workflow_invocation.dependent_workflow_invocation.state
+            if dependent_state == model.WorkflowInvocation.states.FAILED:
+                state = model.WorkflowInvocation.states.FAILED
+                workflow_invocation.state = state
+                log.debug("Dependent workflow invocation [%s] failed, failing [%s]" % (workflow_invocation.dependent_workflow_invocation.id, workflow_invocation.id))
+                self.trans.sa_session.add( workflow_invocation )
+                return []
+            elif dependent_state == model.WorkflowInvocation.states.CANCELLED:
+                state = model.WorkflowInvocation.states.CANCELLED
+                workflow_invocation.state = state
+                log.debug("Dependent workflow invocation [%s] cancelled, cancelling [%s]" % (workflow_invocation.dependent_workflow_invocation.id, workflow_invocation.id))
+                self.trans.sa_session.add( workflow_invocation )
+                return []
+            elif dependent_state != model.WorkflowInvocation.states.SCHEDULED:
+                return []
+
         remaining_steps = self.progress.remaining_steps()
         delayed_steps = False
         for step in remaining_steps:

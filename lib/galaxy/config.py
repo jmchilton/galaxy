@@ -315,6 +315,8 @@ class Configuration( object ):
         # you want yours tools to be broken in the future.
         self.enable_beta_tool_formats = string_as_bool( kwargs.get( 'enable_beta_tool_formats', 'False' ) )
 
+        self.force_serial_workflow_scheduling = string_as_bool( kwargs.get( 'force_serial_workflow_scheduling', 'False' ) )
+
         # Certain modules such as the pause module will automatically cause
         # workflows to be scheduled in job handlers the way all workflows will
         # be someday - the following two properties can also be used to force this

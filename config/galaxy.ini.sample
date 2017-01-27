@@ -1057,6 +1057,15 @@ use_interactive = True
 # ccollections.
 #force_beta_workflow_scheduled_for_collections=False
 
+# Setting the following property to True will force workflow invocations that
+# are submitted in a batch to be scheduled sequentially. This causes the history
+# datasets to be grouped together in the history panel. In addition to being
+# inefficient - this is broken - certain classes of workflows need to have any
+# number of jobs complete before scheduling can be declared complete - if any
+# of these jobs fail to reach a terminal state - workflow invocations will be
+# delayed forever without any feedback to the user.
+#force_serial_workflow_scheduling = False
+
 # Enable authentication via OpenID.  Allows users to log in to their Galaxy
 # account by authenticating with an OpenID provider.
 #enable_openid = False

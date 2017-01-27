@@ -888,6 +888,7 @@ model.WorkflowInvocation.table = Table(
     Column( "create_time", DateTime, default=now ),
     Column( "update_time", DateTime, default=now, onupdate=now ),
     Column( "workflow_id", Integer, ForeignKey( "workflow.id" ), index=True, nullable=False ),
+    Column( "dependent_workflow_invocation_id", Integer, ForeignKey( "workflow_invocation.id" ), index=True, nullable=True ),
     Column( "state", TrimmedString( 64 ), index=True ),
     Column( "scheduler", TrimmedString( 255 ), index=True ),
     Column( "handler", TrimmedString( 255 ), index=True ),
@@ -2322,6 +2323,10 @@ mapper( model.WorkflowInvocation, model.WorkflowInvocation.table, properties=dic
     ),
     steps=relation( model.WorkflowInvocationStep,
         backref='workflow_invocation' ),
+    dependent_workflow_invocation=relation( model.WorkflowInvocation,
+        primaryjoin=( ( model.WorkflowInvocation.table.c.id == model.WorkflowInvocation.table.c.dependent_workflow_invocation_id ) ),
+        uselist=False,
+    ),
     workflow=relation( model.Workflow )
 ) )
 
