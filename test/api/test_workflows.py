@@ -983,6 +983,30 @@ steps:
         invocation = self._invocation_details( uploaded_workflow_id, invocation_id )
         assert invocation[ 'state' ] == 'cancelled', invocation
 
+    @skip_without_tool("create_input_collection")
+    def test_cancel_job_cancels_workflow( self ):
+        run_summary = self._run_jobs("""
+class: GalaxyWorkflow
+steps:
+- label: long_step
+  tool_id: create_input_collection
+  state:
+    sleep_time: 30
+- tool_id: cat_list
+  state:
+    input1:
+      $link: long_step#output
+test_data: {}
+""", history_id=history_id, wait=False)
+        time.sleep( 2 )
+        history_id = run_summary.history_id
+        workflow_id = run_summary.workflow_id
+        invocation_id = run_summary.invocation_id
+
+        jobs = self._history_jobs( history_id )
+        assert len(jobs) == 1
+
+
     @skip_without_tool( "head" )
     def test_workflow_map_reduce_pause( self ):
         workflow = self.workflow_populator.load_workflow_from_resource( "test_workflow_map_reduce_pause" )

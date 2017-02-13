@@ -633,7 +633,7 @@ class Job( object, JobLike, Dictifiable ):
         param_dict = dict( [ ( p.name, p.value ) for p in self.parameters ] )
         return param_dict
 
-    def check_if_output_datasets_deleted( self ):
+    def check_if_outputs_deleted( self ):
         """
         Return true if all of the output datasets associated with this job are
         in the deleted state
@@ -643,6 +643,10 @@ class Job( object, JobLike, Dictifiable ):
             # only the originator of the job can delete a dataset to cause
             # cancellation of the job, no need to loop through history_associations
             if not dataset.deleted:
+                return False
+        for dataset_collection_assoc in self.output_dataset_collection_instances:
+            hdca = dataset_collection_assoc.dataset_collection_instance
+            if not hdca.deleted:
                 return False
         return True
 

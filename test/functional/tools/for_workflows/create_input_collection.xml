@@ -1,10 +1,15 @@
 <tool id="create_input_collection" name="create_input_collection" version="0.1.0">
   <description>This tool is used to create a collection of text files.</description>
   <command detect_errors="exit_code">
-    mkdir outputs; cd outputs; python $script
+    mkdir outputs; cd outputs; python '$script'
   </command>
   <configfiles>
     <configfile name="script">
+import time
+
+sleep_time = $sleep_time
+time.sleep(sleep_time)
+
 for i in range($collection_size):
     template = "File number %s\n"
     contents = template % i
@@ -13,7 +18,8 @@ for i in range($collection_size):
 </configfile>
   </configfiles>
   <inputs>
-    <param name="collection_size" type="integer" format="txt" label="Collection Size" value="1" />
+    <param name="collection_size" type="integer" label="Collection Size" value="1" />
+    <param name="sleep_time" type="integer" label="Sleep" help="Optionally simulates computation before creating collection" value="0" />
   </inputs>
   <outputs>
     <collection name="output" type="list" label="lines">

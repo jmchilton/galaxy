@@ -177,8 +177,15 @@ class DatasetCollectionManager( object ):
             payload = self._validate_and_parse_update_payload( anon_allowed_payload )
         else:
             payload = self._validate_and_parse_update_payload( payload )
+        if payload.get( 'deleted', False ):
+            self.stop_creating_jobs( dataset_collection_instance )
+
         changed = self._set_from_dict( trans, dataset_collection_instance, payload )
         return changed
+
+    def stop_creating_jobs( self, dataset_collection_instance ):
+        """Cancel jobs producing this collection."""
+
 
     def copy(
         self,
