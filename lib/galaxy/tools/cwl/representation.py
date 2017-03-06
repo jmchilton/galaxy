@@ -56,7 +56,8 @@ def to_cwl_job(tool, param_dict, local_working_directory):
                     os.symlink(secondary_file_path, new_input_path + secondary_file_name)
                 path = new_input_path
 
-            return {"path": path, "class": "File"}
+            return {"location": path,
+                    "class": "File"}
         elif cwl_type == "integer":
             return int(str(param_dict_value))
         elif cwl_type == "long":

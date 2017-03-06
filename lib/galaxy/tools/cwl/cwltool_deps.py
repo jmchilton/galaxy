@@ -17,6 +17,7 @@ try:
         workflow,
         job,
         process,
+        pathmapper,
     )
 except (ImportError, SyntaxError):
     # Drop SyntaxError once cwltool supports Python 3
@@ -24,6 +25,7 @@ except (ImportError, SyntaxError):
     workflow = None
     job = None
     process = None
+    pathmapper = None
 
 try:
     from cwltool import load_tool
@@ -69,6 +71,7 @@ __all__ = (
     'load_tool',
     'workflow',
     'process',
+    'pathmapper',
     'ensure_cwltool_available',
     'schema_salad',
     'shellescape',
