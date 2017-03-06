@@ -22,6 +22,7 @@ from .base import decode_id
 from galaxy.util.sanitize_html import sanitize_html
 from galaxy.workflow.steps import attach_ordered_steps
 from galaxy.workflow.modules import module_factory, is_tool_module_type, ToolModule, WorkflowModuleInjector
+from galaxy.tools.cwl import workflow_proxy
 from galaxy.tools.parameters.basic import DataToolParameter, DataCollectionToolParameter, RuntimeValue, workflow_building_modes
 from galaxy.tools.parameters import visit_input_values, params_to_incoming
 from galaxy.jobs.actions.post import ActionBox
@@ -196,6 +197,18 @@ class WorkflowContentsManager(UsesAnnotations):
     ):
         # Put parameters in workflow mode
         trans.workflow_building_mode = True
+        if data and "src" in data and data["src"] == "from_path":
+            from galaxy.tools.cwl import workflow_proxy
+            wf_proxy = workflow_proxy(data["path"])
+            tool_reference_proxies = wf_proxy.tool_reference_proxies()
+            for tool_reference_proxy in tool_reference_proxies:
+                # TODO: Namespace IDS in workflows.
+                # TODO: Don't duplicately load these tools.
+                self.app.dynamic_tool_manager.create_tool({
+                    "representation": tool_reference_proxy.to_persistent_representation(),
+                }, allow_load=True)
+            data = wf_proxy.to_dict()
+
         # If there's a source, put it in the workflow name.
         if source:
             name = "%s (imported from %s)" % ( data['name'], source )
@@ -277,6 +290,10 @@ class WorkflowContentsManager(UsesAnnotations):
     def _workflow_from_dict(self, trans, data, name, **kwds):
         if isinstance(data, string_types):
             data = json.loads(data)
+        if "src" in data:
+            assert data["src"] == "path"
+            wf_proxy = workflow_proxy(data["path"])
+            data = wf_proxy.to_dict()
 
         # Create new workflow from source data
         workflow = model.Workflow()
@@ -834,7 +851,7 @@ class WorkflowContentsManager(UsesAnnotations):
         """
         step = model.WorkflowStep()
         # TODO: Consider handling position inside module.
-        step.position = step_dict['position']
+        step.position = step_dict.get('position', {"left": 0, "top": 0})
         if step_dict.get("uuid", None) and step_dict['uuid'] != "None":
             step.uuid = step_dict["uuid"]
         if "label" in step_dict:
@@ -857,6 +874,15 @@ class WorkflowContentsManager(UsesAnnotations):
 
         # Stick this in the step temporarily
         step.temp_input_connections = step_dict['input_connections']
+
+        if "inputs" in step_dict:
+            for input_dict in step_dict["inputs"]:
+                step_input = model.WorkflowStepInput()
+                step_input.name = input_dict["name"]
+                step_input.merge_type = input_dict.get("merge_type", step_input.default_merge_type)
+                step_input.scatter_type = input_dict.get("scatter_type", step_input.default_scatter_type)
+                step_input.value_from = input_dict.get("value_from", None)
+                step.inputs.append(step_input)
 
         # Create the model class for the step
         steps.append( step )

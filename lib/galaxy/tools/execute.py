@@ -138,18 +138,21 @@ class ToolExecutionTracker( object ):
 
         structure = self.collection_info.structure
 
-        # params is just one sample tool param execution with parallelized
-        # collection replaced with a specific dataset. Need to replace this
-        # with the collection and wrap everything up so can evaluate output
-        # label.
-        params.update( self.collection_info.collections )  # Replace datasets with source collections for labelling outputs.
+        if not self.collection_info.uses_ephemeral_collections:
+            # params is just one sample tool param execution with parallelized
+            # collection replaced with a specific dataset. Need to replace this
+            # with the collection and wrap everything up so can evaluate output
+            # label.
+            params.update( self.collection_info.collections )  # Replace datasets with source collections for labelling outputs.
 
-        collection_names = ["collection %d" % c.hid for c in self.collection_info.collections.values()]
-        on_text = on_text_for_names( collection_names )
+            collection_names = ["collection %d" % c.hid for c in self.collection_info.collections.values()]
+            on_text = on_text_for_names( collection_names )
+        else:
+            on_text = "implicitly created collection from inputs"
 
         collections = {}
 
-        implicit_inputs = list(self.collection_info.collections.items())
+        implicit_inputs = self.collection_info.implicit_inputs
         for output_name, outputs in self.outputs_by_output_name.items():
             if not len( structure ) == len( outputs ):
                 # Output does not have the same structure, if all jobs were

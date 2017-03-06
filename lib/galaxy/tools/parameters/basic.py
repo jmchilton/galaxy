@@ -1,6 +1,7 @@
 """
 Basic tool parameters.
 """
+import json
 import logging
 import os
 import os.path
@@ -1472,6 +1473,9 @@ class BaseDataToolParameter( ToolParameter ):
                         return hdca
 
     def to_json( self, value, app, use_security ):
+        if getattr( value, "ephemeral", False ):
+            value = value.persistent_object
+
         def single_to_json( value ):
             src = None
             if isinstance( value, dict ) and 'src' in value and 'id' in value:
@@ -2067,6 +2071,77 @@ class LibraryDatasetToolParameter( ToolParameter ):
         return d
 
 
+class FieldTypeToolParameter( ToolParameter ):
+    """CWL field type defined parameter source."""
+
+    def __init__( self, tool, input_source, context=None ):
+        input_source = ensure_input_source( input_source )
+        ToolParameter.__init__( self, tool, input_source )
+        # self.field_type = input_source.parse_field_type()
+
+    def from_json( self, value, trans, other_values={} ):
+        if trans.workflow_building_mode is workflow_building_modes.ENABLED:
+            return None
+
+        if value is None:
+            return None
+
+        assert isinstance( value, dict )
+        assert "src" in value
+        return self.to_python( value, trans.app )
+
+    def to_json( self, value, app, use_security ):
+        """Convert a value to a string representation suitable for persisting"""
+        log.info("to_json of %s (%s)" % (value, type(value)))
+        assert isinstance( value, dict )
+        assert "src" in value
+        return value
+
+    def to_python( self, value, app ):
+        """Convert a value created with to_json back to an object representation"""
+        log.info("to_python of %s (%s)" % (value, type(value)))
+        if value is None:
+            return None
+        # return super(FieldTypeToolParameter, self).to_python(value, app)
+        if not isinstance(value, dict):
+            value = json.loads(value)
+        assert isinstance( value, dict )
+        assert "src" in value
+        src = value["src"]
+        if "value" in value:
+            # We have an expanded value, not an ID
+            return value
+        elif src in ["hda", "hdca", "dce"]:
+            id = value[ 'id' ] if isinstance( value[ 'id' ], int ) else app.security.decode_id( value[ 'id' ] )
+            if src == 'dce':
+                value = app.model.context.query( app.model.DatasetCollectionElement ).get( id )
+            elif src == 'hdca':
+                value = app.model.context.query( app.model.HistoryDatasetCollectionAssociation ).get( id )
+            else:
+                value = app.model.context.query( app.model.HistoryDatasetAssociation ).get( id )
+
+            return {"src": src, "value": value}
+
+    def value_to_basic( self, value, app, use_security=False ):
+        log.info("value_to_basic of %s (%s)" % (value, type(value)))
+        if value is None:
+            return None
+
+        assert isinstance(value, dict)
+        assert "src" in value
+        src = value["src"]
+        if src in ["hda", "hdca", "dce"]:
+            id = value["value"].id if not use_security else app.security.encode_id(value["value"].id)
+            value = {"src": "hda", "id": id}
+
+        return json.dumps(value)
+
+    def value_from_basic( self, value, app, ignore_errors=False ):
+        log.info("value_from_basic of %s (%s)" % (value, type(value)))
+        return super(FieldTypeToolParameter, self).value_from_basic(value, app, ignore_errors)
+        # return json.loads(value)
+
+
 parameter_types = dict(
     text=TextToolParameter,
     integer=IntegerToolParameter,
@@ -2084,6 +2159,7 @@ parameter_types = dict(
     data=DataToolParameter,
     data_collection=DataCollectionToolParameter,
     library_data=LibraryDatasetToolParameter,
+    field=FieldTypeToolParameter,
     drill_down=DrillDownSelectToolParameter
 )
 

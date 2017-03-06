@@ -71,8 +71,10 @@ class DatasetCollectionManager( object ):
                 name=name,
             )
             if implicit_collection_info:
-                for input_name, input_collection in implicit_collection_info[ "implicit_inputs" ]:
-                    dataset_collection_instance.add_implicit_input_collection( input_name, input_collection )
+                implicit_inputs = implicit_collection_info[ "implicit_inputs" ]
+                if implicit_inputs:
+                    for input_name, input_collection in implicit_inputs:
+                        dataset_collection_instance.add_implicit_input_collection( input_name, input_collection )
                 for output_dataset in implicit_collection_info.get( "outputs" ):
                     if output_dataset not in trans.sa_session:
                         output_dataset = trans.sa_session.query( type( output_dataset ) ).get( output_dataset.id )

@@ -293,8 +293,100 @@ class WorkflowProgress( object ):
                     if isinstance( replacement[ 0 ], model.HistoryDatasetCollectionAssociation ):
                         replacement = replacement[ 0 ]
             else:
+                prefixed_name = input_dict["name"]
+                step_input = step.inputs_by_name.get(prefixed_name, None)
+
+                merge_type = model.WorkflowStepInput.default_merge_type
+                if step_input:
+                    merge_type = step_input.merge_type
+
                 is_data = input_dict["input_type"] in ["dataset", "dataset_collection"]
-                replacement = self.replacement_for_connection( connection[ 0 ], is_data=is_data )
+                if len( connection ) == 1:
+                    replacement = self.replacement_for_connection( connection[ 0 ], is_data=is_data )
+                else:
+                    # We've mapped multiple individual inputs to a single parameter,
+                    # promote output to a collection.
+                    inputs = []
+                    input_history_content_type = None
+                    input_collection_type = None
+                    for i, c in enumerate(connection):
+                        input_from_connection = self.replacement_for_connection( c, is_data=is_data )
+                        is_data = hasattr(input_from_connection, "history_content_type")
+                        if is_data:
+                            input_history_content_type = input_from_connection.history_content_type
+                            if i == 0:
+                                if input_history_content_type == "dataset_collection":
+                                    input_collection_type = input_from_connection.collection.collection_type
+                                else:
+                                    input_collection_type = None
+                            else:
+                                if input_collection_type is None:
+                                    if input_history_content_type != "dataset":
+                                        raise Exception("Cannot map over a combination of datasets and collections.")
+                                else:
+                                    if input_history_content_type != "dataset_collection":
+                                        raise Exception("Cannot merge over combinations of datasets and collections.")
+                                    elif input_from_connection.collection.collection_type != input_collection_type:
+                                        raise Exception("Cannot merge collections of different collection types.")
+
+                        inputs.append(input_from_connection)
+
+                    if input_dict["input_type"] == "dataset_collection":
+                        # TODO: Implement more nested types here...
+                        assert input_dict["collection_types"] == ["list"], input.collection_types
+
+                    collection = model.DatasetCollection()
+                    # If individual datasets provided (type is None) - premote to a list.
+                    collection.collection_type = input_collection_type or "list"
+                    elements = []
+
+                    next_index = 0
+                    if input_collection_type is None:
+
+                        if merge_type == "merge_nested":
+                            raise NotImplementedError()
+
+                        for input in inputs:
+                            element = model.DatasetCollectionElement(
+                                element=input,
+                                element_index=next_index,
+                                element_identifier=str(next_index),
+                            )
+                            elements.append(element)
+                            next_index += 1
+
+                    elif input_collection_type == "list":
+                        if merge_type == "merge_flattened":
+                            for input in inputs:
+                                for dataset_instance in input.dataset_instances:
+                                    element = model.DatasetCollectionElement(
+                                        element=dataset_instance,
+                                        element_index=next_index,
+                                        element_identifier=str(next_index),
+                                    )
+                                    elements.append(element)
+                                    next_index += 1
+                        elif merge_type == "merge_nested":
+                            # Increase nested level of collection
+                            collection.collection_type = "list:%s" % input_collection_type
+                            for input in inputs:
+                                element = model.DatasetCollectionElement(
+                                    element=input.collection,
+                                    element_index=next_index,
+                                    element_identifier=str(next_index),
+                                )
+                                elements.append(element)
+                                next_index += 1
+                    else:
+                        raise NotImplementedError()
+
+                    collection.elements = elements
+
+                    ephemeral_collection = modules.EphemeralCollection(
+                        collection=collection,
+                        history=self.workflow_invocation.history,
+                    )
+                    replacement = ephemeral_collection
 
         return replacement
 
@@ -332,14 +424,19 @@ class WorkflowProgress( object ):
                 raise modules.DelayedWorkflowEvaluation(why=delayed_why)
 
         is_hda = isinstance( replacement, model.HistoryDatasetAssociation )
-        if not is_data and is_hda:
-            if replacement.is_ok:
-                with open( replacement.file_name, 'r' ) as f:
-                    replacement = json.load( f )
-            elif replacement.is_pending:
-                raise modules.DelayedWorkflowEvaluation()
+        is_hdca = isinstance( replacement, model.HistoryDatasetCollectionAssociation )
+        if not is_data and (is_hda or is_hdca):
+            dataset_instances = []
+            if is_hda:
+                dataset_instances = [ replacement ]
             else:
-                raise modules.CancelWorkflowEvaluation()
+                dataset_instances = replacement.dataset_instances
+
+            for dataset_instance in dataset_instances:
+                if dataset_instance.is_pending:
+                    raise modules.DelayedWorkflowEvaluation()
+                elif not dataset_instance.is_ok:
+                    raise modules.CancelWorkflowEvaluation()
 
         return replacement
 
