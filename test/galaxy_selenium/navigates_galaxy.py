@@ -282,6 +282,18 @@ class NavigatesGalaxy(HasDriver):
         self.collection_builder_set_name(name)
         self.collection_builder_create()
 
+    def upload_paired_list(self, test_paths, name="test", ext=None, genome=None):
+        self._upload_start(test_paths, ext, genome, "List of Pairs")
+
+        self.collection_builder_clear_filters()
+        # TODO: generalize and loop these clicks so we don't need the assert
+        assert len(test_paths) == 2
+        self.collection_builder_click_paired_item("forward", 0)
+        self.collection_builder_click_paired_item("reverse", 1)
+
+        self.collection_builder_set_name(name)
+        self.collection_builder_create()
+
     def _upload_start(self, test_paths, ext, genome, collection_type):
         # Perform upload of files and open the collection builder for specified
         # type.
@@ -529,6 +541,17 @@ class NavigatesGalaxy(HasDriver):
     def collection_builder_create(self):
         create_element = self.wait_for_selector_clickable("button.create-collection")
         create_element.click()
+
+    @retry_during_transitions
+    def collection_builder_clear_filters(self):
+        clear_filter_link = self.wait_for_selector_visible("a.clear-filters-link")
+        clear_filter_link.click()
+
+    def collection_builder_click_paired_item(self, forward_or_reverse, item):
+        assert forward_or_reverse in ["forward", "reverse"]
+        forward_column = self.wait_for_selector_visible(".%s-column .column-datasets" % forward_or_reverse)
+        first_datset_forward = forward_column.find_elements_by_css_selector("li")[item]
+        first_datset_forward.click()
 
     def logout_if_needed(self):
         if self.is_logged_in():
