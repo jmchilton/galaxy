@@ -252,23 +252,12 @@ class NavigatesGalaxy(HasDriver):
 
     def perform_upload(self, test_path, ext=None, genome=None, ext_all=None, genome_all=None):
         self.home()
+        self.upload_start_click()
 
-        upload_button = self.wait_for_selector_clickable(".upload-button")
-        upload_button.click()
+        self.upload_set_footer_extension(ext_all)
+        self.upload_set_footer_genome(genome_all)
 
-        if ext_all is not None:
-            self.wait_for_selector_visible('.upload-footer-extension')
-            self.select2_set_value(".upload-footer-extension", ext_all)
-
-        if genome_all is not None:
-            self.wait_for_selector_visible('.upload-footer-genome')
-            self.select2_set_value(".upload-footer-genome", genome_all)
-
-        local_upload_button = self.wait_for_selector_clickable("button#btn-local")
-        local_upload_button.click()
-
-        file_upload = self.wait_for_selector('input[type="file"]')
-        file_upload.send_keys(test_path)
+        self.upload_queue_local_file(test_path)
 
         if ext is not None:
             self.wait_for_selector_visible('.upload-extension')
@@ -278,11 +267,82 @@ class NavigatesGalaxy(HasDriver):
             self.wait_for_selector_visible('.upload-genome')
             self.select2_set_value(".upload-genome", genome)
 
-        start_button = self.wait_for_selector_clickable("button#btn-start")
-        start_button.click()
+        self.upload_start()
 
         close_button = self.wait_for_selector_clickable("button#btn-close")
         close_button.click()
+
+    def upload_list(self, test_paths, name="test", ext=None, genome=None):
+        self._upload_start(test_paths, ext, genome, "List")
+        self.collection_builder_set_name(name)
+        self.collection_builder_create()
+
+    def upload_pair(self, test_paths, name="test", ext=None, genome=None):
+        self._upload_start(test_paths, ext, genome, "Pair")
+        self.collection_builder_set_name(name)
+        self.collection_builder_create()
+
+    def _upload_start(self, test_paths, ext, genome, collection_type):
+        # Perform upload of files and open the collection builder for specified
+        # type.
+        self.home()
+        self.upload_start_click()
+        self.upload_tab_click("collection")
+
+        self.upload_set_footer_extension(ext)
+        self.upload_set_footer_genome(genome)
+        self.upload_set_collection_type(collection_type)
+
+        for test_path in test_paths:
+            self.upload_queue_local_file(test_path, tab_id="collection")
+
+        self.upload_start(tab_id="collection")
+        self.upload_build()
+
+    @retry_during_transitions
+    def upload_tab_click(self, tab):
+        tab_tag_id = "#tab-title-link-%s" % tab
+        tab_element = self.wait_for_selector_clickable(tab_tag_id)
+        tab_element.click()
+
+    @retry_during_transitions
+    def upload_start_click(self):
+        upload_button = self.wait_for_selector_clickable(".upload-button")
+        upload_button.click()
+
+    @retry_during_transitions
+    def upload_set_footer_extension(self, ext):
+        if ext is not None:
+            self.wait_for_selector_visible('.upload-footer-extension')
+            self.select2_set_value(".upload-footer-extension", ext)
+
+    @retry_during_transitions
+    def upload_set_footer_genome(self, genome):
+        if genome is not None:
+            self.wait_for_selector_visible('.upload-footer-genome')
+            self.select2_set_value(".upload-footer-genome", genome)
+
+    @retry_during_transitions
+    def upload_set_collection_type(self, collection_type):
+        self.wait_for_selector_visible(".upload-footer-collection-type")
+        self.select2_set_value(".upload-footer-collection-type", collection_type)
+
+    @retry_during_transitions
+    def upload_start(self, tab_id="regular"):
+        start_button = self.wait_for_selector_clickable("div#%s button#btn-start" % tab_id)
+        start_button.click()
+
+    @retry_during_transitions
+    def upload_build(self):
+        start_button = self.wait_for_selector_clickable("div#collection button#btn-build")
+        start_button.click()
+
+    def upload_queue_local_file(self, test_path, tab_id="regular"):
+        local_upload_button = self.wait_for_selector_clickable("div#%s button#btn-local" % tab_id)
+        local_upload_button.click()
+
+        file_upload = self.wait_for_selector('div#%s input[type="file"]' % tab_id)
+        file_upload.send_keys(test_path)
 
     def workflow_index_open(self):
         self.home()

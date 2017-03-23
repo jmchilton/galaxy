@@ -56,3 +56,19 @@ class UploadsTestCase(SeleniumTestCase, UsesHistoryItemAssertions):
 
         self.history_panel_click_item_title(hid=1, wait=True)
         self.assert_item_dbkey_displayed_as(1, "hg18")
+
+    @selenium_test
+    def test_upload_list(self):
+        self.upload_list([self.get_filename("1.tabular")], name="Test Collection")
+        self.history_panel_wait_for_hid_ok(2)
+        # Make sure modals disappeared - both collection creator (TODO: upload).
+        self.wait_for_selector_absent_or_hidden(".collection-creator")
+        self.assert_item_name(2, "Test Collection")
+
+    @selenium_test
+    def test_upload_pair(self):
+        self.upload_list([self.get_filename("1.tabular"), self.get_filename("2.tabular")], name="Test Pair")
+        self.history_panel_wait_for_hid_ok(3)
+        # Make sure modals disappeared - both collection creator (TODO: upload).
+        self.wait_for_selector_absent_or_hidden(".collection-creator")
+        self.assert_item_name(3, "Test Pair")

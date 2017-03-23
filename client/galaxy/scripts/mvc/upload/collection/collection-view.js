@@ -161,9 +161,13 @@ function( Utils, UploadModel, UploadRow, UploadFtp, Popover, Select, Ui, LIST_CO
         _eventBuild: function() {
             var models = this.collection.map( function( upload ) { return Galaxy.currHistoryPanel.collection.getByHid( upload.get( 'hid' ) ) } );
             var selection = new Galaxy.currHistoryPanel.collection.constructor( models );
+            // I'm building the selection wrong because I need to set this historyId directly.
+            selection.historyId = Galaxy.currHistoryPanel.collection.historyId;
             Galaxy.currHistoryPanel.buildCollection( this.collectionType, selection );
             this.counter.running = 0;
             this._updateScreen();
+            this._eventReset();
+            this.app.modal.hide();
         },
 
         /** Remove model from upload list */
