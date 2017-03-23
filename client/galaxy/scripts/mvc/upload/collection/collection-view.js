@@ -109,7 +109,9 @@ function( Utils, UploadModel, UploadRow, UploadFtp, Popover, Select, Ui, LIST_CO
                 file_size   : file.size,
                 file_mode   : file.mode || 'local',
                 file_path   : file.path,
-                file_data   : file
+                file_data   : file,
+                extension   : this.select_extension.value(),
+                genome      : this.select_genome.value()
             });
             this.collection.add( new_model );
             var upload_row = new UploadRow( this, { model: new_model } );
