@@ -272,18 +272,26 @@ class NavigatesGalaxy(HasDriver):
         close_button = self.wait_for_selector_clickable("button#btn-close")
         close_button.click()
 
-    def upload_list(self, test_paths, name="test", ext=None, genome=None):
-        self._upload_start(test_paths, ext, genome, "List")
+    def upload_list(self, test_paths, name="test", ext=None, genome=None, hide_source_items=True):
+        self._collection_upload_start(test_paths, ext, genome, "List")
+        if not hide_source_items:
+            self.collection_builder_hide_originals()
+
         self.collection_builder_set_name(name)
         self.collection_builder_create()
 
-    def upload_pair(self, test_paths, name="test", ext=None, genome=None):
-        self._upload_start(test_paths, ext, genome, "Pair")
+    def upload_pair(self, test_paths, name="test", ext=None, genome=None, hide_source_items=True):
+        self._collection_upload_start(test_paths, ext, genome, "Pair")
+        if not hide_source_items:
+            self.collection_builder_hide_originals()
+
         self.collection_builder_set_name(name)
         self.collection_builder_create()
 
-    def upload_paired_list(self, test_paths, name="test", ext=None, genome=None):
-        self._upload_start(test_paths, ext, genome, "List of Pairs")
+    def upload_paired_list(self, test_paths, name="test", ext=None, genome=None, hide_source_items=True):
+        self._collection_upload_start(test_paths, ext, genome, "List of Pairs")
+        if not hide_source_items:
+            self.collection_builder_hide_originals()
 
         self.collection_builder_clear_filters()
         # TODO: generalize and loop these clicks so we don't need the assert
@@ -294,15 +302,15 @@ class NavigatesGalaxy(HasDriver):
         self.collection_builder_set_name(name)
         self.collection_builder_create()
 
-    def _upload_start(self, test_paths, ext, genome, collection_type):
+    def _collection_upload_start(self, test_paths, ext, genome, collection_type):
         # Perform upload of files and open the collection builder for specified
         # type.
         self.home()
         self.upload_start_click()
         self.upload_tab_click("collection")
 
-        self.upload_set_footer_extension(ext)
-        self.upload_set_footer_genome(genome)
+        self.upload_set_footer_extension(ext, tab_id="collection")
+        self.upload_set_footer_genome(genome, tab_id="collection")
         self.upload_set_collection_type(collection_type)
 
         for test_path in test_paths:
@@ -323,16 +331,18 @@ class NavigatesGalaxy(HasDriver):
         upload_button.click()
 
     @retry_during_transitions
-    def upload_set_footer_extension(self, ext):
+    def upload_set_footer_extension(self, ext, tab_id="regular"):
         if ext is not None:
-            self.wait_for_selector_visible('.upload-footer-extension')
-            self.select2_set_value(".upload-footer-extension", ext)
+            selector = 'div#%s .upload-footer-extension' % tab_id
+            self.wait_for_selector_visible(selector)
+            self.select2_set_value(selector, ext)
 
     @retry_during_transitions
-    def upload_set_footer_genome(self, genome):
+    def upload_set_footer_genome(self, genome, tab_id="regular"):
         if genome is not None:
-            self.wait_for_selector_visible('.upload-footer-genome')
-            self.select2_set_value(".upload-footer-genome", genome)
+            selector = 'div#%s .upload-footer-genome' % tab_id
+            self.wait_for_selector_visible(selector)
+            self.select2_set_value(selector, genome)
 
     @retry_during_transitions
     def upload_set_collection_type(self, collection_type):

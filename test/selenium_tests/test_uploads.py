@@ -83,6 +83,17 @@ class UploadsTestCase(SeleniumTestCase, UsesHistoryItemAssertions):
         self.history_panel_wait_for_hid_hidden(2)
 
     @selenium_test
+    def test_upload_pair_specify_extension(self):
+        self.upload_list([self.get_filename("1.tabular"), self.get_filename("2.tabular")], name="Test Pair", ext="txt", hide_source_items=False)
+        self.history_panel_wait_for_hid_ok(3)
+        self.history_panel_wait_for_hid_ok(1)
+
+        history_contents = self.current_history_contents()
+        hda = history_contents[0]
+        assert hda["name"] == '1.tabular'
+        assert hda["extension"] == "txt", hda
+
+    @selenium_test
     def test_upload_paired_list(self):
         self.upload_paired_list([self.get_filename("1.tabular"), self.get_filename("2.tabular")], name="Test Paired List")
         self.history_panel_wait_for_hid_ok(3)
