@@ -163,7 +163,7 @@ function( Utils, UploadModel, UploadRow, UploadFtp, Popover, Select, Ui, LIST_CO
             var selection = new Galaxy.currHistoryPanel.collection.constructor( models );
             // I'm building the selection wrong because I need to set this historyId directly.
             selection.historyId = Galaxy.currHistoryPanel.collection.historyId;
-            Galaxy.currHistoryPanel.buildCollection( this.collectionType, selection );
+            Galaxy.currHistoryPanel.buildCollection( this.collectionType, selection, true );
             this.counter.running = 0;
             this._updateScreen();
             this._eventReset();
