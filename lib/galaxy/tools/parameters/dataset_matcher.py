@@ -143,7 +143,7 @@ class DatasetCollectionMatcher( object ):
     def __init__( self, dataset_matcher ):
         self.dataset_matcher = dataset_matcher
 
-    def __valid_element( self, element ):
+    def __valid_element( self, element, check_security ):
         # Simplify things for now and assume these are hdas and not implicit
         # converts. One could imagine handling both of those cases down the
         # road.
@@ -152,22 +152,22 @@ class DatasetCollectionMatcher( object ):
 
         child_collection = element.child_collection
         if child_collection:
-            return self.dataset_collection_match( child_collection )
+            return self.dataset_collection_match( child_collection, check_security=check_security )
 
         hda = element.hda
         if not hda:
             return False
-        hda_match = self.dataset_matcher.hda_match( hda, ensure_visible=False )
+        hda_match = self.dataset_matcher.hda_match( hda, ensure_visible=False, check_security=check_security )
         return hda_match and not hda_match.implicit_conversion
 
-    def hdca_match( self, history_dataset_collection_association, reduction=False ):
+    def hdca_match( self, history_dataset_collection_association, reduction=False, check_security=True ):
         dataset_collection = history_dataset_collection_association.collection
         if reduction and dataset_collection.collection_type.find( ":" ) > 0:
             return False
         else:
-            return self.dataset_collection_match( dataset_collection )
+            return self.dataset_collection_match( dataset_collection, check_security=check_security )
 
-    def dataset_collection_match( self, dataset_collection ):
+    def dataset_collection_match( self, dataset_collection, check_security=False ):
         # If dataset collection not yet populated, cannot determine if it
         # would be a valid match for this parameter.
         if not dataset_collection.populated:
@@ -175,7 +175,7 @@ class DatasetCollectionMatcher( object ):
 
         valid = True
         for element in dataset_collection.elements:
-            if not self.__valid_element( element ):
+            if not self.__valid_element( element, check_security=check_security ):
                 valid = False
                 break
         return valid

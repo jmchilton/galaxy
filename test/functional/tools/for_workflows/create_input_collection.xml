@@ -13,7 +13,7 @@ for i in range($collection_size):
 </configfile>
   </configfiles>
   <inputs>
-    <param name="collection_size" type="integer" format="txt" label="Collection Size" value="1" />
+    <param name="collection_size" type="integer" label="Collection Size" value="1" />
   </inputs>
   <outputs>
     <collection name="output" type="list" label="lines">

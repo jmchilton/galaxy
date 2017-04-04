@@ -119,6 +119,17 @@ class ToolsTestCase( api.ApiTestCase ):
         rdata_metadata = self._upload_and_get_details( open(rdata_path, "rb"), file_type="auto" )
         self.assertEquals( rdata_metadata[ "file_ext" ], "rdata" )
 
+    def test_build_simple( self ):
+        history_id = self.dataset_populator.new_history()
+        dataset_to_param( self.dataset_populator.new_dataset( history_id, content='1\t2\t3' ) )
+        dataset_to_param( self.dataset_populator.new_dataset( history_id, content='4\t5\t6' ) )
+        response = self._get("tools/cat1/build", data={"history_id": history_id} )
+        self._assert_status_code_is( response, 200 )
+
+        response_json = response.json()
+        assert 'hda' in response_json
+        assert 'hdca' in response_json
+
     def test_unzip_collection( self ):
         history_id = self.dataset_populator.new_history()
         hdca_id = self.__build_pair( history_id, [ "123", "456" ] )

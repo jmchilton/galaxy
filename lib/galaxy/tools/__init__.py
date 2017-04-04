@@ -1790,6 +1790,8 @@ class Tool( object, Dictifiable ):
         except Exception as e:
             raise exceptions.MessageException( '[history_id=%s] Failed to retrieve history. %s.' % ( history_id, str( e ) ) )
 
+        state_build_timer = ExecutionTimer()
+
         # build request context
         request_context = WorkRequestContext( app=trans.app, user=trans.user, history=history, workflow_building_mode=workflow_building_mode )
 
@@ -1903,6 +1905,7 @@ class Tool( object, Dictifiable ):
             'method'        : self.method,
             'enctype'       : self.enctype
         })
+        log.debug("Built tool state for tool [%s] %s" % (self.id, state_build_timer))
         return tool_model
 
     def _get_job_remap( self, job):

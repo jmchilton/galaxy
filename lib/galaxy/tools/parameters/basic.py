@@ -1458,7 +1458,7 @@ class BaseDataToolParameter( ToolParameter ):
             else:
                 dataset_collection_matcher = DatasetCollectionMatcher( dataset_matcher )
                 for hdca in reversed( history.active_dataset_collections ):
-                    if dataset_collection_matcher.hdca_match( hdca, reduction=self.multiple ):
+                    if dataset_collection_matcher.hdca_match( hdca, reduction=self.multiple, check_security=True ):
                         return hdca
 
     def to_json( self, value, app, use_security ):
@@ -1794,7 +1794,7 @@ class DataToolParameter( BaseDataToolParameter ):
         # add dataset collections
         dataset_collection_matcher = DatasetCollectionMatcher( dataset_matcher )
         for hdca in history.active_dataset_collections:
-            if dataset_collection_matcher.hdca_match( hdca, reduction=multiple ):
+            if dataset_collection_matcher.hdca_match( hdca, reduction=multiple, check_security=False ):
                 append( d[ 'options' ][ 'hdca' ], hdca, hdca.name, 'hdca' )
 
         # sort both lists
