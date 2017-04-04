@@ -1,8 +1,8 @@
 #!/bin/bash
 #set -e
 
-# Open and few the contents of a docker-galaxy-stable container.
-# docker run --rm -i -t bgruening/galaxy-stable /bin/bash
+# Open and view the contents of a docker-galaxy-stable container.
+# - docker run --rm -i -t bgruening/galaxy-stable /bin/bash
 
 pwd_dir=$(pwd)
 GALAXY_ROOT=`dirname $0`/../..
@@ -37,8 +37,12 @@ fi
 GALAXY_URL=${GALAXY_URL:-http://localhost:${GALAXY_PORT}}
 GALAXY_MASTER_API_KEY=${GALAXY_MASTER_API_KEY:-HSNiugRFvgT574F43jZ7N9F3}
 
+: ${LOGS_DIR:="logs"}
+echo "Logs dir is $LOGS_DIR"
 LOGS_DIR=`cd "$LOGS_DIR"; pwd`
-WORK_DIR=`mktemp --tmpdir=$LOGS_DIR -d -t gxperfXXXX`
+LOG_DIR_PATTERN="gxperfXXXX"
+# Mangle following mktemp to try to work for either Linux or latest Mac OS X.
+WORK_DIR=`mktemp --tmpdir="$LOGS_DIR" -d -t "$LOG_DIR_PATTERN" 2>/dev/null || mktemp -d "$LOGS_DIR/$LOG_DIR_PATTERN"`
 echo "WORK_DIR is ${WORK_DIR}"
 NAME=`basename $WORK_DIR`
 
@@ -47,6 +51,7 @@ GALAXY_HANDLER_NUMPROCS=${GALAXY_HANDLER_NUMPROCS:-1}
 DOCKER_ENVIRONMENT="\
 -e NONUSE=nodejs,proftp,reports \
 -e GALAXY_HANDLER_NUMPROCS=$GALAXY_HANDLER_NUMPROCS \
+-e GALAXY_CONFIG_OVERRIDE_DATABASE_AUTO_MIGRATE=true \
 -e GALAXY_CONFIG_OVERRIDE_TOOL_CONFIG_FILE=$DOCKER_GALAXY_ROOT/test/functional/tools/samples_tool_conf.xml \
 -e GALAXY_CONFIG_ENABLE_BETA_WORKFLOW_MODULES=true \
 -e GALAXY_CONFIG_OVERRIDE_ENABLE_BETA_TOOL_FORMATS=true \
@@ -74,5 +79,5 @@ echo "Docker container with id $docker_image_id launched. Inspect with 'docker e
 for i in {1..40}; do curl --silent --fail ${GALAXY_URL}/api/version && break || sleep 5; done
 
 ${GALAXY_VIRTUAL_ENV}/bin/python test/manual/$manual_test_script.py --api_key ${GALAXY_MASTER_API_KEY} --host ${GALAXY_URL} $manual_test_script_args
-docker exec -i -t $docker_image_id /bin/bash -c "cp /home/galaxy/*log /galaxy_logs"
+docker exec -i -t $docker_image_id /bin/bash -c "cp /home/galaxy/logs/*log /galaxy_logs"
 docker kill $docker_image_id

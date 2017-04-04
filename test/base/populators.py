@@ -394,9 +394,11 @@ class BaseDatasetCollectionPopulator( object ):
         )
         return self.__create( payload )
 
-    def create_list_of_pairs_in_history( self, history_id, **kwds ):
-        pair1 = self.create_pair_in_history( history_id, **kwds ).json()["id"]
-        return self.create_list_from_pairs( history_id, [ pair1 ] )
+    def create_list_of_pairs_in_history( self, history_id, num_pairs=1, **kwds ):
+        pairs = []
+        for i in range(num_pairs):
+            pairs.append(self.create_pair_in_history( history_id, **kwds ).json()["id"])
+        return self.create_list_from_pairs( history_id, pairs )
 
     def create_pair_in_history( self, history_id, **kwds ):
         payload = self.create_pair_payload(
