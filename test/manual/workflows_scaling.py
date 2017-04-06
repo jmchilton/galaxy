@@ -8,23 +8,23 @@ $ .venv/bin/python scripts/summarize_timings.py --file /tmp/<work_dir>/handler1.
 import functools
 import json
 import os
-import random
 import sys
-from argparse import ArgumentParser
 from threading import Thread
 from uuid import uuid4
 
-from bioblend import galaxy
-
 galaxy_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir, os.path.pardir))
 sys.path[1:1] = [ os.path.join( galaxy_root, "lib" ), os.path.join( galaxy_root, "test" ) ]
+
+from api.workflows_format_2.converter import python_to_workflow
 
 from base.populators import (
     GiDatasetCollectionPopulator,
     GiDatasetPopulator,
     GiWorkflowPopulator,
 )
-from api.workflows_format_2.converter import python_to_workflow
+
+from manual.performance_test_helpers import gi_from_args, init_arg_parser
+
 
 LONG_TIMEOUT = 1000000000
 DESCRIPTION = "Script to exercise the workflow engine."
@@ -32,9 +32,7 @@ DESCRIPTION = "Script to exercise the workflow engine."
 
 def main(argv=None):
     """Entry point for workflow driving."""
-    arg_parser = ArgumentParser(description=DESCRIPTION)
-    arg_parser.add_argument("--api_key", default="testmasterapikey")
-    arg_parser.add_argument("--host", default="http://localhost:8080/")
+    arg_parser = init_arg_parser(DESCRIPTION)
 
     arg_parser.add_argument("--collection_size", type=int, default=20)
 
@@ -55,7 +53,7 @@ def main(argv=None):
     if not has_input:
         uuid = None
 
-    gi = _gi(args)
+    gi = gi_from_args(args)
 
     workflow = python_to_workflow(workflow_struct)
     workflow_info = gi.workflows.import_workflow_json(workflow)
@@ -172,17 +170,6 @@ def _link(link, output_name=None):
     if output_name is not None:
         link = str(link) + "#" + output_name
     return {"$link": link}
-
-
-def _gi(args):
-    gi = galaxy.GalaxyInstance(args.host, key=args.api_key)
-    name = "wftest-user-%d" % random.randint(0, 1000000)
-
-    user = gi.users.create_local_user(name, "%s@galaxytesting.dev" % name, "pass123")
-    user_id = user["id"]
-    api_key = gi.users.create_user_apikey(user_id)
-    user_gi = galaxy.GalaxyInstance(args.host, api_key)
-    return user_gi
 
 
 if __name__ == "__main__":

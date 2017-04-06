@@ -1,17 +1,13 @@
 #!/usr/bin/env python
 """
 """
-from __future__ import print_function
 
 import functools
 import os
-import random
 import sys
 
-from argparse import ArgumentParser
 from threading import Thread
 
-from bioblend import galaxy
 from six.moves import range
 
 galaxy_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir, os.path.pardir))
@@ -23,6 +19,8 @@ from base.populators import (
     GiWorkflowPopulator,
 )
 
+from manual.performance_test_helpers import gi_from_args, init_arg_parser
+
 
 LONG_TIMEOUT = 1000000000
 DESCRIPTION = "Script to exercise tool state building API."
@@ -30,19 +28,17 @@ DESCRIPTION = "Script to exercise tool state building API."
 
 def main(argv=None):
     """Entry point for workflow driving."""
-    arg_parser = ArgumentParser(description=DESCRIPTION)
-    arg_parser.add_argument("--api_key", default="testmasterapikey")
-    arg_parser.add_argument("--host", default="http://localhost:8080/")
+    arg_parser = init_arg_parser(DESCRIPTION)
 
     arg_parser.add_argument("--thread_count", type=int, default=1)
     arg_parser.add_argument("--collection_type", type=str, default="list")
     arg_parser.add_argument("--fresh_history", default=False, action="store_true")
-    arg_parser.add_argument("--collection_size", type=int, default=100)
+    arg_parser.add_argument("--collection_size", type=int, default=10)
     arg_parser.add_argument("--collection_count", type=int, default=1)
 
     args = arg_parser.parse_args(argv)
 
-    gi = _gi(args)
+    gi = gi_from_args(args)
 
     target = functools.partial(_run, args, gi)
     threads = []
@@ -87,17 +83,6 @@ def _run(args, gi):
     for i in range(20):
         response = gi.make_get_request(gi.url + "/tools/cat/build?history_id=%s" % history_id )
         assert response.status_code == 200
-
-
-def _gi(args):
-    gi = galaxy.GalaxyInstance(args.host, key=args.api_key)
-    name = "tbtest-user-%d" % random.randint(0, 1000000)
-
-    user = gi.users.create_local_user(name, "%s@galaxytesting.dev" % name, "pass123")
-    user_id = user["id"]
-    api_key = gi.users.create_user_apikey(user_id)
-    user_gi = galaxy.GalaxyInstance(args.host, api_key)
-    return user_gi
 
 
 if __name__ == "__main__":
