@@ -271,6 +271,12 @@ class Configuration( object ):
         self.instance_resource_url = kwargs.get( 'instance_resource_url', None )
         self.registration_warning_message = kwargs.get( 'registration_warning_message', None )
         self.ga_code = kwargs.get( 'ga_code', None )
+        collection_response_count_limit_raw = kwargs.get('collection_response_count_limit', "250")
+        if str(collection_response_count_limit_raw).lower() == "none":
+            collection_response_count_limit = None
+        else:
+            collection_response_count_limit = int(collection_response_count_limit_raw)
+        self.collection_response_count_limit = collection_response_count_limit
         self.session_duration = int(kwargs.get( 'session_duration', 0 ))
         #  Get the disposable email domains blacklist file and its contents
         self.blacklist_location = kwargs.get( 'blacklist_file', None )

@@ -3186,6 +3186,31 @@ class DatasetCollection( object, Dictifiable, UsesAnnotations ):
         self.populated_state = DatasetCollection.populated_states.FAILED
         self.populated_state_message = message
 
+    def first_n_elements( self, n ):
+        db_session = object_session( self )
+        if "elements" in self.__dict__:
+            log.info("USING PREFETCHED ELEMENETS")
+            # In this case the elements list is already in memory so just use it instead
+            # of trying to optimize query loading.
+            return self.elements[0:n]
+        else:
+            query = db_session.query(
+                DatasetCollectionElement
+            ).filter_by(
+                dataset_collection_id=self.id
+            ).order_by(
+                DatasetCollectionElement.element_index
+            )
+            if ":" in self.collection_type:
+                query.options(
+                    joinedload("child_collection")
+                )
+            else:
+                query.options(
+                    joinedload("hda")
+                )
+            return query.limit(n)
+
     @property
     def dataset_instances( self ):
         instances = []

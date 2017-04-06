@@ -65,7 +65,7 @@ def validate_input_element_identifiers( element_identifiers ):
             validate_input_element_identifiers( element_identifier[ "element_identifiers" ] )
 
 
-def dictify_dataset_collection_instance( dataset_collection_instance, parent, security, view="element" ):
+def dictify_dataset_collection_instance( dataset_collection_instance, parent, security, view="element", app_config=None ):
     dict_value = dataset_collection_instance.to_dict( view=view )
     encoded_id = security.encode_id( dataset_collection_instance.id )
     if isinstance( parent, model.History ):
@@ -78,23 +78,36 @@ def dictify_dataset_collection_instance( dataset_collection_instance, parent, se
         dict_value[ 'url' ] = web.url_for( 'library_content', library_id=encoded_library_id, id=encoded_id, folder_id=encoded_folder_id )
     if view == "element":
         collection = dataset_collection_instance.collection
-        dict_value[ 'elements' ] = [ dictify_element(_) for _ in collection.elements ]
+        log.info("In dictify with app_config %s" % (app_config is not None))
+        dict_value[ 'elements' ] = [ dictify_element(_, app_config=app_config) for _ in _collection_elements(collection, app_config) ]
         dict_value[ 'populated' ] = collection.populated
+
     security.encode_all_ids( dict_value, recursive=True )  # TODO: Use Kyle's recursive formulation of this.
     return dict_value
 
 
-def dictify_element( element ):
+def dictify_element( element, app_config=None ):
     dictified = element.to_dict( view="element" )
     object_detials = element.element_object.to_dict()
     if element.child_collection:
         # Recursively yield elements for each nested collection...
         child_collection = element.child_collection
-        object_detials[ "elements" ] = [ dictify_element(_) for _ in child_collection.elements ]
+        object_detials[ "elements" ] = [ dictify_element(_, app_config=app_config) for _ in _collection_elements(child_collection, app_config) ]
         object_detials[ "populated" ] = child_collection.populated
 
     dictified[ "object" ] = object_detials
     return dictified
+
+
+def _collection_elements(collection, app_config):
+    limit = None if app_config is None else getattr(app_config, 'collection_response_count_limit', None)
+    log.info("<FETCHING ELEMENTS with limit %s" % limit)
+    if limit is None:
+        elements = collection.elements
+    else:
+        elements = collection.first_n_elements( limit )
+    log.info("</FETCHING")
+    return elements
 
 
 __all__ = ( 'api_payload_to_create_params', 'dictify_dataset_collection_instance' )

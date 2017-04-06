@@ -119,7 +119,7 @@ class HistoryContentsController( BaseAPIController, UsesLibraryMixin, UsesLibrar
 
     def __collection_dict( self, trans, dataset_collection_instance, view="collection" ):
         return dictify_dataset_collection_instance( dataset_collection_instance,
-            security=trans.security, parent=dataset_collection_instance.history, view=view )
+            security=trans.security, parent=dataset_collection_instance.history, view=view, app_config=self.app.config )
 
     @expose_api_anonymous
     def show( self, trans, id, history_id, **kwd ):
