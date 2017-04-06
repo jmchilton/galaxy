@@ -1,7 +1,7 @@
 import logging
 
 from galaxy import exceptions, model, web
-from galaxy.util import string_as_bool
+from galaxy.util import ExecutionTimer, string_as_bool
 
 log = logging.getLogger( __name__ )
 
@@ -66,6 +66,7 @@ def validate_input_element_identifiers( element_identifiers ):
 
 
 def dictify_dataset_collection_instance( dataset_collection_instance, parent, security, view="element", app_config=None ):
+    timer = ExecutionTimer()
     dict_value = dataset_collection_instance.to_dict( view=view )
     encoded_id = security.encode_id( dataset_collection_instance.id )
     if isinstance( parent, model.History ):
@@ -83,6 +84,7 @@ def dictify_dataset_collection_instance( dataset_collection_instance, parent, se
         dict_value[ 'populated' ] = collection.populated
 
     security.encode_all_ids( dict_value, recursive=True )  # TODO: Use Kyle's recursive formulation of this.
+    log.info("Serialized dataset collection %s" % timer)
     return dict_value
 
 

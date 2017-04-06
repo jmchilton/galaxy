@@ -33,7 +33,7 @@ def main(argv=None):
     arg_parser.add_argument("--thread_count", type=int, default=1)
     arg_parser.add_argument("--collection_type", type=str, default="list")
     arg_parser.add_argument("--fresh_history", default=False, action="store_true")
-    arg_parser.add_argument("--collection_size", type=int, default=10)
+    arg_parser.add_argument("--collection_size", type=int, default=100)
     arg_parser.add_argument("--collection_count", type=int, default=1)
 
     args = arg_parser.parse_args(argv)
