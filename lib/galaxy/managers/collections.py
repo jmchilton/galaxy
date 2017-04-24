@@ -1,3 +1,5 @@
+from six import iteritems
+
 from galaxy import model
 from galaxy.dataset_collections import builder
 from galaxy.dataset_collections.matching import MatchingCollections
@@ -114,6 +116,7 @@ class DatasetCollectionManager( object ):
         if not collection_type:
             raise RequestParameterInvalidException( ERROR_NO_COLLECTION_TYPE )
         collection_type_description = self.collection_type_descriptions.for_collection_type( collection_type )
+        has_subcollections = collection_type_description.has_subcollections( )
         # If we have elements, this is an internal request, don't need to load
         # objects from identifiers.
         if elements is None:
@@ -127,8 +130,12 @@ class DatasetCollectionManager( object ):
                     elements = self.__load_elements(trans, element_identifier['element_identifiers'])
             if not new_collection:
                 elements = self.__load_elements( trans, element_identifiers )
-
         # else if elements is set, it better be an ordered dict!
+        else:
+            if has_subcollections:
+                # Nested collection - recursively create collections as needed.
+                raise Exception("MOOO")
+                self.__recursively_create_collections_for_elements( trans, elements )
 
         if elements is not self.ELEMENTS_UNINITIALIZED:
             type_plugin = collection_type_description.rank_type_plugin()
@@ -236,7 +243,7 @@ class DatasetCollectionManager( object ):
     def __recursively_create_collections( self, trans, element_identifiers ):
         for index, element_identifier in enumerate( element_identifiers ):
             try:
-                if not element_identifier[ "src" ] == "new_collection":
+                if element_identifier[ "src" ] != "new_collection":
                     # not a new collection, keep moving...
                     continue
             except KeyError:
@@ -253,6 +260,27 @@ class DatasetCollectionManager( object ):
             element_identifier[ "__object__" ] = collection
 
         return element_identifiers
+
+    def __recursively_create_collections_for_elements( self, trans, elements ):
+        if elements is self.ELEMENTS_UNINITIALIZED:
+            return
+
+        new_elements = odict.odict()
+        for key, element in iteritems(elements):
+            if element[ "src" ] != "new_collection":
+                continue
+
+            # element is a dict with src new_collection and
+            # and odict of named elements
+            collection_type = element.get( "collection_type", None )
+            sub_elements = element[ "elements" ]
+            collection = self.create_dataset_collection(
+                trans=trans,
+                collection_type=collection_type,
+                elements=sub_elements,
+            )
+            new_elements[key] = collection
+        elements.update(new_elements)
 
     def __load_elements( self, trans, element_identifiers ):
         elements = odict.odict()

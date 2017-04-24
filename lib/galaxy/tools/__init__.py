@@ -2593,11 +2593,68 @@ class FilterFromFileTool(DatabaseOperationTool):
         )
 
 
+class GroupFromFileTool(DatabaseOperationTool):
+    tool_type = 'group_from_file'
+
+    def produce_outputs(self, trans, out_data, output_collections, incoming, history):
+        hdca = incoming["input"]
+        how_type = incoming["how"]["how_select"]
+        new_labels_dataset_assoc = incoming["how"]["labels"]
+        strict = string_as_bool(incoming["how"]["strict"])
+        new_elements = odict()
+
+        def add_copied_value_to_new_elements(new_label, existing_identifier, dce_object):
+            new_label = new_label.strip()
+            if new_label not in new_elements:
+                group_elements = {}
+                group_elements["src"] = "new_collection"
+                # This should not be list...
+                group_elements["collection_type"] = "list"
+                group_elements["elements"] = odict()
+                new_elements[new_label] = group_elements
+
+            copied_value = dce_object.copy()
+            if getattr(copied_value, "history_content_type", None) == "dataset":
+                history.add_dataset(copied_value, set_hid=False)
+            new_elements[new_label]["elements"][existing_identifier] = copied_value
+
+        new_labels_path = new_labels_dataset_assoc.file_name
+        new_labels = open(new_labels_path, "r").readlines(1024 * 1000000)
+        if strict and len(hdca.collection.elements) != len(new_labels):
+            raise Exception("Group mapping file contains incorrect number of identifiers")
+
+        if how_type == "tabular":
+            # We have a tabular file, where the first column is an existing element identifier,
+            # and the second column is the new element identifier.
+            source_new_label = (line.strip().split('\t') for line in new_labels)
+            new_labels_dict = {source: new_label for source, new_label in source_new_label}
+            for i, dce in enumerate(hdca.collection.elements):
+                dce_object = dce.element_object
+                element_identifier = dce.element_identifier
+                default = element_identifier if strict else None
+                new_label = new_labels_dict.get(element_identifier, default)
+                if not new_label:
+                    raise Exception("Failed to find new label for identifier [%s]" % element_identifier)
+                add_copied_value_to_new_elements(new_label, element_identifier, dce_object)
+        else:
+            # If new_labels_dataset_assoc is not a two-column tabular dataset we label with the current line of the dataset
+            for i, dce in enumerate(hdca.collection.elements):
+                dce_object = dce.element_object
+                element_identifier = dce.element_identifier
+                add_copied_value_to_new_elements(new_labels[i], element_identifier, dce_object)
+        for key in new_elements.keys():
+            if not re.match("^[\w\-_]+$", key):
+                raise Exception("Invalid new colleciton identifier [%s]" % key)
+        output_collections.create_collection(
+            self.outputs["output"], "output", elements=new_elements
+        )
+
+
 # Populate tool_type to ToolClass mappings
 tool_types = {}
 for tool_class in [ Tool, SetMetadataTool, OutputParameterJSONTool,
                     DataManagerTool, DataSourceTool, AsyncDataSourceTool,
-                    UnzipCollectionTool, ZipCollectionTool, MergeCollectionTool, RelabelFromFileTool, FilterFromFileTool,
+                    UnzipCollectionTool, ZipCollectionTool, MergeCollectionTool, RelabelFromFileTool, FilterFromFileTool, GroupFromFileTool,
                     DataDestinationTool ]:
     tool_types[ tool_class.tool_type ] = tool_class
 

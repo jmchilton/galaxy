@@ -1,0 +1,77 @@
+<tool id="__GROUP_FROM_FILE__"
+      name="Group List"
+      version="1.0.0"
+      tool_type="group_from_file">
+    <description>using contents of a file</description>
+    <type class="GroupFromFileTool" module="galaxy.tools" />
+    <action module="galaxy.tools.actions.model_operations"
+            class="ModelOperationToolAction"/>
+    <inputs>
+        <param type="data_collection" name="input" label="Input Collection" collection_type="list" help="A list whose elements will be grouped."/>
+        <conditional name="how">
+            <param type="select" name="how_select" label="How should the new groups be specified?">
+                <option value="txt">Parent group identifiers will be specified as lines in a simple text file.</option>
+                <option value="tabular">Map original identifiers to new parent identifiers using a two column table.</option>
+            </param>
+            <when value="txt">
+                <param type="data" name="labels" format="tabular" label="New Super Groups" />
+                <param name="strict" type="boolean" label="Ensure strict mapping" help="If selected, the target file must contain exactly the correct number of lines." truevalue="true" falsevalue="false" />
+            </when>
+            <when value="tabular">
+                <param type="data" name="labels" format="tabular" label="New Super Groups" />
+                <param name="strict" type="boolean" label="Ensure strict mapping" help="If selected, the target file must contain exactly the correct number of lines and each input identifier must match exactly one element of the input collection." truevalue="true" falsevalue="false" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="output" format_source="input" type="list:list" label="${on_string} (grouped)" >
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input">
+                <collection type="list">
+                    <element name="i1" value="simple_line.txt" />
+                    <element name="i2" value="simple_line_alternative.txt" />
+                    <element name="i3" value="simple_line.txt" />
+                    <element name="i4" value="simple_line_alternative.txt" />
+                </collection>
+            </param>
+            <param name="how_select" value="txt" />
+            <param name="labels" value="group_from_files_groups_1.txt" ftype="txt" />
+            <output_collection name="output" type="list:list">
+                <element name="g1">
+                    <element name="i1">
+                      <assert_contents>
+                        <has_text_matching expression="^This is a line of text.\n$" />
+                      </assert_contents>
+                    </element>
+                    <element name="i2">
+                      <assert_contents>
+                        <has_text_matching expression="^This is a different line of text.\n$" />
+                      </assert_contents>
+                    </element>
+                    <element name="i4">
+                      <assert_contents>
+                        <has_text_matching expression="^This is a line of text.\n$" />
+                      </assert_contents>
+                    </element>
+                </element>
+                <element name="g2">
+                    <element name="i3">
+                      <assert_contents>
+                        <has_text_matching expression="^This is a line of text.\n$" />
+                      </assert_contents>
+                    </element>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help><![CDATA[
+    
+.. class:: infomark
+
+        This tool will create new history datasets from your collection
+        but your quota usage will not increase.
+    ]]></help>
+</tool>
