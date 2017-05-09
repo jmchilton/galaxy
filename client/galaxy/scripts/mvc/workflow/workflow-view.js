@@ -6,13 +6,12 @@ define([
     'mvc/workflow/workflow-canvas',
     'mvc/workflow/workflow-node',
     'mvc/workflow/workflow-icons',
-    'mvc/tool/tool-form-workflow',
-    'mvc/form/form-view',
+    'mvc/workflow/workflow-forms',
     'mvc/ui/ui-misc',
     'utils/async-save-text',
     'libs/toastr',
     'ui/editable-text'
-], function( Utils, Globals, Workflow, WorkflowCanvas, Node, WorkflowIcons, ToolForm, Form, Ui, async_save_text, Toastr ){
+], function( Utils, Globals, Workflow, WorkflowCanvas, Node, WorkflowIcons, FormWrappers, Ui, async_save_text, Toastr ){
 
     // Reset tool search to start state.
     function reset_tool_search( initValue ) {
@@ -282,7 +281,7 @@ define([
                                 }
                             }).done(function(id){
                                 window.onbeforeunload = undefined;
-                                window.location = "/workflow/editor?id=" + id;
+                                window.location = Galaxy.root + "workflow/editor?id=" + id;
                                 hide_modal();
                             }).fail(function(){
                                 hide_modal();
@@ -661,66 +660,64 @@ define([
             var $container = $( '#' + cls );
             if ( content && $container.find( '#' + id ).length == 0 ) {
                 var $el = $( '<div id="' + id + '" class="' + cls + '"/>' );
-                var form = null;
+                var form_wrapper = null;
+                content.node = node;
+                content.workflow = this.workflow;
+                content.datatypes = this.datatypes;
                 content.icon = WorkflowIcons[ node.type ];
                 content.cls = 'ui-portlet-narrow';
-                if ( node.type == 'tool' ) {
-                    content.node = node;
-                    content.workflow = this.workflow;
-                    content.datatypes = this.datatypes;
-                    form = new ToolForm.View( content );
-                } else {
-                    if ( content.inputs && content.inputs.length > 0 ) {
-                        content.inputs.unshift({
-                            type    : 'text',
-                            name    : '__label',
-                            label   : 'Label',
-                            value   : node.label,
-                            help    : 'Add a step label.',
-                            onchange: function( new_label ) {
-                                var duplicate = false;
-                                for ( var i in self.workflow.nodes ) {
-                                    var n = self.workflow.nodes[ i ];
-                                    if ( n.label && n.label == new_label && n.id != node.id ) {
-                                        duplicate = true;
-                                        break;
-                                    }
-                                }
-                                var input_id = form.data.match( '__label' );
-                                var input_element = form.element_list[ input_id ];
-                                input_element.model.set( 'error_text', duplicate && 'Duplicate label. Please fix this before saving the workflow.' );
-                                form.trigger( 'change' );
+                content.inputs.unshift({
+                    type    : 'text',
+                    name    : '__annotation',
+                    label   : 'Annotation',
+                    fixed   : true,
+                    value   : node.annotation,
+                    area    : true,
+                    help    : 'Add an annotation or notes to this step. Annotations are available when a workflow is viewed.'
+                });
+                content.inputs.unshift({
+                    type    : 'text',
+                    name    : '__label',
+                    label   : 'Label',
+                    value   : node.label,
+                    help    : 'Add a step label.',
+                    fixed   : true,
+                    onchange: function( new_label ) {
+                        var duplicate = false;
+                        for ( var i in self.workflow.nodes ) {
+                            var n = self.workflow.nodes[ i ];
+                            if ( n.label && n.label == new_label && n.id != node.id ) {
+                                duplicate = true;
+                                break;
                             }
-                        });
-                        content.inputs.push({
-                            type    : 'text',
-                            name    : '__annotation',
-                            label   : 'Annotation',
-                            value   : node.annotation,
-                            area    : true,
-                            help    : 'Add an annotation or notes to this step. Annotations are available when a workflow is viewed.'
-                        });
-                        content.onchange = function() {
-                            Utils.request({
-                                type    : 'POST',
-                                url     :  Galaxy.root + 'api/workflows/build_module',
-                                data    : {
-                                    id          : node.id,
-                                    type        : node.type,
-                                    inputs      : form.data.create()
-                                },
-                                success : function( data ) {
-                                    node.update_field_data( data );
-                                }
-                            });
-                        };
-                    } else {
-                        content.message = 'No inputs available for this module.';
-                        content.message_status = 'info';
+                        }
+                        var input_id = form_wrapper.form.data.match( '__label' );
+                        var input_element = form_wrapper.form.element_list[ input_id ];
+                        input_element.model.set( 'error_text', duplicate && 'Duplicate label. Please fix this before saving the workflow.' );
+                        form_wrapper.form.trigger( 'change' );
                     }
-                    form = new Form( content );
+                });
+                content.onchange = function() {
+                    Utils.request({
+                        type    : 'POST',
+                        url     :  Galaxy.root + 'api/workflows/build_module',
+                        data    : {
+                            id          : node.id,
+                            type        : node.type,
+                            content_id  : node.content_id,
+                            inputs      : form_wrapper.form.data.create()
+                        },
+                        success : function( data ) {
+                            node.update_field_data( data );
+                        }
+                    });
+                };
+                if ( node.type == 'tool' ) {
+                    form_wrapper = new FormWrappers.Tool( content );
+                } else {
+                    form_wrapper = new FormWrappers.Default( content );
                 }
-                $el.append( form.$el );
+                $el.append( form_wrapper.form.$el );
                 $container.append( $el );
             }
             $( '.' + cls ).hide();

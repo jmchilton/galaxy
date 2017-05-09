@@ -39,12 +39,18 @@ define([ 'utils/utils', 'utils/deferred', 'mvc/ui/ui-misc', 'mvc/form/form-view'
             _.each( this.model.get( 'steps' ), function( step, i ) {
                 Galaxy.emit.debug( 'tool-form-composite::initialize()', i + ' : Preparing workflow step.' );
                 var icon = WorkflowIcons[ step.step_type ];
+                var title = parseInt( i + 1 ) + ': ' + ( step.step_label || step.step_name );
+                if ( step.annotation ) {
+                    title += ' - ' + step.annotation;
+                }
+                if ( step.step_version ) {
+                    title += ' (Galaxy Version ' + step.step_version + ')';
+                }
                 step = Utils.merge( {
                     index                   : i,
-                    name                    : step.name,
+                    title                   : _.escape( title ),
                     icon                    : icon || '',
                     help                    : null,
-                    description             : step.annotation && ' - ' + step.annotation || step.description,
                     citations               : null,
                     collapsible             : true,
                     collapsed               : i > 0 && !self._isDataStep( step ),
@@ -145,15 +151,16 @@ define([ 'utils/utils', 'utils/deferred', 'mvc/ui/ui-misc', 'mvc/form/form-view'
                 if ( step.step_type == 'tool' ) {
                     var data_resolved = true;
                     FormData.visitInputs( step.inputs, function ( input, name, context ) {
+                        var is_runtime_value = input.value && input.value.__class__ == 'RuntimeValue';
                         var is_data_input = ([ 'data', 'data_collection' ]).indexOf( input.type ) != -1;
                         var data_ref = context[ input.data_ref ];
                         input.step_linked && !self._isDataStep( input.step_linked ) && ( data_resolved = false );
                         input.options && ( ( input.options.length == 0 && !data_resolved ) || input.wp_linked ) && ( input.is_workflow = true );
                         data_ref && ( input.is_workflow = ( data_ref.step_linked && !self._isDataStep( data_ref.step_linked ) ) || input.wp_linked );
                         ( is_data_input || ( input.value && input.value.__class__ == 'RuntimeValue' && !input.step_linked ) ) && ( step.collapsed = false );
-                        input.value && input.value.__class__ == 'RuntimeValue' && ( input.value = null );
+                        is_runtime_value && ( input.value = input.default_value );
                         input.flavor = 'workflow';
-                        if ( !is_data_input && input.type !== 'hidden' && !input.wp_linked ) {
+                        if ( !is_runtime_value && !is_data_input && input.type !== 'hidden' && !input.wp_linked ) {
                             if ( input.optional || ( !Utils.isEmpty( input.value ) && input.value !== '' ) ) {
                                 input.collapsible_value = input.value;
                                 input.collapsible_preview = true;
@@ -300,7 +307,7 @@ define([ 'utils/utils', 'utils/deferred', 'mvc/ui/ui-misc', 'mvc/form/form-view'
                     var is_simple_input = ([ 'data_input', 'data_collection_input' ]).indexOf( step.step_type ) != -1;
                     _.each( step.inputs, function( input ) { input.flavor = 'module'; input.hide_label = is_simple_input; } );
                     form = new Form( Utils.merge({
-                        title    : '<b>' + step.name + '</b>',
+                        title    : step.title,
                         onchange : function() { _.each( self.links[ step.index ], function( link ) { self._refreshStep( link ) } ) },
                         inputs   : step.inputs && step.inputs.length > 0 ? step.inputs : [ { type: 'hidden', name: 'No options available.', ignore: null } ]
                     }, step ) );
@@ -445,7 +452,7 @@ define([ 'utils/utils', 'utils/deferred', 'mvc/ui/ui-misc', 'mvc/form/form-view'
                         Galaxy.emit.debug( 'tool-form-composite::submit', 'Submission successful.', response );
                         self.$el.children().hide();
                         self.$el.append( self._templateSuccess( response ) );
-                        
+
                         // Show Webhook if job is running
                         if ($.isArray( response ) && response.length > 0) {
                             self.$el.append( $( '<div/>', { id: 'webhook-view' } ) );

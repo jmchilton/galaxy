@@ -80,7 +80,7 @@ class TabularData( data.Text ):
             return self.get_chunk(trans, dataset, offset, ck_size)
         elif to_ext or not preview:
             to_ext = to_ext or dataset.extension
-            return self._serve_raw(trans, dataset, to_ext)
+            return self._serve_raw(trans, dataset, to_ext, **kwd)
         elif dataset.metadata.columns > 50:
             # Fancy tabular display is only suitable for datasets without an incredibly large number of columns.
             # We should add a new datatype 'matrix', with its own draw method, suitable for this kind of data.
@@ -167,7 +167,7 @@ class TabularData( data.Text ):
                 out.append( '</th>' )
             out.append( '</tr>' )
         except Exception as exc:
-            log.exception( 'make_html_peek_header failed on HDA %s' % dataset.id )
+            log.exception( 'make_html_peek_header failed on HDA %s', dataset.id )
             raise Exception( "Can't create peek header %s" % str( exc ) )
         return "".join( out )
 
@@ -198,7 +198,7 @@ class TabularData( data.Text ):
                             out.append( '<td>%s</td>' % escape( elem ) )
                         out.append( '</tr>' )
         except Exception as exc:
-            log.exception( 'make_html_peek_rows failed on HDA %s' % dataset.id )
+            log.exception( 'make_html_peek_rows failed on HDA %s', dataset.id )
             raise Exception( "Can't create peek rows %s" % str( exc ) )
         return "".join( out )
 
