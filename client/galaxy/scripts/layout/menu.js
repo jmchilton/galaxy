@@ -163,6 +163,16 @@ var Collection = Backbone.Collection.extend({
                     title   : 'Installed Repositories',
                     url     : 'admin_beta#repos/v/all',
                     target  : '_frame'
+                },
+                {
+                    title   : 'Tools',
+                    url     : 'admin_beta#tools',
+                    target  : '_frame'
+                },
+                {
+                    title   : 'Dependencies',
+                    url     : 'admin_beta#dependencies',
+                    target  : '_frame'
                 }
             ]
         });

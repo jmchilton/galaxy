@@ -1,12 +1,14 @@
 define([
   "libs/toastr",
   "admin/repos-detail-view",
-  "admin/repos-list-view"
+  "admin/repos-list-view",
+  "admin/tools-list-view"  
   ],
   function(
     mod_toastr,
     mod_repos_detail_view,
-    mod_repos_list_view
+    mod_repos_list_view,
+    mod_tools_list_view
    ) {
 
 var AdminRouter = Backbone.Router.extend({
@@ -15,7 +17,7 @@ var AdminRouter = Backbone.Router.extend({
     this.routesHit = 0;
     // keep count of number of routes handled by the application
     Backbone.history.on( 'route', function() { this.routesHit++; }, this );
-
+    conosle.log("IN HERE");
     this.bind( 'route', this.trackPageview );
   },
 
@@ -26,7 +28,8 @@ var AdminRouter = Backbone.Router.extend({
     "repos/v/:view/f/:filter"    : "repolist",
     "repos/:id"                  : "repodetail",
     // "repos(?view=:view)&(filter=:filter)"    : "repolist",
-
+    "tools"                      : "toollist",
+    "dependencies"               : "dependencylist"
   },
 
   /**
@@ -71,6 +74,27 @@ var GalaxyAdminApp = Backbone.View.extend({
     this.admin_router.on('route:repodetail', function(id) {
       console.log('detail id:'+id);
       Galaxy.adminapp.adminRepoDetailView = new mod_repos_detail_view.AdminReposDetailView({id: id});
+    });
+
+    this.admin_router.on('route', function() {
+      console.log("IN ROUTER");
+    });
+
+    this.admin_router.on('route:toollist', function(view, filter) {
+      /*
+      Galaxy.adminapp.adminRepoDetailView = new mod_repos_detail_view.AdminReposDetailView({id: id});
+      if (Galaxy.adminapp.app_config.known_views.indexOf(view) === -1){
+        view = 'all';
+      }
+      */
+      console.log("IN TOOL LIST")
+      if (Galaxy.adminapp.adminToolsListView){
+        console.log('recycling toolsslist view');
+        Galaxy.adminapp.mod_tools_list_view.repaint({view: view, section_filter: filter});
+      } else{
+        console.log('new toolsslist view');
+        Galaxy.adminapp.mod_tools_list_view = new mod_tools_list_view.AdminToolsListView({view: view, section_filter: filter});
+      }
     });
 
     Backbone.history.start({pushState: false});
