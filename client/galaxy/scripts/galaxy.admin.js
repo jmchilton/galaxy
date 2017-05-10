@@ -2,7 +2,7 @@ define([
   "libs/toastr",
   "admin/repos-detail-view",
   "admin/repos-list-view",
-  "admin/tools-list-view"  
+  "admin/tool-dependencies-list-view"  
   ],
   function(
     mod_toastr,
@@ -17,7 +17,6 @@ var AdminRouter = Backbone.Router.extend({
     this.routesHit = 0;
     // keep count of number of routes handled by the application
     Backbone.history.on( 'route', function() { this.routesHit++; }, this );
-    conosle.log("IN HERE");
     this.bind( 'route', this.trackPageview );
   },
 
@@ -28,8 +27,8 @@ var AdminRouter = Backbone.Router.extend({
     "repos/v/:view/f/:filter"    : "repolist",
     "repos/:id"                  : "repodetail",
     // "repos(?view=:view)&(filter=:filter)"    : "repolist",
-    "tools"                      : "toollist",
-    "dependencies"               : "dependencylist"
+    "tool_dependencies"          : "tooldependencieslist",
+    "tool_dependencies/v/:view"  : "tooldependencieslist"
   },
 
   /**
@@ -51,7 +50,8 @@ var AdminRouter = Backbone.Router.extend({
 var GalaxyAdminApp = Backbone.View.extend({
 
   app_config: {
-    known_views: ['all', 'tools', 'packages', 'uninstalled']
+    repos_known_views: ['all', 'tools', 'packages', 'uninstalled'],
+    tool_dependencies_known_views: ['by_tool', 'by_requirement', 'unused']
   },
 
   initialize: function(){
@@ -59,7 +59,7 @@ var GalaxyAdminApp = Backbone.View.extend({
     this.admin_router = new AdminRouter();
 
     this.admin_router.on('route:repolist', function(view, filter) {
-      if (Galaxy.adminapp.app_config.known_views.indexOf(view) === -1){
+      if (Galaxy.adminapp.app_config.repos_known_views.indexOf(view) === -1){
         view = 'all';
       }
       console.log('view: '+view+' section_filter: '+filter);
@@ -80,20 +80,14 @@ var GalaxyAdminApp = Backbone.View.extend({
       console.log("IN ROUTER");
     });
 
-    this.admin_router.on('route:toollist', function(view, filter) {
-      /*
-      Galaxy.adminapp.adminRepoDetailView = new mod_repos_detail_view.AdminReposDetailView({id: id});
-      if (Galaxy.adminapp.app_config.known_views.indexOf(view) === -1){
-        view = 'all';
+    this.admin_router.on('route:tooldependencieslist', function(view, filter) {
+      if (Galaxy.adminapp.app_config.tool_dependencies_known_views.indexOf(view) === -1){
+        view = 'by_tool';
       }
-      */
-      console.log("IN TOOL LIST")
       if (Galaxy.adminapp.adminToolsListView){
-        console.log('recycling toolsslist view');
         Galaxy.adminapp.mod_tools_list_view.repaint({view: view, section_filter: filter});
       } else{
-        console.log('new toolsslist view');
-        Galaxy.adminapp.mod_tools_list_view = new mod_tools_list_view.AdminToolsListView({view: view, section_filter: filter});
+        Galaxy.adminapp.mod_tools_list_view = new mod_tools_list_view.AdminToolDependenciesListView({view: view, section_filter: filter});
       }
     });
 

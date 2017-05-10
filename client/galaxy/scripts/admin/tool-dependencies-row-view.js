@@ -20,8 +20,10 @@ var AdminToolsRowView = Backbone.View.extend({
     // if (typeof repo === 'undefined'){
     //   repo = Galaxy.adminapp.adminReposListView.collection.get(this.options.repo.id);
     // }
-    var repo_row_template = this.templateRepoRow();
-    this.setElement(repo_row_template({repo: this.options.repo}));
+    console.log("Rendering tools-row-view");
+    var tool_dependencies_row_template = this.templateRepoRow();
+    console.log(this.options);
+    this.setElement(tool_dependencies_row_template({tool_dependencies: this.options.tool_dependencies}));
     this.$el.show();
     this.$el.find('[data-toggle]').tooltip();
     return this;
@@ -76,17 +78,31 @@ var AdminToolsRowView = Backbone.View.extend({
 
   templateRepoRow: function(){
     return _.template([
-    '<tr class="repo-row light" style="display:none; " data-id="<%- repo.get("id") %>">',
+    '<tr class="repo-row light" style="display:none; " data-id="<%- tool_dependencies.attributes.tool.id %>">',
       // Checkbox column
       '<td style="text-align: center; " class="checkbox-cell">',
         '<input style="margin: 0;" type="checkbox">',
       '</td>',
       // Name column
       '<td>',
-        '<% if(repo.get("name")) { %>',
-          '<a href="#repos/<%- repo.get("id") %>"><%- repo.get("name") %></a>',
-          '<% if(repo.get("collapsed_repos")) { %>',
-            '<span data-toggle="tooltip" data-placement="top" title="multiple revisions detected" class="fa fa-compress icon-inline"/>',
+          '<a href=""><%- tool_dependencies.get("tool").name %></a>',
+      '</td>',
+      '<td>',
+          '<a href=""><%- tool_dependencies.get("tool").id %></a>',
+      '</td>',
+      '<td>',
+        '<% for(var i = 0; i < tool_dependencies.get("requirements").length; ++i) { %>',
+          '<% if(i > 0) { %> <br> <% } %>',
+          '<%- tool_dependencies.get("requirements")[i].name %>',
+        '<% } %>',
+      '</td>',
+      '<td>',
+        '<% for(var i = 0; i < tool_dependencies.get("requirements").length; ++i) { %>',
+          '<% if(i > 0) { %> <br> <% } %>',
+          '<% if(tool_dependencies.get("requirements")[i].version) { %>',
+            '<%- tool_dependencies.get("requirements")[i].version %>',
+          '<% } else { %>',
+            '<i>None</i>',
           '<% } %>',
         '<% } %>',
       '</td>',

@@ -1714,7 +1714,7 @@ class Tool( object, Dictifiable ):
             os.remove( temp_file )
         return tarball_archive
 
-    def to_dict( self, trans, link_details=False, io_details=False ):
+    def to_dict( self, trans=None, link_details=False, io_details=False ):
         """ Returns dict of tool. """
 
         # Basic information
@@ -1734,7 +1734,7 @@ class Tool( object, Dictifiable ):
             }
 
         # If an admin user, expose the path to the actual tool config XML file.
-        if trans.user_is_admin():
+        if trans and trans.user_is_admin():
             tool_dict[ 'config_file' ] = os.path.abspath( self.config_file )
 
         # Add link details.

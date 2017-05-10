@@ -1,19 +1,19 @@
 define([
   "libs/toastr",
-  "admin/repos-row-view",
-  "admin/tools-model",
+  "admin/tool-dependencies-row-view",
+  "admin/tool-dependencies-model",
   "mvc/ui/ui-select",
   "utils/utils",
   ],
   function(
     mod_toastr,
-    mod_repo_row_view,
+    mod_tools_row_view,
     mod_tools_model,
     mod_ui_select,
     mod_utils
    ) {
 
-var AdminToolsListView = Backbone.View.extend({
+var AdminToolDependenciesListView = Backbone.View.extend({
   el: '#center',
 
   rowViews: {},
@@ -21,7 +21,7 @@ var AdminToolsListView = Backbone.View.extend({
   defaults: {
     view: 'all',
     section_filter: null,
-    sort_by: 'date',
+    sort_by: 'name',
     sort_order: 'asc',
   },
 
@@ -34,8 +34,7 @@ var AdminToolsListView = Backbone.View.extend({
 
   initialize: function( options ){
     this.options = _.defaults( this.options || {}, options, this.defaults );
-    this.collection = new mod_tools_model.Repos();
-
+    this.collection = new mod_tools_model.Tools();
     // start to listen if someone modifies the collection
     // this.listenTo( this.collection, 'add', this.renderOne );
     // this.listenTo( this.collection, 'change', this.renderAll );
@@ -50,8 +49,8 @@ var AdminToolsListView = Backbone.View.extend({
 
   render: function(options){
     this.options = _.extend( this.options, options );
-    var repo_list_template = this.templateToolList();
-    this.$el.html(repo_list_template({section_filter: this.options.section_filter}));
+    var tool_dependencies_list_template = this.templateList();
+    this.$el.html(tool_dependencies_list_template({section_filter: this.options.section_filter}));
     this.fetchSections();
     $( "#center" ).css( 'overflow','auto' );
     this.$el.find('[data-toggle]').tooltip();
@@ -100,8 +99,10 @@ var AdminToolsListView = Backbone.View.extend({
     this.collection.sort();
     var models = this.options.sort_order === 'desc' ? this.collection.models.reverse() : this.collection.models;
     var that = this;
-    _.each( models, function( repo ) {
-      that.renderOne( repo );
+    _.each( models, function( model ) {
+      if(model.has_requirements()) {
+        that.renderOne( model ); 
+      }
     });
   },
 
@@ -109,26 +110,23 @@ var AdminToolsListView = Backbone.View.extend({
    * Create a view for the given repo and add it to the list view.
    * @param {Repo} model of the view that will be rendered
    */
-  renderOne: function(repo){
-    var repoView = null;
-    var is_visible = false;
-    var is_uninstalled_or_deactivated = repo.get('status').toLowerCase() === 'uninstalled' || repo.get('status').toLowerCase() === 'deactivated';
-    var is_filter_valid = (typeof repo.get('sections') !== 'undefined') && (repo.get('sections').indexOf(this.options.section_filter) >= 0);
-    is_visible = this.options.view === 'uninstalled' && is_uninstalled_or_deactivated;
-    is_visible = is_visible || ((this.options.view === 'all' || this.options.view === repo.get('type')) && !is_uninstalled_or_deactivated);
+  renderOne: function(tool_dependencies){
+    var toolView = null;
+    var is_visible = true;
+    var is_filter_valid = (typeof tool_dependencies.get('sections') !== 'undefined') && (tool_dependencies.get('sections').indexOf(this.options.section_filter) >= 0);
+    is_visible = is_visible || (this.options.view === 'all');
     is_visible = is_visible && (!this.options.section_filter || is_filter_valid);
-
     if (is_visible) {
-      if (this.rowViews[repo.get('id')]){
-        repoView = this.rowViews[repo.get('id')].render();
+      if (this.rowViews[tool_dependencies.get('id')]){
+        toolView = this.rowViews[tool_dependencies.get('id')].render();
         this.$el.find('[data-toggle]').tooltip();
       } else {
-        repoView = new mod_repo_row_view.AdminReposRowView({repo: repo});
-        this.rowViews[repo.get('id')] = repoView;
+        toolView = new mod_tools_row_view.AdminToolsRowView({tool_dependencies: tool_dependencies});
+        this.rowViews[tool_dependencies.get('id')] = toolView;
         this.$el.find('[data-toggle]').tooltip();
       }
-      this.$el.find('#tools_list_body').append(repoView.el);
-  }
+      this.$el.find('#tool_dependencies_list_body').append(toolView.el);
+    }
   },
 
   removeOne: function(){
@@ -154,7 +152,7 @@ var AdminToolsListView = Backbone.View.extend({
      var selected = event.target.checked;
      that = this;
      // Iterate each checkbox
-     $(':checkbox', '#tools_list_body').each(function() {
+     $(':checkbox', '#tool_dependencies_list_body').each(function() {
       this.checked = selected;
       view_id = $(this.parentElement.parentElement).data('id');
       if (selected) {
@@ -238,42 +236,35 @@ var AdminToolsListView = Backbone.View.extend({
     }
   },
 
-  templateToolList: function(){
+  templateList: function(){
     return _.template([
-      '<div class="repos_container">',
-        '<div class="repos_toolbar">',
-            '<span><strong>TOOLS</strong></span>',
+      '<div class="tool_dependencies_container">',
+        '<div class="admin_toolbar">',
+            '<span><strong>TOOL DEPENDENCIES</strong></span>',
+            '<button data-toggle="tooltip" data-placement="top" title="Install selected tool dependencies" class="btn btn-default primary-button toolbar-item" type="button">',
+              'Install',
+            '</button>',
+            '<button data-toggle="tooltip" data-placement="top" title="Uninstall selected dependencies" class="btn btn-default primary-button toolbar-item" type="button">',
+              'Uninstall',
+            '</button>',
             '<span id="admin_section_select" class="admin-section-select toolbar-item" />',
 
           // '</form>',
           '<ul class="nav nav-tabs repos-nav">',
-            '<li role="presentation" class="tab_all">',
-              '<a href="#repos/v/all">All</a>',
-              // '<a href="#repos/v/all<% print("/f/" + filter) %>">All</a>',
+            '<li role="presentation" class="tab_by_tool">',
+              '<a href="#tool_dependencies/v/by_tool">By Tool</a>',
             '</li>',
-            '<li role="presentation" class="tab_tools"><a href="#repos/v/tools">With Tools</a></li>',
-            '<li role="presentation" class="tab_packages"><a href="#repos/v/packages">Packages</a></li>',
-            '<li role="presentation" class="tab_uninstalled"><a href="#repos/v/uninstalled">Uninstalled or Deactivated</a></li>',
-            // '<li role="presentation" class="tab_suites"><a href="#repos?view=suites">Suites</a></li>',
-            // '<li role="presentation" class="tab_with_dm"><a href="#repos?view=dm">Data Managers</a></li>',
-            // '<li role="presentation" class="tab_with_datatypes"><a href="#repos?view=datatypes">Datatypes</a></li>',
+            '<li role="presentation" class="tab_by_requirement"><a href="#tool_dependencies/v/by_requirement">By Requirement</a></li>',
+            '<li role="presentation" class="tab_unused"><a href="#tool_dependencies/v/unused">Unused</a></li>',
           '</ul>',
         '</div>',
         '<div id="repositories_list">',
-          '<div class="repos_container table-responsive">',
+          '<div class="tool_dependencies_container table-responsive">',
             '<table class="grid table table-condensed">',
               '<thead>',
-                '<th style="text-align: center; width: 20px; " title="Check to select all repositories">',
-                  '<input id="select-all-checkboxes" style="margin: 0;" type="checkbox">',
-                '</th>',
-                '<th>',
-                  '<a class="sort-repos-name" data-toggle="tooltip" data-placement="top" title="sort alphabetically" href="#">',
-                    'Name',
-                  '</a>',
-                  '<span class="sort-icon-name fa fa-sort-asc" style="display: none;"/>',
-                '</th>',
+                this.templateHeader(),
               '</thead>',
-              '<tbody id="tools_list_body">',
+              '<tbody id="tool_dependencies_list_body">',
               // repo item views will attach here
               '</tbody>',
             '</table>',
@@ -281,12 +272,58 @@ var AdminToolsListView = Backbone.View.extend({
         '</div>',
       '</div>'
     ].join(''));
+  },
+
+  templateHeader: function() {
+    if( this.options.view == 'by_tool' ) {
+      return [
+        '<th style="text-align: center; width: 20px; " title="Check to select all repositories">',
+          '<input id="select-all-checkboxes" style="margin: 0;" type="checkbox">',
+        '</th>',
+        '<th>',
+          '<a class="sort-repos-name" data-toggle="tooltip" data-placement="top" title="sort alphabetically" href="#">',
+            'Name',
+          '</a>',
+          '<span class="sort-icon-name fa fa-sort-asc" style="display: none;"/>',
+        '</th>',
+        '<th>',
+          '<a class="sort-repos-id" data-toggle="tooltip" data-placement="top" title="sort alphabetically" href="#">',
+            'ID',
+          '</a>',
+          '<span class="sort-icon-id fa fa-sort-asc" style="display: none;"/>',
+        '</th>',
+        '<th>',
+          '<a class="sort-repos-requirement" data-toggle="tooltip" data-placement="top" title="sort alphabetically" href="#">',
+            'Requirement',
+          '</a>',
+          '<span class="sort-icon-requirement fa fa-sort-asc" style="display: none;"/>',
+        '</th>',
+        '<th>',
+          '<a class="sort-repos-version" data-toggle="tooltip" data-placement="top" title="sort alphabetically" href="#">',
+            'Version',
+          '</a>',
+          '<span class="sort-icon-version fa fa-sort-asc" style="display: none;"/>',
+        '</th>',
+      ].join('');
+    } else if( this.options.view == 'by_requirement' ) {
+      return [
+        '<th style="text-align: center; width: 20px; " title="Check to select all repositories">',
+          '<input id="select-all-checkboxes" style="margin: 0;" type="checkbox">',
+        '</th>',
+        '<th>',
+          '<a class="sort-repos-name" data-toggle="tooltip" data-placement="top" title="sort alphabetically" href="#">',
+            'Requirement(s)',
+          '</a>',
+          '<span class="sort-icon-name fa fa-sort-asc" style="display: none;"/>',
+        '</th>',
+      ].join('');
+    }
   }
 
 });
 
 return {
-    AdminToolsListView: AdminToolsListView
+    AdminToolDependenciesListView: AdminToolDependenciesListView
 };
 
 });

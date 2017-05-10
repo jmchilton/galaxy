@@ -181,3 +181,11 @@ class ToolDependenciesAPIController( BaseAPIController ):
                     the corresponding resolver (keyed on 'index').
         """
         return self._view.clean(id, **kwds)
+
+    @expose_api
+    @require_admin
+    def tools_index(self, trans, **kwds):
+        """
+        GET /api/dependency_resolvers/tools
+        """
+        return self._view.tools_index()

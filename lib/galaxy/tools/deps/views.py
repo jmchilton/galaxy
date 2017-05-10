@@ -234,3 +234,18 @@ class DependencyResolversView(object):
         else:
             [resolver.clean(**kwds) for resolver in self._dependency_resolvers if hasattr(resolver, 'clean')]
             return "OK"
+
+    def tools_index(self):
+        index = []
+        if not self._app.toolbox.tools_by_id:
+            return index
+        requirements_status = self.toolbox_requirements_status
+        for tid, tool in self._app.toolbox.tools_by_id.items():
+            index.append(self._to_dict_resolved_tool(tool, requirements_status[tool.tool_requirements]))
+        return index
+
+    def _to_dict_resolved_tool(self, tool, requirement_status):
+        return {
+            "tool": tool.to_dict(),
+            "requirements": requirement_status,
+        }

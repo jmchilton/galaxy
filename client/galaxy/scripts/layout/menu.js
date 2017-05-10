@@ -165,13 +165,8 @@ var Collection = Backbone.Collection.extend({
                     target  : '_frame'
                 },
                 {
-                    title   : 'Tools',
-                    url     : 'admin_beta#tools',
-                    target  : '_frame'
-                },
-                {
-                    title   : 'Dependencies',
-                    url     : 'admin_beta#dependencies',
+                    title   : 'Tool Dependencies',
+                    url     : 'admin_beta#tool_dependencies',
                     target  : '_frame'
                 }
             ]
