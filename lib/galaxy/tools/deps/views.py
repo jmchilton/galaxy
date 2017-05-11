@@ -81,6 +81,16 @@ class DependencyResolversView(object):
                 unused_dependencies.extend(resolver.unused_dependency_paths(toolbox_requirements_status))
         return set(unused_dependencies)
 
+    @property
+    def unmapped_dependencies(self):
+        """List dependencies that are not currently installed."""
+        unmapped_dependencies = []
+        toolbox_requirements_status = self.toolbox_requirements_status
+        for resolver in self._dependency_resolvers:
+            if hasattr(resolver, 'unmapped_dependencies'):
+                unmapped_dependencies.extend(resolver.unmapped_dependencies(toolbox_requirements_status))
+        return list(unmapped_dependencies)
+
     def remove_unused_dependency_paths(self, envs):
         """
         Remove dependencies that are not currently used.

@@ -307,6 +307,10 @@ class CondaDependencyResolver(DependencyResolver, MultipleDependencyResolver, Li
         unused_paths = [os.path.join(self.conda_context.envs_path, p) for p in unused_paths]
         return unused_paths
 
+    def unmapped_dependencies(self, toolbox_requirements_status):
+        unused_paths = self.unused_dependency_paths(toolbox_requirements_status)
+        return [{"dependency_type": "conda", "environment_path": p} for p in unused_paths]
+
     def list_dependencies(self):
         for install_target in installed_conda_targets(self.conda_context):
             name = install_target.package

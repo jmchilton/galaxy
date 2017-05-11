@@ -184,6 +184,14 @@ class ToolDependenciesAPIController( BaseAPIController ):
 
     @expose_api
     @require_admin
+    def unmapped_dependencies(self, trans, **kwds):
+        """
+        GET /api/dependency_resolvers/unmapped_dependencies
+        """
+        return self._view.unmapped_dependencies
+
+    @expose_api
+    @require_admin
     def tools_index(self, trans, **kwds):
         """
         GET /api/dependency_resolvers/tools
