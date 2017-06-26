@@ -1093,6 +1093,16 @@ class Tool( object, Dictifiable ):
             if self.__help is HELP_UNINITIALIZED:
                 self.__inititalize_help()
 
+    def _translate( self, msg ):
+        locales = os.path.join( self.tool_path, "locales" )
+        if not os.path.exists( locales ):
+            return msg
+
+        import gettext
+        t = gettext.translation('default', locales)
+        _ = t.ugettext
+        return _(msg)
+
     def __inititalize_help(self):
         tool_source = self.__help_source
         self.__help = None
@@ -1100,6 +1110,7 @@ class Tool( object, Dictifiable ):
         help_header = ""
         help_footer = ""
         help_text = tool_source.parse_help()
+        help_text = self._translate( help_text )
         if help_text is not None:
             if self.repository_id and help_text.find( '.. image:: ' ) >= 0:
                 # Handle tool help image display for tools that are contained in repositories in the tool shed or installed into Galaxy.
