@@ -3220,9 +3220,12 @@ class DatasetCollection( object, Dictifiable, UsesAnnotations ):
         id=None,
         collection_type=None,
         populated=True,
+        fields=None,
     ):
         self.id = id
         self.collection_type = collection_type
+        # TODO: persist fields...
+        self.fields = fields
         if not populated:
             self.populated_state = DatasetCollection.populated_states.NEW
 

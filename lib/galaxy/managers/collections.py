@@ -44,7 +44,7 @@ class DatasetCollectionManager( object ):
 
     def create( self, trans, parent, name, collection_type, element_identifiers=None,
                 elements=None, implicit_collection_info=None, trusted_identifiers=None,
-                hide_source_items=False, tags=None):
+                hide_source_items=False, tags=None, fields=None ):
         """
         PRECONDITION: security checks on ability to add to parent
         occurred during load.
@@ -62,6 +62,7 @@ class DatasetCollectionManager( object ):
             element_identifiers=element_identifiers,
             elements=elements,
             hide_source_items=hide_source_items,
+            fields=fields,
         )
 
         if isinstance( parent, model.History ):
@@ -112,12 +113,12 @@ class DatasetCollectionManager( object ):
         return self.__persist( dataset_collection_instance )
 
     def create_dataset_collection( self, trans, collection_type, element_identifiers=None, elements=None,
-                                   hide_source_items=None ):
+                                   hide_source_items=None, fields=None ):
         if element_identifiers is None and elements is None:
             raise RequestParameterInvalidException( ERROR_INVALID_ELEMENTS_SPECIFICATION )
         if not collection_type:
             raise RequestParameterInvalidException( ERROR_NO_COLLECTION_TYPE )
-        collection_type_description = self.collection_type_descriptions.for_collection_type( collection_type )
+        collection_type_description = self.collection_type_descriptions.for_collection_type( collection_type, fields=fields )
         has_subcollections = collection_type_description.has_subcollections( )
         # If we have elements, this is an internal request, don't need to load
         # objects from identifiers.
@@ -141,12 +142,12 @@ class DatasetCollectionManager( object ):
 
         if elements is not self.ELEMENTS_UNINITIALIZED:
             type_plugin = collection_type_description.rank_type_plugin()
-            dataset_collection = builder.build_collection( type_plugin, elements )
+            dataset_collection = builder.build_collection( type_plugin, elements, fields=fields )
             if hide_source_items:
-                log.debug("Hiding source items during dataset collection creation")
                 for dataset in dataset_collection.dataset_instances:
                     dataset.visible = False
         else:
+            # TODO: Pass fields here - need test case first.
             dataset_collection = model.DatasetCollection( populated=False )
         dataset_collection.collection_type = collection_type
         return dataset_collection

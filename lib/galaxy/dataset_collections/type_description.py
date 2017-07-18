@@ -7,8 +7,8 @@ class CollectionTypeDescriptionFactory( object ):
         # I think.
         self.type_registry = type_registry
 
-    def for_collection_type( self, collection_type ):
-        return CollectionTypeDescription( collection_type, self )
+    def for_collection_type( self, collection_type, fields=None ):
+        return CollectionTypeDescription( collection_type, self, fields=fields )
 
 
 class CollectionTypeDescription( object ):
@@ -40,9 +40,10 @@ class CollectionTypeDescription( object ):
     'list'
     """
 
-    def __init__( self, collection_type, collection_type_description_factory ):
+    def __init__( self, collection_type, collection_type_description_factory, fields=None ):
         self.collection_type = collection_type
         self.collection_type_description_factory = collection_type_description_factory
+        self.fields = fields
         self.__has_subcollections = self.collection_type.find( ":" ) > 0
 
     def effective_collection_type_description( self, subcollection_type ):
