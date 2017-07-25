@@ -352,6 +352,16 @@ class WorkflowProgress( object ):
 
     def set_step_outputs(self, step, outputs):
         self.outputs[ step.id ] = outputs
+        for workflow_output in step.workflow_outputs:
+            if workflow_output.workflow_step == step:
+                self._record_workflow_output(
+                    step,
+                    workflow_output,
+                    output=outputs[workflow_output.output_name],
+                )
+
+    def _record_workflow_output(self, step, workflow_output, output):
+        self.workflow_invocation.add_output(workflow_output, step, output)
 
     def mark_step_outputs_delayed(self, step, why=None):
         if why:

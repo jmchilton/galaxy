@@ -904,6 +904,24 @@ model.WorkflowInvocationStep.table = Table(
     Column( "job_id", Integer, ForeignKey( "job.id" ), index=True, nullable=True ),
     Column( "action", JSONType, nullable=True ) )
 
+model.WorkflowInvocationOutputDatasetAssociation.table = Table(
+    "workflow_invocation_output_dataset_association", metadata,
+    Column( "id", Integer, primary_key=True ),
+    Column( "workflow_invocation_id", Integer, ForeignKey( "workflow_invocation.id" ), index=True ),
+    Column( "workflow_step_id", Integer, ForeignKey( "workflow_step.id" ), index=True ),
+    Column( "dataset_id", Integer, ForeignKey( "history_dataset_association.id" ), index=True ),
+    Column( "workflow_output_id", Integer, ForeignKey( "workflow_output.id" ), index=True ),
+)
+
+model.WorkflowInvocationOutputDatasetCollectionAssociation.table = Table(
+    "workflow_invocation_output_dataset_collection_association", metadata,
+    Column( "id", Integer, primary_key=True ),
+    Column( "workflow_invocation_id", Integer, ForeignKey( "workflow_invocation.id" ), index=True ),
+    Column( "workflow_step_id", Integer, ForeignKey( "workflow_step.id" ), index=True ),
+    Column( "dataset_collection_id", Integer, ForeignKey( "history_dataset_collection_association.id" ), index=True ),
+    Column( "workflow_output_id", Integer, ForeignKey( "workflow_output.id" ), index=True ),
+)
+
 model.WorkflowInvocationToSubworkflowInvocationAssociation.table = Table(
     "workflow_invocation_to_subworkflow_invocation_association", metadata,
     Column( "id", Integer, primary_key=True ),
@@ -2315,6 +2333,8 @@ mapper( model.WorkflowInvocation, model.WorkflowInvocation.table, properties=dic
     input_step_parameters=relation( model.WorkflowRequestInputStepParmeter ),
     input_datasets=relation( model.WorkflowRequestToInputDatasetAssociation ),
     input_dataset_collections=relation( model.WorkflowRequestToInputDatasetCollectionAssociation ),
+    #output_datasets=relation( model.WorkflowInvocationOutputDatasetAssociation ),
+    #output_dataset_collections=relation( model.WorkflowInvocationOutputDatasetCollectionAssociation ),
     subworkflow_invocations=relation( model.WorkflowInvocationToSubworkflowInvocationAssociation,
         primaryjoin=( ( model.WorkflowInvocationToSubworkflowInvocationAssociation.table.c.workflow_invocation_id == model.WorkflowInvocation.table.c.id ) ),
         backref=backref("parent_workflow_invocation", uselist=False),
@@ -2362,6 +2382,20 @@ simple_mapping( model.WorkflowRequestToInputDatasetCollectionAssociation,
     workflow_invocation=relation( model.WorkflowInvocation ),
     workflow_step=relation( model.WorkflowStep ),
     dataset_collection=relation( model.HistoryDatasetCollectionAssociation ) )
+
+
+simple_mapping( model.WorkflowInvocationOutputDatasetAssociation,
+    workflow_invocation=relation( model.WorkflowInvocation, backref="output_datasets" ),
+    workflow_step=relation( model.WorkflowStep ),
+    dataset=relation( model.HistoryDatasetAssociation ),
+    workflow_output=relation( model.WorkflowOutput ), )
+
+
+simple_mapping( model.WorkflowInvocationOutputDatasetCollectionAssociation,
+    workflow_invocation=relation( model.WorkflowInvocation, backref="output_dataset_collections"  ),
+    workflow_step=relation( model.WorkflowStep ),
+    dataset_collection=relation( model.HistoryDatasetCollectionAssociation ),
+    workflow_output=relation( model.WorkflowOutput ), )
 
 
 mapper( model.MetadataFile, model.MetadataFile.table, properties=dict(
