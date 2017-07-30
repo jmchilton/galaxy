@@ -1,0 +1,70 @@
+class: Workflow
+id: file:///Users/john/workspace/galaxy/test/functional/tools/cwl_tools/v1.0/sum-wf.cwl
+inputs:
+- id: int_1
+  type:
+  - int
+  - string
+- id: int_2
+  type:
+  - int
+  - string
+outputs:
+- id: result
+  outputSource: sum/result
+  type: int
+requirements:
+- class: MultipleInputFeatureRequirement
+cwlVersion: v1.0
+steps:
+- id: sum
+  in:
+  - id: data
+    source: _expression_sum_data/result
+  out:
+  - result
+  run:
+    class: ExpressionTool
+    id: _:60f162fd-4bb4-4191-89c4-76b667a215a7
+    inputs:
+    - id: data
+      type: int
+    outputs:
+    - id: result
+      type: int
+    expression: |
+      ${
+        return {"result": inputs.data};
+      }
+- id: _expression_sum_data
+  in:
+  - id: self
+    source:
+    - int_1
+    - int_2
+  out:
+  - id: result
+  run:
+    class: ExpressionTool
+    inputs:
+    - id: self
+      type:
+        items: int
+        type: array
+    outputs:
+    - id: result
+      type: int
+    requirements:
+    - class: InlineJavascriptRequirement
+    cwlVersion: v1.0
+    expression: |-
+      ${
+        var self=inputs.self;
+        return {"result": function(){
+        var sum = 0;
+        for (var i = 0; i < self.length; i++){
+          sum += self[i];
+        };
+        return sum;
+      }()};
+       }
