@@ -382,6 +382,12 @@ class SubWorkflowModule( WorkflowModule ):
         Use the supplied workflow progress object to track outputs, find
         inputs, etc...
         """
+
+        all_inputs = self.get_all_inputs()
+        collection_info = self.compute_collection_info( progress, step, all_inputs )
+
+        assert collection_info is None, "Mapping over collections is not yet implemented."
+
         subworkflow_invoker = progress.subworkflow_invoker( trans, step )
         subworkflow_invoker.invoke()
         subworkflow = subworkflow_invoker.workflow
