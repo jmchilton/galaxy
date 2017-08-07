@@ -1143,12 +1143,12 @@ class ToolModule( WorkflowModule ):
             step_outputs.update( execution_tracker.output_collections )
 
         progress.set_step_outputs( step, step_outputs )
-        jobs = execution_tracker.successful_jobs
+        jobs = execution_tracker.successful_executions
         for job in jobs:
             self._handle_post_job_actions( step, job, invocation.replacement_dict )
         if execution_tracker.execution_errors:
             failed_count = len(execution_tracker.execution_errors)
-            success_count = len(execution_tracker.successful_jobs)
+            success_count = len(execution_tracker.successful_executions)
             all_count = failed_count + success_count
             message = "Failed to create %d out of %s job(s) for workflow step." % (failed_count, all_count)
             raise Exception(message)

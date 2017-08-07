@@ -1341,11 +1341,11 @@ class Tool( object, Dictifiable ):
             raise exceptions.MessageException( ', '.join( msg for msg in err_data.values() ), err_data=err_data )
         else:
             execution_tracker = execute_job( trans, self, all_params, history=request_context.history, rerun_remap_job_id=rerun_remap_job_id, collection_info=collection_info )
-            if execution_tracker.successful_jobs:
+            if execution_tracker.successful_executions:
                 return dict( out_data=execution_tracker.output_datasets,
-                             num_jobs=len( execution_tracker.successful_jobs ),
+                             num_jobs=len( execution_tracker.successful_executions ),
                              job_errors=execution_tracker.execution_errors,
-                             jobs=execution_tracker.successful_jobs,
+                             jobs=execution_tracker.successful_executions,
                              output_collections=execution_tracker.output_collections,
                              implicit_collections=execution_tracker.implicit_collections )
             else:

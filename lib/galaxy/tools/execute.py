@@ -102,8 +102,8 @@ class ToolExecutionTracker( object ):
         self.tool = tool
         self.param_combinations = param_combinations
         self.collection_info = collection_info
-        self.successful_jobs = []
-        self.failed_jobs = 0
+        self.successful_executions = []
+        self.failed_executions = 0
         self.execution_errors = []
         self.output_datasets = []
         self.output_collections = []
@@ -111,7 +111,7 @@ class ToolExecutionTracker( object ):
         self.implicit_collections = {}
 
     def record_success( self, job, outputs ):
-        self.successful_jobs.append( job )
+        self.successful_executions.append( job )
         self.output_datasets.extend( outputs )
         for output_name, output_dataset in outputs:
             if ToolOutputCollectionPart.is_named_collection_part_name( output_name ):
@@ -125,7 +125,7 @@ class ToolExecutionTracker( object ):
             self.output_collections.append( ( job_output.name, job_output.dataset_collection_instance ) )
 
     def record_error( self, error ):
-        self.failed_jobs += 1
+        self.failed_executions += 1
         message = "There was a failure executing a job for tool [%s] - %s"
         log.warning(message, self.tool.id, error)
         self.execution_errors.append( error )
@@ -133,7 +133,7 @@ class ToolExecutionTracker( object ):
     def create_output_collections( self, trans, history, params ):
         # TODO: Move this function - it doesn't belong here but it does need
         # the information in this class and potential extensions.
-        if self.failed_jobs > 0:
+        if self.failed_executions > 0:
             return []
 
         structure = self.collection_info.structure
@@ -206,7 +206,7 @@ class ToolExecutionTracker( object ):
                 collection_type=collection_type,
                 implicit_collection_info=implicit_collection_info,
             )
-            for job in self.successful_jobs:
+            for job in self.successful_executions:
                 # TODO: Think through this, may only want this for output
                 # collections - or we may be already recording data in some
                 # other way.
