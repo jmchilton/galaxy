@@ -96,19 +96,28 @@ def execute( trans, tool, param_combinations, history, rerun_remap_job_id=None, 
     return execution_tracker
 
 
-class ToolExecutionTracker( object ):
+class ExecutionTracker( object ):
 
-    def __init__( self, tool, param_combinations, collection_info ):
-        self.tool = tool
-        self.param_combinations = param_combinations
+    def __init__( self, collection_info ):
         self.collection_info = collection_info
         self.successful_executions = []
         self.failed_executions = 0
         self.execution_errors = []
-        self.output_datasets = []
-        self.output_collections = []
         self.outputs_by_output_name = collections.defaultdict(list)
         self.implicit_collections = {}
+
+    def record_success( self, invocation ):
+        self.successful_executions.append( invocation )
+
+
+class ToolExecutionTracker( ExecutionTracker ):
+
+    def __init__( self, tool, param_combinations, collection_info ):
+        super( ToolExecutionTracker, self ).__init__( collection_info )
+        self.tool = tool
+        self.param_combinations = param_combinations
+        self.output_datasets = []
+        self.output_collections = []
 
     def record_success( self, job, outputs ):
         self.successful_executions.append( job )
