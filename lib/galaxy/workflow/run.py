@@ -482,16 +482,16 @@ class WorkflowProgress( object ):
             log.debug(message)
         self.outputs[ step.id ] = STEP_OUTPUT_DELAYED
 
-    def _subworkflow_invocation(self, step):
+    def _subworkflow_invocation(self, step, iteration_index):
         workflow_invocation = self.workflow_invocation
         subworkflow_invocation = workflow_invocation.get_subworkflow_invocation_for_step(step)
         if subworkflow_invocation is None:
             raise Exception("Failed to find persisted workflow invocation for step [%s]" % step.id)
         return subworkflow_invocation
 
-    def subworkflow_invoker(self, trans, step, collection_info):
+    def subworkflow_invoker(self, trans, step, iteration_elements=None, iteration_index=0):
         subworkflow_progress = self.subworkflow_progress(
-            step, collection_info
+            step, iteration_elements, iteration_index
         )
         subworkflow_invocation = subworkflow_progress.workflow_invocation
         workflow_run_config = WorkflowRunConfig(
@@ -508,7 +508,7 @@ class WorkflowProgress( object ):
             progress=subworkflow_progress,
         )
 
-    def subworkflow_progress(self, step):
+    def subworkflow_progress(self, step, iteration_elements=None):
         subworkflow_invocation = self._subworkflow_invocation(step)
         subworkflow = subworkflow_invocation.workflow
         subworkflow_inputs = {}
@@ -518,10 +518,21 @@ class WorkflowProgress( object ):
                 if input_connection.input_subworkflow_step == input_subworkflow_step:
                     subworkflow_step_id = input_subworkflow_step.id
                     is_data = input_connection.output_step.type != "parameter_input"
-                    replacement = self.replacement_for_connection(
-                        input_connection,
-                        is_data=is_data,
-                    )
+                    label = input_connection.input_subworkflow_step.label
+                    if iteration_elements and label in iteration_elements:
+                        if input_connection.input_subworkflow_step.type == "data_collection":
+                            # Pull out dataset instance from element.
+                            replacement = iteration_elements[ label ].dataset_instance
+                            if hasattr(iteration_elements[ label ], u'element_identifier') and iteration_elements[ label ].element_identifier:
+                                replacement.element_identifier = iteration_elements[ label ].element_identifier
+                        else:
+                            # If collection - just use element model object.
+                            replacement = iteration_elements[ label ]
+                    else:
+                        replacement = self.replacement_for_connection(
+                            input_connection,
+                            is_data=is_data,
+                        )
                     subworkflow_inputs[subworkflow_step_id] = replacement
                     connection_found = True
                     break

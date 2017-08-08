@@ -106,8 +106,108 @@ class ExecutionTracker( object ):
         self.outputs_by_output_name = collections.defaultdict(list)
         self.implicit_collections = {}
 
+    def create_output_collections( self, trans, history, params ):
+        # TODO: Move this function - it doesn't belong here but it does need
+        # the information in this class and potential extensions.
+        if self.failed_executions > 0:
+            return []
+
+        structure = self.collection_info.structure
+
+        output_namer = self.get_output_namer( trans, history, params )
+
+        collections = {}
+
+        implicit_inputs = self.collection_info.implicit_inputs
+        for output_name, outputs in self.outputs_by_output_name.items():
+            if not len( structure ) == len( outputs ):
+                # Output does not have the same structure, if all jobs were
+                # successfully submitted this shouldn't have happened.
+                log.warning( "Problem matching up datasets while attempting to create implicit dataset collections")
+                continue
+            element_identifiers = self.element_identifiers( trans, output_name, outputs )
+
+            implicit_collection_info = dict(
+                implicit_inputs=implicit_inputs,
+                implicit_output_name=output_name,
+                outputs=outputs
+            )
+
+            output_collection_name = output_namer( output_name )
+            child_element_identifiers = element_identifiers[ "element_identifiers" ]
+            collection_type = element_identifiers[ "collection_type" ]
+            collection = trans.app.dataset_collections_service.create(
+                trans=trans,
+                parent=history,
+                name=output_collection_name,
+                element_identifiers=child_element_identifiers,
+                collection_type=collection_type,
+                implicit_collection_info=implicit_collection_info,
+            )
+            for job_or_invocation in self.successful_executions:
+                # TODO: Think through this, may only want this for output
+                # collections - or we may be already recording data in some
+                # other way.
+                if job_or_invocation not in trans.sa_session:
+                    job = trans.sa_session.query( job_or_invocation.__class__ ).get( job_or_invocation.id )
+                job.add_output_dataset_collection( output_name, collection )
+            collections[ output_name ] = collection
+
+        # Needed to flush the association created just above with
+        # job.add_output_dataset_collection.
+        trans.sa_session.flush()
+        self.implicit_collections = collections
+
+    def element_identifiers( self, trans, output_name, outputs ):
+        structure = self.collection_info.structure
+
+        output = self.get_output_by_name( output_name )
+
+        element_identifiers = None
+        if hasattr(output, "default_identifier_source"):
+            # Switch the structure for outputs if the output specified a default_identifier_source
+            collection_type_descriptions = trans.app.dataset_collections_service.collection_type_descriptions
+
+            source_collection = self.collection_info.collections.get(output.default_identifier_source)
+            if source_collection:
+                collection_type_description = collection_type_descriptions.for_collection_type(source_collection.collection.collection_type)
+                _structure = structure.for_dataset_collection( source_collection.collection, collection_type_description=collection_type_description)
+                if structure.can_match(_structure):
+                    element_identifiers = _structure.element_identifiers_for_outputs(trans, outputs)
+
+        if not element_identifiers:
+            element_identifiers = structure.element_identifiers_for_outputs( trans, outputs )
+
+        return element_identifiers
+
+
+class InvocationExecutionTracker( ExecutionTracker ):
+
+    def __init__( self, invocation, collection_info ):
+        super( ToolExecutionTracker, self ).__init__( collection_info )
+        self.invocation = invocation
+
     def record_success( self, invocation ):
         self.successful_executions.append( invocation )
+
+        for output_dataset_assoc in invocation.output_datasets:
+            label = output_dataset_assoc.workflow_output.label
+            self.outputs_by_output_name[ label ].append( output_dataset_assoc.dataset )
+        for output_dataset_collection_instance_assoc in invocation.output_dataset_collections:
+            label = output_dataset_assoc.workflow_output.label
+            self.outputs_by_output_name[ label ].append( output_dataset_assoc.dataset_collection )
+
+    def get_output_by_name( self, name ):
+        return self.invocation.workflow.get_workflow_output( name )
+
+    def get_output_namer( self, trans, history, params ):
+        return lambda name: name
+
+    def record_error( self, error ):
+        self.failed_executions += 1
+        message = "There was a failure executing workflow invocation [%s] - %s"
+        log.warning(message, self.invocation.id, error)
+        self.execution_errors.append( error )
 
 
 class ToolExecutionTracker( ExecutionTracker ):
@@ -139,14 +239,11 @@ class ToolExecutionTracker( ExecutionTracker ):
         log.warning(message, self.tool.id, error)
         self.execution_errors.append( error )
 
-    def create_output_collections( self, trans, history, params ):
-        # TODO: Move this function - it doesn't belong here but it does need
-        # the information in this class and potential extensions.
-        if self.failed_executions > 0:
-            return []
+    def get_output_by_name( self, name ):
+        output = self.tool.outputs[ name ]
+        return output
 
-        structure = self.collection_info.structure
-
+    def get_output_namer( self, trans, history, params ):
         if not self.collection_info.uses_ephemeral_collections:
             # params is just one sample tool param execution with parallelized
             # collection replaced with a specific dataset. Need to replace this
@@ -159,37 +256,8 @@ class ToolExecutionTracker( ExecutionTracker ):
         else:
             on_text = "implicitly created collection from inputs"
 
-        collections = {}
-
-        implicit_inputs = self.collection_info.implicit_inputs
-        for output_name, outputs in self.outputs_by_output_name.items():
-            if not len( structure ) == len( outputs ):
-                # Output does not have the same structure, if all jobs were
-                # successfully submitted this shouldn't have happened.
-                log.warning( "Problem matching up datasets while attempting to create implicit dataset collections")
-                continue
-            output = self.tool.outputs[ output_name ]
-
-            element_identifiers = None
-            if hasattr(output, "default_identifier_source"):
-                # Switch the structure for outputs if the output specified a default_identifier_source
-                collection_type_descriptions = trans.app.dataset_collections_service.collection_type_descriptions
-
-                source_collection = self.collection_info.collections.get(output.default_identifier_source)
-                if source_collection:
-                    collection_type_description = collection_type_descriptions.for_collection_type(source_collection.collection.collection_type)
-                    _structure = structure.for_dataset_collection( source_collection.collection, collection_type_description=collection_type_description)
-                    if structure.can_match(_structure):
-                        element_identifiers = _structure.element_identifiers_for_outputs(trans, outputs)
-
-            if not element_identifiers:
-                element_identifiers = structure.element_identifiers_for_outputs( trans, outputs )
-
-            implicit_collection_info = dict(
-                implicit_inputs=implicit_inputs,
-                implicit_output_name=output_name,
-                outputs=outputs
-            )
+        def get_output_name( output_name ):
+            output = self.get_output_by_name( output_name )
             try:
                 output_collection_name = self.tool.tool_action.get_output_name(
                     output,
@@ -205,29 +273,9 @@ class ToolExecutionTracker( ExecutionTracker ):
             except Exception:
                 output_collection_name = "%s across %s" % ( self.tool.name, on_text )
 
-            child_element_identifiers = element_identifiers[ "element_identifiers" ]
-            collection_type = element_identifiers[ "collection_type" ]
-            collection = trans.app.dataset_collections_service.create(
-                trans=trans,
-                parent=history,
-                name=output_collection_name,
-                element_identifiers=child_element_identifiers,
-                collection_type=collection_type,
-                implicit_collection_info=implicit_collection_info,
-            )
-            for job in self.successful_executions:
-                # TODO: Think through this, may only want this for output
-                # collections - or we may be already recording data in some
-                # other way.
-                if job not in trans.sa_session:
-                    job = trans.sa_session.query( trans.app.model.Job ).get( job.id )
-                job.add_output_dataset_collection( output_name, collection )
-            collections[ output_name ] = collection
+            return output_collection_name
 
-        # Needed to flush the association created just above with
-        # job.add_output_dataset_collection.
-        trans.sa_session.flush()
-        self.implicit_collections = collections
+        return get_output_name
 
 
 __all__ = ( 'execute', )

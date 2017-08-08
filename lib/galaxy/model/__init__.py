@@ -3781,6 +3781,15 @@ class Workflow( object, Dictifiable ):
             for workflow_output in step.workflow_outputs:
                 yield workflow_output
 
+    def get_workflow_output(self, label):
+        target_workflow_output = None
+        for workflow_output in self.workflow_outputs:
+            if workflow_output.label == label:
+                target_workflow_output = workflow_output
+                break
+
+        return target_workflow_output
+
     @property
     def top_level_workflow( self ):
         """ If this workflow is not attached to stored workflow directly,
@@ -4060,10 +4069,10 @@ class WorkflowInvocation( object, Dictifiable ):
         self.step_states = []
         self.steps = []
 
-    def create_subworkflow_invocation_for_step( self, step ):
+    def create_subworkflow_invocation_for_step( self, step, index ):
         assert step.type == "subworkflow"
         subworkflow_invocation = WorkflowInvocation()
-        return self.attach_subworkflow_invocation_for_step( step, subworkflow_invocation )
+        return self.attach_subworkflow_invocation_for_step( step, subworkflow_invocation )[ index ]
 
     def attach_subworkflow_invocation_for_step( self, step, subworkflow_invocation ):
         assert step.type == "subworkflow"
