@@ -12,6 +12,7 @@ class UploadToolAction(ToolAction):
 
     def execute(self, tool, trans, incoming={}, set_output_hid=True, history=None, **kwargs):
         dataset_upload_inputs = []
+        log.info("incoming is %s" % incoming)
         for input_name, input in tool.inputs.items():
             if input.type == "upload_dataset":
                 dataset_upload_inputs.append(input)
@@ -20,7 +21,7 @@ class UploadToolAction(ToolAction):
         persisting_uploads_timer = ExecutionTimer()
         precreated_datasets = upload_common.get_precreated_datasets(trans, incoming, trans.app.model.HistoryDatasetAssociation)
         incoming = upload_common.persist_uploads(incoming, trans)
-        log.debug("Persisted uploads %s" % persisting_uploads_timer)
+        log.debug("Persisted %d uploads %s" % (len(precreated_datasets), persisting_uploads_timer))
         # We can pass an empty string as the cntrller here since it is used to check whether we
         # are in an admin view, and this tool is currently not used there.
         check_and_cleanup_timer = ExecutionTimer()
@@ -30,7 +31,7 @@ class UploadToolAction(ToolAction):
         if not uploaded_datasets:
             return None, 'No data was entered in the upload form, please go back and choose data to upload.'
 
-        log.debug("Checked and cleaned uploads %s" % check_and_cleanup_timer)
+        log.debug("Checked and cleaned %d uploads %s" % (len(uploaded_datasets), check_and_cleanup_timer))
         create_job_timer = ExecutionTimer()
         json_file_path = upload_common.create_paramfile(trans, uploaded_datasets)
         data_list = [ud.data for ud in uploaded_datasets]
