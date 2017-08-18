@@ -670,21 +670,6 @@ class WorkflowContentsManager(UsesAnnotations):
 
             # Connections
             input_connections = step.input_connections
-            if step.type is None or step.type == 'tool':
-                # Determine full (prefixed) names of valid input datasets
-                data_input_names = {}
-
-                def callback(input, prefixed_name, **kwargs):
-                    if isinstance(input, DataToolParameter) or isinstance(input, DataCollectionToolParameter):
-                        data_input_names[prefixed_name] = True
-                # FIXME: this updates modules silently right now; messages from updates should be provided.
-                module.check_and_update_state()
-                if module.tool:
-                    # If the tool is installed we attempt to verify input values
-                    # and connections, otherwise the last known state will be dumped without modifications.
-                    visit_input_values(module.tool.inputs, module.state.inputs, callback)
-                    # FIXME: this removes connection without displaying a message currently!
-                    input_connections = [conn for conn in input_connections if (conn.input_name in data_input_names or conn.non_data_connection)]
 
             # Encode input connections as dictionary
             input_conn_dict = {}
