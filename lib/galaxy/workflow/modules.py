@@ -278,7 +278,7 @@ class WorkflowModule(object):
                 continue
 
             data = progress.replacement_for_input(step, input_dict)
-            can_map_over = hasattr(data, "collection")  # and data.collection.allow_implicit_mapping
+            can_map_over = hasattr(data, "collection") and data.collection.allow_implicit_mapping
 
             if not can_map_over:
                 continue
