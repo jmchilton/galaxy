@@ -589,6 +589,11 @@ class WorkflowsApiTestCase(BaseWorkflowsApiTestCase):
         assert runtime_input["name"] == "num_lines"
 
     @skip_without_tool("cat1")
+    def test_import_workflow_with_default_tool_state(self):
+        workflow = self.workflow_populator.load_workflow_from_resource(name="test_workflow_1_without_tool_state")
+        self.__run_cat_workflow(inputs_by='step_index', content=dumps(workflow))
+
+    @skip_without_tool("cat1")
     def test_run_workflow_by_index(self):
         self.__run_cat_workflow(inputs_by='step_index')
 
@@ -634,8 +639,13 @@ steps:
         self.__invoke_workflow(history_02_id, workflow_version_02)
         self.dataset_populator.wait_for_history(history_02_id, assert_ok=True)
 
-    def __run_cat_workflow(self, inputs_by):
-        workflow = self.workflow_populator.load_workflow(name="test_for_run")
+    def __run_cat_workflow(self, inputs_by, content=None):
+        load_kwds = {
+            "name": "test_for_run",
+        }
+        if content is not None:
+            load_kwds["content"] = content
+        workflow = self.workflow_populator.load_workflow(**load_kwds)
         workflow["steps"]["0"]["uuid"] = str(uuid4())
         workflow["steps"]["1"]["uuid"] = str(uuid4())
         workflow_request, history_id = self._setup_workflow_run(workflow, inputs_by=inputs_by)
