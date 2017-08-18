@@ -9,6 +9,7 @@ import galaxy.model
 import galaxy.security
 import galaxy.queues
 from galaxy.managers.collections import DatasetCollectionManager
+from galaxy.managers.tools import DynamicToolManager
 import galaxy.quota
 from galaxy.managers.tags import GalaxyTagManager
 from galaxy.visualization.genomes import Genomes
@@ -88,6 +89,7 @@ class UniverseApplication(object, config.ConfiguresGalaxyMixin):
         self.tag_handler = GalaxyTagManager(self.model.context)
         # Dataset Collection Plugins
         self.dataset_collections_service = DatasetCollectionManager(self)
+        self.dynamic_tool_manager = DynamicToolManager(self)
 
         # Tool Data Tables
         self._configure_tool_data_tables(from_shed_config=False)
