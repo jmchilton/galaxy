@@ -281,6 +281,30 @@ class DatasetsController(BaseAPIController, UsesVisualizationMixin):
 
         return data
 
+    @web.expose_api_anonymous
+    def extra_files(self, trans, history_content_id, history_id, **kwd):
+        """
+        GET /api/histories/{encoded_history_id}/contents/{encoded_content_id}/extra_files
+        Generate list of extra files.
+        """
+        decoded_content_id = self.decode_id(history_content_id)
+
+        hda = self.hda_manager.get_accessible(decoded_content_id, trans.user)
+
+        # extra_files_path = trans.app.object_store.get_filename(hda.dataset,
+        #                                                        extra_dir=('dataset_%s_files' % hda.dataset.id))
+        extra_files_path = hda.extra_files_path
+        rval = []
+        import os
+        log.info("walking [%s]" % extra_files_path)
+        for root, directories, files in os.walk(extra_files_path):
+            for directory in directories:
+                rval.append({"class": "Directory", "path": directory})
+            for file in files:
+                rval.append({"class": "File", "path": os.path.relpath(os.path.join(root, file), extra_files_path)})
+
+        return rval
+
     @web.expose_api_raw_anonymous
     def display(self, trans, history_content_id, history_id,
                 preview=False, filename=None, to_ext=None, raw=False, **kwd):
