@@ -249,6 +249,9 @@ class UploadDataset(Group):
                 if composite_file.optional:
                     rval = "%s [optional]" % rval
                 return rval
+        if index < self.get_file_count(trans, context):
+            log.info("In dynamic extra file")
+            return "Extra File"
         return None
 
     def value_to_basic(self, value, app):
@@ -279,10 +282,18 @@ class UploadDataset(Group):
             rval.append(rval_dict)
         return rval
 
+    def get_file_count(self, trans, context):
+        file_count = context.get("file_count", "auto")
+        if file_count == "auto":
+            file_count = len(self.get_datatype(trans, context).writable_files)
+        else:
+            file_count = int(file_count)
+        return file_count
+
     def get_initial_value(self, trans, context):
-        d_type = self.get_datatype(trans, context)
+        file_count = self.get_file_count(trans, context)
         rval = []
-        for i, (composite_name, composite_file) in enumerate(d_type.writable_files.items()):
+        for i in range(file_count):
             rval_dict = {}
             rval_dict['__index__'] = i  # create __index__
             for input in self.inputs.values():
@@ -477,12 +488,13 @@ class UploadDataset(Group):
                     rval.append(file_bunch)
             return rval
         file_type = self.get_file_type(context)
+        file_count = self.get_file_count(trans, context)
         d_type = self.get_datatype(trans, context)
         dbkey = context.get('dbkey', None)
         tag_using_filenames = context.get('tag_using_filenames', False)
         writable_files = d_type.writable_files
         writable_files_offset = 0
-        groups_incoming = [None for _ in writable_files]
+        groups_incoming = [None for _ in range(file_count)]
         for group_incoming in context.get(self.name, []):
             i = int(group_incoming['__index__'])
             groups_incoming[i] = group_incoming
@@ -544,15 +556,16 @@ class UploadDataset(Group):
                             dataset.warnings.append("A required composite file (%s) was not specified." % (key))
             return [dataset]
         else:
-            datasets = get_filenames(context[self.name][0])
             rval = []
-            for dataset in datasets:
-                dataset.file_type = file_type
-                dataset.datatype = d_type
-                dataset.ext = self.get_datatype_ext(trans, context)
-                dataset.dbkey = dbkey
-                dataset.tag_using_filenames = tag_using_filenames
-                rval.append(dataset)
+            for file_contexts in context[self.name]:
+                datasets = get_filenames(file_contexts)
+                for dataset in datasets:
+                    dataset.file_type = file_type
+                    dataset.datatype = d_type
+                    dataset.ext = self.get_datatype_ext(trans, context)
+                    dataset.dbkey = dbkey
+                    dataset.tag_using_filenames = tag_using_filenames
+                    rval.append(dataset)
             return rval
 
 

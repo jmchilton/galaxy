@@ -177,6 +177,7 @@ class BaseDatasetPopulator(object):
             'files_0|NAME': name,
             'dbkey': dbkey,
             'file_type': file_type,
+
         }
         if hasattr(content, 'read'):
             upload_params["files_0|file_data"] = content
