@@ -205,6 +205,7 @@ class ToolsTestCase(api.ApiTestCase):
                     "files_1|url_paste": "SecondOutputContent",
                     "files_1|NAME": "SecondOutputName",
                     "file_count": "2",
+                    "force_composite": "True",
                 }
             )
             run_response = self.dataset_populator.tools_post(payload)
@@ -216,6 +217,24 @@ class ToolsTestCase(api.ApiTestCase):
             assert content.strip() == "Test123"
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset=datasets[1])
             assert content.strip() == "SecondOutputContent"
+
+    def test_upload_composite(self):
+        with self.dataset_populator.test_history() as history_id:
+            payload = self.dataset_populator.upload_payload(history_id, "Test123",
+                extra_inputs={
+                    "files_1|url_paste": "CompositeContent",
+                    "files_1|NAME": "composite",
+                    "file_count": "2",
+                    "force_composite": "True",
+                }
+            )
+            run_response = self.dataset_populator.tools_post(payload)
+            self.dataset_populator.wait_for_tool_run(history_id, run_response)
+            dataset = run_response.json()["outputs"][0]
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset=dataset)
+            assert content.strip() == "Test123"
+            extra_files = self.dataset_populator.get_history_dataset_extra_files(history_id, dataset_id=dataset["id"])
+            assert len(extra_files) == 1, extra_files
 
     def test_unzip_collection(self):
         with self.dataset_populator.test_history() as history_id:
