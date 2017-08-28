@@ -854,7 +854,7 @@ class Tool(object, Dictifiable):
 
         if not os.path.exists(meta_file):
             return output_collect.NullToolProvidedMetadata()
-        if self.provided_metadata_style == "legacy":
+        elif self.provided_metadata_style == "legacy":
             return output_collect.LegacyToolProvidedMetadata(job_wrapper, meta_file)
         else:
             return output_collect.ToolProvidedMetadata(job_wrapper, meta_file)
