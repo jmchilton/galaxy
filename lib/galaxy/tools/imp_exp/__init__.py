@@ -29,7 +29,9 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
         self.sa_session = self.app.model.context
 
     def cleanup_after_job(self):
-        """ Set history, datasets, and jobs' attributes and clean up archive directory. """
+        """ Set history, datasets, collections and jobs' attributes
+            and clean up archive directory.
+        """
 
         #
         # Helper methods.
@@ -370,17 +372,17 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
             def default(self, obj):
                 """ Encode a collection, default encoding for everything else. """
                 if isinstance(obj, trans.model.HistoryDatasetCollectionAssociation):
-                    #dump attrs of each dataset of this collection
+                    # dump attrs of each dataset of this collection
                     collections_datasets_attrs = []
                     collection_datasets = obj.dataset_instances
                     for collection_dataset in collection_datasets:
                         collections_datasets_attrs.append(collection_dataset)
-                    
+
                     rval = {
                         "display_name": obj.display_name(),
                         "state": obj.state,
                         "populated": obj.populated,
-                        "datasets":dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder)
+                        "datasets": dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder)
                     }
                     return rval
                 return json.JSONEncoder.default(self, obj)
@@ -433,18 +435,18 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
 
         # Write collections' attributes (including datasets list) to file.
         collections = get_history_collections(trans, history)
-    
+
         collections_attrs = []
         included_collections_datasets = []
         collections_datasets_attrs = []
         collections_provenance_attrs = []
         for collection in collections:
-            #filter this ?
-            if collection.populated == False:
+            # filter this ?
+            if not collection.populated:
                 break
             if collection.state != 'ok':
                 break
-        
+
             collections_attrs.append(collection)
 
         collections_attrs_filename = tempfile.NamedTemporaryFile(dir=temp_output_dir).name
