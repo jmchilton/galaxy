@@ -292,12 +292,13 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                  .filter(trans.model.Dataset.purged == expression.false()))
         return query.all()
 
-    def get_history_collections(trans, history):
+    def get_history_collections(self, trans, history):
         """
         Returns history's collections.
         """
         query = (trans.sa_session.query(trans.model.HistoryDatasetCollectionAssociation)
-                 .filter(trans.model.HistoryDatasetCollectionAssociation.history == history))
+                 .filter(trans.model.HistoryDatasetCollectionAssociation.history == history)
+                 .filter(trans.model.HistoryDatasetCollectionAssociation.deleted == expression.false()))
         return query.all()
 
     # TODO: should use db_session rather than trans in this method.
@@ -381,8 +382,9 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                     rval = {
                         "display_name": obj.display_name(),
                         "state": obj.state,
+                        "type": obj.collection.collection_type,
                         "populated": obj.populated,
-                        "datasets": dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder)
+                        "datasets": loads(dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder))
                     }
                     return rval
                 return json.JSONEncoder.default(self, obj)
@@ -434,12 +436,9 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         provenance_attrs_out.close()
 
         # Write collections' attributes (including datasets list) to file.
-        collections = get_history_collections(trans, history)
+        collections = self.get_history_collections(trans, history)
 
         collections_attrs = []
-        included_collections_datasets = []
-        collections_datasets_attrs = []
-        collections_provenance_attrs = []
         for collection in collections:
             # filter this ?
             if not collection.populated:
@@ -453,6 +452,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         collections_attrs_out = open(collections_attrs_filename, 'w')
         collections_attrs_out.write(dumps(collections_attrs, cls=CollectionsEncoder))
         collections_attrs_out.close()
+        jeha.collections_attrs_filename = collections_attrs_filename
 
         #
         # Write jobs attributes file.
@@ -537,10 +537,10 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         options = ""
         if jeha.compressed:
             options = "-G"
-        return "%s %s %s %s" % (options, history_attrs_filename,
-                                datasets_attrs_filename,
-                                jobs_attrs_filename,
-                                collections_attrs_filename)
+        return "%s %s %s %s %s" % (options, history_attrs_filename,
+                                   datasets_attrs_filename,
+                                   jobs_attrs_filename,
+                                   collections_attrs_filename)
 
     def cleanup_after_job(self, db_session):
         """ Remove temporary directory and attribute files generated during setup for this job. """
