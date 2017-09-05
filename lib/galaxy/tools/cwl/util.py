@@ -10,7 +10,7 @@ import tempfile
 
 from collections import namedtuple
 
-from six import iteritems, StringIO
+from six import iteritems, python_2_unicode_compatible, StringIO
 
 STORE_SECONDARY_FILES_WITH_BASENAME = True
 SECONDARY_FILES_EXTRA_PREFIX = "__secondary_files__"
@@ -221,23 +221,35 @@ def _ensure_file_exists(file_path):
         raise Exception(message)
 
 
+@python_2_unicode_compatible
 class FileUploadTarget(object):
 
     def __init__(self, path, secondary_files=None):
         self.path = path
         self.secondary_files = secondary_files
 
+    def __str__(self):
+        return "FileUploadTarget[path=%s]" % self.path
 
+
+@python_2_unicode_compatible
 class ObjectUploadTarget(object):
 
     def __init__(self, the_object):
         self.object = the_object
 
+    def __str__(self):
+        return "ObjectUploadTarget[object=%s]" % self.object
 
+
+@python_2_unicode_compatible
 class DirectoryUploadTarget(object):
 
     def __init__(self, tar_path):
         self.tar_path = tar_path
+
+    def __str__(self):
+        return "DirectoryUploadTarget[tar_path=%s]" % self.tar_path
 
 
 GalaxyOutput = namedtuple("GalaxyOutput", ["history_id", "history_content_type", "history_content_id"])
