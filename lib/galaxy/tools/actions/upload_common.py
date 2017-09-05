@@ -106,7 +106,7 @@ def validate_url(url, ip_whitelist):
     return url
 
 
-def persist_uploads(params, trans):
+def persist_uploads(trans, params):
     """
     Turn any uploads in the submitted form to persisted files.
     """
@@ -124,8 +124,9 @@ def persist_uploads(params, trans):
             elif type(f) == dict and 'local_filename' not in f:
                 raise Exception('Uploaded file was encoded in a way not understood by Galaxy.')
             if upload_dataset['url_paste'] and upload_dataset['url_paste'].strip() != '':
+                url = validate_url(upload_dataset['url_paste'], trans.app.config.fetch_url_whitelist_ips)
                 upload_dataset['url_paste'], is_multi_byte = datatypes.sniff.stream_to_file(
-                    StringIO(validate_url(upload_dataset['url_paste'], trans.app.config.fetch_url_whitelist_ips)),
+                    StringIO(url),
                     prefix="strio_url_paste_"
                 )
             else:
