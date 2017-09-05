@@ -446,7 +446,11 @@ class BaseDatasetPopulator(object):
             jobs_response = self._get("jobs", query_params)
             assert jobs_response.status_code == 200
             active_jobs = [j for j in jobs_response.json() if j["state"] in ["new", "upload", "waiting", "queued", "running"]]
-            return active_jobs == 0
+
+            if len(active_jobs) == 0:
+                return True
+            else:
+                return None
 
         wait_on(has_active_jobs, "active jobs", timeout=timeout)
         if assert_ok:
