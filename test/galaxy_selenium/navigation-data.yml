@@ -1,3 +1,10 @@
+# top_level: {global: <components>, workflows: <components>, histories: <components>}
+# components := {<subcomponent_name>: <components>} | <component>
+# component := {selectors: <selectors_map>, labels: <labels_map>, ids: <id_map>}
+# selectors_map := {<selector_name>: <selector>}
+# selector := <str> | {type: <selector_type>, selector: <str>}
+# selector_type := css|xpath|sizzle|id
+
 selectors:
     tooltipBalloon: '.tooltip'
     editableText: '.editable-text'
