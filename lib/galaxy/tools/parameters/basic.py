@@ -2118,14 +2118,12 @@ class FieldTypeToolParameter(ToolParameter):
 
     def to_json(self, value, app, use_security):
         """Convert a value to a string representation suitable for persisting"""
-        log.info("to_json of %s (%s)" % (value, type(value)))
         assert isinstance(value, dict)
         assert "src" in value
         return value
 
     def to_python(self, value, app):
         """Convert a value created with to_json back to an object representation"""
-        log.info("to_python of %s (%s)" % (value, type(value)))
         if value is None:
             return None
         # return super(FieldTypeToolParameter, self).to_python(value, app)
@@ -2149,7 +2147,6 @@ class FieldTypeToolParameter(ToolParameter):
             return {"src": src, "value": value}
 
     def value_to_basic(self, value, app, use_security=False):
-        log.info("value_to_basic of %s (%s)" % (value, type(value)))
         if value is None:
             return None
 
@@ -2163,7 +2160,6 @@ class FieldTypeToolParameter(ToolParameter):
         return json.dumps(value)
 
     def value_from_basic(self, value, app, ignore_errors=False):
-        log.info("value_from_basic of %s (%s)" % (value, type(value)))
         return super(FieldTypeToolParameter, self).value_from_basic(value, app, ignore_errors)
         # return json.loads(value)
 
