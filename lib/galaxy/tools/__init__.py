@@ -1824,7 +1824,8 @@ class Tool(object, Dictifiable):
 
         # If an admin user, expose the path to the actual tool config XML file.
         if trans.user_is_admin():
-            tool_dict['config_file'] = os.path.abspath(self.config_file)
+            config_file = None if not self.config_file else os.path.abspath(self.config_file)
+            tool_dict['config_file'] = config_file
 
         # Add link details.
         if link_details:
