@@ -274,10 +274,9 @@ class BaseWorkflowsApiTestCase(api.ApiTestCase):
         return downloaded_workflow
 
     def wait_for_invocation_and_jobs(self, history_id, workflow_id, invocation_id, assert_ok=True):
-        self.workflow_populator.wait_for_invocation(workflow_id, invocation_id)
-        time.sleep(.5)
-        self.dataset_populator.wait_for_history(history_id, assert_ok=assert_ok)
-        time.sleep(.5)
+        self.workflow_populator.wait_for_invocation_and_jobs(
+            history_id, workflow_id, invocation_id, assert_ok=assert_ok
+        )
 
 
 # Workflow API TODO:

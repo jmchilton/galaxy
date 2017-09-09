@@ -176,6 +176,7 @@ def setup_galaxy_config(
     config = dict(
         admin_users='test@bx.psu.edu',
         allow_library_path_paste=True,
+        allow_path_paste=True,
         allow_user_creation=True,
         allow_user_deletion=True,
         api_allow_run_as='test@bx.psu.edu',

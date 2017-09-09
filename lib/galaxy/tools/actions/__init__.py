@@ -562,6 +562,9 @@ class DefaultToolAction(object):
                         reductions[name] = []
                     reductions[name].append(dataset_collection)
 
+                if getattr(dataset_collection, "ephemeral", False):
+                    dataset_collection = dataset_collection.persistent_object
+
                 # TODO: verify can have multiple with same name, don't want to loose tracability
                 job.add_input_dataset_collection(name, dataset_collection)
 

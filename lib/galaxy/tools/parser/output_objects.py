@@ -201,6 +201,7 @@ class ToolOutputCollectionStructure(object):
         collection_type_source=None,
         structured_like=None,
         dataset_collector_descriptions=None,
+        fields=None,
     ):
         self.collection_type = collection_type
         self.collection_type_source = collection_type_source
@@ -213,6 +214,10 @@ class ToolOutputCollectionStructure(object):
             raise ValueError("Output collection types must be specify type of structured_like")
         if dataset_collector_descriptions and structured_like:
             raise ValueError("Cannot specify dynamic structure (discovered_datasets) and structured_like attribute.")
+        if collection_type == "record" and fields is None:
+            raise ValueError("If record outputs are defined, fields must be defined as well.")
+        if fields is not None and collection_type != "record":
+            raise ValueError("If fields are specified for outputs, the collection type must be record.")
         self.dynamic = dataset_collector_descriptions is not None
 
     def collection_prototype(self, inputs, type_registry):

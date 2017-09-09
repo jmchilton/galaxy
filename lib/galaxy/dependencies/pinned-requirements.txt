@@ -80,3 +80,10 @@ pysam==0.8.4+gx5
 
 # GenomeSpace dependencies
 python-genomespaceclient==0.1.8
+
+# GenomeSpace dependencies
+python-genomespaceclient==0.1.8
+
+# For CWL support.
+cwltool==1.0.20170828135420
+cwltest==1.0.20170809112706  # TODO: only required for testing...

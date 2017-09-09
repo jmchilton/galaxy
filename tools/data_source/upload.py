@@ -349,25 +349,36 @@ def add_file(dataset, registry, json_file, output_path):
 
 def add_composite_file(dataset, json_file, output_path, files_path):
 
+    def to_path(path_or_url):
+        is_url = path_or_url.find('://') != -1  # todo fixme
+        if is_url:
+            try:
+                temp_name, dataset.is_multi_byte = sniff.stream_to_file(urlopen(path_or_url), prefix='url_paste')
+            except Exception as e:
+                file_err('Unable to fetch %s\n%s' % (path_or_url, str(e)), dataset, json_file)
+                raise Exception()
+
+            return temp_name, is_url
+
+        return path_or_url, is_url
+
     def make_files_path():
         safe_makedirs(files_path)
 
     def stage_file(name, composite_file_path, is_binary=False):
         dp = composite_file_path['path']
-        isurl = dp.find('://') != -1  # todo fixme
-        if isurl:
-            try:
-                temp_name, dataset.is_multi_byte = sniff.stream_to_file(urlopen(dp), prefix='url_paste')
-            except Exception as e:
-                file_err('Unable to fetch %s\n%s' % (dp, str(e)), dataset, json_file)
-                return
-            dataset.path = temp_name
-            dp = temp_name
 
+        path, is_url = to_path(dp)
+        if is_url:
+            dataset.path = path
+            dp = path
+
+        auto_decompress = composite_file_path.get('auto_decompress', True)
+        print(auto_decompress)
         import tarfile
-        if tarfile.is_tarfile(dp):
+        if auto_decompress and tarfile.is_tarfile(dp):
             tar = tarfile.open(dp, "r:*")
-            for tarinfo in tar:
+            for tarinfo in tar.getmembers():
                 rel_path = tarinfo.name
                 dest_path = os.path.join(files_path, rel_path)
                 if not in_directory(dest_path, files_path):
@@ -401,11 +412,14 @@ def add_composite_file(dataset, json_file, output_path, files_path):
     # Do we have ad-hoc user supplied composite files.
     elif dataset.composite_file_paths:
         make_files_path()
+        print(dataset.composite_file_paths)
         for key, composite_file in dataset.composite_file_paths.items():
             stage_file(key, composite_file)  # TODO: replace these defaults
 
     # Move the dataset to its "real" path
-    shutil.move(dataset.primary_file, output_path)
+    primary_file_path, _ = to_path(dataset.primary_file)
+    shutil.move(primary_file_path, output_path)
+
     # Write the job info
     info = dict(type='dataset',
                 dataset_id=dataset.dataset_id,

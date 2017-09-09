@@ -176,6 +176,7 @@ model.Dataset.table = Table(
     Column("object_store_id", TrimmedString(255), index=True),
     Column("external_filename", TEXT),
     Column("_extra_files_path", TEXT),
+    Column("cwl_filename", TEXT),
     Column('file_size', Numeric(15, 0)),
     Column('total_size', Numeric(15, 0)),
     Column('uuid', UUIDType()))
@@ -498,6 +499,8 @@ model.Job.table = Table(
     Column("object_store_id", TrimmedString(255), index=True),
     Column("imported", Boolean, default=False, index=True),
     Column("params", TrimmedString(255), index=True),
+    Column("cwl_command_state", JSONType, nullable=True),
+    Column("cwl_command_state_version", Integer, default=1),
     Column("handler", TrimmedString(255), index=True))
 
 model.JobStateHistory.table = Table(
@@ -838,6 +841,19 @@ model.WorkflowStep.table = Table(
     Column("uuid", UUIDType),
     # Column( "input_connections", JSONType ),
     Column("label", Unicode(255)))
+
+
+model.WorkflowStepInput.table = Table(
+    "workflow_step_input", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("workflow_step_id", Integer, ForeignKey("workflow_step.id"), index=True),
+    Column("name", Unicode(255)),
+    Column("merge_type", TEXT),
+    Column("scatter_type", TEXT),
+    Column("value_from", JSONType),
+    Column("value_from_type", TEXT),
+    Column("default_value", JSONType))
+
 
 model.WorkflowRequestStepState.table = Table(
     "workflow_request_step_states", metadata,
@@ -2315,7 +2331,12 @@ mapper(model.WorkflowStep, model.WorkflowStep.table, properties=dict(
         backref="workflow_steps"),
     annotations=relation(model.WorkflowStepAnnotationAssociation,
         order_by=model.WorkflowStepAnnotationAssociation.table.c.id,
-        backref="workflow_steps")
+        backref="workflow_steps"),
+))
+
+mapper(model.WorkflowStepInput, model.WorkflowStepInput.table, properties=dict(
+    workflow_step=relation(model.WorkflowStep,
+        backref="inputs"),
 ))
 
 mapper(model.WorkflowOutput, model.WorkflowOutput.table, properties=dict(
