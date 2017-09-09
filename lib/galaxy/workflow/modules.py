@@ -620,8 +620,8 @@ class InputParameterModule(WorkflowModule):
         step_outputs = dict(output=input_value)
         progress.set_outputs_for_input(invocation_step, step_outputs)
 
-    def recover_mapping(self, step, step_invocations, progress):
-        progress.set_outputs_for_input(step)
+    def recover_mapping(self, invocation_step, progress):
+        progress.set_outputs_for_input(invocation_step)
 
 
 # TODO: Implementation of this was for older framework - need to redo it now
@@ -685,10 +685,9 @@ class ExpressionModule(WorkflowModule):
     def get_data_inputs(self):
         return []
 
-    def execute(self, trans, progress, invocation, step):
-        job, step_outputs = None, dict(output=step.state.inputs['input'])
-        progress.set_outputs_for_input(step, step_outputs)
-        return job
+    def execute(self, trans, progress, invocation_step):
+        step_outputs = None, dict(output=invocation_step.step.state.inputs['input'])
+        progress.set_outputs_for_input(invocation_step, step_outputs)
 
 
 class PauseModule(WorkflowModule):
