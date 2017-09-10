@@ -686,7 +686,7 @@ class ExpressionModule(WorkflowModule):
         return []
 
     def execute(self, trans, progress, invocation_step):
-        step_outputs = None, dict(output=invocation_step.step.state.inputs['input'])
+        step_outputs = dict(output=invocation_step.step.state.inputs['input'])
         progress.set_outputs_for_input(invocation_step, step_outputs)
 
 
