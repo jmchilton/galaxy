@@ -808,6 +808,25 @@
   tool: v1.0/scatter-valuefrom-wf5.cwl
   doc: Test workflow scatter with single scatter parameter and valueFrom on step input
 
+- job: v1.0/scatter-valuefrom-job3.json
+  tool: v1.0/scatter-valuefrom-wf6.cwl
+  doc: Test valueFrom eval on scattered input parameter
+  output:
+    out_message: [
+        {
+            "checksum": "sha1$98030575f6fc40e5021be5a8803a6bef94aee11f",
+            "location": Any,
+            "class": "File",
+            "size": 16
+        },
+        {
+            "checksum": "sha1$edcacd50778d98ae113015406b3195c165059dd8",
+            "location": Any,
+            "class": "File",
+            "size": 16
+        }
+    ]
+
 - job: v1.0/conflict-job.json
   output: {
     "fileout": {
@@ -1249,6 +1268,16 @@
         "checksum": "sha1$7448d8798a4380162d4b56f9b452e2f6f9e24e7a"
      }
 
+- job: v1.0/file-literal.yml
+  output:
+    output_file:
+      class: File
+      checksum: sha1$d0e04ff6c413c7d57f9a0ca0a33cd3ab52e2dd9c
+      location: output.txt
+      size: 18
+  tool: v1.0/cat3-nodocker.cwl
+  doc: Test file literal as input without Docker
+
 - job: v1.0/count-lines3-job.json
   output:
     count_output: [16, 1]
@@ -1319,6 +1348,11 @@
   output: {"o": 8}
   tool: v1.0/io-int-default-wf.cwl
   doc: Test default integer workflow inputs (unspecified)
+
+- job: v1.0/empty.json
+  output: {"o": 13}
+  tool: v1.0/io-int-default-tool-and-wf.cwl
+  doc: Test default integer tool and workflow inputs (unspecified)
 
 - job: v1.0/empty.json
   output: {"o": {
