@@ -63,8 +63,8 @@ TYPE_REPRESENTATIONS = [
     TypeRepresentation("record", INPUT_TYPE.DATA_COLLECTON, "record as a dataset collection", "record"),
     TypeRepresentation("json", INPUT_TYPE.TEXT, "arbitrary JSON structure", None),
     TypeRepresentation("array", INPUT_TYPE.DATA_COLLECTON, "as a dataset list", "list"),
+    TypeRepresentation("enum", INPUT_TYPE.TEXT, "enum value", None),  # TODO: make this a select...
     TypeRepresentation("field", INPUT_TYPE.FIELD, "arbitrary JSON structure", None),
-    TypeRepresentation("enum", INPUT_TYPE.TEXT, "enum value", None)  # TODO: make this a select...
 ]
 FIELD_TYPE_REPRESENTATION = TYPE_REPRESENTATIONS[-1]
 TypeRepresentation.uses_param = lambda self: self.galaxy_param_type is not NO_GALAXY_INPUT

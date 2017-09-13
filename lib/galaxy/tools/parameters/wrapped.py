@@ -90,6 +90,9 @@ class WrappedParameters(object):
                 if value is None:
                     return None
 
+                if not isinstance(value, dict):
+                    raise Exception("Simple values [%s] need to be wrapped in a JSON envelope" % input)
+
                 assert "value" in value, value
                 assert "src" in value
                 src = value["src"]

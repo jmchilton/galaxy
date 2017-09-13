@@ -1012,6 +1012,7 @@ class ToolModule(WorkflowModule):
 
     def evaluate_value_from_expressions(self, step, execution_state):
         value_from_expressions = {}
+        replacements = {}
 
         for key, value in execution_state.inputs.items():
             step_input = step.inputs_by_name.get(key, None)
@@ -1019,7 +1020,7 @@ class ToolModule(WorkflowModule):
                 value_from_expressions[key] = step_input.value_from
 
         if not value_from_expressions:
-            return
+            return replacements
 
         hda_references = []
 
@@ -1027,7 +1028,7 @@ class ToolModule(WorkflowModule):
             if isinstance(value, model.HistoryDatasetAssociation):
                 # I think the following two checks are needed but they may
                 # not be needed.
-                if not value.dataset.in_ready_state:
+                if not value.dataset.in_ready_state():
                     why = "dataset [%s] is needed for valueFrom expression and is non-ready" % value.id
                     raise DelayedWorkflowEvaluation(why=why)
 
@@ -1073,6 +1074,7 @@ class ToolModule(WorkflowModule):
         for key, value in execution_state.inputs.items():
             step_state[key] = to_cwl(value)
 
+        replacements = {}
         for key, value_from in value_from_expressions.items():
             from cwltool.expression import do_eval
             as_cwl_value = do_eval(
@@ -1084,7 +1086,10 @@ class ToolModule(WorkflowModule):
                 {},
                 context=step_state[key],
             )
-            execution_state.inputs[key] = from_cwl(as_cwl_value)
+            new_val = from_cwl(as_cwl_value)
+            replacements[key] = new_val
+
+        return replacements
 
     def execute(self, trans, progress, invocation_step):
         invocation = invocation_step.workflow_invocation
@@ -1139,7 +1144,7 @@ class ToolModule(WorkflowModule):
                 is_data = isinstance(input, DataToolParameter) or isinstance(input, DataCollectionToolParameter) or isinstance(input, FieldTypeToolParameter)
                 if not is_data and getattr(replacement, "history_content_type", None) == "dataset" and getattr(replacement, "ext", None) == "expression.json":
                     if isinstance(replacement, model.HistoryDatasetAssociation):
-                        if not replacement.dataset.in_ready_state:
+                        if not replacement.dataset.in_ready_state():
                             why = "dataset [%s] is needed for non-data connection and is non-ready" % replacement.id
                             raise DelayedWorkflowEvaluation(why=why)
 
@@ -1172,15 +1177,32 @@ class ToolModule(WorkflowModule):
             for step_input in step.inputs:
                 if step_input.name not in execution_state.inputs:
                     value = progress.replacment_for_step_input(step, step_input)
+                    # TODO: only do this for values... is everything with a default
+                    # this way a field parameter? I guess not?
                     extra_step_state[step_input.name] = value
 
             unmatched_input_connections = expected_replacement_keys - found_replacement_keys
             if unmatched_input_connections:
                 log.warn("Failed to use input connections for inputs [%s]" % unmatched_input_connections)
 
-            self.evaluate_value_from_expressions(
+            expression_replacements = self.evaluate_value_from_expressions(
                 step, execution_state
             )
+
+            def expression_callback(input, prefixed_name, **kwargs):
+                replacement = NO_REPLACEMENT
+
+                if prefixed_name in expression_replacements:
+                    expression_replacement = expression_replacements[prefixed_name]
+                    if isinstance(input, FieldTypeToolParameter):
+                        replacement = {"src": "json", "value": expression_replacement}
+                    else:
+                        replacement = expression_replacement
+
+                return replacement
+
+            # Replace expression values with those calculated...
+            visit_input_values(tool.inputs, execution_state.inputs, expression_callback, no_replacement_value=NO_REPLACEMENT)
 
             param_combinations.append(execution_state.inputs)
 
