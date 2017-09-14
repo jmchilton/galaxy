@@ -120,7 +120,7 @@ def handle_outputs(job_directory=None):
             elements = []
             for index, el in enumerate(output):
                 if isinstance(el, dict) and el["class"] == "File":
-                    output_path = ref_resolver.uri_file_path(el["location"])
+                    output_path = _possible_uri_to_path(el["location"])
                     elements.append({"name": str(index), "filename": output_path, "cwl_filename": el["basename"]})
                 else:
                     target_path = "%s____%s" % (output_name, str(index))
