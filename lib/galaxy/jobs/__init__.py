@@ -778,7 +778,12 @@ class JobWrapper(object, HasResourceParameters):
 
     @property
     def requires_containerization(self):
-        return util.asbool(self.get_destination_configuration("require_container", "False"))
+        # HACK FOR CWL EXPRESSION TOOLS, ITD BE MUCH BETTER TO JUST HAVE THEM PROVIDE A
+        # A NODEJS CONTAINER TO RUN IT? OR MAYBE JUST FIX THIS PLANEMO-SIDE?
+        if self.tool.tool_type == "cwl" and self.tool._cwl_tool_proxy._class == "ExpressionTool":
+            return False
+        else:
+            return util.asbool(self.get_destination_configuration("require_container", "False"))
 
     def can_split(self):
         # Should the job handler split this job up?
