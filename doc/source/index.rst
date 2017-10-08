@@ -39,6 +39,12 @@ For more information on the Galaxy Project, please visit the https://galaxyproje
    Tool Shed API <ts_api_doc>
    Application Documentation <lib/modules>
 
+.. toctree:
+   :maxdepth: 2
+   :caption: `galaxy-lib` Documentation
+
+   `galaxy-lib` topics <galaxy-lib/index>
+
 .. _about-docs:
 
 .. toctree::
