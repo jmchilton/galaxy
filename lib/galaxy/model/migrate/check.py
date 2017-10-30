@@ -31,9 +31,14 @@ def create_or_verify_database(url, galaxy_config_file, engine_options={}, app=No
     4) Database versioned but out of date --> fail with informative message, user must run "sh manage_db.sh upgrade"
     """
     # Create the base database if it doesn't yet exist.
+    log.info("checking for database existence at [%s]" % url)
     new_database = not database_exists(url)
     if new_database:
         template = app and getattr(app.config, "database_template", None)
+        message = "Creating database for URI [%s]"
+        if template:
+            message += " from template [%s]" % template
+        log.info(message)
         create_database(url, template=template)
 
     # Create engine and metadata
