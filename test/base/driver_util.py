@@ -542,7 +542,7 @@ def _stop(self):
 
     if self.app is not None:
         log.info("Stopping application %s" % self.name)
-        self.app.shutdown()
+        self.app.shutdown(join_daemons=True)
         log.info("Application %s stopped." % self.name)
 
 

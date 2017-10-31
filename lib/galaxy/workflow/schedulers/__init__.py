@@ -28,7 +28,7 @@ class WorkflowSchedulingPlugin(object):
         """ Called when Galaxy starts up if the plugin is enabled.
         """
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         """ Called when Galaxy is shutting down, workflow scheduling should
         end.
         """

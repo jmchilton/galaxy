@@ -128,12 +128,16 @@ class BaseJobRunner(object):
     def mark_as_queued(self, job_wrapper):
         self.work_queue.put((self.queue_job, job_wrapper))
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         """Attempts to gracefully shut down the worker threads
         """
         log.info("%s: Sending stop signal to %s worker threads" % (self.runner_name, len(self.work_threads)))
         for i in range(len(self.work_threads)):
             self.work_queue.put((STOP_SIGNAL, None))
+
+        if join_daemons:
+            for thread in self.work_threads:
+                thread.join(5)
 
     # Most runners should override the legacy URL handler methods and destination param method
     def url_to_destination(self, url):
@@ -560,12 +564,14 @@ class AsynchronousJobRunner(BaseJobRunner):
     def monitor_job(self, job_state):
         self.monitor_queue.put(job_state)
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         """Attempts to gracefully shut down the monitor thread"""
         log.info("%s: Sending stop signal to monitor thread" % self.runner_name)
         self.monitor_queue.put(STOP_SIGNAL)
         # Call the parent's shutdown method to stop workers
-        super(AsynchronousJobRunner, self).shutdown()
+        if join_daemons:
+            self.monitor_thread.join(5)
+        super(AsynchronousJobRunner, self).shutdown(join_daemons=join_daemons)
 
     def check_watched_items(self):
         """

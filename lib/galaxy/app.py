@@ -211,10 +211,10 @@ class UniverseApplication(object, config.ConfiguresGalaxyMixin):
         self.server_starttime = int(time.time())  # used for cachebusting
         log.info("Galaxy app startup finished %s" % self.startup_timer)
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         self.watchers.shutdown()
-        self.workflow_scheduling_manager.shutdown()
-        self.job_manager.shutdown()
+        self.workflow_scheduling_manager.shutdown(join_daemons=join_daemons)
+        self.job_manager.shutdown(join_daemons=join_daemons)
         self.object_store.shutdown()
         if self.heartbeat:
             self.heartbeat.shutdown()
@@ -224,6 +224,8 @@ class UniverseApplication(object, config.ConfiguresGalaxyMixin):
         except AttributeError:
             # There is no control_worker
             pass
+        if join_daemons:
+            self.model.engine.dispose()
 
     def configure_fluent_log(self):
         if self.config.fluent_log:

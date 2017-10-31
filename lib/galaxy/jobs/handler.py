@@ -27,7 +27,7 @@ from galaxy.jobs import (
     TaskWrapper
 )
 from galaxy.jobs.mapper import JobNotReadyException
-from galaxy.util.sleeper import Sleeper
+from galaxy.util.monitors import Monitors
 
 log = logging.getLogger(__name__)
 
@@ -52,12 +52,12 @@ class JobHandler(object):
     def start(self):
         self.job_queue.start()
 
-    def shutdown(self):
-        self.job_queue.shutdown()
-        self.job_stop_queue.shutdown()
+    def shutdown(self, join_daemons=False):
+        self.job_queue.shutdown(join_daemons=join_daemons)
+        self.job_stop_queue.shutdown(join_daemons=join_daemons)
 
 
-class JobHandlerQueue(object):
+class JobHandlerQueue(Monitors, object):
     """
     Job Handler's Internal Queue, this is what actually implements waiting for
     jobs to be runnable and dispatching to a JobRunner.
@@ -84,11 +84,8 @@ class JobHandlerQueue(object):
         self.waiting_jobs = []
         # Contains wrappers of jobs that are limited or ready (so they aren't created unnecessarily/multiple times)
         self.job_wrappers = {}
-        # Helper for interruptable sleep
-        self.sleeper = Sleeper()
-        self.running = True
-        self.monitor_thread = threading.Thread(name="JobHandlerQueue.monitor_thread", target=self.__monitor)
-        self.monitor_thread.setDaemon(True)
+        name = "JobHandlerQueue.monitor_thread"
+        self._init_monitor_thread(name, target=self.__monitor)
 
     def start(self):
         """
@@ -203,7 +200,7 @@ class JobHandlerQueue(object):
         Continually iterate the waiting jobs, checking is each is ready to
         run and dispatching if so.
         """
-        while self.running:
+        while self.monitor_running:
             try:
                 # If jobs are locked, there's nothing to monitor and we skip
                 # to the sleep.
@@ -211,8 +208,7 @@ class JobHandlerQueue(object):
                     self.__monitor_step()
             except Exception:
                 log.exception("Exception in monitor_step")
-            # Sleep
-            self.sleeper.sleep(1)
+            self._monitor_sleep(1)
 
     def __monitor_step(self):
         """
@@ -670,15 +666,15 @@ class JobHandlerQueue(object):
             return
         else:
             log.info("sending stop signal to worker thread")
-            self.running = False
+            self.stop_monitoring()
             if not self.app.config.track_jobs_in_database:
                 self.queue.put(self.STOP_SIGNAL)
-            self.sleeper.wake()
+            self.shutdown_monitor()
             log.info("job handler queue stopped")
             self.dispatcher.shutdown()
 
 
-class JobHandlerStopQueue(object):
+class JobHandlerStopQueue(Monitors):
     """
     A queue for jobs which need to be terminated prematurely.
     """
@@ -699,12 +695,8 @@ class JobHandlerStopQueue(object):
         # Contains jobs that are waiting (only use from monitor thread)
         self.waiting = []
 
-        # Helper for interruptable sleep
-        self.sleeper = Sleeper()
-        self.running = True
-        self.monitor_thread = threading.Thread(name="JobHandlerStopQueue.monitor_thread", target=self.monitor)
-        self.monitor_thread.setDaemon(True)
-        self.monitor_thread.start()
+        name = "JobHandlerStopQueue.monitor_thread"
+        self._init_monitor_thread(name, start=True)
         log.info("job handler stop queue started")
 
     def monitor(self):
@@ -713,13 +705,13 @@ class JobHandlerStopQueue(object):
         """
         # HACK: Delay until after forking, we need a way to do post fork notification!!!
         time.sleep(10)
-        while self.running:
+        while self.monitor_running:
             try:
                 self.monitor_step()
             except Exception:
                 log.exception("Exception in monitor_step")
             # Sleep
-            self.sleeper.sleep(1)
+            self._monitor_sleep(1)
 
     def monitor_step(self):
         """
@@ -771,7 +763,7 @@ class JobHandlerStopQueue(object):
         if not self.app.config.track_jobs_in_database:
             self.queue.put((job_id, error_msg))
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         """Attempts to gracefully shut down the worker thread"""
         if self.parent_pid != os.getpid():
             # We're not the real job queue, do nothing
@@ -782,6 +774,8 @@ class JobHandlerStopQueue(object):
             if not self.app.config.track_jobs_in_database:
                 self.queue.put(self.STOP_SIGNAL)
             self.sleeper.wake()
+            if join_daemons:
+                self.monitor_thread.join(5)
             log.info("job handler stop queue stopped")
 
 
@@ -871,6 +865,9 @@ class DefaultJobDispatcher(object):
             log.error('recover(): (%s) Invalid job runner: %s' % (job_wrapper.job_id, runner_name))
             job_wrapper.fail(DEFAULT_JOB_PUT_FAILURE_MESSAGE)
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         for runner in self.job_runners.itervalues():
-            runner.shutdown()
+            try:
+                runner.shutdown(join_daemons=join_daemons)
+            except Exception:
+                raise Exception("Failed to shutdown runner %s" % runner)

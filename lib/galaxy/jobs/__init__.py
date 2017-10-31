@@ -2107,7 +2107,7 @@ class NoopQueue(object):
     def put_stop(self, *args):
         return
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         return
 
 

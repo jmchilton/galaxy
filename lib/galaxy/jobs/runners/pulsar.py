@@ -577,8 +577,8 @@ class PulsarJobRunner(AsynchronousJobRunner):
             job_state.running = state == model.Job.states.RUNNING
             self.monitor_queue.put(job_state)
 
-    def shutdown(self):
-        super(PulsarJobRunner, self).shutdown()
+    def shutdown(self, join_daemons=False):
+        super(PulsarJobRunner, self).shutdown(join_daemons=join_daemons)
         self.client_manager.shutdown()
 
     def _job_state(self, job, job_wrapper):

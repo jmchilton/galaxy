@@ -74,15 +74,15 @@ class WorkflowSchedulingManager(object, ConfiguresHandlers):
             random_index = None
         return self.__has_handlers.get_handler(None, index=random_index)
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         for workflow_scheduler in self.workflow_schedulers.values():
             try:
-                workflow_scheduler.shutdown()
+                workflow_scheduler.shutdown(join_daemons=join_daemons)
             except Exception:
                 log.exception(EXCEPTION_MESSAGE_SHUTDOWN)
         if self.request_monitor:
             try:
-                self.request_monitor.shutdown()
+                self.request_monitor.shutdown(join_daemons=join_daemons)
             except Exception:
                 log.exception("Failed to shutdown workflow request monitor.")
 
@@ -231,5 +231,7 @@ class WorkflowRequestMonitor(object):
             handler=handler,
         )
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         self.active = False
+        if join_daemons:
+            self.monitor_thread.join(5)

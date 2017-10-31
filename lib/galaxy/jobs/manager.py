@@ -32,8 +32,8 @@ class JobManager(object):
     def start(self):
         self.job_handler.start()
 
-    def shutdown(self):
-        self.job_handler.shutdown()
+    def shutdown(self, join_daemons=False):
+        self.job_handler.shutdown(join_daemons=join_daemons)
 
 
 class NoopHandler(object):

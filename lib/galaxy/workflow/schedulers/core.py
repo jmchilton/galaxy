@@ -20,7 +20,7 @@ class CoreWorkflowSchedulingPlugin(ActiveWorkflowSchedulingPlugin):
     def startup(self, app):
         self.app = app
 
-    def shutdown(self):
+    def shutdown(self, join_daemons=False):
         pass
 
     def schedule(self, workflow_invocation):
