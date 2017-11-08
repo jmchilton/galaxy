@@ -314,6 +314,14 @@ class SeleniumTestCase(FunctionalTestCase, NavigatesGalaxy, UsesApiTestCaseMixin
             self.assert_no_error_message()
 
     @property
+    def dataset_populator(self):
+        return SeleniumSessionDatasetPopulator(self)
+
+    @property
+    def dataset_collection_populator(self):
+        return SeleniumSessionDatasetCollectionPopulator(self)
+
+    @property
     def workflow_populator(self):
         return SeleniumSessionWorkflowPopulator(self)
 
@@ -439,7 +447,9 @@ class SeleniumSessionGetPostMixin:
     """Mixin for adapting Galaxy testing populators helpers to Selenium session backed bioblend."""
 
     def _get(self, route):
-        return self.selenium_test_case.api_get(route)
+        full_url = self.selenium_test_case.build_url("api/" + route, for_selenium=False)
+        response = requests.get(full_url, cookies=self.selenium_test_case.selenium_to_requests_cookies())
+        return response
 
     def _post(self, route, data={}):
         full_url = self.selenium_test_case.build_url("api/" + route, for_selenium=False)
