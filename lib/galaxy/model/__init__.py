@@ -462,6 +462,7 @@ class Job(object, JobLike, UsesCreateAndUpdateTime, Dictifiable):
                    DELETED_NEW='deleted_new')
     terminal_states = [states.OK,
                        states.ERROR,
+                       states.DELETED_NEW,
                        states.DELETED]
     #: job states where the job hasn't finished and the model may still change
     non_ready_states = [
