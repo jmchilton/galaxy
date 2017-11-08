@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
 from time import sleep
 
 from galaxy import model
@@ -42,6 +43,8 @@ class LocalJobRunner(BaseJobRunner):
 
         # create a local copy of os.environ to use as env for subprocess.Popen
         self._environ = os.environ.copy()
+        self._proc_lock = threading.Lock()
+        self._procs = []
 
         # Set TEMP if a valid temp value is not already set
         if not ('TMPDIR' in self._environ or 'TEMP' in self._environ or 'TMP' in self._environ):
@@ -98,6 +101,11 @@ class LocalJobRunner(BaseJobRunner):
                                     stderr=stderr_file,
                                     env=self._environ,
                                     preexec_fn=os.setpgrp)
+
+            proc.terminated_by_shutdown = False
+            with self._proc_lock:
+                self._procs.append(proc)
+
             job_wrapper.set_job_destination(job_wrapper.job_destination, proc.pid)
             job_wrapper.change_state(model.Job.states.RUNNING)
 
@@ -112,6 +120,14 @@ class LocalJobRunner(BaseJobRunner):
             except Exception:
                 log.warning("Failed to read exit code from path %s" % exit_code_path)
                 pass
+
+            with self._proc_lock:
+                self._procs.remove(proc)
+
+            if proc.terminated_by_shutdown:
+                self._fail_job_local(job_wrapper, "job terminated by Galaxy shutdown")
+                return
+
             stdout_file.seek(0)
             stderr_file.seek(0)
             stdout = shrink_stream_by_size(stdout_file, DATABASE_MAX_STRING_SIZE, join_by="\n..\n", left_larger=True, beginning_on_size_error=True)
@@ -164,6 +180,13 @@ class LocalJobRunner(BaseJobRunner):
     def recover(self, job, job_wrapper):
         # local jobs can't be recovered
         job_wrapper.change_state(model.Job.states.ERROR, info="This job was killed when Galaxy was restarted.  Please retry the job.")
+
+    def shutdown(self):
+        super(LocalJobRunner, self).shutdown()
+        with self._proc_lock:
+            for proc in self._procs:
+                proc.terminated_by_shutdown = True
+                self._terminate(proc)
 
     def _fail_job_local(self, job_wrapper, message):
         job_destination = job_wrapper.job_destination
