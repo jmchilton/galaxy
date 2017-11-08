@@ -1088,10 +1088,18 @@ class JobWrapper(object, HasResourceParameters):
         # If this is a new job (e.g. initially queued) - we are in the same
         # thread and no other threads are working on the job yet - so don't refresh.
 
+        valid_transition = True
         if job.state in model.Job.terminal_states:
             log.warning("(%s) Ignoring state change from '%s' to '%s' for job "
                         "that is already terminal", job.id, job.state, state)
-            return
+            valid_transition = False
+        elif state not in model.Job.terminal_states and job.state == model.Job.states.DELETED_NEW:
+            log.warning("(%s) Ignoring state change from DELETED_NEW to non terminal state")
+            valid_transition = False
+
+        if not valid_transition:
+            return valid_transition
+
         for dataset_assoc in job.output_datasets + job.output_library_datasets:
             dataset = dataset_assoc.dataset
             if not job_supplied:
@@ -1106,6 +1114,8 @@ class JobWrapper(object, HasResourceParameters):
         self.sa_session.add(job)
         if flush:
             self.sa_session.flush()
+
+        return valid_transition
 
     def get_state(self):
         job = self.get_job()

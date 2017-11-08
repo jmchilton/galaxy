@@ -106,23 +106,30 @@ class LocalJobRunner(BaseJobRunner):
             with self._proc_lock:
                 self._procs.append(proc)
 
-            job_wrapper.set_job_destination(job_wrapper.job_destination, proc.pid)
-            job_wrapper.change_state(model.Job.states.RUNNING)
+            try:
+                job_wrapper.set_job_destination(job_wrapper.job_destination, proc.pid)
+                changed_to_running = job_wrapper.change_state(model.Job.states.RUNNING)
+                if not changed_to_running:
+                    # Let job stop queue handle deletion and failure
+                    log.warning("Failed to switch to a RUNNING state - not polling job")
+                    return
 
-            terminated = self.__poll_if_needed(proc, job_wrapper, job_id)
-            if terminated:
-                return
+                terminated = self.__poll_if_needed(proc, job_wrapper, job_id)
+                if terminated:
+                    return
 
-            # Reap the process and get the exit code.
-            exit_code = proc.wait()
+                # Reap the process and get the exit code.
+                exit_code = proc.wait()
+
+            finally:
+                with self._proc_lock:
+                    self._procs.remove(proc)
+
             try:
                 exit_code = int(open(exit_code_path, 'r').read())
             except Exception:
                 log.warning("Failed to read exit code from path %s" % exit_code_path)
                 pass
-
-            with self._proc_lock:
-                self._procs.remove(proc)
 
             if proc.terminated_by_shutdown:
                 self._fail_job_local(job_wrapper, "job terminated by Galaxy shutdown")

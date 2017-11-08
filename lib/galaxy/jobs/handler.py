@@ -710,7 +710,7 @@ class JobHandlerStopQueue(Monitors):
             except Exception:
                 log.exception("Exception in monitor_step")
             # Sleep
-            self._monitor_sleep(1)
+            self._monitor_sleep(10)
 
     def monitor_step(self):
         """

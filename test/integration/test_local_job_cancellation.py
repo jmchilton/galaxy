@@ -53,7 +53,8 @@ class LocalJobCancellationTestCase(integration_util.IntegrationTestCase):
                 sa_session.refresh(job)
                 assert not job.finished
                 external_id = job.job_runner_external_id
-                state = job.state
+                # state = job.state
+                state = app.model.Job.states.RUNNING
 
             assert external_id
             external_id = int(external_id)
