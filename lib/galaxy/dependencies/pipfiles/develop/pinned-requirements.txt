@@ -1,35 +1,46 @@
 funcsigs==1.0.2; python_version < '3.3'
 recommonmark==0.4.0
 snowballstemmer==1.2.1
+cffi==1.11.2
 nosehtml==0.4.4
 pygments==2.2.0
 watchdog==0.8.3
-lxml==4.1.0
+paramiko==2.3.1
+lxml==4.1.1
 babel==2.5.1
 six==1.11.0
-selenium==3.6.0
+selenium==3.7.0
 commonmark==0.5.4
 docutils==0.14
+mock-ssh-server==0.3.0
 typing==3.6.2; python_version < '3.5'
-certifi==2017.7.27.1
+certifi==2017.11.5
+bcrypt==3.1.4
 mock==2.0.0
+pynacl==1.2.0
 testfixtures==5.3.0
 imagesize==0.7.1
+cryptography==2.1.3
+pycparser==2.18
 alabaster==0.7.10
 urllib3==1.22
+idna==2.6
 argh==0.26.2
 markupsafe==1.0
 pytz==2017.3
-jinja2==2.9.6
+jinja2==2.10
 twill==0.9.1
 pygithub3==0.5.1
+ipaddress==1.0.18; python_version < '3'
 pyyaml==3.12
 sphinx==1.6.5
 pbr==3.1.1
+enum34==1.1.6; python_version < '3'
 sphinxcontrib-websupport==1.0.1
 pathtools==0.1.2
 sphinx-rtd-theme==0.2.4
 chardet==3.0.4
 nose==1.3.7
 requests==2.18.4
-idna==2.6
+pyasn1==0.3.7
+asn1crypto==0.23.0
