@@ -2,6 +2,7 @@
 Galaxy job handler, prepares, runs, tracks, and finishes Galaxy jobs
 """
 
+import datetime
 import os
 import time
 import logging
@@ -18,7 +19,7 @@ from galaxy.jobs.mapper import JobNotReadyException
 log = logging.getLogger( __name__ )
 
 # States for running a job. These are NOT the same as data states
-JOB_WAIT, JOB_ERROR, JOB_INPUT_ERROR, JOB_INPUT_DELETED, JOB_READY, JOB_DELETED, JOB_ADMIN_DELETED, JOB_USER_OVER_QUOTA = 'wait', 'error', 'input_error', 'input_deleted', 'ready', 'deleted', 'admin_deleted', 'user_over_quota'
+JOB_WAIT, JOB_ERROR, JOB_INPUT_ERROR, JOB_INPUT_DELETED, JOB_READY, JOB_DELETED, JOB_ADMIN_DELETED, JOB_USER_OVER_QUOTA, JOB_USER_OVER_TOTAL_WALLTIME = 'wait', 'error', 'input_error', 'input_deleted', 'ready', 'deleted', 'admin_deleted', 'user_over_quota', 'user_over_total_walltime'
 DEFAULT_JOB_PUT_FAILURE_MESSAGE = 'Unable to run job due to a misconfiguration of the Galaxy job running system.  Please contact a site administrator.'
 
 
@@ -92,6 +93,19 @@ class JobHandlerQueue( object ):
         job = self.sa_session.query( model.Job ).get( id )
         return job, self.job_wrapper( job, use_persisted_destination=True )
 
+    def __write_registry_file_if_absent(self, job):
+        # TODO: remove this and the one place it is called in late 2018, this
+        # hack attempts to minimize the job failures due to upgrades from 17.05
+        # Galaxies.
+        job_wrapper = self.job_wrapper(job)
+        cwd = job_wrapper.working_directory
+        datatypes_config = os.path.join(cwd, "registry.xml")
+        if not os.path.exists(datatypes_config):
+            try:
+                self.app.datatypes_registry.to_xml_file(path=datatypes_config)
+            except OSError:
+                pass
+
     def __check_jobs_at_startup( self ):
         """
         Checks all jobs that are in the 'new', 'queued' or 'running' state in
@@ -119,6 +133,7 @@ class JobHandlerQueue( object ):
                          ( model.Job.handler == self.app.config.server_name ) ).all()
 
         for job in jobs_at_startup:
+            self.__write_registry_file_if_absent(job)
             if not self.app.toolbox.has_tool( job.tool_id, job.tool_version, exact=True ):
                 log.warning( "(%s) Tool '%s' removed from tool config, unable to recover job" % ( job.id, job.tool_id ) )
                 self.job_wrapper( job ).fail( 'This tool was disabled before the job completed.  Please contact your Galaxy administrator.' )
@@ -148,21 +163,26 @@ class JobHandlerQueue( object ):
                     self.queue.put( ( job.id, job.tool_id ) )
             else:
                 # Already dispatched and running
-                job_wrapper = self.job_wrapper( job )
-                # Use the persisted destination as its params may differ from
-                # what's in the job_conf xml
-                job_destination = JobDestination(id=job.destination_id, runner=job.job_runner_name, params=job.destination_params)
-                # resubmits are not persisted (it's a good thing) so they
-                # should be added back to the in-memory destination on startup
-                try:
-                    config_job_destination = self.app.job_config.get_destination( job.destination_id )
-                    job_destination.resubmit = config_job_destination.resubmit
-                except KeyError:
-                    log.warning( '(%s) Recovered destination id (%s) does not exist in job config (but this may be normal in the case of a dynamically generated destination)', job.id, job.destination_id )
-                job_wrapper.job_runner_mapper.cached_job_destination = job_destination
+                job_wrapper = self.__recover_job_wrapper( job )
                 self.dispatcher.recover( job, job_wrapper )
         if self.sa_session.dirty:
             self.sa_session.flush()
+
+    def __recover_job_wrapper(self, job):
+        # Already dispatched and running
+        job_wrapper = self.job_wrapper( job )
+        # Use the persisted destination as its params may differ from
+        # what's in the job_conf xml
+        job_destination = JobDestination(id=job.destination_id, runner=job.job_runner_name, params=job.destination_params)
+        # resubmits are not persisted (it's a good thing) so they
+        # should be added back to the in-memory destination on startup
+        try:
+            config_job_destination = self.app.job_config.get_destination( job.destination_id )
+            job_destination.resubmit = config_job_destination.resubmit
+        except KeyError:
+            log.debug( '(%s) Recovered destination id (%s) does not exist in job config (but this may be normal in the case of a dynamically generated destination)', job.id, job.destination_id )
+        job_wrapper.job_runner_mapper.cached_job_destination = job_destination
+        return job_wrapper
 
     def __monitor( self ):
         """
@@ -259,10 +279,10 @@ class JobHandlerQueue( object ):
         for job in resubmit_jobs:
             log.debug( '(%s) Job was resubmitted and is being dispatched immediately', job.id )
             # Reassemble resubmit job destination from persisted value
-            jw = self.job_wrapper( job )
-            jw.job_runner_mapper.cached_job_destination = JobDestination( id=job.destination_id, runner=job.job_runner_name, params=job.destination_params )
-            self.increase_running_job_count(job.user_id, jw.job_destination.id)
-            self.dispatcher.put( jw )
+            jw = self.__recover_job_wrapper( job )
+            if jw.is_ready_for_resubmission(job):
+                self.increase_running_job_count(job.user_id, jw.job_destination.id)
+                self.dispatcher.put( jw )
         # Iterate over new and waiting jobs and look for any that are
         # ready to run
         new_waiting_jobs = []
@@ -284,8 +304,13 @@ class JobHandlerQueue( object ):
                     log.info( "(%d) Job deleted by user while still queued" % job.id )
                 elif job_state == JOB_ADMIN_DELETED:
                     log.info( "(%d) Job deleted by admin while still queued" % job.id )
-                elif job_state == JOB_USER_OVER_QUOTA:
-                    log.info( "(%d) User (%s) is over quota: job paused" % ( job.id, job.user_id ) )
+                elif job_state in ( JOB_USER_OVER_QUOTA,
+                                    JOB_USER_OVER_TOTAL_WALLTIME ):
+                    if job_state == JOB_USER_OVER_QUOTA:
+                        log.info( "(%d) User (%s) is over quota: job paused" % ( job.id, job.user_id ) )
+                    else:
+                        log.info( "(%d) User (%s) is over total walltime limit: job paused" % ( job.id, job.user_id ) )
+
                     job.set_state( model.Job.states.PAUSED )
                     for dataset_assoc in job.output_datasets + job.output_library_datasets:
                         dataset_assoc.dataset.dataset.state = model.Dataset.states.PAUSED
@@ -298,7 +323,7 @@ class JobHandlerQueue( object ):
                     log.error( "(%d) Job in unknown state '%s'" % ( job.id, job_state ) )
                     new_waiting_jobs.append( job.id )
             except Exception:
-                log.exception( "failure running job %d" % job.id )
+                log.exception( "failure running job %d", job.id )
         # Update the waiting list
         if not self.track_jobs_in_database:
             self.waiting_jobs = new_waiting_jobs
@@ -375,6 +400,7 @@ class JobHandlerQueue( object ):
         # job is ready to run, check limits
         # TODO: these checks should be refactored to minimize duplication and made more modular/pluggable
         state = self.__check_destination_jobs( job, job_wrapper )
+
         if state == JOB_READY:
             state = self.__check_user_jobs( job, job_wrapper )
         if state == JOB_READY and self.app.config.enable_quotas:
@@ -386,6 +412,35 @@ class JobHandlerQueue( object ):
                         return JOB_USER_OVER_QUOTA, job_destination
                 except AssertionError as e:
                     pass  # No history, should not happen with an anon user
+        # Check total walltime limits
+        if ( state == JOB_READY and
+             "delta" in self.app.job_config.limits.total_walltime ):
+            jobs_to_check = self.sa_session.query( model.Job ).filter(
+                model.Job.user_id == job.user.id,
+                model.Job.update_time >= datetime.datetime.now() -
+                datetime.timedelta(
+                    self.app.job_config.limits.total_walltime["window"]
+                ),
+                model.Job.state == 'ok'
+            ).all()
+            time_spent = datetime.timedelta(0)
+            for job in jobs_to_check:
+                # History is job.state_history
+                started = None
+                finished = None
+                for history in sorted(
+                        job.state_history,
+                        key=lambda history: history.update_time ):
+                    if history.state == "running":
+                        started = history.create_time
+                    elif history.state == "ok":
+                        finished = history.create_time
+
+                time_spent += finished - started
+
+            if time_spent > self.app.job_config.limits.total_walltime["delta"]:
+                return JOB_USER_OVER_TOTAL_WALLTIME, job_destination
+
         return state, job_destination
 
     def __verify_in_memory_job_inputs( self, job ):
@@ -743,8 +798,8 @@ class DefaultJobDispatcher( object ):
         runner_name = url.split(':', 1)[0]
         try:
             return self.job_runners[runner_name].url_to_destination(url)
-        except Exception as e:
-            log.exception("Unable to convert legacy job runner URL '%s' to job destination, destination will be the '%s' runner with no params: %s" % (url, runner_name, e))
+        except Exception:
+            log.exception("Unable to convert legacy job runner URL '%s' to job destination, destination will be the '%s' runner with no params", url, runner_name)
             return JobDestination(runner=runner_name)
 
     def put( self, job_wrapper ):

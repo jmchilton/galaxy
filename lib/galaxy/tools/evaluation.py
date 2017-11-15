@@ -1,33 +1,42 @@
 import json
+import logging
 import os
 import tempfile
+
 from six import string_types
 
 from galaxy import model
-from galaxy.util.object_wrapper import wrap_with_safe_string
-from galaxy.util.bunch import Bunch
-from galaxy.util.none_like import NoneDataset
-from galaxy.util.template import fill_template
-from galaxy.tools.wrappers import (
-    ToolParameterValueWrapper,
-    DatasetFilenameWrapper,
-    DatasetListWrapper,
-    DatasetCollectionWrapper,
-    SelectToolParameterWrapper,
-    InputValueWrapper,
-    RawObjectWrapper
+from galaxy.jobs.datasets import dataset_path_rewrites
+from galaxy.tools import global_tool_errors
+from galaxy.tools.parameters import (
+    visit_input_values,
+    wrapped_json,
 )
 from galaxy.tools.parameters.basic import (
-    DataToolParameter,
     DataCollectionToolParameter,
+    DataToolParameter,
     SelectToolParameter,
 )
-from galaxy.tools.parameters import wrapped_json, visit_input_values
-from galaxy.tools.parameters.grouping import Conditional, Repeat, Section
-from galaxy.tools import global_tool_errors
-from galaxy.jobs.datasets import dataset_path_rewrites
+from galaxy.tools.parameters.grouping import (
+    Conditional,
+    Repeat,
+    Section
+)
+from galaxy.tools.wrappers import (
+    DatasetCollectionWrapper,
+    DatasetFilenameWrapper,
+    DatasetListWrapper,
+    InputValueWrapper,
+    RawObjectWrapper,
+    SelectToolParameterWrapper,
+    ToolParameterValueWrapper,
+)
+from galaxy.util.bunch import Bunch
+from galaxy.util.none_like import NoneDataset
+from galaxy.util.object_wrapper import wrap_with_safe_string
+from galaxy.util.template import fill_template
 from galaxy.work.context import WorkRequestContext
-import logging
+
 log = logging.getLogger( __name__ )
 
 
@@ -125,6 +134,7 @@ class ToolEvaluator( object ):
             raise SyntaxError("Unbound variable input.")  # Don't let $input hang Python evaluation process.
 
         param_dict["input"] = input
+        param_dict['__datatypes_config__'] = param_dict['GALAXY_DATATYPES_CONF_FILE'] = os.path.join(job_working_directory, 'registry.xml')
 
         param_dict.update(self.tool.template_macro_params)
         # All parameters go into the param_dict
@@ -150,7 +160,7 @@ class ToolEvaluator( object ):
             """
             Wraps parameters as neccesary.
             """
-            for input in inputs.itervalues():
+            for input in inputs.values():
                 if isinstance( input, Repeat ):
                     for d in input_values[ input.name ]:
                         do_walk( input.inputs, d )
@@ -247,7 +257,7 @@ class ToolEvaluator( object ):
                 input_values[ input.name ] = wrapper
             elif isinstance( input, SelectToolParameter ):
                 input_values[ input.name ] = SelectToolParameterWrapper(
-                    input, value, self.app, other_values=param_dict, path_rewriter=self.unstructured_path_rewriter )
+                    input, value, other_values=param_dict, path_rewriter=self.unstructured_path_rewriter )
             else:
                 input_values[ input.name ] = InputValueWrapper(
                     input, value, param_dict )
@@ -256,7 +266,7 @@ class ToolEvaluator( object ):
         #       tools where the inputs don't even get passed through. These
         #       tools (e.g. UCSC) should really be handled in a special way.
         if self.tool.check_values:
-            identifier_key_dict = dict((v, "%s|__identifier__" % k) for k, v in input_datasets.iteritems())  # allows lookup of identifier through HDA.
+            identifier_key_dict = dict((v, "%s|__identifier__" % k) for k, v in input_datasets.items())  # allows lookup of identifier through HDA.
             self.__walk_inputs( self.tool.inputs, param_dict, wrap_input )
 
     def __populate_input_dataset_wrappers(self, param_dict, input_datasets, input_dataset_paths):
@@ -347,7 +357,7 @@ class ToolEvaluator( object ):
             param_dict[name].files_path = os.path.abspath(os.path.join( job_working_directory, "dataset_%s_files" % (hda.dataset.id) ))
             for child in hda.children:
                 param_dict[ "_CHILD___%s___%s" % ( name, child.designation ) ] = DatasetFilenameWrapper( child )
-        for out_name, output in self.tool.outputs.iteritems():
+        for out_name, output in self.tool.outputs.items():
             if out_name not in param_dict and output.filters:
                 # Assume the reason we lack this output is because a filter
                 # failed to pass; for tool writing convienence, provide a
@@ -382,7 +392,6 @@ class ToolEvaluator( object ):
         # For the upload tool, we need to know the root directory and the
         # datatypes conf path, so we can load the datatypes registry
         param_dict['__root_dir__'] = param_dict['GALAXY_ROOT_DIR'] = os.path.abspath( self.app.config.root )
-        param_dict['__datatypes_config__'] = param_dict['GALAXY_DATATYPES_CONF_FILE'] = self.app.datatypes_registry.integrated_datatypes_configs
         param_dict['__admin_users__'] = self.app.config.admin_users
         param_dict['__user__'] = RawObjectWrapper( param_dict.get( '__user__', None ) )
 
@@ -391,7 +400,7 @@ class ToolEvaluator( object ):
         def rewrite_unstructured_paths( input_values, input ):
             if isinstance( input, SelectToolParameter ):
                 input_values[ input.name ] = SelectToolParameterWrapper(
-                    input, input_values[ input.name ], self.app, other_values=param_dict, path_rewriter=self.unstructured_path_rewriter )
+                    input, input_values[ input.name ], other_values=param_dict, path_rewriter=self.unstructured_path_rewriter )
 
         if not self.tool.check_values and self.unstructured_path_rewriter:
             # The tools weren't "wrapped" yet, but need to be in order to get
@@ -407,9 +416,9 @@ class ToolEvaluator( object ):
         Note: this method follows the style of the similar populate calls, in that param_dict is modified in-place.
         """
         # chromInfo is a filename, do not sanitize it.
-        skip = [ 'chromInfo' ] + self.tool.template_macro_params.keys()
+        skip = [ 'chromInfo' ] + list(self.tool.template_macro_params.keys())
         if not self.tool or not self.tool.options or self.tool.options.sanitize:
-            for key, value in param_dict.items():
+            for key, value in list(param_dict.items()):
                 if key not in skip:
                     # Remove key so that new wrapped object will occupy key slot
                     del param_dict[key]
@@ -565,7 +574,7 @@ class ToolEvaluator( object ):
         with open( config_filename, "w" ) as f:
             f.write( value )
         # For running jobs as the actual user, ensure the config file is globally readable
-        os.chmod( config_filename, 0644 )
+        os.chmod( config_filename, 0o644 )
 
     def __register_extra_file( self, name, local_config_path ):
         """

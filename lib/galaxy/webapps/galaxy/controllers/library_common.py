@@ -21,6 +21,7 @@ from sqlalchemy.orm import eagerload_all
 from galaxy import util, web
 from galaxy.security import Action
 from galaxy.tools.actions import upload_common
+from galaxy.tools.parameters import populate_state
 from galaxy.util import inflector, unicodify, FILENAME_VALID_CHARS
 from galaxy.util.path import safe_contains, safe_relpath, unsafe_walk
 from galaxy.util.streamball import StreamBall
@@ -53,7 +54,7 @@ for comptype in ( 'gz', 'bz2' ):
         archive.close()
         comptypes.append( comptype )
     except tarfile.CompressionError:
-        log.exception( "Compression error when testing %s compression.  This option will be disabled for library downloads." % comptype )
+        log.exception( "Compression error when testing %s compression.  This option will be disabled for library downloads.", comptype )
     try:
         os.unlink( tmpf )
     except OSError:
@@ -1059,7 +1060,7 @@ class LibraryCommon( BaseUIController, UsesFormDefinitionsMixin, UsesExtendedMet
         tool_id = 'upload1'
         tool = trans.app.toolbox.get_tool( tool_id )
         state = tool.new_state( trans )
-        tool.populate_state( trans, tool.inputs, kwd, state.inputs )
+        populate_state( trans, tool.inputs, kwd, state.inputs )
         tool_params = state.inputs
         dataset_upload_inputs = []
         for input_name, input in tool.inputs.iteritems():
@@ -1892,7 +1893,7 @@ class LibraryCommon( BaseUIController, UsesFormDefinitionsMixin, UsesExtendedMet
                     status = 'error'
                 except:
                     error = True
-                    log.exception( "Unexpected error %s in create archive for download" % sys.exc_info()[0] )
+                    log.exception( "Unexpected error in create archive for download" )
                     message = "Unable to create archive for download, please report - %s" % sys.exc_info()[0]
                     status = 'error'
                 if not error:
@@ -1926,7 +1927,7 @@ class LibraryCommon( BaseUIController, UsesFormDefinitionsMixin, UsesExtendedMet
                                 archive.add(ldda.dataset.file_name, zpath)  # add the primary of a composite set
                             except IOError:
                                 error = True
-                                log.exception( "Unable to add composite parent %s to temporary library download archive" % ldda.dataset.file_name)
+                                log.exception( "Unable to add composite parent %s to temporary library download archive", ldda.dataset.file_name)
                                 message = "Unable to create archive for download, please report this error"
                                 status = 'error'
                                 continue
@@ -1939,7 +1940,7 @@ class LibraryCommon( BaseUIController, UsesFormDefinitionsMixin, UsesExtendedMet
                                     archive.add( fpath, fname )
                                 except IOError:
                                     error = True
-                                    log.exception( "Unable to add %s to temporary library download archive %s" % (fname, outfname))
+                                    log.exception( "Unable to add %s to temporary library download archive %s", fname, outfname)
                                     message = "Unable to create archive for download, please report this error"
                                     status = 'error'
                                     continue
@@ -1948,7 +1949,7 @@ class LibraryCommon( BaseUIController, UsesFormDefinitionsMixin, UsesExtendedMet
                                 archive.add( ldda.dataset.file_name, path )
                             except IOError:
                                 error = True
-                                log.exception( "Unable to write %s to temporary library download archive" % ldda.dataset.file_name)
+                                log.exception( "Unable to write %s to temporary library download archive", ldda.dataset.file_name)
                                 message = "Unable to create archive for download, please report this error"
                                 status = 'error'
                     if not error:

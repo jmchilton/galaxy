@@ -3,3 +3,10 @@ NoseHTML
 twill==0.9.1
 testfixtures
 mock
+selenium
+
+# Documentation requirements
+sphinx
+sphinx_rtd_theme
+lxml
+recommonmark

@@ -5,13 +5,14 @@ Unpack a tar or tar.gz archive into a directory.
 usage: %prog archive_source dest_dir
     --[url|file] source type, either a URL or a file.
 """
+from __future__ import print_function
 
+import math
+import optparse
 import os
 import sys
-import optparse
 import tarfile
 import tempfile
-import math
 from base64 import b64decode
 
 import requests
@@ -39,7 +40,7 @@ def url_to_file( url, dest_file ):
         fp.close()
         return dest_file
     except Exception as e:
-        print "Exception getting file from URL: %s" % e, sys.stderr
+        print("Exception getting file from URL: %s" % e, file=sys.stderr)
         return None
 
 
@@ -98,4 +99,4 @@ if __name__ == "__main__":
     try:
         main(options, args)
     except Exception as e:
-        print "Error unpacking tar/gz archive: %s" % e, sys.stderr
+        print("Error unpacking tar/gz archive: %s" % e, file=sys.stderr)
