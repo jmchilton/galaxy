@@ -99,7 +99,7 @@ var DCECollection = Backbone.Collection.extend(BASE_MVC.LoggableMixin).extend(
 
         /** String representation. */
         toString: function() {
-            return ["DatasetCollectionElementCollection(", this.length, ")"].join("");
+            return `DatasetCollectionElementCollection(${this.length})`;
         }
     }
 );
@@ -168,7 +168,7 @@ var DatasetDCECollection = DCECollection.extend(
 
         /** String representation. */
         toString: function() {
-            return ["DatasetDCECollection(", this.length, ")"].join("");
+            return `DatasetDCECollection(${this.length})`;
         }
     }
 );
@@ -353,7 +353,7 @@ var NestedDCDCE = DatasetCollection.extend(
             /** String representation. */
             toString: function() {
                 var objStr = this.object ? `${this.object}` : this.get("element_identifier");
-                return ["NestedDCDCE(", objStr, ")"].join("");
+                return `NestedDCDCE(${objStr})`;
             }
         }
     )
@@ -369,7 +369,7 @@ var NestedDCDCECollection = DCECollection.extend(
 
         /** String representation. */
         toString: function() {
-            return ["NestedDCDCECollection(", this.length, ")"].join("");
+            return `NestedDCDCECollection(${this.length}`;
         }
     }
 );
