@@ -35,8 +35,7 @@ from galaxy.web.base.controller import (
 )
 from galaxy.web.framework.helpers import (
     grids,
-    time_ago,
-    to_unicode
+    time_ago
 )
 from galaxy.workflow.extract import (
     extract_workflow,
