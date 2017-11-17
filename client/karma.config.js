@@ -9,20 +9,22 @@ module.exports = function(config) {
   config.set({
     basepath: '.',
     files: [
+      'galaxy/scripts/polyfills.js',
       // Broken into uncommented working tests and commented out broken tests,
       // this can be replaced with a glob when they all just work.
 
       // Working tests:
+      'galaxy/scripts/qunit/tests/metrics-logger.js',
+      /*
       'galaxy/scripts/qunit/tests/list-of-pairs-collection-creator.js',
       'galaxy/scripts/qunit/tests/galaxy-app-base.js',
       'galaxy/scripts/qunit/tests/graph.js',
       'galaxy/scripts/qunit/tests/hda-base.js',
       'galaxy/scripts/qunit/tests/history_contents_model_tests.js',
       'galaxy/scripts/qunit/tests/job-dag.js',
-      'galaxy/scripts/qunit/tests/metrics-logger.js',
       'galaxy/scripts/qunit/tests/popover_tests.js',
       'galaxy/scripts/qunit/tests/utils_test.js',
-
+      */
       // The following tests don't work for state reasons:
 
       // Error: Following test works on its own or with rest but not with 
@@ -33,9 +35,9 @@ module.exports = function(config) {
       // 'galaxy/scripts/qunit/tests/modal_tests.js',
       // 'galaxy/scripts/qunit/tests/upload_dialog_tests.js',
       // Error: Cannot find module "libs/bibtexParse"
-      // 'galaxy/scripts/qunit/tests/form_tests.js',
-      // 'galaxy/scripts/qunit/tests/page_tests.js',
-      // 'galaxy/scripts/qunit/tests/masthead_tests.js',
+      //'galaxy/scripts/qunit/tests/form_tests.js',
+      'galaxy/scripts/qunit/tests/page_tests.js',
+      //'galaxy/scripts/qunit/tests/masthead_tests.js',
       // 'galaxy/scripts/qunit/tests/workflow_editor_tests.js',
 
       // Non-test assets that will be served by web server.
@@ -46,6 +48,8 @@ module.exports = function(config) {
     plugins: [
       'karma-webpack',
       'karma-qunit',
+      'karma-sinon',
+      'karma-babel-preprocessor',
       'karma-phantomjs-launcher',
     ],
 
@@ -57,13 +61,23 @@ module.exports = function(config) {
     // that we have a working setup.
     preprocessors: {
       // add webpack as preprocessor
-      'galaxy/scripts/qunit/tests/*.js': ['webpack'],
+      'galaxy/scripts/polyfills.js': ['babel', 'webpack'],
+      'galaxy/scripts/qunit/tests/*.js': ['babel', 'webpack'],
     },
 
-    frameworks: ['qunit'],
+    frameworks: ['qunit', 'sinon'],
 
     webpack: webpackConfig,
-    webpackMiddleware: { noInfo: false }
-
+    webpackMiddleware: { noInfo: false },
+    babelPreprocessor: {
+      options: {
+        moduleIds: true,
+        presets: ['env'],
+        sourceMap: 'inline'
+      },
+      sourceFileName: function (file) {
+        return file.originalPath
+      }
+    },
   });
 };
