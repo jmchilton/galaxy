@@ -61,7 +61,7 @@ var HistoryContentMixin = {
         if ( historyContentType == "dataset_collection" ) {
             // Don't fetch whole collection - just enought to render outline. Backbone will
             // make a detailed request if any datasets are expanded beyond that point.
-            url = `${url}?view=element-reference`;
+            url = `${url}?view=element-reference&fuzzy_count=1000`;
         }
         return url;
     },
