@@ -20,6 +20,9 @@ var paths = {
         '!galaxy/scripts/apps/**/*',
         '!galaxy/scripts/libs/**/*'
     ],
+    vue_components: [
+        'galaxy/scripts/components/*.vue'
+    ],
     lib_locs: {
         // This is a stepping stone towards having all this staged
         // automatically.  Eventually, this dictionary and staging step will
@@ -84,7 +87,7 @@ gulp.task('clean', function(){
 });
 
 gulp.task('watch', function(){
-    gulp.watch(paths.scripts, ['scripts']);
+    gulp.watch([paths.scripts, paths.vue_components], ['scripts']);
 });
 
 gulp.task('default', ['scripts', 'libs']);
