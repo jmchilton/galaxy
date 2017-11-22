@@ -130,7 +130,7 @@ GalaxyApp.prototype._patchGalaxy = function _patchGalaxy(patchWith) {
 /** set up the metrics logger (utils/metrics-logger) and pass loggerOptions */
 GalaxyApp.prototype._initLogger = function _initLogger(loggerOptions) {
     var self = this;
-
+    console.log("A change in branch b");
     // default to console logging at the debug level if the debug flag is set
     if (self.config.debug) {
         loggerOptions.consoleLogger = loggerOptions.consoleLogger || console;
