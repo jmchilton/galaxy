@@ -54,6 +54,7 @@ window.app = function app(options, bootstrapped) {
             "(/)visualizations(/)edit(/)": "show_visualizations_edit",
             "(/)visualizations/(:action_id)": "show_visualizations",
             "(/)workflows/list_published(/)": "show_workflows_published",
+            "(/)workflows/create(/)": "show_workflows_create",
             "(/)histories(/)citations(/)": "show_history_citations",
             "(/)histories(/)rename(/)": "show_histories_rename",
             "(/)histories(/)permissions(/)": "show_histories_permissions",
@@ -186,6 +187,15 @@ window.app = function app(options, bootstrapped) {
 
         show_workflows: function() {
             this.page.display(new Workflows.View());
+        },
+
+        show_workflows_create: function() {
+            this.page.display(
+                new FormWrapper.View({
+                    url: `workflow/create`,
+                    redirect: "workflows/list"
+                })
+            );
         },
 
         show_run: function() {
