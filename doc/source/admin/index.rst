@@ -6,6 +6,9 @@ This documentation is in the midst of being ported and unified based on resource
 .. toctree::
    :maxdepth: 2
 
+   production
+   cluster
+   jobs
    tool_panel
    authentication
    dependency_resolvers
