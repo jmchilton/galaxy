@@ -18,239 +18,64 @@ The root element is `<job_conf>`.
 
 ## Job Runner Plugins
 
-The `<plugins>` collection defines job runner plugins that should be loaded when Galaxy starts.  This replaces the former `start_job_runners` configuration parameter.
+The `<plugins>` collection defines job runner plugins that should be loaded when Galaxy starts.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><plugins></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> workers </td>
-    <td> any integer </td>
-    <td> Default number of worker threads to spawn for doing runner plugin "work", e.g. doing job preparation, post-processing, and cleanup </td>
-    <td> optional </td>
-    <td> <code>workers="8"</code> </td>
-    <td> <code>4</code> </td>
-  </tr>
-</table>
+This configuration element may define a ``workers`` parameters which is the default number of worker threads to spawn for doing runner plugin "work", e.g. doing job preparation, post-processing, and cleanup. The default number of such workers is ``4``.
 
+The collection contains `<plugin>` elements. Each ``plugin`` element may define the following parameters.
 
-The collection contains `<plugin>` elements.
+```eval_rst
+id
+    ``id`` of the runner plugin referenced in ``destination`` configuration elements.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><plugin></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>id</code> </td>
-    <td> any string </td>
-    <td> id of the runner plugin referenced in <code><destination></code> tags. </td>
-    <td> required </td>
-    <td> <code>id="local"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>type</code> </td>
-    <td> <code>runner</code> </td>
-    <td> Type of plugin (currently on runner plugins are defined here) </td>
-    <td> required </td>
-    <td> <code>type="runner"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>load</code> </td>
-    <td> <code><module>:<class></code>, <code><module></code> </td>
-    <td> Python module containing the plugin, and the class to instantiate.  If no class name is provided, the module must list class names to load in a module-level <code>__all__</code> list. </td>
-    <td> required </td>
-    <td> <code>load="galaxy.jobs.runners.local:LocalJobRunner"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>workers</code> </td>
-    <td> any integer </td>
-    <td> Number of worker threads to start for this plugin only </td>
-    <td> optional </td>
-    <td> <code>workers="2"</code> </td>
-    <td> value of <code>workers</code> attribute in <code><plugins></code> </td>
-  </tr>
-</table>
+type
+    This must be ``runner`` currently.
 
+load
+    Python module containing the plugin, and the class to instantiate.  If no class name is provided, the module must list class names to load in a module-level ``__all__`` list.
+    For example ``galaxy.jobs.runners.local:LocalJobRunner``.
+
+workers
+    Number of worker threads to start for this plugin only (defaults to the value specified
+    on ``plugins`` configuration).
+```
 
 ## Job Handlers
 
-The `<handlers>` collection defines which Galaxy server processes (when [running multiple server processes](/src/admin/config/performance/scaling/index.md)) should be used for running jobs, and how to group those processes.  This replaces the former `job_manager`, `job_handlers` and `default_job_handlers` configuration parameters, as well as the `[galaxy:tool_handlers]` section.
+The `<handlers>` configuration elements defines which Galaxy server processes (when [running multiple server processes](https://galaxyproject.org/admin/config/performance/scaling/)) should be used for running jobs, and how to group those processes.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><handlers></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>default</code> </td>
-    <td> handler <code>id</code> or <code>tag</code> </td>
-    <td> The handler(s) that should be used if no explicit handler is defined for a job. </td>
-    <td> required if >1 handlers defined </td>
-    <td> <code>default="clusters"</code> </td>
-    <td> child handler <code>id</code> </td>
-  </tr>
-</table>
-
+The handlers configuration may define a ``default`` attribute. This is the the handler(s) that should be used if no explicit handler is defined for a job and is required if >1 handlers defined.
 
 The collection contains `<handler>` elements.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><handler></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>id</code> </td>
-    <td> a server name </td>
-    <td> Name of a server (<code>[server:</code><strong><code>name</code></strong><code>]</code> in <code>config/galaxy.ini</code>) that should be used to run jobs. </td>
+```eval_rst
+id
+    A server name (e.g. a <code>[server:</code><strong><code>name</code></strong><code>]</code> in <code>config/galaxy.ini</code>) that should be used to run jobs. </td>
     <td> required </td>
-    <td> <code>id="handler0"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>tags</code> </td>
-    <td> comma-separated strings </td>
-    <td> Tags to which this handler belongs. </td>
-    <td> optional </td>
-    <td> <code>tags="clusters"</code> or <code>tags="ngs,pbs"</code> </td>
-    <td> no tags </td>
-  </tr>
-</table>
 
+tags
+    A comma-separated set of strings that optional define tags to which this handler belongs. 
+```
 
 ## Job Destinations
 
-The `<destinations>` collection defines the parameters that should be used to run a job that is sent to the specified destination.  This replaces the former `default_cluster_job_runner` configuration parameters, as well as the `[galaxy:tool_runners]` section.
-
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><destinations></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>default</code> </td>
-    <td> destination <code>id</code> or <code>tag</code> </td>
-    <td> The destination(s) that should be used if no explicit destination is defined for a job. </td>
-    <td> required if >1 destinations defined </td>
-    <td> <code>default="local"</code> </td>
-    <td> child destination <code>id</code> </td>
-  </tr>
-</table>
-
+The `<destinations>` collection defines the parameters that should be used to run a job that is sent to the specified destination. This configuration element should define a ``default``
+attribute that should be the ``id`` of the ``destination`` to used if no explicit destination is defined for a job.
 
 The collection contains `<destination>`s, which are can be collections or single elements.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><destination></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>id</code> </td>
-    <td> any string </td>
-    <td> Identifier to be referenced in <code><tool></code> elements. </td>
-    <td> required </td>
-    <td> <code>id="galaxy_cluster"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>runner</code> </td>
-    <td> a plugin <code>id</code> </td>
-    <td> Job runner plugin to be used to run jobs sent to this destination. </td>
-    <td> required </td>
-    <td> <code>destination="local"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>tags</code> </td>
-    <td> comma-separated strings </td>
-    <td> Tags to which this destination belongs. </td>
-    <td> optional </td>
-    <td> <code>tags="longwalltime,bigcluster"</code> </td>
-    <td> no tags </td>
-  </tr>
-</table>
+```eval_rst
+id
+    Identifier to be referenced in ``<tool>`` configuration elements in the ``tools`` section.
 
+runner
+    Job runner ``plugin`` to be used to run jobs sent to this destination.
 
-Destination collections may contain zero or more `<param>`s, which are passed to the destination's defined runner plugin and interpreted in a way native to that plugin. For details on the parameter specification, see the documentation on [Cluster configuration](/src/admin/config/performance/cluster/index.md).
+tags
+    Tags to which this destination belongs (for example `tags="longwalltime,bigcluster"`).
+```
+
+``destination`` elements may contain zero or more ``<param>``s, which are passed to the destination's defined runner plugin and interpreted in a way native to that plugin. For details on the parameter specification, see the documentation on [Cluster configuration](cluster.md).
 
 As of the June 2014 release, destinations may contain additional `env` elements to configure the environment for jobs on that resource. These each map to shell commands that will be injected to Galaxy's job script and executed on the destination resource.
 
