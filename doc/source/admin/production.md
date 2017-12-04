@@ -139,7 +139,7 @@ To get started with setting up local data, please see [Data Integration](https:/
 
 ### Enable upload via FTP
 
-File sizes have grown very large thanks to rapidly advancing sequencer technology, and it is not always practical to upload these files through the browser.  Thankfully, a simple solution is to allow Galaxy users to upload them via FTP and import those files in to their histories.  Configuration for FTP is explained on the [File Upload via FTP](/src/admin/config/upload-via-ftp/index.md) page.
+File sizes have grown very large thanks to rapidly advancing sequencer technology, and it is not always practical to upload these files through the browser.  Thankfully, a simple solution is to allow Galaxy users to upload them via FTP and import those files in to their histories.  Configuration for FTP is explained on the [File Upload via FTP](https://galaxyproject.org/admin/config/upload-via-ftp/) page.
 
 ## Advanced configuration
 
@@ -147,11 +147,11 @@ File sizes have grown very large thanks to rapidly advancing sequencer technolog
 
 As already mentioned, unloading work from the Galaxy process is important due to the Python [Global Interpreter Lock](http://docs.python.org/c-api/init.html#thread-state-and-the-global-interpreter-lock) (GIL).  The GIL is how Python ensures thread safety, and it accomplishes this by only allowing one thread to control execution at a time.  This means that regardless of the number of cores in your server, Galaxy can only use one.  However, there's a solution: Run multiple Galaxy processes and use the proxy server to balance across all of these processes.  In practice, Galaxy is split into job handler and web server processes.  Job handlers do not service any user requests directly via the web.  Instead, they watch the database for new jobs, and upon finding them, handle the preparation, monitoring, running, and completion of them.  Likewise, the web server processes are free to deal only with serving content and files to web clients.
 
-Full details on how to configure scaling and load balancing can be found on the [Admin/Config/Performance/Scaling](/src/admin/config/performance/scaling/index.md) page.
+Full details on how to configure scaling and load balancing can be found in the [scaling](https://galaxyproject.org/admin/config/performance/scaling/) documentation.
 
 ### Unloading even more work
 
-For those readers who've already been running Galaxy on a cluster, a bit of information was recently added to the [Admin/Config/Performance/Cluster](/src/admin/config/performance/cluster/index.md) page regarding running the data source tools on the cluster (contrary to the default configuration).  Running all tools on the cluster is strongly encouraged, so if you have not done this, please check out the new information.
+For those readers who've already been running Galaxy on a cluster, a bit of information was recently added to the [cluster](cluster.html) documentation regarding running the data source tools on the cluster (contrary to the default configuration).  Running all tools on the cluster is strongly encouraged, so if you have not done this, please check out the new information.
 
 ### Tune the database
 
@@ -163,4 +163,4 @@ Finally, if you are using Galaxy <= release_2014.06.02, we recommend that you in
 
 ### Make the proxy handle uploads and downloads
 
-By default, Galaxy receives file uploads as a stream from the proxy server and then writes this file to disk.  Likewise, it sends files as a stream to the proxy server.  This occupies the GIL in that Galaxy process and will decrease responsiveness for other operations in that process.  To solve this problem, you can configure your proxy server to serve downloads directly, involving Galaxy only for the task of authorizing that the user has permission to read the dataset.  If using nginx as the proxy, you can configure it to receive uploaded files and write them to disk itself, only notifying Galaxy of the upload once it's completed.  All the details on how to configure these can be found on the [Apache](/src/admin/config/apache-proxy/index.md) and [nginx](/src/admin/config/nginxProxy/index.md) proxy instruction pages.
+By default, Galaxy receives file uploads as a stream from the proxy server and then writes this file to disk.  Likewise, it sends files as a stream to the proxy server.  This occupies the GIL in that Galaxy process and will decrease responsiveness for other operations in that process.  To solve this problem, you can configure your proxy server to serve downloads directly, involving Galaxy only for the task of authorizing that the user has permission to read the dataset.  If using nginx as the proxy, you can configure it to receive uploaded files and write them to disk itself, only notifying Galaxy of the upload once it's completed.  All the details on how to configure these can be found on the [Apache](special_topics/apache.html) and [nginx](special_topics/nginx.html) proxy instruction pages.

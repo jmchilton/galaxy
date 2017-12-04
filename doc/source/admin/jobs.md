@@ -2,7 +2,7 @@
 
 By default, jobs in Galaxy are run locally on the server on which the Galaxy application was started.  Many options are available for running Galaxy jobs on other systems, including clusters and other remote resources.
 
-This document is a reference for the job configuration file.  [Detailed documentation](cluster) is provided for configuring Galaxy to work with a variety of Distributed Resource Managers (DRMs) such as TORQUE, Grid Engine, LSF, and HTCondor.  Additionally, a wide range of infrastructure decisions and configuration changes should be made when running Galaxy as a production service, as one is likely doing if using a cluster.  It is highly recommended that the [production server documentation](production) and [cluster configuration documentation](cluster) be read before making changes to the job configuration.
+This document is a reference for the job configuration file.  [Detailed documentation](cluster) is provided for configuring Galaxy to work with a variety of Distributed Resource Managers (DRMs) such as TORQUE, Grid Engine, LSF, and HTCondor.  Additionally, a wide range of infrastructure decisions and configuration changes should be made when running Galaxy as a production service, as one is likely doing if using a cluster.  It is highly recommended that the [production server documentation](production.html) and [cluster configuration documentation](cluster.html) be read before making changes to the job configuration.
 
 **The most up-to-date details of advanced job configuration features can be found in the [sample job_conf.xml](https://github.com/galaxyproject/galaxy/blob/dev/config/job_conf.xml.sample_advanced) found in the Galaxy distribution.**
 
@@ -50,7 +50,7 @@ The collection contains `<handler>` elements.
 
 ```eval_rst
 id
-    A server name (e.g. a <code>[server:</code><strong><code>name</code></strong><code>]</code> in <code>config/galaxy.ini</code>) that should be used to run jobs. </td>
+    A server name (e.g. a ``[server:<name>]``</code> in <code>config/galaxy.ini</code> such as ``[server:main]``) that should be used to run jobs. </td>
     <td> required </td>
 
 tags
@@ -75,185 +75,68 @@ tags
     Tags to which this destination belongs (for example `tags="longwalltime,bigcluster"`).
 ```
 
-``destination`` elements may contain zero or more ``<param>``s, which are passed to the destination's defined runner plugin and interpreted in a way native to that plugin. For details on the parameter specification, see the documentation on [Cluster configuration](cluster.md).
+``destination`` elements may contain zero or more ``<param>``s, which are passed to the destination's defined runner plugin and interpreted in a way native to that plugin. For details on the parameter specification, see the documentation on [Cluster configuration](cluster.html).
 
 As of the June 2014 release, destinations may contain additional `env` elements to configure the environment for jobs on that resource. These each map to shell commands that will be injected to Galaxy's job script and executed on the destination resource.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><env></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>id</code> </td>
-    <td> string </td>
-    <td> Environment variable to set (in this case text of element is value this is set to. </td>
-    <td> optional </td>
-    <td> <code>id="_JAVA_OPTIONS"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>file</code> </td>
-    <td> path to script on resource </td>
-    <td> File will be sourced to configure environment. </td>
-    <td> optional </td>
-    <td> <code>file="/mnt/java_cluster/environment_setup.sh"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>exec</code> </td>
-    <td> shell command </td>
-    <td> Shell command to execute to configure environment </td>
-    <td> optional </td>
-    <td> <code>module load javastuff/2.10</code> </td>
-    <td> </td>
-  </tr>
-</table>
+```eval_rst
+id
+    Environment variable to set (in this case text of element is value this is set to
+    (e.g. ``id="_JAVA_OPTIONS"``).
 
+file
+    Optional path to script File will be sourced to configure environment
+    (e.g. ``file="/mnt/java_cluster/environment_setup.sh"``).
+
+exec
+    Optional shell command to execute to configure environment </td>
+    (e.g. ``module load javastuff/2.10``)
+```
 
 Destinations may also specify other destinations (which may be dynamic destinations) that jobs should be resubmitted to if they fail to complete at the first destination for certain reasons. This is done with the `<resubmit>` tag contained within a `<destination>`.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><resubmit></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>condition</code> </td>
-    <td> <code>walltime_reached</code> or <code>memory_limit_reached</code> </td>
-    <td> Failure condition on which to resubmit jobs </td>
-    <td> optional </td>
-    <td> <code>condition="walltime_reached"</code> </td>
-    <td> all failure values </td>
-  </tr>
-  <tr>
-    <td> <code>handler</code> </td>
-    <td> a handler <code>id</code> or <code>tag</code> </td>
-    <td> Job handler(s) that should be used to run jobs for this tool. </td>
-    <td> optional </td>
-    <td> <code>handler="handler0"</code> or <code>handler="ngs"</code> </td>
-    <td> default handler </td>
-  </tr>
-  <tr>
-    <td> <code>destination</code> </td>
-    <td> a destination <code>id</code> or <code>tag</code> </td>
-    <td> Job destination(s) that should be used to run jobs for this tool. </td>
-    <td> optional </td>
-    <td> <code>destination="galaxy_cluster"</code> or <code>destination="long_walltime"</code> </td>
-    <td> default destination </td>
-  </tr>
-</table>
+```eval_rst
+condition
+    Failure expression on which to resubmit jobs - this Python expression may contain
+    the boolean variables ``memory_limit_reached``, ``walltime_reached``,
+    ``unknown_error``, or ``any_failure`` and the numeric variables ``seconds_running``
+    and ``attempt``. See the test case configuration https://github.com/galaxyproject/galaxy/blob/dev/test/integration/resubmission_job_conf.xml for examples of various expressions.
 
+handler
+    Job handler(s) that should be used to run jobs for this tool after resubmission.
 
-**Note:** Currently, failure conditions for resubmission are only implemented for the [Slurm](/src/admin/config/performance/cluster/index.md) job runner plugin. Contributions for other implementations would be greatly appreciated! An example job configuration and an always-fail job runner plugin for development [can be found in this gist](https://gist.github.com/natefoo/361414fbca3c0ea63aa5).
+destination
+    Job destination(s) that should be used to run jobs for this tool after resubmission.
+```
+
+**Note:** Currently, failure conditions for memory limits and walltime are only implemented for the [Slurm](/src/admin/config/performance/cluster/index.md) job runner plugin. Contributions for other implementations would be greatly appreciated! An example job configuration and an always-fail job runner plugin for development [can be found in this gist](https://gist.github.com/natefoo/361414fbca3c0ea63aa5).
 
 ## Mapping Tools To Destinations
 
 ### Static Destination Mapping
 
-The `<tools>` collection provides a mapping from tools to a destination (or collection of destinations identified by tag) and handler (or collection of handlers).  Any tools not matching an entry in the collection will use the default handler and default destination as explained above.  This replaces the former `[galaxy:tool_handlers]` and `[galaxy:tool_runners]` sections of the configuration file.
+The `<tools>` collection provides a mapping from tools to a destination (or collection of destinations identified by tag) and handler (or collection of handlers).  Any tools not matching an entry in the collection will use the default handler and default destination as explained above.
 
 The `<tools>` collection has no attributes.
 
 The collection contains `<tool>`s, which are can be collections or single elements.
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><tool></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>id</code> </td>
-    <td> Galaxy tool <code>id</code> </td>
-    <td> <code>id</code> attribute of a Galaxy tool. Valid forms include the short <code>id</code> as found in the Tool's XML configuration, a full Tool Shed GUID, or a Tool Shed GUID without the version component </td>
-    <td> required </td>
-    <td> <code>id="toolshed.example.org/repos/nate/filter_tool_repo/filter_tool/1.0.0"</code> or <code>id="toolshed.example.org/repos/nate/filter_tool_repo/filter_tool"</code> or <code>id="filter_tool"</code> </td>
-    <td> </td>
-  </tr>
-  <tr>
-    <td> <code>handler</code> </td>
-    <td> a handler <code>id</code> or <code>tag</code> </td>
-    <td> Job handler(s) that should be used to run jobs for this tool. </td>
-    <td> optional </td>
-    <td> <code>handler="handler0"</code> or <code>handler="ngs"</code> </td>
-    <td> default handler </td>
-  </tr>
-  <tr>
-    <td> <code>destination</code> </td>
-    <td> a destination <code>id</code> or <code>tag</code> </td>
-    <td> Job destination(s) that should be used to run jobs for this tool. </td>
-    <td> optional </td>
-    <td> <code>destination="galaxy_cluster"</code> or <code>destination="long_walltime"</code> </td>
-    <td> default destination </td>
-  </tr>
-</table>
+```eval_rst
+id
+    ``id`` attribute of a Galaxy tool. Valid forms include the short ``id``` as found in the Tool's XML configuration, a full Tool Shed GUID, or a Tool Shed GUID without the version component (for example ``id="toolshed.example.org/repos/nate/filter_tool_repo/filter_tool/1.0.0"`` or ``id="toolshed.example.org/repos/nate/filter_tool_repo/filter_tool"`` or ``id="filter_tool"``).
 
+handler
+    Job handler(s) that should be used to run jobs for this tool.
+    (e.g. ``handler="handler0"`` or ``handler="ngs"``). This is optional and if unspecified
+    will default to the handler specified as the default handler in the job configuration or
+    the only job handler if only one is specified.
 
-Tool collections contain zero or more `<param>`s, which map to parameters set at job-creation, to allow for assignment of handlers and destinations based on the manner in which the job was created.  Currently, only one parameter is defined.
+destination
+    Job destination(s) that should be used to run jobs for this tool (e.g. ``destination="galaxy_cluster"`` or ``destination="long_walltime"``). The is optional
+    and defaults the default destination.
+```
 
-<table>
-  <tr>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> </td>
-    <td> <rowclass="th"> <code><param></code> </td>
-  </tr>
-  <tr class="th" >
-    <th> attribute </th>
-    <th> values </th>
-    <th> details </th>
-    <th> required </th>
-    <th> example </th>
-    <th> default </th>
-  </tr>
-  <tr>
-    <td> <code>id</code> </td>
-    <td> <code>source</code> </td>
-    <td> A parameter set to the Galaxy component that set the job (usually unset for normal jobs). </td>
-    <td> required </td>
-    <td> <code>id="source"</code> </td>
-    <td> </td>
-  </tr>
-</table>
-
+Tool collections contain zero or more `<param>`s, which map to parameters set at job-creation, to allow for assignment of handlers and destinations based on the manner in which the job was created.  Currently, only one parameter is defined - namely ``source``.
 
 The *content* of the `<param id="source">` tag is the component that created the job.  Currently, only Galaxy's visualization component sets this job parameter, and its value is `trackster`.
 
@@ -345,48 +228,40 @@ The first example above delegates to the PBS job runner and allocates extra wall
 
 The above examples demonstrate that the dynamic job destination framework will pass in the arguments to your function that are needed based on the argument names. The valid argument names at this time are:
 
-<table>
-  <tr>
-    <td> <code>app</code> </td>
-    <td> Global Galaxy application object, has attributes such as config (the configuration parameters loaded from <code>config/galaxy.ini</code>) and <code>job_config</code> (Galaxy representation of the data loaded in from <code>job_conf.xml</code>) </td>
-  </tr>
-  <tr>
-    <td> <code>user_email</code> </td>
-    <td> E-mail of user submitting this job. </td>
-  </tr>
-  <tr>
-    <td> <code>user</code> </td>
-    <td> Galaxy model object for user submitting this job. </td>
-  </tr>
-  <tr>
-    <td> <code>job</code> </td>
-    <td> Galaxy model object for submitted job, see the above example for how input information can be derived from this. </td>
-  </tr>
-  <tr>
-    <td> <code>job_wrapper</code> </td>
-    <td> An object meant a higher level utility for reasoning about jobs than <code>job</code>. </td>
-  </tr>
-  <tr>
-    <td> <code>tool</code> </td>
-    <td> Tool object corresponding to this job. </td>
-  </tr>
-  <tr>
-    <td> <code>tool_id</code> </td>
-    <td> ID of the tool corresponding to this job. </td>
-  </tr>
-  <tr>
-    <td> <code>rule_helper</code> </td>
-    <td> Utility object with methods designed to allow job rules to interface cleanly with the rest of Galaxy and shield them from low-level details of models, metrics, etc.... </td>
-  </tr>
-  <tr>
-    <td> <code>resource_params</code> </td>
-    <td> A dictionary of parameters specified by the user using <code>job_resource_params_conf.xml</code> if configured. </td>
-  </tr>
-</table>
+```eval_rst
+``app
+    Global Galaxy application object, has attributes such as config (the configuration parameters loaded from ``config/galaxy.ini``) and ``job_config`` (Galaxy representation of the data loaded in from ``job_conf.xml``).
 
+``user_email``
+    E-mail of user submitting this job.
 
+``user``
+    Galaxy model object for user submitting this job.
 
-Also available though less likely useful are job_id and job_wrapper.
+``job``
+    Galaxy model object for submitted job, see the above example for how input information can be derived from this.
+
+``job_wrapper``
+    An object meant a higher level utility for reasoning about jobs than ``job``.
+
+``tool``
+    Tool object corresponding to this job.
+
+``tool_id``
+    ID of the tool corresponding to this job
+
+``rule_helper``
+    Utility object with methods designed to allow job rules to interface cleanly with the rest of Galaxy and shield them from low-level details of models, metrics, etc....
+
+``resource_params``
+    A dictionary of parameters specified by the user using ``job_resource_params_conf.xml`` (if configured).
+
+``workflow_invocation_uuid``
+    A randomly generated UUID for the workflow invocation generating this job - this can be 
+    useful for instance in routing all the jobs in the same workflow to one resource.
+```
+
+Also available though less likely useful are ``job_id``.
 
 The above examples demonstrated mapping one tool to one function. Multiple tools may be mapped to the same function, by specifying a function the the dynamic destination:
 
@@ -403,7 +278,6 @@ The above examples demonstrated mapping one tool to one function. Multiple tools
     <tool id="ncbi_blastp_wrapper" destination="blast_dynamic" />
     <tool id="ncbi_tblastn_wrapper" destination="blast_dynamic" />
 ```
-
 
 In this case, you would need to define a function named `blast_dest` in your python rules file and it would be called for all three tools. In cases like this, it may make sense to take in `tool_id` or `tool` as argument to factor the actual tool being used into your decision.
 
@@ -465,7 +339,7 @@ def dev_only(user_email):
 ```
 
 
-There is an additional page on [Access Control](/src/admin/config/access-control/index.md) for those interested.
+There is an additional page on [Access Control](https://galaxyproject.org/admin/config/access-control/) for those interested.
 
 ##### Additional Tricks
 
