@@ -2,11 +2,9 @@
 
 Galaxy is designed to run jobs on your local system by default, but it can be configured to run jobs on a cluster.  The front-end Galaxy application runs on a single server as usual, but tools are run on cluster nodes instead.
 
-This documentation applies to Galaxy release_2013.04.01 and newer. For older Galaxy releases, use the [legacy documentation](/src/admin/config/performance/cluster/legacy/index.md).
+A [general reference for the job configuration file](jobs.html) is also available.
 
-A [general reference for the job configuration file](/src/admin/config/jobs/index.md) is also available.
-
-# Distributed Resources Managers
+## Distributed Resources Managers
 
 Galaxy is known to work with:
 
@@ -19,22 +17,22 @@ Galaxy is known to work with:
 * [Slurm](http://slurm.schedmd.com/)
 * [Galaxy Pulsar](/src/admin/config/performance/cluster/index.md#pulsar) (formerly LWR)
 
-It should also work with [any other DRM](http://www.drmaa.org/implementations.php) which implements a [DRMAA](http://www.drmaa.org) interface.  If you successfully run Galaxy with a DRM not listed here, please let us know via an email to the [galaxy-dev mailing list](/src/mailing-lists/index.md).
+It should also work with [any other DRM](http://www.drmaa.org/implementations.php) which implements a [DRMAA](http://www.drmaa.org) interface.  If you successfully run Galaxy with a DRM not listed here, please let us know via an email to the [galaxy-dev mailing list](dhttps://galaxyproject.org/mailing-lists/).
 
-If you do not already have a DRM, [Galaxy Pulsar](/src/admin/config/performance/cluster/index.md#pulsar) is available which does not require an existing cluster or a shared filesystem and can also run jobs on Windows hosts.
+If you do not already have a DRM, [Pulsar](http://pulsar.readthedocs.io/en/latest/) is available which does not require an existing cluster or a shared filesystem and can also run jobs on Windows hosts.
 
 Installing and configuring your cluster hardware and management software is outside the scope of this document (and specific to each site).  That said, a few pitfalls commonly encountered when trying to get the user Galaxy runs as (referred to in this documentation as `galaxy_user`) able to run jobs on the DRM are addressed here:  
 
 * The host on which the Galaxy server processes run (referred to in this documentation as `galaxy_server`) should be configured in the DRM as a "submit host".
-* `galaxy_user` must have a real shell configured in your name service (`/etc/passwd`, LDAP, etc.).  System accounts may be configured with a disabled shell like `/bin/false` (Debian/Ubuntu) or `/bin/nologin` (Fedora[/RedHat](/src/admin/config/performance/cluster/RedHat/index.md)).
+* `galaxy_user` must have a real shell configured in your name service (`/etc/passwd`, LDAP, etc.).  System accounts may be configured with a disabled shell like `/bin/false` (Debian/Ubuntu) or `/bin/nologin` Fedora/RedHat.
   * If Galaxy is configured to submit jobs as real user (see below) then the above must be true for all users of galaxy.
 * The Galaxy server and the worker nodes are running the same version of Python (worker nodes will run Python scripts calling the Galaxy code and its dependencies to set job output file metadata).
 
 To continue, you should have a working DRM that `galaxy_user` can successfully submit jobs to.
 
-# Preliminary Setup
+## Preliminary Setup
 
-Galaxy (with the exception of the [Pulsar](/src/admin/config/performance/cluster/index.md#pulsar) runner) currently requires a shared filesystem between the application server and the cluster nodes.  There is some legacy code in the PBS runner that does file staging, but its operational status is unknown.  The path to Galaxy must be exactly the same on both the nodes and the application server (although it is possible to use symlinks to partially subvert the absolute path requirement).  This is because absolute paths are used to refer to datasets and tools when running the command on the cluster node.  The shared filesystem and absolute pathnames are limitations that will eventually be removed as development time permits.
+Galaxy (with the exception of the [Pulsar](http://pulsar.readthedocs.io/en/latest/) runner) currently requires a shared filesystem between the application server and the cluster nodes.  There is some legacy code in the PBS runner that does file staging, but its operational status is unknown.  The path to Galaxy must be exactly the same on both the nodes and the application server (although it is possible to use symlinks to partially subvert the absolute path requirement).  This is because absolute paths are used to refer to datasets and tools when running the command on the cluster node.  The shared filesystem and absolute pathnames are limitations that will eventually be removed as development time permits.
 
 For example, if Galaxy is installed like so:
 
@@ -68,18 +66,17 @@ Additionally some of the runners including DRMAA may use the ``cluster_files_dir
 cluster_files_directory = database/pbs
 ```
 
-
 You may also find that attribute caching in your filesystem causes problems with job completion since it interferes with Galaxy detecting the presence and correct sizes of output files. In NFS caching can be disabled with the `-noac` mount option on Linux (on the Galaxy server), but this may have a significant impact on performance since all attributes will have to be read from the file server upon every file access. You should try the `retry_output_collection` option in `galaxy.ini` first to see if this solves the problem.
 
-# Runner Configuration
+## Runner Configuration
 
 **This documentation covers configuration of the various runner plugins, not how to distribute jobs to the various plugins.** Consult the [job configuration file documentation](/src/admin/config/jobs/index.md) for full details on the correct syntax, and for instructions on how to configure tools to actually use the runners explained below.
 
-## Local
+### Local
 
 Runs jobs locally on the Galaxy application server (no DRM).
 
-### Workers
+#### Workers
 
 It is possible to configure the number of concurrent local jobs that can be run by using the `workers` attribute on the plugin.
 
@@ -90,7 +87,7 @@ It is possible to configure the number of concurrent local jobs that can be run 
 ```
 
 
-### Slots
+#### Slots
 
 For each destination using the local runner, it is possible to specify the number of CPU slots to assign (default is 1).
 
@@ -106,11 +103,11 @@ For each destination using the local runner, it is possible to specify the numbe
 
 The value of *local_slots* is used to define [GALAXY_SLOTS](/src/admin/config/galaxy_slots/index.md)
 
-## DRMAA
+### DRMAA
 
 <div class='right'><a href='http://www.drmaa.org'><img src="/src/images/logos/DRMAALogo200.png" alt="DRMAA" /></a></div>Runs jobs via any DRM which supports the [Distributed Resource Management Application API](http://www.drmaa.org).  Most commonly used to interface with [PBS Professional](http://www.pbsworks.com/Product.aspx?id=1), [Sun Grid Engine](http://gridscheduler.sourceforge.net/), [Univa Grid Engine](http://www.univa.com/products/grid-engine.php), [Platform LSF](http://www-03.ibm.com/systems/technicalcomputing/platformcomputing/products/lsf/index.html), and [SLURM](http://slurm.schedmd.com/).  
 
-### Dependencies
+#### Dependencies
 
 Galaxy interfaces with DRMAA via [drmaa-python](https://github.com/pygridtools/drmaa-python).  The drmaa-python module is provided with Galaxy, but you must tell it where your DRM's DRMAA library is located, via the `$DRMAA_LIBRARY_PATH` environment variable, for example:
 
@@ -143,11 +140,11 @@ Most [options defined in the DRMAA interface](http://www.ogf.org/documents/GFD.1
 ```
 
 
-## PBS
+### PBS
 
 Runs jobs via the [TORQUE Resource Manager](http://www.adaptivecomputing.com/products/open-source/torque/).  For PBS Pro, use [DRMAA](/src/admin/config/performance/cluster/index.md#drmaa).
 
-### Dependencies
+#### Dependencies
 
 Galaxy uses the [pbs_python](https://oss.trac.surfsara.nl/pbs_python/) module to interface with TORQUE.  pbs_python must be compiled against your TORQUE installation, so it cannot be provided with Galaxy.  However, we provide all the necessary automation to compile it, via Galaxy's egg scrambler ([more about Galaxy's Python eggs](/src/admin/config/Eggs/index.md)):
 
@@ -177,7 +174,7 @@ galaxy_user@galaxy_server% LIBTORQUE_DIR=/path/to/libtorque python scripts/scram
 As of May 2014 there are still some outstanding bugs in pbs_python. Notably, error code translation is out of alignment.  For example if you get error #15025 "Bad UID for Job Execution" pbs_python will report this error incorrectly as "Queue already exists".  You may consult the [TORQUE source code](https://github.com/adaptivecomputing/torque/blob/4.2.7/src/include/pbs_error_db.h) for the proper error message that corresponds with a given error number.
    
 
-### Parameters and Configuration
+#### Parameters and Configuration
 
 Most options available to `qsub(1b)` and `pbs_submit(3b)` are supported.  Exceptions include `-o/Output_Path`, `-e/Error_Path`, and `-N/Job_Name` since these PBS job attributes are set by Galaxy.  Parameters can be specified by either their flag (as used with `qsub`) or long name (as used with `pbs_submit`).
 
@@ -200,7 +197,7 @@ Most options available to `qsub(1b)` and `pbs_submit(3b)` are supported.  Except
 
 The value of *ppn=* is used by PBS to define the environment variable $PBS_NCPUS which in turn is used by galaxy for [GALAXY_SLOTS](/src/admin/config/galaxy_slots/index.md).
 
-## Condor
+### Condor
 
 Runs jobs via the [HTCondor](http://research.cs.wisc.edu/htcondor/) DRM.  There are no configurable parameters.  Galaxy's interface is via calls to HTCondor's command line tools, rather than via an API.
 
@@ -226,13 +223,13 @@ If you need to add additional parameters to your condor submission, you can do s
 </destinations>
 ```
 
-## Pulsar
+### Pulsar
 
 Runs jobs via Galaxy [Pulsar](/src/admin/config/pulsar/index.md).  Pulsar does not require an existing cluster or a shared filesystem and can also run jobs on Windows hosts. It also has the ability to interface with all of the DRMs supported by Galaxy. Pulsar provides a much looser coupling between Galaxy job execution and the Galaxy server host than is possible with Galaxy's native job execution code.
 
 [Full documentation on setup and configuration](http://pulsar.readthedocs.org/) is available.
 
-## CLI
+### CLI
 
 Runs jobs via a command-line/shell interface. The CLI runner itself takes plugins of two types:
 
@@ -241,7 +238,7 @@ Runs jobs via a command-line/shell interface. The CLI runner itself takes plugin
 
 If you are interested in developing additional plugins, see `galaxy-app/lib/galaxy/jobs/runners/cli_*` for examples.
 
-### Parameters and Configuration
+#### Parameters and Configuration
 
 The cli runner requires, at a minimum, two parameters:
 
@@ -399,11 +396,11 @@ Torque attributes can be defined in either their short (e.g. [qsub(1B)](http://c
 
 Most options available to `qsub(1b)` and `pbs_submit(3b)` are supported.  Exceptions include `-o/Output_Path`, `-e/Error_Path`, and `-N/Job_Name` since these PBS job attributes are set by Galaxy.
 
-# Submitting Jobs as the Real User
+## Submitting Jobs as the Real User
 
 Galaxy runs as a process on your server as whatever user starts the server - usually an account created for the purpose of running Galaxy. Jobs will be submitted to your cluster(s) as this user. In environments where users in Galaxy are guaranteed to be users on the underlying system (i.e. Galaxy is configured to use external authentication), it may be desirable to submit jobs to the cluster as the user logged in to Galaxy rather than Galaxy's system user.
 
-## Caveats
+### Caveats
 
 Since this is a complex problem, the current solution does have some caveats:
 
@@ -413,7 +410,7 @@ Since this is a complex problem, the current solution does have some caveats:
   * Two possibilities to determine the system user that corresponds to a galaxy user are implemented: i) the user whos name matches the Galaxy user's email address (with the @domain stripped off) and ii) the user whos name is equal to the galaxy user name. Until release 17.05 only the former option is available. The latter option is suitable for Galaxy installations that user external authentification (e.g. LDAP) against a source that is also the source of the system users.
   * The script accepts a path and does nothing to ensure that this path is a Galaxy working directory per default (and not at all up to release 17.05). So anyone who has access to the Galaxy user could use this script and sudo to change the ownership of any file or directory. Furthermore, anyone with write access to the script could introduce arbitrary (harmful) code -- so it might be a good idea to give write access only to trustworthy users, e.g., root. 
 
-## Configuration
+### Configuration
 
 You'll need to ensure that all datasets are stored on the filesystem such that they are readable by all users that will use Galaxy: either made readable by a group, or world-readable. If using a group, set your `umask(1)` to `027` or for world-readable, use `022` Setting the umask assumes your underlying filesystem uses POSIX permissions, so if this is not the case, your environment changes may be different.
 
@@ -440,9 +437,8 @@ It is also a good idea to make sure that only trusted users, e.g. root, have wri
 
 Some maintenance and support of this code will be provided via the usual [Support](/src/support/index.md) channels, but improvements and fixes would be greatly welcomed, as this is a complex feature which is not used by the Galaxy Development Team.
 
-# Contributors
+## Contributors
 
-* **[John Chilton](/src/people/john-chilton/index.md)**, developer and maintainer of the [Pulsar](/src/admin/config/pulsar/index.md) and [dynamic](http://lists.bx.psu.edu/pipermail/galaxy-dev/2012-June/010080.html) job runners.
 * **Oleksandr Moskalenko**, debugged a number of problems related to running jobs as the real user and using DRMAA with TORQUE. 
 * **Jaime Frey**, developer of the HTCondor job runner plugin.
 * **Ilya Chorny**, developer of the original "real user" job running code.

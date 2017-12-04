@@ -1,4 +1,4 @@
-## Galaxy Job Configuration
+# Galaxy Job Configuration
 
 By default, jobs in Galaxy are run locally on the server on which the Galaxy application was started.  Many options are available for running Galaxy jobs on other systems, including clusters and other remote resources.
 
@@ -12,7 +12,7 @@ Configuration of where to run jobs is performed in the `job_conf.xml` file in `g
 
 If you have used `config/galaxy.ini` to configure job runners, handlers, and per-tool runner/handler specifications in the past (e.g. [runner URLs](/src/admin/config/performance/cluster/legacy/index.md)), that method is no longer supported.  However, Galaxy is fully backward-compatible with the old `config/galaxy.ini` config options and job runner URLs, meaning that if you upgrade to the April 1, 2013 release (or later) and do not modify your config files, your job running configuration will continue to work.
 
-# job_conf.xml Syntax
+## job_conf.xml Syntax
 
 The root element is `<job_conf>`.
 

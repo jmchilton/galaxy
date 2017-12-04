@@ -1,14 +1,14 @@
-## Production Environments
+# Production Environments
 
-The [basic installation instructions](https://galaxyproject.org/admin/get-galaxy/) are suitable for development by a single user, but when setting up Galaxy for a multi-user production environment, there are some additional steps that should be taken for the best performance.
+The [basic installation instructions](https://getgalaxy.org) are suitable for development by a single user, but when setting up Galaxy for a multi-user production environment, there are some additional steps that should be taken for the best performance.
 
 ### Why bother?
 
 By default, Galaxy:
 
 * Uses [SQLite](http://www.sqlite.org/) (a serverless database), so you don't have to run/configure a database server for quick or basic development.  However, while SQLite [supports concurrent access](https://sqlite.org/lockingv3.html) it does not support multiple concurrent writes, which can reduce system throughput.
-* Uses a built-in HTTP server, written in Python.  Much of the work performed by this server can be moved to [nginx](special_topics/nginx.md) or Apache, which will increase performance.
-* Runs all tools locally.  Moving to a [cluster](cluster.md) will greatly increase capacity.
+* Uses a built-in HTTP server, written in Python.  Much of the work performed by this server can be moved to [nginx](special_topics/nginx.html) or Apache, which will increase performance.
+* Runs all tools locally.  Moving to a [cluster](cluster.html) will greatly increase capacity.
 * Runs in a single process, which is a performance problem in [CPython](http://en.wikipedia.org/wiki/CPython).
 
 Galaxy ships with this default configuration to ensure the simplest, most error-proof configuration possible when doing basic development.  As you'll soon see, the goal is to remove as much work as possible from the Galaxy process, since doing so will greatly speed up the performance of its remaining duties.  This is due to the Python Global Interpreter Lock (GIL), which is explained in detail in the [Advanced Configuration](#advanced-configuration) section.
@@ -33,11 +33,11 @@ nate@weyerbacher% cd galaxy-dist
 nate@weyerbacher% sh run.sh
 ```
 
-* Galaxy can be housed in a cluster/network filesystem (it's been tested with NFS and GPFS), and you'll want to do this if you'll be running it on a [cluster](/src/admin/config/performance/cluster/index.md).
+* Galaxy can be housed in a cluster/network filesystem (it's been tested with NFS and GPFS), and you'll want to do this if you'll be running it on a [cluster](cluster.html).
 
 ## Basic configuration
 
-The steps to install Galaxy mostly follow those of the regular instructions at [Admin/GetGalaxy](/src/admin/get-galaxy/index.md).  The difference is that after performing the groundwork above, you should initialize the configuration file (`cp config/galaxy.ini.sample config/galaxy.ini`) and modify it as outlined below before starting the server. If you make any changes to this configuration file while the server is running, you will have to restart the server for the changes to take effect.
+The steps to install Galaxy mostly follow those of the regular instructions at [Admin/GetGalaxy](https://getgalaxy.org).  The difference is that after performing the groundwork above, you should initialize the configuration file (`cp config/galaxy.ini.sample config/galaxy.ini`) and modify it as outlined below before starting the server. If you make any changes to this configuration file while the server is running, you will have to restart the server for the changes to take effect.
 
 ### Disable the developer settings
 
@@ -95,20 +95,20 @@ Downloading and uploading data can also be moved to the proxy server.  This is e
 
 Virtually any server that proxies HTTP should work, although we provide configuration examples for:
 
-* [Apache](special_topics/apache), and
-* [nginx](special_topics/nginx), a high performance reverse proxy, used by our public Galaxy sites
+* [Apache](special_topics/apache.html), and
+* [nginx](special_topics/nginx.html), a high performance reverse proxy, used by our public Galaxy sites
 
 ### Using a compute cluster
 
-Galaxy is a framework that runs command-line tools, and if properly configured, can run these tools on a compute [cluster](/src/admin/config/performance/cluster/index.md).  Without a cluster, you'll be limited to the number of cores in your server, minus those needed to run Galaxy itself.  Galaxy currently supports TORQUE PBS, PBS Pro, Platform LSF, and Sun Grid Engine clusters, and does not require a dedicated or special cluster configuration.  Tools can even run on heterogeneous cluster nodes (differing operating systems), as long as any dependencies necessary to run the tool are available on that platform.
+Galaxy is a framework that runs command-line tools, and if properly configured, can run these tools on a compute [cluster](cluster.html).  Without a cluster, you'll be limited to the number of cores in your server, minus those needed to run Galaxy itself.  Galaxy currently supports TORQUE PBS, PBS Pro, Platform LSF, and Sun Grid Engine clusters, and does not require a dedicated or special cluster configuration.  Tools can even run on heterogeneous cluster nodes (differing operating systems), as long as any dependencies necessary to run the tool are available on that platform.
 
 Using a cluster will also net you a fringe benefit: When running tools locally, they are child processes of the Galaxy server.  This means that if you restart the server, you lose contact with those jobs, and they must be restarted.  However on the cluster, if the Galaxy server restarts, the jobs will continue to run and finish.  Once the Galaxy job manager starts up, it'll resume tracking and finishing jobs as if nothing had happened.
 
-Configuration is not difficult once your cluster is set up.  Details can be found on the [Admin/Config/Performance/Cluster](index) page.
+Configuration is not difficult once your cluster is set up.  Details can be found on the [cluster](cluster.html) page.
 
 ### Cleaning up datasets
 
-When datasets are deleted from a history or library, it is simply marked as deleted and not actually removed, since it can later be undeleted.  To free disk space, a set of scripts can be run (e.g. from `cron`) to remove the data files as specified by local policy.  See the [Purge histories and datasets](/src/admin/config/performance/Purge Histories and Datasets/index.md) page for instructions.
+When datasets are deleted from a history or library, it is simply marked as deleted and not actually removed, since it can later be undeleted.  To free disk space, a set of scripts can be run (e.g. from `cron`) to remove the data files as specified by local policy.  See the [Purge histories and datasets](https://galaxyproject.org/admin/config/performance/purge-histories-and-datasets/) page for instructions.
 
 ### Rotate log files
 
