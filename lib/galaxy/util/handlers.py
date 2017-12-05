@@ -82,17 +82,7 @@ class ConfiguresHandlers:
 
         :returns: list of ``xml.etree.ElementTree.Element``
         """
-        rval = []
-        if attribs is None:
-            attribs = ('id',)
-        for elem in parent.findall(match):
-            for attrib in attribs:
-                if attrib not in elem.attrib:
-                    log.warning("required '%s' attribute is missing from <%s> element" % (attrib, match))
-                    break
-            else:
-                rval.append(elem)
-        return rval
+        return findall_with_required(parent, match, attribs)
 
     @property
     def is_handler(self):
@@ -137,3 +127,28 @@ class ConfiguresHandlers:
         if id_or_tag is None:
             id_or_tag = self.default_handler_id
         return self._get_single_item(self.handlers[id_or_tag], index=index)
+
+
+def findall_with_required(parent, match, attribs=None):
+    """Like ``xml.etree.ElementTree.Element.findall()``, except only returns children that have the specified attribs.
+
+    :param parent: Parent element in which to find.
+    :type parent: ``xml.etree.ElementTree.Element``
+    :param match: Name of child elements to find.
+    :type match: str
+    :param attribs: List of required attributes in children elements.
+    :type attribs: list of str
+
+    :returns: list of ``xml.etree.ElementTree.Element``
+    """
+    rval = []
+    if attribs is None:
+        attribs = ('id',)
+    for elem in parent.findall(match):
+        for attrib in attribs:
+            if attrib not in elem.attrib:
+                log.warning("required '%s' attribute is missing from <%s> element" % (attrib, match))
+                break
+        else:
+            rval.append(elem)
+    return rval
