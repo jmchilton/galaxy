@@ -3,6 +3,7 @@ Support for running a tool in Galaxy via an internal job management system
 """
 import copy
 import datetime
+import json
 import logging
 import os
 import pwd
@@ -70,9 +71,17 @@ class JobDestination(Bunch):
         self['params'] = dict()
 
         # Use the values persisted in an existing job
-        if 'from_job' in kwds and kwds['from_job'].destination_id is not None:
-            self['id'] = kwds['from_job'].destination_id
-            self['params'] = kwds['from_job'].destination_params
+        from_job = kwds.get('from_job', None)
+        if from_job is not None and from_job.destination_id is not None:
+            self['id'] = from_job.destination_id
+
+        if from_job and from_job.destination_params:
+            params = from_job.destination_params
+            self['params'] = params
+            resubmit_json = params.get("resubmit_json", None)
+            if resubmit_json:
+                resubmit = json.loads(resubmit_json)
+                self['resubmit'] = resubmit
 
         super(JobDestination, self).__init__(**kwds)
 
@@ -253,7 +262,10 @@ class JobConfiguration(object, ConfiguresHandlers):
             job_destination['params'] = params
             job_destination['env'] = self.__get_envs(destination)
             destination_resubmits = self.__get_resubmits(destination)
-            if destination_resubmits:
+            if job_destination.resubmit:
+                # reloading persisted resubmission - let it be.
+                resubmits = job_destination.resubmit
+            elif destination_resubmits:
                 resubmits = destination_resubmits
             else:
                 resubmits = self.default_resubmits
@@ -1101,8 +1113,12 @@ class JobWrapper(object, HasResourceParameters):
         if job is None:
             job = self.get_job()
         log.debug('(%s) Persisting job destination (destination id: %s)' % (job.id, job_destination.id))
+        params = job_destination.params
+        resubmit = job_destination.resubmit
+        if resubmit:
+            params["resubmit_json"] = json.dumps(resubmit)
         job.destination_id = job_destination.id
-        job.destination_params = job_destination.params
+        job.destination_params = params
         job.job_runner_name = job_destination.runner
         job.job_runner_external_id = external_id
         self.sa_session.add(job)
