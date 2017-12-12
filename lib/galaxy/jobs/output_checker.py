@@ -139,6 +139,7 @@ def check_output(tool, stdout, stderr, tool_exit_code, job):
                     "assuming tool was successful: " + tb)
         state = DETECTED_JOB_STATE.OK
 
+    log.info("stderr %s" % stderr)
     # Store the modified stdout and stderr in the job:
     if job is not None:
         job.set_streams(stdout, stderr)
