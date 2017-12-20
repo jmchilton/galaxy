@@ -531,11 +531,10 @@ class NavigatesGalaxy(HasDriver):
         self.upload_build()
 
     def upload_tab_click(self, tab):
-        tab_tag_id = "#tab-title-link-%s" % tab
-        self.wait_for_and_click_selector(tab_tag_id)
+        self.components.upload.tab(tab=tab).wait_for_and_click()
 
     def upload_start_click(self):
-        self.wait_for_and_click_selector(".upload-button")
+        self.components.upload.start.wait_for_and_click()
 
     @retry_during_transitions
     def upload_set_footer_extension(self, ext, tab_id="regular"):
@@ -560,8 +559,8 @@ class NavigatesGalaxy(HasDriver):
         self.wait_for_and_click_selector("div#%s button#btn-start" % tab_id)
 
     @retry_during_transitions
-    def upload_build(self):
-        build_selector = "div#collection button#btn-build"
+    def upload_build(self, tab="collection"):
+        build_selector = "div#%s button#btn-build" % tab
         # Pause a bit to let the callback on the build button be registered.
         time.sleep(.5)
         # Click the Build button and make sure it disappears.
