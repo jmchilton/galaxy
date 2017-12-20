@@ -104,6 +104,7 @@ history_panel:
       build_pair: "Build Dataset Pair"
       build_list: "Build Dataset List"
       build_list_pairs: "Build List of Dataset Pairs"
+      build_from_rules: "Build Collection from Rules"
 
   collection_view:
     selectors:

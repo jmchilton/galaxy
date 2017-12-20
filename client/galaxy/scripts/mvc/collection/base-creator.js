@@ -79,7 +79,9 @@ var CollectionCreatorMixin = {
     },
 
     _cancelCreate: function(ev) {
+        console.log("in cancel create...");  
         if (typeof this.oncancel === "function") {
+            console.log("in cancel create call...");
             this.oncancel.call(this);
         }
     },
