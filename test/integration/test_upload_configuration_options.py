@@ -65,6 +65,22 @@ class BaseUploadContentConfigurationTestCase(integration_util.IntegrationTestCas
         response = self.dataset_populator.fetch(payload, assert_ok=assert_ok)
         return response
 
+    @classmethod
+    def temp_config_dir(cls, name):
+        return os.path.join(cls._test_driver.galaxy_test_tmp_dir, name)
+
+    def _write_file(self, dir_path, content, filename="test"):
+        """Helper for writing ftp/server dir files."""
+        self._ensure_directory(dir_path)
+        path = os.path.join(dir_path, filename)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+
+    def _ensure_directory(self, path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+
 
 class InvalidFetchRequestsTestCase(BaseUploadContentConfigurationTestCase):
 
@@ -314,24 +330,13 @@ class BaseFtpUploadConfigurationTestCase(BaseUploadContentConfigurationTestCase)
 
     @classmethod
     def ftp_dir(cls):
-        return os.path.join(cls._test_driver.galaxy_test_tmp_dir, "ftp")
+        return cls.temp_config_dir("ftp")
 
     def _check_content(self, dataset, content, ext="txt"):
         dataset = self.dataset_populator.get_history_dataset_details(self.history_id, dataset=dataset)
         assert dataset["file_ext"] == ext, dataset
         content = self.dataset_populator.get_history_dataset_content(self.history_id, dataset=dataset)
         assert content == content, content
-
-    def _write_ftp_file(self, dir_path, content, filename="test"):
-        self._ensure_directory(dir_path)
-        path = os.path.join(dir_path, filename)
-        with open(path, "w") as f:
-            f.write(content)
-        return path
-
-    def _ensure_directory(self, path):
-        if not os.path.exists(path):
-            os.makedirs(path)
 
     def _get_user_ftp_path(self):
         return os.path.join(self.ftp_dir(), TEST_USER)
@@ -342,7 +347,7 @@ class SimpleFtpUploadConfigurationTestCase(BaseFtpUploadConfigurationTestCase):
     def test_ftp_upload(self):
         content = "hello world\n"
         dir_path = self._get_user_ftp_path()
-        ftp_path = self._write_ftp_file(dir_path, content)
+        ftp_path = self._write_file(dir_path, content)
         ftp_files = self.dataset_populator.get_remote_files()
         assert len(ftp_files) == 1, ftp_files
         assert ftp_files[0]["path"] == "test"
@@ -358,7 +363,7 @@ class SimpleFtpUploadConfigurationTestCase(BaseFtpUploadConfigurationTestCase):
     def test_ftp_fetch(self):
         content = "hello world\n"
         dir_path = self._get_user_ftp_path()
-        ftp_path = self._write_ftp_file(dir_path, content)
+        ftp_path = self._write_file(dir_path, content)
         ftp_files = self.dataset_populator.get_remote_files()
         assert len(ftp_files) == 1, ftp_files
         assert ftp_files[0]["path"] == "test"
@@ -412,7 +417,7 @@ class DisableFtpPurgeUploadConfigurationTestCase(BaseFtpUploadConfigurationTestC
     def test_ftp_uploads_not_purged(self):
         content = "hello world\n"
         dir_path = os.path.join(self.ftp_dir(), TEST_USER)
-        ftp_path = self._write_ftp_file(dir_path, content)
+        ftp_path = self._write_file(dir_path, content)
         ftp_files = self.dataset_populator.get_remote_files()
         assert len(ftp_files) == 1
         assert ftp_files[0]["path"] == "test"
@@ -430,9 +435,9 @@ class AdvancedFtpUploadFetchTestCase(BaseFtpUploadConfigurationTestCase):
 
     def test_fetch_ftp_directory(self):
         dir_path = self._get_user_ftp_path()
-        self._write_ftp_file(os.path.join(dir_path, "subdir"), "content 1", filename="1")
-        self._write_ftp_file(os.path.join(dir_path, "subdir"), "content 22", filename="2")
-        self._write_ftp_file(os.path.join(dir_path, "subdir"), "content 333", filename="3")
+        self._write_file(os.path.join(dir_path, "subdir"), "content 1", filename="1")
+        self._write_file(os.path.join(dir_path, "subdir"), "content 22", filename="2")
+        self._write_file(os.path.join(dir_path, "subdir"), "content 333", filename="3")
         target = {
             "destination": {"type": "hdca"},
             "elements_from": "directory",
@@ -450,9 +455,9 @@ class AdvancedFtpUploadFetchTestCase(BaseFtpUploadConfigurationTestCase):
 
     def test_fetch_nested_elements_from(self):
         dir_path = self._get_user_ftp_path()
-        self._write_ftp_file(os.path.join(dir_path, "subdir1"), "content 1", filename="1")
-        self._write_ftp_file(os.path.join(dir_path, "subdir1"), "content 22", filename="2")
-        self._write_ftp_file(os.path.join(dir_path, "subdir2"), "content 333", filename="3")
+        self._write_file(os.path.join(dir_path, "subdir1"), "content 1", filename="1")
+        self._write_file(os.path.join(dir_path, "subdir1"), "content 22", filename="2")
+        self._write_file(os.path.join(dir_path, "subdir2"), "content 333", filename="3")
         elements = [
             {"name": "subdirel1", "src": "ftp_import", "ftp_path": "subdir1", "elements_from": "directory", "collection_type": "list"},
             {"name": "subdirel2", "src": "ftp_import", "ftp_path": "subdir2", "elements_from": "directory", "collection_type": "list"},
@@ -578,7 +583,7 @@ class UploadOptionsFtpUploadConfigurationTestCase(BaseFtpUploadConfigurationTest
         shutil.copyfile(input_path, os.path.join(target_dir, test_data_path))
 
     def _write_user_ftp_file(self, path, content):
-        return self._write_ftp_file(os.path.join(self.ftp_dir(), TEST_USER), content, filename=path)
+        return self._write_file(os.path.join(self.ftp_dir(), TEST_USER), content, filename=path)
 
 
 class ServerDirectoryOffByDefaultTestCase(BaseUploadContentConfigurationTestCase):
@@ -603,12 +608,42 @@ class ServerDirectoryValidUsageTestCase(BaseUploadContentConfigurationTestCase):
 
     require_admin_user = True
 
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        server_dir = cls.server_dir()
+        os.makedirs(server_dir)
+        config["library_import_dir"] = server_dir
+
+    @classmethod
+    def server_dir(cls):
+        return cls.temp_config_dir("server")
+
     def test_valid_server_dir_uploads_okay(self):
+        content = "hello world\n"
+        dir_path = os.path.join(self.server_dir(), "lib1")
+        self._write_file(dir_path, content)
         library = self.library_populator.new_private_library("serverdirupload")
         # upload $GALAXY_ROOT/test-data/library
-        payload, files = self.library_populator.create_dataset_request(library, upload_option="upload_directory", server_dir="library")
+        payload, files = self.library_populator.create_dataset_request(library, upload_option="upload_directory", server_dir="lib1")
         response = self.library_populator.raw_library_contents_create(library["id"], payload, files=files)
         assert response.status_code == 200, response.json()
+        dataset = response.json()[0]
+        ok_dataset = self.library_populator.wait_on_library_dataset(library, dataset)
+        assert ok_dataset["file_size"] == 12, ok_dataset
+
+    def link_data_only(self):
+        content = "hello world\n"
+        dir_path = os.path.join(self.server_dir(), "lib1")
+        file_path = self._write_file(dir_path, content)
+        library = self.library_populator.new_private_library("serverdirupload")
+        # upload $GALAXY_ROOT/test-data/library
+        payload, files = self.library_populator.create_dataset_request(library, upload_option="upload_directory", server_dir="lib1", link_data=True)
+        response = self.library_populator.raw_library_contents_create(library["id"], payload, files=files)
+        assert response.status_code == 200, response.json()
+        dataset = response.json()[0]
+        ok_dataset = self.library_populator.wait_on_library_dataset(library, dataset)
+        assert ok_dataset["file_size"] == 12, ok_dataset
+        assert ok_dataset["file_name"] == file_path, ok_dataset
 
 
 class ServerDirectoryRestrictedToAdminsUsageTestCase(BaseUploadContentConfigurationTestCase):
