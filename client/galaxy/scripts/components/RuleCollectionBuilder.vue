@@ -1,70 +1,14 @@
 <template>
     <state-div v-if="state == 'build'">
-        <rule-component title="Add Column"
-                        :show.sync="addColumnShow"
-                        @okay="handleAddColumn">
-            <column-selector :target.sync="addColumnTarget" :col-headers="colHeaders" />
-            <regular-expression-input :target.sync="addColumnExpression" />
-        </rule-component>
-        <rule-component title="Remove Column"
-                        :show.sync="removeColumnShow"
-                        @okay="handleRemoveColumn">
-            <column-selector :target.sync="removeColumnTarget" :col-headers="colHeaders" />
-        </rule-component>
         <!--
-                        <option value="regex">Matches Regular Expression</option>
-                        <option value="empty">Is Empty</option>
-                        <option value="matches">Matches Value</option>
-                        <option value="contains">Contains Value</option>
-                        <option value="compare">Compare to Number</option>
+                        <option value="add_filter_matches">Matches Value</option>
+                        <option value="add_filter_contains">Contains Value</option>
+                        <option value="add_filter_compare">Compare to Number</option>
         -->
-        <rule-component title="Add Filter"
-                        :show.sync="addFilterShow"
-                        @okay="handleAddFilter">
-            <div><label>
-                Filter Type
-                <select name="filter_type" v-model="addFilterType">
-                    <option value="regex">Matches Regular Expression</option>
-                </select>
-            </label></div>
-            <column-selector :target.sync="addFilterTarget" :col-headers="colHeaders" />
-            <regular-expression-input :target.sync="addFilterExpression" />
-        </rule-component>
-        <rule-component title="Set Column Mapping"
-                        :show.sync="columnMappingShow"
-                        @okay="handleColumnMapping">
-            <div>
-                <div class="map"
-                     v-for="map in mapping"
-                     v-bind:index="map.index"
-                     v-bind:key="map.type">
-                     <column-selector :label="mapping_targets()[map.type].label" :target.sync="map.columns" :col-headers="colHeaders" :multiple="mapping_targets()[map.type].multiple" />
-                </div>
-                <div class="btn-group" v-if="unmappedTargets.length > 0">
-                  <button type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
-                    <span class="fa fa-plus"></span> {{ "Add Mapping" }}<span class="caret"></span>
-                  </button>
-                  <ul class="dropdown-menu" role="menu">
-                    <li v-for="target in unmappedTargets"
-                        v-bind:index="target"
-                        v-bind:key="target">
-                      <a @click="addIdentifier(target)">{{ mapping_targets()[target].label }}</a>
-                    </li>
-                  </ul>
-                </div>
-            </div>
-        </rule-component>
-        <rule-component title="Add Sort Rule"
-                        :show.sync="addSortingShow"
-                        @okay="handleSorting">
-            <div>
-                <column-selector :target.sync="addSortingTarget" :col-headers="colHeaders" />
-                <label :title="titleNumericSort">
-                    <input type="checkbox" v-model="addSortingNumeric" />
-                    {{ l("Numeric sorting.") }}
-                </label>
-            </div>
-        </rule-component>
+        <!-- 
+                        <option value="add_column_basename">Basename</option>
+                        <option value="add_column_prefix">Prefix / Suffix</option>
+        -->
         <div class="header flex-row no-flex">Describe rules for building up a collection.</div>
         <div class="middle flex-row flex-row-container">
             <div class="column-headers vertically-spaced flex-column-container">
@@ -94,37 +38,123 @@
                             <!-- <span class="title-info"></span> -->
                         </div>
                         <div class="rule-container pull-left">
-                            <ol class="rules">
-                                <!-- Example at the end of https://vuejs.org/v2/guide/list.html -->
-                                <rule-display
-                                  v-for="(rule, index) in rules"
-                                  v-bind:rule="rule"
-                                  v-bind:index="index"
-                                  v-bind:key="index"
-                                  @edit="editRule(rule)"
-                                  @remove="removeRule(index)" />
-                                <identifier-display v-for="(map, index) in mapping"
-                                                    v-bind="map"
-                                                    v-bind:index="index"
-                                                    v-bind:key="map.type"
-                                                    @remove="removeMapping(index)"
-                                                    @edit="columnMappingShow = true"
-                                                    :col-headers="colHeaders" />
-                                <div v-if="mapping.length == 0">
-                                    One or more column mappings must be specified. These are required to specify how to build collections and datasets from rows and columns of the table. <a href="#" @click="columnMappingShow = true">Click here</a> to manage column mappings.
+                            <rule-component rule-type="sort"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addSortingTarget" :col-headers="colHeaders" />
+                                <label :title="titleNumericSort">
+                                    <input type="checkbox" v-model="addSortingNumeric" />
+                                    {{ l("Numeric sorting.") }}
+                                </label>
+                            </rule-component>
+                            <rule-component rule-type="add_column_regex"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addColumnTarget" :col-headers="colHeaders" />
+                                <regular-expression-input :target.sync="addColumnExpression" />
+                            </rule-component>
+                            <rule-component rule-type="add_column_concatenate"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addColumnConcatenateTarget0" :col-headers="colHeaders" />
+                                <column-selector :target.sync="addColumnConcatenateTarget1" :col-headers="colHeaders" />
+                            </rule-component>
+                            <rule-component rule-type="remove_columns"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="removeColumnTargets" :col-headers="colHeaders" :multiple="true" />
+                            </rule-component>
+                            <rule-component rule-type="split_columns"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="splitColumnsTargets0" :col-headers="colHeaders" :multiple="true" />
+                                <column-selector :target.sync="splitColumnsTargets1" :col-headers="colHeaders" :multiple="true" />
+                            </rule-component>
+                            <rule-component rule-type="add_filter_regex"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addFilterRegexTarget" :col-headers="colHeaders" />
+                                <regular-expression-input :target.sync="addFilterRegexExpression" />
+                            </rule-component>
+                            <rule-component rule-type="add_filter_empty"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addFilterEmptyTarget" :col-headers="colHeaders" />
+                            </rule-component>
+                            <div v-if="displayRuleType == 'mapping'">
+                                <div class="map"
+                                     v-for="map in mapping"
+                                     v-bind:index="map.index"
+                                     v-bind:key="map.type">
+                                     <column-selector :label="mappingTargets()[map.type].label" :target.sync="map.columns" :col-headers="colHeaders" :multiple="mappingTargets()[map.type].multiple" />
                                 </div>
-                            </ol>
-                            <div class="btn-group">
-                              <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
-                                <span class="fa fa-plus"></span> {{ "Add New Rule" }}<span class="caret"></span>
-                              </button>
-                              <ul class="dropdown-menu" role="menu">
-                                <li><a @click="addColumnNew">Add Column</a></li>
-                                <li><a @click="addSortingNew">Add Sorting</a></li>
-                                <li><a @click="removeColumnNew">Remove Column</a></li>
-                                <li><a @click="addFilterNew">Add Row Filter</a></li>
-                                <li><a @click="columnMappingShow = true">Add / Modify Column Mappings</a></li>
-                              </ul>
+                                <div class="buttons">
+                                    <div class="btn-group" v-if="unmappedTargets.length > 0">
+                                      <button type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
+                                        <span class="fa fa-plus"></span> {{ "Add Mapping" }}<span class="caret"></span>
+                                      </button>
+                                      <ul class="dropdown-menu" role="menu">
+                                        <li v-for="target in unmappedTargets"
+                                            v-bind:index="target"
+                                            v-bind:key="target">
+                                          <a @click="addIdentifier(target)">{{ mappingTargets()[target].label }}</a>
+                                        </li>
+                                      </ul>
+                                    </div>
+                                   <button type="button" class="ui-button-default btn btn-default" @click="displayRuleType = null">Okay</button>
+                                </div>
+                            </div>
+                            <div class="rule-summary" v-if="displayRuleType == null">
+                                <ol class="rules">
+                                    <!-- Example at the end of https://vuejs.org/v2/guide/list.html -->
+                                    <rule-display
+                                      v-for="(rule, index) in rules"
+                                      v-bind:rule="rule"
+                                      v-bind:index="index"
+                                      v-bind:key="index"
+                                      @edit="editRule(rule)"
+                                      @remove="removeRule(index)"
+                                      :col-headers="colHeaders" />
+                                    <identifier-display v-for="(map, index) in mapping"
+                                                        v-bind="map"
+                                                        v-bind:index="index"
+                                                        v-bind:key="map.type"
+                                                        @remove="removeMapping(index)"
+                                                        @edit="displayRuleType = 'mapping'"
+                                                        :col-headers="colHeaders" />
+                                    <div v-if="mapping.length == 0">
+                                        One or more column mappings must be specified. These are required to specify how to build collections and datasets from rows and columns of the table. <a href="#" @click="displayRuleType = 'mapping'">Click here</a> to manage column mappings.
+                                    </div>
+                                </ol>
+                                <div class="btn-group">
+                                  <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
+                                    <span class="fa fa-plus"></span> {{ "Rules" }}<span class="caret"></span>
+                                  </button>
+                                  <ul class="dropdown-menu" role="menu">
+                                    <li><a @click="addNewRule('sort')">Add Sorting</a></li>
+                                    <li><a @click="addNewRule('remove_columns')">Remove Columns</a></li>
+                                    <li><a @click="addNewRule('split_columns')">Split Columns</a></li>
+                                    <li><a @click="displayRuleType = 'mapping'">Add / Modify Column Mappings</a></li>
+                                  </ul>
+                                </div>
+                                <div class="btn-group">
+                                    <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
+                                        <span class="fa fa-plus"></span> {{ "Filter Rows" }}<span class="caret"></span>
+                                    </button>
+                                    <ul class="dropdown-menu" role="menu">
+                                        <li><a @click="addNewRule('add_filter_regex')">{{ l("Using a Regular Expression") }}</a></li>
+                                        <li><a @click="addNewRule('add_filter_empty')">{{ l("On Emptiness") }}</a></li>
+                                  </ul>
+                                </div>                                
+                                <div class="btn-group">
+                                    <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
+                                        <span class="fa fa-plus"></span> {{ "Add Columns" }}<span class="caret"></span>
+                                    </button>
+                                    <ul class="dropdown-menu" role="menu">
+                                        <li><a @click="addNewRule('add_column_regex')">{{ l("Using a Regular Expression") }}</a></li>
+                                        <li><a @click="addNewRule('add_column_concatenate')">{{ l("Concatenate Columns") }}</a></li>
+                                  </ul>
+                                </div>                                
                             </div>
                         </div>
                     </div>
@@ -133,28 +163,27 @@
         </div>
         <div class="footer flex-row no-flex">
             <div class="attributes clear">
-                <div class="clear">
-                    <label class="setting-prompt pull-right">
-                        {{ l("Hide original elements") }}?
-f                    </label>
-                    <span class="upload-footer-title">Type (set all):</span>
-                    <span class="upload-footer-extension">
-                        <!--
-                        <select2 name="extension" :multiple="multiple">
-                            <option v-for="(col, index) in Galaxy.list_extensions" :value="index">{{ col }}</option>
+                    <label v-if="elementsType == 'datasets'">
+                        {{ l("Hide original elements") }}:
+                        <input type="checkbox" v-model="hideOriginalDatasets" />
+                    </label>
+                    <label v-if="elementsType == 'raw'">
+                        {{ l("Type") }}:
+                        <select2 id="extension-selector" name="extension" style="width: 120px" :value.sync="extension" v-if="extension">
+                            <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
                         </select2>
-                        -->
-                    </span>
-                    <span class="upload-footer-extension-info upload-icon-button fa fa-search"/>
-                    <span class="upload-footer-title">Genome (set all):</span>
-                </div>
-                <div class="clear">
-                    <input class="collection-name form-control pull-right" 
-                    :placeholder="namePlaceholder" v-model="collectionName" />
-                    <div class="collection-name-prompt pull-right">
+                    </label>
+                    <label v-if="elementsType == 'raw'">
+                        {{ l("Genome") }}:
+                        <select2 id="genome-selector" style="width: 120px" :value.sync="genome" v-if="genome">
+                            <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
+                        </select2>
+                    </label>
+                    <label>
                         {{ l("Name") }}:
-                    </div>
-                </div>
+                        <input class="collection-name" style="width: 200px" 
+                        :placeholder="namePlaceholder" v-model="collectionName" />
+                    </label>
             </div>
             <option-buttons-div>
                 <button @click="cancel" class="creator-cancel-btn btn" tabindex="-1">
@@ -194,6 +223,7 @@ import _l from "utils/localization";
 import HotTable from 'vue-handsontable-official';
 import Vue from "libs/vue";
 import Popover from "mvc/ui/ui-popover";
+import UploadUtils from "mvc/upload/upload-utils";
 
 const MAPPING_TARGETS = {
     list_identifiers: {
@@ -223,6 +253,240 @@ const MAPPING_TARGETS = {
         label: _l("FTP Path"),
         mode: "raw",
         help: _l("This should be the path to the target file to include relative to your FTP directory on the Galaxy server"),
+    }
+}
+
+const Rules = {
+    add_column_regex: {
+        display: (rule, colHeaders) => {
+          return `Add new column using ${rule.expression} applied to column ${colHeaders[rule.target_column]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnTarget = 0;
+                component.addColumnExpression = "";
+            } else {
+                component.addColumnTarget = rule.target_column;
+                component.expression = rule.expression;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addColumnTarget;
+            rule.expression = component.addColumnExpression;
+        },
+        apply: (rule, data, sources) => {
+          const regExp = RegExp(rule.expression);
+          const target = rule.target_column;
+          function newRow(row) {
+            const source = row[target];
+            const match = regExp.exec(source);
+            let newValue;
+            if(match.length == 0) {
+              //TODO: signal error with rule
+            } else if(match.length > 1) {
+              newValue = match[1];
+            } else {
+              newValue = match[0];
+            }
+            return row.concat([newValue]);
+          }
+          data = data.map(newRow);
+          return {data};
+        }
+    },
+    add_column_concatenate: {
+        display: (rule, colHeaders) => {
+          return `Concatenate column ${colHeaders[rule.target_column_0]} and column ${colHeaders[rule.target_column_1]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnConcatenateTarget0 = 0;
+                component.addColumnConcatenateTarget1 = 0;
+            } else {
+                component.addColumnConcatenateTarget0 = rule.target_column_0;
+                component.addColumnConcatenateTarget1 = rule.target_column_1;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column_0 = component.addColumnConcatenateTarget0;
+            rule.target_column_1 = component.addColumnConcatenateTarget1;
+        },
+         apply: (rule, data, sources) => {
+          const target0 = rule.target_column_0;
+          const target1 = rule.target_column_1;
+          function newRow(row) {     
+            const newRow = row.slice();
+            newRow.push(row[target0] + row[target1]);
+            return newRow;
+          }
+          data = data.map(newRow);
+          return {data};
+        }       
+    },
+    remove_columns: {
+        display: (rule, colHeaders) => {
+          return `Remove columns`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.removeColumnTargets = [];
+            } else {
+                component.removeColumnTargets = rule.target_columns;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_columns = component.removeColumnTargets;
+        },
+        apply: (rule, data, sources) => {
+          const targets = rule.target_columns;
+          function newRow(row) {
+            const newRow = []
+            for(let index in row) {
+              if(targets.indexOf(parseInt(index)) == -1) {
+                newRow.push(row[index]);
+              }
+            }
+            return newRow;
+          }
+          data = data.map(newRow);
+          return {data};
+        }
+    },
+    add_filter_regex: {
+        display: (rule, colHeaders) => {
+            return `Filter rows using ${rule.expression} on column ${colHeaders[rule.target_column]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addFilterRegexTarget = 0;
+                component.addFilterRegexExpression = "";
+            } else {                
+               component.addFilterRegexTarget = rule.target_column;
+               component.addFilterRegexExpression = rule.expression;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addFilterRegexTarget;
+            rule.expression = component.addFilterRegexExpression;
+        },
+        apply: (rule, data, sources) => {
+          const target = rule.target_column;
+          const regExp = RegExp(rule.expression);
+          const filterFunction = function(el, index) {
+              const row = data[index];
+              return regExp.exec(row[target]);
+          }
+          data = data.filter(filterFunction);
+          sources = sources.filter(filterFunction);
+          return {data, sources};
+        }
+    },
+    add_filter_empty: {
+        display: (rule, colHeaders) => {
+            return `Filter rows if no value for column ${colHeaders[rule.target_column]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addFilterEmptyTarget = 0;
+            } else {                
+               component.addFilterEmptyTarget = rule.target_column;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addFilterEmptyTarget;
+        },
+        apply: (rule, data, sources) => {
+          const target = rule.target_column;
+          const filterFunction = function(el, index) {
+              const row = data[index];
+              return row[target].length;
+          }
+          data = data.filter(filterFunction);
+          sources = sources.filter(filterFunction);
+          return {data, sources};
+        }
+    },
+    sort: {
+        display: (rule, colHeaders) => {
+            return `Sort on column ${colHeaders[rule.target_column]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addSortingTarget = 0;
+                component.addSortingNumeric = false;
+            } else {                
+               component.addSortingTarget = rule.target_column;
+               component.addSortingNumeric = rule.numeric;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addSortingTarget;
+            rule.numeric = component.addSortingNumeric;
+        },
+        apply: (rule, data, sources) => {
+          const target = rule.target_column;
+          const numeric = rule.numeric;
+          const sort = (a, b) => {
+            let aVal = a[target];
+            let bVal = b[target];
+            if(numeric) {
+              aVal = parseFloat(aVal);
+              bVal = parseFloat(bVal);
+            }
+            if(aVal < bVal) {
+              return -1;
+            } else if(bVal < aVal) {
+              return 1;
+            } else {
+              return 0;
+            }
+          }
+          data.sort(sort);
+          sources.sort(sort);
+          return {data, sources};
+        }
+    },
+    split_columns: {
+        display: (rule, colHeaders) => {
+            return `Duplicate each row and split up columns`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.splitColumnsTargets0 = [];
+                component.splitColumnsTargets1 = [];
+            } else {
+                component.splitColumnsTargets0 = rule.target_columns_0;
+                component.splitColumnsTargets1 = rule.target_columns_1;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_columns_0 = component.splitColumnsTargets0;
+            rule.target_columns_1 = component.splitColumnsTargets1;
+        },
+        apply: (rule, data, sources) => {
+            const targets0 = rule.target_columns_0;
+            const targets1 = rule.target_columns_1;
+
+            const splitRow = function(row) {
+                const newRow0 = [], newRow1 = [];
+                for(let index in row) {
+                    index = parseInt(index);
+                    if(targets0.indexOf(index) > -1) {
+                        newRow0.push(row[index]);
+                    } else if(targets1.indexOf(index) > -1) {
+                        newRow1.push(row[index]);
+                    } else {
+                        newRow0.push(row[index]);
+                        newRow1.push(row[index]);
+                    }
+                }
+                return [newRow0, newRow1];
+            }
+
+            data = flatMap(splitRow, data);
+            sources = flatMap((src) => [src, src], data);
+            return {data, sources};
+        }
     }
 }
 
@@ -268,7 +532,7 @@ const ColumnSelector = {
     template: `
         <div><label>
             {{ label }}
-            <select2 name="add_column" :value="target" @input="handleInput" :multiple="multiple">
+            <select2 :value="target" @input="handleInput" :multiple="multiple">
                 <option v-for="(col, index) in colHeaders" :value="index">{{ col }}</option>
             </select2>
         </label></div>
@@ -335,22 +599,16 @@ const RuleDisplay = {
         rule: {
            required: true,
            type: Object,
-        }
+        },
+        colHeaders: {
+            type: Array,
+            required: true
+        },
     },
     computed: { 
         title() {
-            const ruleType= this.rule.type;
-            if(this.rule.type == "add_column") {
-                return "Add Column";
-            } else if(ruleType == "remove_column") {
-                return "Remove Column";
-            } else if(ruleType == "add_filter") {
-                return "Filter Rows"
-            } else if(ruleType == "sort") {
-                return "Sort by Column";
-            } else {
-                return "Unknown rule encountered."
-            }
+            const ruleType = this.rule.type;
+            return Rules[ruleType].display(this.rule, this.colHeaders);
         }
     },
     methods: {
@@ -431,50 +689,38 @@ const IdentifierDisplay = {
     }
 }
 
+
 const RuleComponent = {
-    template: `    
-    <div class="ui-popover popover" style="display: block" v-show="show">
-        <div class="arrow"/>
-        <div class="popover-title">
-            <div class="popover-title-label">{{ title }}</div>
-            <div class="popover-close fa fa-times-circle" @click="close" />
-        </div>
-        <div class="popover-content">
-            <slot></slot>
-            <div class="buttons">
-               <button type="button" class="ui-button-default btn btn-default" @click="okay">Okay</button>
-               <button type="button" class="ui-button-default btn" @click="close">Close</button>
-            </div>
+    template: `
+    <div v-if="ruleType == displayRuleType">
+        <slot></slot>
+        <div class="buttons">
+           <button type="button" class="ui-button-default btn btn-default" @click="okay">Okay</button>
+           <button type="button" class="ui-button-default btn" @click="close">Close</button>
         </div>
     </div>`,
     props: {
-        'title': {
+        ruleType: {
             type: String,
             required: true,
         },
-        'show': {
-            type: Boolean,
-            required: false
+        displayRuleType: {
+            required: true,
+        },
+        builder: {
+
         },
     },
     methods: {
-      close() {
-          this.$emit('close');
-          this.$emit('update:show', false);
-      },
-      okay() {
-          this.$emit('okay');
-          this.close();
-      },
-    },
-    mounted: function () {
-      document.addEventListener("keydown", (e) => {
-        if (this.show && e.keyCode == 27) {
-          this.close();
-        }
-      });
+        close() {
+            this.builder.displayRuleType = null;
+        },
+        okay() {
+            this.builder.handleRuleSave(this.ruleType);
+            this.close();
+        },
     }
-};
+}
 
 const StateDiv = {
     template: `<div class="rule-collection-creator collection-creator flex-row-container"><slot></slot></div>`
@@ -482,6 +728,10 @@ const StateDiv = {
 
 const OptionButtonsDiv = {
     template: `<div class="actions clear vertically-spaced"><div class="main-options pull-right"><slot></slot></div></div>`
+}
+
+const flatMap = (f,xs) => {
+    return xs.reduce((acc,x) => acc.concat(f(x)), []);
 }
 
 export default {
@@ -500,18 +750,22 @@ export default {
         activeRule: null,
         addColumnTarget: 0,
         addColumnExpression: "",
-        addColumnShow: false,
-        removeColumnTarget: 0,
-        removeColumnShow: false,
-        addFilterShow: false,
-        addFilterType: "regex",
-        addFilterTarget: 0,
-        addFilterExpression: "",
-        addSortingShow: false,
+        addColumnConcatenateTarget0: 0,
+        addColumnConcatenateTarget1: 0,
+        removeColumnTargets: [],
+        addFilterRegexTarget: 0,
+        addFilterRegexExpression: "",
+        addFilterEmptyTarget: 0,
         addSortingTarget: 0,
         addSortingNumeric: false,
-        columnMappingShow: false,
+        splitColumnsTargets0: [],
+        splitColumnsTargets1: [],
         collectionName: "",
+        displayRuleType: null,
+        extensions: [],
+        extension: null,
+        genomes: [],
+        genome: null,
     };
   },
   props: {
@@ -574,61 +828,9 @@ export default {
 
       for(var rule of this.rules) {
         var ruleType = rule.type;
-        if(ruleType === "add_column") {
-          const regExp = RegExp(rule.expression);
-          const target = rule.target_column;
-          function newRow(row) {
-            const source = row[target];
-            const match = regExp.exec(source);
-            let newValue;
-            if(match.length == 0) {
-              //TODO: signal error with rule
-            } else if(match.length > 1) {
-              newValue = match[1];
-            } else {
-              newValue = match[0];
-            }
-            return row.concat([newValue]);
-          }
-          data = data.map(newRow);
-        } else if(ruleType == "remove_column") {
-          const target = rule.target_column;
-          function newRow(row) {     
-            row.splice(target, 1);
-            return row;
-          }
-          data = data.map(newRow);
-        } else if(ruleType == "add_filter") {
-          const target = rule.target_column;
-          const regExp = RegExp(rule.expression);
-          // TODO: dispatch on filter type...
-          filterFunction = function(el, index) {
-              const row = data[index];
-              return regExp.exec(row[target]);
-          }
-          data = data.filter(filterFunction);
-          sources = sources.filter(filterFunction)
-        } else if(ruleType == "sort") {
-          const target = rule.target_column;
-          const numeric = rule.numeric;
-          const sort = (a, b) => {
-            let aVal = a[target];
-            let bVal = b[target];
-            if(numeric) {
-              aVal = parseFloat(aVal);
-              bVal = parseFloat(bVal);
-            }
-            if(aVal < bVal) {
-              return -1;
-            } else if(bVal < aVal) {
-              return 1;
-            } else {
-              return 0;
-            }
-          }
-          data.sort(sort);
-          sources.sort(sort);
-        }
+        const res = Rules[ruleType].apply(rule, data, sources);
+        data = res.data || data;
+        sources = res.sources || sources;
       }
       return {"data": data, "sources": sources};
     },
@@ -660,13 +862,13 @@ export default {
     }
   },
   methods: {
-    l(str) {
+    l(str) {  // _l conflicts private methods of Vue internals, expose as l instead
         return _l(str);
     },
     cancel() {
         this.oncancel();
     },
-    mapping_targets() {
+    mappingTargets() {
       return MAPPING_TARGETS;
     },
     resetRules() {
@@ -676,81 +878,20 @@ export default {
       this.errorMessage = '';
       this.collectionName = '';
     },
-    addColumnNew() {
-      this.addColumnTarget = 0;
-      this.addColumnExpression = "";
+    addNewRule(ruleType) {
+      Rules[ruleType].init(this);
+      this.displayRuleType = ruleType;
       this.activeRule = null;
-      this.addColumnShow = true;
     },
-    addFilterNew() {
-      this.addFilterTarget = 0;
-      this.addFilterExpression = "";
-      this.activeRule = null;
-      this.addFilterShow = true;
-    },
-    addSortingNew() {
-      this.addSortingTarget = 0;
-      this.addSortingShow = true;
-      this.addSortingNumeric = false;
-    },
-    removeColumnNew() {
-       this.removeColumnTarget = 0;
-       this.activeRule = null;
-       this.removeColumnShow = true;
-    },
-    handleAddColumn() {
+    handleRuleSave(ruleType) {
       const rule = this.activeRule;
       if(rule) {
-        rule.target_column = this.addColumnTarget;
-        rule.expression = this.addColumnExpression;
+        Rules[ruleType].save(this, rule);
       } else {
-        this.rules.push({
-          "type": "add_column",
-          "target_column": this.addColumnTarget,
-          "expression": this.addColumnExpression,
-        });
+        const rule = {"type": ruleType};
+        Rules[ruleType].save(this, rule);
+        this.rules.push(rule);
       }
-    },
-    handleSorting() {
-      const rule = this.activeRule;
-      const numeric = this.addSortingNumeric;
-      const target = this.addSortingTarget;
-      if(rule) {
-        rule.target_column = target;
-        rule.numeric = numeric;
-      } else {
-        this.rules.push({
-          "type": "sort",
-          "numeric": numeric,
-          "target_column": target,
-        });
-      }
-    },
-    handleRemoveColumn() {
-      const rule = this.activeRule;
-      if(rule) {
-        rule.target_column = this.removeColumnTarget;
-      } else {
-        this.rules.push({
-          "type": "remove_column",
-          "target_column": this.removeColumnTarget,
-        });
-      }    
-    },
-    handleAddFilter() {
-      const rule = this.activeRule;
-      if(rule) {
-        rule.target_column = this.addFilterTarget;
-        rule.filter_type = this.addFilterType;
-        rule.expression = this.addFilterExpression;
-      } else {
-        this.rules.push({
-          "type": "add_filter",
-          "target_column": this.addFilterTarget,
-          "expression": this.addFilterExpression,
-          "filter_type": this.addFilterType,
-        });
-      }    
     },
     handleColumnMapping() {
 
@@ -761,23 +902,8 @@ export default {
     editRule(rule) {
        const ruleType = rule.type;
        this.activeRule = rule;
-       if(ruleType == "add_column") {
-           this.addColumnTarget = rule.target_column;
-           this.addColumnExpression = rule.expression;
-           this.addColumnShow = true;
-       } else if (ruleType == "remove_column") {
-           this.removeColumnText = rule.target_column;
-           this.removeColumnShow = true;
-       } else if(ruleType == "add_filter") {
-           this.addFilterTarget = rule.target_column;
-           this.addFilterExpression = rule.expression;
-           this.addFilterType = rule.filter_type;
-           this.addFilterShow = true;
-       } else if(ruleType == "sort") {
-           this.addSortingTarget = rule.target_column;
-           this.addSortingNumeric = rule.numeric;
-           this.addSortingShow = true;
-       }
+       Rules[ruleType].init(this, rule);
+       this.displayRuleType = ruleType;
     },
     removeRule(index) {
         this.rules.splice(index, 1);
@@ -912,7 +1038,6 @@ export default {
 
         return elements;
     },
-    // TODO: refactor next two methods with for overlap via a visitor pattern.
     creationElementsFromDatasets() {
         const sources = this.hotData["sources"];
         const data = this.hotData["data"];
@@ -945,6 +1070,10 @@ export default {
         );
     }
   },
+  created() {
+      UploadUtils.getUploadDatatypes((extensions) => {this.extensions = extensions; this.extension = "auto"}, false, UploadUtils.AUTO_EXTENSION);
+      UploadUtils.getUploadGenomes((genomes) => {this.genomes = genomes; this.genome = "?";}, "?");
+  },
   components: {
     HotTable,
     RuleComponent,
@@ -955,6 +1084,7 @@ export default {
     RegularExpressionInput,
     StateDiv,
     OptionButtonsDiv,
+    Select2,
   }
 }
 </script>
