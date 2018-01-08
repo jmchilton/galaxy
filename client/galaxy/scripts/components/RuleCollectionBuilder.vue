@@ -497,21 +497,18 @@ export default {
         titleReset: _l("Undo all reordering and discards"),
         titleNumericSort: _l("By default columns will be sorted lexiographically, check this option if the columns are numeric values and should be sorted as numbers."),
         namePlaceholder: _l("Enter a name for your new collection"),
+        activeRule: null,
         addColumnTarget: 0,
         addColumnExpression: "",
         addColumnShow: false,
-        addColumnActiveRule: null,
         removeColumnTarget: 0,
         removeColumnShow: false,
-        removeColumnActiveRule: null,
         addFilterShow: false,
         addFilterType: "regex",
         addFilterTarget: 0,
         addFilterExpression: "",
-        addFilterActiveRule: null,
         addSortingShow: false,
         addSortingTarget: 0,
-        addSortingActiveRule: null,
         addSortingNumeric: false,
         columnMappingShow: false,
         collectionName: "",
@@ -682,13 +679,13 @@ export default {
     addColumnNew() {
       this.addColumnTarget = 0;
       this.addColumnExpression = "";
-      this.addColumnActiveRule = null;
+      this.activeRule = null;
       this.addColumnShow = true;
     },
     addFilterNew() {
       this.addFilterTarget = 0;
       this.addFilterExpression = "";
-      this.addFilterActiveRule = null;
+      this.activeRule = null;
       this.addFilterShow = true;
     },
     addSortingNew() {
@@ -698,11 +695,11 @@ export default {
     },
     removeColumnNew() {
        this.removeColumnTarget = 0;
-       this.removeColumnActiveRule = null;
+       this.activeRule = null;
        this.removeColumnShow = true;
     },
     handleAddColumn() {
-      const rule = this.addColumnActiveRule;
+      const rule = this.activeRule;
       if(rule) {
         rule.target_column = this.addColumnTarget;
         rule.expression = this.addColumnExpression;
@@ -715,7 +712,7 @@ export default {
       }
     },
     handleSorting() {
-      const rule = this.addSortingActiveRule;
+      const rule = this.activeRule;
       const numeric = this.addSortingNumeric;
       const target = this.addSortingTarget;
       if(rule) {
@@ -730,7 +727,7 @@ export default {
       }
     },
     handleRemoveColumn() {
-      const rule = this.removeColumnActiveRule;
+      const rule = this.activeRule;
       if(rule) {
         rule.target_column = this.removeColumnTarget;
       } else {
@@ -741,7 +738,7 @@ export default {
       }    
     },
     handleAddFilter() {
-      const rule = this.addFilterActiveRule;
+      const rule = this.activeRule;
       if(rule) {
         rule.target_column = this.addFilterTarget;
         rule.filter_type = this.addFilterType;
@@ -763,26 +760,23 @@ export default {
     },
     editRule(rule) {
        const ruleType = rule.type;
+       this.activeRule = rule;
        if(ruleType == "add_column") {
            this.addColumnTarget = rule.target_column;
            this.addColumnExpression = rule.expression;
            this.addColumnShow = true;
-           this.addColumnActiveRule = rule;
        } else if (ruleType == "remove_column") {
            this.removeColumnText = rule.target_column;
            this.removeColumnShow = true;
-           this.removeColumnActiveRule = rule;
        } else if(ruleType == "add_filter") {
            this.addFilterTarget = rule.target_column;
            this.addFilterExpression = rule.expression;
            this.addFilterType = rule.filter_type;
            this.addFilterShow = true;
-           this.addFilterActiveRule = rule;
        } else if(ruleType == "sort") {
            this.addSortingTarget = rule.target_column;
            this.addSortingNumeric = rule.numeric;
            this.addSortingShow = true;
-           this.addSortingActiveRule = rule;        
        }
     },
     removeRule(index) {
