@@ -11,6 +11,13 @@
                         @okay="handleRemoveColumn">
             <column-selector :target.sync="removeColumnTarget" :col-headers="colHeaders" />
         </rule-component>
+        <!--
+                        <option value="regex">Matches Regular Expression</option>
+                        <option value="empty">Is Empty</option>
+                        <option value="matches">Matches Value</option>
+                        <option value="contains">Contains Value</option>
+                        <option value="compare">Compare to Number</option>
+        -->
         <rule-component title="Add Filter"
                         :show.sync="addFilterShow"
                         @okay="handleAddFilter">
@@ -45,6 +52,17 @@
                     </li>
                   </ul>
                 </div>
+            </div>
+        </rule-component>
+        <rule-component title="Add Sort Rule"
+                        :show.sync="addSortingShow"
+                        @okay="handleSorting">
+            <div>
+                <column-selector :target.sync="addSortingTarget" :col-headers="colHeaders" />
+                <label :title="titleNumericSort">
+                    <input type="checkbox" v-model="addSortingNumeric" />
+                    {{ l("Numeric sorting.") }}
+                </label>
             </div>
         </rule-component>
         <div class="header flex-row no-flex">Describe rules for building up a collection.</div>
@@ -102,6 +120,7 @@
                               </button>
                               <ul class="dropdown-menu" role="menu">
                                 <li><a @click="addColumnNew">Add Column</a></li>
+                                <li><a @click="addSortingNew">Add Sorting</a></li>
                                 <li><a @click="removeColumnNew">Remove Column</a></li>
                                 <li><a @click="addFilterNew">Add Row Filter</a></li>
                                 <li><a @click="columnMappingShow = true">Add / Modify Column Mappings</a></li>
@@ -117,13 +136,14 @@
                 <div class="clear">
                     <label class="setting-prompt pull-right">
                         {{ l("Hide original elements") }}?
-                        <input class="hide-originals pull-right" type="checkbox" />
-                    </label>
+f                    </label>
                     <span class="upload-footer-title">Type (set all):</span>
                     <span class="upload-footer-extension">
+                        <!--
                         <select2 name="extension" :multiple="multiple">
                             <option v-for="(col, index) in Galaxy.list_extensions" :value="index">{{ col }}</option>
                         </select2>
+                        -->
                     </span>
                     <span class="upload-footer-extension-info upload-icon-button fa fa-search"/>
                     <span class="upload-footer-title">Genome (set all):</span>
@@ -140,7 +160,7 @@
                 <button @click="cancel" class="creator-cancel-btn btn" tabindex="-1">
                     {{ l("Cancel") }}
                 </button>
-                <button @click="resetRules" :title="resetTitle" class="creator-reset-btn btn">
+                <button @click="resetRules" :title="titleReset" class="creator-reset-btn btn">
                     {{ l("Reset") }}
                 </button>
                 <button @click="createCollection" class="create-collection btn btn-primary" v-bind:class="{ disabled: !validInput }">
@@ -326,6 +346,8 @@ const RuleDisplay = {
                 return "Remove Column";
             } else if(ruleType == "add_filter") {
                 return "Filter Rows"
+            } else if(ruleType == "sort") {
+                return "Sort by Column";
             } else {
                 return "Unknown rule encountered."
             }
@@ -472,8 +494,8 @@ export default {
         state: 'build',  // 'build', 'error', 'wait',
         errorMessage: '',
         waitingJobState: 'new',
-        resetTitle: _l("Undo all reordering and discards"),
-        clearTitle: _l("De-select all selected datasets"),
+        titleReset: _l("Undo all reordering and discards"),
+        titleNumericSort: _l("By default columns will be sorted lexiographically, check this option if the columns are numeric values and should be sorted as numbers."),
         namePlaceholder: _l("Enter a name for your new collection"),
         addColumnTarget: 0,
         addColumnExpression: "",
@@ -487,6 +509,10 @@ export default {
         addFilterTarget: 0,
         addFilterExpression: "",
         addFilterActiveRule: null,
+        addSortingShow: false,
+        addSortingTarget: 0,
+        addSortingActiveRule: null,
+        addSortingNumeric: false,
         columnMappingShow: false,
         collectionName: "",
     };
@@ -585,6 +611,26 @@ export default {
           }
           data = data.filter(filterFunction);
           sources = sources.filter(filterFunction)
+        } else if(ruleType == "sort") {
+          const target = rule.target_column;
+          const numeric = rule.numeric;
+          const sort = (a, b) => {
+            let aVal = a[target];
+            let bVal = b[target];
+            if(numeric) {
+              aVal = parseFloat(aVal);
+              bVal = parseFloat(bVal);
+            }
+            if(aVal < bVal) {
+              return -1;
+            } else if(bVal < aVal) {
+              return 1;
+            } else {
+              return 0;
+            }
+          }
+          data.sort(sort);
+          sources.sort(sort);
         }
       }
       return {"data": data, "sources": sources};
@@ -609,6 +655,10 @@ export default {
     },
     validInput() {
         let valid = this.collectionName.length > 0;
+        const mappingAsDict = this.mappingAsDict;
+        if(mappingAsDict.ftp_path && mapping.url) {
+          valid = false;
+        }
         return valid;
     }
   },
@@ -630,16 +680,21 @@ export default {
       this.collectionName = '';
     },
     addColumnNew() {
-       this.addColumnTarget = 0;
-       this.addColumnExpression = "";
-       this.addColumnActiveRule = null;
-       this.addColumnShow = true;
+      this.addColumnTarget = 0;
+      this.addColumnExpression = "";
+      this.addColumnActiveRule = null;
+      this.addColumnShow = true;
     },
     addFilterNew() {
-       this.addFilterTarget = 0;
-       this.addFilterExpression = "";
-       this.addFilterActiveRule = null;
-       this.addFilterShow = true;
+      this.addFilterTarget = 0;
+      this.addFilterExpression = "";
+      this.addFilterActiveRule = null;
+      this.addFilterShow = true;
+    },
+    addSortingNew() {
+      this.addSortingTarget = 0;
+      this.addSortingShow = true;
+      this.addSortingNumeric = false;
     },
     removeColumnNew() {
        this.removeColumnTarget = 0;
@@ -656,6 +711,21 @@ export default {
           "type": "add_column",
           "target_column": this.addColumnTarget,
           "expression": this.addColumnExpression,
+        });
+      }
+    },
+    handleSorting() {
+      const rule = this.addSortingActiveRule;
+      const numeric = this.addSortingNumeric;
+      const target = this.addSortingTarget;
+      if(rule) {
+        rule.target_column = target;
+        rule.numeric = numeric;
+      } else {
+        this.rules.push({
+          "type": "sort",
+          "numeric": numeric,
+          "target_column": target,
         });
       }
     },
@@ -708,6 +778,11 @@ export default {
            this.addFilterType = rule.filter_type;
            this.addFilterShow = true;
            this.addFilterActiveRule = rule;
+       } else if(ruleType == "sort") {
+           this.addSortingTarget = rule.target_column;
+           this.addSortingNumeric = rule.numeric;
+           this.addSortingShow = true;
+           this.addSortingActiveRule = rule;        
        }
     },
     removeRule(index) {
