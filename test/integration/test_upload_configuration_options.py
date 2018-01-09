@@ -185,10 +185,14 @@ class AdminsCanPasteFilePathsTestCase(BaseUploadContentConfigurationTestCase):
 
     def test_admin_path_paste_libraries(self):
         library = self.library_populator.new_private_library("pathpasteallowedlibraries")
-        payload, files = self.library_populator.create_dataset_request(library, upload_option="upload_paths", paths="%s/1.txt" % TEST_DATA_DIRECTORY)
+        path = "%s/1.txt" % TEST_DATA_DIRECTORY
+        assert os.path.exists(path)
+        payload, files = self.library_populator.create_dataset_request(library, upload_option="upload_paths", paths=path)
         response = self.library_populator.raw_library_contents_create(library["id"], payload, files=files)
         # Was 403 for non-admin above.
         assert response.status_code == 200
+        # Test regression where this was getting deleted in this mode.
+        assert os.path.exists(path)
 
     def test_admin_fetch(self):
         elements = [{"src": "path", "path": "%s/1.txt" % TEST_DATA_DIRECTORY}]
