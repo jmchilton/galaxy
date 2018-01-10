@@ -12,9 +12,6 @@
                 <div class="rule-column flex-column column" style="width: 30%; padding: 10px;">
                     <div class="column-header">
                         <div class="rules-container">
-                            <span class="title">
-                                {{ l("Rules") }}
-                            </span>
                             <rule-component rule-type="sort"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
@@ -52,16 +49,30 @@
                                 <column-selector :target.sync="splitColumnsTargets0" :col-headers="colHeaders" :multiple="true" />
                                 <column-selector :target.sync="splitColumnsTargets1" :col-headers="colHeaders" :multiple="true" />
                             </rule-component>
+                            <rule-component rule-type="swap_columns"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="swapColumnsTarget0" :col-headers="colHeaders" />
+                                <column-selector :target.sync="swapColumnsTarget1" :col-headers="colHeaders" />
+                            </rule-component>
                             <rule-component rule-type="add_filter_regex"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
                                 <column-selector :target.sync="addFilterRegexTarget" :col-headers="colHeaders" />
                                 <regular-expression-input :target.sync="addFilterRegexExpression" />
+                                <label :title="titleInvertFilterRegex">
+                                    <input type="checkbox" v-model="addFilterRegexInvert" />
+                                    {{ l("Invert filter.") }}
+                                </label>
                             </rule-component>
                             <rule-component rule-type="add_filter_empty"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
                                 <column-selector :target.sync="addFilterEmptyTarget" :col-headers="colHeaders" />
+                                <label :title="titleInvertFilterInvert">
+                                    <input type="checkbox" v-model="addFilterEmptyInvert" />
+                                    {{ l("Invert filter.") }}
+                                </label>
                             </rule-component>
                             <div v-if="displayRuleType == 'mapping'">
                                 <div class="map"
@@ -88,6 +99,9 @@
                                 </div>
                             </div>
                             <div class="rule-summary" v-if="displayRuleType == null">
+                                <span class="title">
+                                    {{ l("Rules") }}
+                                </span>
                                 <ol class="rules">
                                     <!-- Example at the end of https://vuejs.org/v2/guide/list.html -->
                                     <rule-display
@@ -117,6 +131,7 @@
                                     <li><a @click="addNewRule('sort')">Add Sorting</a></li>
                                     <li><a @click="addNewRule('remove_columns')">Remove Columns</a></li>
                                     <li><a @click="addNewRule('split_columns')">Split Columns</a></li>
+                                    <li><a @click="addNewRule('swap_columns')">Swap Columns</a></li>
                                     <li><a @click="displayRuleType = 'mapping'">Add / Modify Column Mappings</a></li>
                                   </ul>
                                 </div>
@@ -168,15 +183,15 @@
                     {{ l("Hide original elements") }}:
                     <input type="checkbox" v-model="hideSourceItems" />
                 </label>
-                <label class="rule-option" v-if="elementsType !== 'datasets'">
+                <label class="rule-option" v-if="elementsType !== 'datasets' && !mappingAsDict.file_type">
                     {{ l("Type") }}:
-                    <select2 id="extension-selector" name="extension" style="width: 120px" :value.sync="extension" v-if="extension">
+                    <select2 id="extension-selector" name="extension" style="width: 120px" v-model="extension" v-if="extension">
                         <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
                     </select2>
                 </label>
-                <label class="rule-option" v-if="elementsType !== 'datasets'">
+                <label class="rule-option" v-if="elementsType !== 'datasets' && !mappingAsDict.dbkey">
                     {{ l("Genome") }}:
-                    <select2 id="genome-selector" style="width: 120px" :value.sync="genome" v-if="genome">
+                    <select2 id="genome-selector" style="width: 120px" v-model="genome" v-if="genome">
                         <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
                     </select2>
                 </label>
@@ -229,7 +244,7 @@ import UploadUtils from "mvc/upload/upload-utils";
 const MAPPING_TARGETS = {
     list_identifiers: {
         multiple: true,
-        label: _l("List Identifiers"),
+        label: _l("List Identifier(s)"),
         help: _l("This should be a short description of the replicate, sample name, condition, etc... that describes each level of the list structure.")
     },
     paired_identifier: {
@@ -342,7 +357,7 @@ const Rules = {
             rule.target_column_0 = component.addColumnConcatenateTarget0;
             rule.target_column_1 = component.addColumnConcatenateTarget1;
         },
-         apply: (rule, data, sources) => {
+        apply: (rule, data, sources) => {
           const target0 = rule.target_column_0;
           const target1 = rule.target_column_1;
           function newRow(row) {     
@@ -391,21 +406,25 @@ const Rules = {
             if(!rule) {
                 component.addFilterRegexTarget = 0;
                 component.addFilterRegexExpression = "";
+                component.addFilterRegexInvert = false;
             } else {                
                component.addFilterRegexTarget = rule.target_column;
                component.addFilterRegexExpression = rule.expression;
+               component.addFilterRegexInvert = rule.invert;               
             }
         },
         save: (component, rule) => {
             rule.target_column = component.addFilterRegexTarget;
             rule.expression = component.addFilterRegexExpression;
+            rule.invert = component.addFilterRegexInvert;
         },
         apply: (rule, data, sources) => {
           const target = rule.target_column;
+          const invert = rule.invert;
           const regExp = RegExp(rule.expression);
           const filterFunction = function(el, index) {
               const row = data[parseInt(index)];
-              return regExp.exec(row[target]);
+              return regExp.exec(row[target]) ? !invert : invert;
           }
           sources = sources.filter(filterFunction);
           data = data.filter(filterFunction);
@@ -419,18 +438,22 @@ const Rules = {
         init: (component, rule) => {
             if(!rule) {
                 component.addFilterEmptyTarget = 0;
-            } else {                
+                component.addFilterEmptyInvert = false;
+            } else {
                component.addFilterEmptyTarget = rule.target_column;
+               component.addFilterEmptyInvert = rule.invert;
             }
         },
         save: (component, rule) => {
             rule.target_column = component.addFilterEmptyTarget;
+            rule.invert = component.addFilterEmptyInvert;
         },
         apply: (rule, data, sources) => {
           const target = rule.target_column;
+          const invert = rule.invert;
           const filterFunction = function(el, index) {
               const row = data[parseInt(index)];
-              return row[target].length;
+              return row[target].length ? !invert : invert;
           }
           sources = sources.filter(filterFunction);
           data = data.filter(filterFunction);
@@ -475,6 +498,36 @@ const Rules = {
           data.sort(sort);
           sources.sort(sort);
           return {data, sources};
+        }
+    },
+    swap_columns: {
+        display: (rule, colHeaders) => {
+            return `Swap columns`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.swapColumnsTarget0 = 0;
+                component.swapColumnsTarget1 = 0;
+            } else {
+                component.swapColumnsTarget0 = rule.target_column_0;
+                component.swapColumnsTarget1 = rule.target_column_1;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column_0 = component.swapColumnsTarget0;
+            rule.target_column_1 = component.swapColumnsTarget1;
+        },
+        apply: (rule, data, sources) => {
+          const target0 = rule.target_column_0;
+          const target1 = rule.target_column_1;
+          function newRow(row) {     
+            const newRow = row.slice();
+            newRow[target0] = row[target1];
+            newRow[target1] = row[target0];
+            return newRow;
+          }
+          data = data.map(newRow);
+          return {data};
         }
     },
     split_columns: {
@@ -540,6 +593,7 @@ const Select2 = {
       .trigger('change')
       // emit event on change.
       .on('change', function (event) {
+        console.log(event.val);
         vm.$emit('input', event.val);
       })
   },
@@ -742,7 +796,7 @@ const RuleComponent = {
     template: `
     <div v-if="ruleType == displayRuleType">
         <slot></slot>
-        <div class="buttons">
+        <div class="buttons" style="margin: 5px; height: 25px;">
            <button type="button" class="ui-button-default btn btn-default" @click="okay">Okay</button>
            <button type="button" class="ui-button-default btn" @click="close">Close</button>
         </div>
@@ -788,13 +842,11 @@ export default {
     if(this.elementsType == "ftp") {
       mapping = [{"type": "ftp_path", "columns": [0]}];
     } else {
+      // TODO: incorrect to ease testing, fix.    
       mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}];
     }
     return {
         rules: [],
-        // TODO: incorrect to ease testing, fix.
-        //mapping: [{"type": "list_identifiers", "columns": [1, 2]}],
-        //mapping: [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}]
         mapping: mapping,
         state: 'build',  // 'build', 'error', 'wait',
         errorMessage: '',
@@ -802,6 +854,8 @@ export default {
         waitingJobState: 'new',
         titleReset: _l("Undo all reordering and discards"),
         titleNumericSort: _l("By default columns will be sorted lexiographically, check this option if the columns are numeric values and should be sorted as numbers."),
+        titleInvertFilterRegex: _l("Remove rows not matching the specified regular expression at specified column."),
+        titleInvertFilterEmpty: _l("Remove rows that have non-empty values at specified column."),
         namePlaceholder: _l("Enter a name for your new collection"),
         activeRule: null,
         addColumnRegexTarget: 0,
@@ -812,11 +866,15 @@ export default {
         removeColumnTargets: [],
         addFilterRegexTarget: 0,
         addFilterRegexExpression: "",
+        addFilterRegexInvert: false,
         addFilterEmptyTarget: 0,
+        addFilterEmptyInvert: false,
         addSortingTarget: 0,
         addSortingNumeric: false,
         splitColumnsTargets0: [],
         splitColumnsTargets1: [],
+        swapColumnsTarget0: 0,
+        swapColumnsTarget1: 0,
         collectionName: "",
         displayRuleType: null,
         extensions: [],
@@ -1001,7 +1059,6 @@ export default {
     waitOnJob(response) {
         const jobId = response.data.jobs[0].id;
         const handleJobShow = (jobResponse) => {
-            console.log(jobResponse);
             const state = jobResponse.data.state;
             this.waitingJobState = state;
             if(state === "ok") {
@@ -1066,7 +1123,6 @@ export default {
             identifierColumns = mappingAsDict.list_identifiers.columns.slice();        
         }
         if(this.mappingAsDict.paired_identifier) {
-            console.log(this.mappingAsDict.paired_identifier);
             identifierColumns.push(this.mappingAsDict.paired_identifier.columns[0]);
         }
         return identifierColumns;
@@ -1166,6 +1222,20 @@ export default {
                     res["ftp_path"] = ftpPath;
                     res["src"] = "ftp_path";
                 }
+                if(mappingAsDict.dbkey) {
+                    const dbkeyColumn = mappingAsDict.dbkey.columns[0];
+                    const dbkey = data[dataIndex][dbkeyColumn];
+                    res["dbkey"] = dbkey;
+                } else if(this.genome) {
+                    res["dbkey"] = this.genome;
+                }
+                if(mappingAsDict.file_type) {
+                    const fileTypeColumn = mappingAsDict.file_type.columns[0];
+                    const fileType = data[dataIndex][fileTypeColumn];
+                    res["ext"] = file_type;
+                } else if(this.extension) {
+                    res["ext"] = this.extension;
+                }
                 return res;
             },
             (identifier) => {
@@ -1214,7 +1284,7 @@ export default {
     padding-left: 20px;
   }
   .rules {
-    height: 360px;
+    height: 335px;
   }
   .rules li {
     list-style-type: circle;
