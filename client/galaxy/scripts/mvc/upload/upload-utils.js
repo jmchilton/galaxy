@@ -63,10 +63,22 @@ function getUploadGenomes(callback, defaultGenome) {
     });
 }
 
+
+function getRemoteFiles(success, error) {
+    return $.ajax({
+        url: `${Galaxy.root}api/remote_files`,
+        method: "GET",
+        success: success,
+        error: error,
+    });
+}
+
+
 export default {
 	AUTO_EXTENSION,
 	DEFAULT_GENOME,
 	DEFAULT_EXTENSION,
+    getRemoteFiles,
 	getUploadDatatypes,
 	getUploadGenomes,
 };

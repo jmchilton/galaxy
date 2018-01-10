@@ -1,6 +1,7 @@
 import _l from "utils/localization";
 import Ui from "mvc/ui/ui-misc";
 import Select from "mvc/ui/ui-select";
+import UploadUtils from "mvc/upload/upload-utils";
 import axios from "axios";
 
 
@@ -25,13 +26,14 @@ export default Backbone.View.extend({
             }
         );
         const selectionTypeOptions = [
-            {"id": "paste", text: "Paste Tabular Data"},
-            {"id": "dataset", text: "Select History Dataset"},
+            {"id": "paste", text: "Pasted Table"},
+            {"id": "dataset", text: "History Dataset"},
+            {"id": "ftp", text: "FTP Directory"},
         ]
         this.selectionType = "paste";
         this.selectionTypeView = new Select.View({
             css: "upload-footer-selection",
-            container: this.$(".upload-footer-select-type"),
+            container: this.$(".rule-select-type"),
             data: selectionTypeOptions,
             value: this.selectionType,
             onchange: (value) => {
@@ -44,53 +46,60 @@ export default Backbone.View.extend({
         this._renderSelectedType();
     },
 
-    _renderSelectedType() {
+    _renderSelectedType: function() {
         const selectionType = this.selectionType;
         if(selectionType == "dataset") {
-            this.selectedDatasetId = null;
-            // Render dataset selector...
-            this.$(".upload-top-info").text(_l("Select Tabular Dataset from History"));
+            if(!this.datasetSelectorView) {
+                this.selectedDatasetId = null;
+                // Render dataset selector...
+                this.$(".upload-top-info").text(_l("Select Tabular Dataset from History"));
 
-            const history = parent.Galaxy && parent.Galaxy.currHistoryPanel && parent.Galaxy.currHistoryPanel.model;
-            const historyContentModels = history.contents.models;
-            const options = [];
-            for(let historyContentModel of historyContentModels) {
-                const attr = historyContentModel.attributes;
-                if(attr.history_content_type !== "dataset") {
-                    continue;
+                const history = parent.Galaxy && parent.Galaxy.currHistoryPanel && parent.Galaxy.currHistoryPanel.model;
+                const historyContentModels = history.contents.models;
+                const options = [];
+                for(let historyContentModel of historyContentModels) {
+                    const attr = historyContentModel.attributes;
+                    if(attr.history_content_type !== "dataset") {
+                        continue;
+                    }
+                    options.push({"id": attr.id, "text": `${attr.hid}: ${_.escape(attr.name)}`});
                 }
-                options.push({"id": attr.id, "text": `${attr.hid}: ${_.escape(attr.name)}`});
+                this.datasetSelectorView = new Select.View({
+                    container: this.$(".dataset-selector"),
+                    data: options,
+                    placeholder: _l("Select a dataset"),
+                    onchange: (val) => { this._onDataset(val); },
+                });
+            } else {
+                this.datasetSelectorView.value(null);
             }
-            this.$(".upload-box").html(
-                `<span class="dataset-selector"/>`
-            );
-            this.selectionTypeView = new Select.View({
-                container: this.$(".dataset-selector"),
-                data: options,
-                onchange: (value) => {
-                    this.selectedDatasetId = value;
+        } else if(selectionType == "ftp") {
+            UploadUtils.getRemoteFiles(
+                (ftp_files) => {
+                    this._setPreview(ftp_files.map((file) => file["path"]).join("\n"));
                 }
-            });
-        } else {
-            // Render paste box...
-            this.$(".upload-top-info").text(_l("Paste Tabular Data Below"));
-            // '<div class="upload-text" style="width: 800px; top: 26px; display: block; height: 100%">' +
-            // '</div>'
-            this.$(".upload-box").html(`<textarea class="upload-text-content form-control" style="height: 100%"></textarea>`);
+            );
         }
+        this._updateScreen();
+    },
+
+    _onDataset: function(selectedDatasetId) {
+        this.selectedDatasetId = selectedDatasetId;
+        if(!selectedDatasetId) {
+            this._setPreview("");
+            return;
+        }
+        axios
+            .get(`${Galaxy.root}api/histories/${Galaxy.currHistoryPanel.model.id}/contents/${selectedDatasetId}/display`)
+            .then((response) => { this._setPreview(response.data); })
+            .catch((error) => console.log(error));
     },
 
     _eventBuild: function() {
-        const selectionType = this.selectionType;
-        if(selectionType == "dataset") {
-            axios
-                .get(`${Galaxy.root}api/histories/${Galaxy.currHistoryPanel.model.id}/contents/${this.selectedDatasetId}/display`)
-                .then((response) => this._buildSelection(response.data))
-                .catch((error) => console.log(error));
-        } else {
-            const selection = this.$(".upload-text-content").val();
-            this._buildSelection(selection);
-        }
+        // TODO: pass extra information on FTP...
+        // const selectionType = this.selectionType;
+        const selection = this.$(".upload-rule-source-content").val();
+        this._buildSelection(selection);
     },
 
     _buildSelection: function(selection) {
@@ -98,19 +107,47 @@ export default Backbone.View.extend({
         this.app.modal.hide();
     },
 
-    /** Template */
+    _setPreview: function(content) {
+        $(".upload-rule-source-content").val(content);
+        this._updateScreen();
+    },
+
+    _updateScreen: function() {
+        const selectionType = this.selectionType;
+        const selection = this.$(".upload-rule-source-content").val();
+        this.btnBuild[selection ? "enable" : "disable"]();
+        this.$("#upload-rule-dataset-option")[selectionType == "dataset" ? "show" : "hide"]();
+        this.$(".upload-rule-source-content").attr("disabled", selectionType !== "paste");
+    },
+
     _template: function() {
         return `
             <div class="upload-view-default">
                 <div class="upload-top">
-                    <h6 class="upload-top-info"></h6>
+                    <h6 class="upload-top-info">
+                        Tabular source data to extract collection files and metadata from
+                    </h6>
                 </div>
-                <div class="upload-box">
+                <div class="upload-box" style="height: 335px;">
+                    <span style="width: 25%; display: inline; height: 100%" class="pull-left">
+                        <div class="upload-rule-option">
+                            <div class="upload-rule-option-title">${_l("Load tabular data from")}:</div>
+                            <div class="rule-select-type" />
+                        </div>
+                        <div id="upload-rule-dataset-option" class="upload-rule-option">
+                            <div class="upload-rule-option-title">${_l("Select dataset to load")}:</div>
+                            <div class="dataset-selector" />
+                        </div>
+                    </span>
+                    <span style="display: inline; float: right; width: 75%; height: 300px">
+                    <textarea class="upload-rule-source-content form-control" style="height: 100%"></textarea>
+                    </span>
                 </div>
+                <div class="clear" />
+                <!--
                 <div class="upload-footer">
-                    <span class="upload-footer-title">${_l("Initialize Rules Against")}</span>
-                    <span class="upload-footer-select-type"/>
                 </div>
+                -->
                 <div class="upload-buttons"/>
                 </div>
         `;
