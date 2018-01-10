@@ -51,9 +51,6 @@ export default Backbone.View.extend({
         if(selectionType == "dataset") {
             if(!this.datasetSelectorView) {
                 this.selectedDatasetId = null;
-                // Render dataset selector...
-                this.$(".upload-top-info").text(_l("Select Tabular Dataset from History"));
-
                 const history = parent.Galaxy && parent.Galaxy.currHistoryPanel && parent.Galaxy.currHistoryPanel.model;
                 const historyContentModels = history.contents.models;
                 const options = [];
@@ -102,7 +99,14 @@ export default Backbone.View.extend({
         this._buildSelection(selection);
     },
 
-    _buildSelection: function(selection) {
+    _buildSelection: function(content) {
+        const selectionType = this.selectionType;
+        const selection = {"content": content};
+        if(selectionType == "dataset" || selectionType == "paste") {
+            selection.selectionType = "raw";
+        } else if(selectionType == "ftp") {
+            selection.selectionType = "ftp";
+        }
         Galaxy.currHistoryPanel.buildCollection("rules", selection, true);
         this.app.modal.hide();
     },
@@ -115,7 +119,7 @@ export default Backbone.View.extend({
     _updateScreen: function() {
         const selectionType = this.selectionType;
         const selection = this.$(".upload-rule-source-content").val();
-        this.btnBuild[selection ? "enable" : "disable"]();
+        this.btnBuild[(selection || selectionType == "paste") ? "enable" : "disable"]();
         this.$("#upload-rule-dataset-option")[selectionType == "dataset" ? "show" : "hide"]();
         this.$(".upload-rule-source-content").attr("disabled", selectionType !== "paste");
     },

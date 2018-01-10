@@ -4,40 +4,17 @@
                         <option value="add_filter_matches">Matches Value</option>
                         <option value="add_filter_contains">Contains Value</option>
                         <option value="add_filter_compare">Compare to Number</option>
-        -->
-        <!-- 
-                        <option value="add_column_basename">Basename</option>
                         <option value="add_column_prefix">Prefix / Suffix</option>
         -->
         <div class="header flex-row no-flex">Describe rules for building up a collection.</div>
         <div class="middle flex-row flex-row-container">
             <div class="column-headers vertically-spaced flex-column-container">
-                <div class="table-column flex-column column">
+                <div class="rule-column flex-column column" style="width: 30%; padding: 10px;">
                     <div class="column-header">
-                        <div class="column-title">
-                            <span class="title">
-                                {{ l("Build Collection from Table") }}
-                            </span>
-                            <!-- <span class="title-info"></span> -->
-                        </div>
-                        <div class="table-container pull-left">
-                            <hot-table id="test-hot"
-                                       :data="hotData['data']"
-                                       :colHeaders="true"
-                                       stretchH="all">
-                            </hot-table>
-                        </div>
-                    </div>
-                </div>
-                <div class="rule-column flex-column column">
-                    <div class="column-header">
-                        <div class="column-title">
+                        <div class="rules-container">
                             <span class="title">
                                 {{ l("Rules") }}
                             </span>
-                            <!-- <span class="title-info"></span> -->
-                        </div>
-                        <div class="rule-container pull-left">
                             <rule-component rule-type="sort"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
@@ -47,10 +24,15 @@
                                     {{ l("Numeric sorting.") }}
                                 </label>
                             </rule-component>
+                            <rule-component rule-type="add_column_basename"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addColumnBasenameTarget" :col-headers="colHeaders" />
+                            </rule-component>
                             <rule-component rule-type="add_column_regex"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
-                                <column-selector :target.sync="addColumnTarget" :col-headers="colHeaders" />
+                                <column-selector :target.sync="addColumnRegexTarget" :col-headers="colHeaders" />
                                 <regular-expression-input :target.sync="addColumnExpression" />
                             </rule-component>
                             <rule-component rule-type="add_column_concatenate"
@@ -86,7 +68,8 @@
                                      v-for="map in mapping"
                                      v-bind:index="map.index"
                                      v-bind:key="map.type">
-                                     <column-selector :label="mappingTargets()[map.type].label" :target.sync="map.columns" :col-headers="colHeaders" :multiple="mappingTargets()[map.type].multiple" />
+                                     <column-selector :label="mappingTargets()[map.type].label" :target.sync="map.columns" :col-headers="colHeaders" :multiple="mappingTargets()[map.type].multiple"
+                                     :value-as-list="true" />
                                 </div>
                                 <div class="buttons">
                                     <div class="btn-group" v-if="unmappedTargets.length > 0">
@@ -126,7 +109,7 @@
                                         One or more column mappings must be specified. These are required to specify how to build collections and datasets from rows and columns of the table. <a href="#" @click="displayRuleType = 'mapping'">Click here</a> to manage column mappings.
                                     </div>
                                 </ol>
-                                <div class="btn-group">
+                                <div class="btn-group dropup">
                                   <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
                                     <span class="fa fa-plus"></span> {{ "Rules" }}<span class="caret"></span>
                                   </button>
@@ -137,20 +120,21 @@
                                     <li><a @click="displayRuleType = 'mapping'">Add / Modify Column Mappings</a></li>
                                   </ul>
                                 </div>
-                                <div class="btn-group">
+                                <div class="btn-group dropup">
                                     <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
-                                        <span class="fa fa-plus"></span> {{ "Filter Rows" }}<span class="caret"></span>
+                                        <span class="fa fa-plus"></span> {{ "Filter" }}<span class="caret"></span>
                                     </button>
                                     <ul class="dropdown-menu" role="menu">
                                         <li><a @click="addNewRule('add_filter_regex')">{{ l("Using a Regular Expression") }}</a></li>
                                         <li><a @click="addNewRule('add_filter_empty')">{{ l("On Emptiness") }}</a></li>
                                   </ul>
                                 </div>                                
-                                <div class="btn-group">
+                                <div class="btn-group dropup">
                                     <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
-                                        <span class="fa fa-plus"></span> {{ "Add Columns" }}<span class="caret"></span>
+                                        <span class="fa fa-plus"></span> {{ "Column" }}<span class="caret"></span>
                                     </button>
                                     <ul class="dropdown-menu" role="menu">
+                                        <li><a @click="addNewRule('add_column_basename')">{{ l("Basename of Path of URL") }}</a></li>
                                         <li><a @click="addNewRule('add_column_regex')">{{ l("Using a Regular Expression") }}</a></li>
                                         <li><a @click="addNewRule('add_column_concatenate')">{{ l("Concatenate Columns") }}</a></li>
                                   </ul>
@@ -159,31 +143,48 @@
                         </div>
                     </div>
                 </div>
+                <div class="table-column flex-column column" style="width: 70%;">
+                    <div class="column-header">
+                        <div class="column-title">
+                            <span class="title">
+                                {{ l("Build Collection from Table") }}
+                            </span>
+                            <!-- <span class="title-info"></span> -->
+                        </div>
+                        <div class="table-container pull-left">
+                            <hot-table id="test-hot"
+                                       :data="hotData['data']"
+                                       :colHeaders="true"
+                                       stretchH="all">
+                            </hot-table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="footer flex-row no-flex">
             <div class="attributes clear">
-                    <label v-if="elementsType == 'datasets'">
-                        {{ l("Hide original elements") }}:
-                        <input type="checkbox" v-model="hideOriginalDatasets" />
-                    </label>
-                    <label v-if="elementsType == 'raw'">
-                        {{ l("Type") }}:
-                        <select2 id="extension-selector" name="extension" style="width: 120px" :value.sync="extension" v-if="extension">
-                            <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
-                        </select2>
-                    </label>
-                    <label v-if="elementsType == 'raw'">
-                        {{ l("Genome") }}:
-                        <select2 id="genome-selector" style="width: 120px" :value.sync="genome" v-if="genome">
-                            <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
-                        </select2>
-                    </label>
-                    <label>
-                        {{ l("Name") }}:
-                        <input class="collection-name" style="width: 200px" 
-                        :placeholder="namePlaceholder" v-model="collectionName" />
-                    </label>
+                <label class="rule-option" v-if="elementsType == 'datasets'">
+                    {{ l("Hide original elements") }}:
+                    <input type="checkbox" v-model="hideSourceItems" />
+                </label>
+                <label class="rule-option" v-if="elementsType !== 'datasets'">
+                    {{ l("Type") }}:
+                    <select2 id="extension-selector" name="extension" style="width: 120px" :value.sync="extension" v-if="extension">
+                        <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
+                    </select2>
+                </label>
+                <label class="rule-option" v-if="elementsType !== 'datasets'">
+                    {{ l("Genome") }}:
+                    <select2 id="genome-selector" style="width: 120px" :value.sync="genome" v-if="genome">
+                        <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
+                    </select2>
+                </label>
+                <label class="rule-option pull-right">
+                    {{ l("Name") }}:
+                    <input class="collection-name" style="width: 200px" 
+                    :placeholder="namePlaceholder" v-model="collectionName" />
+                </label>
             </div>
             <option-buttons-div>
                 <button @click="cancel" class="creator-cancel-btn btn" tabindex="-1">
@@ -237,61 +238,91 @@ const MAPPING_TARGETS = {
     },
     dbkey: {
         label: _l("Genome"),
-        mode: "raw",
+        modes: ["raw", "ftp"],
     },
     file_type: {
         label: _l("Type"),
-        mode: "raw",
+        modes: ["raw", "ftp"],
         help: _l("This should be the Galaxy file type corresponding to this file."),
     },
     url: {
         label: _l("URL"),
-        mode: "raw",
+        modes: ["raw"],
         help: _l("This should be a URL the file can be downloaded from."),
     },
     ftp_path: {
         label: _l("FTP Path"),
-        mode: "raw",
+        modes: ["raw", "ftp"],
         help: _l("This should be the path to the target file to include relative to your FTP directory on the Galaxy server"),
     }
 }
 
+const applyRegex = function(regex, target, data) {
+    const regExp = RegExp(regex);
+    let failedCount = 0;
+    function newRow(row) {
+        const source = row[target];
+        const match = regExp.exec(source);
+        let newValue;
+        if(!match) {
+          failedCount++;
+          return null;
+        } else if(match.length > 1) {
+          newValue = match[1];
+        } else {
+          newValue = match[0];
+        }
+        return row.concat([newValue]);
+    }
+    data = data.map(newRow);
+    if(failedCount > 0) {
+        return {error: `${failedCount} row(s) failed to match specified regular expression.`};
+    }
+    return {data};
+}
+
 const Rules = {
+    add_column_basename: {
+        display: (rule, colHeaders) => {
+          return `Add column using basename of column ${colHeaders[rule.target_column]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnBasenameTarget = 0;
+            } else {
+                component.addColumnBasenameTarget = rule.target_column;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addColumnBasenameTarget;
+        },
+        apply: (rule, data, sources) => {
+            // https://github.com/kgryte/regex-basename-posix/blob/master/lib/index.js        
+            const re = /^(?:\/?|)(?:[\s\S]*?)((?:\.{1,2}|[^\/]+?|)(?:\.[^.\/]*|))(?:[\/]*)$/;
+            const target = rule.target_column;
+            return applyRegex(re, target, data);
+        }
+    },
     add_column_regex: {
         display: (rule, colHeaders) => {
           return `Add new column using ${rule.expression} applied to column ${colHeaders[rule.target_column]}`;
         },
         init: (component, rule) => {
             if(!rule) {
-                component.addColumnTarget = 0;
+                component.addColumnRegexTarget = 0;
                 component.addColumnExpression = "";
             } else {
-                component.addColumnTarget = rule.target_column;
+                component.addColumnRegexTarget = rule.target_column;
                 component.expression = rule.expression;
             }
         },
         save: (component, rule) => {
-            rule.target_column = component.addColumnTarget;
+            rule.target_column = component.addColumnRegexTarget;
             rule.expression = component.addColumnExpression;
         },
         apply: (rule, data, sources) => {
-          const regExp = RegExp(rule.expression);
           const target = rule.target_column;
-          function newRow(row) {
-            const source = row[target];
-            const match = regExp.exec(source);
-            let newValue;
-            if(match.length == 0) {
-              //TODO: signal error with rule
-            } else if(match.length > 1) {
-              newValue = match[1];
-            } else {
-              newValue = match[0];
-            }
-            return row.concat([newValue]);
-          }
-          data = data.map(newRow);
-          return {data};
+          return applyRegex(rule.expression, target, data);
         }
     },
     add_column_concatenate: {
@@ -373,11 +404,11 @@ const Rules = {
           const target = rule.target_column;
           const regExp = RegExp(rule.expression);
           const filterFunction = function(el, index) {
-              const row = data[index];
+              const row = data[parseInt(index)];
               return regExp.exec(row[target]);
           }
-          data = data.filter(filterFunction);
           sources = sources.filter(filterFunction);
+          data = data.filter(filterFunction);
           return {data, sources};
         }
     },
@@ -398,11 +429,11 @@ const Rules = {
         apply: (rule, data, sources) => {
           const target = rule.target_column;
           const filterFunction = function(el, index) {
-              const row = data[index];
+              const row = data[parseInt(index)];
               return row[target].length;
           }
-          data = data.filter(filterFunction);
           sources = sources.filter(filterFunction);
+          data = data.filter(filterFunction);
           return {data, sources};
         }
     },
@@ -555,6 +586,11 @@ const ColumnSelector = {
             required: false,
             default: false,
         },
+        valueAsList: {
+            type: Boolean,
+            required: false,
+            default: false,
+        }
     },
     methods: {
         handleInput(value) {
@@ -563,7 +599,11 @@ const ColumnSelector = {
                 let val = value.map((idx) => parseInt(idx));
                 this.$emit('update:target', val);
             } else {
-                this.$emit('update:target', parseInt(value));
+                let val = parseInt(value);
+                if(this.valueAsList) {
+                    val = [val];
+                }
+                this.$emit('update:target', val);
             }
         }
     },
@@ -590,9 +630,17 @@ const RegularExpressionInput = {
 
 const RuleDisplay = {
     template: `
-        <li class="rule">{{ title }}
-            <span class="fa fa-edit" @click="edit"></span>
-            <span class="fa fa-times" @click="remove"></span>
+        <li class="rule">
+            <span class="rule-display">{{ title }}
+                <span class="fa fa-edit" @click="edit"></span>
+                <span class="fa fa-times" @click="remove"></span>
+            </span>
+            <span class="rule-warning" v-if="rule.warn">
+                {{ rule.warn }}
+            </span>
+            <span class="rule-error" v-if="rule.error">
+                <span class="alert-message">{{ rule.error }}</span>
+            </span>
         </li>
     `,
     props: {
@@ -735,20 +783,29 @@ const flatMap = (f,xs) => {
 }
 
 export default {
-  data: () => {
+  data: function() {
+    let mapping;
+    if(this.elementsType == "ftp") {
+      mapping = [{"type": "ftp_path", "columns": [0]}];
+    } else {
+      mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}];
+    }
     return {
         rules: [],
         // TODO: incorrect to ease testing, fix.
         //mapping: [{"type": "list_identifiers", "columns": [1, 2]}],
-        mapping: [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}],
+        //mapping: [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}]
+        mapping: mapping,
         state: 'build',  // 'build', 'error', 'wait',
         errorMessage: '',
+        hasRuleErrors: false,
         waitingJobState: 'new',
         titleReset: _l("Undo all reordering and discards"),
         titleNumericSort: _l("By default columns will be sorted lexiographically, check this option if the columns are numeric values and should be sorted as numbers."),
         namePlaceholder: _l("Enter a name for your new collection"),
         activeRule: null,
-        addColumnTarget: 0,
+        addColumnRegexTarget: 0,
+        addColumnBasenameTarget: 0,
         addColumnExpression: "",
         addColumnConcatenateTarget0: 0,
         addColumnConcatenateTarget1: 0,
@@ -766,6 +823,7 @@ export default {
         extension: null,
         genomes: [],
         genome: null,
+        hideSourceItems: this.defaultHideSourceItems,
     };
   },
   props: {
@@ -783,6 +841,11 @@ export default {
     creationFn: {
         required: false,
         type: Function,
+    },
+    defaultHideSourceItems: {
+        type: Boolean,
+        required: false,
+        default: true,
     },
     // Callbacks sent in by modal code.
     oncancel: {
@@ -806,8 +869,9 @@ export default {
       const targets = [];
       const mappedTargets = this.mappedTargets;
       for(let target in MAPPING_TARGETS) {
-        const targetMode = MAPPING_TARGETS[target].mode;
-        if(targetMode && targetMode !== this.elementsType) {
+        const targetModes = MAPPING_TARGETS[target].modes;
+
+        if(targetModes && targetModes.indexOf(this.elementsType) < 0) {
           continue;
         }
         if(mappedTargets.indexOf(target) < 0) {
@@ -826,13 +890,28 @@ export default {
         sources = data.map(el => null);
       }
 
+      let hasRuleError = false;
       for(var rule of this.rules) {
+        rule.error = null;
+        rule.warn = null;
+        if(hasRuleError) {
+          rule.warn = _l("Skipped due to previous errors.");
+          continue;
+        }
         var ruleType = rule.type;
         const res = Rules[ruleType].apply(rule, data, sources);
+        if(res.error) {
+          hasRuleError = true;
+          rule.error = res.error;
+          continue;
+        }
+        if(res.warn) {
+          rule.warn = res.warn;
+        }
         data = res.data || data;
         sources = res.sources || sources;
       }
-      return {"data": data, "sources": sources};
+      return {data, sources};
     },
     colHeaders() {
       return this.hotData["data"][0].map((el, i) => String.fromCharCode(65 + i));
@@ -855,8 +934,16 @@ export default {
     validInput() {
         let valid = this.collectionName.length > 0;
         const mappingAsDict = this.mappingAsDict;
-        if(mappingAsDict.ftp_path && mapping.url) {
+        if(mappingAsDict.ftp_path && mappingAsDict.url) {
           valid = false;
+        }
+        for(var rule of this.rules) {
+          if(rule.error) {
+            valid = false;
+          }
+        }
+        if(this.identifierColumns().length == 0) {
+            valid = false;
         }
         return valid;
     }
@@ -972,16 +1059,24 @@ export default {
                 .catch(this.renderFetchError);
         }
     },
-    buildRequestElements(createDatasetDescription, createSubcollectionDescription, subElementProp) {
-        const data = this.hotData["data"];
+    identifierColumns() {
         const mappingAsDict = this.mappingAsDict;
-        const identifierColumns = mappingAsDict.list_identifiers.columns.slice();
+        let identifierColumns = []
+        if(mappingAsDict.list_identifiers) {
+            identifierColumns = mappingAsDict.list_identifiers.columns.slice();        
+        }
         if(this.mappingAsDict.paired_identifier) {
+            console.log(this.mappingAsDict.paired_identifier);
             identifierColumns.push(this.mappingAsDict.paired_identifier.columns[0]);
         }
-        if(!identifierColumns || identifierColumns.length < 1) {
-            // TODO: flag error if not list of columns...
-            return;
+        return identifierColumns;
+    },
+    buildRequestElements(createDatasetDescription, createSubcollectionDescription, subElementProp) {
+        const data = this.hotData["data"];
+        const identifierColumns = this.identifierColumns();
+        if(identifierColumns.length < 1) {
+          console.log("Error but this shouldn't have happened, create button should have been disabled.");
+          return;
         }
 
         const numIdentifierColumns = identifierColumns.length;
@@ -1007,8 +1102,8 @@ export default {
                             identifier = "reverse";
                         }
                         else {
-                            // TODO
-                            console.log("Problem with paired identifier - this will fail...");
+                            this.state = 'error';
+                            this.errorMessage = 'Unknown indicator of paired status encountered - only values of F, R, 1, 2, R1, R2, forward, or reverse are allowed.';
                         }
                     }
                     const element = createDatasetDescription(dataIndex, identifier);
@@ -1059,9 +1154,19 @@ export default {
 
         return this.buildRequestElements(
             (dataIndex, identifier) => {
-                const urlColumn = mappingAsDict.url.columns[0];
-                const url = data[dataIndex][urlColumn];
-                return {"url": url, "name": identifier, "src": "url"}
+                const res = {"name": identifier};
+                if(mappingAsDict.url) {
+                    const urlColumn = mappingAsDict.url.columns[0];
+                    const url = data[dataIndex][urlColumn];
+                    res["url"] = url;
+                    res["src"] = "url";
+                } else {
+                    const ftpPathColumn = mappingAsDict.ftp_path.columns[0];
+                    const ftpPath = data[dataIndex][ftpPathColumn];
+                    res["ftp_path"] = ftpPath;
+                    res["src"] = "ftp_path";
+                }
+                return res;
             },
             (identifier) => {
                 return {"name": identifier};
@@ -1098,8 +1203,37 @@ export default {
     height: 400px;
     overflow: hidden;
   }
+  .rules-container {
+    border: 1px dashed #ccc;
+    padding: 5px;
+  }
+  .rules-container .title {
+    font-weight: bold;
+  }
+  .rule-option {
+    padding-left: 20px;
+  }
   .rules {
     height: 360px;
+  }
+  .rules li {
+    list-style-type: circle;
+    list-style-position: inside;
+    padding: 5px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+  }
+  .rules .rule-error {
+    display: block;
+    margin-left: 10px;
+    font-style: italic;
+    color: red;
+  }
+  .rules .rule-warning {
+    display: block;
+    margin-left: 10px;
+    font-style: italic;
+    color: #e28809;
   }
   .rules-buttons {
 

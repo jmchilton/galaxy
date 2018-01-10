@@ -1069,6 +1069,7 @@ var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(
             creationFn: options.creationFn,
             oncancel: options.oncancel,
             oncreate: options.oncreate,
+            defaultHideSourceItems: options.defaultHideSourceItems,
         }
     }).$mount(vm);
     return deferred;
@@ -1105,24 +1106,25 @@ function createListCollection(contents, defaultHideSourceItems) {
     return promise;
 }
 
-function createCollectionViaRules(contents, defaultHideSourceItems) {
+function createCollectionViaRules(selection, defaultHideSourceItems) {
     let elements, elementsType;
-    if(typeof contents != 'string') {
-        elements = contents.toJSON();
+    if(!selection.selectionType) {
+        // Have HDAs from the history panel.
+        elements = selection.toJSON();
         elementsType = "datasets";
     } else {
-        const lines = contents.split(/[\n\r]/).filter(line => line.length > 0);
+        // Have pasted data, data from a history dataset, or FTP list.
+        const lines = selection.content.split(/[\n\r]/).filter(line => line.length > 0);
         elements = lines.map(line => line.split(/\s+/));
-        elementsType = "raw";
+        elementsType = selection.selectionType;
     }
     const promise = ruleBasedCollectionCreatorModal(elements, elementsType, {
         defaultHideSourceItems: defaultHideSourceItems,
         creationFn: function(elements, collectionType, name, hideSourceItems) {
-            return contents.createHDCA(elements, collectionType, name, hideSourceItems);
+            return selection.createHDCA(elements, collectionType, name, hideSourceItems);
         }
     });
     return promise;
-
 }
 
 //==============================================================================
