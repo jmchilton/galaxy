@@ -29,6 +29,14 @@
                                             :builder="this">
                                 <column-selector :target.sync="addColumnBasenameTarget" :col-headers="colHeaders" />
                             </rule-component>
+                            <rule-component rule-type="add_column_rownum"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <label>
+                                    {{ l("Starting from") }}
+                                    <input type="text" v-model="addColumnRownumStart" />
+                                </label>
+                            </rule-component>
                             <rule-component rule-type="add_column_regex"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
@@ -155,6 +163,7 @@
                                         <li><a @click="addNewRule('add_column_basename')">{{ l("Basename of Path of URL") }}</a></li>
                                         <li><a @click="addNewRule('add_column_regex')">{{ l("Using a Regular Expression") }}</a></li>
                                         <li><a @click="addNewRule('add_column_concatenate')">{{ l("Concatenate Columns") }}</a></li>
+                                        <li><a @click="addNewRule('add_column_rownum')">{{ l("Row Number") }}</a></li>
                                   </ul>
                                 </div>                                
                             </div>
@@ -324,6 +333,32 @@ const Rules = {
             const re = /^(?:\/?|)(?:[\s\S]*?)((?:\.{1,2}|[^\/]+?|)(?:\.[^.\/]*|))(?:[\/]*)$/;
             const target = rule.target_column;
             return applyRegex(re, target, data);
+        }
+    },
+    add_column_rownum: {
+        display: (rule, colHeaders) => {
+          return `Add column for the current row number.`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnRownumStart = 1;
+            } else {
+                component.addColumnRownumStart = rule.start;
+            }
+        },
+        save: (component, rule) => {
+            rule.start = component.addColumnRownumStart;
+        },
+        apply: (rule, data, sources) => {
+          let rownum = rule.start;
+          function newRow(row) {
+            const newRow = row.slice();
+            newRow.push(rownum);
+            rownum += 1;
+            return newRow;
+          }
+          data = data.map(newRow);
+          return {data};
         }
     },
     add_column_regex: {
@@ -857,6 +892,7 @@ export default {
         addColumnExpression: "",
         addColumnConcatenateTarget0: 0,
         addColumnConcatenateTarget1: 0,
+        addColumnRownumStart: 1,
         removeColumnTargets: [],
         addFilterRegexTarget: 0,
         addFilterRegexExpression: "",
