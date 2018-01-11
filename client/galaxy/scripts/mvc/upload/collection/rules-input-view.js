@@ -4,7 +4,6 @@ import Select from "mvc/ui/ui-select";
 import UploadUtils from "mvc/upload/upload-utils";
 import axios from "axios";
 
-
 export default Backbone.View.extend({
     initialize: function(app) {
         this.app = app;
@@ -17,26 +16,21 @@ export default Backbone.View.extend({
                 this._eventBuild();
             }
         });
-        _.each(
-            [
-                this.btnBuild,
-            ],
-            button => {
-                this.$(".upload-buttons").prepend(button.$el);
-            }
-        );
+        _.each([this.btnBuild], button => {
+            this.$(".upload-buttons").prepend(button.$el);
+        });
         const selectionTypeOptions = [
-            {"id": "paste", text: "Pasted Table"},
-            {"id": "dataset", text: "History Dataset"},
-            {"id": "ftp", text: "FTP Directory"},
-        ]
+            { id: "paste", text: "Pasted Table" },
+            { id: "dataset", text: "History Dataset" },
+            { id: "ftp", text: "FTP Directory" }
+        ];
         this.selectionType = "paste";
         this.selectionTypeView = new Select.View({
             css: "upload-footer-selection",
             container: this.$(".rule-select-type"),
             data: selectionTypeOptions,
             value: this.selectionType,
-            onchange: (value) => {
+            onchange: value => {
                 this.selectionType = value;
                 this._renderSelectedType();
             }
@@ -48,48 +42,52 @@ export default Backbone.View.extend({
 
     _renderSelectedType: function() {
         const selectionType = this.selectionType;
-        if(selectionType == "dataset") {
-            if(!this.datasetSelectorView) {
+        if (selectionType == "dataset") {
+            if (!this.datasetSelectorView) {
                 this.selectedDatasetId = null;
                 const history = parent.Galaxy && parent.Galaxy.currHistoryPanel && parent.Galaxy.currHistoryPanel.model;
                 const historyContentModels = history.contents.models;
                 const options = [];
-                for(let historyContentModel of historyContentModels) {
+                for (let historyContentModel of historyContentModels) {
                     const attr = historyContentModel.attributes;
-                    if(attr.history_content_type !== "dataset") {
+                    if (attr.history_content_type !== "dataset") {
                         continue;
                     }
-                    options.push({"id": attr.id, "text": `${attr.hid}: ${_.escape(attr.name)}`});
+                    options.push({ id: attr.id, text: `${attr.hid}: ${_.escape(attr.name)}` });
                 }
                 this.datasetSelectorView = new Select.View({
                     container: this.$(".dataset-selector"),
                     data: options,
                     placeholder: _l("Select a dataset"),
-                    onchange: (val) => { this._onDataset(val); },
+                    onchange: val => {
+                        this._onDataset(val);
+                    }
                 });
             } else {
                 this.datasetSelectorView.value(null);
             }
-        } else if(selectionType == "ftp") {
-            UploadUtils.getRemoteFiles(
-                (ftp_files) => {
-                    this._setPreview(ftp_files.map((file) => file["path"]).join("\n"));
-                }
-            );
+        } else if (selectionType == "ftp") {
+            UploadUtils.getRemoteFiles(ftp_files => {
+                this._setPreview(ftp_files.map(file => file["path"]).join("\n"));
+            });
         }
         this._updateScreen();
     },
 
     _onDataset: function(selectedDatasetId) {
         this.selectedDatasetId = selectedDatasetId;
-        if(!selectedDatasetId) {
+        if (!selectedDatasetId) {
             this._setPreview("");
             return;
         }
         axios
-            .get(`${Galaxy.root}api/histories/${Galaxy.currHistoryPanel.model.id}/contents/${selectedDatasetId}/display`)
-            .then((response) => { this._setPreview(response.data); })
-            .catch((error) => console.log(error));
+            .get(
+                `${Galaxy.root}api/histories/${Galaxy.currHistoryPanel.model.id}/contents/${selectedDatasetId}/display`
+            )
+            .then(response => {
+                this._setPreview(response.data);
+            })
+            .catch(error => console.log(error));
     },
 
     _eventBuild: function() {
@@ -101,10 +99,10 @@ export default Backbone.View.extend({
 
     _buildSelection: function(content) {
         const selectionType = this.selectionType;
-        const selection = {"content": content};
-        if(selectionType == "dataset" || selectionType == "paste") {
+        const selection = { content: content };
+        if (selectionType == "dataset" || selectionType == "paste") {
             selection.selectionType = "raw";
-        } else if(selectionType == "ftp") {
+        } else if (selectionType == "ftp") {
             selection.selectionType = "ftp";
         }
         Galaxy.currHistoryPanel.buildCollection("rules", selection, true);
@@ -119,7 +117,7 @@ export default Backbone.View.extend({
     _updateScreen: function() {
         const selectionType = this.selectionType;
         const selection = this.$(".upload-rule-source-content").val();
-        this.btnBuild[(selection || selectionType == "paste") ? "enable" : "disable"]();
+        this.btnBuild[selection || selectionType == "paste" ? "enable" : "disable"]();
         this.$("#upload-rule-dataset-option")[selectionType == "dataset" ? "show" : "hide"]();
         this.$(".upload-rule-source-content").attr("disabled", selectionType !== "paste");
     },
@@ -156,5 +154,4 @@ export default Backbone.View.extend({
                 </div>
         `;
     }
-
 });

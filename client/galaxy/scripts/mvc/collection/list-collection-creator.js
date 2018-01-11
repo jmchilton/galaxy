@@ -1037,10 +1037,10 @@ const collectionCreatorModalSetup = function _collectionCreatorModalSetup(option
             height: "100%",
             closing_events: true
         });
-    }
+    };
 
-    return {deferred, creatorOptions, showEl};
-}
+    return { deferred, creatorOptions, showEl };
+};
 
 //=============================================================================
 /** Create a modal and load its body with the given CreatorClass creator type
@@ -1048,9 +1048,9 @@ const collectionCreatorModalSetup = function _collectionCreatorModalSetup(option
  */
 var collectionCreatorModal = function _collectionCreatorModal(elements, options, CreatorClass) {
     options = _.defaults(options || {}, {
-        elements: elements,
+        elements: elements
     });
-    const {deferred, creatorOptions, showEl} = collectionCreatorModalSetup(options);
+    const { deferred, creatorOptions, showEl } = collectionCreatorModalSetup(options);
     var creator = new CreatorClass(creatorOptions);
     showEl(creator.$el);
     creator.render();
@@ -1058,7 +1058,7 @@ var collectionCreatorModal = function _collectionCreatorModal(elements, options,
 };
 
 var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(elements, elementsType, options) {
-    const {deferred, creatorOptions, showEl} = collectionCreatorModalSetup(options);
+    const { deferred, creatorOptions, showEl } = collectionCreatorModalSetup(options);
     var ruleCollectionBuilderInstance = Vue.extend(RuleCollectionBuilder);
     var vm = document.createElement("div");
     showEl(vm);
@@ -1069,12 +1069,11 @@ var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(
             creationFn: options.creationFn,
             oncancel: options.oncancel,
             oncreate: options.oncreate,
-            defaultHideSourceItems: options.defaultHideSourceItems,
+            defaultHideSourceItems: options.defaultHideSourceItems
         }
     }).$mount(vm);
     return deferred;
-}
-
+};
 
 /** List collection flavor of collectionCreatorModal. */
 var listCollectionCreatorModal = function _listCollectionCreatorModal(elements, options) {
@@ -1108,7 +1107,7 @@ function createListCollection(contents, defaultHideSourceItems) {
 
 function createCollectionViaRules(selection, defaultHideSourceItems) {
     let elements, elementsType;
-    if(!selection.selectionType) {
+    if (!selection.selectionType) {
         // Have HDAs from the history panel.
         elements = selection.toJSON();
         elementsType = "datasets";

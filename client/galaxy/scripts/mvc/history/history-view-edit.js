@@ -320,7 +320,7 @@ var HistoryViewEdit = _super.extend(
             } else if (collectionType == "list:paired") {
                 createFunc = LIST_OF_PAIRS_COLLECTION_CREATOR.createListOfPairsCollection;
             } else if (collectionType.startsWith("rules")) {
-                createFunc = LIST_COLLECTION_CREATOR.createCollectionViaRules;                
+                createFunc = LIST_COLLECTION_CREATOR.createCollectionViaRules;
             } else {
                 console.warn(`Unknown collectionType encountered ${collectionType}`);
             }

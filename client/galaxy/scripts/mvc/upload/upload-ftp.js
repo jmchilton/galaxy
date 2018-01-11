@@ -46,7 +46,7 @@ export default Backbone.View.extend({
             },
             function() {
                 self._renderTable();
-            }            
+            }
         );
     },
 

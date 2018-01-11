@@ -48,10 +48,18 @@ export default Backbone.View.extend({
         this.setElement(this.ui_button.$el);
 
         // load extensions
-        UploadUtils.getUploadDatatypes((list_extensions) => {this.list_extensions = list_extensions}, options.datatypes_disable_auto, options.auto);
+        UploadUtils.getUploadDatatypes(
+            list_extensions => {
+                this.list_extensions = list_extensions;
+            },
+            options.datatypes_disable_auto,
+            options.auto
+        );
 
         // load genomes
-        UploadUtils.getUploadGenomes((list_genomes) => {this.list_genomes = list_genomes}, this.default_genome);
+        UploadUtils.getUploadGenomes(list_genomes => {
+            this.list_genomes = list_genomes;
+        }, this.default_genome);
     },
 
     /** Show/hide upload dialog */
