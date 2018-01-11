@@ -260,7 +260,6 @@ def collect_dynamic_outputs(
                         discovered_file = discovered_file_for_unnamed_output(element, job_working_directory)
                         fields_match = discovered_file.match
                         designation = fields_match.designation
-                        visible = fields_match.visible
                         ext = fields_match.ext
                         dbkey = fields_match.dbkey
                         info = element.get("info", None)
@@ -272,13 +271,14 @@ def collect_dynamic_outputs(
                         dataset = job_context.create_dataset(
                             ext=ext,
                             designation=designation,
-                            visible=visible,
+                            visible=True,
                             dbkey=dbkey,
                             name=name,
                             filename=discovered_file.path,
                             info=info,
                             link_data=link_data
                         )
+                        dataset.raw_set_dataset_state('ok')
                         datasets.append(dataset)
 
             collect_elements_for_history(elements)
