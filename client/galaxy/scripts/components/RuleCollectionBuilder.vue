@@ -34,7 +34,7 @@
                                             :builder="this">
                                 <label>
                                     {{ l("Starting from") }}
-                                    <input type="text" v-model="addColumnRownumStart" />
+                                    <input type="number" v-model="addColumnRownumStart" min="0" />
                                 </label>
                             </rule-component>
                             <rule-component rule-type="add_column_regex"
@@ -49,6 +49,23 @@
                                 <column-selector :target.sync="addColumnConcatenateTarget0" :col-headers="colHeaders" />
                                 <column-selector :target.sync="addColumnConcatenateTarget1" :col-headers="colHeaders" />
                             </rule-component>
+                            <rule-component rule-type="add_column_substr"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addColumnSubstrTarget" :col-headers="colHeaders" />
+                                <label>
+                                    <select v-model="addColumnSubstrType">
+                                        <option value="keep_prefix">Keep only prefix specified.</option>
+                                        <option value="drop_prefix">Strip off prefix specified.</option>
+                                        <option value="keep_suffix">Keep only suffix specified.</option>
+                                        <option value="drop_suffix">Strip off suffix specified.</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    {{ l("Prefix or suffix length") }}
+                                    <input type="number" v-model="addColumnSubstrLength" min="0" />
+                                </label>
+                            </rule-component>                            
                             <rule-component rule-type="remove_columns"
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
@@ -73,6 +90,16 @@
                                 <regular-expression-input :target.sync="addFilterRegexExpression" />
                                 <label :title="titleInvertFilterRegex">
                                     <input type="checkbox" v-model="addFilterRegexInvert" />
+                                    {{ l("Invert filter.") }}
+                                </label>
+                            </rule-component>
+                            <rule-component rule-type="add_filter_matches"
+                                            :display-rule-type="displayRuleType"
+                                            :builder="this">
+                                <column-selector :target.sync="addFilterMatchesTarget" :col-headers="colHeaders" />
+                                <input type="text" v-model="addFilterMatchesValue" />
+                                <label :title="titleInvertFilterMatches">
+                                    <input type="checkbox" v-model="addFilterMatchesInvert" />
                                     {{ l("Invert filter.") }}
                                 </label>
                             </rule-component>
@@ -152,6 +179,7 @@
                                     </button>
                                     <ul class="dropdown-menu" role="menu">
                                         <li><a @click="addNewRule('add_filter_regex')">{{ l("Using a Regular Expression") }}</a></li>
+                                        <li><a @click="addNewRule('add_filter_matches')">{{ l("Matching a Supplied Value") }}</a></li>
                                         <li><a @click="addNewRule('add_filter_empty')">{{ l("On Emptiness") }}</a></li>
                                   </ul>
                                 </div>                                
@@ -164,6 +192,7 @@
                                         <li><a @click="addNewRule('add_column_regex')">{{ l("Using a Regular Expression") }}</a></li>
                                         <li><a @click="addNewRule('add_column_concatenate')">{{ l("Concatenate Columns") }}</a></li>
                                         <li><a @click="addNewRule('add_column_rownum')">{{ l("Row Number") }}</a></li>
+                                        <li><a @click="addNewRule('add_column_substr')">{{ l("Keep or Trim Prefix or Suffix") }}</a></li>
                                   </ul>
                                 </div>                                
                             </div>
@@ -412,6 +441,67 @@ const Rules = {
           return {data};
         }       
     },
+    add_column_substr: {
+        display: (rule, colHeaders) => {
+          const type = rule.substr_type;
+          let display;
+          if(type == "keep_prefix") {
+              display = `Keep only ${rule.length} characters from the start of column ${colHeaders[rule.target_column]}`
+          } else if(type == "drop_prefix") {
+              display = `Remove ${rule.length} characters from the start of column ${colHeaders[rule.target_column]}`;
+          } else if(type == "keep_suffix") {
+              display = `Keep only ${rule.length} characters from the end of column ${colHeaders[rule.target_column]}`
+          } else {
+              display = `Remove ${rule.length} characters from the end of column ${colHeaders[rule.target_column]}`;
+          }
+          return display;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnSubstrTarget = 0;
+                component.addColumnSubstrType = "keep_prefix";
+                component.addColumnSubstrLength = 1;
+            } else {
+                component.addColumnSubstrTarget = rule.target_column;
+                component.addColumnSubstrLength = rule.length;
+                component.addColumnSubstrType = rule.substr_type;
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addColumnSubstrTarget;
+            rule.length = component.addColumnSubstrLength;
+            rule.substr_type = component.addColumnSubstrType;
+        },
+        apply: (rule, data, sources) => {
+          const target = rule.target_column;
+          const length = rule.length;
+          const type = rule.substr_type;
+          function newRow(row) {
+            const newRow = row.slice();
+            const originalValue = row[target];
+            let start = 0, end = originalValue.length;
+            if(type == "keep_prefix") {
+                end = length;
+            } else if(type == "drop_prefix") {
+                start = length;
+            } else if(type == "keep_suffix") {
+                start = end - length;
+                if(start < 0) {
+                    start = 0;
+                }
+            } else {
+                end = end - length;
+                if(end < 0) {
+                    end = 0;
+                }
+            }
+            newRow.push(originalValue.substr(start, end));
+            return newRow;
+          }
+          data = data.map(newRow);
+          return {data};
+        }       
+    },
     remove_columns: {
         display: (rule, colHeaders) => {
           return `Remove columns`;
@@ -443,7 +533,7 @@ const Rules = {
     },
     add_filter_regex: {
         display: (rule, colHeaders) => {
-            return `Filter rows using ${rule.expression} on column ${colHeaders[rule.target_column]}`;
+            return `Filter rows using regular expression ${rule.expression} on column ${colHeaders[rule.target_column]}`;
         },
         init: (component, rule) => {
             if(!rule) {
@@ -497,6 +587,39 @@ const Rules = {
           const filterFunction = function(el, index) {
               const row = data[parseInt(index)];
               return row[target].length ? !invert : invert;
+          }
+          sources = sources.filter(filterFunction);
+          data = data.filter(filterFunction);
+          return {data, sources};
+        }
+    },
+    add_filter_matches: {
+        display: (rule, colHeaders) => {
+            return `Filter rows with value ${rule.value} for column ${colHeaders[rule.target_column]}`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addFilterMatchesTarget = 0;
+                component.addFilterMatchesValue = "";
+                component.addFilterMatchesInvert = false;
+            } else {                
+               component.addFilterMatchesTarget = rule.target_column;
+               component.addFilterMatchesValue = rule.value;
+               component.addFilterMatchesInvert = rule.invert;               
+            }
+        },
+        save: (component, rule) => {
+            rule.target_column = component.addFilterMatchesTarget;
+            rule.value = component.addFilterMatchesValue;
+            rule.invert = component.addFilterMatchesInvert;
+        },
+        apply: (rule, data, sources) => {
+          const target = rule.target_column;
+          const invert = rule.invert;
+          const value = rule.value;
+          const filterFunction = function(el, index) {
+              const row = data[parseInt(index)];
+              return row[target] == value ? !invert : invert;
           }
           sources = sources.filter(filterFunction);
           data = data.filter(filterFunction);
@@ -886,6 +1009,7 @@ export default {
         titleInvertFilterRegex: _l("Remove rows not matching the specified regular expression at specified column."),
         titleInvertFilterEmpty: _l("Remove rows that have non-empty values at specified column."),
         namePlaceholder: _l("Enter a name for your new collection"),
+        titleInvertFilterMatches: _l("Remove rows not matching supplied value."),
         activeRule: null,
         addColumnRegexTarget: 0,
         addColumnBasenameTarget: 0,
@@ -893,10 +1017,16 @@ export default {
         addColumnConcatenateTarget0: 0,
         addColumnConcatenateTarget1: 0,
         addColumnRownumStart: 1,
+        addColumnSubstrTarget: 0,
+        addColumnSubstrType: "keep_prefix",
+        addColumnSubstrLength: 1,
         removeColumnTargets: [],
         addFilterRegexTarget: 0,
         addFilterRegexExpression: "",
         addFilterRegexInvert: false,
+        addFilterMatchesTarget: 0,
+        addFilterMatchesValue: "",
+        addFilterMatchesInvert: false,
         addFilterEmptyTarget: 0,
         addFilterEmptyInvert: false,
         addSortingTarget: 0,
@@ -987,7 +1117,8 @@ export default {
           continue;
         }
         var ruleType = rule.type;
-        const res = Rules[ruleType].apply(rule, data, sources);
+        const ruleDef = Rules[ruleType];
+        const res = ruleDef.apply(rule, data, sources);
         if(res.error) {
           hasRuleError = true;
           rule.error = res.error;
