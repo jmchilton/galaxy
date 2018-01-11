@@ -69,7 +69,7 @@
                                             :display-rule-type="displayRuleType"
                                             :builder="this">
                                 <column-selector :target.sync="addFilterEmptyTarget" :col-headers="colHeaders" />
-                                <label :title="titleInvertFilterInvert">
+                                <label :title="titleInvertFilterEmpty">
                                     <input type="checkbox" v-model="addFilterEmptyInvert" />
                                     {{ l("Invert filter.") }}
                                 </label>
@@ -982,7 +982,10 @@ export default {
       return asDict;
     },
     collectionType() {
-      const identifierColumns = this.mappingAsDict.list_identifiers.columns;
+      let identifierColumns = []
+      if(this.mappingAsDict.list_identifiers) {
+          identifierColumns = this.mappingAsDict.list_identifiers.columns;
+      }
       let collectionType = identifierColumns.map(col => "list").join(":");
       if(this.mappingAsDict.paired_identifier) {
           collectionType += ":paired";
@@ -1000,7 +1003,9 @@ export default {
             valid = false;
           }
         }
-        if(this.identifierColumns().length == 0) {
+        // raw tabular variant can build stand-alone datasets without identifier
+        // columns for the collection builder for existing datasets cannot do this.
+        if(this.elementsType == "datasets" && this.identifierColumns().length == 0) {
             valid = false;
         }
         return valid;
@@ -1099,14 +1104,25 @@ export default {
             response.done(this.oncreate);
             response.error(this.renderFetchError);
         } else {
-            const elements = this.creationElementsForFetch();
             const historyId = Galaxy.currHistoryPanel.model.id;
-            const targets = [{
-                "destination": {"type": "hdca"},
-                "elements": elements,
-                "collection_type": collectionType,
-                "name": name,
-            }];
+            let elements, targets;
+            if(collectionType) {
+                elements = this.creationElementsForFetch();                
+                targets = [{
+                    "destination": {"type": "hdca"},
+                    "elements": elements,
+                    "collection_type": collectionType,
+                    "name": name,
+                }];
+            } else {
+                elements = this.creationDatasetsForFetch();                
+                targets = [{
+                    "destination": {"type": "hdas"},
+                    "elements": elements,
+                    "name": name,
+                }];
+            }
+
             axios
                 .post(`${Galaxy.root}api/tools/fetch`, {
                     "history_id": historyId,
@@ -1204,38 +1220,14 @@ export default {
             "element_identifiers",
         );
     },
-    creationElementsForFetch() {
+    creationElementsForFetch() { // fetch elements for HDCA
         const data = this.hotData["data"];
         const mappingAsDict = this.mappingAsDict;
 
         return this.buildRequestElements(
             (dataIndex, identifier) => {
-                const res = {"name": identifier};
-                if(mappingAsDict.url) {
-                    const urlColumn = mappingAsDict.url.columns[0];
-                    const url = data[dataIndex][urlColumn];
-                    res["url"] = url;
-                    res["src"] = "url";
-                } else {
-                    const ftpPathColumn = mappingAsDict.ftp_path.columns[0];
-                    const ftpPath = data[dataIndex][ftpPathColumn];
-                    res["ftp_path"] = ftpPath;
-                    res["src"] = "ftp_path";
-                }
-                if(mappingAsDict.dbkey) {
-                    const dbkeyColumn = mappingAsDict.dbkey.columns[0];
-                    const dbkey = data[dataIndex][dbkeyColumn];
-                    res["dbkey"] = dbkey;
-                } else if(this.genome) {
-                    res["dbkey"] = this.genome;
-                }
-                if(mappingAsDict.file_type) {
-                    const fileTypeColumn = mappingAsDict.file_type.columns[0];
-                    const fileType = data[dataIndex][fileTypeColumn];
-                    res["ext"] = file_type;
-                } else if(this.extension) {
-                    res["ext"] = this.extension;
-                }
+                const res = this._datasetFor(dataIndex, data, mappingAsDict);
+                res["name"] = identifier;
                 return res;
             },
             (identifier) => {
@@ -1243,7 +1235,50 @@ export default {
             },
             "elements",
         );
-    }
+    },
+    creationDatasetsForFetch() { // fetch elements for HDAs if not collection information specified.
+        const data = this.hotData["data"];
+        const mappingAsDict = this.mappingAsDict;
+
+        const datasets = [];
+
+        for(let dataIndex in data) {
+            const rowData = data[dataIndex];
+            const res = this._datasetFor(dataIndex, data, mappingAsDict);
+            datasets.push(res);
+        }
+
+        return datasets;
+    },    
+    _datasetFor(dataIndex, data, mappingAsDict) {
+        const res = {};
+        if(mappingAsDict.url) {
+            const urlColumn = mappingAsDict.url.columns[0];
+            const url = data[dataIndex][urlColumn];
+            res["url"] = url;
+            res["src"] = "url";
+        } else {
+            const ftpPathColumn = mappingAsDict.ftp_path.columns[0];
+            const ftpPath = data[dataIndex][ftpPathColumn];
+            res["ftp_path"] = ftpPath;
+            res["src"] = "ftp_path";
+        }
+        if(mappingAsDict.dbkey) {
+            const dbkeyColumn = mappingAsDict.dbkey.columns[0];
+            const dbkey = data[dataIndex][dbkeyColumn];
+            res["dbkey"] = dbkey;
+        } else if(this.genome) {
+            res["dbkey"] = this.genome;
+        }
+        if(mappingAsDict.file_type) {
+            const fileTypeColumn = mappingAsDict.file_type.columns[0];
+            const fileType = data[dataIndex][fileTypeColumn];
+            res["ext"] = file_type;
+        } else if(this.extension) {
+            res["ext"] = this.extension;
+        }
+        return res;
+    },
   },
   created() {
       UploadUtils.getUploadDatatypes((extensions) => {this.extensions = extensions; this.extension = "auto"}, false, UploadUtils.AUTO_EXTENSION);
