@@ -731,24 +731,6 @@ const RuleDisplay = {
     },
 }
 
-const Identifier = {
-    template: `
-        <div class="map">{{ type }}
-            <input type="text" :value="columns"
-                   @input="$emit('update:columns', $event.target.value.split(','))">
-        </div>`,
-    props: {
-        type: {
-            type: String,
-            required: true
-        },
-        columns: {
-            type: Array,
-            required: true
-        }
-    }
-}
-
 const IdentifierDisplay = {
     template: `
       <li class="rule" :title="help">
@@ -1332,7 +1314,6 @@ export default {
     HotTable,
     RuleComponent,
     RuleDisplay,
-    Identifier,
     IdentifierDisplay,
     ColumnSelector,
     RegularExpressionInput,
