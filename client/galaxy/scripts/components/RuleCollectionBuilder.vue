@@ -1,12 +1,15 @@
 <template>
     <state-div v-if="state == 'build'">
-        <!--
-                        <option value="add_filter_matches">Matches Value</option>
-                        <option value="add_filter_contains">Contains Value</option>
-                        <option value="add_filter_compare">Compare to Number</option>
-                        <option value="add_column_prefix">Prefix / Suffix</option>
-        -->
-        <div class="header flex-row no-flex">Describe rules for building up a collection.</div>
+        <!-- Different instructions if building up from individual datasets vs. 
+             initial data import. -->
+        <div class="header flex-row no-flex" v-if="elementsType == 'datasets'">
+            Use this form to describe rules for building a collection.
+        </div>
+        <!-- This modality allows importing individual datasets, multiple collections,
+             and requires a data source - note that. -->
+        <div class="header flex-row no-flex" v-else>
+            Use this form to describe rules for data import. At least one column should be mapped to a source to fetch data from (URLs, FTP files, etc...). If you wish to build one or more collections be sure to specify a list identifier - otherwise this will import individual datasets.
+        </div>
         <div class="middle flex-row flex-row-container">
             <div class="column-headers vertically-spaced flex-column-container">
                 <div class="rule-column flex-column column" style="width: 30%; padding: 10px;">
@@ -250,6 +253,11 @@ const MAPPING_TARGETS = {
     paired_identifier: {
         label: _l("Paired-end Indicator"),
         help: _l("This should be set to '1', 'R1', 'forward', 'f', or 'F' to indicate forward reads, and '2', 'r' or 'reverse', 'R2', 'R', or 'R2' to indicate reverse reads.")
+    },
+    collection_name: {
+        label: _l("Collection Name"),
+        help: _l("If this is set, all rows with the same collection name will be joined into a collection and it is possible to create multiple collections at once."),
+        modes: ["raw", "ftp"],  // TODO: allow this in datasets mode.
     },
     dbkey: {
         label: _l("Genome"),
@@ -724,7 +732,11 @@ const RuleDisplay = {
 }
 
 const Identifier = {
-    template: `<div class="map">{{ type }}<input type="text" :value="columns" @input="$emit('update:columns', $event.target.value.split(','))"></div>`,
+    template: `
+        <div class="map">{{ type }}
+            <input type="text" :value="columns"
+                   @input="$emit('update:columns', $event.target.value.split(','))">
+        </div>`,
     props: {
         type: {
             type: String,
@@ -843,7 +855,7 @@ export default {
       mapping = [{"type": "ftp_path", "columns": [0]}];
     } else {
       // TODO: incorrect to ease testing, fix.    
-      mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}];
+      mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}, {"type": "collection_name", "columns": [5]}];
     }
     return {
         rules: [],
@@ -1107,13 +1119,17 @@ export default {
             const historyId = Galaxy.currHistoryPanel.model.id;
             let elements, targets;
             if(collectionType) {
-                elements = this.creationElementsForFetch();                
-                targets = [{
-                    "destination": {"type": "hdca"},
-                    "elements": elements,
-                    "collection_type": collectionType,
-                    "name": name,
-                }];
+                targets = [];
+                const elementsByCollectionName = this.creationElementsForFetch();
+                for(let collectionName in elementsByCollectionName) {
+                    const target = {
+                        "destination": {"type": "hdca"},
+                        "elements": elementsByCollectionName[collectionName],
+                        "collection_type": collectionType,
+                        "name": collectionName,
+                    };
+                    targets.push(target);
+                }
             } else {
                 elements = this.creationDatasetsForFetch();                
                 targets = [{
@@ -1153,63 +1169,87 @@ export default {
 
         const numIdentifierColumns = identifierColumns.length;
         const collectionType = this.collectionType;
-        const elements = [];
+        const elementsByName = {};
 
-        for(let dataIndex in data) {
-            const rowData = data[dataIndex];
+        let dataByCollection = {};
+        const collectionNameMap = this.mappingAsDict.collection_name;
+        if(collectionNameMap) {
+            const collectionNameTarget = collectionNameMap.columns[0];
+            for(let dataIndex in data) {
+                const row = data[dataIndex];
+                const name = row[collectionNameTarget];
+                if(!dataByCollection[name]) {
+                    dataByCollection[name] = {};
+                }
+                dataByCollection[name][dataIndex] = row;
+            }
+        } else {
+            // use global collection name from the form.
+            dataByCollection[this.collectionName] = data;
+        }
 
-            // For each row, find place in depth for this element.
-            let collectionTypeAtDepth = collectionType;
-            let elementsAtDepth = elements;
+        for(let collectionName in dataByCollection) {
+            const elements = [];
 
-            for(let identifierColumnIndex = 0; identifierColumnIndex < numIdentifierColumns; identifierColumnIndex++) {
-                let identifier = rowData[identifierColumns[identifierColumnIndex]];
-                if(identifierColumnIndex + 1 == numIdentifierColumns) {
-                    // At correct final position in nested structure for this dataset.
-                    if(collectionTypeAtDepth === "paired") {
-                        if(["f", "1", "r1", "forward"].indexOf(identifier.toLowerCase()) > -1) {
-                            identifier = "forward";
-                        } 
-                        else if(["r", "2", "r2", "reverse"].indexOf(identifier.toLowerCase()) > -1) {
-                            identifier = "reverse";
+            for(let dataIndex in dataByCollection[collectionName]) {
+                const rowData = data[dataIndex];
+
+                // For each row, find place in depth for this element.
+                let collectionTypeAtDepth = collectionType;
+                let elementsAtDepth = elements;
+
+                for(let identifierColumnIndex = 0; identifierColumnIndex < numIdentifierColumns; identifierColumnIndex++) {
+                    let identifier = rowData[identifierColumns[identifierColumnIndex]];
+                    if(identifierColumnIndex + 1 == numIdentifierColumns) {
+                        // At correct final position in nested structure for this dataset.
+                        if(collectionTypeAtDepth === "paired") {
+                            if(["f", "1", "r1", "forward"].indexOf(identifier.toLowerCase()) > -1) {
+                                identifier = "forward";
+                            } 
+                            else if(["r", "2", "r2", "reverse"].indexOf(identifier.toLowerCase()) > -1) {
+                                identifier = "reverse";
+                            }
+                            else {
+                                this.state = 'error';
+                                this.errorMessage = 'Unknown indicator of paired status encountered - only values of F, R, 1, 2, R1, R2, forward, or reverse are allowed.';
+                            }
                         }
-                        else {
-                            this.state = 'error';
-                            this.errorMessage = 'Unknown indicator of paired status encountered - only values of F, R, 1, 2, R1, R2, forward, or reverse are allowed.';
+                        const element = createDatasetDescription(dataIndex, identifier);
+                        elementsAtDepth.push(element);
+                    } else {
+                        // Create nesting for this element.
+                        collectionTypeAtDepth = collectionTypeAtDepth.split(":").slice(1).join(":");
+                        let found = false;
+                        for(let element of elementsAtDepth) {
+                            if(element["name"] == identifier) {
+                                elementsAtDepth = element[subElementProp];
+                                found = true;
+                                break;
+                            }
                         }
-                    }
-                    const element = createDatasetDescription(dataIndex, identifier);
-                    elementsAtDepth.push(element);
-                } else {
-                    // Create nesting for this element.
-                    collectionTypeAtDepth = collectionTypeAtDepth.split(":").slice(1).join(":");
-                    let found = false;
-                    for(let element of elementsAtDepth) {
-                        if(element["name"] == identifier) {
-                            elementsAtDepth = element[subElementProp];
-                            found = true;
-                            break;
+                        if(!found) {
+                            const subcollection = createSubcollectionDescription(identifier);
+                            elementsAtDepth.push(subcollection);
+                            const childCollectionElements = [];
+                            subcollection[subElementProp] = childCollectionElements;
+                            subcollection.collection_type = collectionTypeAtDepth;
+                            elementsAtDepth = childCollectionElements;
                         }
-                    }
-                    if(!found) {
-                        const subcollection = createSubcollectionDescription(identifier);
-                        elementsAtDepth.push(subcollection);
-                        const childCollectionElements = [];
-                        subcollection[subElementProp] = childCollectionElements;
-                        subcollection.collection_type = collectionTypeAtDepth;
-                        elementsAtDepth = childCollectionElements;
                     }
                 }
             }
+
+            elementsByName[collectionName] = elements;
         }
 
-        return elements;
+
+        return elementsByName;
     },
     creationElementsFromDatasets() {
         const sources = this.hotData["sources"];
         const data = this.hotData["data"];
 
-        return this.buildRequestElements(
+        const elementsByCollectionName = this.buildRequestElements(
             (dataIndex, identifier) => {
                 const source = sources[dataIndex];
                 return {"id": source["id"], "name": identifier, "src": "hda"}
@@ -1219,12 +1259,14 @@ export default {
             },
             "element_identifiers",
         );
+        // This modality only allows a single collection to be created currently.
+        return elementsByCollectionName[this.collectionName];
     },
     creationElementsForFetch() { // fetch elements for HDCA
         const data = this.hotData["data"];
         const mappingAsDict = this.mappingAsDict;
 
-        return this.buildRequestElements(
+        const elementsByCollectionName = this.buildRequestElements(
             (dataIndex, identifier) => {
                 const res = this._datasetFor(dataIndex, data, mappingAsDict);
                 res["name"] = identifier;
@@ -1235,6 +1277,8 @@ export default {
             },
             "elements",
         );
+
+        return elementsByCollectionName;
     },
     creationDatasetsForFetch() { // fetch elements for HDAs if not collection information specified.
         const data = this.hotData["data"];
