@@ -19,6 +19,22 @@ export default Backbone.View.extend({
         _.each([this.btnBuild], button => {
             this.$(".upload-buttons").prepend(button.$el);
         });
+        const dataTypeOptions = [
+            { id: "datasets", text: "Datasets" },
+            { id: "collections", text: "Collection(s)" },
+        ];
+        this.dataType = "datasets";
+        this.dataTypeView = new Select.View({
+            css: "upload-footer-selection",
+            container: this.$(".rule-data-type"),
+            data: dataTypeOptions,
+            value: this.dataType,
+            onchange: value => {
+                this.dataType = value;
+                // this._renderSelectedType();
+            }
+        });
+
         const selectionTypeOptions = [
             { id: "paste", text: "Pasted Table" },
             { id: "dataset", text: "History Dataset" },
@@ -91,8 +107,6 @@ export default Backbone.View.extend({
     },
 
     _eventBuild: function() {
-        // TODO: pass extra information on FTP...
-        // const selectionType = this.selectionType;
         const selection = this.$(".upload-rule-source-content").val();
         this._buildSelection(selection);
     },
@@ -105,6 +119,7 @@ export default Backbone.View.extend({
         } else if (selectionType == "ftp") {
             selection.selectionType = "ftp";
         }
+        selection.dataType = this.dataType;
         Galaxy.currHistoryPanel.buildCollection("rules", selection, true);
         this.app.modal.hide();
     },
@@ -132,6 +147,10 @@ export default Backbone.View.extend({
                 </div>
                 <div class="upload-box" style="height: 335px;">
                     <span style="width: 25%; display: inline; height: 100%" class="pull-left">
+                        <div class="upload-rule-option">
+                            <div class="upload-rule-option-title">${_l("Upload data as")}:</div>
+                            <div class="rule-data-type" />
+                        </div>
                         <div class="upload-rule-option">
                             <div class="upload-rule-option-title">${_l("Load tabular data from")}:</div>
                             <div class="rule-select-type" />

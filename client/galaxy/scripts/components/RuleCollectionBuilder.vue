@@ -3,12 +3,15 @@
         <!-- Different instructions if building up from individual datasets vs. 
              initial data import. -->
         <div class="header flex-row no-flex" v-if="elementsType == 'datasets'">
-            Use this form to describe rules for building a collection.
+            Use this form to describe rules for building a collection from the specified datasets.
         </div>
         <!-- This modality allows importing individual datasets, multiple collections,
              and requires a data source - note that. -->
+        <div class="header flex-row no-flex" v-else-if="importType == 'datasets'">
+            Use this form to describe rules for import datasets. At least one column should be defined to a source to fetch data from (URLs, FTP files, etc...).
+        </div>
         <div class="header flex-row no-flex" v-else>
-            Use this form to describe rules for data import. At least one column should be mapped to a source to fetch data from (URLs, FTP files, etc...). If you wish to build one or more collections be sure to specify a list identifier - otherwise this will import individual datasets.
+            Use this form to describe rules for import datasets. At least one column should be defined to a source to fetch data from (URLs, FTP files, etc...). Be sure to specify at least one column as a list identifier - specify more to created nested list structures. Specify a column to serve as "collection name" to group datasets into multiple collections.
         </div>
         <div class="middle flex-row flex-row-container">
             <!-- column-headers -->
@@ -67,7 +70,15 @@
                                 {{ l("Prefix or suffix length") }}
                                 <input type="number" v-model="addColumnSubstrLength" min="0" />
                             </label>
-                        </rule-component>                            
+                        </rule-component>
+                        <rule-component rule-type="add_column_value"
+                                        :display-rule-type="displayRuleType"
+                                        :builder="this">
+                            <label>
+                                {{ l("Value") }}
+                                <input type="text" v-model="addColumnValue" />
+                            </label>
+                        </rule-component>
                         <rule-component rule-type="remove_columns"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
@@ -140,7 +151,7 @@
                             <div class="buttons">
                                 <div class="btn-group" v-if="unmappedTargets.length > 0">
                                   <button type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
-                                    <span class="fa fa-plus"></span> {{ "Add Mapping" }}<span class="caret"></span>
+                                    <span class="fa fa-plus"></span> {{ "Add Definition" }}<span class="caret"></span>
                                   </button>
                                   <ul class="dropdown-menu" role="menu">
                                     <li v-for="target in unmappedTargets"
@@ -175,7 +186,7 @@
                                                     @edit="displayRuleType = 'mapping'"
                                                     :col-headers="colHeaders" />
                                 <div v-if="mapping.length == 0">
-                                    One or more column mappings must be specified. These are required to specify how to build collections and datasets from rows and columns of the table. <a href="#" @click="displayRuleType = 'mapping'">Click here</a> to manage column mappings.
+                                    One or more column definitions must be specified. These are required to specify how to build collections and datasets from rows and columns of the table. <a href="#" @click="displayRuleType = 'mapping'">Click here</a> to manage column definitions.
                                 </div>
                             </ol>
                             <div class="rules-buttons">
@@ -211,6 +222,7 @@
                                         <li><a @click="addNewRule('add_column_regex')">{{ l("Using a Regular Expression") }}</a></li>
                                         <li><a @click="addNewRule('add_column_concatenate')">{{ l("Concatenate Columns") }}</a></li>
                                         <li><a @click="addNewRule('add_column_rownum')">{{ l("Row Number") }}</a></li>
+                                        <li><a @click="addNewRule('add_column_value')">{{ l("Fixed Value") }}</a></li>                                        
                                         <li><a @click="addNewRule('add_column_substr')">{{ l("Keep or Trim Prefix or Suffix") }}</a></li>
                                   </ul>
                                 </div> 
@@ -225,6 +237,7 @@
                                ref="hotTable"
                                :data="hotData['data']"
                                :colHeaders="true"
+                               :readOnly="true"
                                stretchH="all">
                     </hot-table>
                 </div>
@@ -301,16 +314,23 @@ const MAPPING_TARGETS = {
     list_identifiers: {
         multiple: true,
         label: _l("List Identifier(s)"),
-        help: _l("This should be a short description of the replicate, sample name, condition, etc... that describes each level of the list structure.")
+        help: _l("This should be a short description of the replicate, sample name, condition, etc... that describes each level of the list structure."),
+        importType: "collections",
     },
     paired_identifier: {
         label: _l("Paired-end Indicator"),
-        help: _l("This should be set to '1', 'R1', 'forward', 'f', or 'F' to indicate forward reads, and '2', 'r' or 'reverse', 'R2', 'R', or 'R2' to indicate reverse reads.")
+        help: _l("This should be set to '1', 'R1', 'forward', 'f', or 'F' to indicate forward reads, and '2', 'r' or 'reverse', 'R2', 'R', or 'R2' to indicate reverse reads."),
+        importType: "collections",
     },
     collection_name: {
         label: _l("Collection Name"),
         help: _l("If this is set, all rows with the same collection name will be joined into a collection and it is possible to create multiple collections at once."),
         modes: ["raw", "ftp"],  // TODO: allow this in datasets mode.
+        importType: "collections",
+    },
+    name: {
+        label: _l("Name"),
+        importType: "datasets",
     },
     dbkey: {
         label: _l("Genome"),
@@ -325,6 +345,11 @@ const MAPPING_TARGETS = {
         label: _l("URL"),
         modes: ["raw"],
         help: _l("This should be a URL the file can be downloaded from."),
+    },
+    info: {
+        label: _l("Info"),
+        help: _l("Unstructured text associated with the dataset that shows up in the history panel, this is optional and can be whatever you would like."),
+        modes: ["raw", "ftp"],
     },
     ftp_path: {
         label: _l("FTP Path"),
@@ -399,6 +424,31 @@ const Rules = {
             const newRow = row.slice();
             newRow.push(rownum);
             rownum += 1;
+            return newRow;
+          }
+          data = data.map(newRow);
+          return {data};
+        }
+    },
+    add_column_value: {
+        display: (rule, colHeaders) => {
+          return `Add column for the value row ${rule.value}.`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnValue = "";
+            } else {
+                component.addColumnValue = rule.value;
+            }
+        },
+        save: (component, rule) => {
+            rule.value = component.addColumnValue;
+        },
+        apply: (rule, data, sources) => {
+          const addValue = rule.value;
+          function newRow(row) {
+            const newRow = row.slice();
+            newRow.push(addValue);
             return newRow;
           }
           data = data.map(newRow);
@@ -1054,7 +1104,8 @@ export default {
       mapping = [{"type": "ftp_path", "columns": [0]}];
     } else {
       // TODO: incorrect to ease testing, fix.    
-      mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}, {"type": "collection_name", "columns": [5]}];
+      // mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}, {"type": "collection_name", "columns": [5]}];
+      mapping = [];
     }
     return {
         rules: [],
@@ -1079,6 +1130,7 @@ export default {
         addColumnSubstrTarget: 0,
         addColumnSubstrType: "keep_prefix",
         addColumnSubstrLength: 1,
+        addColumnValue: "",
         removeColumnTargets: [],
         addFilterRegexTarget: 0,
         addFilterRegexExpression: "",
@@ -1111,6 +1163,11 @@ export default {
     initialElements: {
         type: Array,
         required: true
+    },
+    importType: {
+        type: String,
+        required: false,
+        default: "collections",
     },
     elementsType: {
         type: String,
@@ -1160,6 +1217,11 @@ export default {
 
         if(targetModes && targetModes.indexOf(this.elementsType) < 0) {
           continue;
+        }
+
+        const targetImportType = MAPPING_TARGETS[target].importType;
+        if(targetImportType && this.importType != targetImportType) {
+            continue;
         }
         if(mappedTargets.indexOf(target) < 0) {
           targets.push(target);
@@ -1575,6 +1637,16 @@ export default {
         } else if(this.extension) {
             res["ext"] = this.extension;
         }
+        if(mappingAsDict.name) {
+            const nameColumn = mappingAsDict.name.columns[0];
+            const name = data[dataIndex][nameColumn];
+            res["name"] = name;
+        }
+        if(mappingAsDict.info) {
+            const infoColumn = mappingAsDict.info.columns[0];
+            const info = data[dataIndex][infoColumn];
+            res["info"] = info;
+        }
         return res;
     },
   },
@@ -1626,12 +1698,10 @@ export default {
   .rules-container-vertical {
     width: 270px;
     height: 400px;
-    overflow: scroll;
   }
   .rules-container-horizontal {
     width: 100%;
     height: 150px;
-    overflow: scroll;
   }
   .rules-container .title {
     font-weight: bold;
@@ -1646,6 +1716,7 @@ export default {
   }
   .rules {
     flex-grow: 1;
+    overflow-y: scroll;
   }
   .rules li {
     list-style-type: circle;
@@ -1669,4 +1740,5 @@ export default {
   .rules-buttons {
 
   }
+  /* .dropdown-menu {position:absolute;} */
 </style>
