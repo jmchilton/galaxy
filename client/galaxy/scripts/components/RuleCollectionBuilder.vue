@@ -131,6 +131,25 @@
                             </label>
                             <input type="text" v-model="addFilterCompareValue" />
                         </rule-component>
+                        <rule-component rule-type="add_filter_count"
+                                        :display-rule-type="displayRuleType"
+                                        :builder="this">
+                            <label>
+                                Filter which rows?
+                                <select v-model="addFilterCountWhich">
+                                    <option value="first">first</option>
+                                    <option value="last">last</option>
+                                </select>
+                            </label>
+                            <label>
+                                Filter how many rows?
+                                <input type="number" v-model="addFilterCountN" />
+                            </label>
+                            <label :title="titleInvertFilterMatches">
+                                <input type="checkbox" v-model="addFilterCountInvert" />
+                                {{ l("Invert filter.") }}
+                            </label>
+                        </rule-component>
                         <rule-component rule-type="add_filter_empty"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
@@ -211,8 +230,9 @@
                                         <li><a @click="addNewRule('add_filter_matches')">{{ l("Matching a Supplied Value") }}</a></li>
                                         <li><a @click="addNewRule('add_filter_compare')">{{ l("By Comparing to a Numeric Value") }}</a></li>
                                         <li><a @click="addNewRule('add_filter_empty')">{{ l("On Emptiness") }}</a></li>
+                                        <li><a @click="addNewRule('add_filter_count')">{{ l("First or Last N Rows") }}</a></li>
                                   </ul>
-                                </div>                                
+                                </div>
                                 <div class="btn-group dropup">
                                     <button id="" type="button" class="primary-button dropdown-toggle" data-toggle="dropdown">
                                         <span class="fa fa-plus"></span> {{ "Column" }}<span class="caret"></span>
@@ -623,6 +643,55 @@ const Rules = {
           const filterFunction = function(el, index) {
               const row = data[parseInt(index)];
               return regExp.exec(row[target]) ? !invert : invert;
+          }
+          sources = sources.filter(filterFunction);
+          data = data.filter(filterFunction);
+          return {data, sources};
+        }
+    },
+    add_filter_count: {
+        display: (rule, colHeaders) => {
+            const which = rule.which;
+            const invert = rule.invert;
+            if(which == "first" && ! invert) {
+                return `Filter out first ${rule.count} row(s).}`;            
+            } else if(which == "first" && invert) {
+                return `Keep only first ${rule.count} row(s).}`;            
+            } else if(which == "last" && ! invert) {
+                return `Filter out last ${rule.count} row(s).}`;
+            } else {
+                return `Keep only last ${rule.count} row(s).}`;
+            }
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addFilterCountN = 0;
+                component.addFilterCountWhich = "first";
+                component.addFilterCountInvert = false;
+            } else {
+                component.addFilterCountN = rule.count;
+                component.addFilterCountWhich = rule.which;
+                component.addFilterCountInvert = rule.inverse;
+            }
+        },
+        save: (component, rule) => {
+            rule.count = component.addFilterCountN;
+            rule.which = component.addFilterCountWhich;
+            rule.invert = component.addFilterCountInvert;
+        },
+        apply: (rule, data, sources) => {
+          const count = rule.count;
+          const invert = rule.invert;
+          const which = rule.which;
+          const dataLength = data.length;
+          const filterFunction = function(el, index) {
+              let matches;
+              if(which == "first") {
+                  matches = index >= count;
+              } else {
+                  matches = index < (dataLength - count);
+              }
+              return matches ? !invert : invert;
           }
           sources = sources.filter(filterFunction);
           data = data.filter(filterFunction);
@@ -1143,6 +1212,9 @@ export default {
         addFilterCompareTarget: 0,
         addFilterCompareValue: 0,
         addFilterCompareType: "less_than",
+        addFilterCountN: 1,
+        addFilterCountInvert: false,
+        addFilterCountWhich: "first",
         addSortingTarget: 0,
         addSortingNumeric: false,
         splitColumnsTargets0: [],
