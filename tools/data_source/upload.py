@@ -335,30 +335,46 @@ def add_file(dataset, registry, json_file, output_path):
 
 
 def add_composite_file(dataset, json_file, output_path, files_path):
-    if dataset.composite_files:
+
+    def make_files_path():
         os.mkdir(files_path)
+
+    def stage_file(name, composite_file_path, is_binary=False):
+        dp = composite_file_path['path']
+        isurl = dp.find('://') != -1  # todo fixme
+        if isurl:
+            try:
+                temp_name = sniff.stream_to_file(urlopen(dp), prefix='url_paste')
+            except Exception as e:
+                raise UploadProblemException('Unable to fetch %s\n%s' % (dp, str(e)))
+            dataset.path = temp_name
+            dp = temp_name
+        if not is_binary:
+            tmpdir = output_adjacent_tmpdir(output_path)
+            tmp_prefix = 'data_id_%s_convert_' % dataset.dataset_id
+            if composite_file_path.get('space_to_tab'):
+                sniff.convert_newlines_sep2tabs(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
+            else:
+                sniff.convert_newlines(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
+        shutil.move(dp, os.path.join(files_path, name))
+
+    # Do we have pre-defined composite files from the datatype definition.
+    if dataset.composite_files:
+        make_files_path()
         for name, value in dataset.composite_files.items():
             value = util.bunch.Bunch(**value)
             if dataset.composite_file_paths[value.name] is None and not value.optional:
                 raise UploadProblemException('A required composite data file was not provided (%s)' % name)
             elif dataset.composite_file_paths[value.name] is not None:
-                dp = dataset.composite_file_paths[value.name]['path']
-                isurl = dp.find('://') != -1  # todo fixme
-                if isurl:
-                    try:
-                        temp_name = sniff.stream_to_file(urlopen(dp), prefix='url_paste')
-                    except Exception as e:
-                        raise UploadProblemException('Unable to fetch %s\n%s' % (dp, str(e)))
-                    dataset.path = temp_name
-                    dp = temp_name
-                if not value.is_binary:
-                    tmpdir = output_adjacent_tmpdir(output_path)
-                    tmp_prefix = 'data_id_%s_convert_' % dataset.dataset_id
-                    if dataset.composite_file_paths[value.name].get('space_to_tab', value.space_to_tab):
-                        sniff.convert_newlines_sep2tabs(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
-                    else:
-                        sniff.convert_newlines(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
-                shutil.move(dp, os.path.join(files_path, name))
+                composite_file_path = dataset.composite_file_paths[value.name]
+                stage_file(name, composite_file_path, value.is_binary)
+
+    # Do we have ad-hoc user supplied composite files.
+    elif dataset.composite_file_paths:
+        make_files_path()
+        for key, composite_file in dataset.composite_file_paths.items():
+            stage_file(key, composite_file)  # TODO: replace these defaults
+
     # Move the dataset to its "real" path
     shutil.move(dataset.primary_file, output_path)
     # Write the job info
