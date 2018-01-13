@@ -471,3 +471,25 @@ class ServerDirectoryRestrictedToAdminsUsageTestCase(BaseUploadContentConfigurat
         payload, files = self.library_populator.create_dataset_request(library, upload_option="upload_directory", server_dir="library")
         response = self.library_populator.raw_library_contents_create(library["id"], payload, files=files)
         assert response.status_code == 403, response.json()
+
+
+class TestDirectoryAndCompressedTypes(BaseUploadContentConfigurationTestCase):
+
+    require_admin_user = True
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        config["allow_path_paste"] = True
+
+    def test_tar_to_directory(self):
+        dataset = self.dataset_populator.new_dataset(
+            self.history_id, 'file://%s/testdir.tar' % TEST_DATA_DIRECTORY, file_type="tar", auto_decompress=False, wait=True
+        )
+        dataset = self.dataset_populator.get_history_dataset_details(self.history_id, dataset=dataset)
+        assert dataset["file_ext"] == "tar", dataset
+        response = self.dataset_populator.run_tool(
+            tool_id="CONVERTER_tar_to_directory",
+            inputs={"input1": {"src": "hda", "id": dataset["id"]}},
+            history_id=self.history_id,
+        )
+        self.dataset_populator.wait_for_job(response["jobs"][0]["id"])
