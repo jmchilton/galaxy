@@ -191,7 +191,8 @@ def populate_api_routes(webapp, app):
                            name_prefix="history_",
                            controller='history_contents',
                            path_prefix='/api/histories/{history_id}/contents',
-                           parent_resources=dict(member_name='history', collection_name='histories'))
+                           parent_resources=dict(member_name='history', collection_name='histories'),
+                            )
     # Legacy access to HDA details via histories/{history_id}/contents/{hda_id}
     webapp.mapper.resource('content',
                            'contents',
@@ -281,6 +282,7 @@ def populate_api_routes(webapp, app):
     webapp.mapper.connect('/api/tools/{id:.+?}/build_dependency_cache', action='build_dependency_cache', controller="tools", conditions=dict(method=["POST"]))
     webapp.mapper.connect('/api/tools/{id:.+?}', action='show', controller="tools")
     webapp.mapper.resource('tool', 'tools', path_prefix='/api')
+    webapp.mapper.resource('dynamic_tools', 'dynamic_tools', path_prefix='/api')
 
     webapp.mapper.connect('/api/dependency_resolvers/clean', action="clean", controller="tool_dependencies", conditions=dict(method=["POST"]))
     webapp.mapper.connect('/api/dependency_resolvers/dependency', action="manager_dependency", controller="tool_dependencies", conditions=dict(method=["GET"]))
@@ -992,13 +994,13 @@ def wrap_in_middleware(app, global_conf, application_stack, **local_conf):
         from galaxy.web.framework.middleware.remoteuser import RemoteUser
         app = wrap_if_allowed(app, stack, RemoteUser,
                               kwargs=dict(
-                                  maildomain=conf.get('remote_user_maildomain', None),
-                                  display_servers=util.listify(conf.get('display_servers', '')),
-                                  single_user=single_user,
-                                  admin_users=conf.get('admin_users', '').split(','),
-                                  remote_user_header=conf.get('remote_user_header', 'HTTP_REMOTE_USER'),
-                                  remote_user_secret_header=conf.get('remote_user_secret', None),
-                                  normalize_remote_user_email=conf.get('normalize_remote_user_email', False)))
+                                   maildomain=conf.get('remote_user_maildomain', None),
+                                   display_servers=util.listify(conf.get('display_servers', '')),
+                                   single_user=single_user,
+                                   admin_users=conf.get('admin_users', '').split(','),
+                                   remote_user_header=conf.get('remote_user_header', 'HTTP_REMOTE_USER'),
+                                   remote_user_secret_header=conf.get('remote_user_secret', None),
+                                   normalize_remote_user_email=conf.get('normalize_remote_user_email', False)))
     # The recursive middleware allows for including requests in other
     # requests or forwarding of requests, all on the server side.
     if asbool(conf.get('use_recursive', True)):
