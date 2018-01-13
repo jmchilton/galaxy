@@ -28,6 +28,7 @@ from galaxy.tools.wrappers import (
     DatasetFilenameWrapper,
     DatasetListWrapper,
     ElementIdentifierMapper,
+    FilenameWrapper,
     InputValueWrapper,
     RawObjectWrapper,
     SelectToolParameterWrapper,
@@ -195,7 +196,8 @@ class ToolEvaluator(object):
                                        datatypes_registry=self.app.datatypes_registry,
                                        tool=self.tool,
                                        name=input.name)
-
+            elif isinstance(input, DataToolParameter) and value is None and input.default:
+                input_values[input.name] = FilenameWrapper(os.path.abspath(input.default))
             elif isinstance(input, DataToolParameter):
                 # FIXME: We're populating param_dict with conversions when
                 #        wrapping values, this should happen as a separate
@@ -297,7 +299,7 @@ class ToolEvaluator(object):
                     wrapper = wrappers[0]
                     param_dict[name] = wrapper
                     continue
-            if not isinstance(param_dict_value, (DatasetFilenameWrapper, DatasetListWrapper)):
+            if not isinstance(param_dict_value, (DatasetFilenameWrapper, DatasetListWrapper, FilenameWrapper)):
                 wrapper_kwds = dict(
                     datatypes_registry=self.app.datatypes_registry,
                     tool=self,

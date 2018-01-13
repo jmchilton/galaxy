@@ -1,3 +1,5 @@
+import os
+
 from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
     DataToolParameter,
@@ -13,6 +15,7 @@ from galaxy.tools.wrappers import (
     DatasetFilenameWrapper,
     DatasetListWrapper,
     ElementIdentifierMapper,
+    FilenameWrapper,
     InputValueWrapper,
     SelectToolParameterWrapper
 )
@@ -77,6 +80,9 @@ class WrappedParameters(object):
                                        datatypes_registry=trans.app.datatypes_registry,
                                        tool=tool,
                                        name=input.name)
+            elif isinstance(input, DataToolParameter) and input.default and value is None:
+                input_values[input.name] = \
+                    FilenameWrapper(os.path.abspath(input.default))
             elif isinstance(input, DataToolParameter):
                 wrapper_kwds = dict(
                     datatypes_registry=trans.app.datatypes_registry,
