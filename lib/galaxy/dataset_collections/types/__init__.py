@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 class DatasetCollectionType(object):
 
     @abstractmethod
-    def generate_elements(self, dataset_instances):
+    def generate_elements(self, dataset_instances, **kwds):
         """ Generate DatasetCollectionElements with corresponding
         to the supplied dataset instances or throw exception if
         this is not a valid collection of the specified type.
@@ -23,6 +23,9 @@ class DatasetCollectionType(object):
 
 
 class BaseDatasetCollectionType(DatasetCollectionType):
+
+    def __init__(self, **kwds):
+        pass
 
     def _validation_failed(self, message):
         raise exceptions.ObjectAttributeInvalidException(message)
