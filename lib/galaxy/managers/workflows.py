@@ -29,7 +29,6 @@ from galaxy.tools.parameters.basic import (
 from galaxy.util.json import safe_loads
 from galaxy.util.sanitize_html import sanitize_html
 from galaxy.web import url_for
-from galaxy.workflow import modules
 from galaxy.workflow.modules import (
     is_tool_module_type,
     module_factory,
@@ -596,6 +595,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 'tool_id': content_id,  # For worklfows exported to older Galaxies,
                                         # eliminate after a few years...
                 'tool_version': step.tool_version,
+                'tool_hash': step.tool_hash,
                 'name': module.get_name(),
                 'tool_state': json.dumps(tool_state),
                 'errors': module.get_errors(),
@@ -612,6 +612,17 @@ class WorkflowContentsManager(UsesAnnotations):
                         'changeset_revision': module.tool.changeset_revision,
                         'tool_shed': module.tool.tool_shed
                     }
+
+                tool_representation = None
+                tool_hash = step.tool_hash
+                if tool_hash is not None:
+                    dynamic_tool = self.app.dynamic_tool_manager.get_tool_by_hash(
+                        tool_hash
+                    )
+                    tool_representation = json.dumps(dynamic_tool.value)
+                step.tool_representation = tool_representation
+                step_dict['tool_representation'] = tool_representation
+
                 pja_dict = {}
                 for pja in step.post_job_actions:
                     pja_dict[pja.action_type + pja.output_name] = dict(

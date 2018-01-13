@@ -63,6 +63,7 @@ from galaxy.tools.parameters.input_translation import ToolInputTranslator
 from galaxy.tools.parameters.meta import expand_meta_parameters
 from galaxy.tools.parser import (
     get_tool_source,
+    get_tool_source_from_representation,
     ToolOutputCollectionPart
 )
 from galaxy.tools.parser.xml import XmlPageSource
@@ -275,6 +276,22 @@ class ToolBox(BaseGalaxyToolBox):
     def _create_tool_from_source(self, tool_source, **kwds):
         return create_tool_from_source(self.app, tool_source, **kwds)
 
+    def create_dynamic_tool(self, dynamic_tool, **kwds):
+        tool_format = dynamic_tool.tool_format
+        tool_representation = dynamic_tool.value
+        tool_source = get_tool_source_from_representation(
+            tool_format=tool_format,
+            tool_representation=tool_representation,
+        )
+        kwds["dynamic"] = True
+        tool = self._create_tool_from_source(tool_source, **kwds)
+        tool.tool_hash = dynamic_tool.tool_hash
+        if not tool.id:
+            tool.id = dynamic_tool.tool_id
+        if not tool.name:
+            tool.name = tool.id
+        return tool
+
     def get_tool_components(self, tool_id, tool_version=None, get_loaded_tools_by_lineage=False, set_selected=False):
         """
         Retrieve all loaded versions of a tool from the toolbox and return a select list enabling
@@ -391,11 +408,16 @@ class Tool(object, Dictifiable):
     default_tool_action = DefaultToolAction
     dict_collection_visible_keys = ['id', 'name', 'version', 'description', 'labels']
 
-    def __init__(self, config_file, tool_source, app, guid=None, repository_id=None, allow_code_files=True):
+    def __init__(self, config_file, tool_source, app, guid=None, repository_id=None, allow_code_files=True, dynamic=False):
         """Load a tool from the config named by `config_file`"""
         # Determine the full path of the directory where the tool config is
-        self.config_file = config_file
-        self.tool_dir = os.path.dirname(config_file)
+        if config_file is not None:
+            self.config_file = config_file
+            self.tool_dir = os.path.dirname(config_file)
+        else:
+            self.config_file = None
+            self.tool_dir = None
+
         self.app = app
         self.repository_id = repository_id
         self._allow_code_files = allow_code_files
@@ -415,6 +437,7 @@ class Tool(object, Dictifiable):
         self.display_interface = True
         self.require_login = False
         self.rerun = False
+        self.tool_hash = None
         # Define a place to keep track of all input   These
         # differ from the inputs dictionary in that inputs can be page
         # elements like conditionals, but input_params are basic form
@@ -442,7 +465,7 @@ class Tool(object, Dictifiable):
         self.populate_resource_parameters(tool_source)
         # Parse XML element containing configuration
         try:
-            self.parse(tool_source, guid=guid)
+            self.parse(tool_source, guid=guid, dynamic=dynamic)
         except Exception as e:
             global_tool_errors.add_error(config_file, "Tool Loading", e)
             raise e
@@ -577,7 +600,7 @@ class Tool(object, Dictifiable):
             return False
         return True
 
-    def parse(self, tool_source, guid=None):
+    def parse(self, tool_source, guid=None, dynamic=False):
         """
         Read tool configuration from the element `root` and fill in `self`.
         """
@@ -588,7 +611,8 @@ class Tool(object, Dictifiable):
             self.id = self.old_id
         else:
             self.id = guid
-        if not self.id:
+
+        if not dynamic and not self.id:
             raise Exception("Missing tool 'id' for tool at '%s'" % tool_source)
 
         profile = LooseVersion(str(self.profile))
@@ -599,7 +623,9 @@ class Tool(object, Dictifiable):
 
         # Get the (user visible) name of the tool
         self.name = tool_source.parse_name()
-        if not self.name:
+        if not self.name and dynamic:
+            self.name = self.id
+        if not dynamic and not self.name:
             raise Exception("Missing tool 'name' for tool with id '%s' at '%s'" % (self.id, tool_source))
 
         self.version = tool_source.parse_version()
@@ -666,10 +692,13 @@ class Tool(object, Dictifiable):
         # a 'default' will be provided that uses the 'default' handler and
         # 'default' destination.  I thought about moving this to the
         # job_config, but it makes more sense to store here. -nate
-        self_ids = [self.id.lower()]
-        if self.old_id != self.id:
-            # Handle toolshed guids
-            self_ids = [self.id.lower(), self.id.lower().rsplit('/', 1)[0], self.old_id.lower()]
+        if self.id:
+            self_ids = [self.id.lower()]
+            if self.old_id != self.id:
+                # Handle toolshed guids
+                self_ids = [self.id.lower(), self.id.lower().rsplit('/', 1)[0], self.old_id.lower()]
+        else:
+            self_ids = []
         self.all_ids = self_ids
 
         # In the toolshed context, there is no job config.
@@ -1733,7 +1762,8 @@ class Tool(object, Dictifiable):
 
         # If an admin user, expose the path to the actual tool config XML file.
         if trans.user_is_admin():
-            tool_dict['config_file'] = os.path.abspath(self.config_file)
+            config_file = None if not self.config_file else os.path.abspath(self.config_file)
+            tool_dict['config_file'] = config_file
 
         # Add link details.
         if link_details:
