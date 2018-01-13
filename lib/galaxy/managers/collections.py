@@ -160,9 +160,14 @@ class DatasetCollectionManager(object):
 
         # If we have elements, this is an internal request, don't need to load
         # objects from identifiers.
+        has_subcollections = collection_type_description.has_subcollections()
         if elements is None:
             elements = self._element_identifiers_to_elements(trans, collection_type_description, element_identifiers)
         # else if elements is set, it better be an ordered dict!
+        else:
+            if has_subcollections:
+                # Nested collection - recursively create collections as needed.
+                self.__recursively_create_collections_for_elements(trans, elements)
 
         if elements is not self.ELEMENTS_UNINITIALIZED:
             type_plugin = collection_type_description.rank_type_plugin()
@@ -179,7 +184,7 @@ class DatasetCollectionManager(object):
     def _element_identifiers_to_elements(self, trans, collection_type_description, element_identifiers):
         if collection_type_description.has_subcollections():
             # Nested collection - recursively create collections and update identifiers.
-            self.__recursively_create_collections(trans, element_identifiers)
+            self.__recursively_create_collections_for_identifiers(trans, element_identifiers)
         new_collection = False
         for element_identifier in element_identifiers:
             if element_identifier.get("src") == "new_collection" and element_identifier.get('collection_type') == '':
@@ -295,10 +300,10 @@ class DatasetCollectionManager(object):
             context.flush()
         return dataset_collection_instance
 
-    def __recursively_create_collections(self, trans, element_identifiers):
+    def __recursively_create_collections_for_identifiers(self, trans, element_identifiers):
         for index, element_identifier in enumerate(element_identifiers):
             try:
-                if not element_identifier["src"] == "new_collection":
+                if element_identifier["src"] != "new_collection":
                     # not a new collection, keep moving...
                     continue
             except KeyError:
@@ -315,6 +320,27 @@ class DatasetCollectionManager(object):
             element_identifier["__object__"] = collection
 
         return element_identifiers
+
+    def __recursively_create_collections_for_elements(self, trans, elements):
+        if elements is self.ELEMENTS_UNINITIALIZED:
+            return
+
+        new_elements = odict.odict()
+        for key, element in iteritems(elements):
+            if element["src"] != "new_collection":
+                continue
+
+            # element is a dict with src new_collection and
+            # and odict of named elements
+            collection_type = element.get("collection_type", None)
+            sub_elements = element["elements"]
+            collection = self.create_dataset_collection(
+                trans=trans,
+                collection_type=collection_type,
+                elements=sub_elements,
+            )
+            new_elements[key] = collection
+        elements.update(new_elements)
 
     def __load_elements(self, trans, element_identifiers):
         elements = odict.odict()
