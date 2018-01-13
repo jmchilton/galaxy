@@ -173,6 +173,7 @@ class DatasetCollectionManager(object):
         has_subcollections = collection_type_description.has_subcollections()
         # If we have elements, this is an internal request, don't need to load
         # objects from identifiers.
+        has_subcollections = collection_type_description.has_subcollections()
         if elements is None:
             elements = self._element_identifiers_to_elements(trans,
                                                              collection_type_description=collection_type_description,
@@ -183,7 +184,6 @@ class DatasetCollectionManager(object):
             if has_subcollections:
                 # Nested collection - recursively create collections as needed.
                 self.__recursively_create_collections_for_elements(trans, elements, hide_source_items, copy_elements=copy_elements)
-        # else if elements is set, it better be an ordered dict!
 
         if elements is not self.ELEMENTS_UNINITIALIZED:
             type_plugin = collection_type_description.rank_type_plugin()
