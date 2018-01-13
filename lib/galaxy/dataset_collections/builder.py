@@ -2,21 +2,23 @@ from galaxy import model
 from galaxy.util.odict import odict
 
 
-def build_collection(type, dataset_instances):
+def build_collection(type, dataset_instances, fields=None):
     """
     Build DatasetCollection with populated DatasetcollectionElement objects
     corresponding to the supplied dataset instances or throw exception if
     this is not a valid collection of the specified type.
     """
-    dataset_collection = model.DatasetCollection()
-    set_collection_elements(dataset_collection, type, dataset_instances)
+    dataset_collection = model.DatasetCollection(fields=fields)
+    set_collection_elements(dataset_collection, type, dataset_instances, fields=fields)
     return dataset_collection
 
 
-def set_collection_elements(dataset_collection, type, dataset_instances):
+def set_collection_elements(dataset_collection, type, dataset_instances, fields=None):
     element_index = 0
     elements = []
-    for element in type.generate_elements(dataset_instances):
+    if fields == "auto":
+        fields = guess_fields(dataset_instances)
+    for element in type.generate_elements(dataset_instances, fields=fields):
         element.element_index = element_index
         element.collection = dataset_collection
         elements.append(element)
@@ -26,6 +28,16 @@ def set_collection_elements(dataset_collection, type, dataset_instances):
     dataset_collection.elements = elements
     dataset_collection.element_count = element_index
     return dataset_collection
+
+
+def guess_fields(dataset_instances):
+    fields = []
+    for identifier, element in dataset_instances.items():
+        # TODO: Make generic enough to handle nested record types.
+        assert element.history_content_type == "dataset"
+        fields.append({"class": "File", "name": identifier})
+
+    return fields
 
 
 class CollectionBuilder(object):
