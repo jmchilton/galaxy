@@ -20,6 +20,7 @@ from galaxy import util
 from galaxy.datatypes import sniff
 from galaxy.datatypes.binary import Binary
 from galaxy.datatypes.registry import Registry
+from galaxy.util import in_directory, safe_makedirs
 from galaxy.util.checkers import (
     check_binary,
     check_bz2,
@@ -337,7 +338,7 @@ def add_file(dataset, registry, json_file, output_path):
 def add_composite_file(dataset, json_file, output_path, files_path):
 
     def make_files_path():
-        os.mkdir(files_path)
+        safe_makedirs(files_path)
 
     def stage_file(name, composite_file_path, is_binary=False):
         dp = composite_file_path['path']
@@ -349,14 +350,28 @@ def add_composite_file(dataset, json_file, output_path, files_path):
                 raise UploadProblemException('Unable to fetch %s\n%s' % (dp, str(e)))
             dataset.path = temp_name
             dp = temp_name
-        if not is_binary:
-            tmpdir = output_adjacent_tmpdir(output_path)
-            tmp_prefix = 'data_id_%s_convert_' % dataset.dataset_id
-            if composite_file_path.get('space_to_tab'):
-                sniff.convert_newlines_sep2tabs(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
-            else:
-                sniff.convert_newlines(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
-        shutil.move(dp, os.path.join(files_path, name))
+
+        import tarfile
+        if tarfile.is_tarfile(dp):
+            tar = tarfile.open(dp, "r:*")
+            for tarinfo in tar:
+                rel_path = tarinfo.name
+                dest_path = os.path.join(files_path, rel_path)
+                if not in_directory(dest_path, files_path):
+                    raise Exception("Invalid tar file uploaded!")
+                if tarinfo.isdir():
+                    safe_makedirs(dest_path)
+                elif tarinfo.isreg():
+                    tar.extract(tarinfo, path=files_path)
+        else:
+            if not is_binary:
+                tmpdir = output_adjacent_tmpdir(output_path)
+                tmp_prefix = 'data_id_%s_convert_' % dataset.dataset_id
+                if composite_file_path.get('space_to_tab'):
+                    sniff.convert_newlines_sep2tabs(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
+                else:
+                    sniff.convert_newlines(dp, tmp_dir=tmpdir, tmp_prefix=tmp_prefix)
+            shutil.move(dp, os.path.join(files_path, name))
 
     # Do we have pre-defined composite files from the datatype definition.
     if dataset.composite_files:
