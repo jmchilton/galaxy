@@ -1850,7 +1850,7 @@ test_data:
     type: raw
 """, history_id=history_id, wait=True, assert_ok=False)
 
-    def test_run_with_text_connection(self):
+    def test_run_with_text_input_connection(self):
         history_id = self.dataset_populator.new_history()
         self._run_jobs("""
 class: GalaxyWorkflow
