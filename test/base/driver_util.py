@@ -183,11 +183,13 @@ def setup_galaxy_config(
     config = dict(
         admin_users='test@bx.psu.edu',
         allow_library_path_paste=True,
+        allow_path_paste=True,
         allow_user_creation=True,
         allow_user_deletion=True,
         api_allow_run_as='test@bx.psu.edu',
         auto_configure_logging=logging_config_file is None,
         check_migrate_tools=False,
+        check_upload_content=False,
         conda_auto_init=False,
         cleanup_job='onsuccess',
         data_manager_config_file=data_manager_config_file,

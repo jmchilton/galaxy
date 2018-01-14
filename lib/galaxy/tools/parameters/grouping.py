@@ -215,8 +215,11 @@ class UploadDataset(Group):
         if dataset_name is None:
             filenames = list()
             for composite_file in context.get('files', []):
+                if dataset_name is None and composite_file.get("NAME", None) is not None:
+                    dataset_name = composite_file.get("NAME")
                 filenames.append(composite_file.get('file_data', {}).get('filename', ''))
-            dataset_name = os.path.commonprefix(filenames).rstrip('.') or None
+            if dataset_name is None:
+                dataset_name = os.path.commonprefix(filenames).rstrip('.') or None
         if dataset_name is None:
             dataset_name = 'Uploaded Composite Dataset (%s)' % self.get_file_type(context)
         return dataset_name
@@ -696,6 +699,10 @@ class Conditional(Group):
         cond_dict["cases"] = list(map(nested_to_dict, self.cases))
         cond_dict["test_param"] = nested_to_dict(self.test_param)
         return cond_dict
+
+    @property
+    def case_strings(self):
+        return [c.value for c in self.cases]
 
 
 class ConditionalWhen(object, Dictifiable):

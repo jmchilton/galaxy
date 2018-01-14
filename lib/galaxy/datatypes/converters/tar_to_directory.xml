@@ -1,14 +1,20 @@
-<tool id="CONVERTER_tar_to_directory" name="Convert tar to directory" version="1.0.0" profile="17.05">
+<tool id="CONVERTER_tar_to_directory" name="Convert tar to directory" version="1.0.0" profile="17.09">
     <command>
+        cp '$provided_metadata' 'galaxy.json';
         mkdir '$output1.files_path';
         cd '$output1.files_path';
-        tar -xzf '$input1'
+        tar -xzf '$input1';
+        ls '$output1.files_path'
     </command>
+    <configfiles>
+        <configfile name="provided_metadata">{"output1": {"cwl_filename": "${input1.cwl_filename}"}}
+        </configfile>
+    </configfiles>
     <inputs>
         <param format="tar" name="input1" type="data"/>
     </inputs>
     <outputs>
-        <data format="directory" name="output1"/>
+        <data format="directory" name="output1" metadata_source="input1" />
     </outputs>
     <help>
     </help>

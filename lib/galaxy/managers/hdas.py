@@ -302,7 +302,8 @@ class HDASerializer(  # datasets._UnflattenedMetadataDatasetAssociationSerialize
 
             'annotation',
 
-            'api_type'
+            'api_type',
+            'cwl_file_name',
         ], include_keys_from='summary')
 
         self.add_view('extended', [
@@ -356,7 +357,8 @@ class HDASerializer(  # datasets._UnflattenedMetadataDatasetAssociationSerialize
             # TODO: to DatasetAssociationSerializer
             'accessible'    : lambda i, k, user=None, **c: self.manager.is_accessible(i, user),
             'api_type'      : lambda *a, **c: 'file',
-            'type'          : lambda *a, **c: 'file'
+            'type'          : lambda *a, **c: 'file',
+            'cwl_file_name' : lambda i, k, **c: i.cwl_filename,
         })
 
     def serialize(self, hda, keys, user=None, **context):

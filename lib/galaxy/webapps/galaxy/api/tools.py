@@ -13,6 +13,7 @@ from galaxy.web import _future_expose_api_anonymous_and_sessionless as expose_ap
 from galaxy.web.base.controller import BaseAPIController
 from galaxy.web.base.controller import UsesVisualizationMixin
 
+
 log = logging.getLogger(__name__)
 
 
@@ -338,8 +339,8 @@ class ToolsController(BaseAPIController, UsesVisualizationMixin):
         else:
             target_history = None
 
-        # Set up inputs.
-        inputs = payload.get('inputs', {})
+        inputs = tool.inputs_from_dict(payload)
+
         # Find files coming in as multipart file data and add to inputs.
         for k, v in payload.items():
             if k.startswith('files_') or k.startswith('__files_'):
