@@ -395,10 +395,8 @@ class CwlPopulator(object):
     def run_conformance_test(self, version, doc):
         test = self.get_conformance_test(version, doc)
         tool = os.path.join(CWL_TOOL_DIRECTORY, test["tool"])
-        tool_or_workflow = self.guess_artifact_type(tool)
         job = os.path.join(CWL_TOOL_DIRECTORY, test["job"])
-        run = self.run_workflow_job(tool, job, tool_or_workflow=tool_or_workflow)
-        assert run.history_id
+        run = self.run_cwl_job(tool, job)
         expected_outputs = test["output"]
         try:
             for key, value in expected_outputs.items():
@@ -407,6 +405,12 @@ class CwlPopulator(object):
         except Exception:
             self.dataset_populator._summarize_history(run.history_id)
             raise
+
+    def run_cwl_job(self, tool, job):
+        tool_or_workflow = self.guess_artifact_type(tool)
+        run = self.run_workflow_job(tool, job, tool_or_workflow=tool_or_workflow)
+        assert run.history_id
+        return run
 
     def guess_artifact_type(self, path):
         # TODO: handle IDs within files and use galaxy-lib functionality for this.
@@ -529,8 +533,11 @@ class BaseDatasetPopulator(object):
         payload = dict(
             representation=representation,
         )
-        create_response = self._post("dynamic_tools", data=payload, admin=True)
-        assert create_response.status_code == 200, create_response
+        try:
+            create_response = self._post("dynamic_tools", data=payload, admin=True)
+        except TypeError:
+            create_response = self._post("dynamic_tools", data=payload)
+        assert create_response.status_code == 200, create_response.json()
         return create_response.json()
 
     def _summarize_history(self, history_id):
@@ -551,6 +558,7 @@ class BaseDatasetPopulator(object):
     def new_history(self, **kwds):
         name = kwds.get("name", "API Test History")
         create_history_response = self._post("histories", data=dict(name=name))
+        assert "id" in create_history_response.json(), create_history_response.json()
         history_id = create_history_response.json()["id"]
         return history_id
 
@@ -1247,7 +1255,7 @@ class GiPostGetMixin:
     """Mixin for adapting Galaxy testing populators helpers to bioblend."""
 
     def _get(self, route, data={}):
-        return self._gi.make_get_request(self.__url(route), data)
+        return self._gi.make_get_request(self.__url(route), data=data)
 
     def _post(self, route, data={}):
         data = data.copy()
