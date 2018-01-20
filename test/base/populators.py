@@ -29,6 +29,7 @@ from galaxy.tools.cwl.util import (
     FileLiteralTarget,
     FileUploadTarget,
     DirectoryUploadTarget,
+    download_output,
     galactic_job_json,
     guess_artifact_type,
     invocation_to_output,
@@ -182,7 +183,7 @@ class CwlRun(object):
         self.dataset_populator = dataset_populator
         self.history_id = history_id
 
-    def get_output_as_object(self, output_name):
+    def get_output_as_object(self, output_name, download_folder=None):
         galaxy_output = self._output_name_to_object(output_name)
 
         def get_metadata(history_content_type, content_id):
@@ -204,7 +205,6 @@ class CwlRun(object):
 
         def get_extra_files(dataset_details):
             return self.dataset_populator.get_history_dataset_extra_files(self.history_id, dataset_id=dataset_details["id"])
-
         output = output_to_cwl_json(
             galaxy_output,
             get_metadata,
@@ -212,9 +212,13 @@ class CwlRun(object):
             get_extra_files,
             pseduo_location=True,
         )
-
+        if download_folder:
+            download_path = os.path.join(download_folder, output["basename"])
+            download_output(galaxy_output, get_metadata, get_dataset, get_extra_files, download_path)
+            output["path"] = download_path
+            output["location"] = "file://%s" % download_path 
         return output
-
+        
 
 class CwlToolRun(CwlRun):
 
