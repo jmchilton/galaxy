@@ -93,14 +93,11 @@ export default Backbone.View.extend({
                 $el: this.collection_view.$el
             });
             this.rule_based_view = new UploadViewRuleBased(this);
-            console.log(this.rule_based_view);
             this.tabs.add({
                 id: "rule-based",
                 title: _l("Rule-based"),
                 $el: this.rule_based_view.$el
             });
-            console.log(this.rule_based_view.$el);
-            console.log("I THINK I ADDED IT?");
             this.modal = new Modal.View({
                 title: _l("Download from web or upload from disk"),
                 body: this.tabs.$el,
