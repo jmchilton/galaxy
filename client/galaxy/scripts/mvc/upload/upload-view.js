@@ -9,6 +9,7 @@ import UploadViewDefault from "mvc/upload/default/default-view";
 import UploadViewComposite from "mvc/upload/composite/composite-view";
 import UploadViewCollection from "mvc/upload/collection/collection-view";
 import UploadViewRuleBased from "mvc/upload/collection/rules-input-view";
+
 export default Backbone.View.extend({
     options: {
         nginx_upload_path: "",
@@ -27,17 +28,16 @@ export default Backbone.View.extend({
     list_genomes: [],
 
     initialize: function(options) {
-        var self = this;
         this.options = Utils.merge(options, this.options);
 
         // create view for upload/progress button
         this.ui_button = new UploadButton.View({
-            onclick: function(e) {
+            onclick: e => {
                 e.preventDefault();
-                self.show();
+                this.show();
             },
-            onunload: function() {
-                var percentage = self.ui_button.model.get("percentage", 0);
+            onunload: () => {
+                var percentage = this.ui_button.model.get("percentage", 0);
                 if (percentage > 0 && percentage < 100) {
                     return "Several uploads are queued.";
                 }
@@ -52,8 +52,8 @@ export default Backbone.View.extend({
             list_extensions => {
                 this.list_extensions = list_extensions;
             },
-            options.datatypes_disable_auto,
-            options.auto
+            this.options.datatypes_disable_auto,
+            this.options.auto
         );
 
         // load genomes
@@ -93,14 +93,11 @@ export default Backbone.View.extend({
                 $el: this.collection_view.$el
             });
             this.rule_based_view = new UploadViewRuleBased(this);
-            console.log(this.rule_based_view);
             this.tabs.add({
                 id: "rule-based",
                 title: _l("Rule-based"),
                 $el: this.rule_based_view.$el
             });
-            console.log(this.rule_based_view.$el);
-            console.log("I THINK I ADDED IT?");
             this.modal = new Modal.View({
                 title: _l("Download from web or upload from disk"),
                 body: this.tabs.$el,

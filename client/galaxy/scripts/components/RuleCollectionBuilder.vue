@@ -326,7 +326,6 @@
 import axios from "axios";
 import _l from "utils/localization";
 import HotTable from 'vue-handsontable-official';
-import Vue from "vue";
 import Popover from "mvc/ui/ui-popover";
 import UploadUtils from "mvc/upload/upload-utils";
 
