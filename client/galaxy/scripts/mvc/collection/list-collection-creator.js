@@ -1057,14 +1057,19 @@ var collectionCreatorModal = function _collectionCreatorModal(elements, options,
     return deferred;
 };
 
-var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(elements, elementsType, importType, options) {
+var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(
+    elements,
+    elementsType,
+    importType,
+    options
+) {
     let title;
-    if(importType == "datasets") {
+    if (importType == "datasets") {
         title = _l("Build Rules for Uploading Datasets");
-    } else if(elementsType == "datasets") {
-        title = _l("Build Rules for Creating Collection")
+    } else if (elementsType == "datasets") {
+        title = _l("Build Rules for Creating Collection");
     } else {
-        title = _l("Build Rules for Uploading Collections");        
+        title = _l("Build Rules for Uploading Collections");
     }
     options = _.defaults(options || {}, {
         title: title
@@ -1127,14 +1132,16 @@ function createCollectionViaRules(selection, defaultHideSourceItems) {
     } else {
         const hasNonWhitespaceChars = RegExp(/[^\s]/);
         // Have pasted data, data from a history dataset, or FTP list.
-        const lines = selection.content.split(/[\n\r]/).filter(line => line.length > 0 && hasNonWhitespaceChars.exec(line));
+        const lines = selection.content
+            .split(/[\n\r]/)
+            .filter(line => line.length > 0 && hasNonWhitespaceChars.exec(line));
 
         // Really poor tabular parser - we should get a library for this or expose options? I'm not
         // sure.
         let hasTabs = false;
-        if(lines.length > 0) {
+        if (lines.length > 0) {
             const firstLine = lines[0];
-            if(firstLine.indexOf("\t") >= 0) {
+            if (firstLine.indexOf("\t") >= 0) {
                 hasTabs = true;
             }
         }
