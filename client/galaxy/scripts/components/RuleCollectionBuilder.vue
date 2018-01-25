@@ -378,7 +378,12 @@ const MAPPING_TARGETS = {
 }
 
 const applyRegex = function(regex, target, data) {
-    const regExp = RegExp(regex);
+    let regExp;
+    try {
+        regExp = RegExp(regex);
+    } catch(error) {
+        return {error: `Invalid regular expression specified.`};
+    }
     let failedCount = 0;
     function newRow(row) {
         const source = row[target];
@@ -644,9 +649,13 @@ const Rules = {
             rule.invert = component.addFilterRegexInvert;
         },
         apply: (rule, data, sources) => {
+          try {
+              regExp = RegExp(regex);
+          } catch(error) {
+              return {error: `Invalid regular expression specified.`};
+          }
           const target = rule.target_column;
           const invert = rule.invert;
-          const regExp = RegExp(rule.expression);
           const filterFunction = function(el, index) {
               const row = data[parseInt(index)];
               return regExp.exec(row[target]) ? !invert : invert;
