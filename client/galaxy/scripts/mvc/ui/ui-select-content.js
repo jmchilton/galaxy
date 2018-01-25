@@ -389,14 +389,22 @@ var View = Backbone.View.extend({
             // sniff first suitable field type from config list
             var src = new_value.values[0].src;
             var multiple = new_value.values.length > 1;
+            let fieldFound = false;
             for (var i = 0; i < this.config.length; i++) {
                 var field = this.fields[i];
                 var c = this.config[i];
                 if (c.src == src && [multiple, true].indexOf(c.multiple) !== -1) {
                     this.model.set("current", i);
                     field.value(list);
+                    fieldFound = true;
                     break;
                 }
+            }
+            if (!fieldFound) {
+                // Just assume user is on right one in this case and set the value
+                var current = this.model.get("current");
+                var field = this.fields[current];
+                field.value(list);
             }
         } else {
             _.each(this.fields, field => {
@@ -414,9 +422,10 @@ var View = Backbone.View.extend({
             var field = this.fields[current];
             var drop_data = JSON.parse(ev.originalEvent.dataTransfer.getData("text"))[0];
             var new_id = drop_data.id;
-            var new_src = drop_data.history_content_type == "dataset" ? "hda" : "hdca";
+            // Following line doesn't work for nested elements, should dispatch on model_class maybe?
+            var new_src = drop_data.history_content_type == "dataset_collection" ? "hdca" : "hda";
             var new_value = { id: new_id, src: new_src };
-            if (data && _.findWhere(data[new_src], new_value)) {
+            if (data) {
                 if (config.src == new_src) {
                     var current_value = field.value();
                     if (current_value && config.multiple) {
