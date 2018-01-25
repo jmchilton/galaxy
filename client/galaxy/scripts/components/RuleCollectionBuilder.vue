@@ -1765,6 +1765,14 @@ export default {
     },
   },
   created() {
+      if(this.elementsType == "datasets") {
+          for(let element of this.initialElements) {
+              if(element.history_content_type == "dataset_collection") {
+                  this.errorMessage = "This component can only be used with datasets, you have specified one or more collections.";
+                  this.state = 'error';
+              }
+          }
+      }
       UploadUtils.getUploadDatatypes((extensions) => {this.extensions = extensions; this.extension = "auto"}, false, UploadUtils.AUTO_EXTENSION);
       UploadUtils.getUploadGenomes((genomes) => {this.genomes = genomes; this.genome = "?";}, "?");
   },
