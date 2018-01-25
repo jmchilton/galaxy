@@ -187,6 +187,9 @@
                             <span class="title">
                                 {{ l("Rules") }}
                             </span>
+                            <div v-if="jaggedData" class="rule-warning">
+                                Rows contain differing numbers of columns, there was likely a problem parsing your data.
+                            </div>
                             <ol class="rules">
                                 <!-- Example at the end of https://vuejs.org/v2/guide/list.html -->
                                 <rule-display
@@ -957,7 +960,6 @@ const Select2 = {
       .trigger('change')
       // emit event on change.
       .on('change', function (event) {
-        console.log(event.val);
         vm.$emit('input', event.val);
       })
   },
@@ -1231,6 +1233,7 @@ export default {
         state: 'build',  // 'build', 'error', 'wait',
         errorMessage: '',
         hasRuleErrors: false,
+        jaggedData: false,
         waitingJobState: 'new',
         titleReset: _l("Undo all reordering and discards"),
         titleNumericSort: _l("By default columns will be sorted lexiographically, check this option if the columns are numeric values and should be sorted as numbers."),
@@ -1533,7 +1536,6 @@ export default {
         } else {
             this.$nextTick(function() {
                 const fullWidth = $(".rule-builder-body").width();
-                console.log(fullWidth);
                 hotTable.updateSettings({
                     width: fullWidth - 270,
                 });
@@ -1774,11 +1776,23 @@ export default {
     },
   },
   created() {
+      let columnCount = null;
       if(this.elementsType == "datasets") {
           for(let element of this.initialElements) {
               if(element.history_content_type == "dataset_collection") {
                   this.errorMessage = "This component can only be used with datasets, you have specified one or more collections.";
                   this.state = 'error';
+              }
+          }
+      } else {
+          for(let row of this.initialElements) {
+              if (columnCount == null) {
+                  columnCount = row.length;
+              } else {
+                  if(columnCount != row.length) {
+                      this.jaggedData = true;
+                      break
+                  }
               }
           }
       }
@@ -1803,6 +1817,7 @@ export default {
 <style>
   .table-column {
     width: 100%;
+    overflow: scroll;
   }
   .vertical #hot-table {
     width: 100%;
@@ -1863,7 +1878,7 @@ export default {
     font-style: italic;
     color: red;
   }
-  .rules .rule-warning {
+  .rule-warning {
     display: block;
     margin-left: 10px;
     font-style: italic;
