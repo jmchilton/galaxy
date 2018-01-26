@@ -8,6 +8,7 @@ export default Backbone.View.extend({
     initialize: function(app) {
         this.app = app;
         this.options = app.options;
+        this.ftpUploadSite = app.currentFtp();
         this.setElement(this._template());
         this.btnBuild = new Ui.Button({
             id: "btn-build",
@@ -35,8 +36,10 @@ export default Backbone.View.extend({
         const selectionTypeOptions = [
             { id: "paste", text: "Pasted Table" },
             { id: "dataset", text: "History Dataset" },
-            { id: "ftp", text: "FTP Directory" }
         ];
+        if (this.ftpUploadSite) {
+            selectionTypeOptions.push({ id: "ftp", text: "FTP Directory" });
+        }
         this.selectionType = "paste";
         this.selectionTypeView = new Select.View({
             css: "upload-footer-selection",
@@ -116,6 +119,7 @@ export default Backbone.View.extend({
         } else if (selectionType == "ftp") {
             selection.selectionType = "ftp";
         }
+        selection.ftpUploadSite = this.ftpUploadSite;
         selection.dataType = this.dataType;
         Galaxy.currHistoryPanel.buildCollection("rules", selection, true);
         this.app.modal.hide();

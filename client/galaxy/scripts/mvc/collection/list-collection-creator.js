@@ -1083,6 +1083,7 @@ var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(
             initialElements: elements,
             elementsType: elementsType,
             importType: importType,
+            ftpUploadSite: options.ftpUploadSite,
             creationFn: options.creationFn,
             oncancel: options.oncancel,
             oncreate: options.oncreate,
@@ -1151,6 +1152,7 @@ function createCollectionViaRules(selection, defaultHideSourceItems) {
         importType = selection.dataType || "collections";
     }
     const promise = ruleBasedCollectionCreatorModal(elements, elementsType, importType, {
+        ftpUploadSite: selection.ftpUploadSite,
         defaultHideSourceItems: defaultHideSourceItems,
         creationFn: function(elements, collectionType, name, hideSourceItems) {
             return selection.createHDCA(elements, collectionType, name, hideSourceItems);

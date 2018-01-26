@@ -377,6 +377,7 @@ const MAPPING_TARGETS = {
         label: _l("FTP Path"),
         modes: ["raw", "ftp"],
         help: _l("This should be the path to the target file to include relative to your FTP directory on the Galaxy server"),
+        requiresFtp: true,
     }
 }
 
@@ -1330,6 +1331,11 @@ export default {
     oncreate: {
         required: true,
         type: Function,
+    },
+    ftpUploadSite: {
+        type: String,
+        required: false,
+        default: null,
     }
   },
   computed: {
@@ -1363,8 +1369,12 @@ export default {
           continue;
         }
 
-        const targetImportType = MAPPING_TARGETS[target].importType;
+        const targetDefinition = MAPPING_TARGETS[target];
+        const targetImportType = targetDefinition.importType;
         if(targetImportType && this.importType != targetImportType) {
+            continue;
+        }
+        if (!this.ftpUploadSite && targetDefinition.requiresFtp) {
             continue;
         }
         if(mappedTargets.indexOf(target) < 0) {
