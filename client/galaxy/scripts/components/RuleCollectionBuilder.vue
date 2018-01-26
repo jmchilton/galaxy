@@ -259,7 +259,7 @@
                     <hot-table id="hot-table"
                                ref="hotTable"
                                :data="hotData['data']"
-                               :colHeaders="true"
+                               :colHeaders="colHeadersDisplay"
                                :readOnly="true"
                                stretchH="all">
                     </hot-table>
@@ -337,11 +337,13 @@ const MAPPING_TARGETS = {
     list_identifiers: {
         multiple: true,
         label: _l("List Identifier(s)"),
+        columnHeader: _l("List Identifier"),
         help: _l("This should be a short description of the replicate, sample name, condition, etc... that describes each level of the list structure."),
         importType: "collections",
     },
     paired_identifier: {
         label: _l("Paired-end Indicator"),
+        columnHeader: _l("Paired Indicator"),
         help: _l("This should be set to '1', 'R1', 'forward', 'f', or 'F' to indicate forward reads, and '2', 'r' or 'reverse', 'R2', 'R', or 'R2' to indicate reverse reads."),
         importType: "collections",
     },
@@ -1426,6 +1428,28 @@ export default {
     colHeaders() {
       const data = this.hotData["data"];
       return this.colHeadersFor(data);
+    },
+    colHeadersDisplay() {
+        const formattedHeaders = [];
+        for (let colIndex in this.colHeaders) {
+            const colHeader = this.colHeaders[colIndex];
+            formattedHeaders[colIndex] =  `<b>${_.escape(colHeader)}</b>`;
+            const mappingDisplay = [];
+            for (let mapping of this.mapping) {
+                console.log(mapping.columns);
+                if (mapping.columns.indexOf(parseInt(colIndex)) !== -1) {
+                    const mappingDef = MAPPING_TARGETS[mapping.type];
+                    mappingDisplay.push(`<i>${_.escape(mappingDef.columnHeader || mappingDef.label)}</i>`)
+                }
+            }
+            console.log(mappingDisplay);
+            if (mappingDisplay.length == 1) {
+                formattedHeaders[colIndex] += ` (${mappingDisplay[0]})`
+            } else if (mappingDisplay.length > 1) {
+                formattedHeaders[colIndex] += ` (${[mappingDisplay.slice(0, -1).join(', '), mappingDisplay.slice(-1)[0]].join(' & ')})`;
+            }
+        }
+        return formattedHeaders;
     },
     mappingAsDict() {
       const asDict = {};
