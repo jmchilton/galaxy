@@ -23,7 +23,7 @@
                         <rule-component rule-type="sort"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addSortingTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addSortingTarget" :col-headers="activeRuleColHeaders" />
                             <label :title="titleNumericSort">
                                 <input type="checkbox" v-model="addSortingNumeric" />
                                 {{ l("Numeric sorting.") }}
@@ -32,7 +32,7 @@
                         <rule-component rule-type="add_column_basename"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addColumnBasenameTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addColumnBasenameTarget" :col-headers="activeRuleColHeaders" />
                         </rule-component>
                         <rule-component rule-type="add_column_rownum"
                                         :display-rule-type="displayRuleType"
@@ -45,19 +45,19 @@
                         <rule-component rule-type="add_column_regex"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addColumnRegexTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addColumnRegexTarget" :col-headers="activeRuleColHeaders" />
                             <regular-expression-input :target.sync="addColumnExpression" />
                         </rule-component>
                         <rule-component rule-type="add_column_concatenate"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addColumnConcatenateTarget0" :col-headers="colHeaders" />
-                            <column-selector :target.sync="addColumnConcatenateTarget1" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addColumnConcatenateTarget0" :col-headers="activeRuleColHeaders" />
+                            <column-selector :target.sync="addColumnConcatenateTarget1" :col-headers="activeRuleColHeaders" />
                         </rule-component>
                         <rule-component rule-type="add_column_substr"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addColumnSubstrTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addColumnSubstrTarget" :col-headers="activeRuleColHeaders" />
                             <label>
                                 <select v-model="addColumnSubstrType">
                                     <option value="keep_prefix">Keep only prefix specified.</option>
@@ -82,24 +82,24 @@
                         <rule-component rule-type="remove_columns"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="removeColumnTargets" :col-headers="colHeaders" :multiple="true" />
+                            <column-selector :target.sync="removeColumnTargets" :col-headers="activeRuleColHeaders" :multiple="true" />
                         </rule-component>
                         <rule-component rule-type="split_columns"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="splitColumnsTargets0" :col-headers="colHeaders" :multiple="true" />
-                            <column-selector :target.sync="splitColumnsTargets1" :col-headers="colHeaders" :multiple="true" />
+                            <column-selector :target.sync="splitColumnsTargets0" :col-headers="activeRuleColHeaders" :multiple="true" />
+                            <column-selector :target.sync="splitColumnsTargets1" :col-headers="activeRuleColHeaders" :multiple="true" />
                         </rule-component>
                         <rule-component rule-type="swap_columns"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="swapColumnsTarget0" :col-headers="colHeaders" />
-                            <column-selector :target.sync="swapColumnsTarget1" :col-headers="colHeaders" />
+                            <column-selector :target.sync="swapColumnsTarget0" :col-headers="activeRuleColHeaders" />
+                            <column-selector :target.sync="swapColumnsTarget1" :col-headers="activeRuleColHeaders" />
                         </rule-component>
                         <rule-component rule-type="add_filter_regex"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addFilterRegexTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addFilterRegexTarget" :col-headers="activeRuleColHeaders" />
                             <regular-expression-input :target.sync="addFilterRegexExpression" />
                             <label :title="titleInvertFilterRegex">
                                 <input type="checkbox" v-model="addFilterRegexInvert" />
@@ -109,7 +109,7 @@
                         <rule-component rule-type="add_filter_matches"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addFilterMatchesTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addFilterMatchesTarget" :col-headers="activeRuleColHeaders" />
                             <input type="text" v-model="addFilterMatchesValue" />
                             <label :title="titleInvertFilterMatches">
                                 <input type="checkbox" v-model="addFilterMatchesInvert" />
@@ -119,7 +119,7 @@
                         <rule-component rule-type="add_filter_compare"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addFilterCompareTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addFilterCompareTarget" :col-headers="activeRuleColHeaders" />
                             <label>
                                 Filter out rows
                                 <select v-model="addFilterCompareType">
@@ -153,7 +153,7 @@
                         <rule-component rule-type="add_filter_empty"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="addFilterEmptyTarget" :col-headers="colHeaders" />
+                            <column-selector :target.sync="addFilterEmptyTarget" :col-headers="activeRuleColHeaders" />
                             <label :title="titleInvertFilterEmpty">
                                 <input type="checkbox" v-model="addFilterEmptyInvert" />
                                 {{ l("Invert filter.") }}
@@ -197,9 +197,9 @@
                                   v-bind:rule="rule"
                                   v-bind:index="index"
                                   v-bind:key="index"
-                                  @edit="editRule(rule)"
+                                  @edit="editRule(rule, index)"
                                   @remove="removeRule(index)"
-                                  :col-headers="colHeaders" />
+                                  :col-headers="colHeadersPerRule[index]" />
                                 <identifier-display v-for="(map, index) in mapping"
                                                     v-bind="map"
                                                     v-bind:index="index"
@@ -409,6 +409,17 @@ const applyRegex = function(regex, target, data) {
     return {data};
 }
 
+const multiColumnsToString = function(targetColumns, colHeaders) {
+    if (targetColumns.length == 0) {
+        return `no columns`;
+    } else if (targetColumns.length == 1) {
+        return `column ${colHeaders[targetColumns[0]]}`;
+    } else {
+        const targetHeaders = targetColumns.map((el) => colHeaders[el]);
+        // https://stackoverflow.com/questions/16251822/array-to-comma-separated-string-and-for-last-tag-use-the-and-instead-of-comma
+        return `columns ${[targetHeaders.slice(0, -1).join(', '), targetHeaders.slice(-1)[0]].join(' and ')}`;
+    }
+}
 
 const Rules = {
     add_column_basename: {
@@ -463,7 +474,7 @@ const Rules = {
     add_column_value: {
         title: _l("Fixed Value"),
         display: (rule, colHeaders) => {
-          return `Add column for the value row ${rule.value}.`;
+          return `Add column for the constant value of ${rule.value}.`;
         },
         init: (component, rule) => {
             if(!rule) {
@@ -603,7 +614,8 @@ const Rules = {
     },
     remove_columns: {
         display: (rule, colHeaders) => {
-          return `Remove columns`;
+            const targetColumns = rule.target_columns;
+            return `Remove ${multiColumnsToString(targetColumns, colHeaders)}`;
         },
         init: (component, rule) => {
             if(!rule) {
@@ -869,7 +881,7 @@ const Rules = {
     },
     swap_columns: {
         display: (rule, colHeaders) => {
-            return `Swap columns`;
+            return `Swap ${multiColumnsToString([rule.target_column_0, rule.target_column_1], colHeaders)}`;
         },
         init: (component, rule) => {
             if(!rule) {
@@ -1229,6 +1241,7 @@ export default {
     }
     return {
         rules: [],
+        colHeadersPerRule: [],
         mapping: mapping,
         state: 'build',  // 'build', 'error', 'wait',
         errorMessage: '',
@@ -1241,7 +1254,7 @@ export default {
         titleInvertFilterEmpty: _l("Remove rows that have non-empty values at specified column."),
         titleInvertFilterMatches: _l("Remove rows not matching supplied value."),
         namePlaceholder: _l("Enter a name for your new collection"),
-        activeRule: null,
+        activeRuleIndex: null,
         addColumnRegexTarget: 0,
         addColumnBasenameTarget: 0,
         addColumnExpression: "",
@@ -1320,6 +1333,13 @@ export default {
     }
   },
   computed: {
+    activeRule() {
+        return this.activeRuleIndex && this.rules[this.activeRuleIndex];
+    },
+    activeRuleColHeaders() {
+        const rulesHeaders = (this.activeRuleIndex !== null && this.colHeadersPerRule[this.activeRuleIndex]);
+        return rulesHeaders || this.colHeaders;
+    },
     horizontal() {
         return this.orientation == "horizontal";
     },
@@ -1364,7 +1384,12 @@ export default {
       }
 
       let hasRuleError = false;
-      for(var rule of this.rules) {
+      this.colHeadersPerRule = [];
+      for(var ruleIndex in this.rules) {
+        const ruleHeaders = this.colHeadersFor(data);
+        this.colHeadersPerRule[ruleIndex] = ruleHeaders;
+
+        const rule = this.rules[ruleIndex];
         rule.error = null;
         rule.warn = null;
         if(hasRuleError) {
@@ -1374,26 +1399,22 @@ export default {
         var ruleType = rule.type;
         const ruleDef = Rules[ruleType];
         const res = ruleDef.apply(rule, data, sources);
-        if(res.error) {
+        if (res.error) {
           hasRuleError = true;
           rule.error = res.error;
-          continue;
+        } else {
+          if (res.warn) {
+            rule.warn = res.warn;
+          }
+          data = res.data || data;
+          sources = res.sources || sources;
         }
-        if(res.warn) {
-          rule.warn = res.warn;
-        }
-        data = res.data || data;
-        sources = res.sources || sources;
       }
       return {data, sources};
     },
     colHeaders() {
       const data = this.hotData["data"];
-      if(data.length == 0) {
-          return [];
-      } else {
-          return data[0].map((el, i) => String.fromCharCode(65 + i));
-      }
+      return this.colHeadersFor(data);
     },
     mappingAsDict() {
       const asDict = {};
@@ -1462,7 +1483,7 @@ export default {
     addNewRule(ruleType) {
       Rules[ruleType].init(this);
       this.displayRuleType = ruleType;
-      this.activeRule = null;
+      this.activeRuleIndex = null;
     },
     handleRuleSave(ruleType) {
       const rule = this.activeRule;
@@ -1477,12 +1498,19 @@ export default {
     handleColumnMapping() {
 
     },
+    colHeadersFor(data) {
+      if(data.length == 0) {
+          return [];
+      } else {
+          return data[0].map((el, i) => String.fromCharCode(65 + i));
+      }
+    },
     addIdentifier(identifier) {
       this.mapping.push({"type": identifier, "columns": [0]})
     },
-    editRule(rule) {
+    editRule(rule, index) {
        const ruleType = rule.type;
-       this.activeRule = rule;
+       this.activeRuleIndex = index;
        Rules[ruleType].init(this, rule);
        this.displayRuleType = ruleType;
     },
