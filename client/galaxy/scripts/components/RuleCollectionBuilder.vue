@@ -331,6 +331,7 @@ import _l from "utils/localization";
 import HotTable from 'vue-handsontable-official';
 import Popover from "mvc/ui/ui-popover";
 import UploadUtils from "mvc/upload/upload-utils";
+import JobStatesModel from "mvc/history/job-states-model";
 
 const MAPPING_TARGETS = {
     list_identifiers: {
@@ -1535,12 +1536,14 @@ export default {
         const handleJobShow = (jobResponse) => {
             const state = jobResponse.data.state;
             this.waitingJobState = state;
-            if(state === "ok") {
+            if (JobStatesModel.NON_TERMINAL_STATES.indexOf(state) !== -1) {
+                setTimeout(doJobCheck, 1000);                
+            } else if (JobStatesModel.ERROR_STATES.indexOf(state) !== -1) {
+                this.errorMessage = "Unknown error encountered while running your upload job, this could be a server issue or a problem with the upload definition.";
+            } else {
                 const history = parent.Galaxy && parent.Galaxy.currHistoryPanel && parent.Galaxy.currHistoryPanel.model;
                 history.refresh();
                 this.oncreate();
-            } else {
-                setTimeout(doJobCheck, 1000);
             }
         }
         const doJobCheck = () => {
