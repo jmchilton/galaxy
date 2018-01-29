@@ -580,6 +580,34 @@ class NavigatesGalaxy(HasDriver):
         file_upload = self.wait_for_selector('div#%s input[type="file"]' % tab_id)
         file_upload.send_keys(test_path)
 
+    def upload_rule_start(self):
+        self.upload_start_click()
+        self.upload_tab_click("rule-based")
+
+    def upload_rule_build(self):
+        self.upload_build(tab="rule-based")
+
+    def rule_builder_filter_count(self, count=1):
+        rule_builder = self.components.rule_builder
+        rule_builder.menu_button_filter.wait_for_and_click()
+        rule_builder.menu_item_rule_type(rule_type="add-filter-count").wait_for_and_click()
+        filter_editor = rule_builder.rule_editor(rule_type="add-filter-count")
+        filter_editor_element = filter_editor.wait_for_visible()
+        filter_input = filter_editor_element.find_element_by_css_selector("input[type='number']")
+        filter_input.clear()
+        filter_input.send_keys("%s" % count)
+        rule_builder.rule_editor_ok.wait_for_and_click()
+
+    def rule_builder_set_mapping(self, mapping_type, column_label):
+        rule_builder = self.components.rule_builder
+        rule_builder.menu_button_rules.wait_for_and_click()
+        rule_builder.menu_item_rule_type(rule_type="mapping").wait_for_and_click()
+        rule_builder.add_mapping_menu.wait_for_and_click()
+        rule_builder.add_mapping_button(mapping_type=mapping_type).wait_for_and_click()
+        mapping_elem = rule_builder.mapping_edit(mapping_type=mapping_type).wait_for_visible()
+        self.select2_set_value(mapping_elem, column_label)
+        rule_builder.mapping_ok.wait_for_and_click()
+
     def workflow_editor_click_option(self, option_label):
         self.workflow_editor_click_options()
         menu_element = self.workflow_editor_options_menu_element()
@@ -1165,7 +1193,7 @@ class NavigatesGalaxy(HasDriver):
         element.click()
         return element
 
-    def select2_set_value(self, container_selector, value, with_click=True):
+    def select2_set_value(self, container_selector_or_elem, value, with_click=True):
         # There are two hacky was to select things from the select2 widget -
         #   with_click=True: This simulates the mouse click after the suggestion contains
         #                    only the selected value.
@@ -1173,7 +1201,12 @@ class NavigatesGalaxy(HasDriver):
         #                     why.
         # with_click seems to work in all situtations - the enter methods
         # doesn't seem to work with the tool form for some reason.
-        container_elem = self.wait_for_selector(container_selector)
+        print(container_selector_or_elem)
+        if not hasattr(container_selector_or_elem, "find_element_by_css_selector"):
+            container_elem = self.wait_for_selector(container_selector_or_elem)
+        else:
+            container_elem = container_selector_or_elem
+
         text_element = container_elem.find_element_by_css_selector("input[type='text']")
         text_element.send_keys(value)
         # Wait for select2 options to load and then click to add this one.

@@ -110,8 +110,7 @@ class UploadsTestCase(SeleniumTestCase, UsesHistoryItemAssertions):
         # Test case generated for:
         #   https://www.ebi.ac.uk/ena/data/view/PRJDA60709
         self.home()
-        self.upload_start_click()
-        self.upload_tab_click("rule-based")
+        self.upload_rule_start()
         self.screenshot("rules_example_1_1_rules_landing")
         self.components.upload.rule_source_content.wait_for_and_send_keys("""study_accession sample_accession    experiment_accession    fastq_ftp
 PRJDA60709  SAMD00016379    DRX000475   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR000770/DRR000770.fastq.gz
@@ -121,7 +120,7 @@ PRJDA60709  SAMD00016378    DRX000478   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
 PRJDA60709  SAMD00016381    DRX000479   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR000774/DRR000774.fastq.gz
 PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR000775/DRR000775.fastq.gz""")
         self.screenshot("rules_example_1_2_paste")
-        self.upload_build(tab="rule-based")
+        self.upload_rule_build()
         rule_builder = self.components.rule_builder
         rule_builder._.wait_for_and_click()
         self.screenshot("rules_example_1_3_initial_rules")
@@ -130,11 +129,50 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         rule_builder.menu_item_rule_type(rule_type="add-filter-count").wait_for_and_click()
         filter_editor = rule_builder.rule_editor(rule_type="add-filter-count")
         filter_editor_element = filter_editor.wait_for_visible()
-        self.screenshot("rules_example_1_4_filter_header")
         filter_input = filter_editor_element.find_element_by_css_selector("input[type='number']")
         filter_input.clear()
         filter_input.send_keys("1")
+        self.screenshot("rules_example_1_4_filter_header")
         rule_builder.rule_editor_ok.wait_for_and_click()
-        rule_builder.menu_button_rules.wait_for_and_click()
-        rule_builder.menu_item_rule_type(rule_type="mapping").wait_for_and_click()
-        # TODO: finish test...
+        self.rule_builder_set_mapping("url", "D")
+        self.rule_builder_set_mapping("name", "C")
+        self.screenshot("rules_example_1_5_mapping_set")
+        self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
+        self.screenshot("rules_example_1_6_extension_set")
+        rule_builder.main_button_ok.wait_for_and_click()
+        self.history_panel_wait_for_hid_ok(6)
+        self.screenshot("rules_example_1_6_download_complete")
+
+    @selenium_test
+    def test_datasets_via_rules_example_2(self):
+        self.perform_upload(self.get_filename("rules/PRJDA60709.tsv"))
+        self.history_panel_wait_for_hid_ok(1)
+        self.upload_rule_start()
+        upload = self.components.upload
+        data_type_element = upload.rule_select_data_type.wait_for_visible()
+        self.select2_set_value(data_type_element, "Collection(s)")
+        input_type_element = upload.rule_select_input_type.wait_for_visible()
+        self.select2_set_value(input_type_element, "History Dataset")
+        rule_dataset_element = upload.rule_dataset_selector.wait_for_visible()
+        self.select2_set_value(rule_dataset_element, "1:")
+        self.screenshot("rules_example_2_1_inputs")
+        self.upload_rule_build()
+        rule_builder = self.components.rule_builder
+        rule_builder._.wait_for_and_click()
+        self.screenshot("rules_example_2_2_initial_rules")
+        # Filter header.
+        self.rule_builder_filter_count(1)
+        self.rule_builder_set_mapping("url", "D")
+        self.rule_builder_set_mapping("list-identifiers", "C")
+        self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
+        self.screenshot("rules_example_2_3_rules")
+        name_element = rule_builder.collection_name_input.wait_for_and_click()
+        name_element.send_keys("PRJDA60709")
+        self.screenshot("rules_example_2_4_name")
+        rule_builder.main_button_ok.wait_for_and_click()
+        self.history_panel_wait_for_hid_ok(2)
+        self.screenshot("rules_example_2_5_download_complete")
+
+    @selenium_test
+    def test_datasets_via_rules_example_3(self):
+        pass

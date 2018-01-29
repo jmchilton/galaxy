@@ -275,6 +275,9 @@ upload:
     tab: '#tab-title-link-${tab}'
     start: '.upload-button'
     rule_source_content: 'textarea.upload-rule-source-content'
+    rule_select_data_type: '.rule-data-type'
+    rule_select_input_type: '.rule-select-type'
+    rule_dataset_selector: '.upload-rule-option .dataset-selector'
 
 rule_builder:
   selectors:
@@ -284,6 +287,12 @@ rule_builder:
     menu_item_rule_type: '.rule-link-${rule_type}'
     rule_editor: '.rule-edit-${rule_type}'
     rule_editor_ok: '.rule-editor-ok'
+    add_mapping_menu: '.rule-add-mapping'
+    add_mapping_button: '.rule-add-mapping-${mapping_type}'
+    mapping_edit: '.rule-map-${mapping_type} .select2-container'
+    mapping_ok: '.rule-mapping-ok'
+    main_button_ok: '.rule-btn-okay'
+    collection_name_input: 'input.collection-name'
 
 charts:
   selectors:
