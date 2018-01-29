@@ -284,6 +284,7 @@ rule_builder:
     _: '.rule-collection-creator'
     menu_button_filter: '.rule-menu-filter-button'
     menu_button_rules: '.rule-menu-rules-button'
+    menu_button_column: '.rule-menu-column-button'
     menu_item_rule_type: '.rule-link-${rule_type}'
     rule_editor: '.rule-edit-${rule_type}'
     rule_editor_ok: '.rule-editor-ok'

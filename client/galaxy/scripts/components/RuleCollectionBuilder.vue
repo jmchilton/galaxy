@@ -93,14 +93,14 @@
                         <rule-component rule-type="split_columns"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="splitColumnsTargets0" :col-headers="activeRuleColHeaders" :multiple="true" />
-                            <column-selector :target.sync="splitColumnsTargets1" :col-headers="activeRuleColHeaders" :multiple="true" />
+                            <column-selector :target.sync="splitColumnsTargets0" label="Odd Row Column(s)" :col-headers="activeRuleColHeaders" :multiple="true" />
+                            <column-selector :target.sync="splitColumnsTargets1" label="Even Row Column(s)" :col-headers="activeRuleColHeaders" :multiple="true" />
                         </rule-component>
                         <rule-component rule-type="swap_columns"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
-                            <column-selector :target.sync="swapColumnsTarget0" :col-headers="activeRuleColHeaders" />
-                            <column-selector :target.sync="swapColumnsTarget1" :col-headers="activeRuleColHeaders" />
+                            <column-selector :target.sync="swapColumnsTarget0" label="Swap Column" :col-headers="activeRuleColHeaders" />
+                            <column-selector :target.sync="swapColumnsTarget1" label="With Column" :col-headers="activeRuleColHeaders" />
                         </rule-component>
                         <rule-component rule-type="add_filter_regex"
                                         :display-rule-type="displayRuleType"
@@ -227,9 +227,9 @@
                                   </button>
                                   <ul class="dropdown-menu" role="menu">
                                     <li><a @click="addNewRule('sort')">Add Sorting</a></li>
-                                    <li><a @click="addNewRule('remove_columns')">Remove Columns</a></li>
-                                    <li><a @click="addNewRule('split_columns')">Split Columns</a></li>
-                                    <li><a @click="addNewRule('swap_columns')">Swap Columns</a></li>
+                                    <rule-target-component :builder="this" rule-type="remove_columns" />
+                                    <rule-target-component :builder="this" rule-type="split_columns" />
+                                    <rule-target-component :builder="this" rule-type="swap_columns" />
                                     <li><a class="rule-link rule-link-mapping" @click="displayRuleType = 'mapping'">Add / Modify Column Definitions</a></li>
                                   </ul>
                                 </div>
@@ -636,6 +636,7 @@ const Rules = {
         }       
     },
     remove_columns: {
+        title: _l("Remove Column(s)"),
         display: (rule, colHeaders) => {
             const targetColumns = rule.target_columns;
             return `Remove ${multiColumnsToString(targetColumns, colHeaders)}`;
@@ -897,12 +898,14 @@ const Rules = {
               return 0;
             }
           }
+          const newData = data.splice();
           data.sort(sort);
           sources.sort(sort);
           return {data, sources};
         }
     },
     swap_columns: {
+        title: _l("Swap Column(s)"),        
         display: (rule, colHeaders) => {
             return `Swap ${multiColumnsToString([rule.target_column_0, rule.target_column_1], colHeaders)}`;
         },
@@ -933,6 +936,7 @@ const Rules = {
         }
     },
     split_columns: {
+        title: _l("Split Column(s)"),
         display: (rule, colHeaders) => {
             return `Duplicate each row and split up columns`;
         },
@@ -1016,7 +1020,7 @@ const Select2 = {
 
 const ColumnSelector = {
     template: `
-        <div><label>
+        <div class="rule-column-selector"><label>
             {{ label }}
             <select2 :value="target" @input="handleInput" :multiple="multiple">
                 <option v-for="(col, index) in colHeaders" :value="index">{{ col }}</option>
@@ -1072,7 +1076,7 @@ const RegularExpressionInput = {
     template: `
         <div><label>
             Regular Expression
-            <input name="expression" type="text" :value="target" @input="$emit('update:target', $event.target.value)" />
+            <input class="rule-regular-expression" type="text" :value="target" @input="$emit('update:target', $event.target.value)" />
         </label></div>
     `,
     props: {

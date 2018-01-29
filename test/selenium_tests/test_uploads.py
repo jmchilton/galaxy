@@ -106,7 +106,7 @@ class UploadsTestCase(SeleniumTestCase, UsesHistoryItemAssertions):
         self.history_panel_wait_for_hid_hidden(2)
 
     @selenium_test
-    def test_datasets_via_rules_example_1(self):
+    def test_rules_example_1_datasets(self):
         # Test case generated for:
         #   https://www.ebi.ac.uk/ena/data/view/PRJDA60709
         self.home()
@@ -139,22 +139,18 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.screenshot("rules_example_1_5_mapping_set")
         self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
         self.screenshot("rules_example_1_6_extension_set")
-        rule_builder.main_button_ok.wait_for_and_click()
-        self.history_panel_wait_for_hid_ok(6)
-        self.screenshot("rules_example_1_6_download_complete")
+        # rule_builder.main_button_ok.wait_for_and_click()
+        # self.history_panel_wait_for_hid_ok(6)
+        # self.screenshot("rules_example_1_6_download_complete")
 
     @selenium_test
-    def test_datasets_via_rules_example_2(self):
+    def test_rules_example_2_list(self):
         self.perform_upload(self.get_filename("rules/PRJDA60709.tsv"))
         self.history_panel_wait_for_hid_ok(1)
         self.upload_rule_start()
-        upload = self.components.upload
-        data_type_element = upload.rule_select_data_type.wait_for_visible()
-        self.select2_set_value(data_type_element, "Collection(s)")
-        input_type_element = upload.rule_select_input_type.wait_for_visible()
-        self.select2_set_value(input_type_element, "History Dataset")
-        rule_dataset_element = upload.rule_dataset_selector.wait_for_visible()
-        self.select2_set_value(rule_dataset_element, "1:")
+        self.upload_rule_set_data_type("Collection")
+        self.upload_rule_set_input_type("History Dataset")
+        self.upload_rule_set_dataset("1:")
         self.screenshot("rules_example_2_1_inputs")
         self.upload_rule_build()
         rule_builder = self.components.rule_builder
@@ -169,10 +165,38 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         name_element = rule_builder.collection_name_input.wait_for_and_click()
         name_element.send_keys("PRJDA60709")
         self.screenshot("rules_example_2_4_name")
-        rule_builder.main_button_ok.wait_for_and_click()
-        self.history_panel_wait_for_hid_ok(2)
-        self.screenshot("rules_example_2_5_download_complete")
+        # rule_builder.main_buton_ok.wait_for_and_click()
+        # self.history_panel_wait_for_hid_ok(2)
+        # self.screenshot("rules_example_2_5_download_complete")
 
     @selenium_test
-    def test_datasets_via_rules_example_3(self):
-        pass
+    def test_rules_example_3_list(self):
+        self.perform_upload(self.get_filename("rules/PRJDB3920.tsv"))
+        self.history_panel_wait_for_hid_ok(1)
+        self.upload_rule_start()
+        self.upload_rule_set_data_type("Collection")
+        self.upload_rule_set_input_type("History Dataset")
+        self.upload_rule_set_dataset("1:")
+        self.screenshot("rules_example_3_1_inputs")
+        self.upload_rule_build()
+        rule_builder = self.components.rule_builder
+        rule_builder._.wait_for_and_click()
+        self.screenshot("rules_example_3_2_initial_rules")
+        # Filter header.
+        self.rule_builder_filter_count(1)
+        self.rule_builder_set_mapping("list-identifiers", "C")
+        self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
+        self.screenshot("rules_example_3_3_old_rules")
+        self.rule_builder_add_regex("D", "(.*);.*", screenshot_name="rules_example_3_4_regex1")
+        self.rule_builder_add_regex("D", ".*;(.*)", screenshot_name="rules_example_3_5_regex2")
+        self.screenshot("rules_example_3_6_with_regexes")
+        # Remove A also?
+        self.rule_builder_remove_column("D", screenshot_name="rules_example_3_7_removed_column")
+        self.rule_builder_split_column("D", "E", screenshot_name="rules_example_3_8_split_columns")
+        self.screenshot("rules_example_3_9_columns_are_split")
+        self.rule_builder_add_regex("D", ".*_(\d).fastq.gz", screenshot_name="rules_example_3_10_regex_paired")
+        self.screenshot("rules_example_3_11_has_paired_id")
+        self.rule_builder_swap_columns("D", "E", screenshot_name="rules_example_3_12_swap_columns")
+        self.screenshot("rules_example_3_13_swapped_columns")
+        self.rule_builder_set_mapping("paired-identifier", "D")
+        self.screenshot("rules_example_3_14_paired_identifier_set")
