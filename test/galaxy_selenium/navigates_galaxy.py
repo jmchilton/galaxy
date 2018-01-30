@@ -602,37 +602,68 @@ class NavigatesGalaxy(HasDriver):
         rule_dataset_element = upload.rule_dataset_selector.wait_for_visible()
         self.select2_set_value(rule_dataset_element, dataset_description)
 
+    def rule_builder_set_collection_name(self, name):
+        rule_builder = self.components.rule_builder
+        name_element = rule_builder.collection_name_input.wait_for_and_click()
+        name_element.send_keys(name)
+
+    def rule_builder_set_extension(self, extension):
+        self.select2_set_value(".rule-option-extension", extension)
+
     def rule_builder_filter_count(self, count=1):
         rule_builder = self.components.rule_builder
         rule_builder.menu_button_filter.wait_for_and_click()
-        with self.rule_builder_rule_editor("add-filter-count") as filter_editor_element:
-            filter_input = filter_editor_element.find_element_by_css_selector("input[type='number']")
+        with self.rule_builder_rule_editor("add-filter-count") as editor_element:
+            filter_input = editor_element.find_element_by_css_selector("input[type='number']")
             filter_input.clear()
             filter_input.send_keys("%s" % count)
 
     def rule_builder_add_regex(self, column_label, regex, screenshot_name):
         rule_builder = self.components.rule_builder
         rule_builder.menu_button_column.wait_for_and_click()
-        with self.rule_builder_rule_editor("add-column-regex") as filter_editor_element:
-            column_elem = filter_editor_element.find_element_by_css_selector(".rule-column-selector")
+        with self.rule_builder_rule_editor("add-column-regex") as editor_element:
+            column_elem = editor_element.find_element_by_css_selector(".rule-column-selector")
             self.select2_set_value(column_elem, column_label)
-            regex_elem = filter_editor_element.find_element_by_css_selector("input.rule-regular-expression")
+            regex_elem = editor_element.find_element_by_css_selector("input.rule-regular-expression")
             regex_elem.clear()
             regex_elem.send_keys(regex)
 
             if screenshot_name:
                 self.screenshot(screenshot_name)
 
-    def rule_builder_remove_column(self, column_label, screenshot_name):
+    def rule_builder_add_value(self, value, screenshot_name=None):
+        rule_builder = self.components.rule_builder
+        rule_builder.menu_button_column.wait_for_and_click()
+        with self.rule_builder_rule_editor("add-column-value") as editor_element:
+            filter_input = editor_element.find_element_by_css_selector("input[type='text']")
+            filter_input.clear()
+            filter_input.send_keys(value)
+
+            if screenshot_name:
+                self.screenshot(screenshot_name)
+
+    def rule_builder_remove_columns(self, column_labels, screenshot_name=None):
         rule_builder = self.components.rule_builder
         rule_builder.menu_button_rules.wait_for_and_click()
         with self.rule_builder_rule_editor("remove-columns") as filter_editor_element:
             column_elem = filter_editor_element.find_element_by_css_selector(".rule-column-selector")
-            self.select2_set_value(column_elem, column_label)
+            for column_label in column_labels:
+                self.select2_set_value(column_elem, column_label)
             if screenshot_name:
                 self.screenshot(screenshot_name)
 
-    def rule_builder_split_column(self, column_label_1, column_label_2, screenshot_name):
+    def rule_builder_concatenate_columns(self, column_label_1, column_label_2, screenshot_name=None):
+        rule_builder = self.components.rule_builder
+        rule_builder.menu_button_column.wait_for_and_click()
+        with self.rule_builder_rule_editor("add-column-concatenate") as filter_editor_element:
+            column_elems = filter_editor_element.find_elements_by_css_selector(".rule-column-selector")
+            self.select2_set_value(column_elems[0], column_label_1)
+            column_elems = filter_editor_element.find_elements_by_css_selector(".rule-column-selector")
+            self.select2_set_value(column_elems[1], column_label_2)
+            if screenshot_name:
+                self.screenshot(screenshot_name)
+
+    def rule_builder_split_column(self, column_label_1, column_label_2, screenshot_name=None):
         rule_builder = self.components.rule_builder
         rule_builder.menu_button_rules.wait_for_and_click()
         with self.rule_builder_rule_editor("split-columns") as filter_editor_element:
@@ -663,7 +694,7 @@ class NavigatesGalaxy(HasDriver):
         yield filter_editor_element
         rule_builder.rule_editor_ok.wait_for_and_click()
 
-    def rule_builder_set_mapping(self, mapping_type, column_label):
+    def rule_builder_set_mapping(self, mapping_type, column_label, screenshot_name=None):
         rule_builder = self.components.rule_builder
         rule_builder.menu_button_rules.wait_for_and_click()
         rule_builder.menu_item_rule_type(rule_type="mapping").wait_for_and_click()
@@ -671,6 +702,8 @@ class NavigatesGalaxy(HasDriver):
         rule_builder.add_mapping_button(mapping_type=mapping_type).wait_for_and_click()
         mapping_elem = rule_builder.mapping_edit(mapping_type=mapping_type).wait_for_visible()
         self.select2_set_value(mapping_elem, column_label, clear_value=True)
+        if screenshot_name:
+            self.screenshot(screenshot_name)
         rule_builder.mapping_ok.wait_for_and_click()
 
     def workflow_editor_click_option(self, option_label):

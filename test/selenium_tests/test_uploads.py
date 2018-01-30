@@ -135,10 +135,10 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.screenshot("rules_example_1_4_filter_header")
         rule_builder.rule_editor_ok.wait_for_and_click()
         self.rule_builder_set_mapping("url", "D")
-        self.rule_builder_set_mapping("name", "C")
-        self.screenshot("rules_example_1_5_mapping_set")
+        self.rule_builder_set_mapping("name", "C", screenshot_name="rules_example_1_5_mapping_edit")
+        self.screenshot("rules_example_1_6_mapping_set")
         self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
-        self.screenshot("rules_example_1_6_extension_set")
+        self.screenshot("rules_example_1_7_extension_set")
         # rule_builder.main_button_ok.wait_for_and_click()
         # self.history_panel_wait_for_hid_ok(6)
         # self.screenshot("rules_example_1_6_download_complete")
@@ -160,17 +160,16 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.rule_builder_filter_count(1)
         self.rule_builder_set_mapping("url", "D")
         self.rule_builder_set_mapping("list-identifiers", "C")
-        self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
+        self.rule_builder_set_extension("fastqsanger.gz")
         self.screenshot("rules_example_2_3_rules")
-        name_element = rule_builder.collection_name_input.wait_for_and_click()
-        name_element.send_keys("PRJDA60709")
+        self.rule_builder_set_collection_name("PRJDA60709")
         self.screenshot("rules_example_2_4_name")
         # rule_builder.main_buton_ok.wait_for_and_click()
         # self.history_panel_wait_for_hid_ok(2)
         # self.screenshot("rules_example_2_5_download_complete")
 
     @selenium_test
-    def test_rules_example_3_list(self):
+    def test_rules_example_3_list_pairs(self):
         self.perform_upload(self.get_filename("rules/PRJDB3920.tsv"))
         self.history_panel_wait_for_hid_ok(1)
         self.upload_rule_start()
@@ -191,7 +190,7 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.rule_builder_add_regex("D", ".*;(.*)", screenshot_name="rules_example_3_5_regex2")
         self.screenshot("rules_example_3_6_with_regexes")
         # Remove A also?
-        self.rule_builder_remove_column("D", screenshot_name="rules_example_3_7_removed_column")
+        self.rule_builder_remove_columns(["D"], screenshot_name="rules_example_3_7_removed_column")
         self.rule_builder_split_column("D", "E", screenshot_name="rules_example_3_8_split_columns")
         self.screenshot("rules_example_3_9_columns_are_split")
         self.rule_builder_add_regex("D", ".*_(\d).fastq.gz", screenshot_name="rules_example_3_10_regex_paired")
@@ -199,4 +198,45 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.rule_builder_swap_columns("D", "E", screenshot_name="rules_example_3_12_swap_columns")
         self.screenshot("rules_example_3_13_swapped_columns")
         self.rule_builder_set_mapping("paired-identifier", "D")
+        self.rule_builder_set_mapping("URL", "E")
+        self.rule_builder_set_collection_name("PRJDB3920")
         self.screenshot("rules_example_3_14_paired_identifier_set")
+
+    @selenium_test
+    def test_rules_example_4_accessions(self):
+        # http://www.uniprot.org/uniprot/?query=proteome:UP000052092+AND+proteomecomponent:%22Genome%22
+        self.perform_upload(self.get_filename("rules/uniprot.tsv"))
+        self.history_panel_wait_for_hid_ok(1)
+        self.upload_rule_start()
+        self.upload_rule_set_data_type("Collection")
+        self.upload_rule_set_input_type("History Dataset")
+        self.upload_rule_set_dataset("1:")
+        self.screenshot("rules_example_4_1_inputs")
+        self.upload_rule_build()
+        rule_builder = self.components.rule_builder
+        rule_builder._.wait_for_and_click()
+        self.screenshot("rules_example_4_2_initial_rules")
+        self.rule_builder_filter_count(1)
+        self.rule_builder_remove_columns(["B", "C", "E", "F", "G"])
+        # TODO: sort
+        self.rule_builder_set_mapping("info", "B")
+        self.screenshot("rules_example_4_3_basic_rules")
+
+        self.rule_builder_add_value("http://www.uniprot.org/uniprot/", screenshot_name="rules_example_4_4_add_value")  # C
+        self.rule_builder_concatenate_columns("C", "A", screenshot_name="rules_example_4_5_concatenate_columns")  # D
+        self.rule_builder_remove_columns(["C"])
+        self.rule_builder_add_value("fasta")  # D
+        self.rule_builder_concatenate_columns("C", "D")  # E
+        self.rule_builder_remove_columns(["C"])
+        self.screenshot("rules_example_4_6_url_built")
+        self.rule_builder_set_mapping("list-identifiers", "B")
+        self.rule_builder_set_mapping("URL", "C")
+        self.rule_builder_set_extension("fasta")
+        self.rule_builder_set_collection_name("PRJDB3920")
+        self.screenshot("rules_example_4_7_mapping_extension_and_name")
+
+    @selenium_test
+    def test_rules_example_5_matching_collections(self):
+        self.rule_builder_add_value("Protein FASTA")
+        self.rule_builder_add_value("gff")
+        self.rule_builder_add_value("Protein GFF")
