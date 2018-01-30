@@ -883,9 +883,12 @@ const Rules = {
         apply: (rule, data, sources) => {
           const target = rule.target_column;
           const numeric = rule.numeric;
-          const sort = (a, b) => {
-            let aVal = a[target];
-            let bVal = b[target];
+
+          const sortable = _.zip(data, sources);
+
+          const sortFunc = (a, b) => {
+            let aVal = a[0][target];
+            let bVal = b[0][target];
             if(numeric) {
               aVal = parseFloat(aVal);
               bVal = parseFloat(bVal);
@@ -898,10 +901,15 @@ const Rules = {
               return 0;
             }
           }
-          const newData = data.splice();
-          data.sort(sort);
-          sources.sort(sort);
-          return {data, sources};
+
+          sortable.sort(sortFunc);
+
+          const newData = [];
+          const newSources = [];
+
+          sortable.map((zipped) => { newData.push(zipped[0]); newSources.push(zipped[1]); });
+
+          return {data: newData, sources: newSources};
         }
     },
     swap_columns: {
