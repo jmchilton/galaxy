@@ -1972,7 +1972,7 @@ export default {
 <style>
   .table-column {
     width: 100%;
-    overflow: scroll;
+    /* overflow: scroll; */
   }
   .vertical #hot-table {
     width: 100%;
