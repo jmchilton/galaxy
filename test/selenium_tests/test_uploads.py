@@ -186,19 +186,18 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.rule_builder_set_mapping("list-identifiers", "C")
         self.select2_set_value(".rule-option-extension", "fastqsanger.gz")
         self.screenshot("rules_example_3_3_old_rules")
-        self.rule_builder_add_regex("D", "(.*);.*", screenshot_name="rules_example_3_4_regex1")
-        self.rule_builder_add_regex("D", ".*;(.*)", screenshot_name="rules_example_3_5_regex2")
+        self.rule_builder_add_regex_groups("D", 2, "(.*);(.*)", screenshot_name="rules_example_3_4_regex")
         self.screenshot("rules_example_3_6_with_regexes")
         # Remove A also?
         self.rule_builder_remove_columns(["D"], screenshot_name="rules_example_3_7_removed_column")
         self.rule_builder_split_column("D", "E", screenshot_name="rules_example_3_8_split_columns")
         self.screenshot("rules_example_3_9_columns_are_split")
-        self.rule_builder_add_regex("D", ".*_(\d).fastq.gz", screenshot_name="rules_example_3_10_regex_paired")
+        self.rule_builder_add_regex_groups("D", 1, ".*_(\d).fastq.gz", screenshot_name="rules_example_3_10_regex_paired")
         self.screenshot("rules_example_3_11_has_paired_id")
         self.rule_builder_swap_columns("D", "E", screenshot_name="rules_example_3_12_swap_columns")
         self.screenshot("rules_example_3_13_swapped_columns")
         self.rule_builder_set_mapping("paired-identifier", "D")
-        self.rule_builder_set_mapping("URL", "E")
+        self.rule_builder_set_mapping("url", "E")
         self.rule_builder_set_collection_name("PRJDB3920")
         self.screenshot("rules_example_3_14_paired_identifier_set")
 
@@ -230,13 +229,13 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.rule_builder_remove_columns(["C"])
         self.screenshot("rules_example_4_6_url_built")
         self.rule_builder_set_mapping("list-identifiers", "B")
-        self.rule_builder_set_mapping("URL", "C")
+        self.rule_builder_set_mapping("url", "C")
         self.rule_builder_set_extension("fasta")
         self.rule_builder_set_collection_name("PRJDB3920")
         self.screenshot("rules_example_4_7_mapping_extension_and_name")
 
-    @selenium_test
-    def test_rules_example_5_matching_collections(self):
-        self.rule_builder_add_value("Protein FASTA")
-        self.rule_builder_add_value("gff")
-        self.rule_builder_add_value("Protein GFF")
+    # @selenium_test
+    # def test_rules_example_5_matching_collections(self):
+    #    self.rule_builder_add_value("Protein FASTA")
+    #     self.rule_builder_add_value("gff")
+    #    self.rule_builder_add_value("Protein GFF")

@@ -52,7 +52,18 @@
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
                             <column-selector :target.sync="addColumnRegexTarget" :col-headers="activeRuleColHeaders" />
-                            <regular-expression-input :target.sync="addColumnExpression" />
+                            <input type="radio" v-model="addColumnRegexType" value="global">Create column matching expression.<br />
+                            <input type="radio" v-model="addColumnRegexType" value="groups">Create columns matching expression groups.<br />
+                            <input type="radio" v-model="addColumnRegexType" value="replacement">Create column from expression replacement.<br />
+                            <regular-expression-input :target.sync="addColumnRegexExpression" />
+                            <label v-if="addColumnRegexType=='groups'">
+                                {{ l("Number of Groups") }}
+                                <input type="number" v-model="addColumnRegexGroupCount" min="1" />
+                            </label>
+                            <label v-if="addColumnRegexType=='replacement'">
+                                {{ l("Replacement Expression") }}
+                                <input type="text" v-model="addColumnRegexReplacement" />
+                            </label>
                         </rule-component>
                         <rule-component rule-type="add_column_concatenate"
                                         :display-rule-type="displayRuleType"
@@ -403,7 +414,7 @@ const MAPPING_TARGETS = {
     }
 }
 
-const applyRegex = function(regex, target, data) {
+const applyRegex = function(regex, target, data, replacement, groupCount) {
     let regExp;
     try {
         regExp = RegExp(regex);
@@ -413,17 +424,25 @@ const applyRegex = function(regex, target, data) {
     let failedCount = 0;
     function newRow(row) {
         const source = row[target];
-        const match = regExp.exec(source);
-        let newValue;
-        if(!match) {
-          failedCount++;
-          return null;
-        } else if(match.length > 1) {
-          newValue = match[1];
+        if (!replacement) {
+            const match = regExp.exec(source);
+            if(!match) {
+              failedCount++;
+              return null;
+            }
+            groupCount = groupCount && parseInt(groupCount);
+            if(groupCount) {
+                if(match.length != (groupCount + 1)) {
+                    failedCount++;
+                    return null;
+                }
+                return row.concat(match.splice(1, match.length));
+            } else {
+                return row.concat([match[0]]);
+            }
         } else {
-          newValue = match[0];
+            return row.concat([source.replace(regExp, replacement)]);
         }
-        return row.concat([newValue]);
     }
     data = data.map(newRow);
     if(failedCount > 0) {
@@ -528,19 +547,36 @@ const Rules = {
         init: (component, rule) => {
             if(!rule) {
                 component.addColumnRegexTarget = 0;
-                component.addColumnExpression = "";
+                component.addColumnRegexExpression = "";
+                component.addColumnRegexReplacement = null;
+                component.addColumnRegexGroupCount = null;
             } else {
                 component.addColumnRegexTarget = rule.target_column;
-                component.expression = rule.expression;
+                component.addColumnRegexExpression = rule.expression;
+                component.addColumnRegexReplacement = rule.replacement;
+                component.addColumnRegexGroupCount = rule.group_count;
             }
+            let addColumnRegexType = "global";
+            if(component.addColumnRegexGroupCount) {
+                addColumnRegexType = "groups";
+            } else if (component.addColumnRegexReplacement) {
+                addColumnRegexType = "replacement";
+            }
+            component.addColumnRegexType = addColumnRegexType;
         },
         save: (component, rule) => {
             rule.target_column = component.addColumnRegexTarget;
-            rule.expression = component.addColumnExpression;
+            rule.expression = component.addColumnRegexExpression;
+            if(component.addColumnRegexReplacement) {
+                rule.replacement = component.addColumnRegexReplacement;
+            }
+            if(component.addColumnRegexGroupCount) {
+                rule.group_count = component.addColumnRegexGroupCount;
+            }
         },
         apply: (rule, data, sources) => {
           const target = rule.target_column;
-          return applyRegex(rule.expression, target, data);
+          return applyRegex(rule.expression, target, data, rule.replacement, rule.group_count);
         }
     },
     add_column_concatenate: {
@@ -1295,7 +1331,10 @@ export default {
         activeRuleIndex: null,
         addColumnRegexTarget: 0,
         addColumnBasenameTarget: 0,
-        addColumnExpression: "",
+        addColumnRegexExpression: "",
+        addColumnRegexReplacement: null,
+        addColumnRegexGroupCount: null,
+        addColumnRegexType: "global",
         addColumnConcatenateTarget0: 0,
         addColumnConcatenateTarget1: 0,
         addColumnRownumStart: 1,
@@ -1953,6 +1992,16 @@ export default {
       }
       UploadUtils.getUploadDatatypes((extensions) => {this.extensions = extensions; this.extension = UploadUtils.DEFAULT_EXTENSION}, false, UploadUtils.AUTO_EXTENSION);
       UploadUtils.getUploadGenomes((genomes) => {this.genomes = genomes; this.genome = UploadUtils.DEFAULT_GENOME;}, UploadUtils.DEFAULT_GENOME);
+  },
+  watch: {
+      'addColumnRegexType': function (val) {
+          if (val == "groups") {
+              this.addColumnRegexGroupCount = 1;
+          }
+          if (val == "replacement") {
+              this.addColumnRegexReplacement = "$&";
+          }
+      },
   },
   components: {
     HotTable,

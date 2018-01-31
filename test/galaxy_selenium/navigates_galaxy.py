@@ -618,15 +618,24 @@ class NavigatesGalaxy(HasDriver):
             filter_input.clear()
             filter_input.send_keys("%s" % count)
 
-    def rule_builder_add_regex(self, column_label, regex, screenshot_name):
+    def rule_builder_add_regex_groups(self, column_label, group_count, regex, screenshot_name):
         rule_builder = self.components.rule_builder
         rule_builder.menu_button_column.wait_for_and_click()
         with self.rule_builder_rule_editor("add-column-regex") as editor_element:
+
             column_elem = editor_element.find_element_by_css_selector(".rule-column-selector")
             self.select2_set_value(column_elem, column_label)
+
+            groups_elem = editor_element.find_element_by_css_selector("input[type='radio'][value='groups']")
+            groups_elem.click()
+
             regex_elem = editor_element.find_element_by_css_selector("input.rule-regular-expression")
             regex_elem.clear()
             regex_elem.send_keys(regex)
+
+            filter_input = editor_element.find_element_by_css_selector("input[type='number']")
+            filter_input.clear()
+            filter_input.send_keys("%s" % group_count)
 
             if screenshot_name:
                 self.screenshot(screenshot_name)
