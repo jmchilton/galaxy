@@ -182,8 +182,14 @@
                                  v-for="map in mapping"
                                  v-bind:index="map.index"
                                  v-bind:key="map.type">
-                                 <column-selector :class="'rule-map-' + map.type.replace(/_/g, '-')" :label="mappingTargets()[map.type].label" :target.sync="map.columns" :col-headers="colHeaders" :multiple="mappingTargets()[map.type].multiple"
-                                 :value-as-list="true" />
+                                <column-selector 
+                                    :class="'rule-map-' + map.type.replace(/_/g, '-')"
+                                    :label="mappingTargets()[map.type].label"
+                                    :target.sync="map.columns"
+                                    :col-headers="colHeaders"
+                                    :multiple="mappingTargets()[map.type].multiple"
+                                    :ordered="true"
+                                    :value-as-list="true" />
                             </div>
                             <div class="buttons">
                                 <div class="btn-group" v-if="unmappedTargets.length > 0">
@@ -363,6 +369,8 @@ import HotTable from 'vue-handsontable-official';
 import Popover from "mvc/ui/ui-popover";
 import UploadUtils from "mvc/upload/upload-utils";
 import JobStatesModel from "mvc/history/job-states-model";
+import Vue from "vue";
+
 
 const MAPPING_TARGETS = {
     list_identifiers: {
@@ -1066,13 +1074,44 @@ const Select2 = {
 
 const ColumnSelector = {
     template: `
-        <div class="rule-column-selector"><label>
-            {{ label }}
-            <select2 :value="target" @input="handleInput" :multiple="multiple">
-                <option v-for="(col, index) in colHeaders" :value="index">{{ col }}</option>
-            </select2>
-        </label></div>
+        <div class="rule-column-selector" v-if="!multiple || !ordered">
+            <label>
+                {{ label }}
+                <select2 :value="target" @input="handleInput" :multiple="multiple">
+                    <option v-for="(col, index) in remainingHeaders" :value="index">{{ col }}</option>
+                </select2>
+            </label>
+        </div>
+        <div class="rule-column-selector" v-else>
+            {{ label }} 
+            <ol>
+                <li v-for="(targetEl, index) in target"
+                    v-bind:index="index"
+                    v-bind:key="targetEl">
+                    {{ colHeaders[targetEl] }}
+                    <span class="fa fa-times" @click="handleRemove(index)"></span>
+                    <span class="fa fa-arrow-up" v-if="index !== 0" @click="moveUp(index)"></span>
+                    <span class="fa fa-arrow-down" v-if="index < target.length - 1" @click="moveUp(index + 1)"></span>
+                </li>
+                <li v-if="this.target.length < this.colHeaders.length">
+                    <span v-if="!orderedEdit">
+                        <i @click="orderedEdit = true">... {{ l("Assign Another Column") }}</i>
+                    </span>
+                    <span v-else>
+                        <select2 @input="handleAdd">
+                            <option v-for="(col, index) in remainingHeaders" :value="index">{{ col }}</option>
+                        </select2>
+                    </span>
+                </li>
+            </ol>
+        </div>
     `,
+    data: function() {
+        return {
+            'orderedEdit': false,
+            l: _l,
+        }
+    },
     props: {
         target: {
             required: true
@@ -1091,10 +1130,30 @@ const ColumnSelector = {
             required: false,
             default: false,
         },
+        ordered: {
+            type: Boolean,
+            required: false,
+            default: false,
+        },
         valueAsList: {
             type: Boolean,
             required: false,
             default: false,
+        }
+    },
+    computed: {
+        remainingHeaders() {
+            const colHeaders = this.colHeaders;
+            if(!this.multiple) {
+                return colHeaders;
+            }
+            const remaining = {};
+            for(let key in colHeaders) {
+                if(this.target.indexOf(parseInt(key)) === -1) {
+                    remaining[key] = colHeaders[key];
+                }
+            }
+            return remaining;
         }
     },
     methods: {
@@ -1110,6 +1169,18 @@ const ColumnSelector = {
                 }
                 this.$emit('update:target', val);
             }
+        },
+        handleAdd(value) {
+            this.target.push(parseInt(value));
+            this.orderedEdit = false;
+        },
+        handleRemove(index) {
+            this.target.splice(index, 1);
+        },
+        moveUp(value) {
+            const swapVal = this.target[value - 1];
+            Vue.set(this.target, value - 1, this.target[value]);
+            Vue.set(this.target, value, swapVal);
         }
     },
     components: {
@@ -2084,6 +2155,13 @@ export default {
     height: 400px;
   }
   .rules li {
+    list-style-type: circle;
+    list-style-position: inside;
+    padding: 5px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+  }
+  .rule-column-selector li {
     list-style-type: circle;
     list-style-position: inside;
     padding: 5px;
