@@ -1,3 +1,5 @@
+import os
+
 from selenium.webdriver.common.keys import Keys
 
 from .framework import (
@@ -246,8 +248,7 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
 
         text_area_elem = rule_builder.source.wait_for_visible()
 
-        with open(self.test_data_resolver.get_filename("rules/uniprot.json"), "r") as f:
-            content = f.read()
+        content = self._read_rules_test_data_file("uniprot.json")
         text_area_elem.clear()
         text_area_elem.send_keys(content)
         self.screenshot("rules_example_5_2_source")
@@ -273,6 +274,27 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.rule_builder_set_mapping("file-type", "D")
         self.rule_builder_set_mapping("collection-name", "E")
         self.screenshot("rules_example_5_8_mapping")
+
+    @selenium_test
+    def test_rules_example_6_nested_lists(self):
+        self.home()
+        self.perform_upload(self.get_filename("rules/PRJNA355367.tsv"))
+        self.history_panel_wait_for_hid_ok(1)
+        self.upload_rule_start()
+        self.upload_rule_set_data_type("Collection")
+        self.upload_rule_set_input_type("History Dataset")
+        self.upload_rule_set_dataset("1:")
+        self.screenshot("rules_example_6_1_paste")
+        rule_builder = self.components.rule_builder
+        rule_builder._.wait_for_and_click()
+        self.screenshot("rules_example_6_2_rules_landing")
+
+        self.rule_builder_filter_count(1)
+        self.rule_builder_add_regex_groups("L", 2, "[\d]+(\d+)", screenshot_name="rules_example_6_3_regex")
+
+    def _read_rules_test_data_file(self, name):
+        with open(self.test_data_resolver.get_filename(os.path.join("rules", name)), "r") as f:
+            return f.read()
 
     def _setup_uniprot_example(self):
         self.perform_upload(self.get_filename("rules/uniprot.tsv"))

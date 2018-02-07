@@ -1087,17 +1087,18 @@ const ColumnSelector = {
             <ol>
                 <li v-for="(targetEl, index) in target"
                     v-bind:index="index"
-                    v-bind:key="targetEl">
+                    v-bind:key="targetEl"
+                    class="rule-column-selector-target">
                     {{ colHeaders[targetEl] }}
-                    <span class="fa fa-times" @click="handleRemove(index)"></span>
-                    <span class="fa fa-arrow-up" v-if="index !== 0" @click="moveUp(index)"></span>
-                    <span class="fa fa-arrow-down" v-if="index < target.length - 1" @click="moveUp(index + 1)"></span>
+                    <span class="fa fa-times rule-column-selector-target" @click="handleRemove(index)"></span>
+                    <span class="fa fa-arrow-up rule-column-selector-up" v-if="index !== 0" @click="moveUp(index)"></span>
+                    <span class="fa fa-arrow-down rule-column-selector-down" v-if="index < target.length - 1" @click="moveUp(index + 1)"></span>
                 </li>
                 <li v-if="this.target.length < this.colHeaders.length">
-                    <span v-if="!orderedEdit">
+                    <span v-if="!orderedEdit" class="rule-column-selector-target-add">
                         <i @click="orderedEdit = true">... {{ l("Assign Another Column") }}</i>
                     </span>
-                    <span v-else>
+                    <span class="rule-column-selector-target-select" v-else>
                         <select2 @input="handleAdd">
                             <option v-for="(col, index) in remainingHeaders" :value="index">{{ col }}</option>
                         </select2>

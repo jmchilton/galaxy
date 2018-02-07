@@ -745,10 +745,13 @@ class NavigatesGalaxy(HasDriver):
         rule_builder.menu_item_rule_type(rule_type="mapping").wait_for_and_click()
         rule_builder.add_mapping_menu.wait_for_and_click()
         rule_builder.add_mapping_button(mapping_type=mapping_type).wait_for_and_click()
-        mapping_elem = rule_builder.mapping_edit(mapping_type=mapping_type).wait_for_visible()
-        self.select2_set_value(mapping_elem, column_label, clear_value=True)
-        if screenshot_name:
-            self.screenshot(screenshot_name)
+        if mapping_type != "list-identifiers":
+            mapping_elem = rule_builder.mapping_edit(mapping_type=mapping_type).wait_for_visible()
+            self.select2_set_value(mapping_elem, column_label)
+            if screenshot_name:
+                self.screenshot(screenshot_name)
+        else:
+            pass
         rule_builder.mapping_ok.wait_for_and_click()
 
     def workflow_editor_click_option(self, option_label):
