@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 # that import Galaxy internals - but it shouldn't be used in Galaxy's code
 # itself.
 TOOL_PROVIDED_JOB_METADATA_FILE = 'galaxy.json'
-TOOL_PROVIDED_JOB_METADATA_KEYS = ['name', 'info', 'dbkey']
+TOOL_PROVIDED_JOB_METADATA_KEYS = ['name', 'info', 'dbkey', 'cwl_filename']
 
 # Override with config.default_job_shell.
 DEFAULT_JOB_SHELL = '/bin/bash'
@@ -760,6 +760,10 @@ class JobWrapper(HasResourceParameters):
         # Should the job handler split this job up?
         return self.app.config.use_tasked_jobs and self.tool.parallelism
 
+    @property
+    def is_cwl_job(self):
+        return self.tool.tool_type == "cwl"
+
     def get_job_runner_url(self):
         log.warning('(%s) Job runner URLs are deprecated, use destinations instead.' % self.job_id)
         return self.job_destination.url
@@ -867,10 +871,13 @@ class JobWrapper(HasResourceParameters):
         # if the server was stopped and restarted before the job finished
         job.command_line = unicodify(self.command_line)
         job.dependencies = self.tool.dependencies
+        param_dict = tool_evaluator.param_dict
+        job.cwl_command_state = param_dict.get('__cwl_command_state', None)
+        job.cwl_command_state_version = param_dict.get('__cwl_command_state_version', None)
         self.sa_session.add(job)
         self.sa_session.flush()
         # Return list of all extra files
-        self.param_dict = tool_evaluator.param_dict
+        self.param_dict = param_dict
         version_string_cmd_raw = self.tool.version_string_cmd
         if version_string_cmd_raw:
             version_command_template = string.Template(version_string_cmd_raw)

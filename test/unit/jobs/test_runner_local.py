@@ -217,3 +217,7 @@ class MockJobWrapper(object):
 
     def home_directory(self):
         return None
+
+    @property
+    def is_cwl_job(self):
+        return False

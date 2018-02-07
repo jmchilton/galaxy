@@ -234,6 +234,8 @@ class JobContext(object):
             if dbkey == INPUT_DBKEY_TOKEN:
                 dbkey = self.input_dbkey
 
+            cwl_filename = fields_match.cwl_filename or None
+
             # Create new primary dataset
             name = fields_match.name or designation
 
@@ -246,6 +248,9 @@ class JobContext(object):
                 filename=filename,
                 metadata_source_name=output_collection_def.metadata_source,
             )
+            if cwl_filename:
+                dataset.cwl_filename = cwl_filename
+
             log.debug(
                 "(%s) Created dynamic collection dataset for path [%s] with element identifier [%s] for output [%s] %s",
                 self.job.id,
@@ -658,6 +663,10 @@ class JsonCollectedDatasetMatch(object):
             return self.as_dict["visible"].lower() == "visible"
         except KeyError:
             return self.collector.default_visible
+
+    @property
+    def cwl_filename(self):
+        return self.as_dict.get("cwl_filename")
 
 
 class RegexCollectedDatasetMatch(JsonCollectedDatasetMatch):

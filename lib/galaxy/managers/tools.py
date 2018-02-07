@@ -8,6 +8,7 @@ from .base import ModelManager
 
 from galaxy import exceptions
 from galaxy import model
+from galaxy.tools.cwl import tool_proxy, tool_proxy_from_persistent_representation
 from galaxy.tools.hash import build_tool_hash
 
 log = logging.getLogger(__name__)
@@ -65,6 +66,23 @@ class DynamicToolManager(ModelManager):
             tool_version = representation.get("version", None)
             tool_hash = build_tool_hash(representation)
             value = representation
+        elif tool_format in ["CommandLineTool", "ExpressionTool"]:
+            # CWL tools
+            uuid = None
+            tool_id = representation.get("id", None)
+            tool_version = representation.get("version", None)
+            if "pickle" in representation:
+                # It has already been proxies and pickled - just take the tool
+                # hash.
+                tool_hash = build_tool_hash(representation)
+            else:
+                # Else - build a tool proxy so that we can convert to the presistable
+                # hash.
+                proxy = tool_proxy(tool_object=representation)
+                id_proxy = tool_proxy_from_persistent_representation(proxy.to_persistent_representation())
+                tool_hash = build_tool_hash(id_proxy.to_persistent_representation())
+                tool_id = id_proxy.galaxy_id()
+            value = representation
         else:
             raise Exception("Unknown tool type encountered.")
         # TODO: enforce via DB constraint and catch appropriate
@@ -83,7 +101,10 @@ class DynamicToolManager(ModelManager):
                 uuid=uuid,
                 value=value,
             )
-        self.app.toolbox.load_dynamic_tool(dynamic_tool)
+            tool = self.app.toolbox.load_dynamic_tool(dynamic_tool)
+
+            # assert tool.id == dynamic_tool.tool_id, "%s != %s" % (tool.id, dynamic_tool.tool_id)
+            assert tool.tool_hash == dynamic_tool.tool_hash
         return dynamic_tool
 
     def list_tools(self, active=True):

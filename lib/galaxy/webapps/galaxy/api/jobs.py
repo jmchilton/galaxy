@@ -138,6 +138,8 @@ class JobController(BaseAPIController, UsesLibraryMixinItems):
                     job_dict['user_email'] = job.user.email
                 else:
                     job_dict['user_email'] = None
+                job_dict['cwl_command_state'] = job.cwl_command_state
+                job_dict['cwl_command_state_version'] = job.cwl_command_state_version
 
                 def metric_to_dict(metric):
                     metric_name = metric.metric_name

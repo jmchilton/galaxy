@@ -10,6 +10,7 @@ import gzip
 import os
 import shutil
 import sys
+import tarfile
 import tempfile
 import zipfile
 from json import dumps, loads
@@ -28,6 +29,8 @@ from galaxy.util.checkers import (
     check_html,
     check_zip
 )
+
+
 
 if sys.version_info < (3, 3):
     import bz2file as bz2
@@ -264,7 +267,7 @@ def add_file(dataset, registry, json_file, output_path):
                     # We have a binary dataset, but it is not Bam, Sff or Pdf
                     data_type = 'binary'
                     parts = dataset.name.split(".")
-                    if len(parts) > 1:
+                    if check_content and len(parts) > 1:
                         ext = parts[-1].strip().lower()
                         is_ext_unsniffable_binary = registry.is_extension_unsniffable_binary(ext)
                         if check_content and not is_ext_unsniffable_binary:
@@ -337,24 +340,32 @@ def add_file(dataset, registry, json_file, output_path):
 
 def add_composite_file(dataset, json_file, output_path, files_path):
 
+    def to_path(path_or_url):
+        is_url = path_or_url.find('://') != -1  # todo fixme
+        if is_url:
+            try:
+                temp_name, dataset.is_multi_byte = sniff.stream_to_file(urlopen(path_or_url), prefix='url_paste')
+            except Exception as e:
+                raise UploadProblemException('Unable to fetch %s\n%s' % (dp, str(e)))
+
+            return temp_name, is_url
+
+        return path_or_url, is_url
+
     def make_files_path():
         safe_makedirs(files_path)
 
     def stage_file(name, composite_file_path, is_binary=False):
         dp = composite_file_path['path']
-        isurl = dp.find('://') != -1  # todo fixme
-        if isurl:
-            try:
-                temp_name = sniff.stream_to_file(urlopen(dp), prefix='url_paste')
-            except Exception as e:
-                raise UploadProblemException('Unable to fetch %s\n%s' % (dp, str(e)))
-            dataset.path = temp_name
-            dp = temp_name
+        path, is_url = to_path(dp)
+        if is_url:
+            dataset.path = path
+            dp = path
 
-        import tarfile
-        if tarfile.is_tarfile(dp):
+        auto_decompress = composite_file_path.get('auto_decompress', True)
+        if auto_decompress and tarfile.is_tarfile(dp):
             tar = tarfile.open(dp, "r:*")
-            for tarinfo in tar:
+            for tarinfo in tar.getmembers():
                 rel_path = tarinfo.name
                 dest_path = os.path.join(files_path, rel_path)
                 if not in_directory(dest_path, files_path):
@@ -387,11 +398,14 @@ def add_composite_file(dataset, json_file, output_path, files_path):
     # Do we have ad-hoc user supplied composite files.
     elif dataset.composite_file_paths:
         make_files_path()
+        print(dataset.composite_file_paths)
         for key, composite_file in dataset.composite_file_paths.items():
             stage_file(key, composite_file)  # TODO: replace these defaults
 
     # Move the dataset to its "real" path
-    shutil.move(dataset.primary_file, output_path)
+    primary_file_path, _ = to_path(dataset.primary_file)
+    shutil.move(primary_file_path, output_path)
+
     # Write the job info
     info = dict(type='dataset',
                 dataset_id=dataset.dataset_id,

@@ -55,6 +55,47 @@ def file_dict_to_description(file_dict):
         return PathFileDescription(_possible_uri_to_path(location))
 
 
+class FileDescription(object):
+    pass
+
+
+class PathFileDescription(object):
+
+    def __init__(self, path):
+        self.path = path
+
+    def write_to(self, destination):
+        # TODO: Move if we can be sure this is in the working directory for instance...
+        shutil.copy(self.path, destination)
+
+
+class LiteralFileDescription(object):
+
+    def __init__(self, content):
+        self.content = content
+
+    def write_to(self, destination):
+        with open(destination, "wb") as f:
+            f.write(self.content.encode("UTF-8"))
+
+
+def _possible_uri_to_path(location):
+    if location.startswith("file://"):
+        path = ref_resolver.uri_file_path(location)
+    else:
+        path = location
+    return path
+
+
+def file_dict_to_description(file_dict):
+    assert file_dict["class"] == "File", file_dict
+    location = file_dict["location"]
+    if location.startswith("_:"):
+        return LiteralFileDescription(file_dict["contents"])
+    else:
+        return PathFileDescription(_possible_uri_to_path(location))
+
+
 def handle_outputs(job_directory=None):
     # Relocate dynamically collected files to pre-determined locations
     # registered with ToolOutput objects via from_work_dir handling.
