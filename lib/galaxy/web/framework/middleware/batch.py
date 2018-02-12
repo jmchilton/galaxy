@@ -70,6 +70,11 @@ class BatchMiddleware(object):
         self.handle_request = self.galaxy.handle_request
 
     def __call__(self, environ, start_response):
+        query_string = environ.get('QUERY_STRING')
+        if "sql_debug=1" in query_string:
+            import galaxy.app
+            if galaxy.app.app.model.thread_local_log:
+                galaxy.app.app.model.thread_local_log.log = True
         if environ['PATH_INFO'] == self.config['route']:
             return self.process_batch_requests(environ, start_response)
         return self.application(environ, start_response)

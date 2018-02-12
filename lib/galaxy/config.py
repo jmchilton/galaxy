@@ -177,6 +177,10 @@ class Configuration(object):
         self.database_template = kwargs.get("database_template", None)
         self.database_encoding = kwargs.get("database_encoding", None)  # Create new databases with this encoding.
         self.slow_query_log_threshold = float(kwargs.get("slow_query_log_threshold", 0))
+        self.thread_local_log = None
+        if string_as_bool(kwargs.get("per_request_query_logging", "False")):
+            self.thread_local_log = threading.local()
+            self.thread_local_log.log = False
 
         # Don't set this to true for production databases, but probably should
         # default to True for sqlite databases.
@@ -1045,7 +1049,8 @@ class ConfiguresGalaxyMixin(object):
                                   object_store=self.object_store,
                                   trace_logger=getattr(self, "trace_logger", None),
                                   use_pbkdf2=self.config.get_bool('use_pbkdf2', True),
-                                  slow_query_log_threshold=self.config.slow_query_log_threshold)
+                                  slow_query_log_threshold=self.config.slow_query_log_threshold,
+                                  thread_local_log=self.config.thread_local_log)
 
         if combined_install_database:
             log.info("Install database targetting Galaxy's database configuration.")
