@@ -195,16 +195,9 @@ class Grid(object):
             else:
                 page_num = 1
             if page_num == 0:
-                # Show all rows in page.
-                total_num_rows = query.count()
                 page_num = 1
-                num_pages = 1
             else:
-                # Show a limited number of rows. Before modifying query, get the total number of rows that query
-                # returns so that the total number of pages can be computed.
-                total_num_rows = query.count()
                 query = query.limit(self.num_rows_per_page).offset((page_num - 1) * self.num_rows_per_page)
-                num_pages = int(math.ceil(float(total_num_rows) / self.num_rows_per_page))
         else:
             # Defaults.
             page_num = 1
@@ -263,7 +256,6 @@ class Grid(object):
             'sort_key'                      : sort_key,
             'show_item_checkboxes'          : self.show_item_checkboxes or kwargs.get('show_item_checkboxes', '') in ['True', 'true'],
             'cur_page_num'                  : page_num,
-            'num_pages'                     : num_pages,
             'num_page_links'                : self.num_page_links,
             'status'                        : status,
             'message'                       : restore_text(message),
@@ -335,7 +327,16 @@ class Grid(object):
         for column in self.columns:
             if column.filterable is not None and not isinstance(column, TextColumn):
                 grid_config['categorical_filters'][column.key] = dict([(filter.label, filter.args) for filter in column.get_accepted_filters()])
+
+        full_count = None
         for i, item in enumerate(query):
+            if hasattr(item, "full_count"):
+                full_count = item.full_count
+                if full_count == 0:
+                    break
+
+                item = item[0]
+
             item_dict = {
                 'id'                    : item.id,
                 'encode_id'             : trans.security.encode_id(item.id),
@@ -367,6 +368,28 @@ class Grid(object):
                     'target'    : operation.target
                 }
             grid_config['items'].append(item_dict)
+
+        # Process page number.
+        if self.use_paging:
+            if page_num == 0:
+                # Show all rows in page.
+                num_pages = 1
+            else:
+                if full_count is not None:
+                    total_num_rows = full_count
+                else:
+                    # Show a limited number of rows. Get the total number of rows that query
+                    # returns so that the total number of pages can be computed.
+                    total_num_rows = query.count()
+
+                    # TODO: it would be better to just return this as None, render, and fire
+                    # off a second request for this count I think.
+
+                num_pages = int(math.ceil(float(total_num_rows) / self.num_rows_per_page))
+        else:
+            num_pages = 1
+
+        grid_config["num_pages"] = num_pages
         trans.log_action(trans.get_user(), text_type("grid.view"), context, params)
         return grid_config
 
@@ -392,7 +415,11 @@ class Grid(object):
         return None
 
     def build_initial_query(self, trans, **kwargs):
-        return trans.sa_session.query(self.model_class)
+        if trans.app.config.database_embed_full_count_queries:
+            query = trans.sa_session.query(self.model_class, func.count().over().label("full_count"))
+        else:
+            query = trans.sa_session.query(self.model_class)
+        return query
 
     def apply_query_filter(self, trans, query, **kwargs):
         # Applies a database filter that holds for all items in the grid.
