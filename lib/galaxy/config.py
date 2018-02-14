@@ -178,6 +178,9 @@ class Configuration(object):
         self.database_encoding = kwargs.get("database_encoding", None)  # Create new databases with this encoding.
         self.slow_query_log_threshold = float(kwargs.get("slow_query_log_threshold", 0))
 
+        # None or joined or subquery
+        self.preload_sharing_tags = kwargs.get("beta_grids_preload_sharing_tags", "subquery")
+
         # Don't set this to true for production databases, but probably should
         # default to True for sqlite databases.
         self.database_auto_migrate = string_as_bool(kwargs.get("database_auto_migrate", "False"))

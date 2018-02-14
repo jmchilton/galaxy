@@ -5,7 +5,7 @@ from markupsafe import escape
 from six import string_types
 from six.moves.urllib.parse import unquote_plus
 from sqlalchemy import and_, false, null, true
-from sqlalchemy.orm import eagerload, eagerload_all, undefer
+from sqlalchemy.orm import eagerload, eagerload_all, subqueryload, undefer
 
 import galaxy.util
 from galaxy import exceptions
@@ -80,6 +80,10 @@ class HistoryListGrid(grids.Grid):
         # Override to preload sharing information used when fetching data for grid.
         query = super(HistoryListGrid, self).build_initial_query(trans, **kwargs)
         query = query.options(undefer("users_shared_with_count"))
+        if trans.app.config.preload_sharing_tags == "joined":
+            query = query.options(eagerload("tags"))
+        elif trans.app.config.preload_sharing_tags == "subquery":
+            query = query.options(subqueryload("tags"))
         return query
 
     # Grid definition
