@@ -80,6 +80,32 @@ class Registry(object):
         self.display_sites = {}
         self.legacy_build_sites = {}
 
+    def _handle_datatype_elems_chagned(self):
+        all_types_api_cache = []
+        upload_types_api_cache = []
+
+        for elem in self.datatype_elems:
+            keys = ['extension', 'description', 'description_url']
+            dictionary = {}
+            for key in keys:
+                val = elem.get(key)
+                if val is not None:
+                    dictionary[key] = elem.get(key)
+            extension = elem.get('extension')
+            if extension in self.datatypes_by_extension:
+                composite_files = self.datatypes_by_extension[extension].composite_files
+                if composite_files:
+                    dictionary['composite_files'] = [_.dict() for _ in composite_files.values()]
+
+            all_types_api_cache.append(dictionary)
+            if not galaxy.util.asbool(elem.get('display_in_upload')):
+                upload_types_api_cache.append(dictionary)
+                continue
+
+        import json
+        self.all_types_api_cache = json.dumps(all_types_api_cache)
+        self.upload_types_api_cache = json.dumps(upload_types_api_cache)
+
     def load_datatypes(self, root_dir=None, config=None, deactivate=False, override=True):
         """
         Parse a datatypes XML file located at root_dir/config (if processing the Galaxy distributed config) or contained within
@@ -322,6 +348,8 @@ class Registry(object):
                     self.sniff_order.append(datatype)
 
         append_to_sniff_order()
+
+        self._handle_datatype_elems_chagned()
 
     def _load_build_sites(self, root):
 

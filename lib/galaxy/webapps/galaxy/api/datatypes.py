@@ -1,12 +1,14 @@
 """
 API operations allowing clients to determine datatype supported by Galaxy.
 """
+import json
 import logging
 
 from galaxy import exceptions
 from galaxy.datatypes.data import Data
 from galaxy.util import asbool
 from galaxy.web import _future_expose_api_anonymous_and_sessionless as expose_api_anonymous_and_sessionless
+from galaxy.web import _future_expose_api_raw_anonymous_and_sessionless as expose_api_raw_anonymous_and_sessionless
 from galaxy.web.base.controller import BaseAPIController
 
 log = logging.getLogger(__name__)
@@ -14,7 +16,7 @@ log = logging.getLogger(__name__)
 
 class DatatypesController(BaseAPIController):
 
-    @expose_api_anonymous_and_sessionless
+    @expose_api_raw_anonymous_and_sessionless
     def index(self, trans, **kwd):
         """
         GET /api/datatypes
@@ -24,27 +26,15 @@ class DatatypesController(BaseAPIController):
         try:
             extension_only = asbool(kwd.get('extension_only', True))
             upload_only = asbool(kwd.get('upload_only', True))
+            if not extension_only and upload_only:
+                return datatypes_registry.upload_types_api_cache
+            elif not extension_only:
+                return datatypes_registry.all_types_api_cache
             if extension_only:
                 if upload_only:
-                    return datatypes_registry.upload_file_formats
+                    return json.dumps(datatypes_registry.upload_file_formats)
                 else:
-                    return [ext for ext in datatypes_registry.datatypes_by_extension]
-            else:
-                rval = []
-                for elem in datatypes_registry.datatype_elems:
-                    if not asbool(elem.get('display_in_upload')) and upload_only:
-                        continue
-                    keys = ['extension', 'description', 'description_url']
-                    dictionary = {}
-                    for key in keys:
-                        dictionary[key] = elem.get(key)
-                    extension = elem.get('extension')
-                    if extension in datatypes_registry.datatypes_by_extension:
-                        composite_files = datatypes_registry.datatypes_by_extension[extension].composite_files
-                        if composite_files:
-                            dictionary['composite_files'] = [_.dict() for _ in composite_files.values()]
-                    rval.append(dictionary)
-                return rval
+                    return json.dumps([ext for ext in datatypes_registry.datatypes_by_extension])
         except Exception as exception:
             log.error('could not get datatypes: %s', str(exception), exc_info=True)
             if not isinstance(exception, exceptions.MessageException):
