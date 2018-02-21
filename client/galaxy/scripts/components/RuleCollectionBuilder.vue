@@ -1040,7 +1040,7 @@ const Rules = {
 // Based on https://vuejs.org/v2/examples/select2.html but adapted to handle list values
 // with "multiple: true" set.
 const Select2 = {
-  props: ['options', 'value'],
+  props: ['options', 'value', 'placeholder'],
   template: `<select>
     <slot></slot>
   </select>`,
@@ -1048,7 +1048,7 @@ const Select2 = {
     var vm = this
     $(this.$el)
       // init select2
-      .select2({ data: this.options })
+      .select2({ data: this.options, placeholder: this.placeholder, allowClear: this.placeholder })
       .val(this.value)
       .trigger('change')
       // emit event on change.
@@ -1090,16 +1090,17 @@ const ColumnSelector = {
                     v-bind:key="targetEl"
                     class="rule-column-selector-target">
                     {{ colHeaders[targetEl] }}
-                    <span class="fa fa-times rule-column-selector-target" @click="handleRemove(index)"></span>
+                    <span class="fa fa-times rule-column-selector-target-remove" @click="handleRemove(index)"></span>
                     <span class="fa fa-arrow-up rule-column-selector-up" v-if="index !== 0" @click="moveUp(index)"></span>
                     <span class="fa fa-arrow-down rule-column-selector-down" v-if="index < target.length - 1" @click="moveUp(index + 1)"></span>
                 </li>
                 <li v-if="this.target.length < this.colHeaders.length">
-                    <span v-if="!orderedEdit" class="rule-column-selector-target-add">
+                    <span class="rule-column-selector-target-add" v-if="!orderedEdit">
                         <i @click="orderedEdit = true">... {{ l("Assign Another Column") }}</i>
                     </span>
                     <span class="rule-column-selector-target-select" v-else>
-                        <select2 @input="handleAdd">
+                        <select2 @input="handleAdd" placeholder="Select a column">
+                            <option /><!-- empty option selection for placeholder -->
                             <option v-for="(col, index) in remainingHeaders" :value="index">{{ col }}</option>
                         </select2>
                     </span>
@@ -1741,7 +1742,8 @@ export default {
       }
     },
     addIdentifier(identifier) {
-      this.mapping.push({"type": identifier, "columns": [0]})
+      const initialColumns = this.mappingTargets()[identifier].multiple ? [] : [0];
+      this.mapping.push({"type": identifier, "columns": initialColumns});
     },
     editRule(rule, index) {
        const ruleType = rule.type;
