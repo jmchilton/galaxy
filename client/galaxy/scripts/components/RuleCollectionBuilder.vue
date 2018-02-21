@@ -186,6 +186,7 @@
                                     :class="'rule-map-' + map.type.replace(/_/g, '-')"
                                     :label="mappingTargets()[map.type].label"
                                     :target.sync="map.columns"
+                                    :ordered-edit.sync="map.editing"
                                     :col-headers="colHeaders"
                                     :multiple="mappingTargets()[map.type].multiple"
                                     :ordered="true"
@@ -204,7 +205,7 @@
                                     </li>
                                   </ul>
                                 </div>
-                               <button type="button" class="ui-button-default btn btn-default rule-mapping-ok" @click="displayRuleType = null">Okay</button>
+                               <button type="button" class="ui-button-default btn btn-default rule-mapping-ok" v-if="!hasActiveMappingEdit" @click="displayRuleType = null">Okay</button>
                             </div>
                         </div>
                         <div class="rule-summary" v-if="displayRuleType == null">
@@ -1096,7 +1097,7 @@ const ColumnSelector = {
                 </li>
                 <li v-if="this.target.length < this.colHeaders.length">
                     <span class="rule-column-selector-target-add" v-if="!orderedEdit">
-                        <i @click="orderedEdit = true">... {{ l("Assign Another Column") }}</i>
+                        <i @click="$emit('update:orderedEdit', true)">... {{ l("Assign Another Column") }}</i>
                     </span>
                     <span class="rule-column-selector-target-select" v-else>
                         <select2 @input="handleAdd" placeholder="Select a column">
@@ -1110,7 +1111,6 @@ const ColumnSelector = {
     `,
     data: function() {
         return {
-            'orderedEdit': false,
             l: _l,
         }
     },
@@ -1138,6 +1138,11 @@ const ColumnSelector = {
             default: false,
         },
         valueAsList: {
+            type: Boolean,
+            required: false,
+            default: false,
+        },
+        orderedEdit: {
             type: Boolean,
             required: false,
             default: false,
@@ -1174,7 +1179,7 @@ const ColumnSelector = {
         },
         handleAdd(value) {
             this.target.push(parseInt(value));
-            this.orderedEdit = false;
+            this.$emit('update:orderedEdit', false);
         },
         handleRemove(index) {
             this.target.splice(index, 1);
@@ -1491,6 +1496,10 @@ export default {
     }
   },
   computed: {
+    hasActiveMappingEdit() {
+        const has = _.any(_.values(this.mapping), (mapping) => mapping.editing);
+        return has;
+    },
     activeRule() {
         return this.activeRuleIndex !== null && this.rules[this.activeRuleIndex];
     },
@@ -1742,8 +1751,10 @@ export default {
       }
     },
     addIdentifier(identifier) {
-      const initialColumns = this.mappingTargets()[identifier].multiple ? [] : [0];
-      this.mapping.push({"type": identifier, "columns": initialColumns});
+      const multiple = this.mappingTargets()[identifier].multiple;
+      // If multiple selection, pop open a new column selector in edit mode.
+      const initialColumns = multiple ? [] : [0];
+      this.mapping.push({"type": identifier, "columns": initialColumns, "editing": multiple});
     },
     editRule(rule, index) {
        const ruleType = rule.type;

@@ -751,7 +751,7 @@ class NavigatesGalaxy(HasDriver):
             if screenshot_name:
                 self.screenshot(screenshot_name)
         else:
-            rule_builder.mapping_add_column(mapping_type=mapping_type).wait_for_and_click()
+            # rule_builder.mapping_add_column(mapping_type=mapping_type).wait_for_and_click()
             mapping_elem = rule_builder.mapping_edit(mapping_type=mapping_type).wait_for_visible()
             self.select2_set_value(mapping_elem, column_label)
             if screenshot_name:
