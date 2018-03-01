@@ -490,8 +490,10 @@ const Rules = {
             rule.target_column = component.addColumnBasenameTarget;
         },
         apply: (rule, data, sources) => {
-            // https://github.com/kgryte/regex-basename-posix/blob/master/lib/index.js        
-            const re = /^(?:\/?|)(?:[\s\S]*?)((?:\.{1,2}|[^\/]+?|)(?:\.[^.\/]*|))(?:[\/]*)$/;
+            // https://github.com/kgryte/regex-basename-posix/blob/master/lib/index.js
+            //const re = /^(?:\/?|)(?:[\s\S]*?)((?:\.{1,2}|[^\/]+?|)(?:\.[^.\/]*|))(?:[\/]*)$/;
+            // https://stackoverflow.com/questions/8376525/get-value-of-a-string-after-a-slash-in-javascript
+            const re = /[^/]*$/;
             const target = rule.target_column;
             return applyRegex(re, target, data);
         }
