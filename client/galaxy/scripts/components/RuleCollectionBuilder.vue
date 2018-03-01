@@ -1770,6 +1770,12 @@ export default {
     removeMapping(index) {
         this.mapping.splice(index, 1);
     },
+    refreshAndWait(response) {
+        if (Galaxy && Galaxy.currHistoryPanel) {
+            Galaxy.currHistoryPanel.refreshContents();
+        }
+        this.waitOnJob(response);
+    },
     waitOnJob(response) {
         const jobId = response.data.jobs[0].id;
         const handleJobShow = (jobResponse) => {
@@ -1778,6 +1784,7 @@ export default {
             if (JobStatesModel.NON_TERMINAL_STATES.indexOf(state) !== -1) {
                 setTimeout(doJobCheck, 1000);                
             } else if (JobStatesModel.ERROR_STATES.indexOf(state) !== -1) {
+                this.state = 'error';
                 this.errorMessage = "Unknown error encountered while running your upload job, this could be a server issue or a problem with the upload definition.";
             } else {
                 const history = parent.Galaxy && parent.Galaxy.currHistoryPanel && parent.Galaxy.currHistoryPanel.model;
@@ -1862,7 +1869,7 @@ export default {
                     "history_id": historyId,
                     "targets": targets,
                 })
-                .then(this.waitOnJob)
+                .then(this.refreshAndWait)
                 .catch(this.renderFetchError);
         }
     },
