@@ -60,10 +60,17 @@ var DatasetCollectionElementMixin = {
 
     /** merge the attributes of the sub-object 'object' into this model */
     _mergeObject: function(attributes) {
-        // if we don't preserve and correct ids here, the element id becomes the object id
-        // and collision in backbone's _byId will occur and only
+        // Don't let the dataset ID replace the DCE's ID so record it as the
+        // element_id and when fetching dataset details below use the element_id
+        // instead of this.id.
+        const object = attributes.object;
+        let elementId = this.elementId;
+        if(object) {
+            elementId = attributes.object.id;
+            delete attributes.object.id;
+        }
         _.extend(attributes, attributes.object, {
-            element_id: attributes.id
+            element_id: elementId
         });
         delete attributes.object;
         return attributes;
@@ -123,7 +130,11 @@ var DatasetDCE = DATASET_MODEL.DatasetAssociation.extend(
                     // (a little silly since this api endpoint *also* points at hdas)
                     return `${Galaxy.root}api/datasets`;
                 }
-                return `${Galaxy.root}api/histories/${this.get("history_id")}/contents/${this.get("id")}`;
+                // I'm a DCE acting as dataset, this URL needs to be the dataset URL so
+                // use element_id instead of ID.
+                const id = this.get("element_id");
+                const url = `${Galaxy.root}api/histories/${this.get("history_id")}/contents/${id}`;
+                return url;
             },
 
             defaults: _.extend(
