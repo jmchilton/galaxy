@@ -267,17 +267,12 @@ class ToolBox(BaseGalaxyToolBox):
         return self._tools_by_id
 
     def create_tool(self, config_file, **kwds):
-        try:
-            tool_source = get_tool_source(
-                config_file,
-                enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", False),
-                tool_location_fetcher=self.tool_location_fetcher,
-                strict_cwl_validation=getattr(self.app.config, "strict_cwl_validation", True),
-            )
-        except Exception as e:
-            # capture and log parsing errors
-            global_tool_errors.add_error(config_file, "Tool XML parsing", e)
-            raise e
+        tool_source = get_tool_source(
+            config_file,
+            enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", False),
+            tool_location_fetcher=self.tool_location_fetcher,
+            strict_cwl_validation=getattr(self.app.config, "strict_cwl_validation", True),
+        )
         return self._create_tool_from_source(tool_source, config_file=config_file, **kwds)
 
     def _create_tool_from_source(self, tool_source, **kwds):
@@ -2517,6 +2512,7 @@ class CwlTool(Tool):
         cwl_job_proxy.save_job()
 
         param_dict["__cwl_command"] = command_line
+        log.info("__cwl_command is %s" % command_line)
         param_dict["__cwl_command_state"] = cwl_job_state
         param_dict["__cwl_command_version"] = 1
         log.info("CwlTool.exec_before_job() generated command_line %s" % command_line)

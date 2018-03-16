@@ -1301,6 +1301,8 @@ class JobWrapper(HasResourceParameters):
                         return self.fail("Job %s's output dataset(s) could not be read" % job.id)
 
         job_context = ExpressionContext(dict(stdout=job.stdout, stderr=job.stderr))
+        log.info("Finishing job with stdout [%s]" % job_context["stdout"])
+        log.info("Finishing job with stderr [%s]" % job_context["stderr"])
         for dataset_assoc in job.output_datasets + job.output_library_datasets:
             context = self.get_dataset_finish_context(job_context, dataset_assoc)
             # should this also be checking library associations? - can a library item be added from a history before the job has ended? -

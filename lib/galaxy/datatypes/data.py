@@ -370,6 +370,7 @@ class Data(object):
         trans.response.headers['X-Content-Type-Options'] = 'nosniff'
         if isinstance(data, six.string_types):
             return smart_str(data)
+        log.info("FILENAME IS %s" % filename)
         if filename and filename != "index":
             # For files in extra_files_path
             file_path = trans.app.object_store.get_filename(data.dataset, extra_dir='dataset_%s_files' % data.dataset.id, alt_name=filename)
