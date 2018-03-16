@@ -126,7 +126,7 @@ def check_output(tool, stdout, stderr, tool_exit_code, job):
             # log.debug( "Tool did not define exit code or stdio handling; "
             #          + "checking stderr for success" )
             if stderr:
-                peak = stderr[0:250]
+                peak = stderr[0:10000]
                 log.debug("Tool produced standard error failing job - [%s]" % peak)
                 state = DETECTED_JOB_STATE.GENERIC_ERROR
             else:
