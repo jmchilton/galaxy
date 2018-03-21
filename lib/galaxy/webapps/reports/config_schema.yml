@@ -92,12 +92,8 @@ mapping:
       
       smtp_server:
         type: str
-        default: yourserver@yourfacility.edu
+        default: localhost
+        required: false
         desc: |
-          Mail
-      
-      error_email_to:
-        type: str
-        default: your_bugs@bx.psu.edu
-        desc: |
-          Mail
+          Used by the error middleware (if configured) will assume a default of localhost for
+          this.

@@ -185,11 +185,16 @@ tool_shed:
   # Force everyone to log in (disable anonymous access)
   #require_login: false
 
-  # For use by email messages sent from the tool shed
-  #smtp_server: smtp.your_tool_shed_server
+  # For use by email messages sent from the tool shed. The error
+  # middleware (if configured) will assume a default of localhost for
+  # this, but application logic will assume null and not try to send
+  # emails.
+  #smtp_server: null
 
-  # For use by email messages sent from the tool shed
-  #email_from: your_tool_shed_email@server
+  # For use by email messages sent from the tool shed. Like smtp_server
+  # the default for this option is a bit different depending on the
+  # context.
+  #email_from: galaxy-no-reply@HOSTNAME
 
   # If your SMTP server requires a username and password, you can
   # provide them here (password in cleartext here, but if your server

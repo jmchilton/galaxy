@@ -138,18 +138,9 @@
 ~~~~~~~~~~~~~~~
 
 :Description:
-    Mail
-:Default: ``yourserver@yourfacility.edu``
-:Type: str
-
-
-~~~~~~~~~~~~~~~~~~
-``error_email_to``
-~~~~~~~~~~~~~~~~~~
-
-:Description:
-    Mail
-:Default: ``your_bugs@bx.psu.edu``
+    Used by the error middleware (if configured) will assume a default
+    of localhost for this.
+:Default: ``localhost``
 :Type: str
 
 
