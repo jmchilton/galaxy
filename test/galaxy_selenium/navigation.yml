@@ -218,6 +218,10 @@ workflows:
     new_button: '#new-workflow'
     import_button: '#import-workflow'
 
+  sharing:
+    selectors:
+      _: '.share-wf'
+
 tour:
   popover:
     selectors:

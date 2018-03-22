@@ -98,6 +98,8 @@ class WorkflowManagementTestCase(SeleniumTestCase):
 
         assert_published_column_text_is("No")
         self.workflow_index_click_option("Share")
+        self.components.workflows.sharing._.wait_for_visible()
+        self.screenshot("workflow_sharing_landing")
         self.workflow_sharing_click_publish()
 
         self.workflow_index_open()
