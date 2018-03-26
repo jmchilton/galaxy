@@ -2653,6 +2653,15 @@ class RelabelFromFileTool(DatabaseOperationTool):
         )
 
 
+#  ValueError: Tool parameter 'rules' uses an unknown type 'rules'
+
+class ApplyRulesTool(DatabaseOperationTool):
+    tool_type = 'apply_rules'
+
+    def produce_outputs(self, trans, out_data, output_collections, incoming, history, **kwds):
+        log.info(incoming)
+
+
 class TagFromFileTool(DatabaseOperationTool):
     tool_type = 'tag_from_file'
 

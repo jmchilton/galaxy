@@ -1127,7 +1127,8 @@ function createListCollection(contents, defaultHideSourceItems) {
 
 function createCollectionViaRules(selection, defaultHideSourceItems) {
     let elements, elementsType, importType;
-    if (!selection.selectionType) {
+    const selectionType = selection.selectionType;
+    if (!selectionType) {
         // Have HDAs from the history panel.
         elements = selection.toJSON();
         elementsType = "datasets";
@@ -1170,5 +1171,6 @@ export default {
     collectionCreatorModal: collectionCreatorModal,
     listCollectionCreatorModal: listCollectionCreatorModal,
     createListCollection: createListCollection,
-    createCollectionViaRules: createCollectionViaRules
+    createCollectionViaRules: createCollectionViaRules,
+    ruleBasedCollectionCreatorModal: ruleBasedCollectionCreatorModal,
 };

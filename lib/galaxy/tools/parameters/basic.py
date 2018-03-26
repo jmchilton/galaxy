@@ -2118,6 +2118,28 @@ class LibraryDatasetToolParameter(ToolParameter):
         return d
 
 
+class RulesListToolParameter(ToolParameter):
+    """
+    Parameter that allows for the creation of a list of rules using the Galaxy rules DSL.
+    """
+
+    def __init__(self, tool, input_source, context=None):
+        input_source = ensure_input_source(input_source)
+        ToolParameter.__init__(self, tool, input_source)
+        self.data_ref = input_source.get("data_ref", None)
+
+    def to_dict(self, trans, other_values={}):
+        d = ToolParameter.to_dict(self, trans)
+        target_name = self.data_ref
+        if target_name in other_values:
+            target = other_values[target_name]
+            d["target"] = {
+                "src": "hdca" if hasattr(target, "collection") else "hda",
+                "id": trans.app.security.encode_id(target.id),
+            }
+        return d
+
+
 parameter_types = dict(
     text=TextToolParameter,
     integer=IntegerToolParameter,
@@ -2136,6 +2158,7 @@ parameter_types = dict(
     data=DataToolParameter,
     data_collection=DataCollectionToolParameter,
     library_data=LibraryDatasetToolParameter,
+    rules=RulesListToolParameter,
     drill_down=DrillDownSelectToolParameter
 )
 

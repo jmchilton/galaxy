@@ -256,7 +256,6 @@ class ToolsTestCase(api.ApiTestCase):
 
     def test_filter_failed(self):
         with self.dataset_populator.test_history() as history_id:
-            history_id = self.dataset_populator.new_history()
             ok_hdca_id = self.dataset_collection_populator.create_list_in_history(history_id, contents=["0", "1", "0", "1"]).json()["id"]
             response = self.dataset_populator.run_exit_code_from_file(history_id, ok_hdca_id)
 
@@ -281,6 +280,33 @@ class ToolsTestCase(api.ApiTestCase):
             filtered_hdca = self.dataset_populator.get_history_collection_details(history_id, hid=filtered_hid, wait=False)
             filtered_states = [get_state(_) for _ in filtered_hdca["elements"]]
             assert filtered_states == [u"ok", u"ok"], filtered_states
+
+    def test_apply_rules_1(self):
+        with self.dataset_populator.test_history() as history_id:
+            ok_hdca_id = self.dataset_collection_populator.create_list_in_history(history_id, contents=["0", "1"]).json()["id"]
+            rules = {
+                "rules": [
+                    {
+                        "type": "add_column_metadata",
+                        "value": "identifier0",
+                    }
+                ],
+                "mapping": [
+                    {
+                        "type": "list_identifiers",
+                        "columns": [0],
+                    }
+                ],
+            }
+            inputs = {
+                "input": {"src": "hdca", "id": ok_hdca_id},
+                "rules": rules
+            }
+            self.dataset_populator.wait_for_history(history_id)
+            response = self._run("__APPLY_RULES__", history_id, inputs, assert_ok=True)
+            print(response)
+            output_collections = response["output_collections"]
+            self.assertEquals(len(output_collections), 1)
 
     @skip_without_tool("multi_select")
     def test_multi_select_as_list(self):

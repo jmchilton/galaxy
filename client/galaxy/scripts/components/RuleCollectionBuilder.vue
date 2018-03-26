@@ -940,6 +940,11 @@ export default {
       if(this.elementsType == "datasets") {
         data = this.initialElements.map(el => [el["hid"], el["name"]]);
         sources = this.initialElements.slice();
+      } else if (this.elementsType == "collection_contents") {
+        const collection = this.initialElements;
+        const obj = this.populateElementsFromCollectionDescription(collection.elements, collection.collection_type);
+        data = obj.data;
+        sources = obj.sources;
       } else {
         data = this.initialElements.slice();
         sources = data.map(el => null);
@@ -1407,6 +1412,32 @@ export default {
         }
 
         return datasets;
+    },
+    populateElementsFromCollectionDescription(elements, collectionType, parentIdentifiers_) {
+        const parentIdentifiers = parentIdentifiers_ ? parentIdentifiers_  : [];
+        let data = [];
+        let sources = [];
+        for(let element of elements) {
+            const elementObject = element.object;
+            const identifiers = parentIdentifiers.concat([element.element_identifier]);
+            const collectionTypeLevelSepIndex = collectionType.indexOf(":");
+            if(collectionTypeLevelSepIndex === -1) {  // Flat collection at this depth. 
+                // sources are the elements
+                // TOOD: right thing is probably this: data.push([]);
+                data.push(identifiers);
+                sources.push({"identifiers": identifiers, "dataset": elementObject});
+            } else {
+                const restCollectionType = collectionType.slice(collectionTypeLevelSepIndex + 1);
+                let elementObj = this.populateElementsFromCollectionDescription(
+                    elementObject.elements, restCollectionType, identifiers
+                );
+                const elementData = elementObj.data;
+                const elementSources = elementObj.sources;
+                data = data.concat(elementData);
+                sources = sources.concat(elementSources);
+            }
+        }
+        return {data, sources};
     },
     highlightColumn(n) {
         const headerSelection = $(`.htCore > thead > tr > th:nth-child(${n + 1})`);
