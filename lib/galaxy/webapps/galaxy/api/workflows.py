@@ -143,7 +143,8 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
                     item['show_in_tool_panel'] = True
                     break
             rval.append(item)
-        for wf_sa in trans.sa_session.query(trans.app.model.StoredWorkflowUserShareAssociation).options(
+        for wf_sa in trans.sa_session.query(trans.app.model.StoredWorkflowUserShareAssociation).join(
+                trans.app.model.StoredWorkflowUserShareAssociation.stored_workflow).options(
                 joinedload("stored_workflow").joinedload("latest_workflow").undefer("step_count").lazyload("steps")).options(
                 joinedload("stored_workflow").joinedload("user")).options(
                 joinedload("stored_workflow").joinedload("tags")).filter_by(user=trans.user).filter(
