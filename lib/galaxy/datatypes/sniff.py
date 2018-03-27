@@ -13,7 +13,7 @@ import sys
 import tempfile
 import zipfile
 
-from six import text_type
+from six import StringIO, text_type
 from six.moves import filter
 from six.moves.urllib.request import urlopen
 
@@ -34,6 +34,8 @@ else:
     import bz2
 
 log = logging.getLogger(__name__)
+
+SNIFF_PREFIX_BYTES = int(os.environ.get("GALAXY_SNIFF_PREFIX_BYTES", None) or 2 ** 20)
 
 
 def get_test_fname(fname):
@@ -189,10 +191,10 @@ def convert_newlines_sep2tabs(fname, in_place=True, patt="\\s+", tmp_dir=None, t
         return (i + 1, temp_name)
 
 
-def iter_headers(fname, sep, count=60, comment_designator=None):
-    with compression_utils.get_fileobj(fname) as in_file:
+def iter_headers(fname_or_file_prefix, sep, count=60, comment_designator=None):
+    if isinstance(fname_or_file_prefix, FilePrefix):
         idx = 0
-        for line in in_file:
+        for line in fname_or_file_prefix.line_iterator():
             line = line.rstrip('\n\r')
             if comment_designator is not None and comment_designator != '' and line.startswith(comment_designator):
                 continue
@@ -200,9 +202,20 @@ def iter_headers(fname, sep, count=60, comment_designator=None):
             idx += 1
             if idx == count:
                 break
+    else:
+        with compression_utils.get_fileobj(fname_or_file_prefix) as in_file:
+            idx = 0
+            for line in in_file:
+                line = line.rstrip('\n\r')
+                if comment_designator is not None and comment_designator != '' and line.startswith(comment_designator):
+                    continue
+                yield line.split(sep)
+                idx += 1
+                if idx == count:
+                    break
 
 
-def get_headers(fname, sep, count=60, comment_designator=None):
+def get_headers(fname_or_file_prefix, sep, count=60, comment_designator=None):
     """
     Returns a list with the first 'count' lines split by 'sep', ignoring lines
     starting with 'comment_designator'
@@ -214,10 +227,10 @@ def get_headers(fname, sep, count=60, comment_designator=None):
     >>> get_headers(fname, '\\t', count=5, comment_designator='#') == [[''], ['chr7', 'bed2gff', 'AR', '26731313', '26731437', '.', '+', '.', 'score'], ['chr7', 'bed2gff', 'AR', '26731491', '26731536', '.', '+', '.', 'score'], ['chr7', 'bed2gff', 'AR', '26731541', '26731649', '.', '+', '.', 'score'], ['chr7', 'bed2gff', 'AR', '26731659', '26731841', '.', '+', '.', 'score']]
     True
     """
-    return list(iter_headers(fname=fname, sep=sep, count=count, comment_designator=comment_designator))
+    return list(iter_headers(fname_or_file_prefix=fname_or_file_prefix, sep=sep, count=count, comment_designator=comment_designator))
 
 
-def is_column_based(fname, sep='\t', skip=0):
+def is_column_based(fname_or_file_prefix, sep='\t', skip=0):
     """
     Checks whether the file is column based with respect to a separator
     (defaults to tab separator).
@@ -245,8 +258,11 @@ def is_column_based(fname, sep='\t', skip=0):
     >>> is_column_based(fname)
     True
     """
+    if getattr(fname_or_file_prefix, "binary", None) == True:
+        return False
+
     try:
-        headers = get_headers(fname, sep)
+        headers = get_headers(fname_or_file_prefix, sep)
     except UnicodeDecodeError:
         return False
     count = 0
@@ -378,7 +394,20 @@ def guess_ext(fname, sniff_order, is_binary=False):
     >>> fname = get_test_fname('454Score.pdf')
     >>> guess_ext(fname, sniff_order)
     'pdf'
+    >>> fname = get_test_fname('1.obo')
+    >>> guess_ext(fname, sniff_order)
+    'obo'
+    >>> fname = get_test_fname('1.arff')
+    >>> guess_ext(fname, sniff_order)
+    'arff'
+    >>> fname = get_test_fname('1.afg')
+    >>> guess_ext(fname, sniff_order)
+    'afg'
+    >>> fname = get_test_fname('1.owl')
+    >>> guess_ext(fname, sniff_order)
+    'owl'
     """
+    file_prefix = FilePrefix(fname)
     file_ext = None
     for datatype in sniff_order:
         """
@@ -391,7 +420,8 @@ def guess_ext(fname, sniff_order, is_binary=False):
         """
         try:
             if ((is_binary and datatype.is_binary) or
-                    (not is_binary)) and datatype.sniff(fname):
+                    (hasattr(datatype, "sniff_prefix") and datatype.sniff_prefix(file_prefix)) or
+                    ((not is_binary)) and datatype.sniff(fname)):
                 file_ext = datatype.file_ext
                 break
         except Exception:
@@ -400,7 +430,7 @@ def guess_ext(fname, sniff_order, is_binary=False):
     # to tsv but it doesn't have a sniffer - is TSV was sniffed just check
     # if it is an okay tabular and use that instead.
     if file_ext == 'tsv':
-        if is_column_based(fname, '\t', 1):
+        if is_column_based(file_prefix, '\t', 1):
             file_ext = 'tabular'
     if file_ext is not None:
         return file_ext
@@ -409,10 +439,10 @@ def guess_ext(fname, sniff_order, is_binary=False):
     if is_binary:
         return file_ext or 'binary'
     try:
-        get_headers(fname, None)
+        get_headers(file_prefix, None)
     except UnicodeDecodeError:
         return 'data'  # default data type file extension
-    if is_column_based(fname, '\t', 1):
+    if is_column_based(file_prefix, '\t', 1):
         return 'tabular'  # default tabular data type file extension
     return 'txt'  # default text data type file extension
 
@@ -422,6 +452,51 @@ def zip_single_fileobj(path):
     for name in z.namelist():
         if not name.endswith('/'):
             return z.open(name)
+
+
+class FilePrefix(object):
+
+    def __init__(self, filename):
+        binary = False
+        compressed_format = None
+        contents_header = None  # First MAX_BYTES of the file.
+        truncated = False
+        try:
+            compressed_format, f = compression_utils.get_fileobj_raw(filename)
+            try:
+                contents_header = f.read(SNIFF_PREFIX_BYTES)
+                truncated = len(contents_header) == SNIFF_PREFIX_BYTES
+            finally:
+                f.close()
+        except UnicodeDecodeError:
+            binary = True
+
+        self.truncated = truncated
+        self.filename = filename
+        self.binary = binary
+        self.compressed_format = compressed_format
+        self.contents_header = contents_header
+        self._file_size = None
+
+    @property
+    def file_size(self):
+        if self._file_size is None:
+            self._file_size = os.path.getsize(self.filename)
+        return self._file_size
+
+    def string_io(self):
+        rval = StringIO(self.contents_header)
+        return rval
+
+    def line_iterator(self):
+        for line in self.string_io():
+            if line.endswith("\n") or line.endswith("\r"):
+                yield line
+
+
+def build_sniff_from_prefix(klass):
+    klass.sniff = lambda self, filename: self.sniff_prefix(FilePrefix(filename))
+    return klass
 
 
 def handle_compressed_file(

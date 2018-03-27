@@ -6,13 +6,15 @@ import re
 
 from . import (
     data,
-    dataproviders
+    dataproviders,
+    sniff
 )
 
 log = logging.getLogger(__name__)
 
 
 @dataproviders.decorators.has_dataproviders
+@sniff.build_sniff_from_prefix
 class GenericXml(data.Text):
     """Base format class for any XML file."""
     edam_format = "format_2332"
@@ -27,7 +29,7 @@ class GenericXml(data.Text):
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
 
-    def sniff(self, filename):
+    def sniff_prefix(self, file_prefix):
         """
         Determines whether the file is XML or not
 
@@ -39,12 +41,7 @@ class GenericXml(data.Text):
         >>> GenericXml().sniff( fname )
         False
         """
-        # TODO - Use a context manager on Python 2.5+ to close handle
-        with open(filename) as handle:
-            line = handle.readline()
-
-        # TODO - Is there a more robust way to do this?
-        return line.startswith('<?xml ')
+        return file_prefix.contents_header.startswith('<?xml ')
 
     def merge(split_files, output_file):
         """Merging multiple XML files is non-trivial and must be done in subclasses."""
@@ -109,15 +106,9 @@ class Phyloxml(GenericXml):
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
 
-    def sniff(self, filename):
+    def sniff_prefix(self, file_prefix):
         """"Checking for keyword - 'phyloxml' always in lowercase in the first few lines"""
-
-        with open(filename, "r") as f:
-            firstlines = "".join(f.readlines(5))
-
-        if "phyloxml" in firstlines:
-            return True
-        return False
+        return "phyloxml" in file_prefix.contents_header
 
     def get_visualizations(self, dataset):
         """
@@ -143,15 +134,9 @@ class Owl(GenericXml):
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disc'
 
-    def sniff(self, filename):
+    def sniff_prefix(self, file_prefix):
         """
             Checking for keyword - '<owl' in the first 200 lines.
         """
         owl_marker = re.compile(r'\<owl:')
-        with open(filename) as handle:
-            # Check first 200 lines for the string "<owl:"
-            first_lines = handle.readlines(200)
-            for line in first_lines:
-                if owl_marker.search(line):
-                    return True
-        return False
+        return owl_marker.search(file_prefix.contents_header)

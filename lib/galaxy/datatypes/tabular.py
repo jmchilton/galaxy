@@ -21,11 +21,11 @@ from galaxy import util
 from galaxy.datatypes import binary, data, metadata
 from galaxy.datatypes.metadata import MetadataElement
 from galaxy.datatypes.sniff import (
+    build_sniff_from_prefix,
     get_headers,
     iter_headers
 )
 from galaxy.util import compression_utils
-from galaxy.util.checkers import is_gzip
 from . import dataproviders
 
 if sys.version_info > (3,):
@@ -416,6 +416,7 @@ class Taxonomy(Tabular):
 
 
 @dataproviders.decorators.has_dataproviders
+@build_sniff_from_prefix
 class Sam(Tabular):
     edam_format = "format_2573"
     edam_data = "data_0863"
@@ -434,7 +435,7 @@ class Sam(Tabular):
         """Returns formated html of peek"""
         return self.make_html_table(dataset, column_names=self.column_names)
 
-    def sniff(self, filename):
+    def sniff_prefix(self, file_prefix):
         """
         Determines whether the file is in SAM format
 
@@ -463,31 +464,31 @@ class Sam(Tabular):
         >>> Sam().sniff( fname )
         True
         """
-        with open(filename) as fh:
-            count = 0
-            while True:
-                line = fh.readline()
-                line = line.strip()
-                if not line:
-                    break  # EOF
-                if line:
-                    if line[0] != '@':
-                        line_pieces = line.split('\t')
-                        if len(line_pieces) < 11:
-                            return False
-                        try:
-                            int(line_pieces[1])
-                            int(line_pieces[3])
-                            int(line_pieces[4])
-                            int(line_pieces[7])
-                            int(line_pieces[8])
-                        except ValueError:
-                            return False
-                        count += 1
-                        if count == 5:
-                            return True
-            if count < 5 and count > 0:
-                return True
+        fh = file_prefix.string_io()
+        count = 0
+        while True:
+            line = fh.readline()
+            line = line.strip()
+            if not line:
+                break  # EOF
+            if line:
+                if line[0] != '@':
+                    line_pieces = line.split('\t')
+                    if len(line_pieces) < 11:
+                        return False
+                    try:
+                        int(line_pieces[1])
+                        int(line_pieces[3])
+                        int(line_pieces[4])
+                        int(line_pieces[7])
+                        int(line_pieces[8])
+                    except ValueError:
+                        return False
+                    count += 1
+                    if count == 5:
+                        return True
+        if count < 5 and count > 0:
+            return True
         return False
 
     def set_meta(self, dataset, overwrite=True, skip=None, max_data_lines=5, **kwd):
@@ -667,6 +668,7 @@ class Pileup(Tabular):
 
 
 @dataproviders.decorators.has_dataproviders
+@build_sniff_from_prefix
 class BaseVcf(Tabular):
     """ Variant Call Format for describing SNPs and other simple genome variations. """
     edam_format = "format_3016"
@@ -680,15 +682,12 @@ class BaseVcf(Tabular):
     MetadataElement(name="viz_filter_cols", desc="Score column for visualization", default=[5], param=metadata.ColumnParameter, optional=True, multiple=True, visible=False)
     MetadataElement(name="sample_names", default=[], desc="Sample names", readonly=True, visible=False, optional=True, no_value=[])
 
-    def sniff(self, filename):
+    def sniff_prefix(self, file_prefix):
         # Because this sniffer is run on compressed files that might be BGZF (due to the VcfGz subclass), we should
         # handle unicode decode errors. This should ultimately be done in get_headers(), but guess_ext() currently
         # relies on get_headers() raising this exception.
-        try:
-            headers = get_headers(filename, '\n', count=1)
-            return headers[0][0].startswith("##fileformat=VCF")
-        except UnicodeDecodeError:
-            return False
+        headers = get_headers(file_prefix, '\n', count=1)
+        return headers[0][0].startswith("##fileformat=VCF")
 
     def display_peek(self, dataset):
         """Returns formated html of peek"""
@@ -737,10 +736,10 @@ class BaseVcf(Tabular):
 class Vcf(BaseVcf):
     file_ext = 'vcf'
 
-    def sniff(self, filename):
-        if is_gzip(filename):
+    def sniff_prefix(self, file_prefix):
+        if file_prefix.compressed_format:
             return False
-        return super(Vcf, self).sniff(filename)
+        return super(Vcf, self).sniff(file_prefix)
 
 
 class VcfGz(BaseVcf, binary.Binary):
@@ -749,10 +748,10 @@ class VcfGz(BaseVcf, binary.Binary):
 
     MetadataElement(name="tabix_index", desc="Vcf Index File", param=metadata.FileParameter, file_ext="tbi", readonly=True, no_value=None, visible=False, optional=True)
 
-    def sniff(self, filename):
-        if not is_gzip(filename):
+    def sniff_prefix(self, file_prefix):
+        if file_prefix.compressed_format != "gzip":
             return False
-        return super(VcfGz, self).sniff(filename)
+        return super(VcfGz, self).sniff(file_prefix)
 
     def set_meta(self, dataset, **kwd):
         super(BaseVcf, self).set_meta(dataset, **kwd)
@@ -1056,6 +1055,7 @@ class TSV(BaseCSV):
     strict_width = True  # Leave files with different width to tabular
 
 
+@build_sniff_from_prefix
 class ConnectivityTable(Tabular):
     edam_format = "format_3309"
     file_ext = "ct"
@@ -1077,7 +1077,7 @@ class ConnectivityTable(Tabular):
 
         dataset.metadata.data_lines = data_lines
 
-    def sniff(self, filename):
+    def sniff_prefix(self, file_prefix):
         """
         The ConnectivityTable (CT) is a file format used for describing
         RNA 2D structures by tools including MFOLD, UNAFOLD and
@@ -1112,31 +1112,28 @@ class ConnectivityTable(Tabular):
         i = 0
         j = 1
 
-        try:
-            with open(filename) as handle:
-                for line in handle:
-                    line = line.strip()
+        handle = file_prefix.string_io()
+        for line in handle:
+            line = line.strip()
 
-                    if len(line) > 0:
-                        if i == 0:
-                            if not self.header_regexp.match(line):
-                                return False
-                            else:
-                                length = int(re.split('\W+', line, 1)[0])
+            if len(line) > 0:
+                if i == 0:
+                    if not self.header_regexp.match(line):
+                        return False
+                    else:
+                        length = int(re.split('\W+', line, 1)[0])
+                else:
+                    if not self.structure_regexp.match(line.upper()):
+                        return False
+                    else:
+                        if j != int(re.split('\W+', line, 1)[0]):
+                            return False
+                        elif j == length:  # Last line of first sequence has been recheached
+                            return True
                         else:
-                            if not self.structure_regexp.match(line.upper()):
-                                return False
-                            else:
-                                if j != int(re.split('\W+', line, 1)[0]):
-                                    return False
-                                elif j == length:                       # Last line of first sequence has been recheached
-                                    return True
-                                else:
-                                    j += 1
-                        i += 1
-            return False
-        except Exception:
-            return False
+                            j += 1
+                i += 1
+        return False
 
     def get_chunk(self, trans, dataset, chunk):
         ck_index = int(chunk)
