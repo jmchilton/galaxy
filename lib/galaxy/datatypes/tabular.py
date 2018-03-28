@@ -736,22 +736,13 @@ class BaseVcf(Tabular):
 class Vcf(BaseVcf):
     file_ext = 'vcf'
 
-    def sniff_prefix(self, file_prefix):
-        if file_prefix.compressed_format:
-            return False
-        return super(Vcf, self).sniff(file_prefix)
-
 
 class VcfGz(BaseVcf, binary.Binary):
     file_ext = 'vcf_bgzip'
     compressed = True
+    compressed_format = "gzip"
 
     MetadataElement(name="tabix_index", desc="Vcf Index File", param=metadata.FileParameter, file_ext="tbi", readonly=True, no_value=None, visible=False, optional=True)
-
-    def sniff_prefix(self, file_prefix):
-        if file_prefix.compressed_format != "gzip":
-            return False
-        return super(VcfGz, self).sniff(file_prefix)
 
     def set_meta(self, dataset, **kwd):
         super(BaseVcf, self).set_meta(dataset, **kwd)

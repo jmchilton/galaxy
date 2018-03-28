@@ -321,7 +321,6 @@ class FastaGz(Sequence, CompressedArchive):
     """Class representing a generic compressed FASTA sequence"""
     edam_format = "format_1929"
     file_ext = "fasta.gz"
-    compressed = True
 
     def sniff(self, filename):
         """Determines whether the file is in gzip-compressed FASTA format"""
@@ -750,7 +749,6 @@ class FastqGz(BaseFastq, CompressedArchive):
     """Class representing a generic compressed FASTQ sequence"""
     edam_format = "format_1930"
     file_ext = "fastq.gz"
-    compressed = True
 
     def sniff(self, filename):
         """Determines whether the file is in gzip-compressed FASTQ format"""
@@ -788,7 +786,6 @@ class FastqBz2(BaseFastq, CompressedArchive):
     """Class representing a generic compressed FASTQ sequence"""
     edam_format = "format_1930"
     file_ext = "fastq.bz2"
-    compressed = True
 
     def sniff(self, filename):
         """Determine whether the file is in bzip2-compressed FASTQ format"""
@@ -1229,7 +1226,6 @@ class GenbankGz(Genbank, CompressedArchive):
     edam_format = "format_1936"
     edam_data = "data_0849"
     file_ext = "genbank.gz"
-    compressed = True
 
     def sniff(self, filename):
         """

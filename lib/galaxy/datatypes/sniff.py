@@ -425,6 +425,11 @@ def guess_ext(fname, sniff_order, is_binary=False):
                     continue
                 if not datatype_compressed and file_prefix.compressed_format:
                     continue
+                if file_prefix.compressed_format and getattr(datatype, "compressed_format"):
+                    # In this case go a step further and compare the compressed format detected
+                    # to the expected.
+                    if file_prefix.compressed_format != datatype.compressed_format:
+                        continue
                 if datatype.sniff_prefix(file_prefix):
                     file_ext = datatype.file_ext
                     break
