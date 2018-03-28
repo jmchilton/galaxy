@@ -419,9 +419,18 @@ def guess_ext(fname, sniff_order, is_binary=False):
         successfully discovered.
         """
         try:
-            if ((is_binary and datatype.is_binary) or
-                    (hasattr(datatype, "sniff_prefix") and datatype.sniff_prefix(file_prefix)) or
-                    ((not is_binary)) and datatype.sniff(fname)):
+            if hasattr(datatype, "sniff_prefix"):
+                datatype_compressed = getattr(datatype, "compressed", False)
+                if datatype_compressed and not file_prefix.compressed_format:
+                    continue
+                if not datatype_compressed and file_prefix.compressed_format:
+                    continue
+                if datatype.sniff_prefix(file_prefix):
+                    file_ext = datatype.file_ext
+                    break
+            elif is_binary and not datatype.is_binary:
+                continue
+            elif datatype.sniff(fname):
                 file_ext = datatype.file_ext
                 break
         except Exception:
