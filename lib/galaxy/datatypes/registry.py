@@ -319,6 +319,7 @@ class Registry(object):
                                         attributes["compressed_format"] = "bz2"
                                     else:
                                         raise Exception("Unknown auto compression type [%s]" % auto_compressed_type)
+                                    attributes["file_ext"] = compressed_extension
                                     if sniff_compressed_types is None:
                                         sniff_compressed_types = getattr(self.config, "sniff_compressed_dynamic_datatypes_default", True)
                                     if not sniff_compressed_types:
