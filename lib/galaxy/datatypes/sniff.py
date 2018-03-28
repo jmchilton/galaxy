@@ -408,6 +408,39 @@ def guess_ext(fname, sniff_order, is_binary=False):
     'owl'
     """
     file_prefix = FilePrefix(fname)
+    file_ext = run_sniffers_raw(file_prefix, sniff_order, is_binary)
+
+    # Ugly hack for tsv vs tabular sniffing, we want to prefer tabular
+    # to tsv but it doesn't have a sniffer - is TSV was sniffed just check
+    # if it is an okay tabular and use that instead.
+    if file_ext == 'tsv':
+        if is_column_based(file_prefix, '\t', 1):
+            file_ext = 'tabular'
+    if file_ext is not None:
+        return file_ext
+
+    # skip header check if data is already known to be binary
+    if is_binary:
+        return file_ext or 'binary'
+    try:
+        get_headers(file_prefix, None)
+    except UnicodeDecodeError:
+        return 'data'  # default data type file extension
+    if is_column_based(file_prefix, '\t', 1):
+        return 'tabular'  # default tabular data type file extension
+    return 'txt'  # default text data type file extension
+
+
+def run_sniffers_raw(filename_or_file_prefix, sniff_order, is_binary=False):
+    """Run through sniffers specified by sniff_order, return None of None match.
+    """
+    if isinstance(filename_or_file_prefix, FilePrefix):
+        fname = filename_or_file_prefix.filename
+        file_prefix = filename_or_file_prefix
+    else:
+        fname = filename_or_file_prefix
+        file_prefix = FilePrefix(filename_or_file_prefix)
+
     file_ext = None
     for datatype in sniff_order:
         """
@@ -440,25 +473,8 @@ def guess_ext(fname, sniff_order, is_binary=False):
                 break
         except Exception:
             pass
-    # Ugly hack for tsv vs tabular sniffing, we want to prefer tabular
-    # to tsv but it doesn't have a sniffer - is TSV was sniffed just check
-    # if it is an okay tabular and use that instead.
-    if file_ext == 'tsv':
-        if is_column_based(file_prefix, '\t', 1):
-            file_ext = 'tabular'
-    if file_ext is not None:
-        return file_ext
 
-    # skip header check if data is already known to be binary
-    if is_binary:
-        return file_ext or 'binary'
-    try:
-        get_headers(file_prefix, None)
-    except UnicodeDecodeError:
-        return 'data'  # default data type file extension
-    if is_column_based(file_prefix, '\t', 1):
-        return 'tabular'  # default tabular data type file extension
-    return 'txt'  # default text data type file extension
+    return file_ext
 
 
 def zip_single_fileobj(path):
@@ -553,11 +569,10 @@ def handle_compressed_file(
         if ext in AUTO_DETECT_EXTENSIONS:
             # attempt to sniff for a keep-compressed datatype (observing the sniff order)
             sniff_datatypes = filter(lambda d: getattr(d, 'compressed', False), datatypes_registry.sniff_order)
-            for datatype in sniff_datatypes:
-                if datatype.sniff(filename):
-                    ext = datatype.file_ext
-                    keep_compressed = True
-                    break
+            sniffed_ext = run_sniffers_raw(filename, sniff_datatypes)
+            if sniffed_ext:
+                ext = sniffed_ext
+                keep_compressed = True
         else:
             datatype = datatypes_registry.get_datatype_by_extension(ext)
             keep_compressed = getattr(datatype, 'compressed', False)
