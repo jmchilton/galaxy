@@ -847,7 +847,6 @@ export default {
   },
   props: {
     initialElements: {
-        type: Array,
         required: true
     },
     importType: {
@@ -889,7 +888,7 @@ export default {
   computed: {
     exisistingDatasets() {
         const elementsType = this.elementsType;
-        return elementsType === "datasets";
+        return elementsType === "datasets" || elementsType === "collection_contents";
     },
     showFileTypeSelector() {
         return !this.exisistingDatasets && !this.mappingAsDict.file_type;
@@ -1505,28 +1504,30 @@ export default {
     },
   },
   created() {
-      let columnCount = null;
-      if(this.elementsType == "datasets") {
-          for(let element of this.initialElements) {
-              if(element.history_content_type == "dataset_collection") {
-                  this.errorMessage = "This component can only be used with datasets, you have specified one or more collections.";
-                  this.state = 'error';
+      if (this.elementsType !== "collection_contents") {
+          let columnCount = null;
+          if(this.elementsType == "datasets") {
+              for(let element of this.initialElements) {
+                  if(element.history_content_type == "dataset_collection") {
+                      this.errorMessage = "This component can only be used with datasets, you have specified one or more collections.";
+                      this.state = 'error';
+                  }
               }
-          }
-      } else {
-          for(let row of this.initialElements) {
-              if (columnCount == null) {
-                  columnCount = row.length;
-              } else {
-                  if(columnCount != row.length) {
-                      this.jaggedData = true;
-                      break
+          } else {
+              for(let row of this.initialElements) {
+                  if (columnCount == null) {
+                      columnCount = row.length;
+                  } else {
+                      if(columnCount != row.length) {
+                          this.jaggedData = true;
+                          break
+                      }
                   }
               }
           }
+          UploadUtils.getUploadDatatypes((extensions) => {this.extensions = extensions; this.extension = UploadUtils.DEFAULT_EXTENSION}, false, UploadUtils.AUTO_EXTENSION);
+          UploadUtils.getUploadGenomes((genomes) => {this.genomes = genomes; this.genome = UploadUtils.DEFAULT_GENOME;}, UploadUtils.DEFAULT_GENOME);
       }
-      UploadUtils.getUploadDatatypes((extensions) => {this.extensions = extensions; this.extension = UploadUtils.DEFAULT_EXTENSION}, false, UploadUtils.AUTO_EXTENSION);
-      UploadUtils.getUploadGenomes((genomes) => {this.genomes = genomes; this.genome = UploadUtils.DEFAULT_GENOME;}, UploadUtils.DEFAULT_GENOME);
   },
   watch: {
       'addColumnRegexType': function (val) {
