@@ -1257,6 +1257,8 @@ export default {
             )
             response.done(this.oncreate);
             response.error(this.renderFetchError);
+        } else if(this.elementsType == "collection_contents") {
+            conole.log("TODO: save rules back to tool form...");
         } else {
             const historyId = Galaxy.currHistoryPanel.model.id;
             let elements, targets;
@@ -1447,7 +1449,7 @@ export default {
             if(collectionTypeLevelSepIndex === -1) {  // Flat collection at this depth. 
                 // sources are the elements
                 // TOOD: right thing is probably this: data.push([]);
-                data.push(identifiers);
+                data.push([]);
                 sources.push({"identifiers": identifiers, "dataset": elementObject});
             } else {
                 const restCollectionType = collectionType.slice(collectionTypeLevelSepIndex + 1);
