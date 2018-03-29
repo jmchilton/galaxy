@@ -338,8 +338,8 @@
                 <button @click="resetRulesAndState" :title="titleReset" class="creator-reset-btn btn rule-btn-reset">
                     {{ l("Reset") }}
                 </button>
-                <button @click="createCollection" class="create-collection btn btn-primary rule-btn-okay" v-bind:class="{ disabled: !validInput }">
-                    {{ elementsType == "datasets" ? l("Create") : l("Upload") }}
+                <button @click="createCollection" :title="titleFinish" class="create-collection btn btn-primary rule-btn-okay" v-bind:class="{ disabled: !validInput }">
+                    {{ finishButtonTitle }}
                 </button>
             </option-buttons-div>
         </div>
@@ -895,6 +895,20 @@ export default {
     },
     showGenomeSelector() {
         return !this.exisistingDatasets && !this.mappingAsDict.dbkey;
+    },
+    titleFinish() {
+        if(this.elementsType == "datasets") {
+            return _l("Create new collection from specified rules and datasets.");
+        } else {
+            return _l("Upload collection using specified rules.");
+        }
+    },
+    finishButtonTitle() {
+        if(this.elementsType == "datasets") {
+            return _l("Create");
+        } else {
+            return _l("Upload");
+        }
     },
     hasActiveMappingEdit() {
         const has = _.any(_.values(this.mapping), (mapping) => mapping.editing);
