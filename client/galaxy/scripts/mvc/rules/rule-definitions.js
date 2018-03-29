@@ -78,6 +78,33 @@ const RULES = {
           return {data};
         }
     },
+    add_column_metadata: {
+        title: _l("Add Column from Metadata"),
+        display: (rule, colHeaders) => {
+            return `Add column for ${rule.value}.`;
+        },
+        init: (component, rule) => {
+            if(!rule) {
+                component.addColumnMetadataValue = null;
+            } else {
+                component.addColumnMetadataValue = rule.value;
+            }
+        },
+        save: (component, rule) => {
+            rule.value = component.addColumnMetadataValue;
+        },
+        apply: (rule, data, sources) => {
+            const ruleValue = rule.value;
+            const identifierIndex = parseInt(ruleValue.substring("identifier".length));
+            function newRow(row, index) {
+                const newRow = row.slice();
+                newRow.push(sources[index]["identifiers"][identifierIndex]);
+                return newRow;
+            }
+            data = data.map(newRow);
+            return {data};
+        }
+    },
     add_column_regex: {
         title: _l("Using a Regular Expression"),
         display: (rule, colHeaders) => {

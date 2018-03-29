@@ -49,6 +49,16 @@
                                 <input type="number" v-model="addColumnRownumStart" min="0" />
                             </label>
                         </rule-component>
+                        <rule-component rule-type="add_column_metadata"
+                                        :display-rule-type="displayRuleType"
+                                        :builder="this">
+                            <label>
+                                {{ l("For") }}
+                                <select v-model="addColumnMetadataValue">
+                                    <option v-for="(col, index) in metadataOptions" :value="index">{{ col }}</option>
+                                </select>
+                            </label>
+                        </rule-component>
                         <rule-component rule-type="add_column_regex"
                                         :display-rule-type="displayRuleType"
                                         :builder="this">
@@ -270,6 +280,7 @@
                                     </button>
                                     <ul class="dropdown-menu" role="menu">
                                         <rule-target-component :builder="this" rule-type="add_column_basename" />
+                                        <rule-target-component :builder="this" rule-type="add_column_metadata" v-if="elementsType == 'collection_contents'"/>
                                         <rule-target-component :builder="this" rule-type="add_column_regex" />
                                         <rule-target-component :builder="this" rule-type="add_column_concatenate" />
                                         <rule-target-component :builder="this" rule-type="add_column_rownum" />
@@ -807,6 +818,7 @@ export default {
         addColumnRegexReplacement: null,
         addColumnRegexGroupCount: null,
         addColumnRegexType: "global",
+        addColumnMetadataValue: 0,
         addColumnConcatenateTarget0: 0,
         addColumnConcatenateTarget1: 0,
         addColumnRownumStart: 1,
@@ -1032,6 +1044,23 @@ export default {
         asDict[mapping.type] = mapping;
       }
       return asDict;
+    },
+    metadataOptions() {
+        const metadataOptions = {};
+        if (this.elementsType == "collection_contents") {
+            const collectionType = this.initialElements.collection_type;
+            const collectionTypeRanks = collectionType.split(":");
+            for(let index in collectionTypeRanks) {
+                const collectionTypeRank = collectionTypeRanks[index];
+                if(collectionTypeRank == "list") {
+                    // TODO: drop the numeral at the end if only flat list
+                    metadataOptions["identifier" + index] = _l("List Identifier ") + (parseInt(index) + 1);
+                } else {
+                    metadataOptions["identifier" + index] = _l("Paired Identifier");
+                }
+            }
+        }
+        return metadataOptions;
     },
     collectionType() {
       let identifierColumns = []
