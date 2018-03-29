@@ -311,13 +311,13 @@
                 {{ l("Hide original elements") }}:
                 <input type="checkbox" v-model="hideSourceItems" />
             </label>
-            <label class="rule-option rule-option-extension" v-if="elementsType !== 'datasets' && !mappingAsDict.file_type">
+            <label class="rule-option rule-option-extension" v-if="showFileTypeSelector">
                 {{ l("Type") }}:
                 <select2 name="extension" style="width: 120px" v-model="extension" v-if="extension">
                     <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
                 </select2>
             </label>
-            <label class="rule-option" v-if="elementsType !== 'datasets' && !mappingAsDict.dbkey">
+            <label class="rule-option" v-if="showGenomeSelector">
                 {{ l("Genome") }}:
                 <select2 id="genome-selector" style="width: 120px" v-model="genome" v-if="genome">
                     <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
@@ -887,6 +887,16 @@ export default {
     }
   },
   computed: {
+    exisistingDatasets() {
+        const elementsType = this.elementsType;
+        return elementsType === "datasets";
+    },
+    showFileTypeSelector() {
+        return !this.exisistingDatasets && !this.mappingAsDict.file_type;
+    },
+    showGenomeSelector() {
+        return !this.exisistingDatasets && !this.mappingAsDict.dbkey;
+    },
     hasActiveMappingEdit() {
         const has = _.any(_.values(this.mapping), (mapping) => mapping.editing);
         return has;
