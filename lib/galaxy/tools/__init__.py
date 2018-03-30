@@ -2661,11 +2661,18 @@ class ApplyRulesTool(DatabaseOperationTool):
         log.info(incoming)
         hdca = incoming["input"]
         rule_set = RuleSet(incoming["rules"])
+
+        def copy_dataset(dataset):
+            copied_dataset = dataset.copy()
+            history.add_dataset(copied_dataset, set_hid=False)
+            return copied_dataset
+
         new_elements = self.app.dataset_collections_service.apply_rules(
-            hdca, rule_set
+            hdca, rule_set, copy_dataset
         )
+        log.info(new_elements)
         output_collections.create_collection(
-            next(iter(self.outputs.values())), "output", elements=new_elements
+            next(iter(self.outputs.values())), "output", collection_type=rule_set.collection_type, elements=new_elements
         )
 
 

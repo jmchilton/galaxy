@@ -775,10 +775,10 @@ class OutputCollections(object):
         self.out_collection_instances = {}
         self.tags = tags
 
-    def create_collection(self, output, name, **element_kwds):
+    def create_collection(self, output, name, collection_type=None, **element_kwds):
         input_collections = self.input_collections
         collections_manager = self.trans.app.dataset_collections_service
-        collection_type = output.structure.collection_type
+        collection_type = collection_type or output.structure.collection_type
         if collection_type is None:
             collection_type_source = output.structure.collection_type_source
             if collection_type_source is None:

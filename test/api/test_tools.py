@@ -304,9 +304,45 @@ class ToolsTestCase(api.ApiTestCase):
             }
             self.dataset_populator.wait_for_history(history_id)
             response = self._run("__APPLY_RULES__", history_id, inputs, assert_ok=True)
-            print(response)
             output_collections = response["output_collections"]
             self.assertEquals(len(output_collections), 1)
+            output_hid = output_collections[0]["hid"]
+            output_hdca = self.dataset_populator.get_history_collection_details(history_id, hid=output_hid, wait=False)
+
+    def test_apply_rules_2(self):
+        with self.dataset_populator.test_history() as history_id:
+            ok_hdca_id = self.dataset_collection_populator.create_list_in_history(history_id, contents=["0", "1"]).json()["id"]
+            rules = {
+                "rules": [
+                    {
+                        "type": "add_column_metadata",
+                        "value": "identifier0",
+                    },
+                    {
+                        "type": "add_column_metadata",
+                        "value": "identifier0",
+                    }
+                ],
+                "mapping": [
+                    {
+                        "type": "list_identifiers",
+                        "columns": [0, 1],
+                    }
+                ],
+            }
+            inputs = {
+                "input": {"src": "hdca", "id": ok_hdca_id},
+                "rules": rules
+            }
+            self.dataset_populator.wait_for_history(history_id)
+            response = self._run("__APPLY_RULES__", history_id, inputs, assert_ok=True)
+
+            output_collections = response["output_collections"]
+            self.assertEquals(len(output_collections), 1)
+            output_hid = output_collections[0]["hid"]
+            output_hdca = self.dataset_populator.get_history_collection_details(history_id, hid=output_hid, wait=False)
+
+            assert output_hdca["collection"]["collection_type"] == "list:list"
 
     @skip_without_tool("multi_select")
     def test_multi_select_as_list(self):

@@ -397,7 +397,7 @@ class DatasetCollectionManager(object):
         collection = trans.sa_session.query(trans.app.model.DatasetCollection).get(collection_id)
         return collection
 
-    def apply_rules(self, hdca, rule_set):
+    def apply_rules(self, hdca, rule_set, handle_dataset):
         hdca_collection = hdca.collection
         collection_type = hdca_collection.collection_type
         elements = hdca_collection.elements
@@ -407,10 +407,10 @@ class DatasetCollectionManager(object):
 
         collection_type = rule_set.collection_type
         collection_type_description = self.collection_type_descriptions.for_collection_type(collection_type)
-        elements = self._build_elements_from_rule_data(collection_type_description, rule_set, data, sources)
+        elements = self._build_elements_from_rule_data(collection_type_description, rule_set, data, sources, handle_dataset)
         return elements
 
-    def _build_elements_from_rule_data(self, collection_type_description, rule_set, data, sources):
+    def _build_elements_from_rule_data(self, collection_type_description, rule_set, data, sources, handle_dataset):
         identifier_columns = rule_set.identifier_columns
         elements = odict.odict()
         for data_index, row_data in enumerate(data):
@@ -431,7 +431,7 @@ class DatasetCollectionManager(object):
                         else:
                             raise Exception("Unknown indicator of paired status encountered - only values of F, R, 1, 2, R1, R2, forward, or reverse are allowed.")
 
-                    elements_at_depth[identifier] = sources[data_index]["dataset"]
+                    elements_at_depth[identifier] = handle_dataset(sources[data_index]["dataset"])
                 else:
                     collection_type_at_depth = collection_type_at_depth.child_collection_type_description()
                     found = False
@@ -444,9 +444,11 @@ class DatasetCollectionManager(object):
                         sub_collection = {}
                         sub_collection["src"] = "new_collection"
                         sub_collection["collection_type"] = collection_type_at_depth.collection_type
-                        sub_collection["elements"] = odict()
-
+                        sub_collection["elements"] = odict.odict()
                         elements_at_depth.append(sub_collection)
+                        elements_at_depth = sub_collection["elements"]
+
+        return elements
 
     def __init_rule_data(self, elements, collection_type_description, parent_identifiers=None):
         parent_identifiers = parent_identifiers or []
