@@ -609,7 +609,7 @@ const MAPPING_TARGETS = {
     collection_name: {
         label: _l("Collection Name"),
         help: _l("If this is set, all rows with the same collection name will be joined into a collection and it is possible to create multiple collections at once."),
-        modes: ["raw", "ftp"],  // TODO: allow this in datasets mode.
+        modes: ["raw", "ftp"],  // TODO: allow this in datasets mode & tool builder modes
         importType: "collections",
     },
     name: {

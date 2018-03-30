@@ -1087,7 +1087,11 @@ export default {
       }
       let collectionType = identifierColumns.map(col => "list").join(":");
       if(this.mappingAsDict.paired_identifier) {
-          collectionType += ":paired";
+          if(collectionType) {
+              collectionType += ":paired";
+          } else {
+              collectionType = "paired";
+          }
       }
       return collectionType;
     },

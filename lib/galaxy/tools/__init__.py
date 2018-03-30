@@ -80,6 +80,7 @@ from galaxy.util.expressions import ExpressionContext
 from galaxy.util.json import json_fix
 from galaxy.util.json import safe_loads
 from galaxy.util.odict import odict
+from galaxy.util.rules_dsl import RuleSet
 from galaxy.util.template import fill_template
 from galaxy.version import VERSION_MAJOR
 from galaxy.web import url_for
@@ -2653,13 +2654,19 @@ class RelabelFromFileTool(DatabaseOperationTool):
         )
 
 
-#  ValueError: Tool parameter 'rules' uses an unknown type 'rules'
-
 class ApplyRulesTool(DatabaseOperationTool):
     tool_type = 'apply_rules'
 
     def produce_outputs(self, trans, out_data, output_collections, incoming, history, **kwds):
         log.info(incoming)
+        hdca = incoming["hdca"]
+        rule_set = RuleSet(incoming["rules"])
+        new_elements = self.app.dataset_collections_service.apply_rules(
+            hdca, rule_set
+        )
+        output_collections.create_collection(
+            next(iter(self.outputs.values())), "output", elements=new_elements
+        )
 
 
 class TagFromFileTool(DatabaseOperationTool):
