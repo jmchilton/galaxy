@@ -782,16 +782,22 @@ const flatMap = (f,xs) => {
 
 export default {
   data: function() {
-    let mapping;
-    if(this.elementsType == "ftp") {
-      mapping = [{"type": "ftp_path", "columns": [0]}];
-    } else if(this.elementsType == "datasets") {
-      mapping = [{"type": "list_identifiers", "columns": [1]}];
+    let mapping, rules;
+    if(this.initialRules) {
+        mapping = this.initialRules.mapping;
+        rules = this.initialRules.rules;
     } else {
-      mapping = [];
+        if(this.elementsType == "ftp") {
+          mapping = [{"type": "ftp_path", "columns": [0]}];
+        } else if(this.elementsType == "datasets") {
+          mapping = [{"type": "list_identifiers", "columns": [1]}];
+        } else {
+          mapping = [];
+        }
+        rules = [];
     }
     return {
-        rules: [],
+        rules: rules,
         colHeadersPerRule: [],
         mapping: mapping,
         state: 'build',  // 'build', 'error', 'wait',
@@ -875,6 +881,16 @@ export default {
         required: false,
         type: Function,
     },
+    // required if elementsType is "collection_contents" - hook into tool form to update
+    // rule parameter
+    saveRulesFn: {
+        required: false,
+        type: Function,
+    },
+    initialRules: {
+        required: false,
+        type: Object,        
+    },
     defaultHideSourceItems: {
         type: Boolean,
         required: false,
@@ -909,6 +925,8 @@ export default {
     titleFinish() {
         if(this.elementsType == "datasets") {
             return _l("Create new collection from specified rules and datasets.");
+        } else if(this.elementsType == "collection_contents") {
+            return _l("Save rules and return to tool form.");
         } else {
             return _l("Upload collection using specified rules.");
         }
@@ -916,6 +934,8 @@ export default {
     finishButtonTitle() {
         if(this.elementsType == "datasets") {
             return _l("Create");
+        } else if(this.elementsType == "collection_contents") {
+            return _l("Save");
         } else {
             return _l("Upload");
         }
@@ -1150,11 +1170,13 @@ export default {
             "rules": this.rules,
             "mapping": this.mapping,
         }
-        if (this.extension !== UploadUtils.DEFAULT_EXTENSION) {
-            asJson.extension = this.extension;
-        }
-        if (this.genome !== UploadUtils.DEFAULT_GENOME) {
-            asJson.genome = this.genome;
+        if (!this.exisistingDatasets) {
+            if (this.extension !== UploadUtils.DEFAULT_EXTENSION) {
+                asJson.extension = this.extension;
+            }
+            if (this.genome !== UploadUtils.DEFAULT_GENOME) {
+                asJson.genome = this.genome;
+            }
         }
         this.ruleSource = JSON.stringify(asJson, replacer, '  ');
         this.ruleSourceError = null;
@@ -1285,7 +1307,9 @@ export default {
             response.done(this.oncreate);
             response.error(this.renderFetchError);
         } else if(this.elementsType == "collection_contents") {
-            conole.log("TODO: save rules back to tool form...");
+            this.resetSource();
+            this.saveRulesFn(this.ruleSource);
+            this.oncreate();
         } else {
             const historyId = Galaxy.currHistoryPanel.model.id;
             let elements, targets;

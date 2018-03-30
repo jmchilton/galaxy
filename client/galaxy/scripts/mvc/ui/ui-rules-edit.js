@@ -24,7 +24,7 @@ var View = Backbone.View.extend({
                 const url = `${Galaxy.root}api/dataset_collections/${view.target.id}?instance_type=history`;
                 axios
                     .get(url)
-                    .then(view._showCollection)
+                    .then((response) => this._showCollection(response))
                     .catch(view._renderFetchError);
             }
         });
@@ -39,8 +39,13 @@ var View = Backbone.View.extend({
         const elements = data;
         const elementsType = "collection_contents";
         const importType = "collection";
+        let value = this._value;
+        if(value) {
+            value = JSON.parse(value);
+        }
         const options = {
-
+            saveRulesFn: (rules) => this._handleRulesSave(rules),
+            initialRules: value,
         }
         ListCollectionCreator.ruleBasedCollectionCreatorModal(
             elements,
@@ -49,6 +54,10 @@ var View = Backbone.View.extend({
             options
         ).done(() => {
         });
+    },
+
+    _handleRulesSave: function(rules) {
+        this._setValue(rules);
     },
 
     _renderFetchError: function(e) {

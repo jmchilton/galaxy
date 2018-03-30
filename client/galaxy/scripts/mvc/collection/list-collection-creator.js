@@ -1089,7 +1089,9 @@ var ruleBasedCollectionCreatorModal = function _ruleBasedCollectionCreatorModal(
             creationFn: options.creationFn,
             oncancel: options.oncancel,
             oncreate: options.oncreate,
-            defaultHideSourceItems: options.defaultHideSourceItems
+            defaultHideSourceItems: options.defaultHideSourceItems,
+            saveRulesFn: options.saveRulesFn,
+            initialRules: options.initialRules,
         }
     }).$mount(vm);
     return deferred;
