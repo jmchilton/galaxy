@@ -791,15 +791,21 @@ class OutputCollections(object):
             collection_type = input_collections[collection_type_source].collection.collection_type
 
         if "elements" in element_kwds:
+            def check_elements(elements):
+                if hasattr(elements, "items"):  # else it is ELEMENTS_UNINITIALIZED object.
+                    for value in elements.values():
+                        # Either a HDA (if) or a DatasetCollection or a recursive dict.
+                        if getattr(value, "history_content_type", None) == "dataset":
+                            assert value.history is not None
+                        elif hasattr(value, "dataset_instances"):
+                            for dataset in value.dataset_instances:
+                                assert dataset.history is not None
+                        else:
+                            assert value["src"] == "new_collection"
+                            check_elements(value["elements"])
+
             elements = element_kwds["elements"]
-            if hasattr(elements, "items"):  # else it is ELEMENTS_UNINITIALIZED object.
-                for value in elements.values():
-                    # Either a HDA (if) or a DatasetCollection (the else)
-                    if getattr(value, "history_content_type", None) == "dataset":
-                        assert value.history is not None
-                    else:
-                        for dataset in value.dataset_instances:
-                            assert dataset.history is not None
+            check_elements(elements)
 
         if self.dataset_collection_elements is not None:
             dc = collections_manager.create_dataset_collection(

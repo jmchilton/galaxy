@@ -308,6 +308,9 @@ class ToolsTestCase(api.ApiTestCase):
             self.assertEquals(len(output_collections), 1)
             output_hid = output_collections[0]["hid"]
             output_hdca = self.dataset_populator.get_history_collection_details(history_id, hid=output_hid, wait=False)
+            self._assert_has_keys(output_hdca, "elements", "collection_type")
+            assert len(output_hdca["elements"]) == 2
+            assert output_hdca["collection_type"] == "list"
 
     def test_apply_rules_2(self):
         with self.dataset_populator.test_history() as history_id:
@@ -341,8 +344,10 @@ class ToolsTestCase(api.ApiTestCase):
             self.assertEquals(len(output_collections), 1)
             output_hid = output_collections[0]["hid"]
             output_hdca = self.dataset_populator.get_history_collection_details(history_id, hid=output_hid, wait=False)
-
-            assert output_hdca["collection"]["collection_type"] == "list:list"
+            print(output_hdca)
+            self._assert_has_keys(output_hdca, "elements", "collection_type")
+            assert len(output_hdca["elements"]) == 2
+            assert output_hdca["collection_type"] == "list:list"
 
     @skip_without_tool("multi_select")
     def test_multi_select_as_list(self):
