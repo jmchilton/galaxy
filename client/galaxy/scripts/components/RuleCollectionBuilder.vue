@@ -788,8 +788,6 @@ export default {
     } else if(this.elementsType == "datasets") {
       mapping = [{"type": "list_identifiers", "columns": [1]}];
     } else {
-      // TODO: incorrect to ease testing, fix.    
-      // mapping = [{"type": "url", "columns": [0]}, {"type": "list_identifiers", "columns": [1]}, {"type": "paired_identifier", "columns": [3]}, {"type": "collection_name", "columns": [5]}];
       mapping = [];
     }
     return {
