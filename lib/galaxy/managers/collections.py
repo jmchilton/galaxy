@@ -407,7 +407,7 @@ class DatasetCollectionManager(object):
 
         collection_type = rule_set.collection_type
         collection_type_description = self.collection_type_descriptions.for_collection_type(collection_type)
-        elements = self._build_elements_from_rule_data(collection_type_description, data)
+        elements = self._build_elements_from_rule_data(collection_type_description, rule_set, data, sources)
         return elements
 
     def _build_elements_from_rule_data(self, collection_type_description, rule_set, data, sources):
@@ -419,7 +419,7 @@ class DatasetCollectionManager(object):
             elements_at_depth = elements
 
             for i, identifier_column in enumerate(identifier_columns):
-                identifier = data[identifier_column]
+                identifier = row_data[identifier_column]
 
                 if i + 1 == len(identifier_columns):
                     # At correct final position in nested structure for this dataset.

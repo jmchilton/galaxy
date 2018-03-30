@@ -2659,7 +2659,7 @@ class ApplyRulesTool(DatabaseOperationTool):
 
     def produce_outputs(self, trans, out_data, output_collections, incoming, history, **kwds):
         log.info(incoming)
-        hdca = incoming["hdca"]
+        hdca = incoming["input"]
         rule_set = RuleSet(incoming["rules"])
         new_elements = self.app.dataset_collections_service.apply_rules(
             hdca, rule_set

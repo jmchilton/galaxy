@@ -3,15 +3,15 @@
 class AddColumnMetadataRuleDefinition(object):
     rule_type = "add_column_metadata"
 
-    def apply(rule, data, sources):
+    def apply(self, rule, data, sources):
         rule_value = rule["value"]
         identifier_index = int(rule_value[len("identifier"):])
 
-        def new_row(index, row):
-            return row + sources[index]["identifiers"][identifier_index]
+        new_rows = []
+        for index, row in enumerate(data):
+            new_rows.append(row + [sources[index]["identifiers"][identifier_index]])
 
-        data = list(map(new_row, enumerate(data)))
-        return data, sources
+        return new_rows, sources
 
 
 class RuleSet(object):
@@ -32,6 +32,8 @@ class RuleSet(object):
         for rule, rule_definition in self._rules_with_definitions():
             data, sources = rule_definition.apply(rule, data, sources)
 
+        return data, sources
+
     @property
     def mapping_as_dict(self):
         as_dict = {}
@@ -44,7 +46,7 @@ class RuleSet(object):
     # subclass of RuleSet for collection creation.
     @property
     def identifier_columns(self):
-        mapping_as_dict = self.mapping_as_dict()
+        mapping_as_dict = self.mapping_as_dict
         identifier_columns = []
         if "list_identifiers" in mapping_as_dict:
             identifier_columns.extend(mapping_as_dict["list_identifiers"]["columns"])
