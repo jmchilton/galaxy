@@ -46,7 +46,7 @@ export default Backbone.View.extend({
 
         const selectionTypeOptions = [
             { id: "paste", text: "Pasted Table" },
-            { id: "dataset", text: "History Dataset" },
+            { id: "dataset", text: "History Dataset" }
         ];
         if (this.ftpUploadSite) {
             selectionTypeOptions.push({ id: "ftp", text: "FTP Directory" });

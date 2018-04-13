@@ -356,4 +356,30 @@
   final:
     data: [["bark", "Dog"], ["meow", "cat"], ["moo", "cow"]]
     sources: [3, 2, 1]
-
+- rules:
+    - type: invalid_rule_type
+  error: true
+- rules:
+    - type: add_filter_compare
+      target_column: 0
+      value: 13
+      compare_type: invalid_compare_type
+  error: true
+- rules:
+    - type: add_column_concatenate
+      target_column: 0
+  error: true
+- rules:
+    - type: add_column_basename
+      target_column_0: 0
+  error: true
+- rules:
+    - type: add_column_regex
+      target_column: 0
+      regex: '(o)+'
+  error: true
+- rules:
+    - type: add_column_regex
+      target_column: 0
+      expression: '(o+'
+  error: true
