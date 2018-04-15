@@ -294,7 +294,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer flex-row no-flex vertically-spaced" v-if="ruleView == 'source'">
+        <div class="rule-footer footer flex-row no-flex vertically-spaced" v-if="ruleView == 'source'">
             <option-buttons-div>
                 <button @click="resetSource" class="creator-reset-btn btn rule-btn-reset">
                     {{ l("Reset") }}
@@ -304,30 +304,37 @@
                 </button>
             </option-buttons-div>
         </div>
-        <div class="footer flex-row no-flex vertically-spaced"
+        <div class="rule-footer footer flex-row no-flex vertically-spaced"
              v-else-if="ruleView == 'normal'">
-            <div class="attributes clear"/>
-            <label class="rule-option" v-if="elementsType == 'datasets'">
-                {{ l("Hide original elements") }}:
-                <input type="checkbox" v-model="hideSourceItems" />
-            </label>
-            <label class="rule-option rule-option-extension" v-if="showFileTypeSelector">
-                {{ l("Type") }}:
-                <select2 name="extension" style="width: 120px" v-model="extension" v-if="extension">
-                    <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
-                </select2>
-            </label>
-            <label class="rule-option" v-if="showGenomeSelector">
-                {{ l("Genome") }}:
-                <select2 id="genome-selector" style="width: 120px" v-model="genome" v-if="genome">
-                    <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
-                </select2>
-            </label>
-            <label class="rule-option pull-right" v-if="showCollectionNameInput">
-                {{ l("Name") }}:
-                <input class="collection-name" style="width: 260px" 
-                :placeholder="namePlaceholder" v-model="collectionName" />
-            </label>
+            <div class="rule-footer-inputs">
+                <label v-if="elementsType == 'datasets'">
+                    {{ l("Hide original elements") }}:
+                </label>
+                <input type="checkbox" v-model="hideSourceItems" v-if="elementsType == 'datasets'"/>
+                <div class="rule-footer-extension-group" v-if="extension && showFileTypeSelector">
+                    <label>
+                        {{ l("Type") }}:
+                    </label>
+                    <select2 name="extension" class="extension-select" v-model="extension" >
+                        <option v-for="(col, index) in extensions" :value="col['id']"">{{ col["text"] }}</option>
+                    </select2>
+                </div>
+                <div class="rule-footer-genome-group" v-if="genome && showGenomeSelector">
+                    <label>
+                        {{ l("Genome") }}:
+                    </label>
+                    <select2 class="genome-select" v-model="genome">
+                        <option v-for="(col, index) in genomes" :value="col['id']"">{{ col["text"] }}</option>
+                    </select2>
+                </div>
+                <div class="rule-footer-name-group" v-if="showCollectionNameInput">
+                    <input class="collection-name"
+                    :placeholder="namePlaceholder" v-model="collectionName" />
+                    <label class="rule-option">
+                        {{ l("Name") }}:
+                    </label>
+                </div>
+            </div>
             <option-buttons-div>
                 <button @click="swapOrientation" class="creator-orient-btn btn rule-btn-reorient" tabindex="-1">
                     {{ l("Re-orient") }}
@@ -348,7 +355,7 @@
         <div class="header flex-row no-flex">
             {{ l("Galaxy is waiting for collection creation, this dialog will close when this is complete.") }}
         </div>
-        <div class="footer flex-row no-flex">
+        <div class="rule-footer footer flex-row no-flex">
             <option-buttons-div>
                 <button @click="cancel" class="creator-cancel-btn btn" tabindex="-1">
                     {{ l("Close") }}
@@ -1532,9 +1539,6 @@ export default {
   .rules-container .title {
     font-weight: bold;
   }
-  .rule-option {
-    padding-left: 20px;
-  }
   .rule-summary {
     height: 100%;
     display: flex;
@@ -1587,5 +1591,47 @@ export default {
   .rules-buttons {
 
   }
+  .rule-footer-inputs label {
+    padding-left: 20px;
+    align-self: center;
+  }
+  .rule-footer-inputs {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+  .rule-footer-inputs input {
+    align-self: baseline;
+  }
+  .extension-select {
+    flex: 1;
+    max-width: 120px;
+    min-width: 60px;
+  }
+  .genome-select {
+    flex: 1;
+    max-width: 300px;
+    min-width: 120px;
+  }
+  .collection-name {
+    flex: 1;
+    min-width: 120px;
+    max-width: 500px;
+  }
+  .rule-footer-genome-group {
+    flex: 2;
+    display: flex;
+  }
+  .rule-footer-extension-group {
+    flex: 1;
+    display: flex;
+  }
+  .rule-footer-name-group {
+    flex: 3;
+    display: flex;
+    flex-direction: row-reverse;
+  }
+
   /* .dropdown-menu {position:absolute;} */
 </style>
