@@ -52,6 +52,7 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
         # shed_tool_conf.xml file.
         self._dynamic_tool_confs = []
         self._tools_by_id = {}
+        self._tools_by_hash = {}
         self._integrated_section_by_tool = {}
         # Tool lineages can contain chains of related tools with different ids
         # so each will be present once in the above dictionary. The following
@@ -95,6 +96,9 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
         """
 
     def create_tool(self, config_file, repository_id=None, guid=None, **kwds):
+        raise NotImplementedError()
+
+    def create_dynamic_tool(self, dynamic_tool):
         raise NotImplementedError()
 
     def _init_tools_from_configs(self, config_filenames):
@@ -174,6 +178,19 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
                                        tool_path=tool_path,
                                        config_elems=config_elems)
             self._dynamic_tool_confs.append(shed_tool_conf_dict)
+
+    def _init_dynamic_tools(self):
+        for dynamic_tool in self.app.dynamic_tool_manager.list_tools():
+            self.load_dynamic_tool(dynamic_tool)
+
+    def load_dynamic_tool(self, dynamic_tool):
+        if not dynamic_tool.active:
+            return None
+
+        tool = self.create_dynamic_tool(dynamic_tool)
+        self.register_tool(tool)
+        self._tools_by_hash[tool.tool_hash] = tool
+        return tool
 
     def load_item(self, item, tool_path, panel_dict=None, integrated_panel_dict=None, load_panel_dict=True, guid=None, index=None, internal=False):
         with self.app._toolbox_lock:
@@ -402,13 +419,19 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
             elif elem.tag == 'label':
                 self._integrated_tool_panel.stub_label(key)
 
-    def get_tool(self, tool_id, tool_version=None, get_all_versions=False, exact=False):
+    def get_tool(self, tool_id, tool_version=None, get_all_versions=False, exact=False, tool_hash=None):
         """Attempt to locate a tool in the tool box. Note that `exact` only refers to the `tool_id`, not the `tool_version`."""
         if tool_version:
             tool_version = str(tool_version)
 
         if get_all_versions and exact:
             raise AssertionError("Cannot specify get_tool with both get_all_versions and exact as True")
+
+        if tool_id is None:
+            if tool_hash is not None:
+                tool_id = self._tools_by_hash[tool_hash].id
+            if tool_id is None:
+                raise AssertionError("get_tool called with tool_id as None")
 
         if "/repos/" in tool_id:  # test if tool came from a toolshed
             tool_id_without_tool_shed = tool_id.split("/repos/")[1]
