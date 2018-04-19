@@ -1,0 +1,15 @@
+<tool id="CONVERTER_tar_to_directory" name="Convert tar to directory" version="1.0.0" profile="17.05">
+    <command>
+        mkdir '$output1.files_path';
+        cd '$output1.files_path';
+        tar -xzf '$input1'
+    </command>
+    <inputs>
+        <param format="tar" name="input1" type="data"/>
+    </inputs>
+    <outputs>
+        <data format="directory" name="output1"/>
+    </outputs>
+    <help>
+    </help>
+</tool>
