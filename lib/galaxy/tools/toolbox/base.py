@@ -189,6 +189,7 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
 
         tool = self.create_dynamic_tool(dynamic_tool)
         self.register_tool(tool)
+        assert tool.tool_hash
         self._tools_by_hash[tool.tool_hash] = tool
         return tool
 

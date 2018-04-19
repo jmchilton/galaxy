@@ -1,7 +1,6 @@
 import logging
-import os
 
-from galaxy.tools.cwl import tool_proxy
+from galaxy.tools.cwl import tool_proxy, tool_proxy_from_persistent_representation
 from galaxy.tools.deps import requirements
 from galaxy.util.odict import odict
 from .interface import (
@@ -10,7 +9,10 @@ from .interface import (
     ToolSource,
     ToolStdioExitCode
 )
+from .output_collection_def import dataset_collector_descriptions_from_list
 from .output_actions import ToolOutputActionGroup
+from .output_objects import ToolOutputCollection
+from .output_objects import ToolOutputCollectionStructure
 from .output_objects import ToolOutput
 from .yaml import YamlInputSource
 
@@ -19,24 +21,29 @@ log = logging.getLogger(__name__)
 
 class CwlToolSource(ToolSource):
 
-    def __init__(self, tool_file, strict_cwl_validation=True):
-        self._cwl_tool_file = tool_file
-        self._id, _ = os.path.splitext(os.path.basename(tool_file))
-        self._tool_proxy = None
+    def __init__(self, tool_file=None, tool_object=None, strict_cwl_validation=True):
         self._source_path = tool_file
+        self._source_object = tool_object
+        self._tool_proxy = None
         self._strict_cwl_validation = strict_cwl_validation
 
     @property
     def tool_proxy(self):
         if self._tool_proxy is None:
-            self._tool_proxy = tool_proxy(self._source_path, strict_cwl_validation=self._strict_cwl_validation)
+            if self._source_path is not None:
+                self._tool_proxy = tool_proxy(self._source_path, strict_cwl_validation=self._strict_cwl_validation)
+            else:
+                if "pickle" not in self._source_object:
+                    self._tool_proxy = tool_proxy(tool_object=self._source_object, strict_cwl_validation=self._strict_cwl_validation)
+                else:
+                    self._tool_proxy = tool_proxy_from_persistent_representation(self._source_object, strict_cwl_validation=self._strict_cwl_validation)
         return self._tool_proxy
 
     def parse_tool_type(self):
         return 'cwl'
 
     def parse_id(self):
-        return self._id
+        return self.tool_proxy.galaxy_id()
 
     def parse_name(self):
         return self.tool_proxy.label() or self.parse_id()
@@ -106,20 +113,37 @@ class CwlToolSource(ToolSource):
     def parse_outputs(self, tool):
         output_instances = self.tool_proxy.output_instances()
         outputs = odict()
+        output_collections = odict()
         output_defs = []
         for output_instance in output_instances:
             output_defs.append(self._parse_output(tool, output_instance))
+
         # TODO: parse outputs collections
         for output_def in output_defs:
-            outputs[output_def.name] = output_def
-        return outputs, odict()
+            if isinstance(output_def, ToolOutput):
+                outputs[output_def.name] = output_def
+            else:
+                outputs[output_def.name] = output_def
+                output_collections[output_def.name] = output_def
+        return outputs, output_collections
 
     def _parse_output(self, tool, output_instance):
+        output_type = output_instance.output_data_type
+        if isinstance(output_type, dict) and output_type.get("type") == "record":
+            return self._parse_output_record(tool, output_instance)
+        elif isinstance(output_type, dict) and output_type.get("type") == "array":
+            return self._parse_output_array(tool, output_instance)
+        else:
+            return self._parse_output_data(tool, output_instance)
+
+    def _parse_output_data(self, tool, output_instance):
         name = output_instance.name
         # TODO: handle filters, actions, change_format
         output = ToolOutput(name)
         if "File" in output_instance.output_data_type:
-            output.format = "_sniff_"
+            output.format = "data"
+        elif "Directory" in output_instance.output_data_type:
+            output.format = "directory"
         else:
             output.format = "expression.json"
         output.change_format = []
@@ -135,6 +159,35 @@ class CwlToolSource(ToolSource):
         output.actions = ToolOutputActionGroup(output, None)
         return output
 
+    def _parse_output_record(self, tool, output_instance):
+        name = output_instance.name
+        # TODO: clean output bindings and other non-structure information
+        # from this.
+        fields = output_instance.output_data_type.get("fields")
+        output_collection = ToolOutputCollection(
+            name,
+            ToolOutputCollectionStructure(
+                collection_type="record",
+                fields=fields,
+            ),
+        )
+        return output_collection
+
+    def _parse_output_array(self, tool, output_instance):
+        name = output_instance.name
+        # TODO: Handle nested arrays and such...
+        dataset_collector_descriptions = dataset_collector_descriptions_from_list(
+            [{"from_provided_metadata": True}],
+        )
+        output_collection = ToolOutputCollection(
+            name,
+            ToolOutputCollectionStructure(
+                collection_type="list",
+                dataset_collector_descriptions=dataset_collector_descriptions,
+            ),
+        )
+        return output_collection
+
     def parse_requirements_and_containers(self):
         containers = []
         docker_identifier = self.tool_proxy.docker_identifier()
@@ -147,7 +200,10 @@ class CwlToolSource(ToolSource):
         ))
 
     def parse_profile(self):
-        return "16.04"
+        return "17.09"
+
+    def parse_provided_metadata_style(self):
+        return "default"
 
 
 class CwlPageSource(PageSource):

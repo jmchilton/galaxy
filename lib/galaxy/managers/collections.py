@@ -126,6 +126,7 @@ class DatasetCollectionManager(object):
                 collection=dataset_collection,
                 name=name,
             )
+
             if implicit_inputs:
                 for input_name, input_collection in implicit_inputs:
                     dataset_collection_instance.add_implicit_input_collection(input_name, input_collection)

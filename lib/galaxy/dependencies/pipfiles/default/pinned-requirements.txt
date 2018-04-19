@@ -132,3 +132,6 @@ webencodings==0.5.1
 webob==1.4.2
 whoosh==2.7.4
 wrapt==1.10.11
+# For CWL support.
+cwltool==1.0.20170828135420
+cwltest==1.0.20170809112706  # TODO: only required for testing...

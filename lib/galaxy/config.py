@@ -382,9 +382,10 @@ class Configuration(object):
         # These are not even beta - just experiments - don't use them unless
         # you want yours tools to be broken in the future.
         self.enable_beta_tool_formats = string_as_bool(kwargs.get('enable_beta_tool_formats', 'False'))
+        # Should CWL artifacts be loaded with strict validation enabled.
+        self.strict_cwl_validation = string_as_bool(kwargs.get('strict_cwl_validation', 'True'))
         # Beta containers interface used by GIEs
         self.enable_beta_containers_interface = string_as_bool(kwargs.get('enable_beta_containers_interface', 'False'))
-
         # Certain modules such as the pause module will automatically cause
         # workflows to be scheduled in job handlers the way all workflows will
         # be someday - the following two properties can also be used to force this

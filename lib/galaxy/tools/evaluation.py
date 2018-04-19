@@ -15,6 +15,7 @@ from galaxy.tools.parameters import (
 from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
     DataToolParameter,
+    FieldTypeToolParameter,
     SelectToolParameter,
 )
 from galaxy.tools.parameters.grouping import (
@@ -255,6 +256,23 @@ class ToolEvaluator(object):
                     **wrapper_kwds
                 )
                 input_values[input.name] = wrapper
+            elif isinstance(input, FieldTypeToolParameter):
+                if value is None:
+                    field_wrapper = None
+                else:
+                    assert "value" in value, value
+                    assert "src" in value
+                    src = value["src"]
+                    if src == "json":
+                        field_wrapper = InputValueWrapper(input, value, param_dict)
+                    elif src == "hda":
+                        field_wrapper = DatasetFilenameWrapper(value["value"],
+                                                               datatypes_registry=self.app.datatypes_registry,
+                                                               tool=self,
+                                                               name=input.name)
+                    else:
+                        assert False
+                input_values[input.name] = field_wrapper
             elif isinstance(input, SelectToolParameter):
                 input_values[input.name] = SelectToolParameterWrapper(
                     input, value, other_values=param_dict, path_rewriter=self.unstructured_path_rewriter)
@@ -374,7 +392,7 @@ class ToolEvaluator(object):
 
         param_dict['__tool_directory__'] = self.compute_environment.tool_directory()
         param_dict['__get_data_table_entry__'] = get_data_table_entry
-
+        param_dict['__local_working_directory__'] = self.local_working_directory
         # We add access to app here, this allows access to app.config, etc
         param_dict['__app__'] = RawObjectWrapper(self.app)
         # More convienent access to app.config.new_file_path; we don't need to
@@ -465,20 +483,27 @@ class ToolEvaluator(object):
         command_line = None
         if not command:
             return
-        try:
-            # Substituting parameters into the command
-            command_line = fill_template(command, context=param_dict)
-            cleaned_command_line = []
-            # Remove leading and trailing whitespace from each line for readability.
-            for line in command_line.split('\n'):
-                cleaned_command_line.append(line.strip())
-            command_line = '\n'.join(cleaned_command_line)
-            # Remove newlines from command line, and any leading/trailing white space
-            command_line = command_line.replace("\n", " ").replace("\r", " ").strip()
-        except Exception:
-            # Modify exception message to be more clear
-            # e.args = ( 'Error substituting into command line. Params: %r, Command: %s' % ( param_dict, self.command ), )
-            raise
+
+        # TODO: do not allow normal jobs to set this in this fashion
+        # TODO: this approach replaces specifies a command block as $__cwl_command_state
+        #  and that other approach needs to be unraveled.
+        if "__cwl_command" in param_dict:
+            command_line = param_dict["__cwl_command"]
+        else:
+            try:
+                # Substituting parameters into the command
+                command_line = fill_template(command, context=param_dict)
+                cleaned_command_line = []
+                # Remove leading and trailing whitespace from each line for readability.
+                for line in command_line.split('\n'):
+                    cleaned_command_line.append(line.strip())
+                command_line = '\n'.join(cleaned_command_line)
+                # Remove newlines from command line, and any leading/trailing white space
+                command_line = command_line.replace("\n", " ").replace("\r", " ").strip()
+            except Exception:
+                # Modify exception message to be more clear
+                # e.args = ( 'Error substituting into command line. Params: %r, Command: %s' % ( param_dict, self.command ), )
+                raise
         if interpreter:
             # TODO: path munging for cluster/dataset server relocatability
             executable = command_line.split()[0]
@@ -511,7 +536,12 @@ class ToolEvaluator(object):
     def __build_environment_variables(self):
         param_dict = self.param_dict
         environment_variables = []
-        for environment_variable_def in self.tool.environment_variables:
+        environment_variables_raw = self.tool.environment_variables
+        for key, value in param_dict.get("__cwl_command_state", {}).get("env", {}).items():
+            environment_variable = dict(name=key, template=value)
+            environment_variables_raw.append(environment_variable)
+
+        for environment_variable_def in environment_variables_raw:
             directory = self.local_working_directory
             environment_variable = environment_variable_def.copy()
             environment_variable_template = environment_variable_def["template"]

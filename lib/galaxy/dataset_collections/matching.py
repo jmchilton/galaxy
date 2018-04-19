@@ -15,8 +15,10 @@ class CollectionsToMatch(object):
 
     def __init__(self):
         self.collections = {}
+        self.uses_ephemeral_collections = False
 
     def add(self, input_name, hdca, subcollection_type=None, linked=True):
+        self.uses_ephemeral_collections = self.uses_ephemeral_collections or not hasattr(hdca, "hid")
         self.collections[input_name] = bunch.Bunch(
             hdca=hdca,
             subcollection_type=subcollection_type,
@@ -45,6 +47,7 @@ class MatchingCollections(object):
         self.unlinked_structures = []
         self.collections = {}
         self.subcollection_types = {}
+        self.uses_ephemeral_collections = False
 
     def __attempt_add_to_linked_match(self, input_name, hdca, collection_type_description, subcollection_type):
         structure = get_structure(hdca, collection_type_description, leaf_subcollection_type=subcollection_type)
@@ -76,12 +79,21 @@ class MatchingCollections(object):
         effective_structure = effective_structure.multiply(linked_structure)
         return None if effective_structure.is_leaf else effective_structure
 
+    @property
+    def implicit_inputs(self):
+        if not self.uses_ephemeral_collections:
+            # Consider doing something smarter here.
+            return list(self.collections.items())
+        else:
+            return []
+
     @staticmethod
     def for_collections(collections_to_match, collection_type_descriptions):
         if not collections_to_match.has_collections():
             return None
 
         matching_collections = MatchingCollections()
+        matching_collections.uses_ephemeral_collections = collections_to_match.uses_ephemeral_collections
         for input_key, to_match in sorted(collections_to_match.items()):
             hdca = to_match.hdca
             collection_type_description = collection_type_descriptions.for_collection_type(hdca.collection.collection_type)

@@ -32,6 +32,7 @@ _GALAXY_VIRTUAL_ENV="$galaxy_virtual_env"
 PRESERVE_GALAXY_ENVIRONMENT="$preserve_python_environment"
 GALAXY_LIB="$galaxy_lib"
 _galaxy_setup_environment "$PRESERVE_GALAXY_ENVIRONMENT"
+_GALAXY_PATH="$PATH"
 GALAXY_PYTHON=`command -v python`
 $memory_statement
 $instrument_pre_commands
