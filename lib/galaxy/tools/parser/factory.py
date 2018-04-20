@@ -41,7 +41,7 @@ def get_tool_source(config_file=None, xml_tree=None, enable_beta_formats=True, t
             as_dict = ordered_load(f)
             return YamlToolSource(as_dict, source_path=config_file)
     elif config_file.endswith(".json") or config_file.endswith(".cwl"):
-        log.info("Loading CWL tool - this is experimental - tool likely will not function in future at least in same way.")
+        log.info("Loading CWL tool [%s]. This is experimental - tool likely will not function in future at least in same way." % config_file)
         return CwlToolSource(config_file, strict_cwl_validation=strict_cwl_validation)
     else:
         tree, macro_paths = load_tool_with_refereces(config_file)
