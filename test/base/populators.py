@@ -268,7 +268,7 @@ class CwlPopulator(object):
         self.workflow_populator = workflow_populator
 
     def run_cwl_artifact(
-        self, tool_id, json_path=None, job=None, test_data_directory=None, history_id=None, assert_ok=True, tool_or_workflow="tool",
+        self, tool_id, json_path=None, job=None, test_data_directory=None, history_id=None, assert_ok=True, tool_or_workflow="tool", upload_via=UPLOAD_VIA
     ):
         if test_data_directory is None and json_path is not None:
             test_data_directory = os.path.dirname(json_path)
@@ -288,7 +288,7 @@ class CwlPopulator(object):
             if isinstance(upload_target, FileUploadTarget):
                 path = upload_target.path
 
-                if UPLOAD_VIA == "path":
+                if upload_via == "path":
                     content = "file://%s" % path
                 else:
                     with open(path, "rb") as f:
@@ -298,7 +298,7 @@ class CwlPopulator(object):
 
                 extra_inputs = dict()
                 if upload_target.secondary_files:
-                    assert UPLOAD_VIA == "path"
+                    assert upload_via == "path"
                     extra_inputs["files_1|url_paste"] = "file://%s" % upload_target.secondary_files
                     extra_inputs["files_1|type"] = "upload_dataset"
                     extra_inputs["files_1|auto_decompress"] = True
@@ -327,7 +327,7 @@ class CwlPopulator(object):
             elif isinstance(upload_target, DirectoryUploadTarget):
                 path = upload_target.tar_path
 
-                if UPLOAD_VIA == "path":
+                if upload_via == "path":
                     # TODO: basename?
                     payload = self.dataset_populator.upload_payload(
                         history_id, 'file://%s' % path, ext="tar", auto_decompress=False
@@ -375,6 +375,8 @@ class CwlPopulator(object):
         if datasets_uploaded:
             self.dataset_populator.wait_for_history(history_id=history_id, assert_ok=True)
         if tool_or_workflow == "tool":
+            tool_hash = None
+
             if os.path.exists(tool_id):
                 # Assume it is a file not a tool_id.
                 if LOAD_TOOLS_FROM_PATH:

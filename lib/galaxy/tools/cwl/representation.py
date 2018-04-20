@@ -184,6 +184,33 @@ def collection_wrapper_to_record(inputs_dir, wrapped_value):
     return rval
 
 
+def galactic_flavored_to_cwl_job(tool, param_dict, local_working_directory):
+    inputs_dir = os.path.join(local_working_directory, "_inputs")
+
+    inputs = {}
+
+    # TODO: walk tree
+    for input_name, input_param in tool.inputs.items():
+        if input_param.type == "data":
+            # Probably need to be passing in the wrappers and using them - this seems to be
+            # an HDA.
+            map_to = input_param.map_to
+            inputs_at_depth = inputs
+            if map_to:
+
+                while "/" in map_to:
+                    first, map_to = map_to.split("/", 1)
+                    if first not in inputs_at_depth:
+                        inputs_at_depth[first] = {}
+                    inputs_at_depth = inputs_at_depth[first]
+            else:
+                map_to = input_param.name
+            inputs_at_depth[map_to] = dataset_wrapper_to_file_json(inputs_dir, param_dict[input_name])
+
+    log.info("job inputs is %s" % inputs)
+    return inputs
+
+
 def to_cwl_job(tool, param_dict, local_working_directory):
     """ tool is Galaxy's representation of the tool and param_dict is the
     parameter dictionary with wrapped values.
