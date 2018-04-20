@@ -361,15 +361,20 @@ class CommandLineToolProxy(ToolProxy):
         return rval
 
     def docker_identifier(self):
+        for hint in self.hints_or_requirements_of_class("DockerRequirement"):
+            if "dockerImageId" in hint:
+                return hint["dockerImageId"]
+            else:
+                return hint["dockerPull"]
+
+        return None
+
+    def hints_or_requirements_of_class(self, class_name):
         tool = self._tool.tool
         reqs_and_hints = tool.get("requirements", []) + tool.get("hints", [])
         for hint in reqs_and_hints:
-            if hint["class"] == "DockerRequirement":
-                if "dockerImageId" in hint:
-                    return hint["dockerImageId"]
-                else:
-                    return hint["dockerPull"]
-        return None
+            if hint["class"] == class_name:
+                yield hint
 
     def software_requirements(self):
         # Roughest imaginable pass at parsing requirements, really need to take in specs, handle
