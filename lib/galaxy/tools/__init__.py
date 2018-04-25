@@ -1939,11 +1939,14 @@ class Tool(Dictifiable):
                 self.populate_model(request_context, input.inputs, group_state, tool_dict['inputs'], other_values)
             else:
                 try:
+                    log.info("getting initial value")
                     initial_value = input.get_initial_value(request_context, other_values)
+                    log.info("got initial value")
                     tool_dict = input.to_dict(request_context, other_values=other_values)
                     tool_dict['value'] = input.value_to_basic(state_inputs.get(input.name, initial_value), self.app, use_security=True)
                     tool_dict['default_value'] = input.value_to_basic(initial_value, self.app, use_security=True)
                     tool_dict['text_value'] = input.value_to_display_text(tool_dict['value'])
+                    log.info("leaving try...")
                 except Exception as e:
                     tool_dict = input.to_dict(request_context)
                     log.exception('tools::to_json() - Skipping parameter expansion \'%s\': %s.' % (input.name, e))

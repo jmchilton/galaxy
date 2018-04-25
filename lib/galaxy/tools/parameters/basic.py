@@ -1858,6 +1858,7 @@ class DataToolParameter(BaseDataToolParameter):
                     hda_state = 'unavailable'
                 append(d['options']['hda'], hda, '(%s) %s' % (hda_state, hda.name), 'hda', True)
 
+        log.info("matching collection...")
         # add dataset collections
         dataset_collection_matcher = DatasetCollectionMatcher(dataset_matcher)
         for hdca in history.active_visible_dataset_collections:
