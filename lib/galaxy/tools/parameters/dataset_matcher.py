@@ -23,6 +23,8 @@ class DatasetMatcher(object):
         self.tool = param.tool
         self.value = value
         self.current_user_roles = ROLES_UNSET
+        self.require_public = self.tool and self.tool.tool_type == 'data_destination'
+        self.need_filter = param.options
         filter_value = None
         if param.options and other_values:
             try:
@@ -67,7 +69,7 @@ class DatasetMatcher(object):
                 rval = HdaImplicitMatch(hda, target_ext, original_hda)
             else:
                 return False
-        if self.filter(hda):
+        if self.need_filter and self.filter(hda):
             return False
         return rval
 
@@ -80,10 +82,9 @@ class DatasetMatcher(object):
         if accessible and (not ensure_visible or hda.visible or (self.selected(hda) and not hda.implicitly_converted_parent_datasets)):
             # If we are sending data to an external application, then we need to make sure there are no roles
             # associated with the dataset that restrict its access from "public".
-            require_public = self.tool and self.tool.tool_type == 'data_destination'
-            if require_public and not self.trans.app.security_agent.dataset_is_public(hda.dataset):
+            if self.require_public and not self.trans.app.security_agent.dataset_is_public(hda.dataset):
                 return False
-            if self.filter(hda):
+            if self.need_filter and self.filter(hda):
                 return False
             return self.valid_hda_match(hda, check_implicit_conversions=check_implicit_conversions)
 
@@ -101,7 +102,7 @@ class DatasetMatcher(object):
         applicable).
         """
         param = self.param
-        return param.options and param.get_options_filter_attribute(hda) != self.filter_value
+        return param.get_options_filter_attribute(hda) != self.filter_value
 
     def __can_access_dataset(self, dataset):
         # Lazily cache current_user_roles.
