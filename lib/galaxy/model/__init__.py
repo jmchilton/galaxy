@@ -3198,7 +3198,10 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
     def populated(self):
         top_level_populated = self.populated_state == DatasetCollection.populated_states.OK
         if top_level_populated and self.has_subcollections:
-            return all(e.child_collection.populated for e in self.elements)
+            log.info("\n\n\n\n\nCALCULATING POPULATED...\n\n\n\n\n")
+            all_pop = all(e.child_collection.populated for e in self.elements)
+            log.info("\n\n\n\n\nCALCULATED POPULATED...\n\n\n\n\n")
+            return all_pop
         return top_level_populated
 
     @property
