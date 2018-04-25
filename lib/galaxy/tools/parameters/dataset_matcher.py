@@ -170,11 +170,11 @@ class DatasetCollectionMatcher(object):
     def dataset_collection_match(self, dataset_collection):
         # If dataset collection not yet populated, cannot determine if it
         # would be a valid match for this parameter.
-        if not dataset_collection.populated:
+        if not dataset_collection.check_populated_with_prefetched_collections():
             return False
 
         valid = True
-        for element in dataset_collection.elements:
+        for element in dataset_collection.prefetched_elements_to_smart_depth:
             if not self.__valid_element(element):
                 valid = False
                 break

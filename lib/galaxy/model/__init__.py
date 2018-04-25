@@ -3204,6 +3204,16 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
             return all_pop
         return top_level_populated
 
+    def check_populated_with_prefetched_collections(self):
+        top_level_populated = self.populated_state == DatasetCollection.populated_states.OK
+        top_level_populated = self.populated_state == DatasetCollection.populated_states.OK
+        if top_level_populated and self.has_subcollections:
+            log.info("\n\n\n\n\nCALCULATING POPULATED PREFTCH...\n\n\n\n\n")
+            all_pop = all(e.child_collection.populated for e in self.prefetched_elements_to_smart_depth)
+            log.info("\n\n\n\n\nCALCULATED POPULATED PREFTCH...\n\n\n\n\n")
+            return all_pop
+        return top_level_populated
+
     @property
     def waiting_for_elements(self):
         top_level_waiting = self.populated_state == DatasetCollection.populated_states.NEW
@@ -3226,6 +3236,36 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
             # THIS IS WRONG - SHOULD ONLY BE TO THE DEPTH OF THE MAP OVER.
             for element in self.elements:
                 element.child_collection.finalize()
+
+    @property
+    def prefetched_elements_to_smart_depth(self):
+        # If it is a flat collection or a list of pairs, just fetch all the hdas,
+        # otherwise fetch elements and child collection objects to next depth
+        # so this method may be recursively called on those objects.
+        # Treat list of pairs specially because it seems silly to trigger a whole
+        # new database query for each pair when each pair only has two elements.
+        if not hasattr(self, '_prefetched_elements_to_smart_depth'):
+            db_session = object_session(self)
+            if ":" not in self.collection_type:
+                query = (db_session.query(DatasetCollectionElement)
+                    .filter(DatasetCollectionElement.table.c.dataset_collection_id == self.id)
+                    .order_by(DatasetCollectionElement.table.c.element_index.asc())
+                    .options(joinedload("hda")))
+            elif "list:paired" == self.collection_type:
+                query = (db_session.query(DatasetCollectionElement)
+                    .filter(DatasetCollectionElement.table.c.dataset_collection_id == self.id)
+                    .order_by(DatasetCollectionElement.table.c.element_index.asc())
+                    .options(joinedload("child_collection"),
+                             joinedload("child_collection.elements"),
+                             joinedload("child_collection.elements.hda")))
+            else:
+                query = (db_session.query(DatasetCollectionElement)
+                    .filter(DatasetCollectionElement.table.c.dataset_collection_id == self.id)
+                    .order_by(DatasetCollectionElement.table.c.element_index.asc())
+                    .options(joinedload("child_collection")))
+            self._prefetched_elements_to_smart_depth = query.all()
+
+        return self._prefetched_elements_to_smart_depth
 
     @property
     def dataset_instances(self):
