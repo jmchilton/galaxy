@@ -1604,10 +1604,9 @@ class History(HasTags, Dictifiable, UsesAnnotations, HasName):
                 .filter(HistoryDatasetCollectionAssociation.table.c.history_id == self.id)
                 .filter(not_(HistoryDatasetCollectionAssociation.deleted))
                 .filter(HistoryDatasetCollectionAssociation.visible)
+                .filter(DatasetCollection.populated_state == DatasetCollection.populated_states.OK)
                 .order_by(HistoryDatasetCollectionAssociation.table.c.hid.asc())
                 .options(joinedload("collection"),
-                         joinedload("collection.elements"),
-                         joinedload("collection.elements.hda"),
                          joinedload("tags")))
             self._active_visible_dataset_collections = query.all()
         return self._active_visible_dataset_collections
@@ -3204,16 +3203,6 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
             return all_pop
         return top_level_populated
 
-    def check_populated_with_prefetched_collections(self):
-        top_level_populated = self.populated_state == DatasetCollection.populated_states.OK
-        top_level_populated = self.populated_state == DatasetCollection.populated_states.OK
-        if top_level_populated and self.has_subcollections:
-            log.info("\n\n\n\n\nCALCULATING POPULATED PREFTCH...\n\n\n\n\n")
-            all_pop = all(e.child_collection.populated for e in self.prefetched_elements_to_smart_depth)
-            log.info("\n\n\n\n\nCALCULATED POPULATED PREFTCH...\n\n\n\n\n")
-            return all_pop
-        return top_level_populated
-
     @property
     def waiting_for_elements(self):
         top_level_waiting = self.populated_state == DatasetCollection.populated_states.NEW
@@ -3236,36 +3225,6 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
             # THIS IS WRONG - SHOULD ONLY BE TO THE DEPTH OF THE MAP OVER.
             for element in self.elements:
                 element.child_collection.finalize()
-
-    @property
-    def prefetched_elements(self):
-        # If it is a flat collection or a list of pairs, just fetch all the hdas,
-        # otherwise fetch elements and child collection objects to next depth
-        # so this method may be recursively called on those objects.
-        # Treat list of pairs specially because it seems silly to trigger a whole
-        # new database query for each pair when each pair only has two elements.
-        if not hasattr(self, '_prefetched_elements'):
-            db_session = object_session(self)
-            joined_loads = []
-
-            def recursively_add_joined_loads(depth_collection_type, prefix=""):
-                if ":" not in depth_collection_type:
-                    joined_loads.append(prefix + "hda")
-                else:
-                    joined_loads.append(prefix + "child_collection")
-                    joined_loads.append(prefix + "child_collection.elements")
-                    next_prefix = prefix + "child_collection.elements."
-                    recursively_add_joined_loads(depth_collection_type.split(":", 1)[1], prefix=next_prefix)
-
-            recursively_add_joined_loads(self.collection_type)
-            query = (db_session.query(DatasetCollectionElement)
-                .filter(DatasetCollectionElement.table.c.dataset_collection_id == self.id)
-                .order_by(DatasetCollectionElement.table.c.element_index.asc())
-                .options(*joined_loads))
-
-            self._prefetched_elements = query.all()
-
-        return self._prefetched_elements
 
     @property
     def dataset_instances(self):
@@ -3526,6 +3485,42 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
         object_session(self).add(hdca)
         object_session(self).flush()
         return hdca
+
+    @property
+    def collection_with_prefetched_elements(self):
+        # If it is a flat collection or a list of pairs, just fetch all the hdas,
+        # otherwise fetch elements and child collection objects to next depth
+        # so this method may be recursively called on those objects.
+        # Treat list of pairs specially because it seems silly to trigger a whole
+        # new database query for each pair when each pair only has two elements.
+        if not hasattr(self, '_collection_with_prefetched_elements'):
+            db_session = object_session(self)
+            joined_loads = []
+
+            def recursively_add_joined_loads(depth_collection_type, prefix):
+                if ":" not in depth_collection_type:
+                    joined_loads.append(joinedload(prefix + "hda"))
+                else:
+                    joined_loads.append(joinedload(prefix + "child_collection"))
+                    joined_loads.append(joinedload(prefix + "child_collection.elements"))
+                    next_prefix = prefix + "child_collection.elements."
+                    recursively_add_joined_loads(depth_collection_type.split(":", 1)[1], next_prefix)
+
+            recursively_add_joined_loads(self.collection.collection_type, "elements.")
+            query = (db_session.query(DatasetCollection)
+                .filter(DatasetCollection.table.c.id == self.collection.id)
+                .options(joinedload("elements"), *joined_loads))
+
+            self._collection_with_prefetched_elements = query.one()
+
+        return self._collection_with_prefetched_elements
+
+    def check_populated_with_prefetched_element_collection(self):
+        """Don't use self.collection to check if this is fully populated, use the locally
+        cached variant with all elements since we will need to pull that in anyway.
+        """
+        collection = self.collection_with_prefetched_elements
+        return collection.populated
 
 
 class LibraryDatasetCollectionAssociation(DatasetCollectionInstance):
