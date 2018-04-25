@@ -174,7 +174,7 @@ class DatasetCollectionMatcher(object):
             return False
 
         valid = True
-        for element in dataset_collection.prefetched_elements_to_smart_depth:
+        for element in dataset_collection.prefetched_elements:
             if not self.__valid_element(element):
                 valid = False
                 break
