@@ -1858,13 +1858,17 @@ class DataToolParameter(BaseDataToolParameter):
                     hda_state = 'unavailable'
                 append(d['options']['hda'], hda, '(%s) %s' % (hda_state, hda.name), 'hda', True)
 
-        log.info("matching collection...")
+        from galaxy.util import ExecutionTimer
+        collection_matching = ExecutionTimer()
         # add dataset collections
         dataset_collection_matcher = DatasetCollectionMatcher(dataset_matcher)
         for hdca in history.active_visible_dataset_collections:
-            if dataset_collection_matcher.hdca_match(hdca, reduction=multiple):
+            hdca_matching = ExecutionTimer()
+            if dataset_collection_matcher.hdca_match(hdca, reduction=multiple, check_security=False):
                 append(d['options']['hdca'], hdca, hdca.name, 'hdca')
+            log.info("Matched hdca %s" % hdca_matching)
 
+        log.info("Matched collections %s" % collection_matching)
         # sort both lists
         d['options']['hda'] = sorted(d['options']['hda'], key=lambda k: k['hid'], reverse=True)
         d['options']['hdca'] = sorted(d['options']['hdca'], key=lambda k: k['hid'], reverse=True)

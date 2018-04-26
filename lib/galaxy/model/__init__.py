@@ -3513,8 +3513,14 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
         """Don't use self.collection to check if this is fully populated, use the locally
         cached variant with all elements since we will need to pull that in anyway.
         """
+        from galaxy.util import ExecutionTimer
+        ft = ExecutionTimer()
         collection = self.collection_with_prefetched_elements
-        return collection.populated
+        log.info("Got collection %s" % ft)
+        pt = ExecutionTimer()
+        populated = collection.populated
+        log.info("Is populated [%s]" % pt)
+        return populated
 
 
 class LibraryDatasetCollectionAssociation(DatasetCollectionInstance):

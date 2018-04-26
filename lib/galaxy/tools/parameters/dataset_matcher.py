@@ -8,6 +8,32 @@ ROLES_UNSET = object()
 INVALID_STATES = [galaxy.model.Dataset.states.ERROR, galaxy.model.Dataset.states.DISCARDED]
 
 
+class DatasetMatcherFactory(object):
+    """"""
+
+    def __init__(self, trans, tool=None, param_values=None):
+        self._trans = trans
+        self._data_inputs = []
+        if tool is not None and param_values is not None:
+            self._collect_data_inputs(param_values)
+
+    def _collect_data_inputs(self, tool, param_values):
+        def visitor(input, value, prefix, parent=None, **kwargs):
+            type_name = type(input).__name__
+            if "DataToolParameter" in type_name:
+                self._data_inputs.append(input)
+            elif "DatasetCollectionToolParameter" in type_name:
+                self._data_inputs.append(input)
+
+        tool.visit_inputs(param_values, visitor)
+
+    def dataset_matcher(self, param, value, other_values):
+        return DatasetMatcher(self._trans, param, value, other_values)
+
+    def dataset_collection_matcher(self, dataset_matcher):
+        return DatasetCollectionMatcher(dataset_matcher)
+
+
 class DatasetMatcher(object):
     """ Utility class to aid DataToolParameter and similar classes in reasoning
     about what HDAs could match or are selected for a parameter and value.
@@ -144,7 +170,7 @@ class DatasetCollectionMatcher(object):
     def __init__(self, dataset_matcher):
         self.dataset_matcher = dataset_matcher
 
-    def __valid_element(self, element):
+    def __valid_element(self, element, check_security):
         # Simplify things for now and assume these are hdas and not implicit
         # converts. One could imagine handling both of those cases down the
         # road.
@@ -153,15 +179,15 @@ class DatasetCollectionMatcher(object):
 
         child_collection = element.child_collection
         if child_collection:
-            return self.dataset_collection_match(child_collection)
+            return self.dataset_collection_match(child_collection, check_security)
 
         hda = element.hda
         if not hda:
             return False
-        hda_match = self.dataset_matcher.hda_match(hda, ensure_visible=False)
+        hda_match = self.dataset_matcher.hda_match(hda, ensure_visible=False, check_security=check_security)
         return hda_match and not hda_match.implicit_conversion
 
-    def hdca_match(self, history_dataset_collection_association, reduction=False):
+    def hdca_match(self, history_dataset_collection_association, reduction=False, check_security=False):
         dataset_collection = history_dataset_collection_association.collection
         if reduction and dataset_collection.collection_type.find(":") > 0:
             return False
@@ -172,12 +198,12 @@ class DatasetCollectionMatcher(object):
             if not history_dataset_collection_association.check_populated_with_prefetched_element_collection():
                 return False
 
-            return self.dataset_collection_match(history_dataset_collection_association.collection_with_prefetched_elements)
+            return self.dataset_collection_match(history_dataset_collection_association.collection_with_prefetched_elements, check_security)
 
-    def dataset_collection_match(self, dataset_collection):
+    def dataset_collection_match(self, dataset_collection, check_security):
         valid = True
         for element in dataset_collection.elements:
-            if not self.__valid_element(element):
+            if not self.__valid_element(element, check_security):
                 valid = False
                 break
         return valid
