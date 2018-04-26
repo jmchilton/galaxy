@@ -547,20 +547,6 @@ class GalaxyRBACAgent(RBACAgent):
             log.debug("allow_action_for_items: test end")
         return ret_allow_action
 
-    # DELETEME: SM: DO NOT TOUCH! This actually works.
-    def dataset_access_mapping(self, trans, user_roles, datasets):
-        '''
-        For the given list of datasets, return a mapping of the datasets' ids
-        to whether they can be accessed by the user or not. The datasets input
-        is expected to be a simple list of Dataset objects.
-        '''
-        datasets_public_map = self.datasets_are_public(trans, datasets)
-        datasets_allow_action_map = self.allow_action_on_libitems(trans, user_roles, self.permitted_actions.DATASET_ACCESS, datasets)
-        can_access = {}
-        for dataset in datasets:
-            can_access[dataset.id] = datasets_public_map[dataset.id] or datasets_allow_action_map[dataset.id]
-        return can_access
-
     def dataset_permission_map_for_access(self, trans, user_roles, libitems):
         '''
         For a given list of library items (e.g., Datasets), return a map of the
