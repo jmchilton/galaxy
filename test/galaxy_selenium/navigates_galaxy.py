@@ -1377,13 +1377,15 @@ class NavigatesGalaxy(HasDriver):
     @retry_during_transitions
     def wait_for_and_click_selector(self, selector):
         element = self.wait_for_selector_clickable(selector)
-        element.click()
+        action_chains = self.action_chains()
+        action_chains.move_to_element(element).click().perform()
         return element
 
     @retry_during_transitions
     def wait_for_and_click(self, selector_template):
         element = self.wait_for_clickable(selector_template)
-        element.click()
+        action_chains = self.action_chains()
+        action_chains.move_to_element(element).click().perform()
         return element
 
     def select2_set_value(self, container_selector_or_elem, value, with_click=True, clear_value=False):

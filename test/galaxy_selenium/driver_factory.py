@@ -32,7 +32,13 @@ def get_local_driver(browser=DEFAULT_BROWSER):
         "PHANTOMJS": webdriver.PhantomJS,
     }
     driver_class = driver_to_class[browser]
-    return driver_class(desired_capabilities={"loggingPrefs": LOGGING_PREFS})
+    desired_capabilities = {"loggingPrefs": LOGGING_PREFS}
+    if browser == "FIREFOX":
+        # Needed to work with hidden file upload fields in Galaxy.
+        profile = webdriver.FirefoxProfile()
+        return driver_class(profile, capabilities=desired_capabilities)
+    else:
+        return driver_class(desired_capabilities)
 
 
 def get_remote_driver(
@@ -46,6 +52,8 @@ def get_remote_driver(
     assert browser in ["CHROME", "EDGE", "ANDROID", "FIREFOX", "INTERNETEXPLORER", "IPAD", "IPHONE", "OPERA", "PHANTOMJS", "SAFARI"]
     desired_capabilities = getattr(DesiredCapabilities, browser)
     desired_capabilities["loggingPrefs"] = LOGGING_PREFS
+    if browser == "FIREFOX":
+        desired_capabilities["moz:webdriverClick"] = False
     executor = 'http://%s:%s/wd/hub' % (host, port)
     driver = webdriver.Remote(
         command_executor=executor,

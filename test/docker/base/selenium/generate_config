@@ -1,6 +1,8 @@
 #!/bin/bash
 
 CHROME_VERSION=$(/usr/bin/google-chrome -version | awk '{ print $3 }')
+FIREFOX_VERSION=$( firefox -version | cut -d " " -f 3 )
+DRIVER_LOGLEVEL=${DRIVER_LOGLEVEL:-info}
 
 cat <<_EOF
 {
@@ -11,6 +13,20 @@ cat <<_EOF
       "maxInstances": $NODE_MAX_INSTANCES,
       "seleniumProtocol": "WebDriver",
       "applicationName": "$NODE_APPLICATION_NAME"
+    },
+    {
+      "version": "$FIREFOX_VERSION",
+      "browserName": "firefox",
+      "maxInstances": $NODE_MAX_INSTANCES,
+      "seleniumProtocol": "WebDriver",
+      "applicationName": "$NODE_APPLICATION_NAME",
+      "moz:firefoxOptions":
+        {
+          "log":
+            {
+              "level": "$DRIVER_LOGLEVEL"
+            }
+        }
     }
   ],
   "proxy": "org.openqa.grid.selenium.proxy.DefaultRemoteProxy",
