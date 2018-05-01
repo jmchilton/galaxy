@@ -55,6 +55,9 @@ var View = Backbone.View.extend({
             .removeClass()
             .addClass("ui-popover popover in")
             .addClass(this.options.placement);
+        if(this.options.class) {
+            this.$el.addClass(this.options.class);
+        }
         this.$el.css(this._get_placement(this.options.placement));
 
         // configure close option

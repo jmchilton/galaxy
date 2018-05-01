@@ -142,6 +142,7 @@ export default Backbone.View.extend({
         // add ftp file viewer
         this.ftp = new Popover.View({
             title: _l("FTP files"),
+            class: "ftp-upload",
             container: this.btnFtp.$el
         });
 
