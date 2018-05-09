@@ -314,9 +314,9 @@ class Registry(object):
                                     auto_compressed_type_name = datatype_class_name + upper_compressed_type
                                     attributes = {}
                                     if auto_compressed_type == "gz":
-                                        attributes["compressed_format"] = "gzip"
+                                        dynamic_parent = binary.GzDynamicCompressedArchive
                                     elif auto_compressed_type == "bz2":
-                                        attributes["compressed_format"] = "bz2"
+                                        dynamic_parent = binary.Bz2DynamicCompressedArchive
                                     else:
                                         raise Exception("Unknown auto compression type [%s]" % auto_compressed_type)
                                     attributes["file_ext"] = compressed_extension
@@ -326,8 +326,8 @@ class Registry(object):
                                         # Disable sniff on this type unless in validate_mode().
                                         attributes["sniff_compressed"] = False
 
-                                    attributes["uncompressed_datatype_class"] = datatype_class
-                                    compressed_datatype_class = type(auto_compressed_type_name, (datatype_class, binary.CompressedArchive, ), attributes)
+                                    attributes["uncompressed_datatype_instance"] = datatype_instance
+                                    compressed_datatype_class = type(auto_compressed_type_name, (datatype_class, dynamic_parent, ), attributes)
                                     if edam_format:
                                         compressed_datatype_class.edam_format = edam_format
                                     if edam_data:
