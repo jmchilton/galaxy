@@ -2428,6 +2428,46 @@ class ZipCollectionTool(DatabaseOperationTool):
         )
 
 
+class BuildListCollectionTool(DatabaseOperationTool):
+    tool_type = 'build_list'
+
+    def produce_outputs(self, trans, out_data, output_collections, incoming, history, **kwds):
+        new_elements = odict()
+
+        for i, incoming_repeat in enumerate(incoming["datasets"]):
+            new_dataset = incoming_repeat["input"].copy()
+            new_elements["%d" % i] = new_dataset
+            history.add_dataset(new_dataset, set_hid=False)
+
+        output_collections.create_collection(
+            next(iter(self.outputs.values())), "output", elements=new_elements
+        )
+
+
+class ExtractDatasetCollectionTool(DatabaseOperationTool):
+    tool_type = 'extract_dataset'
+
+    def produce_outputs(self, trans, out_data, output_collections, incoming, history, tags=None):
+        has_collection = incoming["input"]
+        if hasattr(has_collection, "element_type"):
+            # It is a DCE
+            collection = has_collection.element_object
+        else:
+            # It is an HDCA
+            collection = has_collection.collection
+
+        collection_type = collection.collection_type
+        assert collection_type in ["list", "paired"]
+        how = incoming["which"]["which_dataset"]
+        if how == "first":
+            extracted = collection.dataset_instances[0]
+
+        extracted_o = extracted.copy(copy_tags=tags)
+        history.add_dataset(extracted_o, set_hid=True)
+
+        out_data["output"] = extracted_o
+
+
 class MergeCollectionTool(DatabaseOperationTool):
     tool_type = 'merge_collection'
 
@@ -2811,6 +2851,7 @@ tool_types = {}
 for tool_class in [Tool, SetMetadataTool, OutputParameterJSONTool,
                    DataManagerTool, DataSourceTool, AsyncDataSourceTool,
                    UnzipCollectionTool, ZipCollectionTool, MergeCollectionTool, RelabelFromFileTool, FilterFromFileTool,
+                   BuildListCollectionTool, ExtractDatasetCollectionTool,
                    DataDestinationTool]:
     tool_types[tool_class.tool_type] = tool_class
 
