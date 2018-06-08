@@ -2351,9 +2351,14 @@ class DatasetInstance(object):
         """
         Return true if the dataset is neither ready nor in error
         """
-        return self.state in (self.states.NEW, self.states.UPLOAD,
-                              self.states.QUEUED, self.states.RUNNING,
-                              self.states.SETTING_METADATA)
+        return DatasetInstance.is_state_pending(self.state)
+
+    @staticmethod
+    def is_state_pending(state):
+        states = DatasetInstance.states
+        return state in (states.NEW, states.UPLOAD,
+                         states.QUEUED, states.RUNNING,
+                         states.SETTING_METADATA)
 
     @property
     def source_library_dataset(self):
@@ -3211,6 +3216,8 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
             self.populated_state = DatasetCollection.populated_states.NEW
         self.element_count = element_count
 
+    # TODO: a lot of duplication here - there should be a decorate for the hasattr caching stuff
+    # and a method to produce the datasets query for a nested collection (the while below).
     @property
     def dataset_states_and_extensions_summary(self):
         if not hasattr(self, '_dataset_states_and_extensions_summary'):
@@ -3244,6 +3251,38 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
             self._dataset_states_and_extensions_summary = (states, extensions)
 
         return self._dataset_states_and_extensions_summary
+
+    @property
+    def dataset_states_summary(self):
+        if not hasattr(self, '_dataset_states_summary'):
+            db_session = object_session(self)
+
+            dc = alias(DatasetCollection.table)
+            de = alias(DatasetCollectionElement.table)
+            hda = alias(HistoryDatasetAssociation.table)
+            dataset = alias(Dataset.table)
+
+            select_from = dc.outerjoin(de, de.c.dataset_collection_id == dc.c.id)
+
+            depth_collection_type = self.collection_type
+            while ":" in depth_collection_type:
+                child_collection = alias(DatasetCollection.table)
+                child_collection_element = alias(DatasetCollectionElement.table)
+                select_from = select_from.outerjoin(child_collection, child_collection.c.id == de.c.child_collection_id)
+                select_from = select_from.outerjoin(child_collection_element, child_collection_element.c.dataset_collection_id == child_collection.c.id)
+
+                de = child_collection_element
+                depth_collection_type = depth_collection_type.split(":", 1)[1]
+
+            select_from = select_from.outerjoin(hda, hda.c.id == de.c.hda_id).outerjoin(dataset, hda.c.dataset_id == dataset.c.id)
+            select_stmt = select([dataset.c.state]).select_from(select_from).where(dc.c.id == self.id).distinct()
+            states = set()
+            for row in db_session.execute(select_stmt).fetchall():
+                states.add(row[0])
+
+            self._dataset_states_summary = states
+
+        return self._dataset_states_summary
 
     @property
     def populated_optimized(self):

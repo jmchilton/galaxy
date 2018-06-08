@@ -6,6 +6,7 @@ from galaxy.tools.actions import (
     ToolExecutionCache,
 )
 from galaxy.util.odict import odict
+from galaxy.util import ExecutionTimer
 
 log = logging.getLogger(__name__)
 
@@ -16,10 +17,12 @@ class ModelOperationToolAction(DefaultToolAction):
         if execution_cache is None:
             execution_cache = ToolExecutionCache(trans)
 
+        inputs_ready_timer = ExecutionTimer()
         current_user_roles = execution_cache.current_user_roles
         history, inp_data, inp_dataset_collections, _ = self._collect_inputs(tool, trans, incoming, history, current_user_roles)
 
         tool.check_inputs_ready(inp_data, inp_dataset_collections)
+        log.debug("Checked inputs ready %s" % inputs_ready_timer)
 
     def execute(self, tool, trans, incoming={}, set_output_hid=False, overwrite=True, history=None, job_params=None, execution_cache=None, **kwargs):
         if execution_cache is None:

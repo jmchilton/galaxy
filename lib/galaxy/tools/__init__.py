@@ -2360,6 +2360,9 @@ class DatabaseOperationTool(Tool):
         return not self.require_dataset_ok
 
     def check_inputs_ready(self, input_datasets, input_dataset_collections):
+        cir_timer = ExecutionTimer()
+        log.info("input_datasets len %s" % len(input_datasets))
+
         def check_dataset_instance(input_dataset):
             if input_dataset.is_pending:
                 raise ToolInputsNotReadyException("An input dataset is pending.")
@@ -2373,10 +2376,19 @@ class DatabaseOperationTool(Tool):
 
         for input_dataset_collection_pairs in input_dataset_collections.values():
             for input_dataset_collection, is_mapped in input_dataset_collection_pairs:
-                if not input_dataset_collection.collection.populated:
+                if not input_dataset_collection.collection.populated_optimized:
                     raise ToolInputsNotReadyException("An input collection is not populated.")
 
-            map(check_dataset_instance, input_dataset_collection.dataset_instances)
+            states = input_dataset_collection.collection.dataset_states_summary
+            for state in states:
+                if model.DatasetInstance.is_state_pending(state):
+                    raise ToolInputsNotReadyException("An input dataset is pending.")
+
+                if self.require_dataset_ok:
+                    if state != model.DatasetInstance.states.OK:
+                        raise ValueError("Tool requires inputs to be in valid state.")
+
+        log.info("checked inputs ready %s" % cir_timer)
 
     def produce_outputs(self, trans, out_data, output_collections, incoming, history):
         return self._outputs_dict()
