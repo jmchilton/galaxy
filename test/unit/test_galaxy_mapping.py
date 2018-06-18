@@ -3,9 +3,10 @@ import time
 import unittest
 import uuid
 
+from guppy import hpy
 from six import text_type
 
-import galaxy.datatypes
+import galaxy.datatypes.registry
 import galaxy.model
 import galaxy.model.mapping as mapping
 
@@ -467,6 +468,36 @@ class MappingTests(unittest.TestCase):
         u2 = loaded_invocation.update_time
 
         assert u1 != u2
+
+    def test_write_many(self):
+        jobs = []
+        for i in range(2000):
+            job = self.model.Job()
+            for j in range(50):
+                job.add_parameter("%s" % j, "moo")
+            self.session().add(job)
+            self.session().flush()
+            # jobs.append(job)
+
+        h = hpy()
+        print(h.heap())
+        assert False
+
+    def test_write_many_2(self):
+        for i in range(2000):
+            job = self.model.Job()
+            self.session().add(job)
+            self.session().flush()
+            params = []
+            for j in range(50):
+                params.append({"name": "%s" % j, "value": "moo", "job_id": job.id})
+            t = self.session().begin()
+            self.session().bulk_insert_mappings(self.model.JobParameter, params)
+            t.commit()
+
+        h = hpy()
+        print(h.heap())
+        assert False
 
     def new_hda(self, history, **kwds):
         return history.add_dataset(self.model.HistoryDatasetAssociation(create_dataset=True, sa_session=self.model.session, **kwds))
