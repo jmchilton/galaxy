@@ -26,11 +26,11 @@ We're here to answer your questions about Galaxy architecture!
 
 ---
 
-**Gitter:** [galaxyproject/Lobby](https://gitter.im/galaxyproject/Lobby)
+**Gitter:** [galaxyproject/Lobby ](https://gitter.im/galaxyproject/Lobby)
 
-**IRC:** [irc.freenode.net#galaxyproject](https://webchat.freenode.net/?channels=galaxyproject)
+**IRC:** [irc.freenode.net#galaxyproject ](https://webchat.freenode.net/?channels=galaxyproject)
 
-**GitHub:** [github.com/galaxyproject](https://github.com/galaxyproject)
+**GitHub:** [github.com/galaxyproject ](https://github.com/galaxyproject)
 
 **Twitter:** #usegalaxy, @galaxyproject
 
@@ -40,7 +40,7 @@ We're here to answer your questions about Galaxy architecture!
 
 All Galaxy development happens on GitHub
 
-Contribution guidelines: http://bit.ly/gx-CONTRIBUTING-md
+Contribution guidelines: https://bit.ly/gx-CONTRIBUTING-md
 
 ---
 
@@ -48,7 +48,7 @@ Contribution guidelines: http://bit.ly/gx-CONTRIBUTING-md
 
 ---
 
-[github.com/galaxyproject/**galaxy**](https://github.com/galaxyproject/galaxy)
+[galaxyproject/**galaxy** ](https://github.com/galaxyproject/galaxy)
 
 The main Galaxy application.
 
@@ -58,18 +58,18 @@ Also includes other web applications including the **ToolShed** and **Reports**
 
 ---
 
-[github.com/galaxyproject/**cloudman**](https://github.com/galaxyproject/cloudman)
+[galaxyproject/**cloudman**](https://github.com/galaxyproject/cloudman)
 
 Galaxy CloudMan - a web application which manages a Galaxy cluster in
 the cloud.
 
-[github.com/galaxyproject/**cloudlaunch**](https://github.com/galaxyproject/cloudlaunch)
+[galaxyproject/**cloudlaunch** ](https://github.com/galaxyproject/cloudlaunch)
 
-CloudLaunch web application to make it wasy to launch images on a cloud, drives *https://launch.usegalaxy.org*
+CloudLaunch web application to make it easy to launch images on a cloud, drives *https://launch.usegalaxy.org *
 
 ---
 
-[github.com/galaxyproject/**tools-iuc**](https://github.com/galaxyproject/tools-iuc)
+[galaxyproject/**tools-iuc** ](https://github.com/galaxyproject/tools-iuc)
 
 Galaxy tools maintained by the *IUC* ("Intergalactic Utilities Commission").
 
@@ -78,7 +78,7 @@ A variety of tools, generally of high quality including many of the core tools f
 Demonstrates *current tool development best practices* - development on
 github and then deployed to test/main ToolSheds
 
-[github.com/galaxyproject/**tools-devteam**](https://github.com/galaxyproject/tools-devteam)
+[galaxyproject/**tools-devteam** ](https://github.com/galaxyproject/tools-devteam)
 
 Many older tools appearing on usegalaxy.org.
 
@@ -106,7 +106,7 @@ Other repositories with high quality tools:
 
 ---
 
-[github.com/galaxyproject/**starforge**](https://github.com/galaxyproject/starforge)
+[galaxyproject/**starforge** ](https://github.com/galaxyproject/starforge)
 
 Build Galaxy Tool dependencies for the ToolShed in Docker containers
 
@@ -114,21 +114,21 @@ Build Galaxy framework dependencies as Python wheels
 
 ---
 
-[github.com/galaxyproject/**planemo**](https://github.com/galaxyproject/planemo)
+[galaxyproject/**planemo** ](https://github.com/galaxyproject/planemo)
 
 Commande line utilities to assist in the development of Galaxy tools.
 Linting, testing, deploying to ToolSheds...
 
 *The best practice approach for Galaxy tool development!*
 
-github.com/galaxyproject/**planemo-machine**
+[galaxyproject/**planemo-machine** ](https://github.com/galaxyproject/planemo-machine)
 
 Builds Galaxy environments for Galaxy tool development including Docker
 container, virtual machines, Google compute images
 
 ---
 
-github.com/galaxyproject/**{ansible-\*, \*-playbook}**
+galaxyproject/**{ansible-\*, \*-playbook}**
 
 [Ansible](https://www.ansible.com/) components to automate almost every aspect of Galaxy installation and maintenance.
 
@@ -138,7 +138,7 @@ These playbooks are used to maintain Galaxy main, cloud and Docker images, virtu
 
 ---
 
-[github.com/galaxyproject/**pulsar**](https://github.com/galaxyproject/pulsar)
+[galaxyproject/**pulsar**](https://github.com/galaxyproject/pulsar)
 
 Distributed job execution engine for Galaxy.
 
@@ -150,7 +150,7 @@ Can act as its own queuing system or access an existing cluster DRM.
 
 ---
 
-[github.com/galaxyproject/**bioblend**](https://github.com/galaxyproject/bioblend)
+[galaxyproject/**bioblend** ](https://github.com/galaxyproject/bioblend)
 
 Official Python client for the Galaxy, ToolShed, and CloudMan APIs.
 
@@ -158,15 +158,15 @@ Best documented path to scripting the Galaxy API.
 
 ---
 
-- [github.com/galaxyproject/**blend4php**](https://github.com/galaxyproject/blend4php)
-- [github.com/**jmchilton/blend4j**](https://github.com/jmchilton/blend4j)
-- [github.com/**chapmanb/clj-blend**](https://github.com/chapmanb/clj-blend)
+- [galaxyproject/**blend4php**](https://github.com/galaxyproject/blend4php)
+- [**jmchilton/blend4j**](https://github.com/jmchilton/blend4j)
+- [**chapmanb/clj-blend**](https://github.com/chapmanb/clj-blend)
 
 Galaxy API bindings for other languages.
 
 ---
 
-[github.com/**bgruening/docker-galaxy-stable**](https://github.com/bgruening/docker-galaxy-stable)
+[**bgruening/docker-galaxy-stable** ](https://github.com/bgruening/docker-galaxy-stable)
 
 High quality Docker containers for stable Galaxy environments.
 
@@ -231,7 +231,7 @@ can be adapted to many different technologies.
 ???
 
 If the chief architectual principle guiding the frontend is a fast and accessible
-experience for the bench scientist, perhaps for the backend it is allowing 
+experience for the bench scientist, perhaps for the backend it is allowing
 deployment on many different platforms and a different scales.
 
 ---
@@ -289,7 +289,7 @@ Admin things, Reports and Tool Shed Webapp
 
 - Python interface for web servers defined by PEP 333 - https://www.python.org/dev/peps/pep-0333/.
 - Galaxy moving from Paster to uwsgi to host the application.
-  - http://pythonpaste.org/
+  - https://bitbucket.org/ianb/paste
   - https://uwsgi-docs.readthedocs.io/
 
 ---
@@ -414,7 +414,7 @@ def handle_request(self, environ, start_response):
 
 ### Galaxy Models
 
-- Database interactions powered by SQLAlchemy - http://www.sqlalchemy.org/.
+- Database interactions powered by SQLAlchemy - https://www.sqlalchemy.org/.
 - Galaxy doesn't think in terms "rows" but "objects".
 - Classes for Galaxy model objects in `lib/galaxy/model/__init__.py`.
 - Classes mapped to tables in `lib/galaxy/model/mapping.py`
@@ -605,6 +605,7 @@ All in `config/plugins/interactive_environments`:
 - `phinch`
 - `bam_iobio`
 
+
 ---
 
 ### Managers
@@ -613,7 +614,7 @@ High-level business logic that tie all of these components together.
 
 Controllers should ideally be thin wrappers around actions defined in managers.
 
-Whenever model require more than just the database, the operation should be defined 
+Whenever model require more than just the database, the operation should be defined
 in a manager instead of in the model.
 
 ---
@@ -674,7 +675,7 @@ template: left-aligned
 
 ### JavaScript Modules - The Problem
 
-From http://requirejs.org/docs/why.html:
+From https://requirejs.org/docs/why.html:
 
 - Web sites are turning into Web apps
 - Code complexity grows as the site gets bigger
@@ -688,7 +689,7 @@ template: left-aligned
 
 ### JavaScript Modules - The Solution
 
-From http://requirejs.org/docs/why.html:
+From https://requirejs.org/docs/why.html:
 
  - Some sort of #include/import/require
  - Ability to load nested dependencies
@@ -742,7 +743,7 @@ class: white
 
 ### Stylesheets
 
-- Galaxy uses the less CSS preprocessor - http://lesscss.org/
+- Galaxy uses the less CSS preprocessor - https://lesscss.org/
 - Rebuild style with `make style`
 - Less files in `client/galaxy/style/less`
 - Build happens with grunt recipe in `client/grunt-tasks/style.js`
@@ -900,21 +901,21 @@ migrate.versioning.script.base DEBUG 2016-06-23 19:11:51,994 Script lib/galaxy/m
 migrate.versioning.script.base DEBUG 2016-06-23 19:11:51,994 Loading script lib/galaxy/model/migrate/versions/0002_metadata_file_table.py...
 migrate.versioning.script.base DEBUG 2016-06-23 19:11:52,009 Loading script lib/galaxy/model/migrate/versions/0131_subworkflow_and_input_parameter_modules.py...
 ...
-galaxy.model.migrate.check INFO 2016-06-23 19:13:32,812 Migrating 128 -> 129... 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:33,436 
+galaxy.model.migrate.check INFO 2016-06-23 19:13:32,812 Migrating 128 -> 129...
+galaxy.model.migrate.check INFO 2016-06-23 19:13:33,436
 galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437 Migration script to allow invalidation of job external output metadata temp files
-galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437 Migrating 129 -> 130... 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325 
+galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437
+galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437
+galaxy.model.migrate.check INFO 2016-06-23 19:13:33,437 Migrating 129 -> 130...
+galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325
 galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325 Migration script to change the value column of user_preference from varchar to text.
-galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:34,326 Migrating 130 -> 131... 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633 
+galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325
+galaxy.model.migrate.check INFO 2016-06-23 19:13:34,325
+galaxy.model.migrate.check INFO 2016-06-23 19:13:34,326 Migrating 130 -> 131...
+galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633
 galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633 Migration script to support subworkflows and workflow request input parameters
-galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633 
-galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633 
+galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633
+galaxy.model.migrate.check INFO 2016-06-23 19:13:35,633
 ```]
 
 ---
@@ -1082,7 +1083,7 @@ galaxy.tools.toolbox.base INFO 2016-06-23 19:13:36,497 Parsing the tool configur
 
 class: reduce90
 
-### Tool Dependency Resolution and Indexing 
+### Tool Dependency Resolution and Indexing
 
 .code[```
 galaxy.tools.deps WARNING 2016-06-23 19:13:36,498 Path './database/dependencies' does not exist, ignoring
@@ -1309,7 +1310,7 @@ Multiple hosts
 Jobs across many clusters
 ]
 
-*http://usegalaxy.org/production*
+* https://usegalaxy.org/production *
 
 ---
 
