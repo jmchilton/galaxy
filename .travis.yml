@@ -5,6 +5,7 @@ language: generic
 env:
   - TOX_ENV=py27-first_startup
   - TOX_ENV=py35-first_startup
+  - TOX_ENV=cwl_green
 
 install:
   - set -e
