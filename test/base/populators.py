@@ -446,7 +446,14 @@ class CwlPopulator(object):
         test = self.get_conformance_test(version, doc)
         tool = os.path.join(CWL_TOOL_DIRECTORY, test["tool"])
         job = os.path.join(CWL_TOOL_DIRECTORY, test["job"])
-        run = self.run_cwl_job(tool, job)
+        try:
+            run = self.run_cwl_job(tool, job)
+        except Exception:
+            # Should fail so this is good!
+            if test.get("should_fail", False):
+                return True
+            raise
+
         expected_outputs = test["output"]
         try:
             for key, value in expected_outputs.items():
