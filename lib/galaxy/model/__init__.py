@@ -4192,6 +4192,15 @@ class WorkflowStep(RepresentById):
         self._inputs_by_name = None
 
     @property
+    def input_default_value(self):
+        tool_inputs = self.tool_inputs
+        tool_state = tool_inputs
+        default_value = tool_state.get("default_value")
+        if default_value:
+            default_value = json.loads(default_value)["value"]
+        return default_value
+
+    @property
     def input_type(self):
         assert self.type and self.type in self.STEP_TYPE_TO_INPUT_TYPE, "step.input_type can only be called on input step types"
         return self.STEP_TYPE_TO_INPUT_TYPE[self.type]
