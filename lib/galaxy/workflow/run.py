@@ -5,7 +5,6 @@ import uuid
 from galaxy import model
 from galaxy.util import ExecutionTimer
 from galaxy.util.odict import odict
-from galaxy.dataset_collections.structure import leaf
 from galaxy.workflow import modules
 from galaxy.workflow.run_request import (
     workflow_request_to_run_config,
@@ -547,9 +546,13 @@ class WorkflowProgress(object):
         if self.inputs_by_step_id:
             step_id = step.id
             if step_id not in self.inputs_by_step_id and 'output' not in outputs:
-                template = "Step with id %s not found in inputs_step_id (%s)"
-                message = template % (step.log_str(), self.inputs_by_step_id)
-                raise ValueError(message)
+                default_value = step.input_default_value
+                if default_value:
+                    outputs['output'] = default_value
+                else:
+                    template = "Step with id %s not found in inputs_step_id (%s)"
+                    message = template % (step.log_str(), self.inputs_by_step_id)
+                    raise ValueError(message)
             elif step_id in self.inputs_by_step_id:
                 outputs['output'] = self.inputs_by_step_id[step_id]
 
