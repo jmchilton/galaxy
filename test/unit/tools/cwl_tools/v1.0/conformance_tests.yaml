@@ -1759,27 +1759,32 @@
   output:
     count_output: [16, 1]
   tool: v1.0/count-lines13-wf.cwl
+  label: wf_scatter_embedded_subwf
   doc: Test simple scatter over an embedded subworkflow
 
 - job: v1.0/count-lines4-job.json
   output:
     count_output: [16, 1]
   tool: v1.0/count-lines14-wf.cwl
+  label: wf_multiple_param_embedded_subwf
   doc: Test simple multiple input scatter over an embedded subworkflow
 
 - job: v1.0/wc-job.json
   output: {count_output: 16}
   tool: v1.0/count-lines15-wf.cwl
+  label: wf_double_nested_subwf
   doc: Test twice nested subworkflow
 
 - job: v1.0/wc-job.json
   output: {count_output: 16}
   tool: v1.0/count-lines16-wf.cwl
+  label: wf_subwf_tool_then_wf
   doc: Test subworkflow of mixed depth with tool first
 
 - job: v1.0/wc-job.json
   output: {count_output: 16}
   tool: v1.0/count-lines17-wf.cwl
+  label: wf_subwf_wf_then_tool
   doc: Test subworkflow of mixed depth with tool after
 
 - job: v1.0/record-output-job.json
@@ -1799,36 +1804,43 @@
         }
     }
   tool: v1.0/record-output-wf.cwl
+  label: wf_output_record
   doc: Test record type inputs to and outputs from workflows.
 
 - job: v1.0/io-int.json
   output: {"o": 10}
   tool: v1.0/io-int-wf.cwl
+  label: wf_input_output_int
   doc: Test integer workflow input and outputs
 
 - job: v1.0/io-int.json
   output: {"o": 10}
   tool: v1.0/io-int-optional-wf.cwl
+  label: wf_input_int_opt_spec
   doc: Test optional integer workflow inputs (specified)
 
 - job: v1.0/empty.json
   output: {"o": 4}
   tool: v1.0/io-int-optional-wf.cwl
+  label: wf_input_int_opt_unspec
   doc: Test optional integer workflow inputs (unspecified)
 
 - job: v1.0/io-int.json
   output: {"o": 10}
   tool: v1.0/io-int-default-wf.cwl
+  label: wf_input_int_default_spec
   doc: Test default integer workflow inputs (specified)
 
 - job: v1.0/empty.json
   output: {"o": 8}
   tool: v1.0/io-int-default-wf.cwl
+  label: wf_input_int_default_unspec
   doc: Test default integer workflow inputs (unspecified)
 
 - job: v1.0/empty.json
   output: {"o": 13}
   tool: v1.0/io-int-default-tool-and-wf.cwl
+  label: wf_input_int_default_tool_wf_unspec
   doc: Test default integer tool and workflow inputs (unspecified)
 
 - job: v1.0/empty.json
@@ -1840,6 +1852,7 @@
             "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376"
   }}
   tool: v1.0/io-file-default-wf.cwl
+  label: wf_input_file_default_unspec
   doc: Test File input with default unspecified to workflow
 
 - job: v1.0/default_path_job.yml
@@ -1851,6 +1864,7 @@
                 "size": 13
   }}
   tool: v1.0/io-file-default-wf.cwl
+  label: wf_input_file_default_spec
   doc: Test File input with default specified to workflow
 
 - job: v1.0/job-input-array-one-empty-file.json
@@ -1863,6 +1877,7 @@
         "size": 0
   }}
   tool: v1.0/io-file-or-files.cwl
+  label: wf_input_union_file_filearray_onefilearray
   doc: Test input union type or File or File array to a tool with one file in array specified.
 
 - job: v1.0/job-input-array-few-files.json
@@ -1875,6 +1890,7 @@
         "size": 1114
   }}
   tool: v1.0/io-file-or-files.cwl
+  label: wf_input_union_file_filearray_fewfilesarray
   doc: Test input union type or File or File array to a tool with a few files in array specified.
 
 - job: v1.0/job-input-one-file.json
@@ -1887,6 +1903,7 @@
         "size": 1111
   }}
   tool: v1.0/io-file-or-files.cwl
+  label: wf_input_union_file_filearray_onefile
   doc: Test input union type or File or File array to a tool with one file specified.
 
 - job: v1.0/job-input-null.json
@@ -1899,86 +1916,103 @@
         "size": 10
   }}
   tool: v1.0/io-file-or-files.cwl
+  label: wf_input_union_file_filearray_null
   doc: Test input union type or File or File array to a tool with null specified.
 
 - job: v1.0/io-any-int.json
   output: {"t1": 7}
   tool: v1.0/io-any-1.cwl
+  label: wf_input_any_integer_tool
   doc: Test Any parameter with integer input to a tool
 
 - job: v1.0/io-any-string.json
   output: {"t1": "7"}
   tool: v1.0/io-any-1.cwl
+  label: wf_input_any_string_tool
   doc: Test Any parameter with string input to a tool
 
 - job: v1.0/io-any-file.json
   output: {"t1": "File"}
   tool: v1.0/io-any-1.cwl
+  label: wf_input_any_file_tool
   doc: Test Any parameter with file input to a tool
 
 - job: v1.0/io-any-array.json
   output: {"t1": [1, "moocow"]}
   tool: v1.0/io-any-1.cwl
+  label: wf_input_any_array_tool
   doc: Test Any parameter with array input to a tool
 
 - job: v1.0/io-any-record.json
   output: {"t1": {"moo": 1, "cow": 5}}
   tool: v1.0/io-any-1.cwl
+  label: wf_input_any_record_tool
   doc: Test Any parameter with record input to a tool
 
 - job: v1.0/io-any-int.json
   output: {"t1": 7}
   tool: v1.0/io-any-wf-1.cwl
+  label: wf_input_any_integer_wf
   doc: Test Any parameter with integer input to a workflow
 
 - job: v1.0/io-any-string.json
   output: {"t1": "7"}
   tool: v1.0/io-any-wf-1.cwl
+  label: wf_input_any_string_wf
   doc: Test Any parameter with string input to a workflow
 
 - job: v1.0/io-any-file.json
   output: {"t1": "File"}
   tool: v1.0/io-any-wf-1.cwl
+  label: wf_input_any_file_wf
   doc: Test Any parameter with file input to a workflow
 
 - job: v1.0/io-any-array.json
   output: {"t1": [1, "moocow"]}
   tool: v1.0/io-any-wf-1.cwl
+  label: wf_input_any_array_wf
   doc: Test Any parameter with array input to a workflow
 
 - job: v1.0/io-any-record.json
   output: {"t1": {"moo": 1, "cow": 5}}
   tool: v1.0/io-any-wf-1.cwl
+  label: wf_input_any_record_wf
   doc: Test Any parameter with record input to a tool
 
 - job: v1.0/empty.json
   output: {"o": "the default value"}
   tool: v1.0/io-union-input-default-wf.cwl
+  label: wf_input_union_default_unspec
   doc: Test union type input to workflow with default unspecified
 
 - job: v1.0/io-any-file.json
   output: {"o": "File"}
   tool: v1.0/io-union-input-default-wf.cwl
+  label: wf_input_union_default_file
   doc: Test union type input to workflow with default specified as file
 
 - job: v1.0/empty.json
   output: {"val": "moocow\n"}
   tool: v1.0/step-valuefrom4-wf.cwl
+  label: wf_step_valuefrom_literal
   doc: Test valueFrom on workflow step from literal (string).
 
 - job: v1.0/wc-job.json
   output: {"val1": "whale.txt\n", "val2": "step1_out\n"}
   tool: v1.0/step-valuefrom5-wf.cwl
+  label: wf_step_valuefrom_basename
   doc: Test valueFrom on workflow step using basename.
 
 - job: v1.0/output-arrays-int-job.json
   output: {"o": [0, 1, 2]}
   tool: v1.0/output-arrays-int.cwl
+  label: tool_output_arrays_ints
   doc: Test output arrays in a tool (with ints).
 
 - job: v1.0/output-arrays-int-job.json
   output: {"o": 12}
   tool: v1.0/output-arrays-int-wf.cwl
+  label: wf_output_arrays_ints
   doc: Test output arrays in a workflow (with ints).
 
 - job: v1.0/output-arrays-file-job.json
@@ -1999,6 +2033,7 @@
     }
   ]}
   tool: v1.0/output-arrays-file-wf.cwl
+  label: wf_output_arrays_files
   doc: Test output arrays in a workflow (with Files).
 
 - job: "v1.0/empty.json"
@@ -2011,6 +2046,7 @@
         "location": Any
   }}
   tool: "v1.0/docker-run-cmd.cwl"
+  label: tool_docker_entrypoint
   doc: Test Docker ENTRYPOINT usage
 
 - job: "v1.0/job-input-array-one-empty-file.json"
@@ -2023,6 +2059,7 @@
         "size": 11
   }}
   tool: "v1.0/size-expression-tool.cwl"
+  label: tool_expressions_size_emptyfile
   doc: Test use of size in expressions for an empty file
 
 - job: "v1.0/job-input-array-few-files.json"
@@ -2035,4 +2072,5 @@
         "size": 31
   }}
   tool: "v1.0/size-expression-tool.cwl"
+  label: tool_expressions_size_fewfiles
   doc: Test use of size in expressions for a few files
