@@ -112,7 +112,8 @@ class DatasetsController(BaseAPIController, UsesVisualizationMixin):
             'DATASET_ACCESS': access,
         }
 
-        if trans.app.security_agent.can_manage_dataset(trans.get_current_user_roles(), hda.dataset):
+        can_manage_dataset = trans.user_is_admin() or trans.app.security_agent.can_manage_dataset(trans.get_current_user_roles(), hda.dataset)
+        if can_manage_dataset:
             payload_permissions = {}
             for action in trans.app.model.Dataset.permitted_actions.keys():
                 payload_permissions[action] = [trans.security.decode_id(role_id) for role_id in util.listify(params.get(action))]
@@ -132,7 +133,8 @@ class DatasetsController(BaseAPIController, UsesVisualizationMixin):
                 if error:
                     raise galaxy_exceptions.RequestParameterInvalidException(error)
                 else:
-                    return self.hda_serializer.serialize_to_view(hda, view='detailed', user=trans.user, trans=trans)['permissions']
+                    serialized = self.hda_serializer.serialize_to_view(hda, view='detailed', user=trans.user, trans=trans)
+                    return serialized['permissions']
         else:
             raise galaxy_exceptions.InsufficientPermissionsException('You are not authorized to change this dataset\'s permissions.')
 

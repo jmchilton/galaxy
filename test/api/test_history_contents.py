@@ -30,6 +30,30 @@ class HistoryContentsApiTestCase(api.ApiTestCase, TestsDatasets):
         hda_summary = self.__check_for_hda(contents_response, hda1)
         assert "display_types" not in hda_summary  # Quick summary, not full details
 
+    def test_access_permissions(self):
+        hda1 = self._wait_for_new_hda()
+        role_id = self.library_populator.user_private_role_id()
+        payload = {
+            "access": [role_id],
+            "manage": [role_id],
+        }
+
+        # First the details render for another user.
+        with self._different_user():
+            contents_response = self._get("histories/%s/contents/%s" % (self.history_id, hda1["id"])).json()
+            assert "name" in contents_response
+
+        # Then we restrict access.
+        create_response = self._post("datasets/%s/set_permissions" % hda1["id"], payload, admin=True)
+        # TODO: if I add access this return an exception but it does change the permissions,
+        # like remove accesss permissions doesn't allow permissions to render.
+        # self._assert_status_code_is(create_response, 200)
+
+        # Finally the details don't render.
+        with self._different_user():
+            contents_response = self._get("histories/%s/contents/%s" % (self.history_id, hda1["id"])).json()
+            assert "name" not in contents_response
+
     def test_index_hda_all_details(self):
         hda1 = self._new_dataset(self.history_id)
         contents_response = self._get("histories/%s/contents?details=all" % self.history_id)

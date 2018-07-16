@@ -210,7 +210,8 @@ class DatasetSerializer(base.ModelSerializer, deletable.PurgableSerializerMixin)
     def serialize_permissions(self, dataset, key, user=None, **context):
         """
         """
-        if not self.dataset_manager.permissions.manage.is_permitted(dataset, user):
+        trans = context.get("trans", None)
+        if not self.dataset_manager.permissions.manage.is_permitted(dataset, user, trans=trans):
             self.skip()
 
         management_permissions = self.dataset_manager.permissions.manage.by_dataset(dataset)
@@ -246,7 +247,8 @@ class DatasetDeserializer(base.ModelDeserializer, deletable.PurgableDeserializer
 
             { 'manage': [ <role id 1>, ... ], 'access': [ <role id 2>, ... ] }
         """
-        self.manager.permissions.manage.error_unless_permitted(dataset, user)
+        trans = context.get("trans", None)
+        self.manager.permissions.manage.error_unless_permitted(dataset, user, trans=trans)
         self._validate_permissions(permissions, **context)
         manage = self._list_of_roles_from_ids(permissions['manage'])
         access = self._list_of_roles_from_ids(permissions['access'])
