@@ -231,7 +231,10 @@ class AccessDatasetRBACPermission(DatasetRBACPermission):
     permission_failed_error_class = DatasetAccessPermissionFailedException
 
     # ---- interface
-    def is_permitted(self, dataset, user):
+    def is_permitted(self, dataset, user, trans=None):
+        if trans and trans.user_is_admin():
+            return True
+
         current_roles = self._roles(dataset)
         # NOTE: that because of short circuiting this allows
         #   anonymous access to public datasets
