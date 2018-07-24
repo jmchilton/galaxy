@@ -13,6 +13,9 @@ from galaxy.util import safe_makedirs, string_as_bool
 from galaxy.util.bunch import Bunch
 from .util import set_basename_and_derived_properties
 
+from galaxy.util.none_like import NoneDataset
+from galaxy.util.object_wrapper import SafeStringWrapper
+
 log = logging.getLogger(__name__)
 
 NOT_PRESENT = object()
@@ -158,7 +161,10 @@ def dataset_wrapper_to_file_json(inputs_dir, dataset_wrapper):
         path = new_input_path
 
     raw_file_object["location"] = path
-    raw_file_object["size"] = int(dataset_wrapper.get_size())
+
+    if not isinstance(dataset_wrapper.unsanitized, NoneDataset):
+        raw_file_object["size"] = int(dataset_wrapper.get_size())
+
     set_basename_and_derived_properties(raw_file_object, str(dataset_wrapper.created_from_basename or dataset_wrapper.name))
     return raw_file_object
 
