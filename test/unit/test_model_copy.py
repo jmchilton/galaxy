@@ -2,6 +2,8 @@ import contextlib
 import os
 import threading
 
+from sqlalchemy import event
+
 import galaxy.datatypes.registry
 import galaxy.model
 import galaxy.model.mapping as mapping
@@ -15,26 +17,18 @@ datatypes_registry = galaxy.datatypes.registry.Registry()
 datatypes_registry.load_datatypes()
 galaxy.model.set_datatypes_registry(datatypes_registry)
 
-NUM_DATASETS = 10
+NUM_DATASETS = 3
+NUM_COLLECTIONS = 1
 SLOW_QUERY_LOG_THRESHOLD = 1000
 INCLUDE_METADATA_FILE = True
 THREAD_LOCAL_LOG = threading.local()
 
 
 def test_history_dataset_copy(num_datasets=NUM_DATASETS, include_metadata_file=INCLUDE_METADATA_FILE):
-    with setup_mapping_and_user() as (test_config, object_store, model, old_history):
+    with _setup_mapping_and_user() as (test_config, object_store, model, old_history):
         for i in range(num_datasets):
-            o_metadata_path = test_config.write("moo", "test_metadata_original_%d" % i)
-            hda1 = model.HistoryDatasetAssociation(extension="bam", create_dataset=True, sa_session=model.context)
-            model.context.add(hda1)
-            model.context.flush([hda1])
-            object_store.update_from_file(hda1, file_name=o_metadata_path, create=True)
-            if include_metadata_file:
-                hda1.metadata.from_JSON_dict(json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": o_metadata_path})})
-                _check_metadata_file(hda1)
-            hda1.set_size()
-            old_history.add_dataset(hda1)
-            hda1.add_item_annotation(model.context, old_history.user, hda1, "annotation #%d" % hda1.hid)
+            hda_path = test_config.write("moo", "test_metadata_original_%d" % i)
+            _create_hda(model, object_store, old_history, hda_path, include_metadata_file=include_metadata_file)
 
         model.context.flush()
 
@@ -51,8 +45,51 @@ def test_history_dataset_copy(num_datasets=NUM_DATASETS, include_metadata_file=I
             assert annotation_str == "annotation #%d" % hda.hid, annotation_str
 
 
+def test_history_collection_copy(list_size=NUM_DATASETS):
+    with _setup_mapping_and_user() as (test_config, object_store, model, old_history):
+        for i in range(NUM_COLLECTIONS):
+            hdas = []
+            for i in range(list_size * 2):
+                hda_path = test_config.write("moo", "test_metadata_original_%d" % i)
+                hda = _create_hda(model, object_store, old_history, hda_path, visible=False, include_metadata_file=False)
+                hdas.append(hda)
+
+            list_elements = []
+            list_collection = model.DatasetCollection(collection_type="list:paired")
+            for j in range(list_size):
+                paired_collection = model.DatasetCollection(collection_type="paired")
+                forward_dce = model.DatasetCollectionElement(collection=paired_collection, element=hdas[j * 2])
+                reverse_dce = model.DatasetCollectionElement(collection=paired_collection, element=hdas[j * 2 + 1])
+                paired_collection.elements = [forward_dce, reverse_dce]
+                paired_collection_element = model.DatasetCollectionElement(collection=list_collection, element=paired_collection)
+                list_elements.append(paired_collection_element)
+                model.context.add_all([forward_dce, reverse_dce, paired_collection_element])
+            list_collection.elements = list_elements
+            history_dataset_collection = model.HistoryDatasetCollectionAssociation(collection=list_collection)
+            history_dataset_collection.user = old_history.user
+            model.context.add(history_dataset_collection)
+
+            model.context.flush()
+            old_history.add_dataset_collection(history_dataset_collection)
+            print("adding collection....")
+
+        model.context.flush()
+
+        @event.listens_for(model.context, "before_flush")
+        def track_instances_before_flush(session, context, instances):
+            if not instances:
+                print("FULL FLUSH...")
+            else:
+                print("Flushing just %s" % instances)
+
+        history_copy_timer = ExecutionTimer()
+        new_history = old_history.copy(target_user=old_history.user)
+        print("history copied %s" % history_copy_timer)
+        assert False
+
+
 @contextlib.contextmanager
-def setup_mapping_and_user():
+def _setup_mapping_and_user():
     with TestConfig(DISK_TEST_CONFIG) as (test_config, object_store):
         # Start the database and connect the mapping
         model = mapping.init("/tmp", "sqlite:///:memory:", create_tables=True, object_store=object_store, slow_query_log_threshold=SLOW_QUERY_LOG_THRESHOLD, thread_local_log=THREAD_LOCAL_LOG)
@@ -62,6 +99,21 @@ def setup_mapping_and_user():
         model.context.add_all([u, h1])
         model.context.flush()
         yield test_config, object_store, model, h1
+
+
+def _create_hda(model, object_store, history, path, visible=True, include_metadata_file=False):
+    hda = model.HistoryDatasetAssociation(extension="bam", create_dataset=True, sa_session=model.context)
+    hda.visible = visible
+    model.context.add(hda)
+    model.context.flush([hda])
+    object_store.update_from_file(hda, file_name=path, create=True)
+    if include_metadata_file:
+        hda.metadata.from_JSON_dict(json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": path})})
+        _check_metadata_file(hda)
+    hda.set_size()
+    history.add_dataset(hda)
+    hda.add_item_annotation(model.context, history.user, hda, "annotation #%d" % hda.hid)
+    return hda
 
 
 def _check_metadata_file(hda):
