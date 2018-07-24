@@ -1513,10 +1513,9 @@ class History(HasTags, Dictifiable, UsesAnnotations, HasName):
         else:
             hdcas = self.active_dataset_collections
         for hdca in hdcas:
-            new_hdca = hdca.copy()
+            new_hdca = hdca.copy(force_flush=False, set_hid=False, quota=applies_to_quota)
             new_history.add_dataset_collection(new_hdca, set_hid=False)
             db_session.add(new_hdca)
-            db_session.flush()
 
             if target_user:
                 new_hdca.copy_item_annotation(db_session, self.user, hdca, target_user, new_hdca)
@@ -3417,7 +3416,7 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
         error_message = "Dataset collection has no %s with key %s." % (get_by_attribute, key)
         raise KeyError(error_message)
 
-    def copy(self, destination=None, element_destination=None):
+    def copy(self, destination=None, element_destination=None, force_flush=True, set_hid=True, quota=True):
         new_collection = DatasetCollection(
             collection_type=self.collection_type,
             element_count=self.element_count
@@ -3427,9 +3426,13 @@ class DatasetCollection(Dictifiable, UsesAnnotations):
                 new_collection,
                 destination=destination,
                 element_destination=element_destination,
+                set_hid=set_hid,
+                quota=quota,
             )
-        object_session(self).add(new_collection)
-        object_session(self).flush()
+        if force_flush:
+            # See comment by force_flush handling in hdca.copy() - same applies here.
+            object_session(self).add(new_collection)
+            object_session(self).flush()
         return new_collection
 
     def replace_failed_elements(self, replacements):
@@ -3614,7 +3617,7 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
                 break
         return matching_collection
 
-    def copy(self, element_destination=None):
+    def copy(self, element_destination=None, force_flush=True, set_hid=True, quota=True):
         """
         Create a copy of this history dataset collection association. Copy
         underlying collection.
@@ -3635,10 +3638,16 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
         collection_copy = self.collection.copy(
             destination=hdca,
             element_destination=element_destination,
+            set_hid=set_hid,
+            force_flush=False,  # Never need to flush for this method, rely on flush at the end.
+            quota=quota,
         )
         hdca.collection = collection_copy
-        object_session(self).add(hdca)
-        object_session(self).flush()
+        if force_flush:
+            object_session(self).add(hdca)
+            # Flushing the whole session to match behavior of hda.copy() but we need to work
+            # toward just flushing the object itself and switching force_flush default to False.
+            object_session(self).flush()
         return hdca
 
 
@@ -3753,22 +3762,24 @@ class DatasetCollectionElement(Dictifiable):
         else:
             return [element_object]
 
-    def copy_to_collection(self, collection, destination=None, element_destination=None):
+    def copy_to_collection(self, collection, destination=None, element_destination=None, set_hid=True, quota=True):
         element_object = self.element_object
         if element_destination:
             if self.is_collection:
                 element_object = element_object.copy(
                     destination=destination,
-                    element_destination=element_destination
+                    element_destination=element_destination,
+                    set_hid=set_hid,
+                    force_flush=False,
                 )
             else:
-                new_element_object = element_object.copy()
+                new_element_object = element_object.copy(force_flush=False)
                 if destination is not None and element_object.hidden_beneath_collection_instance:
                     new_element_object.hidden_beneath_collection_instance = destination
                 # Ideally we would not need to give the following
                 # element an HID and it would exist in the history only
                 # as an element of the containing collection.
-                element_destination.add_dataset(new_element_object)
+                element_destination.add_dataset(new_element_object, set_hid=set_hid, quota=quota)
                 element_object = new_element_object
 
         new_element = DatasetCollectionElement(
