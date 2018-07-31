@@ -4318,14 +4318,34 @@ class WorkflowInvocationStep(object, Dictifiable):
         else:
             return []
 
+    # Following code shared with HDCA...
+    @property
+    def job_source_type(self):
+        if self.implicit_collection_jobs_id:
+            return "ImplicitCollectionJobs"
+        elif self.job_id:
+            return "Job"
+        else:
+            return None
+
+    @property
+    def job_source_id(self):
+        return self.implicit_collection_jobs_id or self.job_id
+
     def to_dict(self, view='collection', value_mapper=None):
         rval = super(WorkflowInvocationStep, self).to_dict(view=view, value_mapper=value_mapper)
+        rval["job_source_id"] = self.job_source_id
+        rval["job_source_type"] = self.job_source_type
         rval['order_index'] = self.workflow_step.order_index
         rval['workflow_step_label'] = self.workflow_step.label
         rval['workflow_step_uuid'] = str(self.workflow_step.uuid)
         # Following no longer makes sense...
         # rval['state'] = self.job.state if self.job is not None else None
         if view == 'element':
+            jobs = []
+            for job in self.jobs:
+                jobs.append(job.to_dict())
+
             outputs = {}
             for output_assoc in self.output_datasets:
                 name = output_assoc.output_name
@@ -4345,6 +4365,7 @@ class WorkflowInvocationStep(object, Dictifiable):
 
             rval['outputs'] = outputs
             rval['output_collections'] = output_collections
+            rval['jobs'] = jobs
         return rval
 
 
