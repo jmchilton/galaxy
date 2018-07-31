@@ -4276,8 +4276,8 @@ class WorkflowInvocationToSubworkflowInvocationAssociation(object, Dictifiable):
 
 
 class WorkflowInvocationStep(object, Dictifiable):
-    dict_collection_visible_keys = ['id', 'update_time', 'job_id', 'workflow_step_id', 'state', 'action']
-    dict_element_visible_keys = ['id', 'update_time', 'job_id', 'workflow_step_id', 'state', 'action']
+    dict_collection_visible_keys = ['id', 'update_time', 'job_id', 'implicit_collection_jobs_id', 'workflow_step_id', 'state', 'action']
+    dict_element_visible_keys = ['id', 'update_time', 'job_id', 'implicit_collection_jobs_id', 'workflow_step_id', 'state', 'action']
     states = Bunch(
         NEW='new',  # Brand new workflow invocation step
         READY='ready',  # Workflow invocation step ready for another iteration of scheduling.
