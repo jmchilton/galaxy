@@ -359,7 +359,6 @@ class MappingTests(unittest.TestCase):
         d3 = self.new_hda(h1, name="3", deleted=True)
         d4 = self.new_hda(h1, name="4", visible=False, deleted=True)
 
-        self.session().add_all([d1, d2, d3, d4])
         self.session().flush()
 
         def contents_iter_names(**kwds):

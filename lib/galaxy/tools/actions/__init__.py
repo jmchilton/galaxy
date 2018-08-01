@@ -233,7 +233,7 @@ class DefaultToolAction(object):
 
         return history, inp_data, inp_dataset_collections, preserved_tags
 
-    def execute(self, tool, trans, incoming=None, return_job=False, set_output_hid=True, history=None, job_params=None, rerun_remap_job_id=None, execution_cache=None, dataset_collection_elements=None, completed_job=None):
+    def execute(self, tool, trans, incoming=None, return_job=False, set_output_hid=True, history=None, job_params=None, rerun_remap_job_id=None, execution_cache=None, dataset_collection_elements=None, completed_job=None, flush_job=True):
         """
         Executes a tool, creating job and tool outputs, associating them, and
         submitting the job to the job queue. If history is not specified, use
@@ -509,9 +509,6 @@ class DefaultToolAction(object):
                                      out_data=out_data)
         log.info("Setup for job %s complete, ready to flush %s" % (job.log_str(), job_setup_timer))
 
-        job_flush_timer = ExecutionTimer()
-        trans.sa_session.flush()
-        log.info("Flushed transaction for job %s %s" % (job.log_str(), job_flush_timer))
         # Some tools are not really executable, but jobs are still created for them ( for record keeping ).
         # Examples include tools that redirect to other applications ( epigraph ).  These special tools must
         # include something that can be retrieved from the params ( e.g., REDIRECT_URL ) to keep the job
@@ -533,9 +530,10 @@ class DefaultToolAction(object):
             trans.sa_session.flush()
             trans.response.send_redirect(url_for(controller='tool_runner', action='redirect', redirect_url=redirect_url))
         else:
-            # Put the job in the queue if tracking in memory
-            app.job_manager.job_queue.put(job.id, job.tool_id)
-            trans.log_event("Added job to the job queue, id: %s" % str(job.id), tool_id=job.tool_id)
+            if flush_job:
+                # Put the job in the queue if tracking in memory
+                app.job_manager.job_queue.put(job.id, job.tool_id)
+                trans.log_event("Added job to the job queue, id: %s" % str(job.id), tool_id=job.tool_id)
             return job, out_data
 
     def _remap_job_on_rerun(self, trans, galaxy_session, rerun_remap_job_id, current_job, out_data):
