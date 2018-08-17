@@ -22,6 +22,7 @@ from .cwltool_deps import (
     ensure_cwltool_available,
     pathmapper,
     process,
+    beta_relaxed_fmt_check,
 )
 from .representation import (
     field_to_field_type,
@@ -427,6 +428,7 @@ class JobProxy(object):
                 tmpdir=os.path.join(self._job_directory, "cwltmp"),
                 stagedir=os.path.join(self._job_directory, "cwlstagedir"),
                 use_container=False,
+                beta_relaxed_fmt_check=beta_relaxed_fmt_check,
             ))
             self._is_command_line_job = hasattr(self._cwl_job, "command_line")
 
