@@ -1,5 +1,18 @@
 <?xml version="1.0"?>
 <toolbox tool_path="${tool_conf_dir}" is_shed_conf="false">
+
+  <!-- workflow-is-cwl test
+  <tool file="../../../../workflow-is-cwl/tools/Diamond/Diamon.makedb-v0.9.21.cwl"/>
+  <tool file="../../../../workflow-is-cwl/tools/BUSCO/BUSCO-v3.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/TransDecoder/TransDecoder.LongOrfs-v5.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/Diamond/Diamon.makedb-v0.9.21.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/Infernal/cmsearch/infernal-cmsearch-v1.1.2.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/InterProScan/InterProScan-v5.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/HMMER/phmmer-v3.2.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/BUSCO/BUSCO-v3.cwl" />
+  <tool file="../../../../workflow-is-cwl/tools/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl" />
+  -->
+
   <tool file="upload.xml"/>
   <tool file="test_data_source.xml"/>
   <tool file="simple_constructs.xml" />
