@@ -2,7 +2,7 @@
 <toolbox tool_path="${tool_conf_dir}" is_shed_conf="false">
 
   <!-- workflow-is-cwl test
-  <tool file="../../../../workflow-is-cwl/tools/Diamond/Diamon.makedb-v0.9.21.cwl"/>
+  <tool file="../../../../workflow-is-cwl/tools/Diamond/Diamon.makedb-v0.9.21.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/BUSCO/BUSCO-v3.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/TransDecoder/TransDecoder.LongOrfs-v5.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/Infernal/cmsearch/infernal-cmsearch-v1.1.2.cwl" />
