@@ -5,7 +5,6 @@
   <tool file="../../../../workflow-is-cwl/tools/Diamond/Diamon.makedb-v0.9.21.cwl"/>
   <tool file="../../../../workflow-is-cwl/tools/BUSCO/BUSCO-v3.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/TransDecoder/TransDecoder.LongOrfs-v5.cwl" />
-  <tool file="../../../../workflow-is-cwl/tools/Diamond/Diamon.makedb-v0.9.21.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/Infernal/cmsearch/infernal-cmsearch-v1.1.2.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/InterProScan/InterProScan-v5.cwl" />
   <tool file="../../../../workflow-is-cwl/tools/HMMER/phmmer-v3.2.cwl" />
