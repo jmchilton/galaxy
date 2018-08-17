@@ -56,6 +56,7 @@ except (ImportError, SyntaxError):
 
 needs_shell_quoting = re.compile(r"""(^$|[\s|&;()<>\'"$@])""").search
 
+beta_relaxed_fmt_check = False # if set to true, file format checking is not perfomed.
 
 def ensure_cwltool_available():
     """Assert optional dependencies proxied via this module are available at runtime.
