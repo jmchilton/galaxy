@@ -353,49 +353,6 @@ class RootController(controller.JSAppLauncher, UsesAnnotations):
         return trans.show_message("New history created", refresh_frames=['history'])
 
     @web.expose
-    def history_add_to(self, trans, history_id=None, file_data=None,
-                       name="Data Added to History", info=None, ext="txt", dbkey="?", copy_access_from=None, **kwd):
-        """Adds a POSTed file to a History.
-        """
-        # TODO: unencoded id
-        try:
-            history = trans.sa_session.query(trans.app.model.History).get(history_id)
-            data = trans.app.model.HistoryDatasetAssociation(name=name,
-                                                             info=info,
-                                                             extension=ext,
-                                                             dbkey=dbkey,
-                                                             create_dataset=True,
-                                                             sa_session=trans.sa_session)
-            if copy_access_from:
-                copy_access_from = trans.sa_session.query(trans.app.model.HistoryDatasetAssociation).get(copy_access_from)
-                trans.app.security_agent.copy_dataset_permissions(copy_access_from.dataset, data.dataset)
-            else:
-                permissions = trans.app.security_agent.history_get_default_permissions(history)
-                trans.app.security_agent.set_all_dataset_permissions(data.dataset, permissions)
-            trans.sa_session.add(data)
-            trans.sa_session.flush()
-            data_file = open(data.file_name, "wb")
-            file_data.file.seek(0)
-            data_file.write(file_data.file.read())
-            data_file.close()
-            data.state = data.states.OK
-            data.set_size()
-            data.init_meta()
-            data.set_meta()
-            trans.sa_session.flush()
-            history.add_dataset(data)
-            trans.sa_session.flush()
-            data.set_peek()
-            trans.sa_session.flush()
-            trans.log_event("Added dataset %d to history %d" % (data.id, trans.history.id))
-            return trans.show_ok_message("Dataset " + str(data.hid) + " added to history " + str(history_id) + ".")
-        except Exception as e:
-            msg = "Failed to add dataset to history: %s" % (e)
-            log.error(msg)
-            trans.log_event(msg)
-            return trans.show_error_message("Adding File to History has Failed")
-
-    @web.expose
     def dataset_make_primary(self, trans, id=None):
         """Copies a dataset and makes primary.
         """

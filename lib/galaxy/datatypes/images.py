@@ -4,8 +4,6 @@ Image classes
 import logging
 import zipfile
 
-from six.moves.urllib.parse import quote_plus
-
 from galaxy.datatypes.text import Html as HtmlFromText
 from galaxy.util import nice_size
 from galaxy.util.image_util import check_image_type
@@ -162,51 +160,15 @@ class Pdf(Image):
             return fh.read(4) == b"%PDF"
 
 
-def create_applet_tag_peek(class_name, archive, params):
-    text = """
-<object classid="java:%s"
-      type="application/x-java-applet"
-      height="30" width="200" align="center" >
-      <param name="archive" value="%s"/>""" % (class_name, archive)
-    for name, value in params.items():
-        text += """<param name="%s" value="%s"/>""" % (name, value)
-    text += """
-<object classid="clsid:8AD9C840-044E-11D1-B3E9-00805F499D93"
-        height="30" width="200" >
-        <param name="code" value="%s" />
-        <param name="archive" value="%s"/>""" % (class_name, archive)
-    for name, value in params.items():
-        text += """<param name="%s" value="%s"/>""" % (name, value)
-    text += """<div class="errormessage">You must install and enable Java in your browser in order to access this applet.<div></object>
-</object>
-"""
-    return """<div><p align="center">%s</p></div>""" % text
-
-
 class Gmaj(data.Data):
     """Class describing a GMAJ Applet"""
     edam_format = "format_3547"
     file_ext = "gmaj.zip"
-    copy_safe_peek = False
 
     def set_peek(self, dataset, is_multi_byte=False):
         if not dataset.dataset.purged:
-            if hasattr(dataset, 'history_id'):
-                params = {
-                    "bundle": "display?id=%s&tofile=yes&toext=.zip" % dataset.id,
-                    "buttonlabel": "Launch GMAJ",
-                    "nobutton": "false",
-                    "urlpause": "100",
-                    "debug": "false",
-                    "posturl": "history_add_to?%s" % "&".join("%s=%s" % (x[0], quote_plus(str(x[1]))) for x in [('copy_access_from', dataset.id), ('history_id', dataset.history_id), ('ext', 'maf'), ('name', 'GMAJ Output on data %s' % dataset.hid), ('info', 'Added by GMAJ'), ('dbkey', dataset.dbkey)])
-                }
-                class_name = "edu.psu.bx.gmaj.MajApplet.class"
-                archive = "/static/gmaj/gmaj.jar"
-                dataset.peek = create_applet_tag_peek(class_name, archive, params)
-                dataset.blurb = 'GMAJ Multiple Alignment Viewer'
-            else:
-                dataset.peek = "After you add this item to your history, you will be able to launch the GMAJ applet."
-                dataset.blurb = 'GMAJ Multiple Alignment Viewer'
+            dataset.peek = 'GMAJ Multiple Alignment - applet launch functionality no longer available in Galaxy.'
+            dataset.blurb = 'GMAJ Multiple Alignment'
         else:
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
@@ -248,24 +210,11 @@ class Html(HtmlFromText):
 class Laj(data.Text):
     """Class describing a LAJ Applet"""
     file_ext = "laj"
-    copy_safe_peek = False
 
     def set_peek(self, dataset, is_multi_byte=False):
         if not dataset.dataset.purged:
-            if hasattr(dataset, 'history_id'):
-                params = {
-                    "alignfile1": "display?id=%s" % dataset.id,
-                    "buttonlabel": "Launch LAJ",
-                    "title": "LAJ in Galaxy",
-                    "posturl": quote_plus("history_add_to?%s" % "&".join("%s=%s" % (key, value) for key, value in {'history_id': dataset.history_id, 'ext': 'lav', 'name': 'LAJ Output', 'info': 'Added by LAJ', 'dbkey': dataset.dbkey, 'copy_access_from': dataset.id}.items())),
-                    "noseq": "true"
-                }
-                class_name = "edu.psu.cse.bio.laj.LajApplet.class"
-                archive = "/static/laj/laj.jar"
-                dataset.peek = create_applet_tag_peek(class_name, archive, params)
-            else:
-                dataset.peek = "After you add this item to your history, you will be able to launch the LAJ applet."
-                dataset.blurb = 'LAJ Multiple Alignment Viewer'
+            dataset.peek = 'LAJ Multiple Alignment - applet launch functionality no longer available in Galaxy.'
+            dataset.blurb = 'LAJ Multiple Alignment'
         else:
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
