@@ -132,11 +132,6 @@ class HDAManager(datasets.DatasetAssociationManager,
         self.session().add(copy)
         self.session().flush()
         copy.metadata = hda.metadata
-
-        # In some instances peek relies on dataset_id, i.e. gmaj.zip for viewing MAFs
-        if not hda.datatype.copy_safe_peek:
-            copy.set_peek()
-
         self.session().flush()
 
         # these use a second session flush and need to be after the first

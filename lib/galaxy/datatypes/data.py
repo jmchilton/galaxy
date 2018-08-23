@@ -90,8 +90,6 @@ class Data(object):
     MetadataElement(name="dbkey", desc="Database/Build", default="?", param=metadata.DBKeyParameter, multiple=False, no_value="?")
     # Stores the set of display applications, and viewing methods, supported by this datatype
     supported_display_apps = {}
-    # If False, the peek is regenerated whenever a dataset of this type is copied
-    copy_safe_peek = True
     # The dataset contains binary data --> do not space_to_tab or convert newlines, etc.
     # Allow binary file uploads of this type when True.
     is_binary = True
