@@ -2407,6 +2407,8 @@ parameter_types = dict(
     field=FieldTypeToolParameter,
     drill_down=DrillDownSelectToolParameter
 )
+#directory=DataToolParameter
+#directory=FileToolParameter
 
 
 def runtime_to_json(runtime_value):
