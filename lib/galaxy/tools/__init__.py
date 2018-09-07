@@ -2466,8 +2466,11 @@ class CwlCommandBindingTool(Tool):
                 "path": dataset.file_name,
             }
 
-        # prevent unset optional file to trigger 'ValidationException' exception (see 'https://github.com/hmenager/workflow-is-cwl/issues/14' for more info)
-        input_json = {k:v for k, v in input_json.iteritems() if v['class'] == 'File' and v['location'] != 'None'}
+        # prevent unset optional file to trigger 'ValidationException' exception
+        input_json = {k:v for k, v in input_json.iteritems() if not (isinstance(v, dict) and v['class'] == 'File' and v['location'] == 'None')}
+
+        # prevent empty string
+        input_json = {k:v for k, v in input_json.iteritems() if v != ''}
 
         cwl_job_proxy = self._cwl_tool_proxy.job_proxy(
             input_json,
