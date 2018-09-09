@@ -303,10 +303,16 @@ class CommandLineToolProxy(ToolProxy):
     _class = "CommandLineTool"
 
     def description(self):
-        return self._tool.tool.get('doc')
+        return ''
+        #return self._tool.tool.get('doc')
 
     def label(self):
-        return self._tool.tool.get('label')
+        label = self._tool.tool.get('label')
+
+        if label is not None:
+            return label.partition(":")[0] # return substring before ':'
+        else:
+            return ''
 
     def input_fields(self):
         input_records_schema = self._eval_schema(self._tool.inputs_record_schema)
