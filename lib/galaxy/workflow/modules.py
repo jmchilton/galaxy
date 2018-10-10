@@ -197,7 +197,7 @@ class WorkflowModule(object):
         """
         return {}
 
-    def compute_runtime_state(self, trans, step_updates=None):
+    def compute_runtime_state(self, trans, step=None, step_updates=None):
         """ Determine the runtime state (potentially different from self.state
         which describes configuration state). This (again unlike self.state) is
         currently always a `DefaultToolState` object.
@@ -211,6 +211,21 @@ class WorkflowModule(object):
         """
         state = self.get_runtime_state()
         step_errors = {}
+
+        if step is not None:
+
+            def update_value(input, context, prefixed_name, **kwargs):
+                step_input = step.get_input(prefixed_name)
+                if step_input is None:
+                    return NO_REPLACEMENT
+
+                if step_input.default_value_set:
+                    return step_input.default_value
+
+                return NO_REPLACEMENT
+
+            visit_input_values(self.get_runtime_inputs(), state.inputs, update_value, no_replacement_value=NO_REPLACEMENT)
+
         if step_updates:
 
             def update_value(input, context, prefixed_name, **kwargs):
@@ -972,7 +987,7 @@ class ToolModule(WorkflowModule):
         """
         super(ToolModule, self).recover_state(state, **kwds)
         if kwds.get("fill_defaults", False) and self.tool:
-            self.compute_runtime_state(self.trans, step_updates=None)
+            self.compute_runtime_state(self.trans, step=None, step_updates=None)
             self.augment_tool_state_for_input_connections(**kwds)
             self.tool.check_and_update_param_values(self.state.inputs, self.trans, workflow_building_mode=True)
 
@@ -1042,14 +1057,14 @@ class ToolModule(WorkflowModule):
     def get_runtime_inputs(self, **kwds):
         return self.get_inputs()
 
-    def compute_runtime_state(self, trans, step_updates=None):
+    def compute_runtime_state(self, trans, step, step_updates=None):
         # Warning: This method destructively modifies existing step state.
         if self.tool:
             step_errors = {}
             state = self.state
             self.runtime_post_job_actions = {}
+            state, step_errors = super(ToolModule, self).compute_runtime_state(trans, step, step_updates)
             if step_updates:
-                state, step_errors = super(ToolModule, self).compute_runtime_state(trans, step_updates)
                 self.runtime_post_job_actions = step_updates.get(RUNTIME_POST_JOB_ACTIONS_KEY, {})
                 step_metadata_runtime_state = self.__step_meta_runtime_state()
                 if step_metadata_runtime_state:
@@ -1404,7 +1419,7 @@ class WorkflowModuleInjector(object):
             subworkflow = step.subworkflow
             populate_module_and_state(self.trans, subworkflow, param_map=unjsonified_subworkflow_param_map)
 
-        state, step_errors = module.compute_runtime_state(self.trans, step_args)
+        state, step_errors = module.compute_runtime_state(self.trans, step, step_args)
         step.state = state
 
         # Fix any missing parameters
