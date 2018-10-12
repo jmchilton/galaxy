@@ -281,6 +281,7 @@ def build_workflow_run_configs(trans, workflow, payload):
         for key, input_dict in normalized_inputs.items():
             step = steps_by_id[key]
             if step.type == 'parameter_input':
+                log.info("encountered param input with value %s" % input_dict)
                 continue
             if 'src' not in input_dict:
                 raise exceptions.RequestParameterInvalidException("Not input source type defined for input '%s'." % input_dict)

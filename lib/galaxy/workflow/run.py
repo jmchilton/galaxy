@@ -335,6 +335,7 @@ class WorkflowProgress(object):
                         replacement = replacement[0]
             else:
                 is_data = input.type in ["data", "data_collection"]
+                log.info("looking for a connection.... for %s" % prefixed_name)
                 replacement = self.replacement_for_connection(connection[0], is_data=is_data)
         return replacement
 
@@ -350,8 +351,10 @@ class WorkflowProgress(object):
             raise modules.DelayedWorkflowEvaluation(why=delayed_why)
         output_name = connection.output_name
         try:
+            log.info("key check find replacement - checking %s for key %s" % (step_outputs, output_name))
             replacement = step_outputs[output_name]
         except KeyError:
+            log.info("waiting...")
             if is_data:
                 # Must resolve.
                 template = "Workflow evaluation problem - failed to find output_name %s in step_outputs %s"
