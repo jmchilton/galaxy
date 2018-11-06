@@ -30,6 +30,7 @@ from galaxy.managers.jobs import JobSearch
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.model.tags import GalaxyTagHandler
 from galaxy.queue_worker import send_control_task
+from galaxy.tool_util.cwl import needs_shell_quoting, shellescape, to_galaxy_parameters
 from galaxy.tool_util.deps import (
     CachedDependencyManager,
 )
@@ -84,6 +85,7 @@ from galaxy.util import (
     listify,
     Params,
     rst_to_html,
+    safe_makedirs,
     string_as_bool,
     unicodify
 )
@@ -271,6 +273,7 @@ class ToolBox(BaseGalaxyToolBox):
                 config_file,
                 enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", False),
                 tool_location_fetcher=self.tool_location_fetcher,
+                strict_cwl_validation=getattr(self.app.config, "strict_cwl_validation", True),
             )
         except Exception as e:
             # capture and log parsing errors
@@ -284,10 +287,24 @@ class ToolBox(BaseGalaxyToolBox):
     def create_dynamic_tool(self, dynamic_tool, **kwds):
         tool_format = dynamic_tool.tool_format
         tool_representation = dynamic_tool.value
-        tool_source = get_tool_source_from_representation(
+        get_source_kwds = dict(
             tool_format=tool_format,
             tool_representation=tool_representation,
+            uuid=dynamic_tool.uuid,
         )
+        if dynamic_tool.tool_directory:
+            get_source_kwds["tool_directory"] = dynamic_tool.tool_directory
+        if dynamic_tool.tool_path:
+            config_file = dynamic_tool.tool_path
+            # TODO: uuid probably needed here...
+            tool_source = get_tool_source(
+                config_file,
+                enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", False),
+                tool_location_fetcher=self.tool_location_fetcher,
+                strict_cwl_validation=getattr(self.app.config, "strict_cwl_validation", True),
+            )
+        else:
+            tool_source = get_tool_source_from_representation(**get_source_kwds)
         kwds["dynamic"] = True
         tool = self._create_tool_from_source(tool_source, **kwds)
         tool.dynamic_tool = dynamic_tool
@@ -413,6 +430,7 @@ class Tool(Dictifiable):
     requires_setting_metadata = True
     default_tool_action = DefaultToolAction
     dict_collection_visible_keys = ['id', 'name', 'version', 'description', 'labels']
+    may_use_container_entry_point = False
 
     def __init__(self, config_file, tool_source, app, guid=None, repository_id=None, tool_shed_repository=None, allow_code_files=True, dynamic=False):
         """Load a tool from the config named by `config_file`"""
@@ -814,6 +832,8 @@ class Tool(Dictifiable):
         self.__parse_trackster_conf(tool_source)
         # Record macro paths so we can reload a tool if any of its macro has changes
         self._macro_paths = tool_source.macro_paths()
+
+        self.cores_min = tool_source.parse_cores_min()
 
     def __parse_legacy_features(self, tool_source):
         self.code_namespace = dict()
@@ -1327,6 +1347,18 @@ class Tool(Dictifiable):
         #       outputs?
         return True
 
+    def inputs_from_dict(self, as_dict):
+        """Extra inputs from input dictionary (e.g. API payload).
+
+        Translate for tool type as needed.
+        """
+        inputs = as_dict.get('inputs', {})
+        inputs_representation = as_dict.get('inputs_representation', 'galaxy')
+        if inputs_representation != "galaxy":
+            raise exceptions.RequestParameterInvalidException("Only galaxy inputs representation is allowed for normal tools.")
+        # TODO: Consider <>.
+        return inputs
+
     def new_state(self, trans):
         """
         Create a new `DefaultToolState` for this tool. It will be initialized
@@ -1723,7 +1755,7 @@ class Tool(Dictifiable):
     def exec_before_job(self, app, inp_data, out_data, param_dict={}):
         pass
 
-    def exec_after_process(self, app, inp_data, out_data, param_dict, job=None):
+    def exec_after_process(self, app, inp_data, out_data, param_dict, job=None, **kwds):
         pass
 
     def job_failed(self, job_wrapper, message, exception=False):
@@ -1912,7 +1944,7 @@ class Tool(Dictifiable):
         tool_dict['panel_section_id'], tool_dict['panel_section_name'] = self.get_panel_section()
 
         tool_class = self.__class__
-        regular_form = tool_class == Tool or isinstance(self, DatabaseOperationTool)
+        regular_form = tool_class == Tool or isinstance(self, DatabaseOperationTool) or tool_class == CwlTool
         tool_dict["form_style"] = "regular" if regular_form else "special"
 
         return tool_dict
@@ -2389,7 +2421,7 @@ class SetMetadataTool(Tool):
                 history.id, job.user, incoming={'input1': hda}, overwrite=False
             )
 
-    def exec_after_process(self, app, inp_data, out_data, param_dict, job=None):
+    def exec_after_process(self, app, inp_data, out_data, param_dict, job=None, **kwds):
         working_directory = app.object_store.get_filename(
             job, base_dir='job_work', dir_only=True, obj_dir=True
         )
@@ -2432,6 +2464,96 @@ class ExportHistoryTool(Tool):
 
 class ImportHistoryTool(Tool):
     tool_type = 'import_history'
+
+
+class CwlTool(Tool):
+    tool_type = 'cwl'
+    may_use_container_entry_point = True
+
+    def exec_before_job(self, app, inp_data, out_data, param_dict=None):
+        super(CwlTool, self).exec_before_job(app, inp_data, out_data, param_dict=param_dict)
+        # Working directory on Galaxy server (instead of remote compute).
+        local_working_directory = param_dict["__local_working_directory__"]
+        log.info("exec_before_job for CWL tool")
+        from galaxy.tools.cwl import to_cwl_job
+        input_json = to_cwl_job(self, param_dict, local_working_directory)
+        if param_dict is None:
+            raise Exception("Internal error - param_dict is empty.")
+        output_dict = {}
+        for name, dataset in out_data.items():
+            output_dict[name] = {
+                "id": dataset.dataset.id,
+                "path": dataset.file_name,
+            }
+
+        cwl_job_proxy = self._cwl_tool_proxy.job_proxy(
+            input_json,
+            output_dict,
+            local_working_directory,
+        )
+        cwl_command_line = cwl_job_proxy.command_line
+        cwl_stdin = cwl_job_proxy.stdin
+        cwl_stdout = cwl_job_proxy.stdout
+        cwl_stderr = cwl_job_proxy.stderr
+        env = cwl_job_proxy.environment
+
+        def needs_shell_quoting_hack(arg):
+            if arg == "$GALAXY_SLOTS":
+                return False
+            else:
+                return needs_shell_quoting(arg)
+
+        command_line = " ".join([shellescape.quote(arg) if needs_shell_quoting_hack(arg) else arg for arg in cwl_command_line])
+        if cwl_stdin:
+            command_line += ' < "' + cwl_stdin + '"'
+        if cwl_stdout:
+            command_line += ' > "' + cwl_stdout + '"'
+        if cwl_stderr:
+            command_line += ' 2> "' + cwl_stderr + '"'
+        cwl_job_state = {
+            'args': cwl_command_line,
+            'stdin': cwl_stdin,
+            'stdout': cwl_stdout,
+            'stderr': cwl_stderr,
+            'env': env,
+        }
+        tool_working_directory = os.path.join(local_working_directory, 'working')
+        # Move to prepare...
+        safe_makedirs(tool_working_directory)
+        cwl_job_proxy.stage_files()
+
+        cwl_job_proxy.rewrite_inputs_for_staging()
+        log.debug("REWRITTEN INPUTS_DICT %s" % cwl_job_proxy._input_dict)
+        # Write representation to disk that can be reloaded at runtime
+        # and outputs collected before Galaxy metadata is gathered.
+        cwl_job_proxy.save_job()
+
+        param_dict["__cwl_command"] = command_line
+        param_dict["__cwl_command_state"] = cwl_job_state
+        param_dict["__cwl_command_version"] = 1
+        log.info("CwlTool.exec_before_job() generated command_line %s" % command_line)
+
+    def parse(self, tool_source, **kwds):
+        super(CwlTool, self).parse(tool_source, **kwds)
+        cwl_tool_proxy = getattr(tool_source, 'tool_proxy', None)
+        if cwl_tool_proxy is None:
+            raise Exception("CwlTool.parse() called on tool source not defining a proxy object to underlying CWL tool.")
+        self._cwl_tool_proxy = cwl_tool_proxy
+
+    def inputs_from_dict(self, as_dict):
+        """Extra inputs from input dictionary (e.g. API payload).
+
+        Translate for tool type as needed.
+        """
+        inputs = as_dict.get('inputs', {})
+        inputs_representation = as_dict.get('inputs_representation', 'galaxy')
+        if inputs_representation not in ["galaxy", "cwl"]:
+            raise exceptions.RequestParameterInvalidException("Inputs representation must be galaxy or cwl.")
+
+        if inputs_representation == "cwl":
+            inputs = to_galaxy_parameters(self, inputs)
+
+        return inputs
 
 
 class DataManagerTool(OutputParameterJSONTool):
@@ -3048,7 +3170,8 @@ for tool_class in [Tool, SetMetadataTool, OutputParameterJSONTool, ExpressionToo
                    DataManagerTool, DataSourceTool, AsyncDataSourceTool,
                    UnzipCollectionTool, ZipCollectionTool, MergeCollectionTool, RelabelFromFileTool, FilterFromFileTool,
                    BuildListCollectionTool, ExtractDatasetCollectionTool,
-                   DataDestinationTool]:
+                   DataDestinationTool,
+                   CwlTool]:
     tool_types[tool_class.tool_type] = tool_class
 
 

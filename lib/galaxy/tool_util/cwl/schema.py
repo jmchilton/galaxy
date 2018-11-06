@@ -20,18 +20,18 @@ class SchemaLoader(object):
 
     def __init__(self, strict=True):
         self._strict = strict
-        self._raw_document_loader = None
 
     @property
     def raw_document_loader(self):
         ensure_cwltool_available()
-        from cwltool.load_tool import jobloaderctx
-        return schema_salad.ref_resolver.Loader(jobloaderctx)
+        from cwltool.load_tool import default_loader
+        return default_loader(None)
 
     def raw_process_reference(self, path):
         uri = "file://" + os.path.abspath(path)
         fileuri, _ = urldefrag(uri)
-        return RawProcessReference(self.raw_document_loader.fetch(fileuri), uri)
+        process_object = self.raw_document_loader.fetch(fileuri)
+        return RawProcessReference(process_object, uri)
 
     def raw_process_reference_for_object(self, object, uri=None):
         if uri is None:
@@ -43,6 +43,7 @@ class SchemaLoader(object):
             self.raw_document_loader,
             raw_reference.process_object,
             raw_reference.uri,
+            strict=False,
         )
         process_def = ProcessDefinition(
             process_object,
@@ -67,7 +68,7 @@ class SchemaLoader(object):
                 raw_process_reference = self.raw_process_reference(kwds["path"])
             process_definition = self.process_definition(raw_process_reference)
 
-        args = {"strict": self._strict}
+        args = {"strict": self._strict, "do_validate": False}
         make_tool = kwds.get("make_tool", default_make_tool)
         if LoadingContext is not None:
             args["construct_tool_object"] = make_tool

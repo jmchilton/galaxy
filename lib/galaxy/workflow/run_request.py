@@ -283,7 +283,7 @@ def build_workflow_run_configs(trans, workflow, payload):
         # Set workflow inputs.
         for key, input_dict in normalized_inputs.items():
             step = steps_by_id[key]
-            if step.type == 'parameter_input':
+            if step.type == 'parameter_input' and (step.tool_inputs["parameter_type"] != "field" or not isinstance(input_dict, dict)):
                 continue
             if 'src' not in input_dict:
                 raise exceptions.RequestParameterInvalidException("Not input source type defined for input '%s'." % input_dict)

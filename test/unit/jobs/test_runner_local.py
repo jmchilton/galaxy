@@ -217,3 +217,7 @@ class MockJobWrapper(object):
 
     def reclaim_ownership(self):
         pass
+
+    @property
+    def is_cwl_job(self):
+        return False

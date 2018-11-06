@@ -117,7 +117,8 @@ def type_descriptions_for_field_types(field_types):
             type_representation_names_for_field_type = CWL_TYPE_TO_REPRESENTATIONS.get(field_type)
         except TypeError:
             raise Exception("Failed to convert field_type %s" % field_type)
-        assert type_representation_names_for_field_type is not None, field_type
+        if type_representation_names_for_field_type is None:
+            raise Exception("Failed to convert type %s" % field_type)
         type_representation_names.update(type_representation_names_for_field_type)
     type_representations = []
     for type_representation in TYPE_REPRESENTATIONS:
@@ -158,7 +159,7 @@ def dataset_wrapper_to_file_json(inputs_dir, dataset_wrapper):
 
     raw_file_object["location"] = path
     raw_file_object["size"] = int(dataset_wrapper.get_size())
-    set_basename_and_derived_properties(raw_file_object, str(dataset_wrapper.cwl_filename or dataset_wrapper.name))
+    set_basename_and_derived_properties(raw_file_object, str(dataset_wrapper.created_from_basename or dataset_wrapper.name))
     return raw_file_object
 
 
