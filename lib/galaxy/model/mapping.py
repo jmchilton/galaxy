@@ -152,6 +152,8 @@ model.DynamicTool.table = Table(
     Column("tool_version", Unicode(255)),
     Column("tool_format", Unicode(255)),
     Column("tool_hash", Unicode(500), unique=True),
+    Column("tool_path", Unicode(255), unique=True),
+    Column("tool_directory", Unicode(255), unique=False),
     Column("hidden", Boolean),
     Column("active", Boolean),
     Column("value", JSONType()),
@@ -236,6 +238,7 @@ model.Dataset.table = Table(
     Column("object_store_id", TrimmedString(255), index=True),
     Column("external_filename", TEXT),
     Column("_extra_files_path", TEXT),
+    Column("cwl_filename", TEXT),
     Column('file_size', Numeric(15, 0)),
     Column('total_size', Numeric(15, 0)),
     Column('uuid', UUIDType()))
@@ -588,6 +591,8 @@ model.Job.table = Table(
     Column("object_store_id", TrimmedString(255), index=True),
     Column("imported", Boolean, default=False, index=True),
     Column("params", TrimmedString(255), index=True),
+    Column("cwl_command_state", JSONType, nullable=True),
+    Column("cwl_command_state_version", Integer, default=1),
     Column("handler", TrimmedString(255), index=True))
 
 model.JobStateHistory.table = Table(
@@ -2273,7 +2278,7 @@ mapper(model.WorkflowStep, model.WorkflowStep.table, properties=dict(
         backref="workflow_steps"),
     annotations=relation(model.WorkflowStepAnnotationAssociation,
         order_by=model.WorkflowStepAnnotationAssociation.table.c.id,
-        backref="workflow_steps")
+        backref="workflow_steps"),
 ))
 
 mapper(model.WorkflowStepInput, model.WorkflowStepInput.table, properties=dict(

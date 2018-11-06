@@ -218,6 +218,11 @@ class ToolSource(object):
         """ Return tool profile version as Galaxy major e.g. 16.01 or 16.04.
         """
 
+    def parse_cores_min(self):
+        """Return minimum number of cores required to run this tool.
+        """
+        return 1
+
     def macro_paths(self):
         return []
 

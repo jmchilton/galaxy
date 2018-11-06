@@ -82,10 +82,13 @@ def _normalize_inputs(steps, inputs, inputs_by):
         for possible_input_key in possible_input_keys:
             if possible_input_key in inputs:
                 inputs_key = possible_input_key
-        if not inputs_key:
-            message = "Workflow cannot be run because an expected input step '%s' has no input dataset." % step.id
+        default_value = json.loads(step.tool_inputs.get("default_value") or 'null')
+        optional = json.loads(step.tool_inputs.get("optional") or 'false')
+        if not inputs_key and not default_value and not optional:
+            message = "Workflow cannot be run because an expected input step '%s' (%s) has no input dataset." % (step.id, step.label)
             raise exceptions.MessageException(message)
-        normalized_inputs[step.id] = inputs[inputs_key]
+        if inputs_key:
+            normalized_inputs[step.id] = inputs[inputs_key]
     return normalized_inputs
 
 
@@ -280,7 +283,7 @@ def build_workflow_run_configs(trans, workflow, payload):
         # Set workflow inputs.
         for key, input_dict in normalized_inputs.items():
             step = steps_by_id[key]
-            if step.type == 'parameter_input':
+            if step.type == 'parameter_input' and (step.tool_inputs["parameter_type"] != "field" or not isinstance(input_dict, dict)):
                 continue
             if 'src' not in input_dict:
                 raise exceptions.RequestParameterInvalidException("Not input source type defined for input '%s'." % input_dict)

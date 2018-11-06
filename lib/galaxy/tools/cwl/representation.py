@@ -117,7 +117,8 @@ def type_descriptions_for_field_types(field_types):
             type_representation_names_for_field_type = CWL_TYPE_TO_REPRESENTATIONS.get(field_type)
         except TypeError:
             raise Exception("Failed to convert field_type %s" % field_type)
-        assert type_representation_names_for_field_type is not None, field_type
+        if type_representation_names_for_field_type is None:
+            raise Exception("Failed to convert type %s" % field_type)
         type_representation_names.update(type_representation_names_for_field_type)
     type_representations = []
     for type_representation in TYPE_REPRESENTATIONS:

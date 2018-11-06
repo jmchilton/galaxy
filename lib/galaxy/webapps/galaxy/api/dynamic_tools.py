@@ -62,6 +62,7 @@ class DynamicToolsController(BaseAPIController):
         toolbox.
         """
         dynamic_tool = self.app.dynamic_tools_manager.create_tool(
-            payload
+            trans, payload
         )
-        return dynamic_tool.to_dict()
+        rval = dynamic_tool.to_dict()
+        return rval
