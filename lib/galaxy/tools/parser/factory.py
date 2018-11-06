@@ -16,7 +16,7 @@ from ..fetcher import ToolLocationFetcher
 log = logging.getLogger(__name__)
 
 
-def get_tool_source(config_file=None, xml_tree=None, enable_beta_formats=True, tool_location_fetcher=None):
+def get_tool_source(config_file=None, xml_tree=None, enable_beta_formats=True, tool_location_fetcher=None, strict_cwl_validation=True):
     """Return a ToolSource object corresponding to supplied source.
 
     The supplied source may be specified as a file path (using the config_file
@@ -42,7 +42,7 @@ def get_tool_source(config_file=None, xml_tree=None, enable_beta_formats=True, t
             return YamlToolSource(as_dict, source_path=config_file)
     elif config_file.endswith(".json") or config_file.endswith(".cwl"):
         log.info("Loading CWL tool - this is experimental - tool likely will not function in future at least in same way.")
-        return CwlToolSource(config_file)
+        return CwlToolSource(config_file, strict_cwl_validation=strict_cwl_validation)
     else:
         tree, macro_paths = load_tool_with_refereces(config_file)
         return XmlToolSource(tree, source_path=config_file, macro_paths=macro_paths)
@@ -63,13 +63,20 @@ def ordered_load(stream):
     return yaml.load(stream, OrderedLoader)
 
 
-def get_tool_source_from_representation(tool_format, tool_representation):
+def get_tool_source_from_representation(tool_format, tool_representation, strict_cwl_validation=True, tool_directory=None):
+    # TODO: PRE-MERGE - ensure strict_cwl_validation is being set on caller - ignored right now.
     # TODO: make sure whatever is consuming this method uses ordered load.
     log.info("Loading dynamic tool - this is experimental - tool may not function in future.")
     if tool_format == "GalaxyTool":
         if "version" not in tool_representation:
             tool_representation["version"] = "1.0.0"  # Don't require version for embedded tools.
         return YamlToolSource(tool_representation)
+    elif tool_format in ["CommandLineTool", "ExpressionTool"]:
+        return CwlToolSource(
+            tool_object=tool_representation,
+            strict_cwl_validation=strict_cwl_validation,
+            tool_directory=tool_directory
+        )
     else:
         raise Exception("Unknown tool representation format [%s]." % tool_format)
 

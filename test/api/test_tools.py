@@ -1,4 +1,3 @@
-# Test tools API.
 import contextlib
 import json
 import os
@@ -42,6 +41,7 @@ MINIMAL_TOOL_NO_ID = {
 
 
 class ToolsTestCase(api.ApiTestCase):
+    """Test the Galaxy Tool API."""
 
     def setUp(self):
         super(ToolsTestCase, self).setUp()
@@ -2059,13 +2059,14 @@ class ToolsTestCase(api.ApiTestCase):
     def _run_cat1(self, history_id, inputs, assert_ok=False, **kwargs):
         return self._run('cat1', history_id, inputs, assert_ok=assert_ok, **kwargs)
 
-    def _run(self, tool_id=None, history_id=None, inputs={}, tool_uuid=None, assert_ok=False, tool_version=None, use_cached_job=False, wait_for_job=False):
+    def _run(self, tool_id=None, history_id=None, inputs={}, tool_uuid=None, assert_ok=False, tool_version=None, use_cached_job=False, wait_for_job=False, inputs_representation=None):
         if tool_id is None:
             assert tool_uuid is not None
         payload = self.dataset_populator.run_tool_payload(
             tool_id=tool_id,
             inputs=inputs,
             history_id=history_id,
+            inputs_representation=inputs_representation,
         )
         if tool_uuid:
             payload['tool_uuid'] = tool_uuid

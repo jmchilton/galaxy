@@ -47,12 +47,57 @@ def _possible_uri_to_path(location):
 
 
 def file_dict_to_description(file_dict):
-    assert file_dict["class"] == "File", file_dict
+    output_class = file_dict["class"]
+    assert output_class in ["File", "Directory"], file_dict
     location = file_dict["location"]
     if location.startswith("_:"):
+        assert output_class == "File"
         return LiteralFileDescription(file_dict["contents"])
-    else:
+    elif output_class == "File":
         return PathFileDescription(_possible_uri_to_path(location))
+    else:
+        return PathDirectoryDescription(_possible_uri_to_path(location))
+
+
+class FileDescription(object):
+    pass
+
+
+class PathFileDescription(object):
+
+    def __init__(self, path):
+        self.path = path
+
+    def write_to(self, destination):
+        # TODO: Move if we can be sure this is in the working directory for instance...
+        shutil.copy(self.path, destination)
+
+
+class PathDirectoryDescription(object):
+
+    def __init__(self, path):
+        self.path = path
+
+    def write_to(self, destination):
+        shutil.copytree(self.path, destination)
+
+
+class LiteralFileDescription(object):
+
+    def __init__(self, content):
+        self.content = content
+
+    def write_to(self, destination):
+        with open(destination, "wb") as f:
+            f.write(self.content.encode("UTF-8"))
+
+
+def _possible_uri_to_path(location):
+    if location.startswith("file://"):
+        path = ref_resolver.uri_file_path(location)
+    else:
+        path = location
+    return path
 
 
 def handle_outputs(job_directory=None):
@@ -157,6 +202,14 @@ def handle_outputs(job_directory=None):
             raise Exception("Unknown output type [%s] encountered" % output)
         provided_metadata[output_name] = file_metadata
 
+    def handle_known_output_json(output, output_name):
+        target_path = job_proxy.output_path(output_name)
+        with open(target_path, "w") as f:
+            f.write(json.dumps(output))
+        provided_metadata[output_name] = {
+            "ext": "expression.json",
+        }
+
     for output_name, output in outputs.items():
         if isinstance(output, dict) and "location" in output:
             handle_known_output(output, output_name, output_name)
@@ -164,7 +217,12 @@ def handle_outputs(job_directory=None):
             prefix = "%s|__part__|" % output_name
             for record_key, record_value in output.items():
                 record_value_output_key = "%s%s" % (prefix, record_key)
-                handle_known_output(record_value, record_value_output_key, output_name)
+                if isinstance(record_value, dict) and "class" in record_value:
+                    handle_known_output(record_value, record_value_output_key, output_name)
+                else:
+                    # param_evaluation_noexpr
+                    handle_known_output_json(output, output_name)
+
         elif isinstance(output, list):
             elements = []
             for index, el in enumerate(output):
@@ -178,12 +236,7 @@ def handle_outputs(job_directory=None):
                     elements.append({"name": str(index), "filename": target_path, "ext": "expression.json"})
             provided_metadata[output_name] = {"elements": elements}
         else:
-            target_path = job_proxy.output_path(output_name)
-            with open(target_path, "w") as f:
-                f.write(json.dumps(output))
-            provided_metadata[output_name] = {
-                "ext": "expression.json",
-            }
+            handle_known_output_json(output, output_name)
 
     with open("galaxy.json", "w") as f:
         json.dump(provided_metadata, f)
