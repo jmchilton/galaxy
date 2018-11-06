@@ -30,33 +30,25 @@ ${cwl_test_def}
 ''')
 
 RED_TESTS = {
-    "cl_basic_generation": "resource allocation mapping not implemented",
-    "any_outputSource_compatibility": "Failed to find output with label [output2] in [{u'inputs': {}, u'update_time': u'2018-07-02T07:10:59.495233', u'uuid': u'1224d917-7dc7-11e8-bb8b-acde48001122', u'outputs': {}, u'history_id': u'529fd61ab1c6cc36', u'workflow_id': u'adb5f5c93f827949', u'output_collections': {}, u'state': u'scheduled', u'steps': [{u'workflow_step_label': u'input1', u'update_time': u'2018-07-02T07:10:59.499156', u'job_id': None, u'state': u'scheduled', u'workflow_step_uuid': u'a5e07f7c-d0fe-4d6d-b9cc-0657a60dbd1a', u'order_index': 0, u'action': None, u'model_class': u'WorkflowInvocationStep', u'workflow_step_id': u'adb5f5c93f827949', u'id': u'adb5f5c93f827949'}, {u'workflow_step_label': u'input2', u'update_time': u'2018-07-02T07:10:59.499750', u'job_id': None, u'state': u'scheduled', u'workflow_step_uuid': u'd7765669-6da5-4609-9f0e-a1d7f122775c', u'order_index': 1, u'action': None, u'model_class': u'WorkflowInvocationStep', u'workflow_step_id': u'529fd61ab1c6cc36', u'id': u'529fd61ab1c6cc36'}, {u'workflow_step_label': u'input3', u'update_time': u'2018-07-02T07:10:59.499996', u'job_id': None, u'state': u'scheduled', u'workflow_step_uuid': u'5c62060e-acd6-4ceb-a316-f58ad1dc6a3d', u'order_index': 2, u'action': None, u'model_class': u'WorkflowInvocationStep', u'workflow_step_id': u'd9abeb98649a6a7e', u'id': u'd9abeb98649a6a7e'}], u'model_class': u'WorkflowInvocation', u'id': u'adb5f5c93f827949'}",
-    "wf_wc_scatter_multiple_merge": "AttributeError: 'EphemeralCollection' object has no attribute '_sa_instance_state'",
-    "wf_wc_scatter_multiple_flattened": "EphemeralCollection no attribute",
-    "wf_input_default_missing": "AttributeError: 'dict' object has no attribute 'datatype'",
+    # NON-required:
     "wf_scatter_two_nested_crossproduct": "cross product not implemented",
     "wf_scatter_two_dotproduct": "AssertionError: Unimplemented scatter type [flat_crossproduct]",
     "wf_scatter_nested_crossproduct_secondempty": "not implemented",
     "wf_scatter_nested_crossproduct_firstempty": "not implemented",
-    "wf_scatter_flat_crossproduct_oneempty": "#main reference",
-    "step_input_default_value_nosource": "invalid location not step_input://",
-    "step_input_default_value": "invalid location again",
-    "step_input_default_value_nullsource": "invalid location again",
-    "hints_unknown_ignored": "KeyError: 'http://example.com/BlibberBlubberFakeRequirement'",
-    "initial_workdir_secondary_files_expr": "WorkflowException: Missing required secondary file 'a5c68fa5d9c04cb2f393de3ff41886497fe220c06edfaa33c52115138893587e on data 2 and data 3.idx1' from file objec",
-    "schemadef_req_tool_param": "AssertionError: HelloType???",
-    "schemadef_req_wf_param": "AssertionError: HelloType???",
-    "param_evaluation_noexpr": """File "/Users/john/workspace/galaxy/lib/galaxy/tools/cwl/runtime_actions.py", line 191, in handle_known_output
-    if output["class"] == "File":
-TypeError: 'bool' object has no attribute '__getitem__'""",
+    "wf_scatter_flat_crossproduct_oneempty": "AssertionError: Unimplemented scatter type [flat_crossproduct]",
+    "format_checking": "format stuff not implemented",
+    "format_checking_subclass": "format stuff not implemented",
+    "format_checking_equivalentclass": "format stuff not implemented",
+    "output_secondaryfile_optional": "expected null got file of size 4 (maybe null?)",
+    "valuefrom_ignored_null": "wrong output, vf-concat.cwl with empty.json",
+    "valuefrom_wf_step": "ValidationException: [Errno 2] No such file or directory: '/Users/john/workspace/galaxy/step_input:/1'",
+    "valuefrom_wf_step_multiple": "basic.py problem ValueError: invalid literal for int() with base 10: ''",
 }
 
 
 GREEN_TESTS = [
         "170",
         "cl_gen_arrayofarrays",
-        "directory_output",
         "docker_json_output_location",
         "docker_json_output_path",
         "envvar_req",
@@ -113,8 +105,42 @@ GREEN_TESTS += [
     "wf_wc_scatter",
     "wf_scatter_emptylist",
     "wf_wc_nomultiple",
+    "any_outputSource_compatibility",
+    "wf_input_default_missing",
+    "step_input_default_value_nosource",
+    "step_input_default_value",
+    "step_input_default_value_nullsource",
+    "hints_unknown_ignored",
+    "wf_wc_scatter_multiple_merge",
+    "wf_wc_scatter_multiple_flattened",
+    "schemadef_req_tool_param",
+    "schemadef_req_wf_param",
+    "param_evaluation_noexpr",
+    "initial_workdir_secondary_files_expr",
+    "param_evaluation_expr",
+    "valuefrom_secondexpr_ignored",
+    "cl_basic_generation",
+    "wf_two_inputfiles_namecollision",
+    "directory_input_docker",
+    "input_file_literal",
+    "hints_import",
+    "default_path_notfound_warning",
+    "wf_compound_doc",
+    "shelldir_notinterpreted",
+    "fileliteral_input_docker",
+    "outputbinding_glob_sorted",
+    "booleanflags_cl_noinputbinding",
+    "outputbinding_glob_sorted",
+    "success_codes",
+    "cl_empty_array_input",
+    "resreq_step_overrides_wf",
+    "valuefrom_constant_overrides_inputs",
+    "wf_step_connect_undeclared_param",
+    "wf_step_access_undeclared_param",
+    "expr_reference_self_noinput",
+    "directory_output",
 ]
-
+ 
 
 def main():
     version = "v1.0"
