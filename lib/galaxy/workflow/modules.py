@@ -24,6 +24,7 @@ from galaxy.tools import (
     ToolInputsNotReadyException
 )
 from galaxy.tools.actions import filter_output
+from galaxy.tools.cwl.util import set_basename_and_derived_properties
 from galaxy.tools.execute import execute, MappingParameters, PartialJobExecution
 from galaxy.tools.parameters import (
     check_param,
@@ -37,6 +38,7 @@ from galaxy.tools.parameters.basic import (
     DataToolParameter,
     HiddenToolParameter,
     is_runtime_value,
+    FieldTypeToolParameter,
     parameter_types,
     runtime_to_json,
     SelectToolParameter,
@@ -76,6 +78,7 @@ class WorkflowModule(object):
 
     def __init__(self, trans, content_id=None, **kwds):
         self.trans = trans
+        self.app = trans.app
         self.content_id = content_id
         self.state = DefaultToolState()
 
@@ -322,11 +325,35 @@ class WorkflowModule(object):
 
         for input_dict in all_inputs:
             name = input_dict["name"]
+
+            multiple = input_dict["multiple"]
+            if multiple:
+                continue
+
+            step_input = step.inputs_by_name.get(name, None)
+            scatter_type = "dotproduct"
+            if step_input:
+                scatter_type = step_input.scatter_type
+            assert scatter_type in ["dotproduct", "disabled"], "Unimplemented scatter type [%s]" % scatter_type
+
+            workflow_mapping_structure = progress.workflow_mapping_structure
+            if workflow_mapping_structure and workflow_mapping_structure.is_leaf and scatter_type == "disabled":
+                continue
+
             data = progress.replacement_for_input(step, input_dict)
             can_map_over = hasattr(data, "collection") and data.collection.allow_implicit_mapping
 
             if not can_map_over:
                 continue
+
+            if workflow_mapping_structure and not workflow_mapping_structure.is_leaf:
+                # TODO: replace assert with a proper exception
+                if not workflow_mapping_structure.collection_type_description.is_subcollection_of_type(
+                    data.collection.collection_type, proper=False
+                ):
+                    template = "Workflow input replacement of collection type [%s] is not a super collection of workflow collection type [%s]."
+                    message = template % (data.collection.collection_type, workflow_mapping_structure.collection_type_description)
+                    raise Exception(message)
 
             is_data_param = input_dict["input_type"] == "dataset"
             if is_data_param:
@@ -400,30 +427,27 @@ class SubWorkflowModule(WorkflowModule):
     def get_all_inputs(self, data_only=False, connectable_only=False):
         """ Get configure time data input descriptions. """
         # Filter subworkflow steps and get inputs
-        step_to_input_type = {
-            "data_input": "dataset",
-            "data_collection_input": "dataset_collection",
-            "parameter_input": "parameter",
-        }
         inputs = []
         if hasattr(self.subworkflow, 'input_steps'):
             for step in self.subworkflow.input_steps:
                 name = step.label
+                step_module = module_factory.from_workflow_step(self.trans, step)
                 if not name:
-                    step_module = module_factory.from_workflow_step(self.trans, step)
                     name = "%s:%s" % (step.order_index, step_module.get_name())
-                step_type = step.type
-                assert step_type in step_to_input_type
                 input = dict(
                     input_subworkflow_step_id=step.order_index,
                     name=name,
                     label=name,
                     multiple=False,
                     extensions=["data"],
-                    input_type=step_to_input_type[step_type],
+                    input_type=step.input_type,
                 )
                 if step.type == 'data_collection_input':
                     input['collection_type'] = step.tool_inputs.get('collection_type') if step.tool_inputs else None
+                # This predated the above lines in the CWL branch but looks odd now...
+                # not hurting anything per se but should be fixed up ideally...
+                if hasattr(step_module, "collection_type"):
+                    input["collection_types"] = [step_module.collection_type]
                 inputs.append(input)
         return inputs
 
@@ -480,7 +504,12 @@ class SubWorkflowModule(WorkflowModule):
         inputs, etc...
         """
         step = invocation_step.workflow_step
-        subworkflow_invoker = progress.subworkflow_invoker(trans, step, use_cached_job=use_cached_job)
+        all_inputs = self.get_all_inputs()
+        collection_info = self.compute_collection_info(progress, step, all_inputs)
+        subworkflow_mapping_structure = collection_info.structure if collection_info else None
+        subworkflow_invoker = progress.subworkflow_invoker(
+            trans, step, subworkflow_mapping_structure, use_cached_job=use_cached_job
+        )
         subworkflow_invoker.invoke()
         subworkflow = subworkflow_invoker.workflow
         subworkflow_progress = subworkflow_invoker.progress
@@ -654,41 +683,56 @@ class InputParameterModule(WorkflowModule):
     name = "Input parameter"
     default_parameter_type = "text"
     default_optional = False
+    default_default_value = ''
     parameter_type = default_parameter_type
     optional = default_optional
+    default_value = default_default_value
 
     def get_inputs(self):
         # TODO: Use an external xml or yaml file to load the parameter definition
         parameter_type = self.state.inputs.get("parameter_type", self.default_parameter_type)
         optional = self.state.inputs.get("optional", self.default_optional)
+        default_value = self.state.inputs.get("default_value", self.default_value) or ''
         input_parameter_type = SelectToolParameter(None, XML(
             '''
-            <param name="parameter_type" label="Parameter type" type="select">
+            <param name="parameter_type" label="Parameter type" type="select" value="%s">
                 <option value="text">Text</option>
                 <option value="integer">Integer</option>
                 <option value="float">Float</option>
                 <option value="boolean">Boolean (True or False)</option>
                 <option value="color">Color</option>
+                <option value="field">Field</option>
             </param>
-            '''))
+            ''' % parameter_type))
         for i, option in enumerate(input_parameter_type.static_options):
             option = list(option)
             if option[1] == parameter_type:
                 # item 0 is option description, item 1 is value, item 2 is "selected"
                 option[2] = True
                 input_parameter_type.static_options[i] = tuple(option)
+        input_default_value = FieldTypeToolParameter(None, XML(
+            '''
+            <param name="default" label="Default Value" type="field" value="%s">
+            </param>
+            '''
+            % default_value))
         return odict([("parameter_type", input_parameter_type),
-                      ("optional", BooleanToolParameter(None, Element("param", name="optional", label="Optional", type="boolean", value=optional)))])
+                      ("optional", BooleanToolParameter(None, Element("param", name="optional", label="Optional", type="boolean", value=optional))),
+                      ("default_value", input_default_value)])
 
     def get_runtime_inputs(self, **kwds):
         parameter_type = self.state.inputs.get("parameter_type", self.default_parameter_type)
         optional = self.state.inputs.get("optional", self.default_optional)
-        if parameter_type not in ["text", "boolean", "integer", "float", "color"]:
+        if parameter_type not in ["text", "boolean", "integer", "float", "color", "field"]:
             raise ValueError("Invalid parameter type for workflow parameters encountered.")
         parameter_class = parameter_types[parameter_type]
         parameter_kwds = {}
-        if parameter_type in ["integer", "float"]:
-            parameter_kwds["value"] = str(0)
+        default_value = self.state.inputs.get("default_value", self.default_default_value)
+        if default_value:
+            parameter_kwds["value"] = str(default_value)
+        else:
+            if parameter_type in ["integer", "float"]:
+                parameter_kwds["value"] = str(0)
 
         # TODO: Use a dict-based description from YAML tool source
         element = Element("param", name="input", label=self.label, type=parameter_type, optional=str(optional), **parameter_kwds)
@@ -713,7 +757,11 @@ class InputParameterModule(WorkflowModule):
 
     def execute(self, trans, progress, invocation_step, use_cached_job=False):
         step = invocation_step.workflow_step
-        step_outputs = dict(output=step.state.inputs['input'])
+        input_value = step.state.inputs['input']
+        if input_value is None:
+            default_value = loads(step.tool_inputs.get("default_value", "{}"))
+            input_value = default_value.get("value")
+        step_outputs = dict(output=input_value)
         progress.set_outputs_for_input(invocation_step, step_outputs)
 
 
@@ -1163,6 +1211,94 @@ class ToolModule(WorkflowModule):
             raise ToolMissingException("Tool %s missing. Cannot recover runtime state." % self.tool_id,
                                        tool_id=self.tool_id)
 
+    def evaluate_value_from_expressions(self, progress, step, execution_state):
+        value_from_expressions = {}
+        replacements = {}
+
+        for key, value in execution_state.inputs.items():
+            step_input = step.inputs_by_name.get(key, None)
+            if step_input and step_input.value_from is not None:
+                value_from_expressions[key] = step_input.value_from
+
+        if not value_from_expressions:
+            return replacements
+
+        hda_references = []
+
+        def to_cwl(value):
+            if isinstance(value, model.HistoryDatasetAssociation):
+                # I think the following two checks are needed but they may
+                # not be needed.
+                if not value.dataset.in_ready_state():
+                    why = "dataset [%s] is needed for valueFrom expression and is non-ready" % value.id
+                    raise DelayedWorkflowEvaluation(why=why)
+
+                if not value.is_ok:
+                    raise CancelWorkflowEvaluation()
+
+                hda_references.append(value)
+                if value.ext == "expression.json":
+                    with open(value.file_name, "r") as f:
+                        return loads(f.read())
+                else:
+                    properties = {
+                        "class": "File",
+                        "location": "step_input://%d" % len(hda_references),
+                    }
+                    set_basename_and_derived_properties(
+                        properties, value.dataset.cwl_filename or value.name
+                    )
+                    return properties
+
+            elif hasattr(value, "collection"):
+                collection = value.collection
+                if collection.collection_type == "list":
+                    return map(to_cwl, collection.dataset_instances)
+                elif collection.collection_type == "record":
+                    rval = {}
+                    for element in collection.elements:
+                        rval[element.element_identifier] = to_cwl(element.element_object)
+                    return rval
+            else:
+                return value
+
+        def from_cwl(value):
+            # TODO: turn actual files into HDAs here ... somehow I suppose. Things with
+            # file:// locations for instance.
+            if isinstance(value, dict) and "class" in value and "location" in value:
+                if value["class"] == "File":
+                    # This is going to re-file -> HDA this each iteration I think, not a good
+                    # implementation.
+                    return progress.raw_to_galaxy(value)
+
+                assert value["location"].startswith("step_input://"), "Invalid location %s" % value
+                return hda_references[int(value["location"][len("step_input://"):]) - 1]
+            elif isinstance(value, dict):
+                raise NotImplementedError()
+            else:
+                return value
+
+        step_state = {}
+        for key, value in execution_state.inputs.items():
+            step_state[key] = to_cwl(value)
+
+        replacements = {}
+        for key, value_from in value_from_expressions.items():
+            from cwltool.expression import do_eval
+            as_cwl_value = do_eval(
+                value_from,
+                step_state,
+                [{"class": "InlineJavascriptRequirement"}],
+                None,
+                None,
+                {},
+                context=step_state[key],
+            )
+            new_val = from_cwl(as_cwl_value)
+            replacements[key] = new_val
+
+        return replacements
+
     def execute(self, trans, progress, invocation_step, use_cached_job=False):
         invocation = invocation_step.workflow_invocation
         step = invocation_step.workflow_step
@@ -1203,7 +1339,7 @@ class ToolModule(WorkflowModule):
 
                 replacement = NO_REPLACEMENT
                 if iteration_elements and prefixed_name in iteration_elements:
-                    if isinstance(input, DataToolParameter) and hasattr(iteration_elements[prefixed_name], 'dataset_instance'):
+                    if not isinstance(input, DataCollectionToolParameter) and hasattr(iteration_elements[prefixed_name], 'dataset_instance'):
                         # Pull out dataset instance (=HDA) from element and set a temporary element_identifier attribute
                         # See https://github.com/galaxyproject/galaxy/pull/1693 for context.
                         replacement = iteration_elements[prefixed_name].dataset_instance
@@ -1218,6 +1354,27 @@ class ToolModule(WorkflowModule):
                 if replacement is not NO_REPLACEMENT:
                     found_replacement_keys.add(prefixed_name)
 
+                is_data = isinstance(input, DataToolParameter) or isinstance(input, DataCollectionToolParameter) or isinstance(input, FieldTypeToolParameter)
+                if not is_data and getattr(replacement, "history_content_type", None) == "dataset" and getattr(replacement, "ext", None) == "expression.json":
+                    if isinstance(replacement, model.HistoryDatasetAssociation):
+                        if not replacement.dataset.in_ready_state():
+                            why = "dataset [%s] is needed for non-data connection and is non-ready" % replacement.id
+                            raise DelayedWorkflowEvaluation(why=why)
+
+                        if not replacement.is_ok:
+                            raise CancelWorkflowEvaluation()
+
+                    with open(replacement.file_name, "r") as f:
+                        replacement = loads(f.read())
+
+                if isinstance(input, FieldTypeToolParameter):
+                    if isinstance(replacement, model.HistoryDatasetAssociation):
+                        replacement = {"src": "hda", "value": replacement}
+                    elif isinstance(replacement, model.HistoryDatasetCollectionAssociation):
+                        replacement = {"src": "hdca", "value": replacement}
+                    elif replacement is not NO_REPLACEMENT:
+                        replacement = {"src": "json", "value": replacement}
+
                 return replacement
 
             try:
@@ -1228,9 +1385,37 @@ class ToolModule(WorkflowModule):
                 message = message_template % (tool.name, k.message)
                 raise exceptions.MessageException(message)
 
+            extra_step_state = {}
+            for step_input in step.inputs:
+                step_input_name = step_input.name
+                if step_input_name not in execution_state.inputs and step_input_name in all_inputs_by_name:
+                    value = progress.replacement_for_input(step, all_inputs_by_name[step_input_name])
+                    # TODO: only do this for values... is everything with a default
+                    # this way a field parameter? I guess not?
+                    extra_step_state[step_input.name] = value
+
             unmatched_input_connections = expected_replacement_keys - found_replacement_keys
             if unmatched_input_connections:
                 log.warn("Failed to use input connections for inputs [%s]" % unmatched_input_connections)
+
+            expression_replacements = self.evaluate_value_from_expressions(
+                progress, step, execution_state
+            )
+
+            def expression_callback(input, prefixed_name, **kwargs):
+                replacement = NO_REPLACEMENT
+
+                if prefixed_name in expression_replacements:
+                    expression_replacement = expression_replacements[prefixed_name]
+                    if isinstance(input, FieldTypeToolParameter):
+                        replacement = {"src": "json", "value": expression_replacement}
+                    else:
+                        replacement = expression_replacement
+
+                return replacement
+
+            # Replace expression values with those calculated...
+            visit_input_values(tool.inputs, execution_state.inputs, expression_callback, no_replacement_value=NO_REPLACEMENT)
 
             param_combinations.append(execution_state.inputs)
 
@@ -1445,6 +1630,30 @@ def load_module_sections(trans):
     return module_sections
 
 
+class EphemeralCollection(object):
+    """Interface for collecting datasets together in workflows and treating as collections.
+
+    These aren't real collections in the database - just datasets groupped together
+    in someway by workflows for passing data around as collections.
+    """
+
+    # Used to distinguish between datasets and collections frequently.
+    ephemeral = True
+    history_content_type = "dataset_collection"
+    name = "Dynamically generated collection"
+
+    def __init__(self, collection, history):
+        self.collection = collection
+        self.history = history
+
+        hdca = model.HistoryDatasetCollectionAssociation(
+            collection=collection,
+            history=history,
+        )
+        hdca.history.add_dataset_collection(hdca)
+        self.persistent_object = hdca
+
+
 class DelayedWorkflowEvaluation(Exception):
 
     def __init__(self, why=None):
@@ -1479,6 +1688,7 @@ class WorkflowModuleInjector(object):
         step.upgrade_messages = {}
 
         # Make connection information available on each step by input name.
+        step.setup_inputs_by_name()
         step.setup_input_connections_by_name()
 
         # Populate module.
@@ -1516,6 +1726,8 @@ def populate_module_and_state(trans, workflow, param_map, allow_tool_state_corre
     for step in workflow.steps:
         step_args = param_map.get(step.id, {})
         step_errors = module_injector.inject(step, step_args=step_args)
+        # RESTRICT TO THIS JUST TO CONNECTIONS
+        step.upgrade_messages = []
         if step_errors:
             raise exceptions.MessageException(step_errors, err_data={step.order_index: step_errors})
         if step.upgrade_messages:
