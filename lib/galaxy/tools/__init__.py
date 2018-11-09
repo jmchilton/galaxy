@@ -2471,14 +2471,14 @@ class CwlCommandBindingTool(Tool):
             }
 
         # prevent unset optional file to trigger 'ValidationException' exception
-        input_json = {k:v for k, v in input_json.iteritems() if not (isinstance(v, dict) and v['class'] == 'File' and v['location'] == 'None')}
+        input_json = {k:v for k, v in input_json.iteritems() if not (isinstance(v, dict) and v.get('class') == 'File' and v.get('location') == 'None')}
 
         # prevent empty string
         input_json = {k:v for k, v in input_json.iteritems() if v != ''}
 
         # map tar file to 'Directory' type
         for k, v in input_json.iteritems():
-            if isinstance(v, dict) and v['class'] == 'File' and v['nameext'] == '.tar':
+            if isinstance(v, dict) and v.get('class') == 'File' and v.get('nameext') == '.tar':
                 print("CWL-IS: tar files uploaded in Galaxy are interpreted as 'Directory'.")
 
                 tar_file_location = v['location']
