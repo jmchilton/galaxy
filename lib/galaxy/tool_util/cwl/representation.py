@@ -336,7 +336,11 @@ def to_cwl_job(tool, param_dict, local_working_directory):
                 return None
             if hasattr(param_dict_value, "value"):
                 # Is InputValueWrapper
-                return param_dict_value.value
+                rval = param_dict_value.value
+                if isinstance(rval, dict) and "src" in rval and rval["src"] == "json":
+                    # needed for wf_step_connect_undeclared_param, so non-file defaults?
+                    return rval["value"]
+                return rval
             elif not param_dict_value.is_collection:
                 # Is DatasetFilenameWrapper
                 return dataset_wrapper_to_file_json(inputs_dir, param_dict_value)
