@@ -2371,10 +2371,13 @@ class FieldTypeToolParameter(ToolParameter):
             return {"src": src, "value": value}
 
     def value_to_basic(self, value, app, use_security=False):
+        if is_runtime_value(value):
+            return runtime_to_json(value)
+
         if value is None:
             return None
 
-        assert isinstance(value, dict)
+        assert isinstance(value, dict), "value [%s] is not valid for [%s]" % (value, self)
         assert "src" in value
         src = value["src"]
         if src in ["hda", "hdca", "dce"]:
