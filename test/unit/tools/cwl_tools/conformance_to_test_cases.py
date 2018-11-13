@@ -153,27 +153,28 @@ def main():
 
     tests = ""
     green_tests = ""
+    required_tests = ""
+
     for i, conformance_test in enumerate(conformance_tests):
         test_with_doc = conformance_test.copy()
         del test_with_doc["doc"]
         cwl_test_def = yaml.dump(test_with_doc, default_flow_style=False)
         cwl_test_def = "\n".join(["            %s" % l for l in cwl_test_def.splitlines()])
         label = conformance_test.get("label", str(i))
-        tests = tests + TEST_TEMPLATE.safe_substitute({
+        tags = conformance_test.get("tags", [])
+
+        template_kwargs = {
             'version_simple': version_simple,
             'version': version,
             'doc': conformance_test['doc'],
             'cwl_test_def': cwl_test_def,
             'label': label,
-        })
+        }
+        tests = tests + TEST_TEMPLATE.safe_substitute(template_kwargs)
         if label in GREEN_TESTS:
-            green_tests = green_tests + TEST_TEMPLATE.safe_substitute({
-                'version_simple': version_simple,
-                'version': version,
-                'doc': conformance_test['doc'],
-                'cwl_test_def': cwl_test_def,
-                'label': label,
-            })
+            green_tests = green_tests + TEST_TEMPLATE.safe_substitute(template_kwargs)
+        if "required" in tags:
+            required_tests = required_tests + TEST_TEMPLATE.safe_substitute(template_kwargs)
 
     test_file_contents = TEST_FILE_TEMPLATE.safe_substitute({
         'version_simple': version_simple,
