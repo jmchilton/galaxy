@@ -29,8 +29,10 @@ except (ImportError, SyntaxError):
 
 try:
     from cwltool.context import LoadingContext  # Introduced in cwltool 1.0.20180615183820
+    from cwltool.context import RuntimeContext
 except (ImportError, SyntaxError):
     LoadingContext = None
+    RuntimeContext = None
 
 try:
     from cwltool import load_tool
