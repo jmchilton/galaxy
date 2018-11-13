@@ -19,10 +19,11 @@ from galaxy.util import listify, safe_makedirs
 from galaxy.util.bunch import Bunch
 from galaxy.util.odict import odict
 from .cwltool_deps import (
+    beta_relaxed_fmt_check,
     ensure_cwltool_available,
     pathmapper,
     process,
-    beta_relaxed_fmt_check,
+    RuntimeContext,
 )
 from .representation import (
     field_to_field_type,
@@ -424,10 +425,7 @@ class JobProxy(object):
 
     def _ensure_cwl_job_initialized(self):
         if self._cwl_job is None:
-
-            self._cwl_job = next(self._tool_proxy._tool.job(
-                self._input_dict,
-                self._output_callback,
+            job_args = dict(
                 basedir=self._job_directory,
                 select_resources=self._select_resources,
                 outdir=os.path.join(self._job_directory, "working"),
@@ -435,6 +433,17 @@ class JobProxy(object):
                 stagedir=os.path.join(self._job_directory, "cwlstagedir"),
                 use_container=False,
                 beta_relaxed_fmt_check=beta_relaxed_fmt_check,
+            )
+            args = []
+            kwargs = {}
+            if RuntimeContext is not None:
+                args.append(RuntimeContext(job_args))
+            else:
+                kwargs = job_args
+            self._cwl_job = next(self._tool_proxy._tool.job(
+                self._input_dict,
+                self._output_callback,
+                *args, **kwargs
             ))
             self._is_command_line_job = hasattr(self._cwl_job, "command_line")
 
