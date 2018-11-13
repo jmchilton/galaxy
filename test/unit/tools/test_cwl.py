@@ -137,7 +137,7 @@ def test_cores_min():
 def test_success_codes():
     exit_success_parser = get_tool_source(_cwl_tool_path("v1.0/exit-success.cwl"))
 
-    stdio = exit_success_parser.parse_stdio()
+    stdio, _ = exit_success_parser.parse_stdio()
     assert len(stdio) == 2
     stdio_0 = stdio[0]
     assert stdio_0.range_start == float("-inf")
@@ -148,7 +148,7 @@ def test_success_codes():
     assert stdio_1.range_end == float("inf")
 
     bwa_parser = get_tool_source(_cwl_tool_path("v1.0/bwa-mem-tool.cwl"))
-    stdio = bwa_parser.parse_stdio()
+    stdio, _ = bwa_parser.parse_stdio()
 
     assert len(stdio) == 2
     stdio_0 = stdio[0]
@@ -371,21 +371,12 @@ def test_workflow_input_default():
     inputs = tool_step["inputs"]
     assert len(inputs) == 2, inputs
     assert inputs[1]
-    assert False
 
 
 def test_search_workflow():
     proxy = workflow_proxy(_cwl_tool_path("v1.0/search.cwl#main"))
     galaxy_workflow_dict = proxy.to_dict()
     assert len(galaxy_workflow_dict["steps"]) == 5
-    print("======")
-    for i, step in galaxy_workflow_dict["steps"].items():
-        print(str(i) + ":" + step["label"])
-        print(step["input_connections"])
-
-    print("======")
-    print galaxy_workflow_dict
-    # assert False
 
 
 def test_workflow_simple_optional_input():
