@@ -2473,32 +2473,6 @@ class CwlCommandBindingTool(Tool):
         # prevent empty string
         input_json = {k:v for k, v in input_json.iteritems() if v != ''}
 
-        # map tar file to 'Directory' type
-        for k, v in input_json.iteritems():
-            if isinstance(v, dict) and v.get('class') == 'File' and v.get('nameext') == '.tar':
-                print("CWL-IS: tar files uploaded in Galaxy are interpreted as 'Directory'.")
-
-                tar_file_location = v['location']
-                directory_name = v['nameroot']
-
-                tmp_dir = os.path.join('/tmp', str(uuid.uuid4()))
-                directory_location = os.path.join(tmp_dir, directory_name)
-
-                os.makedirs(tmp_dir)
-
-                bkp_cwd = os.getcwd(); os.chdir(tmp_dir)
-                tar = tarfile.open(tar_file_location); tar.extractall(); tar.close()
-                os.chdir(bkp_cwd)
-
-
-                v['class'] = 'Directory'
-                v['location'] = directory_location
-                v['nameext'] = 'None'
-                v['nameroot'] = 'example'
-                v['basename'] = 'example'
-                #v['size'] = 
-
-
         cwl_job_proxy = self._cwl_tool_proxy.job_proxy(
             input_json,
             output_dict,
