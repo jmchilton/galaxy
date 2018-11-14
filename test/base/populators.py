@@ -31,6 +31,7 @@ from galaxy.tools.cwl.util import (
     DirectoryUploadTarget,
     download_output,
     galactic_job_json,
+    guess_artifact_type,
     invocation_to_output,
     output_to_cwl_json,
     tool_response_to_output,
@@ -212,10 +213,11 @@ class CwlRun(object):
             pseduo_location=True,
         )
         if download_folder:
-            download_path = os.path.join(download_folder, output["basename"])
-            download_output(galaxy_output, get_metadata, get_dataset, get_extra_files, download_path)
-            output["path"] = download_path
-            output["location"] = "file://%s" % download_path 
+            if isinstance(output, dict) and "basename" in output:
+                download_path = os.path.join(download_folder, output["basename"])
+                download_output(galaxy_output, get_metadata, get_dataset, get_extra_files, download_path)
+                output["path"] = download_path
+                output["location"] = "file://%s" % download_path
         return output
         
 
@@ -382,25 +384,34 @@ class CwlPopulator(object):
             tool_hash = None
 
             if os.path.exists(tool_id):
-                # Assume it is a file not a tool_id.
-                if LOAD_TOOLS_FROM_PATH:
-                    dynamic_tool = self.dataset_populator.create_tool_from_path(tool_id)
+                raw_tool_id = os.path.basename(tool_id)
+                index = self.dataset_populator._get("tools", data=dict(in_panel=False))
+                tools = index.json()
+                # In panels by default, so flatten out sections...
+                tool_ids = [itemgetter("id")(_) for _ in tools]
+                if raw_tool_id in tool_ids:
+                    galaxy_tool_id = raw_tool_id
+                    tool_hash = None
                 else:
-                    with open(tool_id, "r") as f:
-                        representation = yaml.load(f)
-                    if "id" not in representation:
-                        # TODO: following line doesn't work.
-                        representation["id"] = os.path.splitext(os.path.basename(tool_id))[0]
-                        tool_directory = os.path.abspath(os.path.dirname(tool_id))
+                    # Assume it is a file not a tool_id.
+                    if LOAD_TOOLS_FROM_PATH:
+                        dynamic_tool = self.dataset_populator.create_tool_from_path(tool_id)
+                    else:
+                        with open(tool_id, "r") as f:
+                            representation = yaml.load(f)
+                        if "id" not in representation:
+                            # TODO: following line doesn't work.
+                            representation["id"] = os.path.splitext(os.path.basename(tool_id))[0]
+                            tool_directory = os.path.abspath(os.path.dirname(tool_id))
 
-                    dynamic_tool = self.dataset_populator.create_tool(representation, tool_directory=tool_directory)
+                        dynamic_tool = self.dataset_populator.create_tool(representation, tool_directory=tool_directory)
 
-                tool_id = dynamic_tool["tool_id"]
-                print("tool_id id %s" % tool_id)
-                tool_hash = dynamic_tool["tool_hash"]
-                assert tool_id, dynamic_tool
+                    tool_id = dynamic_tool["tool_id"]
+                    tool_hash = dynamic_tool["tool_hash"]
+                    assert tool_id, dynamic_tool
+                    galaxy_tool_id = None
 
-            run_response = self.dataset_populator.run_tool(None, job_as_dict, history_id, inputs_representation="cwl", assert_ok=assert_ok, tool_hash=tool_hash)
+            run_response = self.dataset_populator.run_tool(galaxy_tool_id, job_as_dict, history_id, inputs_representation="cwl", assert_ok=assert_ok, tool_hash=tool_hash)
             run_object = CwlToolRun(self.dataset_populator, history_id, run_response)
             if assert_ok:
                 try:
@@ -468,23 +479,10 @@ class CwlPopulator(object):
             raise
 
     def run_cwl_job(self, tool, job):
-        tool_or_workflow = self.guess_artifact_type(tool)
+        tool_or_workflow = guess_artifact_type(tool)
         run = self.run_workflow_job(tool, job, tool_or_workflow=tool_or_workflow)
         assert run.history_id
         return run
-
-    def guess_artifact_type(self, path):
-        # TODO: handle IDs within files and use galaxy-lib functionality for this.
-        tool_or_workflow = "workflow"
-        try:
-            with open(path, "r") as f:
-                artifact = yaml.load(f)
-
-            tool_or_workflow = "tool" if artifact["class"] != "Workflow" else "workflow"
-
-        except Exception:
-            print("Failed to guess artifact type for [%s] - assuming worklfow" % path)
-        return tool_or_workflow
 
     def run_workflow_job(self, workflow_path, job_path, history_id=None, tool_or_workflow="workflow"):
         if history_id is None:

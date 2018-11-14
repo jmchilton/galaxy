@@ -263,7 +263,7 @@ def artifact_class(trans, as_dict):
         if target_object and target_object.get("class"):
             artifact_class = target_object["class"]
 
-    return artifact_class, as_dict
+    return artifact_class, as_dict, object_id
 
 
 class WorkflowContentsManager(UsesAnnotations):
@@ -296,7 +296,7 @@ class WorkflowContentsManager(UsesAnnotations):
             workflow_path = as_dict.get("path")
             workflow_directory = os.path.normpath(os.path.dirname(workflow_path))
 
-        workflow_class, as_dict = artifact_class(trans, as_dict)
+        workflow_class, as_dict, object_id = artifact_class(trans, as_dict)
         if workflow_class == "GalaxyWorkflow" or "yaml_content" in as_dict:
             if not self.app.config.enable_beta_workflow_format:
                 raise exceptions.ConfigDoesNotAllowException("Format2 workflows not enabled.")

@@ -211,6 +211,7 @@ def handle_outputs(job_directory=None):
         }
 
     for output_name, output in outputs.items():
+        handled_outputs.append(output_name)
         if isinstance(output, dict) and "location" in output:
             handle_known_output(output, output_name, output_name)
         elif isinstance(output, dict):
@@ -237,6 +238,11 @@ def handle_outputs(job_directory=None):
             provided_metadata[output_name] = {"elements": elements}
         else:
             handle_known_output_json(output, output_name)
+
+    for output_instance in job_proxy._tool_proxy.output_instances():
+        output_name = output_instance.name
+        if output_name not in handled_outputs:
+            handle_known_output_json(None, output_name)
 
     with open("galaxy.json", "w") as f:
         json.dump(provided_metadata, f)
