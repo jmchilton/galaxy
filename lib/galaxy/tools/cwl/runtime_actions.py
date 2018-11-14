@@ -210,6 +210,7 @@ def handle_outputs(job_directory=None):
             "ext": "expression.json",
         }
 
+    handled_outputs = []
     for output_name, output in outputs.items():
         handled_outputs.append(output_name)
         if isinstance(output, dict) and "location" in output:
