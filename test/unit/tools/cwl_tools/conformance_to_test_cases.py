@@ -186,10 +186,17 @@ def main():
         'tests': green_tests
     })
 
+    required_test_file_contents = TEST_FILE_TEMPLATE.safe_substitute({
+        'version_simple': version_simple,
+        'tests': required_tests
+    })
+
     with open(os.path.join(API_TEST_DIRECTORY, "test_cwl_conformance_%s.py" % version_simple), "w") as f:
         f.write(test_file_contents)
     with open(os.path.join(API_TEST_DIRECTORY, "test_cwl_conformance_green_%s.py" % version_simple), "w") as f:
         f.write(green_test_file_contents)
+    with open(os.path.join(API_TEST_DIRECTORY, "test_cwl_conformance_required_%s.py" % version_simple), "w") as f:
+        f.write(required_test_file_contents)
 
 
 if __name__ == "__main__":
