@@ -292,7 +292,7 @@ class ToolBox(BaseGalaxyToolBox):
             config_file = dynamic_tool.tool_path
             tool_source = get_tool_source(
                 config_file,
-                enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", False),
+                enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", True),
                 tool_location_fetcher=self.tool_location_fetcher,
                 strict_cwl_validation=getattr(self.app.config, "strict_cwl_validation", True),
             )

@@ -34,13 +34,13 @@ class DynamicToolManager(ModelManager):
         )
         return dynamic_tool
 
-    def create_tool(self, trans, tool_payload, allow_load=False):
+    def create_tool(self, trans, tool_payload, allow_load=True):
         src = tool_payload.get("src", "representation")
         is_path = src == "from_path"
 
         if is_path:
             from galaxy.managers.workflows import artifact_class
-            tool_format, representation = artifact_class(None, tool_payload)
+            tool_format, representation, object_id = artifact_class(None, tool_payload)
         else:
             assert src == "representation"
             if "representation" not in tool_payload:

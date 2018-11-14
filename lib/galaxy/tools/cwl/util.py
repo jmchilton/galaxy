@@ -7,6 +7,7 @@ import json
 import os
 import tarfile
 import tempfile
+import yaml
 from collections import namedtuple
 
 from six import (
@@ -100,6 +101,9 @@ def galactic_job_json(
     dataset_collections = []
 
     def response_to_hda(target, upload_response):
+        assert isinstance(upload_response, dict), upload_response
+        assert "outputs" in upload_response, upload_response
+        assert len(upload_response["outputs"]) > 0, upload_response
         dataset = upload_response["outputs"][0]
         datasets.append((dataset, target))
         dataset_id = dataset["id"]
@@ -495,3 +499,18 @@ def download_output(galaxy_output, get_metadata, get_dataset, get_extra_files, o
     dataset_dict = get_dataset(output_metadata)
     with open(output_path, 'wb') as fh:
         fh.write(dataset_dict['content'])
+
+
+def guess_artifact_type(path):
+    # TODO: Handle IDs within files.
+    tool_or_workflow = "workflow"
+    try:
+        with open(path, "r") as f:
+            artifact = yaml.load(f)
+
+        tool_or_workflow = "tool" if artifact["class"] != "Workflow" else "workflow"
+
+    except Exception as e:
+        print(e)
+
+    return tool_or_workflow
