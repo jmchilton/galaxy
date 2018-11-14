@@ -1270,7 +1270,7 @@ def get_outputs(path):
         outputs = [ToolOutput(o) for o in output_datasets.values()]
         return outputs
     else:
-        workflow = workflow_proxy(runnable.path, strict_cwl_validation=False)
+        workflow = workflow_proxy(path, strict_cwl_validation=False)
         return [CwlWorkflowOutput(label) for label in workflow.output_labels]
 
 
