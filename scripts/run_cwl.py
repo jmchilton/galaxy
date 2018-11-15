@@ -13,6 +13,7 @@ sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pa
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, 'lib')))
 
 from galaxy.tools.cwl.parser import get_outputs
+from galaxy.version import VERSION
 
 from base.populators import (  # noqa: I100,I202
     CwlPopulator,
@@ -57,6 +58,7 @@ def main(argv=None):
     arg_parser.add_argument("--host", default="http://localhost:8080/")
     arg_parser.add_argument("--outdir", default=".")
     arg_parser.add_argument("--quiet", action="store_true")
+    arg_parser.add_argument("--version", action='version', version='%(prog)s {}~CWL'.format(VERSION))
     arg_parser.add_argument("--cwd", default=os.getcwd())
     arg_parser.add_argument('tool', metavar='TOOL', help='tool or workflow')
     arg_parser.add_argument('job', metavar='JOB', help='job')
