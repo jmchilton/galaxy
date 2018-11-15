@@ -478,7 +478,7 @@ class JobProxy(object):
                     log.info("skipping simple value...")
             stage_recursive(self._input_dict)
 
-    def _select_resources(self, request):
+    def _select_resources(self, request, runtime_context=None):
         new_request = request.copy()
         new_request["cores"] = "$GALAXY_SLOTS"
         return new_request
