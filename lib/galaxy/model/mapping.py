@@ -919,7 +919,7 @@ model.WorkflowStepInput.table = Table(
     Column("value_from", JSONType),
     Column("value_from_type", TEXT),
     Column("default_value", JSONType),
-    Column("default_value_set", Boolean),
+    Column("default_value_set", Boolean, default=False),
     Column("runtime_value", Boolean))
 
 
