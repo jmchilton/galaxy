@@ -1057,7 +1057,7 @@ class ToolModule(WorkflowModule):
     def get_runtime_inputs(self, **kwds):
         return self.get_inputs()
 
-    def compute_runtime_state(self, trans, step, step_updates=None):
+    def compute_runtime_state(self, trans, step=None, step_updates=None):
         # Warning: This method destructively modifies existing step state.
         if self.tool:
             step_errors = {}
