@@ -913,7 +913,7 @@ model.WorkflowStepInput.table = Table(
     "workflow_step_input", metadata,
     Column("id", Integer, primary_key=True),
     Column("workflow_step_id", Integer, ForeignKey("workflow_step.id"), index=True),
-    Column("name", Unicode(255)),
+    Column("name", TEXT),
     Column("merge_type", TEXT),
     Column("scatter_type", TEXT),
     Column("value_from", JSONType),
