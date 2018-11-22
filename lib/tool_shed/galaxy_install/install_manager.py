@@ -646,6 +646,7 @@ class InstallRepositoryManager(object):
         tool_panel_section_id = installation_dict['tool_panel_section_id']
         tool_panel_section_keys = installation_dict['tool_panel_section_keys']
         tool_panel_section_mapping = installation_dict.get('tool_panel_section_mapping', {})
+        tool_panel_tags = installation_dict.get('tool_panel_tags', [])
         tool_path = installation_dict['tool_path']
         tool_shed_url = installation_dict['tool_shed_url']
         # Handle contained tools.
@@ -674,6 +675,7 @@ class InstallRepositoryManager(object):
                        tool_path=tool_path,
                        tool_panel_section_keys=tool_panel_section_keys,
                        tool_shed_repository_ids=encoded_repository_ids,
+                       tool_panel_tags=tool_panel_tags,
                        tool_shed_url=tool_shed_url)
         encoded_kwd = encoding_util.tool_shed_encode(new_kwd)
         tsr_ids = [r.id for r in created_or_updated_tool_shed_repositories]
@@ -725,6 +727,7 @@ class InstallRepositoryManager(object):
         if install_tool_dependencies:
             self.__assert_can_install_dependencies()
         new_tool_panel_section_label = install_options.get('new_tool_panel_section_label', '')
+        tool_panel_tags = install_options.get('tool_panel_tags', [])
         tool_panel_section_mapping = install_options.get('tool_panel_section_mapping', {})
         shed_tool_conf = install_options.get('shed_tool_conf', None)
         if shed_tool_conf:
@@ -748,6 +751,7 @@ class InstallRepositoryManager(object):
                                  no_changes_checked=False,
                                  repo_info_dicts=repo_info_dicts,
                                  tool_panel_section_id=tool_panel_section_id,
+                                 tool_panel_tags=tool_panel_tags,
                                  tool_path=tool_path,
                                  tool_shed_url=tool_shed_url)
         # Create the tool_shed_repository database records and gather additional information for repository installation.
@@ -769,6 +773,7 @@ class InstallRepositoryManager(object):
                                      shed_tool_conf=shed_tool_conf,
                                      status='done',
                                      tool_panel_section_id=tool_panel_section_id,
+                                     tool_panel_tags=tool_panel_tags,
                                      tool_panel_section_keys=tool_panel_section_keys,
                                      tool_panel_section_mapping=tool_panel_section_mapping,
                                      tool_path=tool_path,
@@ -791,6 +796,7 @@ class InstallRepositoryManager(object):
                 shed_tool_conf=shed_tool_conf,
                 tool_path=tool_path,
                 tool_panel_section_keys=tool_panel_section_keys,
+                tool_panel_tags=tool_panel_tags,
                 repo_info_dicts=filtered_repo_info_dicts,
                 install_resolver_dependencies=install_resolver_dependencies,
                 install_tool_dependencies=install_tool_dependencies,

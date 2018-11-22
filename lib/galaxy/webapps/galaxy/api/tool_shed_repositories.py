@@ -447,6 +447,7 @@ class ToolShedRepositoriesController(BaseAPIController):
         tool_panel_section_mapping = json.loads(kwd.get('tool_panel_section', '{}'))
         install_tool_dependencies = util.asbool(kwd.get('install_tool_dependencies', False))
         install_repository_dependencies = util.asbool(kwd.get('install_repository_dependencies', False))
+        tool_panel_tags = kwd.get('tool_panel_tags', [])
         shed_tool_conf = kwd.get('shed_tool_conf', None)
         tool_path = suc.get_tool_path_by_shed_tool_conf_filename(self.app, shed_tool_conf)
         installation_dict = dict(install_repository_dependencies=install_repository_dependencies,
@@ -474,6 +475,7 @@ class ToolShedRepositoriesController(BaseAPIController):
                                      status='ok',
                                      tool_panel_section_id=tool_panel_section_id,
                                      tool_panel_section_keys=tool_panel_keys,
+                                     tool_panel_tags=tool_panel_tags,
                                      tool_path=tool_path,
                                      tool_shed_url=tool_shed_url)
             encoded_kwd, query, tool_shed_repositories, encoded_repository_ids = \
