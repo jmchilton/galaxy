@@ -164,6 +164,8 @@ class MetadataTestCase(unittest.TestCase, tools_support.UsesApp, tools_support.U
                                                                     datatypes_config=datatypes_config,
                                                                     job_metadata=job_metadata,
                                                                     output_fnames=output_fnames,
+                                                                    tool=self.tool,
+                                                                    job=self.job,
                                                                     max_metadata_value_size=10000)
         return command
 

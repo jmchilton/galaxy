@@ -560,10 +560,11 @@ class JobState(object):
     def default_exit_code_file(files_dir, id_tag):
         return os.path.join(files_dir, 'galaxy_%s.ec' % id_tag)
 
-    def read_exit_code(self):
+    @staticmethod
+    def read_exit_code_from(exit_code_file, id_tag):
         try:
             # This should be an 8-bit exit code, but read ahead anyway:
-            exit_code_str = open(self.exit_code_file, "r").read(32)
+            exit_code_str = open(exit_code_file, "r").read(32)
         except Exception:
             # By default, the exit code is 0, which typically indicates success.
             exit_code_str = "0"
@@ -572,11 +573,14 @@ class JobState(object):
             # Decode the exit code. If it's bogus, then just use 0.
             exit_code = int(exit_code_str)
         except ValueError:
-            galaxy_id_tag = self.job_wrapper.get_id_tag()
+            galaxy_id_tag = id_tag
             log.warning("(%s) Exit code '%s' invalid. Using 0." % (galaxy_id_tag, exit_code_str))
             exit_code = 0
 
         return exit_code
+
+    def read_exit_code(self):
+        return JobState.read_exit_code_from(self.exit_code_file, self.job_wrapper.get_id_tag())
 
     def cleanup(self):
         for file in [getattr(self, a) for a in self.cleanup_file_attributes if hasattr(self, a)]:

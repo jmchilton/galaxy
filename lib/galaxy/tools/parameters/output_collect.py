@@ -15,6 +15,7 @@ from galaxy.tools.parser.output_collection_def import (
     ToolProvidedMetadataDatasetCollection,
 )
 from galaxy.util import (
+    bunch,
     ExecutionTimer,
     odict
 )
@@ -499,6 +500,23 @@ class JobContext(object):
                     copied_dataset.history.add_dataset(new_data)
                     sa_session.add(new_data)
                     sa_session.flush()
+
+
+class DisconnectedJobContext(JobContext):
+
+    def __init__(self, metadata_params, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):
+        tool = bunch.Bunch()
+        super(DisconnectedJobContext, self).__init__(
+            tool,
+            tool_provided_metadata,
+            job,
+            "working",
+            UnusedPermissionProvider(),
+            UnusedMetadataSourceProvider(),
+            input_dbkey,
+            object_store,
+        )
+        pass
 
 
 def collect_primary_datasets(job_context, output, input_ext):

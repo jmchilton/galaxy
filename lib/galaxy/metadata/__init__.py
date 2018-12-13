@@ -24,6 +24,8 @@ def get_metadata_compute_strategy(app, job_id):
     metadata_strategy = app.config.metadata_strategy
     if metadata_strategy == "legacy":
         return JobExternalOutputMetadataWrapper(job_id)
+    if metadata_strategy == "extended":
+        return ExtendedDirectoryMetadataGenerator(job_id)
     else:
         return PortableDirectoryMetadataGenerator(job_id)
 
@@ -32,6 +34,7 @@ def get_metadata_compute_strategy(app, job_id):
 class MetadataCollectionStrategy(object):
     """Interface describing the abstract process of writing out and collecting output metadata.
     """
+    extended = True
 
     def invalidate_external_metadata(self, datasets, sa_session):
         """Invalidate written files."""
@@ -50,6 +53,7 @@ class MetadataCollectionStrategy(object):
                                 config_file=None, datatypes_config=None,
                                 job_metadata=None, compute_tmp_dir=None,
                                 include_command=True, max_metadata_value_size=0,
+                                object_store_conf=None, tool=None, job=None,
                                 kwds=None):
         """Setup files needed for external metadata collection.
 
@@ -88,6 +92,7 @@ class MetadataCollectionStrategy(object):
 
 
 class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
+    write_object_store_conf = False
 
     def __init__(self, job_id):
         self.job_id = job_id
@@ -98,6 +103,7 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
                                 config_file=None, datatypes_config=None,
                                 job_metadata=None, compute_tmp_dir=None,
                                 include_command=True, max_metadata_value_size=0,
+                                object_store_conf=None, tool=None, job=None,
                                 kwds=None):
         assert job_metadata, "setup_external_metadata must be supplied with job_metadata path"
         kwds = kwds or {}
@@ -127,6 +133,10 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
                 "filename_override": _get_filename_override(output_fnames, dataset.file_name)
             }
 
+        if self.write_object_store_conf:
+            with open(os.path.join(metadata_dir, "object_store_conf.json"), "w") as f:
+                json.dump(object_store_conf, f)
+
         metadata_params_path = os.path.join(metadata_dir, "params.json")
         metadata_params = {
             "job_metadata": job_relative_path(job_metadata),
@@ -134,6 +144,23 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
             "max_metadata_value_size": max_metadata_value_size,
             "outputs": outputs,
         }
+
+        if self.write_object_store_conf:
+            tool_as_dict = {}
+            tool_as_dict["stdio_exit_codes"] = list(map(lambda e: e.to_dict(), tool.stdio_exit_codes))
+            tool_as_dict["stdio_regexes"] = list(map(lambda r: r.to_dict(), tool.stdio_regexes))
+            tool_outputs = {}
+            for name, output in tool.outputs.items():
+                tool_outputs[name] = output.to_dict(view="for_job")
+            for name, output in tool.output_collections.items():
+                tool_outputs[name] = output.to_dict(view="for_job")
+            tool_as_dict["outputs"] = tool_outputs
+
+            metadata_params["tool"] = tool_as_dict
+            metadata_params["tool_path"] = tool.config_file
+            metadata_params["job_id_tag"] = job.get_id_tag()
+            metadata_params["job_params"] = job.raw_param_dict()
+
         with open(metadata_params_path, "w") as f:
             json.dump(metadata_params, f)
 
@@ -154,6 +181,23 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
     def external_metadata_set_successfully(self, dataset, name, sa_session, working_directory):
         metadata_results_path = os.path.join(working_directory, "metadata", "metadata_results_%s" % name)
         return self._metadata_results_from_file(dataset, metadata_results_path)
+
+
+class ExtendedDirectoryMetadataGenerator(PortableDirectoryMetadataGenerator):
+    extended = True
+    write_object_store_conf = True
+
+    def __init__(self, job_id):
+        self.job_id = job_id
+
+    def setup_external_metadata(self, datasets_dict, sa_session, **kwd):
+        command = super(ExtendedDirectoryMetadataGenerator, self).setup_external_metadata(datasets_dict, sa_session, **kwd)
+        return command
+
+    def load_metadata(self, dataset, name, sa_session, working_directory, remote_metadata_directory=None):
+        metadata_output_path = os.path.join(working_directory, "metadata", "metadata_out_%s" % name)
+        dataset = cPickle.load(open(metadata_output_path, 'rb'))  # load DatasetInstance
+        return dataset
 
 
 class JobExternalOutputMetadataWrapper(MetadataCollectionStrategy):
@@ -206,6 +250,7 @@ class JobExternalOutputMetadataWrapper(MetadataCollectionStrategy):
                                 config_file=None, datatypes_config=None,
                                 job_metadata=None, compute_tmp_dir=None,
                                 include_command=True, max_metadata_value_size=0,
+                                object_store_conf=None, tool=None, job=None,
                                 kwds=None):
         kwds = kwds or {}
         tmp_dir = _init_tmp_dir(tmp_dir)

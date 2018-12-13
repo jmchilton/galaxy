@@ -1242,17 +1242,7 @@ class JobWrapper(HasResourceParameters):
             dataset.dataset.uuid = context['uuid']
         self.__update_output(job, dataset)
         if not purged:
-            self._collect_extra_files(dataset.dataset, self.working_directory)
-        # Handle composite datatypes of auto_primary_file type
-        if dataset.datatype.composite_type == 'auto_primary_file' and not dataset.has_data():
-            try:
-                with NamedTemporaryFile() as temp_fh:
-                    temp_fh.write(dataset.datatype.generate_primary_file(dataset))
-                    temp_fh.flush()
-                    self.object_store.update_from_file(dataset.dataset, file_name=temp_fh.name, create=True)
-                    dataset.set_size()
-            except Exception as e:
-                log.warning('Unable to generate primary composite file automatically for %s: %s', dataset.dataset.id, e)
+            JobWrapper.collect_extra_files(self.object_store, dataset, self.working_directory)
         if job.states.ERROR == final_job_state:
             dataset.blurb = "error"
             dataset.mark_unhidden()
@@ -1339,6 +1329,8 @@ class JobWrapper(HasResourceParameters):
             # the tasks failed. So include the stderr, stdout, and exit code:
             return fail()
 
+        extended_metadata = self.external_output_metadata.extended
+
         # We collect the stderr from tools that write their stderr to galaxy.json
         tool_provided_metadata = self.get_tool_provided_job_metadata()
 
@@ -1390,9 +1382,26 @@ class JobWrapper(HasResourceParameters):
             # lets not allow this to occur
             # need to update all associated output hdas, i.e. history was shared with job running
             for dataset in dataset_assoc.dataset.dataset.history_associations + dataset_assoc.dataset.dataset.library_associations:
-                self._finish_dataset(
-                    dataset_assoc.name, dataset, job, context, final_job_state, remote_metadata_directory
-                )
+                output_name = dataset_assoc.name
+                standard_job_finish = True
+                if extended_metadata and hasattr(dataset, "history_content_type"):
+                    try:
+                        if job.states.ERROR == final_job_state:
+                            dataset.blurb = "error"
+                            dataset.mark_unhidden()
+                        else:
+                            external_dataset_instance = self.external_output_metadata.load_metadata(dataset, output_name, self.sa_session, working_directory=self.working_directory, remote_metadata_directory=remote_metadata_directory)
+                            dataset.merge_from_extended_metadata_collection(external_dataset_instance)
+                            self.sa_session.add(dataset)
+                        standard_job_finish = False
+                    except EOFError:
+                        standard_job_finish = True
+
+                if standard_job_finish:
+                    # Handles retry internally on error for instance...
+                    self._finish_dataset(
+                        output_name, dataset, job, context, final_job_state, remote_metadata_directory
+                    )
             if job.states.ERROR == final_job_state:
                 log.debug("(%s) setting dataset %s state to ERROR", job.id, dataset_assoc.dataset.dataset.id)
                 # TODO: This is where the state is being set to error. Change it!
@@ -1535,8 +1544,9 @@ class JobWrapper(HasResourceParameters):
         except Exception:
             log.exception("Unable to cleanup job %d", self.job_id)
 
-    def _collect_extra_files(self, dataset, job_working_directory):
-        temp_file_path = os.path.join(job_working_directory, "dataset_%s_files" % (dataset.id))
+    @staticmethod
+    def collect_extra_files(object_store, dataset, job_working_directory):
+        temp_file_path = os.path.join(job_working_directory, "dataset_%s_files" % (dataset.dataset.id))
         extra_dir = None
         try:
             # This skips creation of directories - object store
@@ -1546,8 +1556,8 @@ class JobWrapper(HasResourceParameters):
             for root, dirs, files in os.walk(temp_file_path):
                 extra_dir = root.replace(job_working_directory, '', 1).lstrip(os.path.sep)
                 for f in files:
-                    self.object_store.update_from_file(
-                        dataset,
+                    object_store.update_from_file(
+                        dataset.dataset,
                         extra_dir=extra_dir,
                         alt_name=f,
                         file_name=os.path.join(root, f),
@@ -1556,6 +1566,17 @@ class JobWrapper(HasResourceParameters):
                     )
         except Exception as e:
             log.debug("Error in collect_associated_files: %s" % (e))
+
+        # Handle composite datatypes of auto_primary_file type
+        if dataset.datatype.composite_type == 'auto_primary_file' and not dataset.has_data():
+            try:
+                with NamedTemporaryFile() as temp_fh:
+                    temp_fh.write(dataset.datatype.generate_primary_file(dataset))
+                    temp_fh.flush()
+                    object_store.update_from_file(dataset.dataset, file_name=temp_fh.name, create=True)
+                    dataset.set_size()
+            except Exception as e:
+                log.warning('Unable to generate primary composite file automatically for %s: %s', dataset.dataset.id, e)
 
     def _collect_metrics(self, has_metrics):
         job = has_metrics.get_job()
@@ -1782,6 +1803,8 @@ class JobWrapper(HasResourceParameters):
             assert output_name not in output_datasets
             output_datasets[output_dataset_assoc.name] = output_dataset_assoc.dataset
 
+        job_metadata = os.path.join(self.tool_working_directory, self.tool.provided_metadata_file)
+        object_store_conf = self.object_store.to_dict()
         command = self.external_output_metadata.setup_external_metadata(output_datasets,
                                                                         self.sa_session,
                                                                         exec_dir=exec_dir,
@@ -1790,7 +1813,10 @@ class JobWrapper(HasResourceParameters):
                                                                         config_root=config_root,
                                                                         config_file=config_file,
                                                                         datatypes_config=datatypes_config,
-                                                                        job_metadata=os.path.join(self.tool_working_directory, self.tool.provided_metadata_file),
+                                                                        job_metadata=job_metadata,
+                                                                        object_store_conf=object_store_conf,
+                                                                        tool=self.tool,
+                                                                        job=job,
                                                                         max_metadata_value_size=self.app.config.max_metadata_value_size,
                                                                         **kwds)
         if resolve_metadata_dependencies:
