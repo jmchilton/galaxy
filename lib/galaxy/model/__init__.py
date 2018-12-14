@@ -2135,6 +2135,11 @@ class Dataset(StorableObject, RepresentById):
         else:
             self.uuid = UUID(str(uuid))
 
+    def merge_from_extended_metadata_collection(self, external_dataset):
+        self.file_size = external_dataset.file_size
+        self.total_size = external_dataset.total_size
+        self.uuid = external_dataset.uuid
+
     def in_ready_state(self):
         return self.state in self.ready_states
 
@@ -2867,6 +2872,21 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
                                                         **new_values)
             self.version = self.version + 1 if self.version else 1
             session.add(past_hda)
+
+    def merge_from_extended_metadata_collection(self, external_hda):
+        self.peek = external_hda.peek
+        self.name = external_hda.name
+        self.info = external_hda.info
+        self.blurb = external_hda.blurb
+        self.extension = external_hda.extension
+        self.metadata = external_hda.metadata
+        self.dbkey = external_hda.dbkey
+        self.dataset.merge_from_extended_metadata_collection(external_hda.dataset)
+
+        # In some instances peek relies on dataset_id, i.e. gmaj.zip for viewing MAFs
+        # if not self.datatype.copy_safe_peek:
+        #    object_session(self).flush([self])
+        #    self.set_peek()
 
     def copy(self, parent_id=None, copy_tags=None, force_flush=True, copy_hid=True, new_name=None):
         """

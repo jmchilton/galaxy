@@ -18,12 +18,16 @@ from galaxy.model.store.discover import (
     persist_elements_to_folder,
     persist_hdas,
     RegexCollectedDatasetMatch,
+    SessionlessModelPersistenceContext,
     UNSET,
 )
 from galaxy.tools.parser.output_collection_def import (
     DEFAULT_DATASET_COLLECTOR_DESCRIPTION,
     INPUT_DBKEY_TOKEN,
     ToolProvidedMetadataDatasetCollection,
+)
+from galaxy.tools.parser.output_objects import (
+    ToolOutputCollection,
 )
 from galaxy.util import (
     ExecutionTimer,
@@ -82,8 +86,7 @@ def collect_dynamic_outputs(
     job_context,
     output_collections,
 ):
-    tool = job_context.tool
-    app = job_context.app
+    app = getattr(job_context, "app", None)
     sa_session = job_context.sa_session
     job_working_directory = job_context.job_working_directory
 
@@ -142,9 +145,10 @@ def collect_dynamic_outputs(
             persist_hdas(elements, job_context)
 
     for name, has_collection in output_collections.items():
-        if name not in tool.output_collections:
+        output_collection_def = job_context.output_collection_def(name)
+        if not output_collection_def:
             continue
-        output_collection_def = tool.output_collections[name]
+
         if not output_collection_def.dynamic_structure:
             continue
 
@@ -172,40 +176,12 @@ def collect_dynamic_outputs(
             )
             collection_builder.populate()
         except Exception:
+            print("cow...")
             log.exception("Problem gathering output collection.")
             collection.handle_population_failed("Problem building datasets for collection.")
 
 
-class JobContext(ModelPersistenceContext):
-
-    def __init__(self, tool, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):
-        self.tool = tool
-        self.metadata_source_provider = metadata_source_provider
-        self.permission_provider = permission_provider
-        self.input_dbkey = input_dbkey
-        self.app = tool.app
-        self.sa_session = tool.sa_session
-        self.job = job
-        self.job_working_directory = job_working_directory
-        self.tool_provided_metadata = tool_provided_metadata
-        self.object_store = object_store
-
-    @property
-    def work_context(self):
-        from galaxy.work.context import WorkRequestContext
-        return WorkRequestContext(self.app, user=self.user)
-
-    @property
-    def user(self):
-        if self.job:
-            user = self.job.user
-        else:
-            user = None
-        return user
-
-    @property
-    def tag_handler(self):
-        return self.app.tag_handler
+class BaseJobContext(object):
 
     def find_files(self, output_name, collection, dataset_collectors):
         filenames = odict.odict()
@@ -272,7 +248,7 @@ class JobContext(ModelPersistenceContext):
         self.add_datasets_to_history([d for (ei, d) in element_datasets])
         log.debug(
             "(%s) Add dynamic collection datasets to history for output [%s] %s",
-            self.job.id,
+            self.job_id(),
             name,
             add_datasets_timer,
         )
@@ -292,17 +268,102 @@ class JobContext(ModelPersistenceContext):
 
         self.flush()
 
+
+class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
+
+    def __init__(self, metadata_params, tool_provided_metadata, object_store, export_store, import_store, working_directory):
+        # TODO: use a metadata source provider... (pop from inputs and add parameter)
+        # TODO: handle input_dbkey...
+        input_dbkey = "?"
+        super(SessionlessJobContext, self).__init__(object_store, export_store, working_directory, input_dbkey=input_dbkey)
+        self.metadata_params = metadata_params
+        self.tool_provided_metadata = tool_provided_metadata
+        self.import_store = import_store
+
+    def output_collection_def(self, name):
+        tool_as_dict = self.metadata_params["tool"]
+        output_collection_defs = tool_as_dict["output_collections"]
+        if name not in output_collection_defs:
+            return False
+
+        output_collection_def_dict = output_collection_defs[name]
+        output_collection_def = ToolOutputCollection.from_dict(name, output_collection_def_dict)
+        return output_collection_def
+
+    def job_id(self):
+        return "non-session bound job"
+
+    def get_hdca(self, object_id):
+        hdca = self.import_store.sa_session.query(galaxy.model.HistoryDatasetCollectionAssociation).find(int(object_id))
+        if hdca:
+            self.export_store.add_dataset_collection(hdca)
+            for collection_dataset in hdca.dataset_instances:
+                include_files = True
+                self.export_store.add_dataset(collection_dataset, include_files=include_files)
+                self.export_store.collection_datasets[collection_dataset.id] = True
+
+        return hdca
+
+
+class JobContext(ModelPersistenceContext):
+
+    def __init__(self, tool, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):
+        self.tool = tool
+        self.metadata_source_provider = metadata_source_provider
+        self.permission_provider = permission_provider
+        self.input_dbkey = input_dbkey
+        self.app = tool.app
+        self.sa_session = tool.sa_session
+        self.job = job
+        self.job_working_directory = job_working_directory
+        self.tool_provided_metadata = tool_provided_metadata
+        self.object_store = object_store
+
+    @property
+    def work_context(self):
+        from galaxy.work.context import WorkRequestContext
+        return WorkRequestContext(self.app, user=self.user)
+
+    @property
+    def user(self):
+        if self.job:
+            user = self.job.user
+        else:
+            user = None
+        return user
+
+    @property
+    def tag_handler(self):
+        return self.app.tag_handler
+
     def persist_object(self, obj):
         self.sa_session.add(obj)
 
     def flush(self):
         self.sa_session.flush()
 
+    def get_library_folder(self, destination):
+        library_folder_manager = app.library_folder_manager
+        library_folder = library_folder_manager.get(self.work_context, app.security.decode_id(destination.get("library_folder_id")))
+        return library_folder
+
+    def get_hdca(self, object_id):
+        hdca = self.sa_session.query(galaxy.model.HistoryDatasetCollectionAssociation).get(int(object_id))
+        return hdca
+
     def create_library_folder(self, parent_folder, name, description):
         assert parent_folder.id
         library_folder_manager = self.app.library_folder_manager
         nested_folder = library_folder_manager.create(self.work_context, parent_folder.id, name, description)
         return nested_folder
+
+    def create_hdca(name, structure):
+        history = self.job.history
+        trans = self.work_context
+        collections_service = self.app.dataset_collections_service
+        hdca = collections_service.precreate_dataset_collection_instance(
+            trans, history, name, structure=structure
+        )
 
     def add_output_dataset_association(self, name, dataset):
         assoc = galaxy.model.JobToOutputDatasetAssociation(name, dataset)
@@ -344,6 +405,15 @@ class JobContext(ModelPersistenceContext):
                     copied_dataset.history.add_dataset(new_data)
                     sa_session.add(new_data)
                     sa_session.flush()
+
+    def output_collection_def(self, name):
+        if name not in tool.output_collections:
+            return None
+        output_collection_def = tool.output_collections[name]
+        return output_collection_def
+
+    def job_id(self):
+        return self.job.id
 
 
 def collect_primary_datasets(job_context, output, input_ext):

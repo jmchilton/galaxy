@@ -83,6 +83,7 @@ class SetMetadataToolAction(ToolAction):
             dataset_name: dataset,
         }
         cmd_line = external_metadata_wrapper.setup_external_metadata(output_datatasets_dict,
+                                                                     {},
                                                                      sa_session,
                                                                      exec_dir=None,
                                                                      tmp_dir=job_working_dir,
