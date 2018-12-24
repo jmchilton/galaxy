@@ -172,8 +172,30 @@ def dataset_wrapper_to_file_json(inputs_dir, dataset_wrapper):
 def dataset_wrapper_to_directory_json(inputs_dir, dataset_wrapper):
     assert dataset_wrapper.ext == "directory"
 
-    return {"location": dataset_wrapper.extra_files_path,
-            "class": "Directory"}
+    # get directory name
+    archive_name = str(dataset_wrapper.cwl_filename or dataset_wrapper.name)
+    nameroot, nameext = os.path.splitext(archive_name)
+    directory_name = nameroot # assume archive file name contains the directory name
+
+    # get archive location
+    #
+    # note
+    #   when user uploads a tar file with 'directory' type,
+    #   tar file location ends up in dataset_wrapper.unsanitized.file_name
+    #
+    try:
+        archive_location = dataset_wrapper.unsanitized.file_name
+    except:
+        archive_location = None
+    
+    directory_json = {"location": dataset_wrapper.extra_files_path,
+                      "class": "Directory",
+                      "name": directory_name,
+                      "archive_location": archive_location,
+                      "archive_nameext": nameext,
+                      "archive_nameroot": nameroot}
+
+    return directory_json
 
 
 def collection_wrapper_to_array(inputs_dir, wrapped_value):

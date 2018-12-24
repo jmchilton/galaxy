@@ -2488,6 +2488,33 @@ class CwlCommandBindingTool(Tool):
         # prevent empty string
         input_json = {k:v for k, v in input_json.iteritems() if v != ''}
 
+        # handle 'Directory' type (uncompress tar file)
+        for k, v in input_json.iteritems():
+            if isinstance(v, dict) and v['class'] == 'Directory':
+                if 'archive_nameext' in v and v['archive_nameext'] == '.tar':
+
+                    tar_file_location = v['archive_location']
+                    directory_name = v['name']
+
+                    assert os.path.exists(tar_file_location), tar_file_location
+
+                    tmp_dir = os.path.join('/tmp', str(uuid.uuid4()))
+                    directory_location = os.path.join(tmp_dir, directory_name)
+
+                    os.makedirs(tmp_dir)
+
+                    bkp_cwd = os.getcwd(); os.chdir(tmp_dir)
+                    tar = tarfile.open(tar_file_location); tar.extractall(); tar.close()
+                    os.chdir(bkp_cwd)
+
+                    assert os.path.exists(directory_location), directory_location
+
+                    v['location'] = directory_location
+                    v['nameext'] = 'None'
+                    v['nameroot'] = directory_name
+                    v['basename'] = directory_name
+                    #v['size'] = 
+
         cwl_job_proxy = self._cwl_tool_proxy.job_proxy(
             input_json,
             output_dict,
