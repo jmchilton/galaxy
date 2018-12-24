@@ -79,6 +79,17 @@ class DatasetCollectionDescription(object):
         self.directory = kwargs.get("directory", None)
         self.recurse = False
 
+    def to_dict(self):
+        return {
+            'discover_via': self.discover_via,
+            'dbkey': self.default_dbkey,
+            'format': self.default_ext,
+            'visible': self.default_visible,
+            'assign_primary_output': self.assign_primary_output,
+            'directory': self.directory,
+            'recurse': self.recurse,
+        }
+
 
 class ToolProvidedMetadataDatasetCollection(DatasetCollectionDescription):
 
