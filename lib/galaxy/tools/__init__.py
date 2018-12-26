@@ -2498,10 +2498,12 @@ class CwlCommandBindingTool(Tool):
 
                     assert os.path.exists(tar_file_location), tar_file_location
 
-                    tmp_dir = os.path.join('/tmp', str(uuid.uuid4()))
+                    tmp_dir = os.path.join(local_working_directory, 'direx', str(uuid.uuid4())) # direx for "DIR EXtract"                                                                                                         
                     directory_location = os.path.join(tmp_dir, directory_name)
 
                     os.makedirs(tmp_dir)
+
+                    assert os.path.exists(tmp_dir), tmp_dir                                                                                                                                                                       
 
                     bkp_cwd = os.getcwd(); os.chdir(tmp_dir)
                     tar = tarfile.open(tar_file_location); tar.extractall(); tar.close()
