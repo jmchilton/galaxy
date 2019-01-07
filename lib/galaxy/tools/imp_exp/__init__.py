@@ -92,6 +92,30 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                         trans.app.tag_handler.apply_item_tags( trans, trans.user, new_history, get_tag_str( tag, value ) )
                     """
 
+                datasets_attrs = []
+                #
+                # Create collections.
+                #
+                collections_attrs_file_name = os.path.join(archive_dir, 'collections_attrs.txt')
+                collections_attr_str = read_file_contents(collections_attrs_file_name)
+                collections_attrs = loads(collections_attr_str)
+
+                hda_collection_dict = {}
+                collection_dict = {}
+                hid_elements_attrs_dict = {}
+                for collection_attrs in collections_attrs:
+                    # create collection
+                    dc = model.DatasetCollection(collection_type=collection_attrs['type'],
+                                                 populated=collection_attrs['populated'])
+                    collection_dict[collection_attrs['hid']] = dc
+                    for dataset_attrs in collection_attrs['datasets']:
+                        hda_collection_dict[dataset_attrs['hid']] = dc
+                    elements_attrs = collection_attrs["elements_attrs"]
+                    for element_attrs in elements_attrs:
+                        hid_elements_attrs_dict[element_attrs["hid"]] = {"element_identifier": element_attrs["element_identifier"],
+                                                                         "element_type": element_attrs["element_type"],
+                                                                         "element_index": element_attrs["element_index"]}
+
                 #
                 # Create datasets.
                 #
@@ -135,6 +159,15 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     # TODO: Is there a way to recover permissions? Is this needed?
                     # permissions = trans.app.security_agent.history_get_default_permissions( new_history )
                     # trans.app.security_agent.set_all_dataset_permissions( hda.dataset, permissions )
+
+                    # create association between this dataset and collection
+                    if dataset_attrs['hid'] in hda_collection_dict:
+                        dce = model.DatasetCollectionElement(collection=hda_collection_dict[dataset_attrs['hid']],
+                                                             element=hda,
+                                                             element_index=hid_elements_attrs_dict[dataset_attrs['hid']]["element_index"],
+                                                             element_identifier=hid_elements_attrs_dict[dataset_attrs['hid']]["element_identifier"])
+                        self.sa_session.add(dce)
+
                     self.sa_session.flush()
                     if dataset_attrs.get('exported', True) is True:
                         # Do security check and move/copy dataset data.
@@ -173,6 +206,15 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     self.app.datatypes_registry.set_external_metadata_tool.regenerate_imported_metadata_if_needed(
                         hda, new_history, jiha.job
                     )
+
+                # create association between collection and history
+                for collection_attrs in collections_attrs:
+                    hdca = model.HistoryDatasetCollectionAssociation(collection=collection_dict[collection_attrs['hid']],
+                                                                     history=new_history,
+                                                                     visible=True,
+                                                                     hid=collection_attrs['hid'],
+                                                                     name=collection_attrs['display_name'])
+                    self.sa_session.add(hdca)
 
                 #
                 # Create jobs.
@@ -367,6 +409,21 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                     return rval
                 return json.JSONEncoder.default(self, obj)
 
+        class ElementsEncoder(json.JSONEncoder):
+            """ Custom JSONEncoder for an element. """
+
+            def default(self, obj):
+                """ Encode an element, default encoding for everything else. """
+                if isinstance(obj, trans.model.DatasetCollectionElement):
+                    rval = {
+                        "hid": obj.hda.hid,
+                        "element_type": obj.element_type,
+                        "element_index": obj.element_index,
+                        "element_identifier": obj.element_identifier
+                    }
+                    return rval
+                return json.JSONEncoder.default(self, obj)
+
         class CollectionsEncoder(json.JSONEncoder):
             """ Custom JSONEncoder for a Collection. """
 
@@ -382,9 +439,11 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                     rval = {
                         "display_name": obj.display_name(),
                         "state": obj.state,
+                        "hid": obj.hid,
                         "type": obj.collection.collection_type,
                         "populated": obj.populated,
-                        "datasets": loads(dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder))
+                        "datasets": loads(dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder)),
+                        "elements_attrs": loads(dumps(obj.collection.dataset_elements, cls=ElementsEncoder))
                     }
                     return rval
                 return json.JSONEncoder.default(self, obj)
