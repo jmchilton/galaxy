@@ -84,47 +84,48 @@ def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, col
         # Rewrite dataset attributes file.
         with open(datasets_attrs_file, 'w') as datasets_attrs_out:
             datasets_attrs_out.write(dumps(datasets_attrs))
- 
-        collections_attrs = read_attributes_from_file(collections_attrs_file)
 
-        # Add collections datasets to archive and update dataset attributes.
-        for collection_attrs in collections_attrs:
-            for collection_dataset_attrs in collection_attrs['datasets']:
-                dataset_file_name = collection_dataset_attrs['file_name']  # Full file name.
-                dataset_hid = collection_dataset_attrs['hid']
-                collections_dataset_archive_name = os.path.join('collections_datasets',
-                                                                get_dataset_filename(collection_dataset_attrs['name'], collection_dataset_attrs['extension'], dataset_hid))
-                history_archive.add(dataset_file_name, arcname=collections_dataset_archive_name)
-                # Include additional files for example, files/images included in HTML output.
-                extra_files_path = collection_dataset_attrs['extra_files_path']
-                if extra_files_path:
-                    try:
-                        file_list = os.listdir(extra_files_path)
-                    except OSError:
-                        file_list = []
+        if collections_attrs_file:
+            collections_attrs = read_attributes_from_file(collections_attrs_file)
 
-                    if len(file_list):
-                        dataset_extra_files_path = 'collections_datasets/extra_files_path_%s' % dataset_hid
-                        for fname in file_list:
-                            history_archive.add(os.path.join(extra_files_path, fname),
-                                                arcname=(os.path.join(dataset_extra_files_path, fname)))
-                        collection_dataset_attrs['extra_files_path'] = dataset_extra_files_path
-                    else:
-                        collection_dataset_attrs['extra_files_path'] = ''
+            # Add collections datasets to archive and update dataset attributes.
+            for collection_attrs in collections_attrs:
+                for collection_dataset_attrs in collection_attrs['datasets']:
+                    dataset_file_name = collection_dataset_attrs['file_name']  # Full file name.
+                    dataset_hid = collection_dataset_attrs['hid']
+                    collections_dataset_archive_name = os.path.join('collections_datasets',
+                                                                    get_dataset_filename(collection_dataset_attrs['name'], collection_dataset_attrs['extension'], dataset_hid))
+                    history_archive.add(dataset_file_name, arcname=collections_dataset_archive_name)
+                    # Include additional files for example, files/images included in HTML output.
+                    extra_files_path = collection_dataset_attrs['extra_files_path']
+                    if extra_files_path:
+                        try:
+                            file_list = os.listdir(extra_files_path)
+                        except OSError:
+                            file_list = []
 
-                # Update dataset filename to be archive name.
-                collection_dataset_attrs['file_name'] = collections_dataset_archive_name
+                        if len(file_list):
+                            dataset_extra_files_path = 'collections_datasets/extra_files_path_%s' % dataset_hid
+                            for fname in file_list:
+                                history_archive.add(os.path.join(extra_files_path, fname),
+                                                    arcname=(os.path.join(dataset_extra_files_path, fname)))
+                            collection_dataset_attrs['extra_files_path'] = dataset_extra_files_path
+                        else:
+                            collection_dataset_attrs['extra_files_path'] = ''
 
-        # Rewrite collection attributes file.
-        with open(collections_attrs_file, 'w') as collections_datasets_attrs_out:
-            collections_datasets_attrs_out.write(dumps(collections_attrs))
+                    # Update dataset filename to be archive name.
+                    collection_dataset_attrs['file_name'] = collections_dataset_archive_name
+
+            # Rewrite collection attributes file.
+            with open(collections_attrs_file, 'w') as collections_datasets_attrs_out:
+                collections_datasets_attrs_out.write(dumps(collections_attrs))
 
         # Finish archive.
         history_archive.add(history_attrs_file, arcname="history_attrs.txt")
         history_archive.add(datasets_attrs_file, arcname="datasets_attrs.txt")
         if os.path.exists(datasets_attrs_file + ".provenance"):
             history_archive.add(datasets_attrs_file + ".provenance", arcname="datasets_attrs.txt.provenance")
-        if os.path.exists(collections_attrs_file):
+        if collections_attrs_file and os.path.exists(collections_attrs_file):
             history_archive.add(collections_attrs_file, arcname="collections_attrs.txt")
         history_archive.add(jobs_attrs_file, arcname="jobs_attrs.txt")
         history_archive.close()
@@ -141,7 +142,17 @@ def main():
     parser.add_option('-G', '--gzip', dest='gzip', action="store_true", help='Compress archive using gzip.')
     (options, args) = parser.parse_args()
     gzip = bool(options.gzip)
-    history_attrs, dataset_attrs, job_attrs, collection_attrs, out_file = args
+    if len(args) == 2:
+        # We have a 19.0X directory argument instead of individual arguments.
+        temp_directory, out_file = args
+        history_attrs = os.path.join(temp_directory, 'history_attrs.txt')
+        dataset_attrs = os.path.join(temp_directory, 'datasets_attrs.txt')
+        job_attrs = os.path.join(temp_directory, 'jobs_attrs.txt')
+        collection_attrs = os.path.join(temp_directory, 'collections_attrs.txt')
+    else:
+        # This job was created pre 18.0X with old argument style.
+        history_attrs, dataset_attrs, job_attrs, out_file = args
+        collection_attrs = None
 
     # Create archive.
     create_archive(history_attrs, dataset_attrs, job_attrs, collection_attrs, out_file, gzip)
