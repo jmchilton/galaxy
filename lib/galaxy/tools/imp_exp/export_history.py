@@ -35,16 +35,7 @@ def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, out
 
         # Read datasets attributes from file.
         with open(datasets_attrs_file) as datasets_attr_in:
-            datasets_attr_str = ''
-            buffsize = 1048576
-            try:
-                while True:
-                    datasets_attr_str += datasets_attr_in.read(buffsize)
-                    if not datasets_attr_str or len(datasets_attr_str) % buffsize != 0:
-                        break
-            except OverflowError:
-                pass
-        datasets_attrs = loads(datasets_attr_str)
+            datasets_attrs = load(dataset_attrs_in)
 
         # Add datasets to archive and update dataset attributes.
         # TODO: security check to ensure that files added are in Galaxy dataset directory?
