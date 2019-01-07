@@ -11,7 +11,7 @@ import optparse
 import os
 import sys
 import tarfile
-from json import dumps, loads
+from json import dump, load
 
 from galaxy.util import FILENAME_VALID_CHARS
 
@@ -26,18 +26,8 @@ def get_dataset_filename(name, ext, hid):
 
 def read_attributes_from_file(file):
     """ Read attributes from file and return JSON. """
-    datasets_attr_str = ''
-    with open(file) as datasets_attr_in:
-        buffsize = 1048576
-        try:
-            while True:
-                datasets_attr_str += datasets_attr_in.read(buffsize)
-                if not datasets_attr_str or len(datasets_attr_str) % buffsize != 0:
-                    break
-        except OverflowError:
-            pass
-    datasets_attrs = loads(datasets_attr_str)
-    return datasets_attrs
+    with open(file, 'r') as f:
+        return load(f)
 
 
 def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, collections_attrs_file, out_file, gzip=False):
@@ -83,7 +73,7 @@ def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, col
 
         # Rewrite dataset attributes file.
         with open(datasets_attrs_file, 'w') as datasets_attrs_out:
-            datasets_attrs_out.write(dumps(datasets_attrs))
+            dump(datasets_attrs, datasets_attrs_out)
 
         if collections_attrs_file:
             collections_attrs = read_attributes_from_file(collections_attrs_file)
@@ -118,7 +108,7 @@ def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, col
 
             # Rewrite collection attributes file.
             with open(collections_attrs_file, 'w') as collections_datasets_attrs_out:
-                collections_datasets_attrs_out.write(dumps(collections_attrs))
+                dump(collections_attrs, collections_datasets_attrs_out)
 
         # Finish archive.
         history_archive.add(history_attrs_file, arcname="history_attrs.txt")
