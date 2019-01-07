@@ -26,16 +26,16 @@ def get_dataset_filename(name, ext, hid):
 
 def read_attributes_from_file(file):
     """ Read attributes from file and return JSON. """
-    datasets_attr_in = open(file, 'rb')
     datasets_attr_str = ''
-    buffsize = 1048576
-    try:
-        while True:
-            datasets_attr_str += datasets_attr_in.read(buffsize)
-            if not datasets_attr_str or len(datasets_attr_str) % buffsize != 0:
-                break
-    except OverflowError:
-        pass
+    with open(file) as datasets_attr_in:
+        buffsize = 1048576
+        try:
+            while True:
+                datasets_attr_str += datasets_attr_in.read(buffsize)
+                if not datasets_attr_str or len(datasets_attr_str) % buffsize != 0:
+                    break
+        except OverflowError:
+            pass
     datasets_attrs = loads(datasets_attr_str)
     return datasets_attrs
 
