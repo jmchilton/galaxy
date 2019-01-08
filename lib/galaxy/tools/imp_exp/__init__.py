@@ -104,22 +104,22 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                 collections_attrs = load(open(collections_attrs_file_name))
 
                 hda_collection_dict = {}
-                hid_collection_dict = {}
-                hid_elements_attrs_dict = {}
-                hid_file_dict = {}
+                collection_dict_by_encoded_id = {}
+                elements_attrs_dict_by_encoded_id = {}
+                hda_file_dict_by_encoded_id = {}
                 for collection_attrs in collections_attrs:
                     # create collection
                     dc = model.DatasetCollection(collection_type=collection_attrs['type'],
                                                  populated=collection_attrs['populated'])
-                    hid_collection_dict[collection_attrs['hid']] = dc
+                    collection_dict_by_encoded_id[collection_attrs['encoded_id']] = dc
                     for dataset_attrs in collection_attrs['datasets']:
-                        hda_collection_dict[dataset_attrs['hid']] = dc
-                        hid_file_dict[dataset_attrs['hid']] = {'file_name': dataset_attrs['file_name']}
+                        hda_collection_dict[dataset_attrs['encoded_id']] = dc
+                        hda_file_dict_by_encoded_id[dataset_attrs['encoded_id']] = {'file_name': dataset_attrs['file_name']}
                     elements_attrs = collection_attrs['elements_attrs']
                     for element_attrs in elements_attrs:
-                        hid_elements_attrs_dict[element_attrs['hid']] = {'element_identifier': element_attrs['element_identifier'],
-                                                                         'element_type': element_attrs['element_type'],
-                                                                         'element_index': element_attrs['element_index']}
+                        elements_attrs_dict_by_encoded_id[element_attrs['encoded_id']] = {'element_identifier': element_attrs['element_identifier'],
+                                                                                'element_type': element_attrs['element_type'],
+                                                                                'element_index': element_attrs['element_index']}
 
                 #
                 # Create datasets.
@@ -153,7 +153,7 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     if 'uuid' in dataset_attrs:
                         hda.dataset.uuid = dataset_attrs["uuid"]
                     # if dataset is in a collection, do not set deleted/purged to True
-                    if (dataset_attrs.get('exported', True) is False) and ((dataset_attrs['hid'] in hda_collection_dict) is False):
+                    if (dataset_attrs.get('exported', True) is False) and ((dataset_attrs['encoded_id'] in hda_collection_dict) is False):
                         hda.state = hda.states.DISCARDED
                         hda.deleted = True
                         hda.purged = True
@@ -168,18 +168,18 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     # trans.app.security_agent.set_all_dataset_permissions( hda.dataset, permissions )
 
                     # create association between this dataset and collection
-                    if dataset_attrs['hid'] in hda_collection_dict:
-                        dce = model.DatasetCollectionElement(collection=hda_collection_dict[dataset_attrs['hid']],
+                    if dataset_attrs['encoded_id'] in hda_collection_dict:
+                        dce = model.DatasetCollectionElement(collection=hda_collection_dict[dataset_attrs['encoded_id']],
                                                              element=hda,
-                                                             element_index=hid_elements_attrs_dict[dataset_attrs['hid']]['element_index'],
-                                                             element_identifier=hid_elements_attrs_dict[dataset_attrs['hid']]['element_identifier'])
+                                                             element_index=elements_attrs_dict_by_encoded_id[dataset_attrs['encoded_id']]['element_index'],
+                                                             element_identifier=elements_attrs_dict_by_encoded_id[dataset_attrs['encoded_id']]['element_identifier'])
                         # change the path to the file in archive
                         dataset_attrs['dataset_archive_path'] = 'collections_datasets'
                         self.sa_session.add(dce)
 
                     self.sa_session.flush()
                     # if dataset is in a collection, export it
-                    if (dataset_attrs.get('exported', True) is True) or (dataset_attrs['hid'] in hda_collection_dict):
+                    if (dataset_attrs.get('exported', True) is True) or (dataset_attrs['encoded_id'] in hda_collection_dict):
                         # Do security check and move/copy dataset data.
                         temp_dataset_file_name = \
                             os.path.realpath(os.path.abspath(os.path.join(archive_dir, dataset_attrs['file_name'])))
@@ -219,7 +219,7 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
 
                 # create association between collection and history
                 for collection_attrs in collections_attrs:
-                    hdca = model.HistoryDatasetCollectionAssociation(collection=hid_collection_dict[collection_attrs['hid']],
+                    hdca = model.HistoryDatasetCollectionAssociation(collection=collection_dict_by_encoded_id[collection_attrs['encoded_id']],
                                                                      history=new_history,
                                                                      visible=True,
                                                                      hid=collection_attrs['hid'],
@@ -392,6 +392,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                 if isinstance(obj, trans.app.model.HistoryDatasetAssociation):
                     rval = {
                         "__HistoryDatasetAssociation__": True,
+                        "encoded_id": trans.security.encode_id(obj.id),
                         "create_time": obj.create_time.__str__(),
                         "update_time": obj.update_time.__str__(),
                         "hid": obj.hid,
@@ -427,6 +428,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                 """ Encode an element, default encoding for everything else. """
                 if isinstance(obj, trans.model.DatasetCollectionElement):
                     rval = {
+                        "encoded_id": trans.security.encode_id(obj.id),
                         "hid": obj.hda.hid,
                         "element_type": obj.element_type,
                         "element_index": obj.element_index,
@@ -448,12 +450,12 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                         collections_datasets_attrs.append(collection_dataset)
 
                     rval = {
+                        "encoded_id": trans.security.encode_id(obj.id),
                         "display_name": obj.display_name(),
                         "state": obj.state,
                         "hid": obj.hid,
                         "type": obj.collection.collection_type,
                         "populated": obj.populated,
-                        "datasets": loads(dumps(collections_datasets_attrs, cls=HistoryDatasetAssociationEncoder)),
                         "elements_attrs": loads(dumps(obj.collection.dataset_elements, cls=ElementsEncoder))
                     }
                     return rval
@@ -467,6 +469,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         # Write history attributes to file.
         history = jeha.history
         history_attrs = {
+            "encoded_id": trans.security.encode_id(obj.id),
             "create_time": history.create_time.__str__(),
             "update_time": history.update_time.__str__(),
             "name": to_unicode(history.name),
@@ -557,6 +560,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         jobs_attrs = []
         for id, job in jobs_dict.items():
             job_attrs = {}
+            job_attrs["encoded_id"] = trans.security.encode_id(job.id)
             job_attrs['tool_id'] = job.tool_id
             job_attrs['tool_version'] = job.tool_version
             job_attrs['state'] = job.state
