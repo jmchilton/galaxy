@@ -207,8 +207,6 @@ class HistoriesApiTestCase(api.ApiTestCase):
         assert len(bai_response.content) > 4
 
     def test_import_export_collection(self):
-        from nose.plugins.skip import SkipTest
-        raise SkipTest("Collection import/export not yet implemented")
 
         history_name = "for_export_with_collections"
         history_id = self.dataset_populator.new_history(name=history_name)

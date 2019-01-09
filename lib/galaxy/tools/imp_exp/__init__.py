@@ -540,7 +540,10 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
             collections_attrs.append(collection)
             # export jobs for these datasets
             for collection_dataset in collection.dataset_instances:
-                included_datasets.append(collection_dataset)
+                if collection_dataset.deleted and not include_deleted:
+                    provenance_attrs.append(dataset)
+                else:
+                    included_datasets.append(collection_dataset)
 
         collections_attrs_filename = os.path.join(temp_output_dir, ATTRS_FILENAME_COLLECTIONS)
         collections_attrs_out = open(collections_attrs_filename, 'w')
