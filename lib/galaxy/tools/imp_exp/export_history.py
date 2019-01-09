@@ -30,6 +30,30 @@ def read_attributes_from_file(file):
         return load(f)
 
 
+def store_to_archive_and_rewrite(dataset_attrs, history_archive, arcname, dir_name, key):
+    dataset_file_name = dataset_attrs['file_name']  # Full file name.
+    arcname = os.path.join(dir_name, arcname)
+    history_archive.add(dataset_file_name, arcname=arcname)
+    dataset_attrs['file_name'] = arcname
+
+    # Include additional files for example, files/images included in HTML output.
+    extra_files_path = dataset_attrs['extra_files_path']
+    if extra_files_path:
+        try:
+            file_list = os.listdir(extra_files_path)
+        except OSError:
+            file_list = []
+
+        if len(file_list):
+            dataset_extra_files_path = '%s/extra_files_path_%s' % (dir_name, key)
+            for fname in file_list:
+                history_archive.add(os.path.join(extra_files_path, fname),
+                                    arcname=(os.path.join(dataset_extra_files_path, fname)))
+            dataset_attrs['extra_files_path'] = dataset_extra_files_path
+        else:
+            dataset_attrs['extra_files_path'] = ''
+
+
 def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, collections_attrs_file, out_file, gzip=False):
     """Create archive from the given attribute/metadata files and save it to out_file."""
     tarfile_mode = "w"
@@ -45,31 +69,9 @@ def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, col
         # TODO: security check to ensure that files added are in Galaxy dataset directory?
         for dataset_attrs in datasets_attrs:
             if dataset_attrs['exported']:
-                dataset_file_name = dataset_attrs['file_name']  # Full file name.
                 dataset_hid = dataset_attrs['hid']
-                dataset_archive_name = os.path.join('datasets',
-                                                    get_dataset_filename(dataset_attrs['name'], dataset_attrs['extension'], dataset_hid))
-                history_archive.add(dataset_file_name, arcname=dataset_archive_name)
-
-                # Include additional files for example, files/images included in HTML output.
-                extra_files_path = dataset_attrs['extra_files_path']
-                if extra_files_path:
-                    try:
-                        file_list = os.listdir(extra_files_path)
-                    except OSError:
-                        file_list = []
-
-                    if len(file_list):
-                        dataset_extra_files_path = 'datasets/extra_files_path_%s' % dataset_hid
-                        for fname in file_list:
-                            history_archive.add(os.path.join(extra_files_path, fname),
-                                                arcname=(os.path.join(dataset_extra_files_path, fname)))
-                        dataset_attrs['extra_files_path'] = dataset_extra_files_path
-                    else:
-                        dataset_attrs['extra_files_path'] = ''
-
-                # Update dataset filename to be archive name.
-                dataset_attrs['file_name'] = dataset_archive_name
+                dataset_archive_name = get_dataset_filename(dataset_attrs['name'], dataset_attrs['extension'], dataset_hid)
+                store_to_archive_and_rewrite(dataset_attrs, history_archive, dataset_archive_name, 'datasets', dataset_hid)
 
         # Rewrite dataset attributes file.
         with open(datasets_attrs_file, 'w') as datasets_attrs_out:
@@ -80,31 +82,15 @@ def create_archive(history_attrs_file, datasets_attrs_file, jobs_attrs_file, col
 
             # Add collections datasets to archive and update dataset attributes.
             for collection_attrs in collections_attrs:
-                for collection_dataset_attrs in collection_attrs['datasets']:
-                    dataset_file_name = collection_dataset_attrs['file_name']  # Full file name.
-                    dataset_hid = collection_dataset_attrs['hid']
-                    collections_dataset_archive_name = os.path.join('collections_datasets',
-                                                                    get_dataset_filename(collection_dataset_attrs['name'], collection_dataset_attrs['extension'], dataset_hid))
-                    history_archive.add(dataset_file_name, arcname=collections_dataset_archive_name)
-                    # Include additional files for example, files/images included in HTML output.
-                    extra_files_path = collection_dataset_attrs['extra_files_path']
-                    if extra_files_path:
-                        try:
-                            file_list = os.listdir(extra_files_path)
-                        except OSError:
-                            file_list = []
+                for collection_element in collection_attrs['elements']:
+                    if 'hda' in collection_element:
+                        collection_dataset_attrs = collection_element['hda']
 
-                        if len(file_list):
-                            dataset_extra_files_path = 'collections_datasets/extra_files_path_%s' % dataset_hid
-                            for fname in file_list:
-                                history_archive.add(os.path.join(extra_files_path, fname),
-                                                    arcname=(os.path.join(dataset_extra_files_path, fname)))
-                            collection_dataset_attrs['extra_files_path'] = dataset_extra_files_path
-                        else:
-                            collection_dataset_attrs['extra_files_path'] = ''
+                        encoded_id = collection_dataset_attrs['encoded_id']
+                        dataset_archive_name = get_dataset_filename(collection_dataset_attrs['name'], collection_dataset_attrs['extension'], encoded_id)
+                        store_to_archive_and_rewrite(collection_dataset_attrs, history_archive, dataset_archive_name, 'collections_datasets', encoded_id)
 
-                    # Update dataset filename to be archive name.
-                    collection_dataset_attrs['file_name'] = collections_dataset_archive_name
+                    # TODO: handle recursive datasets...
 
             # Rewrite collection attributes file.
             with open(collections_attrs_file, 'w') as collections_datasets_attrs_out:

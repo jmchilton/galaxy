@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
-from json import dumps, load
+from json import dumps, load, loads
 
 from sqlalchemy.orm import eagerload_all
 from sqlalchemy.sql import expression
@@ -112,14 +112,15 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     dc = model.DatasetCollection(collection_type=collection_attrs['type'],
                                                  populated=collection_attrs['populated'])
                     collection_dict_by_encoded_id[collection_attrs['encoded_id']] = dc
-                    for dataset_attrs in collection_attrs['datasets']:
-                        hda_collection_dict[dataset_attrs['encoded_id']] = dc
-                        hda_file_dict_by_encoded_id[dataset_attrs['encoded_id']] = {'file_name': dataset_attrs['file_name']}
-                    elements_attrs = collection_attrs['elements_attrs']
+                    #for dataset_attrs in collection_attrs['datasets']:
+                    #    hda_collection_dict[dataset_attrs['encoded_id']] = dc
+                    #    hda_file_dict_by_encoded_id[dataset_attrs['encoded_id']] = {'file_name': dataset_attrs['file_name']}
+
+                    elements_attrs = collection_attrs['elements']
                     for element_attrs in elements_attrs:
                         elements_attrs_dict_by_encoded_id[element_attrs['encoded_id']] = {'element_identifier': element_attrs['element_identifier'],
-                                                                                'element_type': element_attrs['element_type'],
-                                                                                'element_index': element_attrs['element_index']}
+                                                                                          'element_type': element_attrs['element_type'],
+                                                                                          'element_index': element_attrs['element_index']}
 
                 #
                 # Create datasets.
@@ -429,26 +430,38 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                 if isinstance(obj, trans.model.DatasetCollectionElement):
                     rval = {
                         "encoded_id": trans.security.encode_id(obj.id),
-                        "hid": obj.hda.hid,
                         "element_type": obj.element_type,
                         "element_index": obj.element_index,
                         "element_identifier": obj.element_identifier
                     }
+                    element_obj = obj.element_object
+                    if isinstance(element_obj, trans.model.HistoryDatasetAssociation):
+                        rval["hda"] = loads(dumps(element_obj, cls=HistoryDatasetAssociationEncoder))
+                    else:
+                        rval["child_collection"] = loads(dumps(element_obj, cls=DatasetCollectionsEncoder))
                     return rval
                 return json.JSONEncoder.default(self, obj)
 
-        class CollectionsEncoder(json.JSONEncoder):
-            """ Custom JSONEncoder for a Collection. """
+        class DatasetCollectionsEncoder(json.JSONEncoder):
+            """Custom JSONEncoder for a DatasetCollection."""
+
+            def default(self, obj):
+                if isinstance(obj, trans.model.DatasetCollection):
+                    rval = {
+                        "encoded_id": trans.security.encode_id(obj.id),
+                        "type": obj.collection_type,
+                        "populated": obj.populated,
+                        "elements": loads(dumps(obj.elements, cls=ElementsEncoder))
+                    }
+                    return rval
+                return json.JSONEncoder.default(self, obj)
+
+        class HistoryDatasetCollectionAssociationsEncoder(json.JSONEncoder):
+            """Custom JSONEncoder for a HDCA."""
 
             def default(self, obj):
                 """ Encode a collection, default encoding for everything else. """
                 if isinstance(obj, trans.model.HistoryDatasetCollectionAssociation):
-                    # dump attrs of each dataset of this collection
-                    collections_datasets_attrs = []
-                    collection_datasets = obj.dataset_instances
-                    for collection_dataset in collection_datasets:
-                        collections_datasets_attrs.append(collection_dataset)
-
                     rval = {
                         "encoded_id": trans.security.encode_id(obj.id),
                         "display_name": obj.display_name(),
@@ -456,7 +469,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                         "hid": obj.hid,
                         "type": obj.collection.collection_type,
                         "populated": obj.populated,
-                        "elements_attrs": loads(dumps(obj.collection.dataset_elements, cls=ElementsEncoder))
+                        "elements": loads(dumps(obj.collection.elements, cls=ElementsEncoder))
                     }
                     return rval
                 return json.JSONEncoder.default(self, obj)
@@ -469,7 +482,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         # Write history attributes to file.
         history = jeha.history
         history_attrs = {
-            "encoded_id": trans.security.encode_id(obj.id),
+            "encoded_id": trans.security.encode_id(history.id),
             "create_time": history.create_time.__str__(),
             "update_time": history.update_time.__str__(),
             "name": to_unicode(history.name),
@@ -526,7 +539,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
 
         collections_attrs_filename = os.path.join(temp_output_dir, ATTRS_FILENAME_COLLECTIONS)
         collections_attrs_out = open(collections_attrs_filename, 'w')
-        collections_attrs_out.write(dumps(collections_attrs, cls=CollectionsEncoder))
+        collections_attrs_out.write(dumps(collections_attrs, cls=HistoryDatasetCollectionAssociationsEncoder))
         collections_attrs_out.close()
 
         #
