@@ -63,20 +63,25 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
             try:
                 archive_dir = jiha.archive_dir
                 archive_dir = os.path.realpath(archive_dir)
-                user = jiha.job.user
-
                 # Bioblend previous to 17.01 exported histories with an extra subdir.
                 if not os.path.exists(os.path.join(archive_dir, ATTRS_FILENAME_HISTORY)):
                     for d in os.listdir(archive_dir):
                         if os.path.isdir(os.path.join(archive_dir, d)):
                             archive_dir = os.path.join(archive_dir, d)
                             break
+                # from galaxy.model import store
+                # model_store = store.DirectoryModelStore(archive_dir)
+
+                user = jiha.job.user
 
                 #
                 # Create history.
                 #
                 history_attr_file_name = os.path.join(archive_dir, ATTRS_FILENAME_HISTORY)
+                log.info("loading %s" % history_attr_file_name)
                 history_attrs = load(open(history_attr_file_name))
+
+                # store.import_as_history(model_store, user=user)
 
                 # Create history.
                 new_history = model.History(name='imported from archive: %s' % history_attrs['name'],
