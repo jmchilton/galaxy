@@ -187,7 +187,9 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                         # Do security check and move/copy dataset data.
                         temp_dataset_file_name = \
                             os.path.realpath(os.path.abspath(os.path.join(archive_dir, dataset_attrs['file_name'])))
-                        if not file_in_dir(temp_dataset_file_name, os.path.join(archive_dir, dataset_attrs['dataset_archive_path'])):
+                        valid_path = file_in_dir(temp_dataset_file_name, os.path.join(archive_dir, 'datasets')) or file_in_dir(temp_dataset_file_name, os.path.join(archive_dir, 'collections_datasets'))
+                        if not valid_path:
+                            log.warning("attempted to import potentially malicious history")
                             raise MalformedContents("Invalid dataset path: %s" % temp_dataset_file_name)
                         self.app.object_store.update_from_file(hda.dataset, file_name=temp_dataset_file_name, create=True)
 
