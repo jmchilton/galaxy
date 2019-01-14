@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
-from json import dumps, load
+from json import dumps, load, loads
 
 from sqlalchemy.orm import eagerload_all
 from sqlalchemy.sql import expression
@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 ATTRS_FILENAME_HISTORY = 'history_attrs.txt'
 ATTRS_FILENAME_DATASETS = 'datasets_attrs.txt'
 ATTRS_FILENAME_JOBS = 'jobs_attrs.txt'
+ATTRS_FILENAME_COLLECTIONS = 'collections_attrs.txt'
 
 
 class JobImportHistoryArchiveWrapper(UsesAnnotations):
@@ -33,7 +34,9 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
         self.sa_session = self.app.model.context
 
     def cleanup_after_job(self):
-        """ Set history, datasets, and jobs' attributes and clean up archive directory. """
+        """ Set history, datasets, collections and jobs' attributes
+            and clean up archive directory.
+        """
 
         #
         # Helper methods.
@@ -95,6 +98,34 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     """
 
                 #
+                # Create collections.
+                #
+                collections_attrs_file_name = os.path.join(archive_dir, ATTRS_FILENAME_COLLECTIONS)
+                collections_attrs = load(open(collections_attrs_file_name))
+
+                hda_collection_dict = {}
+                collection_dict_by_encoded_id = {}
+                for collection_attrs in collections_attrs:
+                    # create collection
+                    dc = model.DatasetCollection(collection_type=collection_attrs['type'],
+                                                 populated=collection_attrs['populated'])
+                    collection_dict_by_encoded_id[collection_attrs['encoded_id']] = dc
+
+                    elements_attrs = collection_attrs['elements']
+                    for element_attrs in elements_attrs:
+                        encoded_id = element_attrs['encoded_id']
+                        dce = model.DatasetCollectionElement(collection=dc,
+                                                             element=model.DatasetCollectionElement.UNINITIALIZED_ELEMENT,
+                                                             element_index=element_attrs['element_index'],
+                                                             element_identifier=element_attrs['element_index'])
+                        self.sa_session.add(dce)
+                        if 'hda' in element_attrs:
+                            hda_attrs = element_attrs['hda']
+                            hda_encoded_id = hda_attrs['encoded_id']
+                            if hda_encoded_id not in hda_collection_dict:
+                                hda_collection_dict[hda_encoded_id] = []
+                            hda_collection_dict[hda_encoded_id].append(dce)
+                #
                 # Create datasets.
                 #
                 datasets_attrs_file_name = os.path.join(archive_dir, ATTRS_FILENAME_DATASETS)
@@ -125,7 +156,8 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                                                           sa_session=self.sa_session)
                     if 'uuid' in dataset_attrs:
                         hda.dataset.uuid = dataset_attrs["uuid"]
-                    if dataset_attrs.get('exported', True) is False:
+                    # if dataset is in a collection, do not set deleted/purged to True
+                    if (dataset_attrs.get('exported', True) is False):
                         hda.state = hda.states.DISCARDED
                         hda.deleted = True
                         hda.purged = True
@@ -138,12 +170,22 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     # TODO: Is there a way to recover permissions? Is this needed?
                     # permissions = trans.app.security_agent.history_get_default_permissions( new_history )
                     # trans.app.security_agent.set_all_dataset_permissions( hda.dataset, permissions )
+
+                    # create association between this dataset and collection
+                    encoded_id = dataset_attrs['encoded_id']
+                    if encoded_id in hda_collection_dict:
+                        for dce in hda_collection_dict[encoded_id]:
+                            dce.hda = hda
+
                     self.sa_session.flush()
-                    if dataset_attrs.get('exported', True) is True:
+                    # if dataset is in a collection, export it
+                    if (dataset_attrs.get('exported', True) is True) or (dataset_attrs['encoded_id'] in hda_collection_dict):
                         # Do security check and move/copy dataset data.
                         temp_dataset_file_name = \
                             os.path.realpath(os.path.abspath(os.path.join(archive_dir, dataset_attrs['file_name'])))
-                        if not file_in_dir(temp_dataset_file_name, os.path.join(archive_dir, "datasets")):
+                        valid_path = file_in_dir(temp_dataset_file_name, os.path.join(archive_dir, 'datasets')) or file_in_dir(temp_dataset_file_name, os.path.join(archive_dir, 'collections_datasets'))
+                        if not valid_path:
+                            log.warning("attempted to import potentially malicious history")
                             raise MalformedContents("Invalid dataset path: %s" % temp_dataset_file_name)
                         self.app.object_store.update_from_file(hda.dataset, file_name=temp_dataset_file_name, create=True)
 
@@ -176,6 +218,15 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     self.app.datatypes_registry.set_external_metadata_tool.regenerate_imported_metadata_if_needed(
                         hda, new_history, jiha.job
                     )
+
+                # create association between collection and history
+                for collection_attrs in collections_attrs:
+                    hdca = model.HistoryDatasetCollectionAssociation(collection=collection_dict_by_encoded_id[collection_attrs['encoded_id']],
+                                                                     history=new_history,
+                                                                     visible=True,
+                                                                     hid=collection_attrs['hid'],
+                                                                     name=collection_attrs['display_name'])
+                    self.sa_session.add(hdca)
 
                 #
                 # Create jobs.
@@ -294,6 +345,15 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                  .filter(trans.model.Dataset.purged == expression.false()))
         return query.all()
 
+    def get_history_collections(self, trans, history):
+        """
+        Returns history's collections.
+        """
+        query = (trans.sa_session.query(trans.model.HistoryDatasetCollectionAssociation)
+                 .filter(trans.model.HistoryDatasetCollectionAssociation.history == history)
+                 .filter(trans.model.HistoryDatasetCollectionAssociation.deleted == expression.false()))
+        return query.all()
+
     # TODO: should use db_session rather than trans in this method.
     def setup_job(self, trans, jeha, include_hidden=False, include_deleted=False):
         """ Perform setup for job to export a history into an archive. Method generates
@@ -332,6 +392,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                 if isinstance(obj, trans.app.model.HistoryDatasetAssociation):
                     rval = {
                         "__HistoryDatasetAssociation__": True,
+                        "encoded_id": trans.security.encode_id(obj.id),
                         "create_time": obj.create_time.__str__(),
                         "update_time": obj.update_time.__str__(),
                         "hid": obj.hid,
@@ -360,6 +421,58 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
                     return rval
                 return json.JSONEncoder.default(self, obj)
 
+        class ElementsEncoder(json.JSONEncoder):
+            """ Custom JSONEncoder for an element. """
+
+            def default(self, obj):
+                """ Encode an element, default encoding for everything else. """
+                if isinstance(obj, trans.model.DatasetCollectionElement):
+                    rval = {
+                        "encoded_id": trans.security.encode_id(obj.id),
+                        "element_type": obj.element_type,
+                        "element_index": obj.element_index,
+                        "element_identifier": obj.element_identifier
+                    }
+                    element_obj = obj.element_object
+                    if isinstance(element_obj, trans.model.HistoryDatasetAssociation):
+                        rval["hda"] = loads(dumps(element_obj, cls=HistoryDatasetAssociationEncoder))
+                    else:
+                        rval["child_collection"] = loads(dumps(element_obj, cls=DatasetCollectionsEncoder))
+                    return rval
+                return json.JSONEncoder.default(self, obj)
+
+        class DatasetCollectionsEncoder(json.JSONEncoder):
+            """Custom JSONEncoder for a DatasetCollection."""
+
+            def default(self, obj):
+                if isinstance(obj, trans.model.DatasetCollection):
+                    rval = {
+                        "encoded_id": trans.security.encode_id(obj.id),
+                        "type": obj.collection_type,
+                        "populated": obj.populated,
+                        "elements": loads(dumps(obj.elements, cls=ElementsEncoder))
+                    }
+                    return rval
+                return json.JSONEncoder.default(self, obj)
+
+        class HistoryDatasetCollectionAssociationsEncoder(json.JSONEncoder):
+            """Custom JSONEncoder for a HDCA."""
+
+            def default(self, obj):
+                """ Encode a collection, default encoding for everything else. """
+                if isinstance(obj, trans.model.HistoryDatasetCollectionAssociation):
+                    rval = {
+                        "encoded_id": trans.security.encode_id(obj.id),
+                        "display_name": obj.display_name(),
+                        "state": obj.state,
+                        "hid": obj.hid,
+                        "type": obj.collection.collection_type,
+                        "populated": obj.populated,
+                        "elements": loads(dumps(obj.collection.elements, cls=ElementsEncoder))
+                    }
+                    return rval
+                return json.JSONEncoder.default(self, obj)
+
         #
         # Create attributes/metadata files for export.
         #
@@ -368,6 +481,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         # Write history attributes to file.
         history = jeha.history
         history_attrs = {
+            "encoded_id": trans.security.encode_id(history.id),
             "create_time": history.create_time.__str__(),
             "update_time": history.update_time.__str__(),
             "name": to_unicode(history.name),
@@ -406,6 +520,30 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         provenance_attrs_out.write(dumps(provenance_attrs, cls=HistoryDatasetAssociationEncoder))
         provenance_attrs_out.close()
 
+        # Write collections' attributes (including datasets list) to file.
+        collections = self.get_history_collections(trans, history)
+
+        collections_attrs = []
+        for collection in collections:
+            # filter this ?
+            if not collection.populated:
+                break
+            if collection.state != 'ok':
+                break
+
+            collections_attrs.append(collection)
+            # export jobs for these datasets
+            for collection_dataset in collection.dataset_instances:
+                if collection_dataset.deleted and not include_deleted:
+                    provenance_attrs.append(dataset)
+                else:
+                    included_datasets.append(collection_dataset)
+
+        collections_attrs_filename = os.path.join(temp_output_dir, ATTRS_FILENAME_COLLECTIONS)
+        collections_attrs_out = open(collections_attrs_filename, 'w')
+        collections_attrs_out.write(dumps(collections_attrs, cls=HistoryDatasetCollectionAssociationsEncoder))
+        collections_attrs_out.close()
+
         #
         # Write jobs attributes file.
         #
@@ -437,6 +575,7 @@ class JobExportHistoryArchiveWrapper(UsesAnnotations):
         jobs_attrs = []
         for id, job in jobs_dict.items():
             job_attrs = {}
+            job_attrs["encoded_id"] = trans.security.encode_id(job.id)
             job_attrs['tool_id'] = job.tool_id
             job_attrs['tool_version'] = job.tool_version
             job_attrs['state'] = job.state
