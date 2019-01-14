@@ -213,10 +213,9 @@ class HistoriesApiTestCase(api.ApiTestCase):
         self.dataset_collection_populator.create_list_in_history(history_id, contents=["Hello", "World"])
 
         imported_history_id = self._reimport_history(history_id, history_name)
-
         self._assert_history_length(imported_history_id, 3)
 
-    def _reimport_history(self, history_id, history_name):
+    def _reimport_history(self, history_id, history_name, wait_on_history_length=None):
         # Ensure the history is ready to go...
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
 
@@ -247,6 +246,16 @@ class HistoriesApiTestCase(api.ApiTestCase):
         imported_history = wait_on(has_history_with_name, desc="import history")
         imported_history_id = imported_history["id"]
         self.dataset_populator.wait_for_history(imported_history_id)
+
+        if wait_on_history_length:
+
+            def history_has_length():
+                contents_response = self._get("histories/%s/contents" % imported_history_id)
+                self._assert_status_code_is(contents_response, 200)
+                contents = contents_response.json()
+                return None if len(contents) != wait_on_history_length else True
+
+            wait_on(history_has_length, desc="import history population")
 
         return imported_history_id
 
