@@ -110,23 +110,26 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
 
                 hda_collection_dict = {}
                 collection_dict_by_encoded_id = {}
-                elements_attrs_dict_by_encoded_id = {}
-                hda_file_dict_by_encoded_id = {}
                 for collection_attrs in collections_attrs:
                     # create collection
                     dc = model.DatasetCollection(collection_type=collection_attrs['type'],
                                                  populated=collection_attrs['populated'])
                     collection_dict_by_encoded_id[collection_attrs['encoded_id']] = dc
-                    #for dataset_attrs in collection_attrs['datasets']:
-                    #    hda_collection_dict[dataset_attrs['encoded_id']] = dc
-                    #    hda_file_dict_by_encoded_id[dataset_attrs['encoded_id']] = {'file_name': dataset_attrs['file_name']}
 
                     elements_attrs = collection_attrs['elements']
                     for element_attrs in elements_attrs:
-                        elements_attrs_dict_by_encoded_id[element_attrs['encoded_id']] = {'element_identifier': element_attrs['element_identifier'],
-                                                                                          'element_type': element_attrs['element_type'],
-                                                                                          'element_index': element_attrs['element_index']}
-
+                        encoded_id = element_attrs['encoded_id']
+                        dce = model.DatasetCollectionElement(collection=dc,
+                                                             element=model.DatasetCollectionElement.UNINITIALIZED_ELEMENT,
+                                                             element_index=element_attrs['element_index'],
+                                                             element_identifier=element_attrs['element_index'])
+                        self.sa_session.add(dce)
+                        if 'hda' in element_attrs:
+                            hda_attrs = element_attrs['hda']
+                            hda_encoded_id = hda_attrs['encoded_id']
+                            if hda_encoded_id not in hda_collection_dict:
+                                hda_collection_dict[hda_encoded_id] = []
+                            hda_collection_dict[hda_encoded_id].append(dce)
                 #
                 # Create datasets.
                 #
@@ -140,7 +143,6 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
 
                 # Create datasets.
                 for dataset_attrs in datasets_attrs:
-                    dataset_attrs['dataset_archive_path'] = 'datasets'
                     metadata = dataset_attrs['metadata']
 
                     # Create dataset and HDA.
@@ -159,7 +161,7 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     if 'uuid' in dataset_attrs:
                         hda.dataset.uuid = dataset_attrs["uuid"]
                     # if dataset is in a collection, do not set deleted/purged to True
-                    if (dataset_attrs.get('exported', True) is False) and ((dataset_attrs['encoded_id'] in hda_collection_dict) is False):
+                    if (dataset_attrs.get('exported', True) is False):
                         hda.state = hda.states.DISCARDED
                         hda.deleted = True
                         hda.purged = True
@@ -174,14 +176,10 @@ class JobImportHistoryArchiveWrapper(UsesAnnotations):
                     # trans.app.security_agent.set_all_dataset_permissions( hda.dataset, permissions )
 
                     # create association between this dataset and collection
-                    if dataset_attrs['encoded_id'] in hda_collection_dict:
-                        dce = model.DatasetCollectionElement(collection=hda_collection_dict[dataset_attrs['encoded_id']],
-                                                             element=hda,
-                                                             element_index=elements_attrs_dict_by_encoded_id[dataset_attrs['encoded_id']]['element_index'],
-                                                             element_identifier=elements_attrs_dict_by_encoded_id[dataset_attrs['encoded_id']]['element_identifier'])
-                        # change the path to the file in archive
-                        dataset_attrs['dataset_archive_path'] = 'collections_datasets'
-                        self.sa_session.add(dce)
+                    encoded_id = dataset_attrs['encoded_id']
+                    if encoded_id in hda_collection_dict:
+                        for dce in hda_collection_dict[encoded_id]:
+                            dce.hda = hda
 
                     self.sa_session.flush()
                     # if dataset is in a collection, export it
