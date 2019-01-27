@@ -7,7 +7,7 @@ from tempfile import mkdtemp
 
 from galaxy import model
 from galaxy.exceptions import MalformedContents
-from galaxy.tools.imp_exp import JobImportHistoryArchiveWrapper, unpack_tar_gz_archive
+from galaxy.tools.imp_exp import JobExportHistoryArchiveWrapper, JobImportHistoryArchiveWrapper, unpack_tar_gz_archive
 from galaxy.tools.imp_exp.export_history import create_archive
 from ..unittest_utils.galaxy_mock import MockApp
 
@@ -25,17 +25,22 @@ class MockSetExternalTool(object):
         pass
 
 
-def _run_jihaw_cleanup(archive_dir):
-    app = MockApp()
-    app.datatypes_registry.set_external_metadata_tool = MockSetExternalTool()
-
+def _run_jihaw_cleanup(archive_dir, app=None):
+    app = app or _mock_app()
     job = model.Job()
     job.stderr = ''
+
     jiha = model.JobImportHistoryArchive(job=job, archive_dir=archive_dir)
     app.model.context.current.add_all([job, jiha])
     app.model.context.flush()
-    jihaw = JobImportHistoryArchiveWrapper(app, 1)  # yeehaw!
+    jihaw = JobImportHistoryArchiveWrapper(app, job.id)  # yeehaw!
     return app, jihaw.cleanup_after_job()
+
+
+def _mock_app():
+    app = MockApp()
+    app.datatypes_registry.set_external_metadata_tool = MockSetExternalTool()
+    return app
 
 
 def _run_jihaw_cleanup_check_secure(history_archive, msg):
@@ -101,6 +106,64 @@ def test_history_import_abspath_in_metadata():
         _run_jihaw_cleanup_check_secure(history_archive, 'Absolute path in datasets_attrs.txt allowed')
 
 
+def test_export_dataset():
+    dest_parent = mkdtemp()
+    dest_export = os.path.join(dest_parent, "moo.tgz")
+
+    app = _mock_app()
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+    h = model.History(name="Dataset History", user=u)
+
+    d1 = model.HistoryDatasetAssociation(extension="txt", history=h, create_dataset=True, sa_session=sa_session)
+    d2 = model.HistoryDatasetAssociation(extension="txt", history=h, create_dataset=True, sa_session=sa_session)
+    d1.hid = 1
+    d2.hid = 2
+
+    j = model.Job()
+    j.user = u
+    j.tool_id = "cat1"
+
+    j.add_input_dataset("input1", d1)
+    j.add_output_dataset("out_file1", d2)
+
+    sa_session.add(d1)
+    sa_session.add(d2)
+    sa_session.add(h)
+    sa_session.add(j)
+    sa_session.flush()
+
+    imported_history = _import_export(app, h, dest_export)
+
+    datasets = list(imported_history.contents_iter(types=["dataset"]))
+    assert len(datasets) == 2
+    imported_job = datasets[1].creating_job
+    assert imported_job
+    assert imported_job.output_datasets
+    assert imported_job.output_datasets[0].dataset == datasets[1]
+
+    assert imported_job.input_datasets
+    assert imported_job.input_datasets[0].dataset == datasets[0]
+
+
+def _import_export(app, h, dest_export):
+    jeha = model.JobExportHistoryArchive(job=None, history=h,
+                                         dataset=None,
+                                         compressed=True)
+    wrapper = JobExportHistoryArchiveWrapper(app, 1)
+    args = wrapper.setup_job(jeha)
+
+    from galaxy.tools.imp_exp import export_history
+    ret = export_history.main(["--gzip", jeha.temp_directory, dest_export])
+    assert ret == 0
+
+    _, imported_history = import_archive(dest_export, app=app)
+    print(_)
+    assert imported_history
+    return imported_history
+
+
 def test_import_1901_default():
     app, new_history = import_archive('test-data/exports/1901_two_datasets.tgz')
     assert new_history
@@ -133,7 +196,7 @@ def test_import_1901_default():
     assert json.loads(param_dict['queries'])[0]['input2'] == dataset0.id
 
 
-def import_archive(archive_path):
+def import_archive(archive_path, app=None):
     dest_parent = mkdtemp()
     dest_dir = os.path.join(dest_parent, 'dest')
 
@@ -144,7 +207,7 @@ def import_archive(archive_path):
 
     args = (archive_path, dest_dir)
     unpack_tar_gz_archive.main(options, args)
-    app, new_history = _run_jihaw_cleanup(dest_dir)
+    app, new_history = _run_jihaw_cleanup(dest_dir, app=app)
     return app, new_history
 
 
@@ -170,6 +233,7 @@ def test_history_import_relpath_in_archive():
     """
     dest_parent = mkdtemp()
     with HistoryArchive(arcname_prefix='../insecure') as history_archive:
+
         history_archive.write_metafiles()
         history_archive.write_file('datasets/Pasted_Entry_1.txt', 'foo')
         history_archive.finalize()
@@ -182,6 +246,7 @@ def test_history_import_abspath_in_archive():
     """
     dest_parent = mkdtemp()
     arcname_prefix = os.path.abspath(os.path.join(dest_parent, 'insecure'))
+
     with HistoryArchive(arcname_prefix=arcname_prefix) as history_archive:
         history_archive.write_metafiles()
         history_archive.write_file('datasets/Pasted_Entry_1.txt', 'foo')
