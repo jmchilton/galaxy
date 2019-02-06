@@ -46,13 +46,13 @@ import galaxy.model.orm.now
 import galaxy.security.passwords
 import galaxy.util
 from galaxy.managers import tags
-from galaxy.model.item_attrs import UsesAnnotations
+from galaxy.model.item_attrs import get_item_annotation_str, UsesAnnotations
 from galaxy.model.util import pgcalc
 from galaxy.security import get_permitted_actions
 from galaxy.util import (directory_hash_id, ready_name_for_url,
                          unicodify, unique_id)
 from galaxy.util.bunch import Bunch
-from galaxy.util.dictifiable import Dictifiable
+from galaxy.util.dictifiable import dict_for, Dictifiable
 from galaxy.util.hash_util import new_secure_hash
 from galaxy.util.sanitize_html import sanitize_html
 from galaxy.web.form_builder import (AddressField, CheckboxField, HistoryField,
@@ -146,6 +146,37 @@ class HasTags(object):
     @property
     def auto_propagated_tags(self):
         return [t for t in self.tags if t.user_tname in AUTO_PROPAGATED_TAGS]
+
+
+class SerializationOptions(object):
+
+    def __init__(self, for_edit, serialize_files_handler=None):
+        self.for_edit = for_edit
+        self.serialize_files_handler = serialize_files_handler
+
+    def attach_identifier(self, security, obj, ret_val):
+        if self.for_edit and obj.id:
+            ret_val["id"] = obj.id
+        elif obj.id:
+            ret_val["encoded_id"] = security.encode_id(obj.id, kind='model_export')
+        else:
+            if not hasattr(obj, "temp_id"):
+                obj.temp_id = uuid4().hex
+            ret_val["encoded_id"] = obj.temp_id
+
+    def get_identifier(self, security, obj):
+        if self.for_edit and obj.id:
+            return obj.id
+        elif obj.id:
+            return security.encode_id(obj.id, kind='model_export')
+        else:
+            if not hasattr(obj, "temp_id"):
+                obj.temp_id = uuid4().hex
+            return obj.temp_id
+
+    def serialize_files(self, dataset, as_dict):
+        if self.serialize_files_handler is not None:
+            self.serialize_files_handler.serialize_files(dataset, as_dict)
 
 
 class HasName(object):
@@ -888,6 +919,34 @@ class Job(JobLike, UsesCreateAndUpdateTime, Dictifiable, RepresentById):
             if flush:
                 object_session(self).flush()
 
+    def serialize(self, app, serialization_options):
+        job_attrs = dict_for(self)
+        serialization_options.attach_identifier(app.security, self, job_attrs)
+        job_attrs['tool_id'] = self.tool_id
+        job_attrs['tool_version'] = self.tool_version
+        job_attrs['state'] = self.state
+        job_attrs['info'] = self.info
+        job_attrs['traceback'] = self.traceback
+        job_attrs['command_line'] = self.command_line
+        job_attrs['stderr'] = self.stderr
+        job_attrs['stdout'] = self.stdout
+        job_attrs['exit_code'] = self.exit_code
+        job_attrs['create_time'] = self.create_time.isoformat()
+        job_attrs['update_time'] = self.update_time.isoformat()
+
+        # Get the job's parameters
+        try:
+            params_objects = self.get_param_values(app)
+        except Exception:
+            # Could not get job params.
+            params_objects = {}
+
+        params_dict = {}
+        for name, value in params_objects.items():
+            params_dict[name] = value
+        job_attrs['params'] = params_dict
+        return job_attrs
+
     def to_dict(self, view='collection', system_details=False):
         rval = super(Job, self).to_dict(view=view)
         rval['tool_id'] = self.tool_id
@@ -1209,6 +1268,15 @@ class ImplicitCollectionJobs(RepresentById):
     @property
     def job_list(self):
         return [icjja.job for icjja in self.jobs]
+
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            populated_state=self.populated_state,
+            jobs=[serialization_options.get_identifier(app.security, j_a.job) for j_a in self.jobs]
+        )
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
 
 
 class ImplicitCollectionJobsJobAssociation(RepresentById):
@@ -1560,6 +1628,20 @@ class History(HasTags, Dictifiable, UsesAnnotations, HasName, RepresentById):
     def activatable_datasets(self):
         # This needs to be a list
         return [hda for hda in self.datasets if not hda.dataset.deleted]
+
+    def serialize(self, app, serialization_options):
+        history_attrs = dict_for(
+            self,
+            create_time=self.create_time.__str__(),
+            update_time=self.update_time.__str__(),
+            name=unicodify(self.name),
+            hid_counter=self.hid_counter,
+            genome_build=self.genome_build,
+            annotation=unicodify(get_item_annotation_str(app.model.context, self.user, self)),
+            tags=self.make_tag_string_list(),
+        )
+        serialization_options.attach_identifier(app.security, self, history_attrs)
+        return history_attrs
 
     def to_dict(self, view='collection', value_mapper=None):
 
@@ -2124,6 +2206,24 @@ class Dataset(StorableObject, RepresentById):
             if dp.action == trans.app.security_agent.permitted_actions.DATASET_MANAGE_PERMISSIONS.action:
                 return True
         return False
+
+    def serialize(self, app, serialization_options):
+        # serialize Dataset objects only for jobs that can actually modify these models.
+        assert serialization_options.for_edit
+        rval = dict_for(
+            self,
+            state=self.state,
+            deleted=self.deleted,
+            purged=self.purged,
+            external_filename=self.external_filename,
+            _extra_files_path=self._extra_files_path,
+            file_size=self.file_size,
+            object_store_id=self.object_store_id,
+            total_size=self.total_size,
+            uuid=str(self.uuid or '') or None,
+        )
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
 
 
 def datatype_for_extension(extension, datatypes_registry=None):
@@ -2786,6 +2886,44 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
                     break
             else:
                 rval += self.get_total_size()
+        return rval
+
+    def serialize(self, app, serialization_options):
+        def prepare_metadata(metadata):
+            """ Prepare metatdata for exporting. """
+            for name, value in list(metadata.items()):
+                # Metadata files are not needed for export because they can be
+                # regenerated.
+                if isinstance(value, MetadataFile):
+                    del metadata[name]
+            return metadata
+
+        rval = dict_for(
+            self,
+            create_time=self.create_time.__str__(),
+            update_time=self.update_time.__str__(),
+            hid=self.hid,
+            name=unicodify(self.name),
+            info=unicodify(self.info),
+            blurb=self.blurb,
+            peek=self.peek,
+            extension=self.extension,
+            metadata=prepare_metadata(dict(self.metadata.items())),
+            parent_id=self.parent_id,
+            designation=self.designation,
+            deleted=self.deleted,
+            visible=self.visible,
+            uuid=(lambda uuid: str(uuid) if uuid else None)(self.dataset.uuid),
+            annotation=unicodify(getattr(self, 'annotation', '')),
+            tags=self.make_tag_string_list()
+        )
+        if self.history:
+            rval["history_encoded_id"] = serialization_options.get_identifier(app.security, self.history)
+        serialization_options.attach_identifier(app.security, self, rval)
+        if serialization_options.for_edit:
+            rval["dataset"] = self.dataset.serialize(app, serialization_options)
+        else:
+            serialization_options.serialize_files(self, rval)
         return rval
 
     def to_dict(self, view='collection', expose_dataset_path=False):
@@ -3550,6 +3688,16 @@ class DatasetCollection(Dictifiable, UsesAnnotations, RepresentById):
     def has_subcollections(self):
         return ":" in self.collection_type
 
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            type=self.collection_type,
+            populated_state=self.populated_state,
+            elements=map(lambda e: e.serialize(app, serialization_options), self.elements)
+        )
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
+
 
 class DatasetCollectionInstance(HasName):
     """
@@ -3688,6 +3836,19 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
                 break
         if len(rval) > 0:
             return rval if multiple else rval[0]
+
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            display_name=self.display_name(),
+            state=self.state,
+            hid=self.hid,
+            collection=self.collection.serialize(app, serialization_options),
+        )
+        if self.history:
+            rval["history_encoded_id"] = serialization_options.get_identifier(app.security, self.history)
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
 
     def to_dict(self, view='collection'):
         original_dict_value = super(HistoryDatasetCollectionAssociation, self).to_dict(view=view)
@@ -3881,6 +4042,21 @@ class DatasetCollectionElement(Dictifiable, RepresentById):
             element_identifier=self.element_identifier,
         )
         return new_element
+
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            element_type=self.element_type,
+            element_index=self.element_index,
+            element_identifier=self.element_identifier
+        )
+        serialization_options.attach_identifier(app.security, self, rval)
+        element_obj = self.element_object
+        if isinstance(element_obj, HistoryDatasetAssociation):
+            rval["hda"] = element_obj.serialize(app, serialization_options)
+        else:
+            rval["child_collection"] = element_obj.serialize(app, serialization_options)
+        return rval
 
 
 class Event(RepresentById):
