@@ -13,7 +13,10 @@
                 <conditional name="variable">
                     <when value="1">
                         <action name="column_names" type="metadata" default="First,${input.name}" />
-                    </when>     
+                    </when>
+                    <when value="2">
+                        <action name="column_names" type="metadata" default="Second,${input.name}" />
+                    </when>
                 </conditional>
             </actions>
         </data>
@@ -24,6 +27,13 @@
             <param name="variable" value="1" />
             <output name="output">
               <metadata name="column_names" value="First,2.tabular"/>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="2.tabular" />
+            <param name="variable" value="2" />
+            <output name="output">
+              <metadata name="column_names" value="Second,2.tabular"/>
             </output>
         </test>
     </tests>
