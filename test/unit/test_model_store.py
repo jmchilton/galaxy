@@ -17,9 +17,10 @@ def test_import_export_history():
 
     u = model.User(email="collection@example.com", password="password")
     h = model.History(name="Test History", user=u)
-
     d1 = model.HistoryDatasetAssociation(extension="txt", history=h, create_dataset=True, sa_session=sa_session)
+    d1.hid = 1
     d2 = model.HistoryDatasetAssociation(extension="txt", history=h, create_dataset=True, sa_session=sa_session)
+    d2.hid = 2
 
     j = model.Job()
     j.user = u
@@ -140,7 +141,9 @@ def test_import_export_edit_collection():
     collection_metadata["populated_state"] = model.DatasetCollection.populated_states.OK
 
     d1 = model.HistoryDatasetAssociation(extension="txt", create_dataset=True, flush=False)
+    d1.hid = 1
     d2 = model.HistoryDatasetAssociation(extension="txt", create_dataset=True, flush=False)
+    d2.hid = 2
     serialization_options = model.SerializationOptions(for_edit=True)
     dataset_list = [d1.serialize(app, serialization_options),
                     d2.serialize(app, serialization_options)]
@@ -201,7 +204,9 @@ def _setup_simple_export(export_kwds):
     h = model.History(name="Test History", user=u)
 
     d1 = model.HistoryDatasetAssociation(extension="txt", history=h, create_dataset=True, sa_session=sa_session)
+    d1.hid = 1
     d2 = model.HistoryDatasetAssociation(extension="txt", history=h, create_dataset=True, sa_session=sa_session)
+    d2.hid = 2
 
     j = model.Job()
     j.user = u

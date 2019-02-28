@@ -10,6 +10,7 @@ from sqlalchemy.orm import eagerload_all
 from sqlalchemy.sql import expression
 
 from galaxy.exceptions import MalformedContents, ObjectNotFound
+from galaxy.util import FILENAME_VALID_CHARS
 from galaxy.util import in_directory
 from galaxy.version import VERSION_MAJOR
 from .item_attrs import add_item_annotation, get_item_annotation_str
@@ -550,18 +551,50 @@ class ModelExportStore(object):
         self.collections_attrs = []
 
     def serialize_files(self, dataset, as_dict):
+        export_directory = self.export_directory
         if dataset.id in self.included_datasets:
+            file_name, extra_files_path = None, None
             try:
-                file_name = dataset.file_name
-                if os.path.exists(file_name):
-                    as_dict['_file_name'] = file_name
+                _file_name = dataset.file_name
+                if os.path.exists(_file_name):
+                    file_name = _file_name
             except ObjectNotFound:
                 pass
 
             if dataset.extra_files_path_exists():
-                as_dict['_extra_files_path'] = dataset.extra_files_path
+                extra_files_path = dataset.extra_files_path
             else:
                 pass
+
+        dir_name = 'datasets'
+        dir_path = os.path.join(export_directory, dir_name)
+        dataset_hid = as_dict['hid']
+        assert dataset_hid, as_dict
+
+        if file_name:
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
+
+            target_filename = get_export_dataset_filename(as_dict['name'], as_dict['extension'], dataset_hid)
+            arcname = os.path.join(dir_name, target_filename)
+
+            src = file_name
+            dest = os.path.join(export_directory, arcname)
+            os.symlink(src, dest)
+            as_dict['file_name'] = arcname
+
+        if extra_files_path:
+            try:
+                file_list = os.listdir(extra_files_path)
+            except OSError:
+                file_list = []
+
+            if len(file_list):
+                arcname = os.path.join(dir_name, 'extra_files_path_%s' % dataset_hid)
+                os.symlink(extra_files_path, os.path.join(export_directory, arcname))
+                as_dict['extra_files_path'] = arcname
+            else:
+                as_dict['extra_files_path'] = ''
 
     def exported_key(self, app, obj):
         return app.security.encode_id(obj.id, kind='model_export')
@@ -783,3 +816,11 @@ class ModelExportStore(object):
             self._finalize()
         # http://effbot.org/zone/python-with-statement.htm
         return isinstance(exc_val, TypeError)
+
+
+def get_export_dataset_filename(name, ext, hid):
+    """
+    Builds a filename for a dataset using its name an extension.
+    """
+    base = ''.join(c in FILENAME_VALID_CHARS and c or '_' for c in name)
+    return base + "_%s.%s" % (hid, ext)

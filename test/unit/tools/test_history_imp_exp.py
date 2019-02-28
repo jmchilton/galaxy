@@ -15,7 +15,7 @@ from ..test_objectstore import TestConfig
 
 # good enough for the very specific tests we're writing as of now...
 DATASETS_ATTRS = '''[{{"info": "\\nuploaded txt file", "peek": "foo\\n\\n\\n\\n\\n\\n", "update_time": "2016-02-08 18:39:22.937474", "name": "Pasted Entry", "extension": "txt", "tags": {{}}, "__HistoryDatasetAssociation__": true, "file_name": "{file_name}", "deleted": false, "designation": null, "visible": true, "create_time": "2016-02-08 18:38:38.682087", "hid": 1, "parent_id": null, "extra_files_path": "", "uuid": "406d913e-925d-4ccd-800d-06c9b32df309", "metadata": {{"dbkey": "?", "data_lines": 1}}, "annotation": null, "blurb": "1 line", "exported": true}}]'''
-DATASETS_ATTRS_EXPORT = '''[{{"info": "\\nuploaded txt file", "peek": "foo\\n\\n\\n\\n\\n\\n", "update_time": "2016-02-08 18:39:22.937474", "name": "Pasted Entry", "extension": "txt", "tags": {{}}, "__HistoryDatasetAssociation__": true, "_file_name": "{file_name}", "deleted": false, "designation": null, "visible": true, "create_time": "2016-02-08 18:38:38.682087", "hid": 1, "parent_id": null, "_extra_files_path": "", "uuid": "406d913e-925d-4ccd-800d-06c9b32df309", "metadata": {{"dbkey": "?", "data_lines": 1}}, "annotation": null, "blurb": "1 line"}}]'''
+DATASETS_ATTRS_EXPORT = '''[{{"info": "\\nuploaded txt file", "peek": "foo\\n\\n\\n\\n\\n\\n", "update_time": "2016-02-08 18:39:22.937474", "name": "Pasted Entry", "extension": "txt", "tags": {{}}, "__HistoryDatasetAssociation__": true, "file_name": "{file_name}", "deleted": false, "designation": null, "visible": true, "create_time": "2016-02-08 18:38:38.682087", "hid": 1, "parent_id": null, "_extra_files_path": "", "uuid": "406d913e-925d-4ccd-800d-06c9b32df309", "metadata": {{"dbkey": "?", "data_lines": 1}}, "annotation": null, "blurb": "1 line"}}]'''
 DATASETS_ATTRS_PROVENANCE = '''[]'''
 HISTORY_ATTRS = '''{"hid_counter": 2, "update_time": "2016-02-08 18:38:38.705058", "create_time": "2016-02-08 18:38:20.790057", "name": "paste", "tags": {}, "genome_build": "?", "annotation": null}'''
 JOBS_ATTRS = '''[{"info": null, "tool_id": "upload1", "update_time": "2016-02-08T18:39:23.356482", "stdout": "", "input_mapping": {}, "tool_version": "1.1.4", "traceback": null, "command_line": "python /galaxy/tools/data_source/upload.py /galaxy /scratch/tmppwU9rD /scratch/tmpP4_45Y 1:/scratch/jobs/000/dataset_1_files:/data/000/dataset_1.dat", "exit_code": 0, "output_datasets": [1], "state": "ok", "create_time": "2016-02-08T18:38:39.153873", "params": {"files": [{"to_posix_lines": "Yes", "NAME": "None", "file_data": null, "space_to_tab": null, "url_paste": "/scratch/strio_url_paste_o6nrv8", "__index__": 0, "ftp_files": "", "uuid": "None"}], "paramfile": "/scratch/tmpP4_45Y", "file_type": "auto", "files_metadata": {"file_type": "auto", "__current_case__": 41}, "async_datasets": "None", "dbkey": "?"}, "stderr": ""}]'''
@@ -59,11 +59,12 @@ def _run_jihaw_cleanup_check_secure(history_archive, msg):
 
 def test_create_archive():
     tempdir = mkdtemp()
-    dataset = os.path.join(tempdir, 'dataset_1.dat')
+    dataset = os.path.join(tempdir, 'datasets/Pasted_Entry_1.txt')
     history_attrs_file = os.path.join(tempdir, 'history_attrs.txt')
     datasets_attrs_file = os.path.join(tempdir, 'datasets_attrs.txt')
     jobs_attrs_file = os.path.join(tempdir, 'jobs_attrs.txt')
     out_file = os.path.join(tempdir, 'out.tar.gz')
+    os.makedirs(os.path.join(tempdir, 'datasets'))
     with open(dataset, 'w') as out:
         out.write('Hello\n')
     with open(history_attrs_file, 'w') as out:
@@ -75,7 +76,7 @@ def test_create_archive():
     try:
         create_archive(tempdir, out_file, gzip=True)
         with tarfile.open(out_file) as t:
-            assert t.getnames() == ['datasets/Pasted_Entry_1.txt', 'history_attrs.txt', 'datasets_attrs.txt', 'jobs_attrs.txt']
+            assert sorted(t.getnames()) == sorted(['datasets', 'datasets/Pasted_Entry_1.txt', 'history_attrs.txt', 'datasets_attrs.txt', 'jobs_attrs.txt']), t.getnames()
     finally:
         shutil.rmtree(tempdir)
 
@@ -115,8 +116,6 @@ def test_export_dataset():
     app, sa_session, h = _setup_history_for_export("Datasets History")
 
     d1, d2 = _create_datasets(sa_session, h, 2)
-    d1.hid = 1
-    d2.hid = 2
 
     j = model.Job()
     j.user = h.user
@@ -321,8 +320,6 @@ def test_export_collection_hids():
     app, sa_session, h = _setup_history_for_export("Collection History with dataset from this history")
 
     d1, d2 = _create_datasets(sa_session, h, 2)
-    d1.hid = 1
-    d2.hid = 2
 
     c1 = model.DatasetCollection(collection_type="paired")
     hc1 = model.HistoryDatasetCollectionAssociation(history=h, hid=3, collection=c1, name="HistoryCollectionTest1")
@@ -359,7 +356,7 @@ def _assert_distinct_hids(history):
 
 
 def _create_datasets(sa_session, history, n):
-    return [model.HistoryDatasetAssociation(extension="txt", history=history, create_dataset=True, sa_session=sa_session) for _ in range(n)]
+    return [model.HistoryDatasetAssociation(extension="txt", history=history, create_dataset=True, sa_session=sa_session, hid=i + 1) for i in range(n)]
 
 
 def _setup_history_for_export(history_name):
