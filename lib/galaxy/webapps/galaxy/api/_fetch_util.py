@@ -8,6 +8,7 @@ from galaxy.actions.library import (
 from galaxy.exceptions import (
     RequestParameterInvalidException
 )
+from galaxy.model.target_util import replace_request_syntax_sugar
 from galaxy.tools.actions.upload_common import validate_url
 from galaxy.util import (
     relpath,
@@ -167,25 +168,8 @@ def validate_and_normalize_targets(trans, payload):
         if "purge_source" not in item:
             item["purge_source"] = False
 
-    _replace_request_syntax_sugar(targets)
+    replace_request_syntax_sugar(targets)
     _for_each_src(check_src, targets)
-
-
-def _replace_request_syntax_sugar(obj):
-    # For data libraries and hdas to make sense - allow items and items_from in place of elements
-    # and elements_from. This is destructive and modifies the supplied request.
-    if isinstance(obj, list):
-        for el in obj:
-            _replace_request_syntax_sugar(el)
-    elif isinstance(obj, dict):
-        if "items" in obj:
-            obj["elements"] = obj["items"]
-            del obj["items"]
-        if "items_from" in obj:
-            obj["elements_from"] = obj["items_from"]
-            del obj["items_from"]
-        for value in obj.values():
-            _replace_request_syntax_sugar(value)
 
 
 def _handle_invalid_link_data_only_type(item):
