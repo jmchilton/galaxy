@@ -129,6 +129,88 @@ def test_import_export_datasets():
     assert imported_job.input_datasets[0].dataset == datasets[0]
 
 
+def test_import_library_require_permissions():
+    app = _mock_app()
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+
+    library = model.Library(name="my library 1", description="my library description", synopsis="my synopsis")
+    root_folder = model.LibraryFolder(name="my library 1", description='folder description')
+    library.root_folder = root_folder
+    sa_session.add_all((library, root_folder))
+    sa_session.flush()
+
+    temp_directory = mkdtemp()
+    with store.DirectoryModelExportStore(app, temp_directory) as export_store:
+        export_store.export_library(library)
+
+    error_caught = False
+    try:
+        import_model_store = store.get_import_model_store(app, u, temp_directory)
+        import_model_store.perform_import()
+    except AssertionError:
+        # TODO: throw and catch a better exception...
+        error_caught = True
+
+    assert error_caught
+
+
+def test_import_export_library():
+    app = _mock_app()
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+
+    library = model.Library(name="my library 1", description="my library description", synopsis="my synopsis")
+    root_folder = model.LibraryFolder(name="my library 1", description='folder description')
+    library.root_folder = root_folder
+    sa_session.add_all((library, root_folder))
+    sa_session.flush()
+
+    subfolder = model.LibraryFolder(name="sub folder 1", description="sub folder")
+    root_folder.add_folder(subfolder)
+    sa_session.add(subfolder)
+
+    ld = model.LibraryDataset(folder=root_folder, name="my name", info="my library dataset")
+    ldda = model.LibraryDatasetDatasetAssociation(
+        create_dataset=True, flush=False
+    )
+    ld.library_dataset_dataset_association = ldda
+    root_folder.add_library_dataset(ld)
+
+    sa_session.add(ld)
+    sa_session.add(ldda)
+
+    sa_session.flush()
+    assert len(root_folder.datasets) == 1 
+    assert len(root_folder.folders) == 1 
+
+    temp_directory = mkdtemp()
+    with store.DirectoryModelExportStore(app, temp_directory) as export_store:
+        export_store.export_library(library)
+
+    import_model_store = store.get_import_model_store(app, u, temp_directory, store.ImportOptions(allow_library_creation=True))
+    import_model_store.perform_import()
+
+    all_libraries = sa_session.query(model.Library).all()
+    assert len(all_libraries) == 2, len(all_libraries)
+    all_lddas = sa_session.query(model.LibraryDatasetDatasetAssociation).all()
+    assert len(all_lddas) == 2, len(all_lddas)
+
+    new_library = [l for l in all_libraries if l.id != library.id][0]
+    assert new_library.name == "my library 1"
+    assert new_library.description == "my library description"
+    assert new_library.synopsis == "my synopsis"
+
+    new_root = new_library.root_folder
+    assert new_root
+    assert new_root.name == "my library 1"
+
+    assert len(new_root.folders) == 1
+    assert len(new_root.datasets) == 1
+
+
 def test_finalize_job_state():
     app, h, temp_directory, import_history = _setup_simple_export({"for_edit": False})
     u = h.user

@@ -2727,6 +2727,38 @@ class DatasetInstance(object):
 
         return msg
 
+    def serialize(self, app, serialization_options, for_link=False):
+        if for_link:
+            rval = dict_for(
+                self
+            )
+            serialization_options.attach_identifier(app.security, self, rval)
+            return rval
+
+        rval = dict_for(
+            self,
+            create_time=self.create_time.__str__(),
+            update_time=self.update_time.__str__(),
+            name=unicodify(self.name),
+            info=unicodify(self.info),
+            blurb=self.blurb,
+            peek=self.peek,
+            extension=self.extension,
+            metadata=_prepare_metadata_for_serialization(dict(self.metadata.items())),
+            designation=self.designation,
+            deleted=self.deleted,
+            visible=self.visible,
+            uuid=(lambda uuid: str(uuid) if uuid else None)(self.dataset.uuid),
+        )
+
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
+
+    def _handle_serialize_files(self, app, serialization_options, rval):
+        if serialization_options.for_edit:
+            rval["dataset"] = self.dataset.serialize(app, serialization_options)
+        else:
+            serialization_options.serialize_files(self, rval)
 
 class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnotations,
                                 HasName, RepresentById):
@@ -2956,34 +2988,10 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
             serialization_options.attach_identifier(app.security, self, rval)
             return rval
 
-        def prepare_metadata(metadata):
-            """ Prepare metatdata for exporting. """
-            for name, value in list(metadata.items()):
-                # Metadata files are not needed for export because they can be
-                # regenerated.
-                if isinstance(value, MetadataFile):
-                    del metadata[name]
-            return metadata
-
-        rval = dict_for(
-            self,
-            create_time=self.create_time.__str__(),
-            update_time=self.update_time.__str__(),
-            hid=self.hid,
-            name=unicodify(self.name),
-            info=unicodify(self.info),
-            blurb=self.blurb,
-            peek=self.peek,
-            extension=self.extension,
-            metadata=prepare_metadata(dict(self.metadata.items())),
-            parent_id=self.parent_id,
-            designation=self.designation,
-            deleted=self.deleted,
-            visible=self.visible,
-            uuid=(lambda uuid: str(uuid) if uuid else None)(self.dataset.uuid),
-            annotation=unicodify(getattr(self, 'annotation', '')),
-            tags=self.make_tag_string_list()
-        )
+        rval = super(HistoryDatasetAssociation, self).serialize(app, serialization_options)
+        rval["hid"] = self.hid
+        rval["annotation"] = unicodify(getattr(self, 'annotation', ''))
+        rval["tags"] = self.make_tag_string_list()
         if self.history:
             rval["history_encoded_id"] = serialization_options.get_identifier(app.security, self.history)
 
@@ -2994,12 +3002,7 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
             src_hda = src_hda.copied_from_history_dataset_association
             copied_from_history_dataset_association_chain.append(serialization_options.get_identifier(app.security, src_hda))
         rval["copied_from_history_dataset_association_id_chain"] = copied_from_history_dataset_association_chain
-
-        serialization_options.attach_identifier(app.security, self, rval)
-        if serialization_options.for_edit:
-            rval["dataset"] = self.dataset.serialize(app, serialization_options)
-        else:
-            serialization_options.serialize_files(self, rval)
+        self._handle_serialize_files(app, serialization_options, rval)
         return rval
 
     def to_dict(self, view='collection', expose_dataset_path=False):
@@ -3119,6 +3122,19 @@ class Library(Dictifiable, HasName, RepresentById):
         self.synopsis = synopsis
         self.root_folder = root_folder
 
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            name=self.name,
+            description=self.description,
+            synopsis=self.synopsis,
+        )
+        if self.root_folder:
+            rval["root_folder"] = self.root_folder.serialize(app, serialization_options)
+
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
+
     def to_dict(self, view='collection', value_mapper=None):
         """
         We prepend an F to folders.
@@ -3162,12 +3178,12 @@ class Library(Dictifiable, HasName, RepresentById):
 class LibraryFolder(Dictifiable, HasName, RepresentById):
     dict_element_visible_keys = ['id', 'parent_id', 'name', 'description', 'item_count', 'genome_build', 'update_time', 'deleted']
 
-    def __init__(self, name=None, description=None, item_count=0, order_id=None):
+    def __init__(self, name=None, description=None, item_count=0, order_id=None, genome_build=None):
         self.name = name or "Unnamed folder"
         self.description = description
         self.item_count = item_count
         self.order_id = order_id
-        self.genome_build = None
+        self.genome_build = genome_build
 
     def add_library_dataset(self, library_dataset, genome_build=None):
         library_dataset.folder_id = self.id
@@ -3185,6 +3201,28 @@ class LibraryFolder(Dictifiable, HasName, RepresentById):
     def activatable_library_datasets(self):
         # This needs to be a list
         return [ld for ld in self.datasets if ld.library_dataset_dataset_association and not ld.library_dataset_dataset_association.dataset.deleted]
+
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            name=self.name,
+            description=self.description,
+            genome_build=self.genome_build,
+            item_count=self.item_count,
+            order_id=self.order_id,
+            # update_time=self.update_time,
+            deleted=self.deleted,
+        )
+        folders = []
+        for folder in self.folders:
+            folders.append(folder.serialize(app, serialization_options))
+        rval["folders"] = folders
+        datasets = []
+        for dataset in self.datasets:
+            datasets.append(dataset.serialize(app, serialization_options))
+        rval['datasets'] = datasets
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
 
     def to_dict(self, view='collection', value_mapper=None):
         rval = super(LibraryFolder, self).to_dict(view=view, value_mapper=value_mapper)
@@ -3255,6 +3293,17 @@ class LibraryDataset(RepresentById):
 
     def display_name(self):
         self.library_dataset_dataset_association.display_name()
+
+    def serialize(self, app, serialization_options):
+        rval = dict_for(
+            self,
+            name=self.name,
+            info=self.info,
+            order_id=self.order_id,
+            ldda=self.library_dataset_dataset_association.serialize(app, serialization_options, for_link=True),
+        )
+        serialization_options.attach_identifier(app.security, self, rval)
+        return rval
 
     def to_dict(self, view='collection'):
         # Since this class is a proxy to rather complex attributes we want to
@@ -3382,6 +3431,18 @@ class LibraryDatasetDatasetAssociation(DatasetInstance, HasName, RepresentById):
 
     def has_manage_permissions_roles(self, trans):
         return self.dataset.has_manage_permissions_roles(trans)
+
+    def serialize(self, app, serialization_options, for_link=False):
+        if for_link:
+            rval = dict_for(
+                self
+            )
+            serialization_options.attach_identifier(app.security, self, rval)
+            return rval
+
+        rval = super(LibraryDatasetDatasetAssociation, self).serialize(app, serialization_options)
+        self._handle_serialize_files(app, serialization_options, rval)
+        return rval
 
     def to_dict(self, view='collection'):
         # Since this class is a proxy to rather complex attributes we want to
@@ -5706,3 +5767,13 @@ def copy_list(lst, *args, **kwds):
         return lst
     else:
         return [el.copy(*args, **kwds) for el in lst]
+
+
+def _prepare_metadata_for_serialization(metadata):
+    """ Prepare metatdata for exporting. """
+    for name, value in list(metadata.items()):
+        # Metadata files are not needed for export because they can be
+        # regenerated.
+        if isinstance(value, MetadataFile):
+            del metadata[name]
+    return metadata
