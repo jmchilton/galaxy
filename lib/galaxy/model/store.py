@@ -31,10 +31,12 @@ ATTRS_FILENAME_LIBRARIES = 'libraries_attrs.txt'
 
 class ImportOptions(object):
 
-    def __init__(self, allow_edit=False, allow_library_creation=False):
+    def __init__(self, allow_edit=False, allow_library_creation=False, allow_dataset_object_edit=None):
         self.allow_edit = allow_edit
         self.allow_library_creation = allow_library_creation
-
+        if allow_dataset_object_edit is None:
+            allow_dataset_object_edit = allow_edit
+        self.allow_dataset_object_edit = allow_dataset_object_edit
 
 @six.add_metaclass(abc.ABCMeta)
 class ModelImportStore(object):
@@ -141,6 +143,24 @@ class ModelImportStore(object):
 
         # Create datasets.
         for dataset_attrs in datasets_attrs:
+            def handle_dataset_object_edit(dataset_instance):
+                if "dataset" in dataset_attrs:
+                    assert self.import_options.allow_dataset_object_edit
+                    dataset_attributes = [
+                        "state",
+                        "deleted",
+                        "purged",
+                        "external_filename",
+                        "_extra_files_path",
+                        "file_size",
+                        "object_store_id",
+                        "total_size",
+                        "uuid"
+                    ]
+                    for attribute in dataset_attributes:
+                        if attribute in dataset_attrs["dataset"]:
+                            setattr(dataset_instance.dataset, attribute, dataset_attrs["dataset"][attribute])
+
             if 'id' in dataset_attrs:
                 assert self.import_options.allow_edit
                 hda = self.sa_session.query(model.HistoryDatasetAssociation).get(dataset_attrs["id"])
@@ -158,22 +178,7 @@ class ModelImportStore(object):
                     if attribute in dataset_attrs:
                         setattr(hda, attribute, dataset_attrs[attribute])
 
-                if "dataset" in dataset_attrs:
-                    dataset_attributes = [
-                        "state",
-                        "deleted",
-                        "purged",
-                        "external_filename",
-                        "_extra_files_path",
-                        "file_size",
-                        "object_store_id",
-                        "total_size",
-                        "uuid"
-                    ]
-                    for attribute in dataset_attributes:
-                        if attribute in dataset_attrs["dataset"]:
-                            setattr(hda.dataset, attribute, dataset_attrs["dataset"][attribute])
-
+                handle_dataset_object_edit(hda)
                 self.sa_session.flush()
             else:
                 metadata = dataset_attrs['metadata']
@@ -210,8 +215,12 @@ class ModelImportStore(object):
                                                                               sa_session=self.sa_session)
                 else:
                     raise Exception("Unknown dataset instance type encountered")
+
+                # Older style...
                 if 'uuid' in dataset_attrs:
                     dataset_instance.dataset.uuid = dataset_attrs["uuid"]
+                if 'dataset_uuid' in dataset_attrs:
+                    dataset_instance.dataset.uuid = dataset_attrs["dataset_uuid"]
 
                 self.sa_session.add(dataset_instance)
                 self.sa_session.flush()
@@ -226,45 +235,47 @@ class ModelImportStore(object):
                         requires_hid.append(dataset_instance)
 
                 self.sa_session.flush()
-
-                file_name = dataset_attrs.get('file_name')
-                if file_name:
-                    # Do security check and move/copy dataset data.
-                    archive_path = os.path.abspath(os.path.join(self.archive_dir, file_name))
-                    if os.path.islink(archive_path):
-                        raise MalformedContents("Invalid dataset path: %s" % archive_path)
-
-                    temp_dataset_file_name = \
-                        os.path.realpath(archive_path)
-
-                    if not in_directory(temp_dataset_file_name, self.archive_dir):
-                        raise MalformedContents("Invalid dataset path: %s" % temp_dataset_file_name)
-
-                if not file_name or not os.path.exists(temp_dataset_file_name):
-                    dataset_instance.state = dataset_instance.states.DISCARDED
-                    dataset_instance.deleted = True
-                    dataset_instance.purged = True
-                    dataset_instance.dataset.deleted = True
-                    dataset_instance.dataset.purged = True
+                if 'dataset' in dataset_attrs:
+                    handle_dataset_object_edit(dataset_instance)
                 else:
-                    dataset_instance.state = dataset_instance.states.OK
-                    self.app.object_store.update_from_file(dataset_instance.dataset, file_name=temp_dataset_file_name, create=True)
+                    file_name = dataset_attrs.get('file_name')
+                    if file_name:
+                        # Do security check and move/copy dataset data.
+                        archive_path = os.path.abspath(os.path.join(self.archive_dir, file_name))
+                        if os.path.islink(archive_path):
+                            raise MalformedContents("Invalid dataset path: %s" % archive_path)
 
-                    # Import additional files if present. Histories exported previously might not have this attribute set.
-                    dataset_extra_files_path = dataset_attrs.get('extra_files_path', None)
-                    if dataset_extra_files_path:
-                        try:
-                            file_list = os.listdir(os.path.join(self.archive_dir, dataset_extra_files_path))
-                        except OSError:
-                            file_list = []
+                        temp_dataset_file_name = \
+                            os.path.realpath(archive_path)
 
-                        if file_list:
-                            for extra_file in file_list:
-                                self.app.object_store.update_from_file(
-                                    dataset_instance.dataset, extra_dir='dataset_%s_files' % dataset_instance.dataset.id,
-                                    alt_name=extra_file, file_name=os.path.join(self.archive_dir, dataset_extra_files_path, extra_file),
-                                    create=True)
-                    dataset_instance.dataset.set_total_size()  # update the filesize record in the database
+                        if not in_directory(temp_dataset_file_name, self.archive_dir):
+                            raise MalformedContents("Invalid dataset path: %s" % temp_dataset_file_name)
+
+                    if not file_name or not os.path.exists(temp_dataset_file_name):
+                        dataset_instance.state = dataset_instance.states.DISCARDED
+                        dataset_instance.deleted = True
+                        dataset_instance.purged = True
+                        dataset_instance.dataset.deleted = True
+                        dataset_instance.dataset.purged = True
+                    else:
+                        dataset_instance.state = dataset_instance.states.OK
+                        self.app.object_store.update_from_file(dataset_instance.dataset, file_name=temp_dataset_file_name, create=True)
+
+                        # Import additional files if present. Histories exported previously might not have this attribute set.
+                        dataset_extra_files_path = dataset_attrs.get('extra_files_path', None)
+                        if dataset_extra_files_path:
+                            try:
+                                file_list = os.listdir(os.path.join(self.archive_dir, dataset_extra_files_path))
+                            except OSError:
+                                file_list = []
+
+                            if file_list:
+                                for extra_file in file_list:
+                                    self.app.object_store.update_from_file(
+                                        dataset_instance.dataset, extra_dir='dataset_%s_files' % dataset_instance.dataset.id,
+                                        alt_name=extra_file, file_name=os.path.join(self.archive_dir, dataset_extra_files_path, extra_file),
+                                        create=True)
+                        dataset_instance.dataset.set_total_size()  # update the filesize record in the database
 
                     if dataset_instance.deleted:
                         dataset_instance.dataset.deleted = True
@@ -776,11 +787,12 @@ class ModelExportStore(object):
 
 class DirectoryModelExportStore(ModelExportStore):
 
-    def __init__(self, app, export_directory, for_edit=False, export_files=None):
+    def __init__(self, app, export_directory, for_edit=False, serialize_dataset_objects=None, export_files=None):
         self.app = app
         self.export_directory = export_directory
         self.serialization_options = model.SerializationOptions(
             for_edit=for_edit,
+            serialize_dataset_objects=serialize_dataset_objects,
             serialize_files_handler=self,
         )
         self.export_files = export_files
@@ -873,7 +885,7 @@ class DirectoryModelExportStore(ModelExportStore):
         app = self.app
         export_directory = self.export_directory
 
-        history_attrs = history.serialize(app, self.serialization_options)
+        history_attrs = history.serialize(app.security, self.serialization_options)
         history_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_HISTORY)
         with open(history_attrs_filename, 'w') as history_attrs_out:
             dump(history_attrs, history_attrs_out)
@@ -961,18 +973,18 @@ class DirectoryModelExportStore(ModelExportStore):
 
         datasets_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_DATASETS)
         with open(datasets_attrs_filename, 'w') as datasets_attrs_out:
-            dump(list(map(lambda d: d.serialize(app, self.serialization_options), datasets_attrs)), datasets_attrs_out)
+            dump(list(map(lambda d: d.serialize(app.security, self.serialization_options), datasets_attrs)), datasets_attrs_out)
 
         with open(datasets_attrs_filename + ".provenance", 'w') as provenance_attrs_out:
-            dump(list(map(lambda d: d.serialize(app, self.serialization_options), provenance_attrs)), provenance_attrs_out)
+            dump(list(map(lambda d: d.serialize(app.security, self.serialization_options), provenance_attrs)), provenance_attrs_out)
 
         libraries_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_LIBRARIES)
         with open(libraries_attrs_filename, 'w') as librariess_attrs_out:
-            dump(list(map(lambda d: d.serialize(app, self.serialization_options), self.included_libraries)), librariess_attrs_out)
+            dump(list(map(lambda d: d.serialize(app.security, self.serialization_options), self.included_libraries)), librariess_attrs_out)
 
         collections_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_COLLECTIONS)
         with open(collections_attrs_filename, 'w') as collections_attrs_out:
-            dump(list(map(lambda d: d.serialize(app, self.serialization_options), self.collections_attrs)), collections_attrs_out)
+            dump(list(map(lambda d: d.serialize(app.security, self.serialization_options), self.collections_attrs)), collections_attrs_out)
 
         #
         # Write jobs attributes file.
@@ -1020,7 +1032,7 @@ class DirectoryModelExportStore(ModelExportStore):
             if self.serialization_options.for_edit:
                 continue
 
-            job_attrs = job.serialize(app, self.serialization_options)
+            job_attrs = job.serialize(app.security, self.serialization_options)
 
             # -- Get input, output datasets. --
 
@@ -1085,7 +1097,7 @@ class DirectoryModelExportStore(ModelExportStore):
 
         icjs_attrs = []
         for icj_id, icj in implicit_collection_jobs_dict.items():
-            icj_attrs = icj.serialize(app, self.serialization_options)
+            icj_attrs = icj.serialize(app.security, self.serialization_options)
             icjs_attrs.append(icj_attrs)
 
         jobs_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_JOBS)

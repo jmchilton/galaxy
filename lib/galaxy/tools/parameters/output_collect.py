@@ -399,7 +399,7 @@ class ModelCreateContext(object):
         return primary_data
 
 
-class JobContext(object):
+class JobContext(ModelCreateContext):
 
     def __init__(self, tool, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):
         self.tool = tool
@@ -577,7 +577,8 @@ class JobContext(object):
                 self.add_library_dataset_to_folder(library_folder, ld)
                 primary_data = ldda
 
-        sa_session.flush()
+        if sa_session:
+            sa_session.flush()
 
         if tag_list:
             self.tag_handler.add_tags_from_list(self.job.user, primary_data, tag_list)

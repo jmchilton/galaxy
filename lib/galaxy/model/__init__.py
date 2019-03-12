@@ -152,35 +152,38 @@ class HasTags(object):
 
 class SerializationOptions(object):
 
-    def __init__(self, for_edit, serialize_files_handler=None):
+    def __init__(self, for_edit, serialize_dataset_objects=None, serialize_files_handler=None):
         self.for_edit = for_edit
+        if serialize_dataset_objects is None:
+            serialize_dataset_objects = for_edit
+        self.serialize_dataset_objects = serialize_dataset_objects
         self.serialize_files_handler = serialize_files_handler
 
-    def attach_identifier(self, security, obj, ret_val):
+    def attach_identifier(self, id_encoder, obj, ret_val):
         if self.for_edit and obj.id:
             ret_val["id"] = obj.id
         elif obj.id:
-            ret_val["encoded_id"] = security.encode_id(obj.id, kind='model_export')
+            ret_val["encoded_id"] = id_encoder.encode_id(obj.id, kind='model_export')
         else:
             if not hasattr(obj, "temp_id"):
                 obj.temp_id = uuid4().hex
             ret_val["encoded_id"] = obj.temp_id
 
-    def get_identifier(self, security, obj):
+    def get_identifier(self, id_encoder, obj):
         if self.for_edit and obj.id:
             return obj.id
         elif obj.id:
-            return security.encode_id(obj.id, kind='model_export')
+            return id_encoder.encode_id(obj.id, kind='model_export')
         else:
             if not hasattr(obj, "temp_id"):
                 obj.temp_id = uuid4().hex
             return obj.temp_id
 
-    def get_identifier_for_id(self, security, obj_id):
+    def get_identifier_for_id(self, id_encoder, obj_id):
         if self.for_edit and obj_id:
             return obj_id
         elif obj_id:
-            return security.encode_id(obj_id, kind='model_export')
+            return id_encoder.encode_id(obj_id, kind='model_export')
         else:
             raise NotImplementedError()
 
@@ -962,9 +965,9 @@ class Job(JobLike, UsesCreateAndUpdateTime, Dictifiable, RepresentById):
             if flush:
                 object_session(self).flush()
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         job_attrs = dict_for(self)
-        serialization_options.attach_identifier(app.security, self, job_attrs)
+        serialization_options.attach_identifier(id_encoder, self, job_attrs)
         job_attrs['tool_id'] = self.tool_id
         job_attrs['tool_version'] = self.tool_version
         job_attrs['state'] = self.state
@@ -1309,13 +1312,13 @@ class ImplicitCollectionJobs(RepresentById):
     def job_list(self):
         return [icjja.job for icjja in self.jobs]
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
             populated_state=self.populated_state,
-            jobs=[serialization_options.get_identifier(app.security, j_a.job) for j_a in self.jobs]
+            jobs=[serialization_options.get_identifier(id_encoder, j_a.job) for j_a in self.jobs]
         )
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
 
@@ -1669,7 +1672,8 @@ class History(HasTags, Dictifiable, UsesAnnotations, HasName, RepresentById):
         # This needs to be a list
         return [hda for hda in self.datasets if not hda.dataset.deleted]
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
+
         history_attrs = dict_for(
             self,
             create_time=self.create_time.__str__(),
@@ -1677,10 +1681,10 @@ class History(HasTags, Dictifiable, UsesAnnotations, HasName, RepresentById):
             name=unicodify(self.name),
             hid_counter=self.hid_counter,
             genome_build=self.genome_build,
-            annotation=unicodify(get_item_annotation_str(app.model.context, self.user, self)),
+            annotation=unicodify(get_item_annotation_str(object_session(self), self.user, self)),
             tags=self.make_tag_string_list(),
         )
-        serialization_options.attach_identifier(app.security, self, history_attrs)
+        serialization_options.attach_identifier(id_encoder, self, history_attrs)
         return history_attrs
 
     def to_dict(self, view='collection', value_mapper=None):
@@ -2252,9 +2256,9 @@ class Dataset(StorableObject, RepresentById):
                 return True
         return False
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         # serialize Dataset objects only for jobs that can actually modify these models.
-        assert serialization_options.for_edit
+        assert serialization_options.serialize_dataset_objects
         rval = dict_for(
             self,
             state=self.state,
@@ -2267,7 +2271,7 @@ class Dataset(StorableObject, RepresentById):
             total_size=self.total_size,
             uuid=str(self.uuid or '') or None,
         )
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
 
@@ -2727,12 +2731,12 @@ class DatasetInstance(object):
 
         return msg
 
-    def serialize(self, app, serialization_options, for_link=False):
+    def serialize(self, id_encoder, serialization_options, for_link=False):
         if for_link:
             rval = dict_for(
                 self
             )
-            serialization_options.attach_identifier(app.security, self, rval)
+            serialization_options.attach_identifier(id_encoder, self, rval)
             return rval
 
         rval = dict_for(
@@ -2748,15 +2752,15 @@ class DatasetInstance(object):
             designation=self.designation,
             deleted=self.deleted,
             visible=self.visible,
-            uuid=(lambda uuid: str(uuid) if uuid else None)(self.dataset.uuid),
+            dataset_uuid=(lambda uuid: str(uuid) if uuid else None)(self.dataset.uuid),
         )
 
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
-    def _handle_serialize_files(self, app, serialization_options, rval):
-        if serialization_options.for_edit:
-            rval["dataset"] = self.dataset.serialize(app, serialization_options)
+    def _handle_serialize_files(self, id_encoder, serialization_options, rval):
+        if serialization_options.serialize_dataset_objects:
+            rval["dataset"] = self.dataset.serialize(id_encoder, serialization_options)
         else:
             serialization_options.serialize_files(self, rval)
 
@@ -2980,29 +2984,29 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
                 rval += self.get_total_size()
         return rval
 
-    def serialize(self, app, serialization_options, for_link=False):
+    def serialize(self, id_encoder, serialization_options, for_link=False):
         if for_link:
             rval = dict_for(
                 self
             )
-            serialization_options.attach_identifier(app.security, self, rval)
+            serialization_options.attach_identifier(id_encoder, self, rval)
             return rval
 
-        rval = super(HistoryDatasetAssociation, self).serialize(app, serialization_options)
+        rval = super(HistoryDatasetAssociation, self).serialize(id_encoder, serialization_options)
         rval["hid"] = self.hid
         rval["annotation"] = unicodify(getattr(self, 'annotation', ''))
         rval["tags"] = self.make_tag_string_list()
         if self.history:
-            rval["history_encoded_id"] = serialization_options.get_identifier(app.security, self.history)
+            rval["history_encoded_id"] = serialization_options.get_identifier(id_encoder, self.history)
 
         # Handle copied_from_history_dataset_association information...
         copied_from_history_dataset_association_chain = []
         src_hda = self
         while src_hda.copied_from_history_dataset_association:
             src_hda = src_hda.copied_from_history_dataset_association
-            copied_from_history_dataset_association_chain.append(serialization_options.get_identifier(app.security, src_hda))
+            copied_from_history_dataset_association_chain.append(serialization_options.get_identifier(id_encoder, src_hda))
         rval["copied_from_history_dataset_association_id_chain"] = copied_from_history_dataset_association_chain
-        self._handle_serialize_files(app, serialization_options, rval)
+        self._handle_serialize_files(id_encoder, serialization_options, rval)
         return rval
 
     def to_dict(self, view='collection', expose_dataset_path=False):
@@ -3122,7 +3126,7 @@ class Library(Dictifiable, HasName, RepresentById):
         self.synopsis = synopsis
         self.root_folder = root_folder
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
             name=self.name,
@@ -3130,9 +3134,9 @@ class Library(Dictifiable, HasName, RepresentById):
             synopsis=self.synopsis,
         )
         if self.root_folder:
-            rval["root_folder"] = self.root_folder.serialize(app, serialization_options)
+            rval["root_folder"] = self.root_folder.serialize(id_encoder, serialization_options)
 
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
     def to_dict(self, view='collection', value_mapper=None):
@@ -3202,7 +3206,7 @@ class LibraryFolder(Dictifiable, HasName, RepresentById):
         # This needs to be a list
         return [ld for ld in self.datasets if ld.library_dataset_dataset_association and not ld.library_dataset_dataset_association.dataset.deleted]
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
             name=self.name,
@@ -3215,13 +3219,13 @@ class LibraryFolder(Dictifiable, HasName, RepresentById):
         )
         folders = []
         for folder in self.folders:
-            folders.append(folder.serialize(app, serialization_options))
+            folders.append(folder.serialize(id_encoder, serialization_options))
         rval["folders"] = folders
         datasets = []
         for dataset in self.datasets:
-            datasets.append(dataset.serialize(app, serialization_options))
+            datasets.append(dataset.serialize(id_encoder, serialization_options))
         rval['datasets'] = datasets
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
     def to_dict(self, view='collection', value_mapper=None):
@@ -3294,15 +3298,15 @@ class LibraryDataset(RepresentById):
     def display_name(self):
         self.library_dataset_dataset_association.display_name()
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
             name=self.name,
             info=self.info,
             order_id=self.order_id,
-            ldda=self.library_dataset_dataset_association.serialize(app, serialization_options, for_link=True),
+            ldda=self.library_dataset_dataset_association.serialize(id_encoder, serialization_options, for_link=True),
         )
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
     def to_dict(self, view='collection'):
@@ -3432,16 +3436,16 @@ class LibraryDatasetDatasetAssociation(DatasetInstance, HasName, RepresentById):
     def has_manage_permissions_roles(self, trans):
         return self.dataset.has_manage_permissions_roles(trans)
 
-    def serialize(self, app, serialization_options, for_link=False):
+    def serialize(self, id_encoder, serialization_options, for_link=False):
         if for_link:
             rval = dict_for(
                 self
             )
-            serialization_options.attach_identifier(app.security, self, rval)
+            serialization_options.attach_identifier(id_encoder, self, rval)
             return rval
 
-        rval = super(LibraryDatasetDatasetAssociation, self).serialize(app, serialization_options)
-        self._handle_serialize_files(app, serialization_options, rval)
+        rval = super(LibraryDatasetDatasetAssociation, self).serialize(id_encoder, serialization_options)
+        self._handle_serialize_files(id_encoder, serialization_options, rval)
         return rval
 
     def to_dict(self, view='collection'):
@@ -3825,14 +3829,14 @@ class DatasetCollection(Dictifiable, UsesAnnotations, RepresentById):
     def has_subcollections(self):
         return ":" in self.collection_type
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
             type=self.collection_type,
             populated_state=self.populated_state,
-            elements=list(map(lambda e: e.serialize(app, serialization_options), self.elements))
+            elements=list(map(lambda e: e.serialize(id_encoder, serialization_options), self.elements))
         )
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
 
@@ -3974,12 +3978,12 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
         if len(rval) > 0:
             return rval if multiple else rval[0]
 
-    def serialize(self, app, serialization_options, for_link=False):
+    def serialize(self, id_encoder, serialization_options, for_link=False):
         if for_link:
             rval = dict_for(
                 self
             )
-            serialization_options.attach_identifier(app.security, self, rval)
+            serialization_options.attach_identifier(id_encoder, self, rval)
             return rval
 
         rval = dict_for(
@@ -3987,23 +3991,23 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
             display_name=self.display_name(),
             state=self.state,
             hid=self.hid,
-            collection=self.collection.serialize(app, serialization_options),
+            collection=self.collection.serialize(id_encoder, serialization_options),
             implicit_output_name=self.implicit_output_name,
         )
         if self.history:
-            rval["history_encoded_id"] = serialization_options.get_identifier(app.security, self.history)
+            rval["history_encoded_id"] = serialization_options.get_identifier(id_encoder, self.history)
 
         implicit_input_collections = []
         for implicit_input_collection in self.implicit_input_collections:
             input_hdca = implicit_input_collection.input_dataset_collection
             implicit_input_collections.append({
                 "name": implicit_input_collection.name,
-                "input_dataset_collection": serialization_options.get_identifier(app.security, input_hdca)
+                "input_dataset_collection": serialization_options.get_identifier(id_encoder, input_hdca)
             })
         if implicit_input_collections:
             rval["implicit_input_collections"] = implicit_input_collections
 
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
     def to_dict(self, view='collection'):
@@ -4199,19 +4203,19 @@ class DatasetCollectionElement(Dictifiable, RepresentById):
         )
         return new_element
 
-    def serialize(self, app, serialization_options):
+    def serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
             element_type=self.element_type,
             element_index=self.element_index,
             element_identifier=self.element_identifier
         )
-        serialization_options.attach_identifier(app.security, self, rval)
+        serialization_options.attach_identifier(id_encoder, self, rval)
         element_obj = self.element_object
         if isinstance(element_obj, HistoryDatasetAssociation):
-            rval["hda"] = element_obj.serialize(app, serialization_options, for_link=True)
+            rval["hda"] = element_obj.serialize(id_encoder, serialization_options, for_link=True)
         else:
-            rval["child_collection"] = element_obj.serialize(app, serialization_options)
+            rval["child_collection"] = element_obj.serialize(id_encoder, serialization_options)
         return rval
 
 

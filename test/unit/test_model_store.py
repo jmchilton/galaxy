@@ -311,8 +311,8 @@ def test_import_export_edit_collection():
     d2 = model.HistoryDatasetAssociation(extension="txt", create_dataset=True, flush=False)
     d2.hid = 2
     serialization_options = model.SerializationOptions(for_edit=True)
-    dataset_list = [d1.serialize(app, serialization_options),
-                    d2.serialize(app, serialization_options)]
+    dataset_list = [d1.serialize(app.security, serialization_options),
+                    d2.serialize(app.security, serialization_options)]
 
     dc = model.DatasetCollection(
         id=collection_metadata["id"],
@@ -334,7 +334,7 @@ def test_import_export_edit_collection():
     with open(datasets_metadata_path, "w") as datasets_f:
         json.dump(dataset_list, datasets_f)
 
-    hdca_metadata["collection"] = dc.serialize(app, serialization_options)
+    hdca_metadata["collection"] = dc.serialize(app.security, serialization_options)
     with open(collections_metadata_path, "w") as collections_f:
         json.dump(hdcas_metadata, collections_f)
 
