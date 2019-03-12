@@ -452,7 +452,7 @@ class JobContext(ModelCreateContext):
         self.job = job
         self.job_working_directory = job_working_directory
         self.tool_provided_metadata = tool_provided_metadata
-        self.object_store = object_stores
+        self.object_store = object_store
 
     @property
     def work_context(self):
