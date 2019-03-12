@@ -400,6 +400,46 @@ class ModelCreateContext(object):
         return primary_data
 
 
+class SessionlessModelCreateContext(ModelCreateContext):
+
+    def __init__(self, object_store, export_store, working_directory, input_dbkey="?"):
+        self.permission_provider = UnusedPermissionProvider()
+        self.metadata_source_provider = UnusedMetadataSourceProvider()
+        # Passed to datasetinstance constructors...
+        self.sa_session = None
+        self.object_store = object_store
+        self.export_store = export_store
+
+        self.job_working_directory = working_directory  # TODO: rename...
+
+    @property
+    def tag_handler(self):
+        raise NotImplementedError()
+
+    @property
+    def user(self):
+        return None
+
+    def add_output_dataset_association(self, name, dataset):
+        raise NotImplementedError()
+
+    def add_library_dataset_to_folder(self, library_folder, ld):
+        self.export_store.add_dataset(ld.ldda)
+
+    def add_datasets_to_history(self, datasets, for_output_dataset=None):
+        if for_output_dataset is not None:
+            raise NotImplementedError()
+
+        for dataset in datasets:
+            self.export_store.add_dataset(dataset)
+
+    def persist_object(self, obj):
+        pass
+
+    def flush(self):
+        pass
+
+
 class JobContext(ModelCreateContext):
 
     def __init__(self, tool, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):

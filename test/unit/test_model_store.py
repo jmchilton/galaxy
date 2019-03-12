@@ -362,6 +362,50 @@ def test_import_datasets_with_ids_fails_if_not_editing_models():
     assert caught
 
 
+def test_model_create_context_persist_hdas():
+    work_directory = mkdtemp()
+    with open(os.path.join(work_directory, "file1.txt"), "w") as f:
+        f.write("hello world\nhello world line 2")
+    dictified_hdas = {
+        "elements": [{
+            "filename": "file1.txt",
+            "ext": "txt",
+            "dbkey": "hg19",
+            "name": "my file",
+        }],
+    }
+    app = _mock_app(store_by="uuid")
+    temp_directory = mkdtemp()
+    with store.DirectoryModelExportStore(app, temp_directory, serialize_dataset_objects=True) as export_store:
+        from galaxy.tools.parameters.output_collect import persist_hdas, SessionlessModelCreateContext
+        model_create_context = SessionlessModelCreateContext(app.object_store, export_store, work_directory)
+        persist_hdas(dictified_hdas["elements"], model_create_context)
+
+    u = model.User(email="collection@example.com", password="password")
+    import_history = model.History(name="Test History for Import", user=u)
+
+    sa_session = app.model.context
+    sa_session.add(u)
+    sa_session.add(import_history)
+    sa_session.flush()
+
+    assert len(import_history.datasets) == 0
+
+    import_options = store.ImportOptions(allow_dataset_object_edit=True)
+    import_model_store = store.get_import_model_store(app, u, temp_directory, import_options=import_options)
+    with import_model_store.target_history(default_history=import_history):
+        import_model_store.perform_import(import_history)
+
+    assert len(import_history.datasets) == 1
+    imported_hda = import_history.datasets[0]
+    assert imported_hda.ext == "txt"
+    assert imported_hda.name == "my file"
+    assert imported_hda.metadata.data_lines == 2
+
+    with open(imported_hda.file_name, "r") as f:
+        assert f.read().startswith("hello world\n")
+
+
 def _setup_simple_export(export_kwds):
     app = _mock_app()
     sa_session = app.model.context
