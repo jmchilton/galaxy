@@ -33,6 +33,7 @@ class PermissionProvider(object):
         self._job = job
         self._security_agent = security_agent
         self._inp_data = inp_data
+        self._user = job.user
         self._permissions = None
 
     @property
@@ -49,12 +50,26 @@ class PermissionProvider(object):
 
         return self._permissions
 
+    def set_default_hda_permissions(self, primary_data):
+        permissions = self.permissions
+        if permissions is not UNSET:
+            self._security_agent.set_all_dataset_permissions(primary_data.dataset, permissions, new=True, flush=False)
+
+    def copy_dataset_permissions(self, init_from, primary_data):
+        self._security_agent.copy_dataset_permissions(init_from.dataset, primary_data.dataset)
+
 
 class UnusedPermissionProvider(object):
 
     @property
     def permissions(self):
         return UNSET
+
+    def set_default_hda_permissions(self, primary_data):
+        return
+
+    def copy_dataset_permissions(self, init_from, primary_data):
+        raise NotImplementedError()
 
 
 class MetadataSourceProvider(object):
@@ -258,6 +273,132 @@ def collect_dynamic_outputs(
             collection.handle_population_failed("Problem building datasets for collection.")
 
 
+class ModelCreateContext(object):
+
+    def create_dataset(
+        self,
+        ext,
+        designation,
+        visible,
+        dbkey,
+        name,
+        filename,
+        metadata_source_name=None,
+        info=None,
+        library_folder=None,
+        link_data=False,
+        primary_data=None,
+        init_from=None,
+        dataset_attributes=None,
+        tag_list=[],
+    ):
+        app = self.app
+        sa_session = self.sa_session
+
+        # You can initialize a dataset or initialize from a dataset but not both.
+        if init_from:
+            assert primary_data is None
+        if primary_data:
+            assert init_from is None
+
+        if metadata_source_name:
+            assert init_from is None
+        if init_from:
+            assert metadata_source_name is None
+
+        if primary_data is not None:
+            primary_data.extension = ext
+            primary_data.visible = visible
+            primary_data.dbkey = dbkey
+        else:
+            if not library_folder:
+                primary_data = galaxy.model.HistoryDatasetAssociation(extension=ext,
+                                                                      designation=designation,
+                                                                      visible=visible,
+                                                                      dbkey=dbkey,
+                                                                      create_dataset=True,
+                                                                      flush=False,
+                                                                      sa_session=sa_session)
+
+                if init_from:
+                    self.permission_provider.copy_dataset_permissions(init_from, primary)
+                    primary_data.state = init_from.state
+                else:
+                    self.permission_provider.set_default_hda_permissions(primary_data)
+                sa_session.add(primary_data)
+            else:
+                ld = galaxy.model.LibraryDataset(folder=library_folder, name=name)
+                ldda = galaxy.model.LibraryDatasetDatasetAssociation(name=name,
+                                                                     extension=ext,
+                                                                     dbkey=dbkey,
+                                                                     library_dataset=ld,
+                                                                     user=self.user,
+                                                                     create_dataset=True,
+                                                                     flush=False,
+                                                                     sa_session=sa_session)
+                ld.library_dataset_dataset_association = ldda
+                ldda.state = ldda.states.OK
+
+                self.add_library_dataset_to_folder(library_folder, ld)
+                primary_data = ldda
+
+        sa_session.flush()
+
+        if tag_list:
+            app.tag_handler.add_tags_from_list(self.job.user, primary_data, tag_list)
+
+        # Move data from temp location to dataset location
+        if not link_data:
+            self.object_store.update_from_file(primary_data.dataset, file_name=filename, create=True)
+        else:
+            primary_data.link_to(filename)
+
+        # We are sure there are no extra files, so optimize things that follow by settting total size also.
+        primary_data.set_size(no_extra_files=True)
+        # If match specified a name use otherwise generate one from
+        # designation.
+        primary_data.name = name
+
+        # Copy metadata from one of the inputs if requested.
+        if metadata_source_name:
+            metadata_source = self.metadata_source_provider.get_metadata_source(metadata_source_name)
+            primary_data.init_meta(copy_from=metadata_source)
+        elif init_from:
+            metadata_source = init_from
+            primary_data.init_meta(copy_from=init_from)
+            # when coming from primary dataset - respect pattern of output - this makes sense
+            primary_data.dbkey = dbkey
+        else:
+            primary_data.init_meta()
+
+        if info is not None:
+            primary_data.info = info
+
+        # add tool/metadata provided information
+        dataset_attributes = dataset_attributes or {}
+        if dataset_attributes:
+            # TODO: discover_files should produce a match that encorporates this -
+            # would simplify ToolProvidedMetadata interface and eliminate this
+            # crap path.
+            dataset_att_by_name = dict(ext='extension')
+            for att_set in ['name', 'info', 'ext', 'dbkey']:
+                dataset_att_name = dataset_att_by_name.get(att_set, att_set)
+                setattr(primary_data, dataset_att_name, dataset_attributes.get(att_set, getattr(primary_data, dataset_att_name)))
+
+        metadata_dict = dataset_attributes.get('metadata', None)
+        if metadata_dict:
+            if "dbkey" in dataset_attributes:
+                metadata_dict["dbkey"] = dataset_attributes["dbkey"]
+            # branch tested with tool_provided_metadata_3 / tool_provided_metadata_10
+            primary_data.metadata.from_JSON_dict(json_dict=metadata_dict)
+        else:
+            primary_data.set_meta()
+
+        primary_data.set_peek()
+
+        return primary_data
+
+
 class JobContext(object):
 
     def __init__(self, tool, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):
@@ -270,21 +411,24 @@ class JobContext(object):
         self.job = job
         self.job_working_directory = job_working_directory
         self.tool_provided_metadata = tool_provided_metadata
-        self.object_store = object_store
-        self._permissions = None
+        self.object_store = object_stores
 
     @property
     def work_context(self):
         from galaxy.work.context import WorkRequestContext
+        return WorkRequestContext(self.app, user=self.user)
+
+    @property
+    def user(self):
         if self.job:
             user = self.job.user
         else:
             user = None
-        return WorkRequestContext(self.app, user=user)
+        return user
 
     @property
-    def permissions(self):
-        return self.permission_provider.permissions
+    def tag_handler(self):
+        return self.app.tag_handler
 
     def find_files(self, output_name, collection, dataset_collectors):
         filenames = odict.odict()
@@ -384,7 +528,6 @@ class JobContext(object):
         dataset_attributes=None,
         tag_list=[],
     ):
-        app = self.app
         sa_session = self.sa_session
 
         # You can initialize a dataset or initialize from a dataset but not both.
@@ -404,10 +547,6 @@ class JobContext(object):
             primary_data.dbkey = dbkey
         else:
             if not library_folder:
-                if init_from:
-                    permissions = UNSET
-                else:
-                    permissions = self.permissions
                 primary_data = galaxy.model.HistoryDatasetAssociation(extension=ext,
                                                                       designation=designation,
                                                                       visible=visible,
@@ -415,20 +554,33 @@ class JobContext(object):
                                                                       create_dataset=True,
                                                                       flush=False,
                                                                       sa_session=sa_session)
-                if permissions is not UNSET:
-                    app.security_agent.set_all_dataset_permissions(primary_data.dataset, permissions, new=True, flush=False)
+
+                if init_from:
+                    self.permission_provider.copy_dataset_permissions(init_from, primary)
+                    primary_data.state = init_from.state
+                else:
+                    self.permission_provider.set_default_hda_permissions(primary_data)
                 sa_session.add(primary_data)
             else:
-                primary_data = _new_ldda(self.work_context, name, ext, visible, dbkey, library_folder)
+                ld = galaxy.model.LibraryDataset(folder=library_folder, name=name)
+                ldda = galaxy.model.LibraryDatasetDatasetAssociation(name=name,
+                                                                     extension=ext,
+                                                                     dbkey=dbkey,
+                                                                     library_dataset=ld,
+                                                                     user=self.user,
+                                                                     create_dataset=True,
+                                                                     flush=False,
+                                                                     sa_session=sa_session)
+                ld.library_dataset_dataset_association = ldda
+                ldda.state = ldda.states.OK
 
-            if init_from:
-                app.security_agent.copy_dataset_permissions(init_from.dataset, primary_data.dataset)
-                primary_data.state = init_from.state
+                self.add_library_dataset_to_folder(library_folder, ld)
+                primary_data = ldda
 
         sa_session.flush()
 
         if tag_list:
-            app.tag_handler.add_tags_from_list(self.job.user, primary_data, tag_list)
+            self.tag_handler.add_tags_from_list(self.job.user, primary_data, tag_list)
 
         # Move data from temp location to dataset location
         if not link_data:
@@ -485,6 +637,25 @@ class JobContext(object):
         assoc = galaxy.model.JobToOutputDatasetAssociation(name, dataset)
         assoc.job = self.job
         self.sa_session.add(assoc)
+
+    def add_library_dataset_to_folder(self, library_folder, ld):
+        trans.sa_session.add(ld.ldda)
+
+        trans = self.work_context
+        trans.app.security_agent.copy_library_permissions(trans, library_folder, ld)
+        trans.sa_session.add(ld)
+        trans.sa_session.flush()
+
+        # Permissions must be the same on the LibraryDatasetDatasetAssociation and the associated LibraryDataset
+        trans.app.security_agent.copy_library_permissions(trans, ld, ldda)
+        # Copy the current user's DefaultUserPermissions to the new LibraryDatasetDatasetAssociation.dataset
+        trans.app.security_agent.set_all_dataset_permissions(ldda.dataset, trans.app.security_agent.user_get_default_permissions(trans.user))
+        library_folder.add_library_dataset(ld, genome_build=dbkey)
+        trans.sa_session.add(library_folder)
+        trans.sa_session.flush()
+
+        trans.sa_session.add(ld)
+        trans.sa_session.flush()
 
     def add_datasets_to_history(self, datasets, for_output_dataset=None):
         sa_session = self.sa_session
@@ -839,43 +1010,6 @@ class RegexCollectedDatasetMatch(JsonCollectedDatasetMatch):
 
 
 UNSET = object()
-
-
-def _new_ldda(
-    trans,
-    name,
-    ext,
-    visible,
-    dbkey,
-    library_folder,
-):
-    ld = galaxy.model.LibraryDataset(folder=library_folder, name=name)
-    trans.sa_session.add(ld)
-    trans.sa_session.flush()
-    trans.app.security_agent.copy_library_permissions(trans, library_folder, ld)
-
-    ldda = galaxy.model.LibraryDatasetDatasetAssociation(name=name,
-                                                         extension=ext,
-                                                         dbkey=dbkey,
-                                                         library_dataset=ld,
-                                                         user=trans.user,
-                                                         create_dataset=True,
-                                                         sa_session=trans.sa_session)
-    trans.sa_session.add(ldda)
-    ldda.state = ldda.states.OK
-    # Permissions must be the same on the LibraryDatasetDatasetAssociation and the associated LibraryDataset
-    trans.app.security_agent.copy_library_permissions(trans, ld, ldda)
-    # Copy the current user's DefaultUserPermissions to the new LibraryDatasetDatasetAssociation.dataset
-    trans.app.security_agent.set_all_dataset_permissions(ldda.dataset, trans.app.security_agent.user_get_default_permissions(trans.user))
-    library_folder.add_library_dataset(ld, genome_build=dbkey)
-    trans.sa_session.add(library_folder)
-    trans.sa_session.flush()
-
-    ld.library_dataset_dataset_association_id = ldda.id
-    trans.sa_session.add(ld)
-    trans.sa_session.flush()
-    return ldda
-
 
 DEFAULT_DATASET_COLLECTOR = DatasetCollector(DEFAULT_DATASET_COLLECTOR_DESCRIPTION)
 DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR = ToolMetadataDatasetCollector(ToolProvidedMetadataDatasetCollection())
