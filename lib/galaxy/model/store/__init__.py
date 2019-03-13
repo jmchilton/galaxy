@@ -17,8 +17,8 @@ from galaxy.exceptions import MalformedContents, ObjectNotFound
 from galaxy.util import FILENAME_VALID_CHARS
 from galaxy.util import in_directory
 from galaxy.version import VERSION_MAJOR
-from .item_attrs import add_item_annotation, get_item_annotation_str
-from .. import model
+from ..item_attrs import add_item_annotation, get_item_annotation_str
+from ... import model
 
 ATTRS_FILENAME_HISTORY = 'history_attrs.txt'
 ATTRS_FILENAME_DATASETS = 'datasets_attrs.txt'
