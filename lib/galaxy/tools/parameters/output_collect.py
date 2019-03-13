@@ -9,6 +9,10 @@ from collections import namedtuple
 import galaxy.model
 from galaxy import util
 from galaxy.dataset_collections.structure import UninitializedTree
+from galaxy.model.target_util import (
+    get_required_item,
+    replace_request_syntax_sugar,
+)
 from galaxy.tools.parser.output_collection_def import (
     DEFAULT_DATASET_COLLECTOR_DESCRIPTION,
     INPUT_DBKEY_TOKEN,
@@ -195,6 +199,36 @@ def collect_dynamic_outputs(
         except Exception:
             log.exception("Problem gathering output collection.")
             collection.handle_population_failed("Problem building datasets for collection.")
+
+
+def persist_target_to_export_store(target_dict, export_store, object_store, work_directory):
+    replace_request_syntax_sugar(target_dict)
+    model_create_context = SessionlessModelCreateContext(object_store, export_store, work_directory)
+
+    assert "destination" in target_dict
+    assert "elements" in target_dict
+    destination = target_dict["destination"]
+    elements = target_dict["elements"]
+
+    assert "type" in destination
+    destination_type = destination["type"]
+
+    assert destination_type in ["library", "hdas"]
+    if destination_type == "library":
+        name = get_required_item(destination, "name", "Must specify a library name")
+        description = destination.get("description", "")
+        synopsis = destination.get("synopsis", "")
+        root_folder = galaxy.model.LibraryFolder(name=name, description='')
+        library = galaxy.model.Library(
+            name=name,
+            description=description,
+            synopsis=synopsis,
+            root_folder=root_folder,
+        )
+        persist_elements_to_folder(model_create_context, elements, root_folder)
+        export_store.export_library(library)
+    elif destination_type == "hdas":
+        persist_hdas(elements, model_create_context)
 
 
 def persist_elements_to_folder(job_context, elements, library_folder):
@@ -424,7 +458,15 @@ class SessionlessModelCreateContext(ModelCreateContext):
         raise NotImplementedError()
 
     def add_library_dataset_to_folder(self, library_folder, ld):
-        self.export_store.add_dataset(ld.ldda)
+        library_folder.datasets.append(ld)
+        ld.order_id = library_folder.item_count
+        library_folder.item_count += 1
+
+    def create_library_folder(self, parent_folder, name, description):
+        nested_folder = galaxy.model.LibraryFolder(name=name, description=description, order_id=parent_folder.item_count)
+        parent_folder.item_count += 1
+        parent_folder.folders.append(nested_folder)
+        return nested_folder
 
     def add_datasets_to_history(self, datasets, for_output_dataset=None):
         if for_output_dataset is not None:
@@ -583,7 +625,7 @@ class JobContext(ModelCreateContext):
         trans.app.security_agent.copy_library_permissions(trans, ld, ldda)
         # Copy the current user's DefaultUserPermissions to the new LibraryDatasetDatasetAssociation.dataset
         trans.app.security_agent.set_all_dataset_permissions(ldda.dataset, trans.app.security_agent.user_get_default_permissions(trans.user))
-        library_folder.add_library_dataset(ld, genome_build=ldda.dbkey)
+        library_folder.add_library_dataset(ld, genome_build=dbkey)
         trans.sa_session.add(library_folder)
         trans.sa_session.flush()
 

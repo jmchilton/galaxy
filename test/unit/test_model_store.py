@@ -366,7 +366,10 @@ def test_model_create_context_persist_hdas():
     work_directory = mkdtemp()
     with open(os.path.join(work_directory, "file1.txt"), "w") as f:
         f.write("hello world\nhello world line 2")
-    dictified_hdas = {
+    target = {
+        "destination": {
+            "type": "hdas",
+        },
         "elements": [{
             "filename": "file1.txt",
             "ext": "txt",
@@ -377,9 +380,8 @@ def test_model_create_context_persist_hdas():
     app = _mock_app(store_by="uuid")
     temp_directory = mkdtemp()
     with store.DirectoryModelExportStore(app, temp_directory, serialize_dataset_objects=True) as export_store:
-        from galaxy.tools.parameters.output_collect import persist_hdas, SessionlessModelCreateContext
-        model_create_context = SessionlessModelCreateContext(app.object_store, export_store, work_directory)
-        persist_hdas(dictified_hdas["elements"], model_create_context)
+        from galaxy.tools.parameters.output_collect import persist_target_to_export_store
+        persist_target_to_export_store(target, export_store, app.object_store, work_directory)
 
     u = model.User(email="collection@example.com", password="password")
     import_history = model.History(name="Test History for Import", user=u)
@@ -404,6 +406,106 @@ def test_model_create_context_persist_hdas():
 
     with open(imported_hda.file_name, "r") as f:
         assert f.read().startswith("hello world\n")
+
+
+def test_persist_target_library_dataset():
+    work_directory = mkdtemp()
+    with open(os.path.join(work_directory, "file1.txt"), "w") as f:
+        f.write("hello world\nhello world line 2")
+    target = {
+        "destination": {
+            "type": "library",
+            "name": "Example Library",
+            "description": "Example Library Description",
+            "synopsis": "Example Library Synopsis",
+        },
+        "elements": [{
+            "filename": "file1.txt",
+            "ext": "txt",
+            "dbkey": "hg19",
+            "name": "my file",
+        }],
+    }
+    sa_session = _import_library_target(target, work_directory)
+    new_library = _assert_one_library_created(sa_session)
+
+    assert new_library.name == "Example Library"
+    assert new_library.description == "Example Library Description"
+    assert new_library.synopsis == "Example Library Synopsis"
+
+    new_root = new_library.root_folder
+    assert new_root
+    assert new_root.name == "Example Library"
+
+    assert len(new_root.datasets) == 1
+    ldda = new_root.datasets[0].library_dataset_dataset_association
+    assert ldda.metadata.data_lines == 2
+    with open(ldda.file_name, "r") as f:
+        assert f.read().startswith("hello world\n")
+
+
+def test_persist_target_library_folder():
+    work_directory = mkdtemp()
+    with open(os.path.join(work_directory, "file1.txt"), "w") as f:
+        f.write("hello world\nhello world line 2")
+    target = {
+        "destination": {
+            "type": "library",
+            "name": "Example Library",
+            "description": "Example Library Description",
+            "synopsis": "Example Library Synopsis",
+        },
+        "items": [{
+            "name": "Folder 1",
+            "description": "Folder 1 Description",
+            "items": [{
+                "filename": "file1.txt",
+                "ext": "txt",
+                "dbkey": "hg19",
+                "info": "dataset info",
+                "name": "my file",
+            }]
+        }],
+    }
+    sa_session = _import_library_target(target, work_directory)
+    new_library = _assert_one_library_created(sa_session)
+    new_root = new_library.root_folder
+    assert len(new_root.datasets) == 0
+    assert len(new_root.folders) == 1
+
+    child_folder = new_root.folders[0]
+    assert child_folder.name == "Folder 1"
+    assert child_folder.description == "Folder 1 Description"
+    assert len(child_folder.folders) == 0
+    assert len(child_folder.datasets) == 1
+    ldda = child_folder.datasets[0].library_dataset_dataset_association
+    assert ldda.metadata.data_lines == 2
+    with open(ldda.file_name, "r") as f:
+        assert f.read().startswith("hello world\n")
+
+
+def _assert_one_library_created(sa_session):
+    all_libraries = sa_session.query(model.Library).all()
+    assert len(all_libraries) == 1, len(all_libraries)
+    new_library = all_libraries[0]
+    return new_library
+
+
+def _import_library_target(target, work_directory):
+    app = _mock_app(store_by="uuid")
+    temp_directory = mkdtemp()
+    with store.DirectoryModelExportStore(app, temp_directory, serialize_dataset_objects=True) as export_store:
+        from galaxy.tools.parameters.output_collect import persist_target_to_export_store
+        persist_target_to_export_store(target, export_store, app.object_store, work_directory)
+
+    u = model.User(email="library@example.com", password="password")
+
+    import_options = store.ImportOptions(allow_dataset_object_edit=True, allow_library_creation=True)
+    import_model_store = store.get_import_model_store(app, u, temp_directory, import_options=import_options)
+    import_model_store.perform_import()
+
+    sa_session = app.model.context
+    return sa_session
 
 
 def _setup_simple_export(export_kwds):

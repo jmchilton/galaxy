@@ -8,7 +8,11 @@ from galaxy.actions.library import (
 from galaxy.exceptions import (
     RequestParameterInvalidException
 )
-from galaxy.model.target_util import replace_request_syntax_sugar
+from galaxy.model.target_util import (
+    build_library_for_destination,
+    get_required_item,
+    replace_request_syntax_sugar,
+)
 from galaxy.tools.actions.upload_common import validate_url
 from galaxy.util import (
     relpath,
@@ -36,8 +40,8 @@ def validate_and_normalize_targets(trans, payload):
     targets = payload.get("targets", [])
 
     for target in targets:
-        destination = _get_required_item(target, "destination", "Each target must specify a 'destination'")
-        destination_type = _get_required_item(destination, "type", "Each target destination must specify a 'type'")
+        destination = get_required_item(target, "destination", "Each target must specify a 'destination'")
+        destination_type = get_required_item(destination, "type", "Each target destination must specify a 'type'")
         if "object_id" in destination:
             raise RequestParameterInvalidException("object_id not allowed to appear in the request.")
 
@@ -46,16 +50,8 @@ def validate_and_normalize_targets(trans, payload):
             msg = template % (destination_type, VALID_DESTINATION_TYPES)
             raise RequestParameterInvalidException(msg)
         if destination_type == "library":
-            library_name = _get_required_item(destination, "name", "Must specify a library name")
-            description = destination.get("description", "")
-            synopsis = destination.get("synopsis", "")
-            library = trans.app.library_manager.create(
-                trans, library_name, description=description, synopsis=synopsis
-            )
+            library = build_library_for_destination(destination, trans, trans.app.library_manager)
             destination["type"] = "library_folder"
-            for key in ["name", "description", "synopsis"]:
-                if key in destination:
-                    del destination[key]
             destination["library_folder_id"] = trans.app.security.encode_id(library.root_folder.id)
 
     # Unlike upload.py we don't transmit or use run_as_real_user in the job - we just make sure
@@ -182,12 +178,6 @@ def _handle_invalid_link_data_only_elements_type(item):
     link_data_only = item.get("link_data_only", False)
     if link_data_only and item.get("elements_from", False) in ELEMENTS_FROM_TRANSIENT_TYPES:
         raise RequestParameterInvalidException("link_data_only is invalid for derived elements from [%s]" % item.get("elements_from"))
-
-
-def _get_required_item(from_dict, key, message):
-    if key not in from_dict:
-        raise RequestParameterInvalidException(message)
-    return from_dict[key]
 
 
 def _for_each_src(f, obj):

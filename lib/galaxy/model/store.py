@@ -38,6 +38,7 @@ class ImportOptions(object):
             allow_dataset_object_edit = allow_edit
         self.allow_dataset_object_edit = allow_dataset_object_edit
 
+
 @six.add_metaclass(abc.ABCMeta)
 class ModelImportStore(object):
 
@@ -185,6 +186,7 @@ class ModelImportStore(object):
 
                 model_class = dataset_attrs.get("model_class", "HistoryDatasetAssociation")
                 if model_class == "HistoryDatasetAssociation":
+                    assert history is not None
                     # Create dataset and HDA.
                     dataset_instance = model.HistoryDatasetAssociation(name=dataset_attrs['name'],
                                                                        extension=dataset_attrs['extension'],
