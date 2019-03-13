@@ -8,8 +8,7 @@ from galaxy.actions.library import (
 from galaxy.exceptions import (
     RequestParameterInvalidException
 )
-from galaxy.model.target_util import (
-    build_library_for_destination,
+from galaxy.model.store.fetch import (
     get_required_item,
     replace_request_syntax_sugar,
 )
@@ -50,7 +49,7 @@ def validate_and_normalize_targets(trans, payload):
             msg = template % (destination_type, VALID_DESTINATION_TYPES)
             raise RequestParameterInvalidException(msg)
         if destination_type == "library":
-            library = build_library_for_destination(destination, trans, trans.app.library_manager)
+            library = _build_library_for_destination(destination, trans, trans.app.library_manager)
             destination["type"] = "library_folder"
             destination["library_folder_id"] = trans.app.security.encode_id(library.root_folder.id)
 
@@ -166,6 +165,19 @@ def validate_and_normalize_targets(trans, payload):
 
     replace_request_syntax_sugar(targets)
     _for_each_src(check_src, targets)
+
+
+def _build_library_for_destination(destination, trans, library_manager):
+    library_name = get_required_item(destination, "name", "Must specify a library name")
+    description = destination.get("description", "")
+    synopsis = destination.get("synopsis", "")
+    library = library_manager.create(
+        trans, library_name, description=description, synopsis=synopsis
+    )
+    for key in ["name", "description", "synopsis"]:
+        if key in destination:
+            del destination[key]
+    return library
 
 
 def _handle_invalid_link_data_only_type(item):

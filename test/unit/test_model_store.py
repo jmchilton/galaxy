@@ -4,6 +4,7 @@ from tempfile import mkdtemp
 
 from galaxy import model
 from galaxy.model import store
+from galaxy.model.store.fetch import persist_target_to_export_store
 from galaxy.tools.imp_exp import unpack_tar_gz_archive
 from .tools.test_history_imp_exp import _create_datasets, _mock_app, Dummy
 
@@ -380,7 +381,6 @@ def test_model_create_context_persist_hdas():
     app = _mock_app(store_by="uuid")
     temp_directory = mkdtemp()
     with store.DirectoryModelExportStore(app, temp_directory, serialize_dataset_objects=True) as export_store:
-        from galaxy.tools.parameters.output_collect import persist_target_to_export_store
         persist_target_to_export_store(target, export_store, app.object_store, work_directory)
 
     u = model.User(email="collection@example.com", password="password")
@@ -495,7 +495,6 @@ def _import_library_target(target, work_directory):
     app = _mock_app(store_by="uuid")
     temp_directory = mkdtemp()
     with store.DirectoryModelExportStore(app, temp_directory, serialize_dataset_objects=True) as export_store:
-        from galaxy.tools.parameters.output_collect import persist_target_to_export_store
         persist_target_to_export_store(target, export_store, app.object_store, work_directory)
 
     u = model.User(email="library@example.com", password="password")
