@@ -203,7 +203,7 @@ def collect_dynamic_outputs(
 
 def persist_target_to_export_store(target_dict, export_store, object_store, work_directory):
     replace_request_syntax_sugar(target_dict)
-    model_create_context = SessionlessModelCreateContext(object_store, export_store, work_directory)
+    model_create_context = SessionlessModelPersistenceContext(object_store, export_store, work_directory)
 
     assert "destination" in target_dict
     assert "elements" in target_dict
@@ -309,7 +309,7 @@ def persist_hdas(elements, model_create_context):
     model_create_context.add_datasets_to_history(datasets)
 
 
-class ModelCreateContext(object):
+class ModelPersistenceContext(object):
 
     def create_dataset(
         self,
@@ -434,7 +434,7 @@ class ModelCreateContext(object):
         return primary_data
 
 
-class SessionlessModelCreateContext(ModelCreateContext):
+class SessionlessModelPersistenceContext(ModelPersistenceContext):
 
     def __init__(self, object_store, export_store, working_directory, input_dbkey="?"):
         self.permission_provider = UnusedPermissionProvider()
@@ -482,7 +482,7 @@ class SessionlessModelCreateContext(ModelCreateContext):
         pass
 
 
-class JobContext(ModelCreateContext):
+class JobContext(ModelPersistenceContext):
 
     def __init__(self, tool, tool_provided_metadata, job, job_working_directory, permission_provider, metadata_source_provider, input_dbkey, object_store):
         self.tool = tool
