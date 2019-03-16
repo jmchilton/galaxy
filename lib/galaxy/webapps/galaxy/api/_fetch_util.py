@@ -8,6 +8,10 @@ from galaxy.actions.library import (
 from galaxy.exceptions import (
     RequestParameterInvalidException
 )
+from galaxy.model.store.discover import (
+    get_required_item,
+    replace_request_syntax_sugar,
+)
 from galaxy.tools.actions.upload_common import validate_url
 from galaxy.util import (
     relpath,
@@ -35,8 +39,8 @@ def validate_and_normalize_targets(trans, payload):
     targets = payload.get("targets", [])
 
     for target in targets:
-        destination = _get_required_item(target, "destination", "Each target must specify a 'destination'")
-        destination_type = _get_required_item(destination, "type", "Each target destination must specify a 'type'")
+        destination = get_required_item(target, "destination", "Each target must specify a 'destination'")
+        destination_type = get_required_item(destination, "type", "Each target destination must specify a 'type'")
         if "object_id" in destination:
             raise RequestParameterInvalidException("object_id not allowed to appear in the request.")
 
@@ -45,16 +49,8 @@ def validate_and_normalize_targets(trans, payload):
             msg = template % (destination_type, VALID_DESTINATION_TYPES)
             raise RequestParameterInvalidException(msg)
         if destination_type == "library":
-            library_name = _get_required_item(destination, "name", "Must specify a library name")
-            description = destination.get("description", "")
-            synopsis = destination.get("synopsis", "")
-            library = trans.app.library_manager.create(
-                trans, library_name, description=description, synopsis=synopsis
-            )
+            library = _build_library_for_destination(destination, trans, trans.app.library_manager)
             destination["type"] = "library_folder"
-            for key in ["name", "description", "synopsis"]:
-                if key in destination:
-                    del destination[key]
             destination["library_folder_id"] = trans.app.security.encode_id(library.root_folder.id)
 
     # Unlike upload.py we don't transmit or use run_as_real_user in the job - we just make sure
@@ -167,25 +163,21 @@ def validate_and_normalize_targets(trans, payload):
         if "purge_source" not in item:
             item["purge_source"] = False
 
-    _replace_request_syntax_sugar(targets)
+    replace_request_syntax_sugar(targets)
     _for_each_src(check_src, targets)
 
 
-def _replace_request_syntax_sugar(obj):
-    # For data libraries and hdas to make sense - allow items and items_from in place of elements
-    # and elements_from. This is destructive and modifies the supplied request.
-    if isinstance(obj, list):
-        for el in obj:
-            _replace_request_syntax_sugar(el)
-    elif isinstance(obj, dict):
-        if "items" in obj:
-            obj["elements"] = obj["items"]
-            del obj["items"]
-        if "items_from" in obj:
-            obj["elements_from"] = obj["items_from"]
-            del obj["items_from"]
-        for value in obj.values():
-            _replace_request_syntax_sugar(value)
+def _build_library_for_destination(destination, trans, library_manager):
+    library_name = get_required_item(destination, "name", "Must specify a library name")
+    description = destination.get("description", "")
+    synopsis = destination.get("synopsis", "")
+    library = library_manager.create(
+        trans, library_name, description=description, synopsis=synopsis
+    )
+    for key in ["name", "description", "synopsis"]:
+        if key in destination:
+            del destination[key]
+    return library
 
 
 def _handle_invalid_link_data_only_type(item):
@@ -198,12 +190,6 @@ def _handle_invalid_link_data_only_elements_type(item):
     link_data_only = item.get("link_data_only", False)
     if link_data_only and item.get("elements_from", False) in ELEMENTS_FROM_TRANSIENT_TYPES:
         raise RequestParameterInvalidException("link_data_only is invalid for derived elements from [%s]" % item.get("elements_from"))
-
-
-def _get_required_item(from_dict, key, message):
-    if key not in from_dict:
-        raise RequestParameterInvalidException(message)
-    return from_dict[key]
 
 
 def _for_each_src(f, obj):

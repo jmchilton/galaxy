@@ -19,7 +19,10 @@ from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import FILENAME_VALID_CHARS
 from galaxy.util import in_directory
 from galaxy.util.bunch import Bunch
-from galaxy.version import VERSION_MAJOR
+try:
+    from galaxy.version import VERSION_MAJOR
+except ImportError:
+    VERSION_MAJOR = "19.05"
 from ..item_attrs import add_item_annotation, get_item_annotation_str
 from ... import model
 
