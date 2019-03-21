@@ -654,6 +654,7 @@ class WorkflowProxy(object):
     def __init__(self, workflow, workflow_path=None):
         self._workflow = workflow
         self._workflow_path = workflow_path
+        self._step_proxies = None
 
     @property
     def cwl_id(self):
@@ -688,11 +689,13 @@ class WorkflowProxy(object):
         return references
 
     def step_proxies(self):
-        proxies = []
-        num_input_steps = len(self._workflow.tool['inputs'])
-        for i, step in enumerate(self._workflow.steps):
-            proxies.append(build_step_proxy(self, step, i + num_input_steps))
-        return proxies
+        if self._step_proxies is None:
+            proxies = []
+            num_input_steps = len(self._workflow.tool['inputs'])
+            for i, step in enumerate(self._workflow.steps):
+                proxies.append(build_step_proxy(self, step, i + num_input_steps))
+            self._step_proxies = proxies
+        return self._step_proxies
 
     @property
     def runnables(self):

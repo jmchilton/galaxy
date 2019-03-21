@@ -917,6 +917,7 @@ class JsonCollectedDatasetMatch(object):
     def hashes(self):
         return self.as_dict.get("hashes", [])
 
+    @property
     def cwl_filename(self):
         return self.as_dict.get("cwl_filename")
 
