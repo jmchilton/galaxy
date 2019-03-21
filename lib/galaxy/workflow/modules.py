@@ -658,31 +658,41 @@ class InputParameterModule(WorkflowModule):
     name = "Input parameter"
     default_parameter_type = "text"
     default_optional = False
+    default_default_value = ''
     parameter_type = default_parameter_type
     optional = default_optional
+    default_value = default_default_value
 
     def get_inputs(self):
         # TODO: Use an external xml or yaml file to load the parameter definition
         parameter_type = self.state.inputs.get("parameter_type", self.default_parameter_type)
         optional = self.state.inputs.get("optional", self.default_optional)
+        default_value = self.state.inputs.get("default_value", self.default_value) or ''
         input_parameter_type = SelectToolParameter(None, XML(
             '''
-            <param name="parameter_type" label="Parameter type" type="select">
+            <param name="parameter_type" label="Parameter type" type="select" value="%s">
                 <option value="text">Text</option>
                 <option value="integer">Integer</option>
                 <option value="float">Float</option>
                 <option value="boolean">Boolean (True or False)</option>
                 <option value="color">Color</option>
             </param>
-            '''))
+            ''' % parameter_type))
         for i, option in enumerate(input_parameter_type.static_options):
             option = list(option)
             if option[1] == parameter_type:
                 # item 0 is option description, item 1 is value, item 2 is "selected"
                 option[2] = True
                 input_parameter_type.static_options[i] = tuple(option)
+        input_default_value = TextToolParameter(None, XML(
+            '''
+            <param name="default" label="Default Value" value="%s">
+            </param>
+            '''
+            % default_value))
         return odict([("parameter_type", input_parameter_type),
-                      ("optional", BooleanToolParameter(None, Element("param", name="optional", label="Optional", type="boolean", value=optional)))])
+                      ("optional", BooleanToolParameter(None, Element("param", name="optional", label="Optional", type="boolean", value=optional))),
+                      ("default_value", input_default_value)])
 
     def get_runtime_inputs(self, **kwds):
         parameter_type = self.state.inputs.get("parameter_type", self.default_parameter_type)
@@ -691,8 +701,12 @@ class InputParameterModule(WorkflowModule):
             raise ValueError("Invalid parameter type for workflow parameters encountered.")
         parameter_class = parameter_types[parameter_type]
         parameter_kwds = {}
-        if parameter_type in ["integer", "float"]:
-            parameter_kwds["value"] = str(0)
+        default_value = self.state.inputs.get("default_value", self.default_default_value)
+        if default_value:
+            parameter_kwds["value"] = str(default_value)
+        else:
+            if parameter_type in ["integer", "float"]:
+                parameter_kwds["value"] = str(0)
 
         # TODO: Use a dict-based description from YAML tool source
         element = Element("param", name="input", label=self.label, type=parameter_type, optional=str(optional), **parameter_kwds)
@@ -717,7 +731,11 @@ class InputParameterModule(WorkflowModule):
 
     def execute(self, trans, progress, invocation_step, use_cached_job=False):
         step = invocation_step.workflow_step
-        step_outputs = dict(output=step.state.inputs['input'])
+        input_value = step.state.inputs['input']
+        if input_value is None:
+            default_value = loads(step.tool_inputs.get("default_value", "{}"))
+            input_value = default_value.get("value")
+        step_outputs = dict(output=input_value)
         progress.set_outputs_for_input(invocation_step, step_outputs)
 
 
