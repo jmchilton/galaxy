@@ -213,10 +213,11 @@ class CwlRun(object):
             pseduo_location=True,
         )
         if download_folder:
-            download_path = os.path.join(download_folder, output["basename"])
-            download_output(galaxy_output, get_metadata, get_dataset, get_extra_files, download_path)
-            output["path"] = download_path
-            output["location"] = "file://%s" % download_path 
+            if isinstance(output, dict) and "basename" in output:
+                download_path = os.path.join(download_folder, output["basename"])
+                download_output(galaxy_output, get_metadata, get_dataset, get_extra_files, download_path)
+                output["path"] = download_path
+                output["location"] = "file://%s" % download_path
         return output
         
 
