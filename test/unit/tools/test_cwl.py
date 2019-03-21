@@ -5,11 +5,12 @@ import tempfile
 import shutil
 
 from unittest import TestCase
+from uuid import uuid4
 
 import galaxy.model
 
-from galaxy.tools.cwl import tool_proxy
-from galaxy.tools.cwl.parser import ToolProxy, tool_proxy_from_persistent_representation, to_cwl_tool_object
+from galaxy.tools.cwl import tool_proxy as real_tool_proxy
+from galaxy.tools.cwl.parser import ToolProxy, tool_proxy_from_persistent_representation, _to_cwl_tool_object
 from galaxy.tools.cwl import workflow_proxy
 from galaxy.tools.cwl.representation import USE_FIELD_TYPES
 
@@ -24,6 +25,12 @@ from unittest_utils import galaxy_mock
 
 TESTS_DIRECTORY = os.path.dirname(__file__)
 CWL_TOOLS_DIRECTORY = os.path.abspath(os.path.join(TESTS_DIRECTORY, "cwl_tools"))
+
+
+def tool_proxy(*args, **kwd):
+    if 'uuid' not in kwd:
+        kwd['uuid'] = str(uuid4())
+    return real_tool_proxy(*args, **kwd)
 
 
 def test_tool_proxy():
@@ -63,7 +70,7 @@ def test_serialize_deserialize():
         tool_object = yaml.load(f)
         import json
         tool_object = json.loads(json.dumps(tool_object))
-    tool = to_cwl_tool_object(tool_object=tool_object)
+    tool = _to_cwl_tool_object(tool_object=tool_object)
 
 
 def test_job_proxy():
@@ -436,11 +443,13 @@ def test_representation_id():
         representation = yaml.load(f)
         representation["id"] = "my-cool-id"
 
-        proxy = tool_proxy(tool_object=representation, tool_directory="/")
+        uuid = str(uuid4())
+        proxy = tool_proxy(tool_object=representation, tool_directory="/", uuid=uuid)
         tool_id = proxy.galaxy_id()
-        assert tool_id == "my-cool-id", tool_id
+        assert tool_id == uuid, tool_id
         id_proxy = tool_proxy_from_persistent_representation(proxy.to_persistent_representation())
         tool_id = id_proxy.galaxy_id()
+        assert tool_id == uuid, tool_id
         # assert tool_id == "my-cool-id", tool_id
 
 

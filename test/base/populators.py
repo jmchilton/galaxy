@@ -381,7 +381,7 @@ class CwlPopulator(object):
         if datasets_uploaded:
             self.dataset_populator.wait_for_history(history_id=history_id, assert_ok=True)
         if tool_or_workflow == "tool":
-            tool_hash = None
+            tool_uuid = None
 
             if os.path.exists(tool_id):
                 raw_tool_id = os.path.basename(tool_id)
@@ -391,7 +391,7 @@ class CwlPopulator(object):
                 tool_ids = [itemgetter("id")(_) for _ in tools]
                 if raw_tool_id in tool_ids:
                     galaxy_tool_id = raw_tool_id
-                    tool_hash = None
+                    tool_uuid = None
                 else:
                     # Assume it is a file not a tool_id.
                     if LOAD_TOOLS_FROM_PATH:
@@ -407,11 +407,11 @@ class CwlPopulator(object):
                         dynamic_tool = self.dataset_populator.create_tool(representation, tool_directory=tool_directory)
 
                     tool_id = dynamic_tool["tool_id"]
-                    tool_hash = dynamic_tool["tool_hash"]
+                    tool_uuid = dynamic_tool["uuid"]
                     assert tool_id, dynamic_tool
                     galaxy_tool_id = None
 
-            run_response = self.dataset_populator.run_tool(galaxy_tool_id, job_as_dict, history_id, inputs_representation="cwl", assert_ok=assert_ok, tool_hash=tool_hash)
+            run_response = self.dataset_populator.run_tool(galaxy_tool_id, job_as_dict, history_id, inputs_representation="cwl", assert_ok=assert_ok, tool_uuid=tool_uuid)
             run_object = CwlToolRun(self.dataset_populator, history_id, run_response)
             if assert_ok:
                 try:

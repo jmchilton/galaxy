@@ -285,11 +285,13 @@ class ToolBox(BaseGalaxyToolBox):
         get_source_kwds = dict(
             tool_format=tool_format,
             tool_representation=tool_representation,
+            uuid=dynamic_tool.uuid,
         )
         if dynamic_tool.tool_directory:
             get_source_kwds["tool_directory"] = dynamic_tool.tool_directory
         if dynamic_tool.tool_path:
             config_file = dynamic_tool.tool_path
+            # TODO: uuid probably needed here...
             tool_source = get_tool_source(
                 config_file,
                 enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", True),

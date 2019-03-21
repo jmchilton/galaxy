@@ -11,6 +11,7 @@ import logging
 import os
 import pickle
 from abc import ABCMeta, abstractmethod
+from uuid import uuid4
 
 import six
 
@@ -63,33 +64,38 @@ SUPPORTED_WORKFLOW_REQUIREMENTS = SUPPORTED_TOOL_REQUIREMENTS + [
 PERSISTED_REPRESENTATION = "cwl_tool_object"
 
 
-def tool_proxy(tool_path=None, tool_object=None, strict_cwl_validation=True, tool_directory=None):
+def tool_proxy(tool_path=None, tool_object=None, strict_cwl_validation=True, tool_directory=None, uuid=None):
     """ Provide a proxy object to cwltool data structures to just
     grab relevant data.
     """
     ensure_cwltool_available()
-    tool = to_cwl_tool_object(
+    if uuid is None:
+        raise Exception("tool_proxy must be called with non-None uuid")
+    tool = _to_cwl_tool_object(
         tool_path=tool_path,
         tool_object=tool_object,
         strict_cwl_validation=strict_cwl_validation,
         tool_directory=tool_directory,
+        uuid=uuid
     )
     return tool
 
 
 def tool_proxy_from_persistent_representation(persisted_tool, strict_cwl_validation=True, tool_directory=None):
+    """Load a ToolProxy from a previously persisted representation."""
     ensure_cwltool_available()
     if PERSISTED_REPRESENTATION == "cwl_tool_object":
         kwds = {"cwl_tool_object": ToolProxy.from_persistent_representation(persisted_tool)}
     else:
         kwds = {"raw_process_reference": ToolProxy.from_persistent_representation(raw_process_reference)}
-    tool = to_cwl_tool_object(strict_cwl_validation=strict_cwl_validation, tool_directory=tool_directory, **kwds)
+    uuid = persisted_tool["uuid"]
+    tool = _to_cwl_tool_object(uuid=uuid, strict_cwl_validation=strict_cwl_validation, tool_directory=tool_directory, **kwds)
     return tool
 
 
 def workflow_proxy(workflow_path, strict_cwl_validation=True):
     ensure_cwltool_available()
-    workflow = to_cwl_workflow_object(workflow_path, strict_cwl_validation=strict_cwl_validation)
+    workflow = _to_cwl_workflow_object(workflow_path, strict_cwl_validation=strict_cwl_validation)
     return workflow
 
 
@@ -110,7 +116,9 @@ def load_job_proxy(job_directory, strict_cwl_validation=True):
     return cwl_job
 
 
-def to_cwl_tool_object(tool_path=None, tool_object=None, cwl_tool_object=None, raw_process_reference=None, strict_cwl_validation=True, tool_directory=None):
+def _to_cwl_tool_object(tool_path=None, tool_object=None, cwl_tool_object=None, raw_process_reference=None, strict_cwl_validation=True, tool_directory=None, uuid=None):
+    if uuid is None:
+        uuid = str(uuid4())
     schema_loader = _schema_loader(strict_cwl_validation)
     if raw_process_reference is None and tool_path is not None:
         assert cwl_tool_object is None
@@ -155,10 +163,10 @@ def to_cwl_tool_object(tool_path=None, tool_object=None, cwl_tool_object=None, r
     # between Galaxy and cwltool.
     _hack_cwl_requirements(cwl_tool)
     check_requirements(raw_tool)
-    return cwl_tool_object_to_proxy(cwl_tool, raw_process_reference=raw_process_reference, tool_path=tool_path)
+    return _cwl_tool_object_to_proxy(cwl_tool, uuid, raw_process_reference=raw_process_reference, tool_path=tool_path)
 
 
-def cwl_tool_object_to_proxy(cwl_tool, raw_process_reference=None, tool_path=None):
+def _cwl_tool_object_to_proxy(cwl_tool, uuid, raw_process_reference=None, tool_path=None):
     raw_tool = cwl_tool.tool
     if "class" not in raw_tool:
         raise Exception("File does not declare a class, not a valid Draft 3+ CWL tool.")
@@ -174,11 +182,11 @@ def cwl_tool_object_to_proxy(cwl_tool, raw_process_reference=None, tool_path=Non
     if top_level_object and ("cwlVersion" not in raw_tool):
         raise Exception("File does not declare a CWL version, pre-draft 3 CWL tools are not supported.")
 
-    proxy = proxy_class(cwl_tool, raw_process_reference, tool_path)
+    proxy = proxy_class(cwl_tool, uuid, raw_process_reference, tool_path)
     return proxy
 
 
-def to_cwl_workflow_object(workflow_path, strict_cwl_validation=None):
+def _to_cwl_workflow_object(workflow_path, strict_cwl_validation=None):
     proxy_class = WorkflowProxy
     cwl_workflow = _schema_loader(strict_cwl_validation).tool(path=workflow_path)
     raw_workflow = cwl_workflow.tool
@@ -224,8 +232,9 @@ def check_requirements(rec, tool=True):
 @six.add_metaclass(ABCMeta)
 class ToolProxy(object):
 
-    def __init__(self, tool, raw_process_reference=None, tool_path=None):
+    def __init__(self, tool, uuid, raw_process_reference=None, tool_path=None):
         self._tool = tool
+        self._uuid = uuid
         self._tool_path = tool_path
         self._raw_process_reference = raw_process_reference
         # remove input parameter formats from CWL files so that cwltool
@@ -254,8 +263,7 @@ class ToolProxy(object):
             tool_id = os.path.basename(raw_id)
             # tool_id = os.path.splitext(os.path.basename(raw_id))[0]
         if not tool_id:
-            from galaxy.tools.hash import build_tool_hash
-            tool_id = build_tool_hash(self.to_persistent_representation())
+            return self._uuid
         assert tool_id
         return tool_id
 
@@ -284,8 +292,6 @@ class ToolProxy(object):
         over the wire, but serialization in a database."""
         # TODO: Replace this with some more readable serialization,
         # I really don't like using pickle here.
-        # print("with removed...")
-        # print(remove_pickle_problems(self._tool).tool)
         if PERSISTED_REPRESENTATION == "cwl_tool_object":
             persisted_obj = remove_pickle_problems(self._tool)
         else:
@@ -293,6 +299,7 @@ class ToolProxy(object):
         return {
             "class": self._class,
             "pickle": base64.b64encode(pickle.dumps(persisted_obj, pickle.HIGHEST_PROTOCOL)),
+            "uuid": self._uuid,
         }
 
     @staticmethod
@@ -302,6 +309,8 @@ class ToolProxy(object):
             raise Exception("Failed to deserialize tool proxy from JSON object - no class found.")
         if "pickle" not in as_object:
             raise Exception("Failed to deserialize tool proxy from JSON object - no pickle representation found.")
+        if "uuid" not in as_object:
+            raise Exception("Failed to deserialize tool proxy from JSON object - no uuid found.")
         to_unpickle = base64.b64decode(as_object["pickle"])
         return pickle.loads(to_unpickle)
 
@@ -671,15 +680,12 @@ class WorkflowProxy(object):
                 })
         return outputs
 
-    def tool_references(self):
+    def tool_reference_proxies(self):
         """Fetch tool source definitions for all referenced tools."""
         references = []
         for step in self.step_proxies():
-            references.extend(step.tool_references())
+            references.extend(step.tool_reference_proxies())
         return references
-
-    def tool_reference_proxies(self):
-        return map(lambda tool_object: cwl_tool_object_to_proxy(tool_object), self.tool_references())
 
     def step_proxies(self):
         proxies = []
@@ -883,6 +889,7 @@ class BaseStepProxy(object):
         self._workflow_proxy = workflow_proxy
         self._step = step
         self._index = index
+        self._uuid = str(uuid4())
 
     @property
     def step_class(self):
@@ -983,20 +990,18 @@ class ToolStepProxy(BaseStepProxy):
 
     @property
     def tool_proxy(self):
-        return cwl_tool_object_to_proxy(self.cwl_tool_object)
+        return _cwl_tool_object_to_proxy(self.cwl_tool_object, self._uuid)
 
-    def tool_references(self):
-        # Return a list so we can handle subworkflows recursively in the future.
-        return [self._step.embedded_tool]
+    def tool_reference_proxies(self):
+        # Return a list so we can handle subworkflows recursively.
+        return [self.tool_proxy]
 
     def to_dict(self, input_connections):
         # We are to the point where we need a content id for this. We got
         # figure that out - short term we can load everything up as an
         # in-memory tool and reference by the JSONLD ID I think. So workflow
         # proxy should force the loading of a tool.
-        tool_proxy = cwl_tool_object_to_proxy(self.tool_references()[0])
-        from galaxy.tools.hash import build_tool_hash
-        tool_hash = build_tool_hash(tool_proxy.to_persistent_representation())
+        tool_proxy = self.tool_proxy
 
         # We need to stub out null entries for things getting replaced by
         # connections. This doesn't seem ideal - consider just making Galaxy
@@ -1008,7 +1013,7 @@ class ToolStepProxy(BaseStepProxy):
         outputs = self.galaxy_workflow_outputs_list()
         return {
             "id": self._index,
-            "tool_hash": tool_hash,
+            "tool_uuid": self._uuid,  # TODO: make sure this is respectd...
             "label": self.label,
             "position": {"left": 0, "top": 0},
             "type": "tool",
@@ -1042,8 +1047,8 @@ class SubworkflowStepProxy(BaseStepProxy):
             "workflow_outputs": outputs,
         }
 
-    def tool_references(self):
-        return self.workflow_proxy.tool_references()
+    def tool_reference_proxies(self):
+        return self.workflow_proxy.tool_reference_proxies()
 
     @property
     def workflow_proxy(self):
