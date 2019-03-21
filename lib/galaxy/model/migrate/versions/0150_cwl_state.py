@@ -4,8 +4,7 @@ Migration script to allow invalidation of job external output metadata temp file
 import datetime
 import logging
 
-from sqlalchemy import Integer, Column, MetaData, Table, TEXT
-from galaxy.model.custom_types import JSONType
+from sqlalchemy import Column, MetaData, Table, TEXT
 
 now = datetime.datetime.utcnow
 log = logging.getLogger(__name__)
@@ -17,22 +16,14 @@ def upgrade(migrate_engine):
     print __doc__
     metadata.reflect()
 
-    cwl_command_column = Column("cwl_command_state", JSONType, default=True)
-    cwl_command_version_column = Column("cwl_command_state_version", Integer, default=True)
-
     cwl_file_name = Column("cwl_filename", TEXT, default=None, )
 
-    __add_column(cwl_command_column, "job", metadata)
-    __add_column(cwl_command_version_column, "job", metadata)
     __add_column(cwl_file_name, "dataset", metadata)
 
 
 def downgrade(migrate_engine):
     metadata.bind = migrate_engine
     metadata.reflect()
-
-    __drop_column("cwl_command_state", "job", metadata)
-    __drop_column("cwl_command_state_version", "job", metadata)
 
     __drop_column("cwl_filename", "dataset", metadata)
 

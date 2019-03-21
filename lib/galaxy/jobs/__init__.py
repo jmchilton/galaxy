@@ -883,8 +883,6 @@ class JobWrapper(HasResourceParameters):
         job.command_line = unicodify(self.command_line)
         job.dependencies = self.tool.dependencies
         param_dict = tool_evaluator.param_dict
-        job.cwl_command_state = param_dict.get('__cwl_command_state', None)
-        job.cwl_command_state_version = param_dict.get('__cwl_command_state_version', None)
         self.sa_session.add(job)
         self.sa_session.flush()
         # Return list of all extra files

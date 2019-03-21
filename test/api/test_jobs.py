@@ -137,10 +137,7 @@ class JobsApiTestCase(api.ApiTestCase):
         job_id = job["id"]
 
         show_jobs_response = self._get("jobs/%s" % job_id, admin=False)
-        self._assert_not_has_keys(
-            show_jobs_response.json(),
-            "command_line", "external_id", "cwl_command_state",
-        )
+        self._assert_not_has_keys(show_jobs_response.json(), "command_line", "external_id")
 
         # TODO: Re-activate test case when API accepts privacy settings
         # with self._different_user():
@@ -148,10 +145,7 @@ class JobsApiTestCase(api.ApiTestCase):
         #    self._assert_status_code_is( show_jobs_response, 200 )
 
         show_jobs_response = self._get("jobs/%s" % job_id, admin=True)
-        self._assert_has_keys(
-            show_jobs_response.json(),
-            "command_line", "external_id", "cwl_command_state",
-        )
+        self._assert_has_keys(show_jobs_response.json(), "command_line", "external_id"),
 
     @skip_without_tool('detect_errors_aggressive')
     def test_report_error(self):
