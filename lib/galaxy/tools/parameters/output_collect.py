@@ -110,12 +110,12 @@ def collect_dynamic_outputs(
             persist_elements_to_folder(job_context, elements, library_folder)
         elif destination_type == "hdca":
             # create or populate a dataset collection in the history
-            history = job_context.job.history
             assert "collection_type" in unnamed_output_dict
             object_id = destination.get("object_id")
             if object_id:
                 hdca = sa_session.query(galaxy.model.HistoryDatasetCollectionAssociation).get(int(object_id))
             else:
+                history = job_context.job.history
                 name = unnamed_output_dict.get("name", "unnamed collection")
                 collection_type = unnamed_output_dict["collection_type"]
                 collection_type_description = collections_service.collection_type_descriptions.for_collection_type(collection_type)
@@ -278,8 +278,6 @@ class JobContext(ModelPersistenceContext):
             )
             element_datasets.append((element_identifiers, dataset))
 
-        sa_session = self.sa_session
-
         add_datasets_timer = ExecutionTimer()
         self.add_datasets_to_history([d for (ei, d) in element_datasets])
         log.debug(
@@ -302,7 +300,7 @@ class JobContext(ModelPersistenceContext):
 
             dataset.raw_set_dataset_state('ok')
 
-        sa_session.flush()
+        self.flush()
 
     def persist_object(self, obj):
         self.sa_session.add(obj)
