@@ -8,6 +8,7 @@ import re
 import galaxy.model
 from galaxy.model.dataset_collections import builder
 from galaxy.model.dataset_collections.structure import UninitializedTree
+from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.store.discover import (
     discover_target_directory,
     discovered_file_for_unnamed_output,
@@ -118,8 +119,7 @@ def collect_dynamic_outputs(
                 history = job_context.job.history
                 name = unnamed_output_dict.get("name", "unnamed collection")
                 collection_type = unnamed_output_dict["collection_type"]
-                collections_service = app.dataset_collections_service
-                collection_type_description = collections_service.collection_type_descriptions.for_collection_type(collection_type)
+                collection_type_description = COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(collection_type)
                 structure = UninitializedTree(collection_type_description)
                 hdca = collections_service.precreate_dataset_collection_instance(
                     trans, history, name, structure=structure
