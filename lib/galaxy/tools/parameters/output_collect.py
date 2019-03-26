@@ -98,32 +98,26 @@ def collect_dynamic_outputs(
         assert "type" in destination
         destination_type = destination["type"]
         assert destination_type in ["library_folder", "hdca", "hdas"]
-        trans = job_context.work_context
 
         # three destination types we need to handle here - "library_folder" (place discovered files in a library folder),
         # "hdca" (place discovered files in a history dataset collection), and "hdas" (place discovered files in a history
         # as stand-alone datasets).
         if destination_type == "library_folder":
             # populate a library folder (needs to be already have been created)
-
-            library_folder_manager = app.library_folder_manager
-            library_folder = library_folder_manager.get(trans, app.security.decode_id(destination.get("library_folder_id")))
+            library_folder = self.get_library_folder(destination)
             persist_elements_to_folder(job_context, elements, library_folder)
         elif destination_type == "hdca":
             # create or populate a dataset collection in the history
             assert "collection_type" in unnamed_output_dict
             object_id = destination.get("object_id")
             if object_id:
-                hdca = sa_session.query(galaxy.model.HistoryDatasetCollectionAssociation).get(int(object_id))
+                hdca = job_context.get_hdca(object_id)
             else:
-                history = job_context.job.history
                 name = unnamed_output_dict.get("name", "unnamed collection")
                 collection_type = unnamed_output_dict["collection_type"]
                 collection_type_description = COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(collection_type)
                 structure = UninitializedTree(collection_type_description)
-                hdca = collections_service.precreate_dataset_collection_instance(
-                    trans, history, name, structure=structure
-                )
+                hdca = job_context.create_hdca(name, structure)
             filenames = odict.odict()
 
             def add_to_discovered_files(elements, parent_identifiers=[]):
@@ -266,7 +260,7 @@ class JobContext(ModelPersistenceContext):
             )
             log.debug(
                 "(%s) Created dynamic collection dataset for path [%s] with element identifier [%s] for output [%s] %s",
-                self.job.id,
+                self.job_id(),
                 filename,
                 designation,
                 name,
