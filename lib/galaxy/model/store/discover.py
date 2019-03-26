@@ -201,12 +201,23 @@ class SessionlessModelPersistenceContext(ModelPersistenceContext):
         return None
 
     def add_output_dataset_association(self, name, dataset):
-        raise NotImplementedError()
+        # raise NotImplementedError()
+        # TODO:
+        pass
 
     def add_library_dataset_to_folder(self, library_folder, ld):
         library_folder.datasets.append(ld)
         ld.order_id = library_folder.item_count
         library_folder.item_count += 1
+
+    def get_library_folder(self, destination):
+        raise NotImplementedError()
+
+    def get_hdca(self, object_id):
+        raise NotImplementedError()
+
+    def create_hdca(name, structure):
+        raise NotImplementedError()
 
     def create_library_folder(self, parent_folder, name, description):
         nested_folder = galaxy.model.LibraryFolder(name=name, description=description, order_id=parent_folder.item_count)
