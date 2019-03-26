@@ -86,8 +86,6 @@ def collect_dynamic_outputs(
     job_context,
     output_collections,
 ):
-    app = getattr(job_context, "app", None)
-    sa_session = job_context.sa_session
     job_working_directory = job_context.job_working_directory
 
     # unmapped outputs do not correspond to explicit outputs of the tool, they were inferred entirely
@@ -107,7 +105,7 @@ def collect_dynamic_outputs(
         # as stand-alone datasets).
         if destination_type == "library_folder":
             # populate a library folder (needs to be already have been created)
-            library_folder = self.get_library_folder(destination)
+            library_folder = job_context.get_library_folder(destination)
             persist_elements_to_folder(job_context, elements, library_folder)
         elif destination_type == "hdca":
             # create or populate a dataset collection in the history
@@ -343,6 +341,7 @@ class JobContext(ModelPersistenceContext):
         self.sa_session.flush()
 
     def get_library_folder(self, destination):
+        app = self.app
         library_folder_manager = app.library_folder_manager
         library_folder = library_folder_manager.get(self.work_context, app.security.decode_id(destination.get("library_folder_id")))
         return library_folder
@@ -357,13 +356,14 @@ class JobContext(ModelPersistenceContext):
         nested_folder = library_folder_manager.create(self.work_context, parent_folder.id, name, description)
         return nested_folder
 
-    def create_hdca(name, structure):
+    def create_hdca(self, name, structure):
         history = self.job.history
         trans = self.work_context
         collections_service = self.app.dataset_collections_service
         hdca = collections_service.precreate_dataset_collection_instance(
             trans, history, name, structure=structure
         )
+        return hdca
 
     def add_output_dataset_association(self, name, dataset):
         assoc = galaxy.model.JobToOutputDatasetAssociation(name, dataset)
@@ -407,6 +407,7 @@ class JobContext(ModelPersistenceContext):
                     sa_session.flush()
 
     def output_collection_def(self, name):
+        tool = self.tool
         if name not in tool.output_collections:
             return None
         output_collection_def = tool.output_collections[name]
