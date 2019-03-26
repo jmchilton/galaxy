@@ -103,7 +103,7 @@ def collect_dynamic_outputs(
         # as stand-alone datasets).
         if destination_type == "library_folder":
             # populate a library folder (needs to be already have been created)
-            library_folder = self.get_library_folder(destination)
+            library_folder = job_context.get_library_folder(destination)
             persist_elements_to_folder(job_context, elements, library_folder)
         elif destination_type == "hdca":
             # create or populate a dataset collection in the history
@@ -197,7 +197,7 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
         tool_as_dict = self.metadata_params["tool"]
         output_defs = tool_as_dict["outputs"]
         if name not in output_defs:
-            return False
+            return None
 
         output_def_dict = output_defs[name]
         output_def = ToolOutput.from_dict(name, output_def_dict)
@@ -267,6 +267,7 @@ class JobContext(ModelPersistenceContext, BaseJobContext):
         self.sa_session.flush()
 
     def get_library_folder(self, destination):
+        app = self.app
         library_folder_manager = app.library_folder_manager
         library_folder = library_folder_manager.get(self.work_context, app.security.decode_id(destination.get("library_folder_id")))
         return library_folder
@@ -281,13 +282,14 @@ class JobContext(ModelPersistenceContext, BaseJobContext):
         nested_folder = library_folder_manager.create(self.work_context, parent_folder.id, name, description)
         return nested_folder
 
-    def create_hdca(name, structure):
+    def create_hdca(self, name, structure):
         history = self.job.history
         trans = self.work_context
         collections_service = self.app.dataset_collections_service
         hdca = collections_service.precreate_dataset_collection_instance(
             trans, history, name, structure=structure
         )
+        return hdca
 
     def add_output_dataset_association(self, name, dataset):
         assoc = galaxy.model.JobToOutputDatasetAssociation(name, dataset)
@@ -331,9 +333,17 @@ class JobContext(ModelPersistenceContext, BaseJobContext):
                     sa_session.flush()
 
     def output_collection_def(self, name):
+        tool = self.tool
         if name not in tool.output_collections:
             return None
         output_collection_def = tool.output_collections[name]
+        return output_collection_def
+
+    def output_def(self, name):
+        tool = self.tool
+        if name not in tool.outputs:
+            return None
+        output_collection_def = tool.outputs[name]
         return output_collection_def
 
     def job_id(self):
@@ -341,9 +351,7 @@ class JobContext(ModelPersistenceContext, BaseJobContext):
 
 
 def collect_primary_datasets(job_context, output, input_ext):
-    tool = job_context.tool
     job_working_directory = job_context.job_working_directory
-    sa_session = job_context.sa_session
 
     # Loop through output file names, looking for generated primary
     # datasets in form specified by discover dataset patterns or in tool provided metadata.
@@ -352,8 +360,10 @@ def collect_primary_datasets(job_context, output, input_ext):
     primary_datasets = {}
     for output_index, (name, outdata) in enumerate(output.items()):
         dataset_collectors = [DEFAULT_DATASET_COLLECTOR]
-        if name in tool.outputs:
-            dataset_collectors = [dataset_collector(description) for description in tool.outputs[name].dataset_collector_descriptions]
+        output_def = job_context.output_def(name)
+        if output_def is not None:
+            dataset_collectors = [dataset_collector(description) for description in output_def.dataset_collector_descriptions]
+        print(dataset_collectors)
         filenames = odict.odict()
         for discovered_file in discover_files(name, job_context.tool_provided_metadata, dataset_collectors, job_working_directory, outdata):
             filenames[discovered_file.path] = discovered_file
@@ -425,9 +435,10 @@ def collect_primary_datasets(job_context, output, input_ext):
             outdata.init_meta()
             outdata.set_meta()
             outdata.set_peek()
+            sa_session = job_context.sa_session
             sa_session.add(outdata)
 
-    sa_session.flush()
+    job_context.flush()
     return primary_datasets
 
 
