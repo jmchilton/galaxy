@@ -185,6 +185,15 @@ class ModelImportStore(object):
         object_key = self.object_key
 
         for dataset_attrs in datasets_attrs:
+
+            if "metadata" in dataset_attrs:
+                def remap_objects(p, k, obj):
+                    if isinstance(obj, dict) and "model_class" in obj and obj["model_class"] == "MetadataFile":
+                        return (k, model.MetadataFile(uuid=obj["uuid"]))
+                    return (k, obj)
+
+                dataset_attrs["metadata"] = remap(dataset_attrs["metadata"], remap_objects)
+
             def handle_dataset_object_edit(dataset_instance):
                 if "dataset" in dataset_attrs:
                     assert self.import_options.allow_dataset_object_edit
@@ -937,7 +946,7 @@ class ModelExportStore(object):
 
 class DirectoryModelExportStore(ModelExportStore):
 
-    def __init__(self, export_directory, app=None, for_edit=False, serialize_dataset_objects=None, export_files=None):
+    def __init__(self, export_directory, app=None, for_edit=False, serialize_dataset_objects=None, export_files=None, strip_metadata_files=True):
         if not os.path.exists(export_directory):
             os.makedirs(export_directory)
 
@@ -956,6 +965,7 @@ class DirectoryModelExportStore(ModelExportStore):
         self.serialization_options = model.SerializationOptions(
             for_edit=for_edit,
             serialize_dataset_objects=serialize_dataset_objects,
+            strip_metadata_files=strip_metadata_files,
             serialize_files_handler=self,
         )
         self.export_files = export_files
