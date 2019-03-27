@@ -11,10 +11,6 @@ now = datetime.datetime.utcnow
 log = logging.getLogger(__name__)
 metadata = MetaData()
 
-now = datetime.datetime.utcnow
-log = logging.getLogger(__name__)
-metadata = MetaData()
-
 
 DynamicTool_table = Table(
     "dynamic_tool", metadata,
