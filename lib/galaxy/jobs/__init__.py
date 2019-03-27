@@ -1547,7 +1547,9 @@ class JobWrapper(HasResourceParameters):
 
     @staticmethod
     def collect_extra_files(object_store, dataset, job_working_directory):
-        temp_file_path = os.path.join(job_working_directory, "dataset_%s_files" % (dataset.dataset.id))
+        identifier = getattr(dataset.dataset, getattr(object_store, "store_by", "id"))
+        directory_name = "dataset_%s_files" % identifier
+        temp_file_path = os.path.join(job_working_directory, directory_name)
         extra_dir = None
         try:
             # This skips creation of directories - object store

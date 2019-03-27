@@ -173,7 +173,9 @@ def set_metadata_portable():
         set_meta_kwds = stringify_dictionary_keys(json.load(open(filename_kwds)))  # load kwds; need to ensure our keywords are not unicode
         try:
             dataset.dataset.external_filename = dataset_filename_override
-            files_path = os.path.abspath(os.path.join(tool_job_working_directory, "dataset_%s_files" % (dataset.dataset.id)))
+            identifier = getattr(dataset.dataset, getattr(object_store, "store_by", "id"))
+            directory_name = "dataset_%s_files" % identifier
+            files_path = os.path.abspath(os.path.join(tool_job_working_directory, directory_name))
             dataset.dataset.external_extra_files_path = files_path
             file_dict = tool_provided_metadata.get_dataset_meta(output_name, dataset.dataset.id)
             if 'ext' in file_dict:
@@ -300,6 +302,8 @@ def set_metadata_legacy():
         try:
             dataset = cPickle.load(open(filename_in, 'rb'))  # load DatasetInstance
             dataset.dataset.external_filename = dataset_filename_override
+            # legacy metadata collection doesn't work with object_store.story_by == "uuid". I think
+            # we're fine with this.
             files_path = os.path.abspath(os.path.join(tool_job_working_directory, "dataset_%s_files" % (dataset.dataset.id)))
             dataset.dataset.external_extra_files_path = files_path
             file_dict = tool_provided_metadata.get_dataset_meta(None, dataset.dataset.id)

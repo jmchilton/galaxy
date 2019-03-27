@@ -351,7 +351,9 @@ class ToolEvaluator(object):
                 param_dict[name] = DatasetFilenameWrapper(hda)
             # Provide access to a path to store additional files
             # TODO: path munging for cluster/dataset server relocatability
-            param_dict[name].files_path = os.path.abspath(os.path.join(job_working_directory, "dataset_%s_files" % (hda.dataset.id)))
+            identifier = getattr(hda.dataset, getattr(getattr(hda.dataset, "object_store", None), "store_by", "id"))
+            directory_name = "dataset_%s_files" % identifier
+            param_dict[name].files_path = os.path.abspath(os.path.join(job_working_directory, directory_name))
         for out_name, output in self.tool.outputs.items():
             if out_name not in param_dict and output.filters:
                 # Assume the reason we lack this output is because a filter
