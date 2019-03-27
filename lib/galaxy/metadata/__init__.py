@@ -133,7 +133,7 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
                     def _metadata_path(what):
                         return os.path.join(metadata_dir, "metadata_%s_%s" % (what, key))
 
-                    _initialize_metadata_inputs(dataset, _metadata_path, tmp_dir, kwds)
+                    _initialize_metadata_inputs(dataset, _metadata_path, tmp_dir, kwds, real_metadata_object=True)
 
                     export_store.add_dataset(dataset)
 
@@ -421,7 +421,7 @@ class JobExternalOutputMetadataWrapper(MetadataCollectionStrategy):
         self._load_metadata_from_path(dataset, output_filename, working_directory, remote_metadata_directory)
 
 
-def _initialize_metadata_inputs(dataset, path_for_part, tmp_dir, kwds):
+def _initialize_metadata_inputs(dataset, path_for_part, tmp_dir, kwds, real_metadata_object=True):
     filename_in = path_for_part("in")
     filename_out = path_for_part("out")
     filename_results_code = path_for_part("results")
@@ -437,10 +437,12 @@ def _initialize_metadata_inputs(dataset, path_for_part, tmp_dir, kwds):
     override_metadata = []
     for meta_key, spec_value in dataset.metadata.spec.items():
         if isinstance(spec_value.param, FileParameter) and dataset.metadata.get(meta_key, None) is not None:
-            metadata_temp = MetadataTempFile()
-            metadata_temp.tmp_dir = tmp_dir
-            shutil.copy(dataset.metadata.get(meta_key, None).file_name, metadata_temp.file_name)
-            override_metadata.append((meta_key, metadata_temp.to_JSON()))
+            if not real_metadata_object:
+                metadata_temp = MetadataTempFile()
+                metadata_temp.tmp_dir = tmp_dir
+                shutil.copy(dataset.metadata.get(meta_key, None).file_name, metadata_temp.file_name)
+                override_metadata.append((meta_key, metadata_temp.to_JSON()))
+
     json.dump(override_metadata, open(filename_override_metadata, 'wt+'))
 
     return filename_in, filename_out, filename_results_code, filename_kwds, filename_override_metadata

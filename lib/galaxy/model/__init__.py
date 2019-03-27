@@ -152,12 +152,16 @@ class HasTags(object):
 
 class SerializationOptions(object):
 
-    def __init__(self, for_edit, serialize_dataset_objects=None, serialize_files_handler=None, strip_metadata_files=True):
+    def __init__(self, for_edit, serialize_dataset_objects=None, serialize_files_handler=None, strip_metadata_files=None):
         self.for_edit = for_edit
         if serialize_dataset_objects is None:
             serialize_dataset_objects = for_edit
         self.serialize_dataset_objects = serialize_dataset_objects
         self.serialize_files_handler = serialize_files_handler
+        if strip_metadata_files is None:
+            # If we're editing datasets - keep MetadataFile(s) in tact. For pure export
+            # expect metadata tool to be rerun.
+            strip_metadata_files = not for_edit
         self.strip_metadata_files = strip_metadata_files
 
     def attach_identifier(self, id_encoder, obj, ret_val):

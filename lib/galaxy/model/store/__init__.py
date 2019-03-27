@@ -186,14 +186,6 @@ class ModelImportStore(object):
 
         for dataset_attrs in datasets_attrs:
 
-            if "metadata" in dataset_attrs:
-                def remap_objects(p, k, obj):
-                    if isinstance(obj, dict) and "model_class" in obj and obj["model_class"] == "MetadataFile":
-                        return (k, model.MetadataFile(uuid=obj["uuid"]))
-                    return (k, obj)
-
-                dataset_attrs["metadata"] = remap(dataset_attrs["metadata"], remap_objects)
-
             def handle_dataset_object_edit(dataset_instance):
                 if "dataset" in dataset_attrs:
                     assert self.import_options.allow_dataset_object_edit
@@ -237,7 +229,16 @@ class ModelImportStore(object):
                 ]
                 for attribute in attributes:
                     if attribute in dataset_attrs:
-                        setattr(hda, attribute, dataset_attrs[attribute])
+                        value = dataset_attrs[attribute]
+                        if attribute == "metadata":
+                            def remap_objects(p, k, obj):
+                                if isinstance(obj, dict) and "model_class" in obj and obj["model_class"] == "MetadataFile":
+                                    return (k, model.MetadataFile(dataset=hda, uuid=obj["uuid"]))
+                                return (k, obj)
+
+                            value = remap(value, remap_objects)
+
+                        setattr(hda, attribute, value)
 
                 handle_dataset_object_edit(hda)
                 self._flush()
