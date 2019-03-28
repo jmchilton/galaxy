@@ -1737,13 +1737,13 @@ class Tool(Dictifiable):
             tool_working_directory,
             permission_provider,
             metadata_source_provider,
-            input_dbkey,
+            input_dbkey=input_dbkey,
             object_store=tool.app.object_store,
         )
         collected = output_collect.collect_primary_datasets(
             job_context,
             out_data,
-            input_ext,
+            input_ext=input_ext,
         )
         output_collect.collect_dynamic_outputs(
             job_context,
