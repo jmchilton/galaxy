@@ -27,6 +27,7 @@ from galaxy.tools.parser.output_collection_def import (
     ToolProvidedMetadataDatasetCollection,
 )
 from galaxy.tools.parser.output_objects import (
+    ToolOutput,
     ToolOutputCollection,
 )
 from galaxy.util import (
@@ -288,6 +289,16 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
         output_collection_def = ToolOutputCollection.from_dict(name, output_collection_def_dict)
         return output_collection_def
 
+    def output_def(self, name):
+        tool_as_dict = self.metadata_params["tool"]
+        output_defs = tool_as_dict["outputs"]
+        if name not in output_defs:
+            return False
+
+        output_def_dict = output_defs[name]
+        output_def = ToolOutput.from_dict(name, output_def_dict)
+        return output_def
+
     def job_id(self):
         return "non-session bound job"
 
@@ -301,6 +312,10 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
                 self.export_store.collection_datasets[collection_dataset.id] = True
 
         return hdca
+
+    def add_output_dataset_association(self, name, dataset_instance):
+        job_id = self.metadata_params["job_id_tag"]
+        self.export_store.add_job_output_dataset_associations(job_id, name, dataset_instance)
 
 
 class JobContext(ModelPersistenceContext):
