@@ -428,14 +428,19 @@ class JobContext(ModelPersistenceContext):
         output_collection_def = tool.output_collections[name]
         return output_collection_def
 
+    def output_def(self, name):
+        tool = self.tool
+        if name not in tool.outputs:
+            return None
+        output_collection_def = tool.outputs[name]
+        return output_collection_def
+
     def job_id(self):
         return self.job.id
 
 
 def collect_primary_datasets(job_context, output, input_ext):
-    tool = job_context.tool
     job_working_directory = job_context.job_working_directory
-    sa_session = job_context.sa_session
 
     # Loop through output file names, looking for generated primary
     # datasets in form specified by discover dataset patterns or in tool provided metadata.
@@ -444,8 +449,10 @@ def collect_primary_datasets(job_context, output, input_ext):
     primary_datasets = {}
     for output_index, (name, outdata) in enumerate(output.items()):
         dataset_collectors = [DEFAULT_DATASET_COLLECTOR]
-        if name in tool.outputs:
-            dataset_collectors = [dataset_collector(description) for description in tool.outputs[name].dataset_collector_descriptions]
+        output_def = job_context.output_def(name)
+        if output_def is not None:
+            dataset_collectors = [dataset_collector(description) for description in output_def.dataset_collector_descriptions]
+        print(dataset_collectors)
         filenames = odict.odict()
         for discovered_file in discover_files(name, job_context.tool_provided_metadata, dataset_collectors, job_working_directory, outdata):
             filenames[discovered_file.path] = discovered_file
@@ -517,9 +524,10 @@ def collect_primary_datasets(job_context, output, input_ext):
             outdata.init_meta()
             outdata.set_meta()
             outdata.set_peek()
+            sa_session = job_context.sa_session
             sa_session.add(outdata)
 
-    sa_session.flush()
+    job_context.flush()
     return primary_datasets
 
 
