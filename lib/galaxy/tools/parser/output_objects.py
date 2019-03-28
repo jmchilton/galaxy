@@ -71,6 +71,7 @@ class ToolOutput(ToolOutputBase):
             as_dict["edam_format"] = edam_format
             edam_data = app.datatypes_registry.edam_data.get(self.format)
             as_dict["edam_data"] = edam_data
+        as_dict['discover_datasets'] = list(map(lambda d: d.to_dict(), self.dataset_collector_descriptions))
         return as_dict
 
     @staticmethod
@@ -282,7 +283,7 @@ class ToolOutputCollectionStructure(object):
             'collection_type_source': self.collection_type_source,
             'collection_type_from_rules': self.collection_type_from_rules,
             'structured_like': self.structured_like,
-            'dataset_collector_descriptions': list(map(lambda d: d.to_dict(), self.dataset_collector_descriptions)),
+            'discover_datasets': list(map(lambda d: d.to_dict(), self.dataset_collector_descriptions)),
         }
 
     @staticmethod
@@ -292,7 +293,7 @@ class ToolOutputCollectionStructure(object):
             collection_type_source=as_dict['collection_type_source'],
             collection_type_from_rules=as_dict['collection_type_from_rules'],
             structured_like=as_dict['structured_like'],
-            dataset_collector_descriptions=dataset_collector_descriptions_from_list(as_dict['dataset_collector_descriptions']),
+            dataset_collector_descriptions=dataset_collector_descriptions_from_output_dict(as_dict),
         )
         return structure
 
