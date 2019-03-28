@@ -171,7 +171,8 @@ class UnusedPermissionProvider(object):
         return
 
     def copy_dataset_permissions(self, init_from, primary_data):
-        raise NotImplementedError()
+        # TODO: what should this do in the sessionless context?
+        return
 
 
 class UnusedMetadataSourceProvider(object):
@@ -200,11 +201,6 @@ class SessionlessModelPersistenceContext(ModelPersistenceContext):
     def user(self):
         return None
 
-    def add_output_dataset_association(self, name, dataset):
-        # raise NotImplementedError()
-        # TODO:
-        pass
-
     def add_library_dataset_to_folder(self, library_folder, ld):
         library_folder.datasets.append(ld)
         ld.order_id = library_folder.item_count
@@ -226,9 +222,8 @@ class SessionlessModelPersistenceContext(ModelPersistenceContext):
         return nested_folder
 
     def add_datasets_to_history(self, datasets, for_output_dataset=None):
-        if for_output_dataset is not None:
-            raise NotImplementedError()
-
+        # Consider copying these datasets to for_output_dataset copied histories
+        # somehow. Not sure it is worth the effort/complexity?
         for dataset in datasets:
             self.export_store.add_dataset(dataset)
 
