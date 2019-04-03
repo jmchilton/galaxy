@@ -1243,17 +1243,7 @@ class JobWrapper(HasResourceParameters):
             dataset.dataset.uuid = context['uuid']
         self.__update_output(job, dataset)
         if not purged:
-            self._collect_extra_files(dataset.dataset, self.working_directory)
-        # Handle composite datatypes of auto_primary_file type
-        if dataset.datatype.composite_type == 'auto_primary_file' and not dataset.has_data():
-            try:
-                with NamedTemporaryFile() as temp_fh:
-                    temp_fh.write(dataset.datatype.generate_primary_file(dataset))
-                    temp_fh.flush()
-                    self.object_store.update_from_file(dataset.dataset, file_name=temp_fh.name, create=True)
-                    dataset.set_size()
-            except Exception as e:
-                log.warning('Unable to generate primary composite file automatically for %s: %s', dataset.dataset.id, e)
+            JobWrapper.collect_extra_files(self.object_store, dataset, self.working_directory)
         if job.states.ERROR == final_job_state:
             dataset.blurb = "error"
             if not implicit_collection_jobs:
@@ -1532,10 +1522,10 @@ class JobWrapper(HasResourceParameters):
         except Exception:
             log.exception("Unable to cleanup job %d", self.job_id)
 
-    def _collect_extra_files(self, dataset, job_working_directory):
-        object_store = self.app.object_store
+    @staticmethod
+    def collect_extra_files(object_store, dataset, job_working_directory):
         store_by = getattr(object_store, "store_by", "id")
-        file_name = "dataset_%s_files" % getattr(dataset, store_by)
+        file_name = "dataset_%s_files" % getattr(dataset.dataset, store_by)
         temp_file_path = os.path.join(job_working_directory, file_name)
         extra_dir = None
         try:
@@ -1546,8 +1536,8 @@ class JobWrapper(HasResourceParameters):
             for root, dirs, files in os.walk(temp_file_path):
                 extra_dir = root.replace(job_working_directory, '', 1).lstrip(os.path.sep)
                 for f in files:
-                    self.object_store.update_from_file(
-                        dataset,
+                    object_store.update_from_file(
+                        dataset.dataset,
                         extra_dir=extra_dir,
                         alt_name=f,
                         file_name=os.path.join(root, f),
@@ -1556,6 +1546,17 @@ class JobWrapper(HasResourceParameters):
                     )
         except Exception as e:
             log.debug("Error in collect_associated_files: %s" % (e))
+
+        # Handle composite datatypes of auto_primary_file type
+        if dataset.datatype.composite_type == 'auto_primary_file' and not dataset.has_data():
+            try:
+                with NamedTemporaryFile() as temp_fh:
+                    temp_fh.write(dataset.datatype.generate_primary_file(dataset))
+                    temp_fh.flush()
+                    object_store.update_from_file(dataset.dataset, file_name=temp_fh.name, create=True)
+                    dataset.set_size()
+            except Exception as e:
+                log.warning('Unable to generate primary composite file automatically for %s: %s', dataset.dataset.id, e)
 
     def _collect_metrics(self, has_metrics):
         job = has_metrics.get_job()
