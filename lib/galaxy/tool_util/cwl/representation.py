@@ -173,7 +173,7 @@ def dataset_wrapper_to_directory_json(inputs_dir, dataset_wrapper):
     assert dataset_wrapper.ext == "directory"
 
     # get directory name
-    archive_name = str(dataset_wrapper.cwl_filename or dataset_wrapper.name)
+    archive_name = str(dataset_wrapper.created_from_basename or dataset_wrapper.name)
     nameroot, nameext = os.path.splitext(archive_name)
     directory_name = nameroot # assume archive file name contains the directory name
 
