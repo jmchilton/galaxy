@@ -26,7 +26,6 @@ from galaxy.tools.parser.output_collection_def import (
     ToolProvidedMetadataDatasetCollection,
 )
 from galaxy.util import (
-    ExecutionTimer,
     odict
 )
 
@@ -118,26 +117,7 @@ def collect_dynamic_outputs(
                 collection_type_description = COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(collection_type)
                 structure = UninitializedTree(collection_type_description)
                 hdca = job_context.create_hdca(name, structure)
-            filenames = odict.odict()
-
-            def add_to_discovered_files(elements, parent_identifiers=[]):
-                for element in elements:
-                    if "elements" in element:
-                        add_to_discovered_files(element["elements"], parent_identifiers + [element["name"]])
-                    else:
-                        discovered_file = discovered_file_for_element(element, job_working_directory, parent_identifiers, collector=DEFAULT_DATASET_COLLECTOR)
-                        filenames[discovered_file.path] = discovered_file
-
-            add_to_discovered_files(elements)
-
-            collection = hdca.collection
-            collection_builder = builder.BoundCollectionBuilder(collection)
-            job_context.populate_collection_elements(
-                collection,
-                collection_builder,
-                filenames,
-            )
-            collection_builder.populate()
+            persist_elements_to_hdca(job_context, elements, hdca, collector=DEFAULT_DATASET_COLLECTOR)
         elif destination_type == "hdas":
             persist_hdas(elements, job_context)
 
