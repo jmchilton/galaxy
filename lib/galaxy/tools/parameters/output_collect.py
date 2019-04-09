@@ -11,11 +11,11 @@ from galaxy.model.dataset_collections.structure import UninitializedTree
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.store.discover import (
     discover_target_directory,
-    discovered_file_for_element,
     DiscoveredFile,
     JsonCollectedDatasetMatch,
     ModelPersistenceContext,
     persist_elements_to_folder,
+    persist_elements_to_hdca,
     persist_hdas,
     RegexCollectedDatasetMatch,
     SessionlessModelPersistenceContext,
@@ -86,10 +86,6 @@ def collect_dynamic_outputs(
     job_context,
     output_collections,
 ):
-    app = getattr(job_context, "app", None)
-    sa_session = job_context.sa_session
-    job_working_directory = job_context.job_working_directory
-
     # unmapped outputs do not correspond to explicit outputs of the tool, they were inferred entirely
     # from the tool provided metadata (e.g. galaxy.json).
     for unnamed_output_dict in job_context.tool_provided_metadata.get_unnamed_outputs():
@@ -173,85 +169,6 @@ class BaseJobContext(object):
         for discovered_file in discover_files(output_name, self.tool_provided_metadata, dataset_collectors, self.job_working_directory, collection):
             filenames[discovered_file.path] = discovered_file
         return filenames
-
-    def populate_collection_elements(self, collection, root_collection_builder, filenames, name=None, metadata_source_name=None):
-        # TODO: allow configurable sorting.
-        #    <sort by="lexical" /> <!-- default -->
-        #    <sort by="reverse_lexical" />
-        #    <sort regex="example.(\d+).fastq" by="1:numerical" />
-        #    <sort regex="part_(\d+)_sample_([^_]+).fastq" by="2:lexical,1:numerical" />
-        if name is None:
-            name = "unnamed output"
-
-        element_datasets = []
-        for filename, discovered_file in filenames.items():
-            create_dataset_timer = ExecutionTimer()
-            fields_match = discovered_file.match
-            if not fields_match:
-                raise Exception("Problem parsing metadata fields for file %s" % filename)
-            element_identifiers = fields_match.element_identifiers
-            designation = fields_match.designation
-            visible = fields_match.visible
-            ext = fields_match.ext
-            dbkey = fields_match.dbkey
-            if dbkey == INPUT_DBKEY_TOKEN:
-                dbkey = self.input_dbkey
-
-            # Create new primary dataset
-            dataset_name = fields_match.name or designation
-
-            link_data = discovered_file.match.link_data
-            tag_list = discovered_file.match.tag_list
-
-            sources = discovered_file.match.sources
-            hashes = discovered_file.match.hashes
-
-            dataset = self.create_dataset(
-                ext=ext,
-                designation=designation,
-                visible=visible,
-                dbkey=dbkey,
-                name=dataset_name,
-                filename=filename,
-                metadata_source_name=metadata_source_name,
-                link_data=link_data,
-                tag_list=tag_list,
-                sources=sources,
-                hashes=hashes,
-            )
-            log.debug(
-                "(%s) Created dynamic collection dataset for path [%s] with element identifier [%s] for output [%s] %s",
-                self.job_id(),
-                filename,
-                designation,
-                name,
-                create_dataset_timer,
-            )
-            element_datasets.append((element_identifiers, dataset))
-
-        add_datasets_timer = ExecutionTimer()
-        self.add_datasets_to_history([d for (ei, d) in element_datasets])
-        log.debug(
-            "(%s) Add dynamic collection datasets to history for output [%s] %s",
-            self.job_id(),
-            name,
-            add_datasets_timer,
-        )
-
-        for (element_identifiers, dataset) in element_datasets:
-            current_builder = root_collection_builder
-            for element_identifier in element_identifiers[:-1]:
-                current_builder = current_builder.get_level(element_identifier)
-            current_builder.add_dataset(element_identifiers[-1], dataset)
-
-            # Associate new dataset with job
-            element_identifier_str = ":".join(element_identifiers)
-            association_name = '__new_primary_file_%s|%s__' % (name, element_identifier_str)
-            self.add_output_dataset_association(association_name, dataset)
-
-            dataset.raw_set_dataset_state('ok')
-
-        self.flush()
 
 
 class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
