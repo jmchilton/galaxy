@@ -11,6 +11,7 @@ from six.moves.queue import (
     Empty,
     Queue
 )
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql.expression import (
     and_,
     func,
@@ -28,6 +29,7 @@ from galaxy.jobs import (
 )
 from galaxy.jobs.mapper import JobNotReadyException
 from galaxy.util.monitors import Monitors
+from galaxy.web.stack.handlers import HANDLER_ASSIGNMENT_METHODS
 from galaxy.web.stack.message import JobHandlerMessage
 
 log = logging.getLogger(__name__)
@@ -88,6 +90,37 @@ class JobHandlerQueue(Monitors):
         self.job_wrappers = {}
         name = "JobHandlerQueue.monitor_thread"
         self._init_monitor_thread(name, target=self.__monitor, config=app.config)
+        self.__grab_query = None
+        self.__grab_conn_opts = {'autocommit': False}
+        self.__initialize_job_grabbing()
+
+    def __initialize_job_grabbing(self):
+        grabbable_methods = set([
+            HANDLER_ASSIGNMENT_METHODS.DB_TRANSACTION_ISOLATION,
+            HANDLER_ASSIGNMENT_METHODS.DB_SKIP_LOCKED,
+        ])
+        try:
+            method = [m for m in self.app.job_config.handler_assignment_methods if m in grabbable_methods][0]
+        except IndexError:
+            return
+        subq = select([model.Job.id]) \
+            .where(and_(
+                model.Job.table.c.handler.in_(self.app.job_config.self_handler_tags),
+                model.Job.table.c.state == model.Job.states.NEW)) \
+            .order_by(model.Job.table.c.id) \
+            .limit(self.app.job_config.handler_max_grab)
+        if method == HANDLER_ASSIGNMENT_METHODS.DB_SKIP_LOCKED:
+            subq = subq.with_for_update(skip_locked=True)
+        self.__grab_query = model.Job.table.update() \
+            .returning(model.Job.table.c.id) \
+            .where(model.Job.table.c.id.in_(subq)) \
+            .values(handler=self.app.config.server_name)
+        if method == HANDLER_ASSIGNMENT_METHODS.DB_TRANSACTION_ISOLATION:
+            self.__grab_conn_opts['isolation_level'] = 'SERIALIZABLE'
+        log.info(
+            "Handler job grabber initialized with '%s' assignment method for handler '%s', tag(s): %s", method,
+            self.app.config.server_name, ', '.join([str(x) for x in self.app.job_config.handler_tags])
+        )
 
     def start(self):
         """
@@ -207,14 +240,43 @@ class JobHandlerQueue(Monitors):
 
     def __monitor_step(self):
         """
-        Called repeatedly by `monitor` to process waiting jobs. Gets any new
-        jobs (either from the database or from its own queue), then iterates
-        over all new and waiting jobs to check the state of the jobs each
-        depends on. If the job has dependencies that have not finished, it
-        goes to the waiting queue. If the job has dependencies with errors,
-        it is marked as having errors and removed from the queue. If the job
-        belongs to an inactive user it is ignored.
-        Otherwise, the job is dispatched.
+        Called repeatedly by `monitor` to process waiting jobs.
+        """
+        if self.__grab_query is not None:
+            self.__grab_unhandled_jobs()
+        self.__handle_waiting_jobs()
+
+    def __grab_unhandled_jobs(self):
+        """
+        Attempts to "grab" jobs (assign unassigned jobs to itself) using DB serialization methods, if enabled. This
+        simply sets `Job.handler` to the current server name, which causes the job to be picked up by
+        `__handle_waiting_jobs()`.
+        """
+        # an excellent discussion on PostgreSQL concurrency safety:
+        # https://blog.2ndquadrant.com/what-is-select-skip-locked-for-in-postgresql-9-5/
+        self.sa_session.expunge_all()
+        conn = self.sa_session.connection(execution_options=self.__grab_conn_opts)
+        with conn.begin() as trans:
+            try:
+                rows = conn.execute(self.__grab_query).fetchall()
+                if rows:
+                    log.debug('Grabbed job(s): %s', ', '.join([str(row[0]) for row in rows]))
+                    trans.commit()
+                else:
+                    trans.rollback()
+            except OperationalError as e:
+                # If this is a serialization failure on PostgreSQL, then e.orig is a psycopg2 TransactionRollbackError
+                # and should have attribute `code`. Other engines should just report the message and move on.
+                if int(getattr(e.orig, 'pgcode', -1)) != 40001:
+                    log.debug('Grabbing job failed (serialization failures are ok): %s', str(e))
+                trans.rollback()
+
+    def __handle_waiting_jobs(self):
+        """
+        Gets any new jobs (either from the database or from its own queue), then iterates over all new and waiting jobs
+        to check the state of the jobs each depends on. If the job has dependencies that have not finished, it goes to
+        the waiting queue. If the job has dependencies with errors, it is marked as having errors and removed from the
+        queue. If the job belongs to an inactive user it is ignored.  Otherwise, the job is dispatched.
         """
         # Pull all new jobs from the queue at once
         jobs_to_check = []
@@ -233,10 +295,8 @@ class JobHandlerQueue(Monitors):
                 .join(model.JobToInputLibraryDatasetAssociation) \
                 .join(model.LibraryDatasetDatasetAssociation) \
                 .join(model.Dataset) \
-                .filter(and_((model.Job.state == model.Job.states.NEW),
-                        or_((model.LibraryDatasetDatasetAssociation._state != null()),
-                            (model.Dataset.state.in_(model.Dataset.non_ready_states)),
-                            ))).subquery()
+                .filter(and_(model.Job.state == model.Job.states.NEW,
+                             model.Dataset.state.in_(model.Dataset.non_ready_states))).subquery()
             if self.app.config.user_activation_on:
                 jobs_to_check = self.sa_session.query(model.Job).enable_eagerloads(False) \
                     .outerjoin(model.User) \
@@ -299,8 +359,10 @@ class JobHandlerQueue(Monitors):
                     job.text_metrics = copied_from_job.text_metrics
                     job.dependencies = copied_from_job.dependencies
                     job.state = copied_from_job.state
-                    job.stderr = copied_from_job.stderr
-                    job.stdout = copied_from_job.stdout
+                    job.job_stderr = copied_from_job.job_stderr
+                    job.job_stdout = copied_from_job.job_stdout
+                    job.tool_stderr = copied_from_job.tool_stderr
+                    job.tool_stdout = copied_from_job.tool_stdout
                     job.command_line = copied_from_job.command_line
                     job.traceback = copied_from_job.traceback
                     job.tool_version = copied_from_job.tool_version

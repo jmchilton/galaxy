@@ -3,6 +3,7 @@ dataset collection after jobs are finished.
 """
 
 from galaxy.util import asbool
+from .util import is_dict
 
 DEFAULT_EXTRA_FILENAME_PATTERN = r"primary_DATASET_ID_(?P<designation>[^_]+)_(?P<visible>[^_]+)_(?P<ext>[^_]+)(_(?P<dbkey>[^_]+))?"
 DEFAULT_SORT_BY = "filename"
@@ -31,6 +32,19 @@ def dataset_collector_descriptions_from_elem(elem, legacy=True):
     else:
         collectors = [dataset_collection_description(**e.attrib) for e in primary_dataset_elems]
 
+    return _validate_collectors(collectors)
+
+
+def dataset_collector_descriptions_from_output_dict(as_dict):
+    discover_datasets_dicts = as_dict.get("discover_datasets", [])
+    if is_dict(discover_datasets_dicts):
+        discover_datasets_dicts = [discover_datasets_dicts]
+    dataset_collector_descriptions = dataset_collector_descriptions_from_list(discover_datasets_dicts)
+    return _validate_collectors(dataset_collector_descriptions)
+
+
+def _validate_collectors(collectors):
+    num_discover_dataset_blocks = len(collectors)
     if num_discover_dataset_blocks > 1:
         for collector in collectors:
             if collector.discover_via == "tool_provided_metadata":
@@ -40,11 +54,13 @@ def dataset_collector_descriptions_from_elem(elem, legacy=True):
 
 
 def dataset_collector_descriptions_from_list(discover_datasets_dicts):
-    return map(lambda kwds: dataset_collection_description(**kwds), discover_datasets_dicts)
+    return list(map(lambda kwds: dataset_collection_description(**kwds), discover_datasets_dicts))
 
 
 def dataset_collection_description(**kwargs):
-    if asbool(kwargs.get("from_provided_metadata", False)):
+    from_provided_metadata = asbool(kwargs.get("from_provided_metadata", False))
+    discover_via = kwargs.get("discover_via", "tool_provided_metadata" if from_provided_metadata else "pattern")
+    if discover_via == "tool_provided_metadata":
         for key in ["pattern", "sort_by"]:
             if kwargs.get(key):
                 raise Exception("Cannot specify attribute [%s] if from_provided_metadata is True" % key)
@@ -64,6 +80,17 @@ class DatasetCollectionDescription(object):
         self.assign_primary_output = asbool(kwargs.get('assign_primary_output', False))
         self.directory = kwargs.get("directory", None)
         self.recurse = False
+
+    def to_dict(self):
+        return {
+            'discover_via': self.discover_via,
+            'dbkey': self.default_dbkey,
+            'format': self.default_ext,
+            'visible': self.default_visible,
+            'assign_primary_output': self.assign_primary_output,
+            'directory': self.directory,
+            'recurse': self.recurse,
+        }
 
 
 class ToolProvidedMetadataDatasetCollection(DatasetCollectionDescription):
@@ -101,6 +128,16 @@ class FilePatternDatasetCollectionDescription(DatasetCollectionDescription):
         ]
         self.sort_key = sort_by
         self.sort_comp = sort_comp
+
+    def to_dict(self):
+        as_dict = super(FilePatternDatasetCollectionDescription, self).to_dict()
+        as_dict.update({
+            "sort_key": self.sort_key,
+            "sort_comp": self.sort_comp,
+            "pattern": self.pattern,
+            "recurse": self.recurse,
+        })
+        return as_dict
 
 
 DEFAULT_DATASET_COLLECTOR_DESCRIPTION = FilePatternDatasetCollectionDescription(

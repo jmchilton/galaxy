@@ -22,7 +22,7 @@ from galaxy.model import (
     ExtendedMetadata,
     ExtendedMetadataIndex
 )
-from galaxy.web import _future_expose_api as expose_api
+from galaxy.web import expose_api
 from galaxy.web.base.controller import (
     BaseAPIController,
     HTTPBadRequest,
@@ -229,6 +229,8 @@ class LibraryContentsController(BaseAPIController, UsesLibraryMixin, UsesLibrary
             return str(e)
         # The rest of the security happens in the library_common controller.
         real_folder_id = trans.security.encode_id(parent.id)
+
+        payload['tag_using_filenames'] = util.string_as_bool(payload.get('tag_using_filenames', None))
 
         # are we copying an HDA to the library folder?
         #   we'll need the id and any message to attach, then branch to that private function

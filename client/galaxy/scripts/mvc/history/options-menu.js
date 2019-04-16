@@ -29,15 +29,6 @@ var menu = [
         anon: true
     },
     {
-        html: _l("Create New"),
-        func: function() {
-            let Galaxy = getGalaxyInstance();
-            if (Galaxy && Galaxy.currHistoryPanel) {
-                Galaxy.currHistoryPanel.createNewHistory();
-            }
-        }
-    },
-    {
         html: _l("Copy History"),
         func: function() {
             let Galaxy = getGalaxyInstance();
@@ -102,6 +93,7 @@ var menu = [
         html: _l("Make Data Private"),
         anon: true,
         func: function() {
+            let Galaxy = getGalaxyInstance();
             if (
                 Galaxy &&
                 Galaxy.currHistoryPanel &&
@@ -201,16 +193,6 @@ var menu = [
         html: _l("Export History to File"),
         href: "history/export_archive?preview=True",
         anon: true
-    },
-
-    {
-        html: _l("Other Actions"),
-        header: true
-    },
-    {
-        html: _l("Import from File"),
-        href: "histories/import",
-        target: "_top"
     }
 ];
 
@@ -259,9 +241,9 @@ function buildMenu(isAnon, purgeAllowed, urlRoot) {
 
         if (menuOption.confirm) {
             menuOption.func = () => {
-                if (confirm(menuOption.confirm)) {
-                    /* galaxy_main is a global here: TODO: Fix it! */
-                    galaxy_main.location = menuOption.href;
+                const galaxy_main = window.parent.document.getElementById("galaxy_main");
+                if (confirm(menuOption.confirm) && galaxy_main){
+                    galaxy_main.src = menuOption.href;
                 }
             };
         }
@@ -274,7 +256,6 @@ var create = ($button, options) => {
     var isAnon = options.anonymous === undefined ? true : options.anonymous;
     var purgeAllowed = options.purgeAllowed || false;
     var menu = buildMenu(isAnon, purgeAllowed, getAppRoot());
-    //console.debug( 'menu:', menu );
     return new PopupMenu($button, menu);
 };
 

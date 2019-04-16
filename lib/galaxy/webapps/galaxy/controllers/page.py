@@ -518,7 +518,7 @@ class PageController(BaseUIController, SharableMixin,
                  'slug'     : p.page.slug,
                  'title'    : p.page.title} for p in shared_by_others]
 
-    @web.expose_api
+    @web.legacy_expose_api
     @web.require_login("create pages")
     def create(self, trans, payload=None, **kwd):
         """
@@ -573,7 +573,7 @@ class PageController(BaseUIController, SharableMixin,
                 trans.sa_session.flush()
             return {'message': 'Page \'%s\' successfully created.' % p.title, 'status': 'success'}
 
-    @web.expose_api
+    @web.legacy_expose_api
     @web.require_login("edit pages")
     def edit(self, trans, payload=None, **kwd):
         """
@@ -993,7 +993,8 @@ def _placeholderRenderForSave(trans, item_class, item_id, encode=False):
         item_name = history.name
     elif item_class == 'HistoryDatasetAssociation':
         hda = trans.sa_session.query(trans.model.HistoryDatasetAssociation).get(decoded_item_id)
-        hda = managers.base.security_check(trans, hda , False, True)
+        hda_manager = managers.hdas.HDAManager(trans.app)
+        hda = hda_manager.get_accessible(decoded_item_id, trans.user)
         item_name = hda.name
     elif item_class == 'StoredWorkflow':
         wf = trans.sa_session.query(trans.model.StoredWorkflow).get(decoded_item_id)
