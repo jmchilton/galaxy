@@ -192,13 +192,16 @@ def sep2tabs(fname, in_place=True, patt=r"\s+", tmp_dir=None, tmp_prefix="gxuplo
     """
     Transforms in place a 'sep' separated file to a tab separated one
 
-    >>> fname = get_test_fname('temp.txt')
-    >>> with open(fname, 'wt') as fh:
-    ...     _ = fh.write(u"1 2\\n3 4\\n")
-    >>> sep2tabs(fname)
-    (2, None)
-    >>> open(fname).read()
-    '1\\t2\\n3\\t4\\n'
+    >>> def assert_converts_to_1234(content, line_ending="\\n"):
+    ...       fname = get_test_fname('temp.txt')
+    ...       with open(fname, 'wt') as fh:
+    ...           _ = fh.write(content)
+    ...       rval = sep2tabs(fname, tmp_prefix="gxtest", tmp_dir=tempfile.gettempdir())
+    ...       assert rval == (2, None)
+    ...       assert '1\\t2%s3\\t4%s' % (line_ending, line_ending) == open(fname).read()
+    >>> assert_converts_to_1234(u"1 2\\n3 4\\n")
+    >>> assert_converts_to_1234(u"1    2\\n3    4\\n")
+    >>> assert_converts_to_1234(u"1\\t2\\n3\\t4\\n")
     """
     regexp = re.compile(patt)
     fd, temp_name = tempfile.mkstemp(prefix=tmp_prefix, dir=tmp_dir)
