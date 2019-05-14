@@ -13,14 +13,14 @@ def assert_converts_to_1234_sep2tabs(content, line_ending="\n"):
     assert '1\t2%s3\t4%s' % (line_ending, line_ending) == open(tf.name).read()
 
 
-def assert_converts_to_1234_convert_sep2tabs(content, expected='1\t2\n3\t4\n', line_ending="\n"):
-    print("\r" in content)
-    tf = tempfile.NamedTemporaryFile(delete=False, mode='w')
-    tf.write(content)
-    tf.close()
-    rval = convert_newlines_sep2tabs(tf.name, tmp_prefix="gxtest", tmp_dir=tempfile.gettempdir())
-    assert rval == (2, None), rval
-    assert expected == open(tf.name).read()
+def assert_converts_to_1234_convert_sep2tabs(content, expected='1\t2\n3\t4\n'):
+    for block_size in [1024, 2, 3]:
+        tf = tempfile.NamedTemporaryFile(delete=False, mode='w')
+        tf.write(content)
+        tf.close()
+        rval = convert_newlines_sep2tabs(tf.name, tmp_prefix="gxtest", tmp_dir=tempfile.gettempdir(), block_size=block_size)
+        assert rval == (2, None), rval
+        assert expected == open(tf.name).read()
 
 
 def test_sep2tabs():

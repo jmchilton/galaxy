@@ -201,7 +201,7 @@ def sep2tabs(fname, in_place=True, patt=r"\s+", tmp_dir=None, tmp_prefix="gxuplo
         return (i, temp_name)
 
 
-def convert_newlines_sep2tabs(fname, in_place=True, patt=r"\s+", tmp_dir=None, tmp_prefix="gxupload"):
+def convert_newlines_sep2tabs(fname, in_place=True, patt=r"\s+", tmp_dir=None, tmp_prefix="gxupload", block_size=1024):
     """
     Combines above methods: convert_newlines() and sep2tabs()
     so that files do not need to be read twice
@@ -216,16 +216,39 @@ def convert_newlines_sep2tabs(fname, in_place=True, patt=r"\s+", tmp_dir=None, t
     """
     regexp = re.compile(patt)
     fd, temp_name = tempfile.mkstemp(prefix=tmp_prefix, dir=tmp_dir)
+    i = 0
+    ends_on_white_space = False
     with io.open(fd, mode="wt", encoding='utf-8') as fp:
-        i = None
-        for i, line in enumerate(io.open(fname, encoding='utf-8')):
-            line = line.rstrip('\r\n')
-            elems = regexp.split(line)
-            fp.write(u"%s\n" % '\t'.join(elems))
-    if i is None:
-        i = 0
-    else:
-        i = i + 1
+        ends_on_new_line = True
+        with io.open(fname, encoding='utf-8') as fi:
+            while True:
+                line = fi.readline(block_size)
+                if ends_on_white_space:
+                    line = line.lstrip()
+
+                if not line:
+                    if not ends_on_new_line:
+                        fp.write(u"\n")
+                        i += 1
+                    break
+
+                ends_on_new_line = line[-1] == u"\n"
+                if ends_on_new_line:
+                    line = line[:-1]
+                ends_on_white_space = re.compile(r"\s").match(line[-1])
+                elems = regexp.split(line)
+                line = '\t'.join(elems)
+
+                if ends_on_new_line:
+                    ends_on_white_space = False
+                    fp.write(line)
+                    fp.write(u"\n")
+                    i += 1
+                    continue
+
+                # We have a block... maybe at the end of the file.
+                fp.write(line)
+
     if in_place:
         shutil.move(temp_name, fname)
         # Return number of lines in file.
