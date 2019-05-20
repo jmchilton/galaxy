@@ -6,6 +6,7 @@ from six import string_types
 from sqlalchemy import or_
 
 
+from galaxy import model
 from galaxy.tools.deps.docker_util import parse_port_text as docker_parse_port_text
 from galaxy.util.filelock import FileLock
 
@@ -145,19 +146,10 @@ class RealTimeManager(object):
     """
 
     def __init__(self, app):
-        self.model = app.model
         self.security = app.security
         self.sa_session = app.model.context
         self.job_manager = app.job_manager
         self.propagator = RealtimeSqlite(app.config.realtime_map, app.security.encode_id)
-
-    def create_entry_points(self, job, tool, entry_points=None, flush=True):
-        entry_points = entry_points or tool.ports
-        for entry in entry_points:
-            ep = self.model.RealTimeToolEntryPoint(job=job, tool_port=entry['port'], entry_url=entry['url'], name=entry['name'])
-            self.sa_session.add(ep)
-        if flush:
-            self.sa_session.flush()
 
     def configure_entry_point(self, job, tool_port=None, host=None, port=None, protocol=None):
         return self.configure_entry_points(job, {tool_port: dict(tool_port=tool_port, host=host, port=port, protocol=protocol)})
@@ -193,18 +185,18 @@ class RealTimeManager(object):
         """
         self.propagator.save_entry_point(entry_point)
 
-    def create_realtime(self, job, tool, entry_points):
+    def create_realtime_entry_points(self, job, tool, entry_points):
         # create from initial job
         if job and tool:
-            self.create_entry_points(job, tool, entry_points)
+            self.__create_entry_points(job, tool, entry_points)
         else:
-            log.warning('Called RealTimeManager.create_realtime, but job (%s) or tool (%s) is None', job, tool)
+            log.warning('Called RealTimeManager.create_realtime_entry_points, but job (%s) or tool (%s) is None', job, tool)
 
     def get_nonterminal_for_user_by_trans(self, trans):
         if trans.user:
-            jobs = trans.sa_session.query(trans.app.model.Job).filter(trans.app.model.Job.user == trans.user)
+            jobs = trans.sa_session.query(model.Job).filter(model.Job.user == trans.user)
         else:
-            jobs = trans.sa_session.query(trans.app.model.Job).filter(trans.app.model.Job.session_id == trans.get_galaxy_session().id)
+            jobs = trans.sa_session.query(model.Job).filter(model.Job.session_id == trans.get_galaxy_session().id)
 
         def build_and_apply_filters(query, objects, filter_func):
             if objects is not None:
@@ -216,8 +208,8 @@ class RealTimeManager(object):
                         t.append(filter_func(obj))
                     query = query.filter(or_(*t))
             return query
-        jobs = build_and_apply_filters(jobs, trans.app.model.Job.non_ready_states, lambda s: trans.app.model.Job.state == s)
-        return trans.sa_session.query(trans.app.model.RealTimeToolEntryPoint).filter(trans.app.model.RealTimeToolEntryPoint.job_id.in_([job.id for job in jobs]))
+        jobs = build_and_apply_filters(jobs, model.Job.non_ready_states, lambda s: model.Job.state == s)
+        return trans.sa_session.query(model.RealTimeToolEntryPoint).filter(model.RealTimeToolEntryPoint.job_id.in_([job.id for job in jobs]))
 
     def can_access_job(self, trans, job):
         if job:
@@ -273,3 +265,11 @@ class RealTimeManager(object):
         if flush:
             self.sa_session.flush()
         self.propagator.remove_entry_point(entry_point)
+
+    def __create_entry_points(self, job, tool, entry_points=None, flush=True):
+        entry_points = entry_points or tool.ports
+        for entry in entry_points:
+            ep = model.RealTimeToolEntryPoint(job=job, tool_port=entry['port'], entry_url=entry['url'], name=entry['name'])
+            self.sa_session.add(ep)
+        if flush:
+            self.sa_session.flush()
