@@ -150,7 +150,7 @@ class ToolEvaluator(object):
         # Parameters added after this line are not sanitized
         self.__populate_non_job_params(param_dict)
         # Populate and store templated RealTimeTools values
-        self.__populate_realtimetools(param_dict)
+        self.__populate_entry_points(param_dict)
 
         # Return the dictionary of parameters
         return param_dict
@@ -406,11 +406,11 @@ class ToolEvaluator(object):
             # the paths rewritten.
             self.__walk_inputs(self.tool.inputs, param_dict, rewrite_unstructured_paths)
 
-    def __populate_realtimetools(self, param_dict):
+    def __populate_entry_points(self, param_dict):
         """
-        Populate RealTimeTools templated values.
+        Populate RealTimeTools templated entry point values.
         """
-        rtt = []
+        realtime_entry_points = []
         for ep in getattr(self.tool, 'ports', []):
             ep_dict = {}
             for key in 'port', 'name', 'url':
@@ -423,12 +423,12 @@ class ToolEvaluator(object):
                     val = '\n'.join(clean_val)
                     val = val.replace("\n", " ").replace("\r", " ").strip()
                 ep_dict[key] = val
-            rtt.append(ep_dict)
-        self.realtimetools = rtt
-        rtt_man = getattr(self.app, "realtime_manager", None)
-        if rtt_man:
-            rtt_man.create_realtime(self.job, self.tool, rtt)
-        return rtt
+            realtime_entry_points.append(ep_dict)
+        self.realtime_entry_points = realtime_entry_points
+        realtime_manager = getattr(self.app, "realtime_manager", None)
+        if realtime_manager and len(realtime_entry_points) > 0:
+            realtime_manager.create_realtime_entry_points(self.job, self.tool, realtime_entry_points)
+        return realtime_entry_points
 
     def __sanitize_param_dict(self, param_dict):
         """
