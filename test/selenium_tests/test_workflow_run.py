@@ -196,7 +196,7 @@ steps:
 
         invocation_0 = self.workflow_populator.history_invocations(history_id)[0]
         self.get("workflows/invocations/report?id=%s" % invocation_0["id"])
-        self.wait_for_visible(".embedded-item.dataset")
+        self.wait_for_selector_visible(".embedded-item.dataset")
         self.screenshot("workflow_report_custom_1")
 
     def open_in_workflow_run(self, yaml_content):
