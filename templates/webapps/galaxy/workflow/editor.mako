@@ -238,7 +238,7 @@
                     <span class="fa fa-edit"></span>
                 </a>
                 <a id="workflow-canvas-button" class="panel-header-button workflow-report-content" href="#" title="Edit Workflow" aria-label="Edit Workflow">
-                    <span class="fa fa-edit"></span>
+                    <span class="fa fa-sitemap fa-rotate-270"></span>
                 </a>
                 <a id="workflow-options-button" class="panel-header-button" href="#" title="Workflow options" style="display: inline-block;" aria-label="Workflow options">
                     <span class="fa fa-cog"></span>

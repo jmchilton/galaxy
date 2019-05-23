@@ -2,6 +2,10 @@ import $ from "jquery";
 import Connector from "mvc/workflow/workflow-connector";
 import { Toast } from "ui/toast";
 
+import Vue from "vue";
+import MarkdownEditor from "components/Markdown/MarkdownEditor";
+
+
 class Workflow {
     constructor(app, canvas_container) {
         this.app = app;
@@ -215,7 +219,14 @@ class Workflow {
         var using_workflow_outputs = false;
         wf.workflow_version = data.version;
         wf.report = data.report;
-        $("#workflow-report-editor").val(wf.report.markdown);
+        const markdownEditorInstance = Vue.extend(MarkdownEditor);
+        new markdownEditorInstance({
+            propsData: {
+                onupdate: (markdown) => { console.log("onupdate"); this.report_changed(markdown); },
+                initialMarkdown: data.report.markdown
+            },
+            el: "#workflow-report-editor"
+        });
         $.each(data.steps, (id, step) => {
             var node = wf.app.prebuildNode(step.type, step.name, step.content_id);
             // If workflow being copied into another, wipe UUID and let

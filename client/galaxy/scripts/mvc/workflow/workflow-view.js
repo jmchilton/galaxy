@@ -69,13 +69,6 @@ export default Backbone.View.extend({
         this.options = options;
         this.urls = (options && options.urls) || {};
         var workflow_index = self.urls.workflow_index;
-
-        const updateReport = () => {
-            self.workflow.report_changed($("#workflow-report-editor").val());
-        }
-        $("#workflow-report-editor").change(updateReport);
-        $("#workflow-report-editor").keyup(updateReport);
-
         var save_current_workflow = (eventObj, success_callback) => {
             show_message("Saving workflow", "progress");
             self.workflow.check_changes_in_active_form();
