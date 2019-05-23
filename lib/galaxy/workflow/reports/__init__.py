@@ -1,6 +1,6 @@
 from galaxy.util import plugin_config
 
-DEFAULT_REPORT_GENERATOR_TYPE = "core"
+DEFAULT_REPORT_GENERATOR_TYPE = "markdown"
 
 
 def generate_report_json(trans, invocation, runtime_report_config_json=None, plugin_type=None):

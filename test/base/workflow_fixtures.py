@@ -473,162 +473,179 @@ steps:
     in:
       input: input_1
 report:
-  sections:
-    - type: free_markdown
-      content: |
-        The next three sections (inputs, outputs, and workflow) are auto generated sections
-        of the 'core' invocation report generator plugin. That plugin automatically
-        produces Galaxy Workflow Flavored Markdown from an invocation run.
+  markdown: |
+    ## About This Report
 
-        This section and the last one are custom markdown (``free_markdown``) sections. The
-        auto-generated sections could easily hand-crafted from free markdown also - the auto
-        generated sections are for convenience and for supplying a default report for workflows
-        that don't define one.
+    This report is generated from markdown content in the input workflow YAML file.
+    There is a default markdown template if workflow do not define one (right now
+    it just shows the inputs, outputs, and workflow - but this can change).
 
-        As you'll see below in the last section, "Galaxy Workflow Flavored Markdown" is an
-        extension to markdown that allow referencing and embedding Galaxy objects. In particular
-        "Galaxy Workflow Flavored Markdown" contains workflow-relative references. The report generator
-        plugin translates this to "Galaxy Flavored Markdown" where the references are stored
-        by actual object ids.
+    This report is written in "Galaxy Workflow Flavored Markdown". This workflow
+    variant of "Galaxy Flavored Markdown" contains workflow-relative references.
+    Dataset, collections, and jobs are referenced by step labels, input labels, and output
+    labels - rather than by object IDs. The report generator plugin translates this to
+    "Galaxy Flavored Markdown" where the references are actual object ids.
 
-        The upshot of translating this to a neutral format that has no
-        concept of the workflow invocation is that client side rendering (and much of the backend
-        processing) is completely general and not tied to workflows or workflow invocations.
-        The same markdown component could potentially be used to render pages, history annotations,
-        libraries, etc..
-    - type: inputs
-    - type: outputs
-    - type: workflow
-    - type: free_markdown
-      title: Custom Section Example
-      content: |
-        This is a my **custom** content, I defined this section with free Markdown.
+    The upshot of translating the workflow markdown to a neutral format that has no
+    concept of the workflow invocation is that client side rendering (and much of the backend
+    processing) is completely general and not tied to workflows or workflow invocations.
+    The same markdown component could potentially be used to render pages, history annotations,
+    describe library folders, etc..
 
-        If I want to reference an output and embed, I can do it as follows:
+    The next two sections demonstrate the auto generated inputs and outputs sections
+    in the default workflow invocation report template.
 
-        ```
-        ::: history_dataset_display output=output_1
-        :::
-        ```
+    ```
+    ## Workflow Inputs
+    ::: invocation_inputs
+    :::
 
-        ::: history_dataset_display output=output_1
-        :::
+    ## Workflow Outputs
+    ::: invocation_outputs
+    :::
+    ```
 
-        If I want to reference an input, I can do that *also* as follows:
+    ## Workflow Inputs
+    ::: invocation_inputs
+    :::
 
-        ```
-        ::: history_dataset_display input=input_1
-        :::
-        ```
+    ## Workflow Outputs
+    ::: invocation_outputs
+    :::
 
-        ::: history_dataset_display input=input_1
-        :::
+    The auto-generated sections could easily hand-crafted from free markdown also - the auto
+    generated sections are for convenience to avoid listing out all inputs and outputs by hand
+    and for supplying a default report for workflows that don't define one.
 
-        I can embed an output (or input) directly into the report as an image as follows:
+    ## More Custom Content
 
-        ```
-        ::: history_dataset_as_image output=output_image
-        :::
-        ```
+    This is a my **custom** content, I defined this section with free Markdown.
 
-        ::: history_dataset_as_image output=output_image
-        :::
+    If I want to reference an output and embed, I can do it as follows:
 
-        ---
+    ```
+    ::: history_dataset_display output=output_1
+    :::
+    ```
 
-        I can also embed just a dataset peek:
+    ::: history_dataset_display output=output_1
+    :::
 
-        ```
-        ::: history_dataset_peek output=output_1
-        :::
-        ```
+    If I want to reference an input, I can do that *also* as follows:
 
-        ::: history_dataset_peek output=output_1
-        :::
+    ```
+    ::: history_dataset_display input=input_1
+    :::
+    ```
 
-        ---
+    ::: history_dataset_display input=input_1
+    :::
 
-        Or a dataset "info" content:
+    I can embed an output (or input) directly into the report as an image as follows:
 
-        ```
-        ::: history_dataset_info input=input_1
-        :::
-        ```
+    ```
+    ::: history_dataset_as_image output=output_image
+    :::
+    ```
 
-        ::: history_dataset_info input=input_1
-        :::
+    ::: history_dataset_as_image output=output_image
+    :::
 
-        ---
+    ---
 
-        Collections can also be displayed:
+    I can also embed just a dataset peek:
 
-        ```
-        ::: history_dataset_collection_display input=input_list
-        :::
-        ```
+    ```
+    ::: history_dataset_peek output=output_1
+    :::
+    ```
 
-        ::: history_dataset_collection_display input=input_list
-        :::
+    ::: history_dataset_peek output=output_1
+    :::
 
-        ---
+    ---
 
-        I can actually embed the whole workflow, which looks like this:
+    Or a dataset "info" content:
 
-        ```
-        ::: workflow_display
-        :::
-        ```
+    ```
+    ::: history_dataset_info input=input_1
+    :::
+    ```
 
-        ::: workflow_display
-        :::
+    ::: history_dataset_info input=input_1
+    :::
 
-        ---
+    ---
 
-        Job parameters can be summarized:
+    Collections can also be displayed:
 
-        ```
-        ::: job_parameters step=qc_step
-        :::
-        ```
+    ```
+    ::: history_dataset_collection_display input=input_list
+    :::
+    ```
 
-        ::: job_parameters step=qc_step
-        :::
+    ::: history_dataset_collection_display input=input_list
+    :::
 
-        ---
+    ---
 
-        Job metrics can be summarized as well:
+    I can actually embed the whole workflow, which looks like this:
 
-        ```
-        ::: job_metrics step=image_cat
-        :::
-        ```
+    ```
+    ::: workflow_display
+    :::
+    ```
 
-        ::: job_metrics step=image_cat
-        :::
+    ::: workflow_display
+    :::
 
-        ---
+    ---
 
-        Tool standard out and error are also available for steps.
+    Job parameters can be summarized:
 
-        ```
-        ::: tool_stdout step=qc_step
-        :::
-        ```
+    ```
+    ::: job_parameters step=qc_step
+    :::
+    ```
 
-        ::: tool_stdout step=qc_step
-        :::
+    ::: job_parameters step=qc_step
+    :::
 
-        ```
-        ::: tool_stderr step=qc_step
-        :::
-        ```
+    ---
 
-        ::: tool_stderr step=qc_step
-        :::
+    Job metrics can be summarized as well:
 
-        ---
+    ```
+    ::: job_metrics step=image_cat
+    :::
+    ```
 
-        There is some content down here. *fin*
+    ::: job_metrics step=image_cat
+    :::
+
+    ---
+
+    Tool standard out and error are also available for steps.
+
+    ```
+    ::: tool_stdout step=qc_step
+    :::
+    ```
+
+    ::: tool_stdout step=qc_step
+    :::
+
+    ```
+    ::: tool_stderr step=qc_step
+    :::
+    ```
+
+    ::: tool_stderr step=qc_step
+    :::
+
+    ---
+
+    There is some content down here. *fin*
 
 """
 

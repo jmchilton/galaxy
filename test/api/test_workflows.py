@@ -1252,7 +1252,7 @@ steps:
             markdown_content = report_json["markdown"]
             assert "## Workflow Outputs" in markdown_content
             assert "## Workflow Inputs" in markdown_content
-            assert "Custom Section Example" not in markdown_content
+            assert "## About This Report" not in markdown_content
 
     @skip_without_tool("cat")
     def test_workflow_invocation_report_custom(self):
@@ -1273,7 +1273,7 @@ steps:
             assert "## Workflow Outputs" in markdown_content
             assert "\n::: history_dataset_display history_dataset_id=" in markdown_content
             assert "## Workflow Inputs" in markdown_content
-            assert "## Custom Section Example" in markdown_content
+            assert "## About This Report" in markdown_content
 
     @skip_without_tool("__APPLY_RULES__")
     def test_workflow_run_apply_rules(self):

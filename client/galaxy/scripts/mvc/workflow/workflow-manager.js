@@ -198,7 +198,7 @@ class Workflow {
             };
             nodes[node.id] = node_data;
         });
-        const report = JSON.parse(this.report);
+        const report = this.report;
         return { steps: nodes, report: report };
     }
     from_simple(data, initialImport_) {
@@ -214,8 +214,8 @@ class Workflow {
         // First pass, nodes
         var using_workflow_outputs = false;
         wf.workflow_version = data.version;
-        wf.report = JSON.stringify(data.report, null, "  ") || '';
-        $("#workflow-report-editor").val(wf.report);
+        wf.report = data.report;
+        $("#workflow-report-editor").val(wf.report.markdown);
         $.each(data.steps, (id, step) => {
             var node = wf.app.prebuildNode(step.type, step.name, step.content_id);
             // If workflow being copied into another, wipe UUID and let
@@ -326,9 +326,9 @@ class Workflow {
         }
         this.app.showWorkflowParameters();
     }
-    report_changed(report) {
+    report_changed(report_markdown) {
         this.has_changes = true;
-        this.report = report;
+        this.report.markdown = report_markdown;
     }
     layout() {
         this.check_changes_in_active_form();
