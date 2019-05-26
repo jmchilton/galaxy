@@ -4,8 +4,6 @@ import { getAppRoot } from "onload/loadConfig";
 import { show_modal, hide_modal } from "layout/modal";
 
 export const save = (pageId, content) => {
-    console.log(`content is ${content}`);
-
     show_modal(_l("Saving page"), _l("progress"));
 
     // Do save.

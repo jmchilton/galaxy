@@ -15,6 +15,7 @@ export default function pagesEditorOnload() {
                 propsData: {
                     pageId: pageId,
                     content: response.data.content,
+                    contentFormat: response.data.content_format,
                     title: response.data.title
                 },
                 el: "#page-editor-content"

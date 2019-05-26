@@ -22,10 +22,16 @@ class BasePageApiTestCase(ApiTestCase):
         return page_response.json()
 
     def _test_page_payload(self, **kwds):
+        content_format = kwds.get("content_format", "html")
+        if content_format == "html":
+            content = "<p>Page!</p>"
+        else:
+            content = "*Page*\n\n"
         request = dict(
             slug="mypage",
             title="MY PAGE",
-            content="<p>Page!</p>",
+            content=content,
+            content_format=content_format,
         )
         request.update(**kwds)
         return request
@@ -41,7 +47,7 @@ class PageApiTestCase(BasePageApiTestCase):
         create_response_json = self._create_valid_page_with_slug("indexpage")
         assert self._users_index_has_page_with_id(create_response_json["id"])
 
-    def test_index_doesnt_show_unavailable_pages(self):
+    def test_index_does_not_show_unavailable_pages(self):
         create_response_json = self._create_valid_page_as("others_page_index@bx.psu.edu", "otherspageindex")
         assert not self._users_index_has_page_with_id(create_response_json["id"])
 
@@ -52,6 +58,13 @@ class PageApiTestCase(BasePageApiTestCase):
         page_response_2 = self._post("pages", page_request)
         self._assert_status_code_is(page_response_2, 400)
         self._assert_error_code_is(page_response_2, error_codes.USER_SLUG_DUPLICATE)
+
+    def test_cannot_create_page_with_invalid_content_format(self):
+        page_request = self._test_page_payload(slug="mypageinvalidformat")
+        page_request["content_format"] = "xml"
+        page_response_1 = self._post("pages", page_request)
+        self._assert_status_code_is(page_response_1, 400)
+        self._assert_error_code_is(page_response_1, error_codes.USER_REQUEST_INVALID_PARAMETER)
 
     def test_page_requires_name(self):
         page_request = self._test_page_payload(slug="requires-name")
@@ -89,6 +102,14 @@ class PageApiTestCase(BasePageApiTestCase):
         self._assert_status_code_is(page_response, 400)
         self._assert_error_code_is(page_response, error_codes.MALFORMED_ID)
 
+    def test_400_on_invalid_id_encoding_markdown(self):
+        page_request = self._test_page_payload(slug="invalid-id-encding", content_format="markdown")
+        page_request["content"] = r'''::: history_dataset_display history_dataset_id=badencoding
+:::'''
+        page_response = self._post("pages", page_request)
+        self._assert_status_code_is(page_response, 400)
+        self._assert_error_code_is(page_response, error_codes.MALFORMED_ID)
+
     def test_400_on_invalid_embedded_content(self):
         dataset_populator = DatasetPopulator(self.galaxy_interactor)
         valid_id = dataset_populator.new_history()
@@ -108,6 +129,7 @@ class PageApiTestCase(BasePageApiTestCase):
         self.assertEqual(show_json["slug"], "pagetoshow")
         self.assertEqual(show_json["title"], "MY PAGE")
         self.assertEqual(show_json["content"], "<p>Page!</p>")
+        self.assertEqual(show_json["content_format"], "html")
 
     def test_403_on_unowner_show(self):
         response_json = self._create_valid_page_as("others_page_show@bx.psu.edu", "otherspageshow")

@@ -53,7 +53,8 @@ OUTPUT_LABEL_PATTERN = re.compile(r'output=\s*%s\s*' % ARG_VAL_CAPTURED_REGEX)
 INPUT_LABEL_PATTERN = re.compile(r'input=\s*%s\s*' % ARG_VAL_CAPTURED_REGEX)
 STEP_LABEL_PATTERN = re.compile(r'step=\s*%s\s*' % ARG_VAL_CAPTURED_REGEX)
 # STEP_OUTPUT_LABEL_PATTERN = re.compile(r'step_output=([\w_\-]+)/([\w_\-]+)')
-ID_PATTERN = re.compile(r'(workflow_id|history_dataset_id|history_dataset_collection_id|job_id)=([\d]+)')
+UNENCODED_ID_PATTERN = re.compile(r'(workflow_id|history_dataset_id|history_dataset_collection_id|job_id)=([\d]+)')
+ENCODED_ID_PATTERN = re.compile(r'(workflow_id|history_dataset_id|history_dataset_collection_id|job_id)=([a-z0-9]+)')
 GALAXY_FLAVORED_MARKDOWN_CONTAINER_LINE_PATTERN = re.compile(
     r"```\s*galaxy\s*"
 )
@@ -64,6 +65,23 @@ GALAXY_FENCED_BLOCK = re.compile(r'^```\s*galaxy\s*(.*?)^```', re.MULTILINE ^ re
 VALID_CONTAINER_START_PATTERN = re.compile(r"^```\s+[\w]+.*$")
 VALID_CONTAINER_END_PATTERN = re.compile(r"^```\s*$")
 WHITE_SPACE_ONLY_PATTERN = re.compile(r"^[\s]+$")
+
+
+def ready_galaxy_markdown_for_import(trans, external_galaxy_markdown):
+    """Convert from encoded IDs to decoded numeric IDs for storing in the DB."""
+
+    def _remap(container, line):
+        id_match = re.search(ENCODED_ID_PATTERN, line)
+        object_id = None
+        encoded_id = None
+        if id_match:
+            object_id = id_match.group(2)
+            decoded_id = trans.security.decode_id(object_id)
+            line = line.replace(id_match.group(), "%s=%d" % (id_match.group(1), decoded_id))
+        return (line, False)
+
+    internal_markdown = _remap_galaxy_markdown_calls(_remap, external_galaxy_markdown)
+    return internal_markdown
 
 
 def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
@@ -79,7 +97,7 @@ def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
     extra_rendering_data = {}
 
     def _remap(container, line):
-        id_match = re.search(ID_PATTERN, line)
+        id_match = re.search(UNENCODED_ID_PATTERN, line)
         object_id = None
         encoded_id = None
         if id_match:
@@ -360,5 +378,6 @@ def _split_markdown_lines(markdown):
 
 __all__ = (
     'ready_galaxy_markdown_for_export',
+    'ready_galaxy_markdown_for_import',
     'resolve_invocation_markdown',
 )

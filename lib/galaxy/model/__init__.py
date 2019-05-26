@@ -5754,12 +5754,14 @@ class Page(Dictifiable, RepresentById):
 
 
 class PageRevision(Dictifiable, RepresentById):
-    dict_element_visible_keys = ['id', 'page_id', 'title', 'content']
+    DEFAULT_CONTENT_FORMAT = 'html'
+    dict_element_visible_keys = ['id', 'page_id', 'title', 'content', 'content_format']
 
     def __init__(self):
         self.user = None
         self.title = None
         self.content = None
+        self.content_format = PageRevision.DEFAULT_CONTENT_FORMAT
 
     def to_dict(self, view='element'):
         rval = super(PageRevision, self).to_dict(view=view)
