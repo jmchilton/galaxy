@@ -16,7 +16,7 @@ from xml.etree import ElementTree
 import packaging.version
 import webob.exc
 from mako.template import Template
-from six import itervalues, string_types
+from six import itervalues, string_types, iteritems
 from six.moves.urllib.parse import unquote_plus
 from webob.compat import cgi_FieldStorage
 
@@ -2483,14 +2483,14 @@ class CwlCommandBindingTool(Tool):
             }
 
         # prevent unset optional file to trigger 'ValidationException' exception
-        input_json = {k:v for k, v in input_json.iteritems() if not (isinstance(v, dict) and v.get('class') == 'File' and v.get('location') == 'None')}
+        input_json = {k:v for k, v in iteritems(input_json) if not (isinstance(v, dict) and v.get('class') == 'File' and v.get('location') == 'None')}
 
         # prevent empty string
-        input_json = {k:v for k, v in input_json.iteritems() if v != ''}
+        input_json = {k:v for k, v in iteritems(input_json) if v != ''}
 
         # handle 'Directory' type (uncompress tar file)
-        for k, v in input_json.iteritems():
-            if isinstance(v, dict) and v['class'] == 'Directory':
+        for k, v in iteritems(input_json):
+            if isinstance(v, dict) and 'class' in v and v['class'] == 'Directory':
                 if 'archive_nameext' in v and v['archive_nameext'] == '.tar':
 
                     tar_file_location = v['archive_location']
