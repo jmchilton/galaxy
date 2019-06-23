@@ -757,7 +757,7 @@ class WorkflowProxy(object):
         return input_connections_by_step
 
     def to_dict(self):
-        name = os.path.basename(self._workflow_path or 'TODO - derive a name from ID')
+        name = os.path.basename(self._workflow.tool.get('label') or self._workflow_path or 'TODO - derive a name from ID')
         steps = {}
 
         step_proxies = self.step_proxies()
