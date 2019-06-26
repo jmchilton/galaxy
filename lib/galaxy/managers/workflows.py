@@ -3,6 +3,7 @@ from __future__ import absolute_import
 import json
 import logging
 import os
+import tempfile
 import uuid
 from collections import namedtuple
 
@@ -308,7 +309,6 @@ class WorkflowContentsManager(UsesAnnotations):
             # create a temporary file for the workflow if it is provided
             # as JSON, to make it parseable by the WorkflowProxy
             if workflow_path is None:
-                import tempfile, os
                 f = tempfile.NamedTemporaryFile(delete=False)
                 json.dump(as_dict, f)
                 workflow_path = f.name

@@ -478,7 +478,7 @@ class WorkflowProgress(object):
                 raise modules.DelayedWorkflowEvaluation(why=delayed_why)
 
         is_hda = isinstance(replacement, model.HistoryDatasetAssociation)
-        is_hdca = isinstance(replacement, model.HistoryDatasetCollectionAssociation, model.DatasetCollection)
+        is_hdca = isinstance(replacement, (model.HistoryDatasetCollectionAssociation, model.DatasetCollection))
         if not is_data and (is_hda or is_hdca):
             dataset_instances = []
             if is_hda:
