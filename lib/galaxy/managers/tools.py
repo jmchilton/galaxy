@@ -6,7 +6,7 @@ from sqlalchemy import sql
 from galaxy import exceptions
 from galaxy import model
 from galaxy.exceptions import DuplicatedIdentifierException
-from galaxy.tools.cwl import tool_proxy, tool_proxy_from_persistent_representation
+from galaxy.tool_util.cwl import tool_proxy
 from .base import ModelManager
 
 log = logging.getLogger(__name__)

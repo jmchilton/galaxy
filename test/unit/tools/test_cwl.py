@@ -9,11 +9,10 @@ from uuid import uuid4
 
 import galaxy.model
 
-from galaxy.tools.cwl import tool_proxy as real_tool_proxy
-from galaxy.tools.cwl.parser import ToolProxy, tool_proxy_from_persistent_representation, _to_cwl_tool_object
-from galaxy.tools.cwl import workflow_proxy
-from galaxy.tools.cwl.representation import USE_FIELD_TYPES
-
+from galaxy.tool_util.cwl import tool_proxy as real_tool_proxy
+from galaxy.tool_util.cwl.parser import tool_proxy_from_persistent_representation, _to_cwl_tool_object
+from galaxy.tool_util.cwl import workflow_proxy
+from galaxy.tool_util.cwl.representation import USE_FIELD_TYPES
 from galaxy.tools.parser.cwl import CWL_DEFAULT_FILE_OUTPUT
 from galaxy.tools.parser.factory import get_tool_source
 
@@ -562,7 +561,7 @@ class CwlToolObjectTestCase(TestCase, tools_support.UsesApp, tools_support.UsesT
         self._init_tool(tool_path=_cwl_tool_path("v1.0/default_path.cwl"))
         print("TOOL IS %s" % self.tool)
         hda = self._new_hda()
-        from galaxy.tools.cwl import to_cwl_job
+        from galaxy.tool_util.cwl import to_cwl_job
         from galaxy.tools.parameters import populate_state
         errors = {}
         cwl_inputs = {

@@ -3,6 +3,7 @@ import os
 import uuid
 
 from galaxy import model
+from galaxy.tool_util.cwl.util import abs_path
 from galaxy.util import ExecutionTimer
 from galaxy.util.odict import odict
 from galaxy.workflow import modules
@@ -512,7 +513,6 @@ class WorkflowProgress(object):
         app = trans.app
         history = self.workflow_invocation.history
 
-        from galaxy.tools.cwl.util import abs_path
         relative_to = "/"  # TODO
         path = abs_path(as_dict_value.get("location"), relative_to)
 

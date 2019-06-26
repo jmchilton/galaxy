@@ -24,7 +24,7 @@ from galaxy import (
 )
 from galaxy.jobs.actions.post import ActionBox
 from galaxy.model.item_attrs import UsesAnnotations
-from galaxy.tools.cwl import workflow_proxy
+from galaxy.tool_util.cwl import workflow_proxy
 from galaxy.tools.parameters import (
     params_to_incoming,
     visit_input_values
@@ -304,7 +304,7 @@ class WorkflowContentsManager(UsesAnnotations):
             import_options.deduplicate_subworkflows = True
             as_dict = python_to_workflow(as_dict, galaxy_interface, workflow_directory=workflow_directory, import_options=import_options)
         elif workflow_class == "Workflow":
-            from galaxy.tools.cwl import workflow_proxy
+            from galaxy.tool_util.cwl import workflow_proxy
             # create a temporary file for the workflow if it is provided
             # as JSON, to make it parseable by the WorkflowProxy
             if workflow_path is None:

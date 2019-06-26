@@ -10,7 +10,7 @@ from base.populators import (
 )
 from base.populators import skip_without_tool
 
-from galaxy.tools.cwl.representation import USE_FIELD_TYPES
+from galaxy.tool_util.cwl.representation import USE_FIELD_TYPES
 
 IS_OS_X = _platform == "darwin"
 

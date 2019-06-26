@@ -18,6 +18,7 @@ from galaxy.exceptions import ToolMissingException
 from galaxy.jobs.actions.post import ActionBox
 from galaxy.model import PostJobAction
 from galaxy.model.dataset_collections import matching
+from galaxy.tool_util.cwl.util import set_basename_and_derived_properties
 from galaxy.tool_util.parser.output_objects import ToolExpressionOutput
 from galaxy.tools import (
     DatabaseOperationTool,
@@ -25,7 +26,6 @@ from galaxy.tools import (
     ToolInputsNotReadyException
 )
 from galaxy.tools.actions import filter_output
-from galaxy.tools.cwl.util import set_basename_and_derived_properties
 from galaxy.tools.execute import execute, MappingParameters, PartialJobExecution
 from galaxy.tools.parameters import (
     check_param,

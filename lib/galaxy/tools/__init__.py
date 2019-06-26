@@ -2582,7 +2582,7 @@ class GalacticCwlTool(CwlCommandBindingTool):
     tool_type = 'galactic_cwl'
 
     def param_dict_to_cwl_inputs(self, param_dict, local_working_directory):
-        from galaxy.tools.cwl.representation import galactic_flavored_to_cwl_job
+        from galaxy.tool_util.cwl.representation import galactic_flavored_to_cwl_job
         input_json = galactic_flavored_to_cwl_job(self, param_dict, local_working_directory)
         return input_json
 
@@ -2593,7 +2593,7 @@ class CwlTool(CwlCommandBindingTool):
 
     def param_dict_to_cwl_inputs(self, param_dict, local_working_directory):
         """Map Galaxy API inputs description to a CWL job json."""
-        from galaxy.tools.cwl import to_cwl_job
+        from galaxy.tool_util.cwl import to_cwl_job
         input_json = to_cwl_job(self, param_dict, local_working_directory)
         return input_json
 

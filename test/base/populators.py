@@ -24,8 +24,7 @@ from gxformat2 import (
 from pkg_resources import resource_string
 from six import StringIO
 
-from galaxy.tools.verify.test_data import TestDataResolver
-from galaxy.tools.cwl.util import (
+from galaxy.tool_util.cwl.util import (
     FileLiteralTarget,
     FileUploadTarget,
     DirectoryUploadTarget,
@@ -36,6 +35,7 @@ from galaxy.tools.cwl.util import (
     output_to_cwl_json,
     tool_response_to_output,
 )
+from galaxy.tools.verify.test_data import TestDataResolver
 from galaxy.util import galaxy_root_path, unicodify
 
 from . import api_asserts
