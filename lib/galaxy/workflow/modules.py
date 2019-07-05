@@ -4,7 +4,8 @@ Modules used in building workflows
 import json
 import logging
 import re
-from collections import OrderedDict
+from collections import defaultdict, OrderedDictss
+from copy import copy
 from xml.etree.ElementTree import (
     Element,
     XML
@@ -673,6 +674,7 @@ class InputParameterModule(WorkflowModule):
                 <option value="float">Float</option>
                 <option value="boolean">Boolean (True or False)</option>
                 <option value="color">Color</option>
+                <option value="select">Select List</option>
             </param>
             '''))
         for i, option in enumerate(input_parameter_type.static_options):
@@ -684,10 +686,10 @@ class InputParameterModule(WorkflowModule):
         return OrderedDict([("parameter_type", input_parameter_type),
                             ("optional", BooleanToolParameter(None, Element("param", name="optional", label="Optional", type="boolean", value=optional)))])
 
-    def get_runtime_inputs(self, **kwds):
+    def get_runtime_inputs(self, connections=None, **kwds):
         parameter_type = self.state.inputs.get("parameter_type", self.default_parameter_type)
         optional = self.state.inputs.get("optional", self.default_optional)
-        if parameter_type not in ["text", "boolean", "integer", "float", "color"]:
+        if parameter_type not in ["text", "boolean", "integer", "float", "color", "select"]:
             raise ValueError("Invalid parameter type for workflow parameters encountered.")
         parameter_class = parameter_types[parameter_type]
         parameter_kwds = {}
@@ -697,6 +699,59 @@ class InputParameterModule(WorkflowModule):
         # TODO: Use a dict-based description from YAML tool source
         element = Element("param", name="input", label=self.label, type=parameter_type, optional=str(optional), **parameter_kwds)
         input = parameter_class(None, element)
+
+        # Retrieve possible runtime options for 'select' type inputs
+        if parameter_type == 'select' and connections:
+            static_options = []
+            for connection in connections:
+                tool_inputs = connection.input_step.module.tool.inputs
+                # Account for select options within conditionals
+                if connection.input_name not in tool_inputs and "|" in connection.input_name:
+                    param_name, case_name = connection.input_name.split("|", 1)
+                    if param_name in tool_inputs:
+                        param = tool_inputs[param_name]
+                    elif re.match('.+_\\d+', param_name):  # check for repeat label
+                        param_name, param_idx = param_name.rsplit('_', 1)
+                        param = tool_inputs[param_name]
+                    while param.type in ("conditional", "repeat"):
+                        if "|" in case_name:
+                            param_name, case_name = case_name.split("|", 1)
+                            if param.type == "conditional":
+                                sel_cases = [case for case in param.cases if param_name in case.inputs]
+                                if sel_cases:
+                                    sel_case = sel_cases[0]
+                                elif re.match(r'.+_\d+', param_name):  # check for repeat label
+                                    param_name, param_idx = param_name.rsplit('_', 1)
+                                    sel_case = [case for case in param.cases if param_name in case.inputs][0]
+                                param = sel_case.inputs[param_name]
+                            elif param.type == "repeat":
+                                if param_name in param.inputs:
+                                    param = param.inputs[param_name]
+                                elif re.match(r'.+_\d+', param_name):  # check for repeat label
+                                    param_name, param_idx = param_name.rsplit('_', 1)
+                                    param = param.inputs[param_name]
+                        else:
+                            if param.type == "conditional":
+                                sel_case = [case for case in param.cases if case_name in case.inputs][0]
+                                input_data = sel_case.inputs[case_name]
+                            elif param.type == "repeat":
+                                input_data = param.inputs[case_name]
+                            break
+                else:
+                    input_data = tool_inputs[connection.input_name]
+                static_options.append(input_data.get_options(self.trans, {}))  # Aggregation input select options from several connections
+            if static_options:
+                # Intersection based on values.
+                intxn_vals = set.intersection(*({option[1] for option in options} for options in static_options))
+                intxn_opts = {option for options in static_options for option in options if option[1] in intxn_vals}
+                d = defaultdict(set)  # Collapse labels with same values
+                for label, value, selected in intxn_opts:
+                    d[value].add(label)
+                intxn_input = copy(input_data)
+                intxn_input.static_options = [(', '.join(label), value, False) for value, label in d.items()]
+                intxn_input.legal_values = intxn_vals
+                input.options = intxn_input
+                input.display = input_data.display
         return dict(input=input)
 
     def get_runtime_state(self):
