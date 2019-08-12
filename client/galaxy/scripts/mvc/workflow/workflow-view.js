@@ -47,6 +47,7 @@ function reset_tool_search(initValue) {
 
         // Reset search input.
         tool_menu_frame.find("#search-spinner").hide();
+        tool_menu_frame.find("#search-clear-btn").show();
         if (initValue) {
             var search_input = tool_menu_frame.find("#tool-search-query");
             search_input.val("search tools");
@@ -155,6 +156,7 @@ export default Backbone.View.extend({
                     }
                     // Start a new ajax-request in X ms
                     $("#search-spinner").show();
+                    $("#search-clear-btn").hide();
                     this.timer = window.setTimeout(() => {
                         $.get(
                             self.urls.tool_search,
@@ -209,6 +211,7 @@ export default Backbone.View.extend({
                                     $("#search-no-results").show();
                                 }
                                 $("#search-spinner").hide();
+                                $("#search-clear-btn").show();
                             },
                             "json"
                         );
@@ -287,7 +290,9 @@ export default Backbone.View.extend({
                 $("#workflow-version-switch").unbind("change");
                 if (this.value != self.workflow.workflow_version) {
                     if (self.workflow && self.workflow.has_changes) {
-                        const r = window.confirm("There are unsaved changes to your workflow which will be lost. Continue ?");
+                        const r = window.confirm(
+                            "There are unsaved changes to your workflow which will be lost. Continue ?"
+                        );
                         if (r == false) {
                             // We rebuild the version select list, to reset the selected version
                             self.build_version_select();
@@ -769,7 +774,7 @@ export default Backbone.View.extend({
         var node = new Node(this, { element: $f });
         node.type = type;
         node.content_id = content_id;
-        var tmp = `<div><img height='16' align='middle' src='${getAppRoot()}static/images/loading_small_white_bg.gif'/> loading tool info...</div>`;
+        var tmp = `<div><img alt="loading" height='16' align='middle' src='${getAppRoot()}static/images/loading_small_white_bg.gif'/> loading tool info...</div>`;
         $f.find(".toolFormBody").append(tmp);
         // Fix width to computed width
         // Now add floats

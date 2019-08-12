@@ -69,7 +69,8 @@ class ConditionalDependencies(object):
                     pass
             else:
                 try:
-                    job_conf_dict = yaml.safe_load(job_conf_path)
+                    with open("job_conf_path", "r") as f:
+                        job_conf_dict = yaml.safe_load(f)
                     load_job_config_dict(job_conf_dict)
                 except (OSError, IOError):
                     pass
@@ -135,7 +136,7 @@ class ConditionalDependencies(object):
     def check_drmaa(self):
         return ("galaxy.jobs.runners.drmaa:DRMAAJobRunner" in self.job_runners or
                 "galaxy.jobs.runners.slurm:SlurmJobRunner" in self.job_runners or
-                "galaxy.jobs.runners.drmaauniva:DRMAAUnivaJobRunner" in self.job_runners)
+                "galaxy.jobs.runners.univa:UnivaJobRunner" in self.job_runners)
 
     def check_galaxycloudrunner(self):
         return ("galaxycloudrunner.rules" in self.job_rule_modules)

@@ -17,7 +17,6 @@ import Circster from "viz/circster";
 export { PhylovizView as phyloviz } from "viz/phyloviz";
 export { SweepsterVisualization, SweepsterVisualizationView } from "viz/sweepster";
 import GalaxyLibrary from "galaxy.library";
-import AdminToolshed from "admin.toolshed";
 export { default as pages } from "galaxy.pages";
 export { createTabularDatasetChunkedView } from "mvc/dataset/data";
 import { HistoryCollection } from "mvc/history/history-model";
@@ -32,10 +31,9 @@ export { default as HDAModel } from "mvc/history/hda-model";
 export { default as LegacyGridView } from "legacy/grid/grid-view";
 export { create_chart, create_histogram } from "reports/run_stats";
 export { default as ToolshedGroups } from "toolshed/toolshed.groups";
+export { default as IES } from "galaxy.interactive_environments";
 
-export function adminToolshed(options) {
-    new AdminToolshed.GalaxyApp(options);
-}
+export { Toast } from "ui/toast"; // TODO: remove when external consumers are updated/gone (IES right now)
 
 export function trackster(options) {
     new TracksterUIView(options);
@@ -76,6 +74,7 @@ export function multiHistory(options) {
 export { default as panels } from "layout/panel";
 export { show_in_overlay, hide_modal, show_message, show_modal, Modal } from "layout/modal";
 export { make_popupmenu, make_popup_menus } from "ui/popupmenu";
+export { render_embedded_items } from "mvc/embedded-objects";
 export { default as async_save_text } from "utils/async-save-text";
 
 // Previously "chart"
@@ -97,6 +96,8 @@ export const chartUtilities = {
 export { initMasthead } from "components/Masthead/initMasthead";
 export { panelManagement } from "onload/globalInits/panelManagement";
 export { mountMakoTags } from "components/Tags";
+export { mountJobMetrics } from "components/JobMetrics";
+export { mountJobParameters } from "components/JobParameters";
 
 // Used in common.mako
 export { default as store } from "storemodern";

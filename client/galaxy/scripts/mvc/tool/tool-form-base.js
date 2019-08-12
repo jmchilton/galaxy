@@ -12,6 +12,7 @@ import Ui from "mvc/ui/ui-misc";
 import FormBase from "mvc/form/form-view";
 import Webhooks from "mvc/webhooks";
 import Citations from "components/Citations.vue";
+import xrefs from "components/xrefs.vue";
 import Vue from "vue";
 import axios from "axios";
 
@@ -75,15 +76,9 @@ export default FormBase.extend({
                 `<b>${options.name}</b> ${options.description} (Galaxy Version ${options.version})`,
             operations: !options.hide_operations && this._operations(),
             onchange: function() {
-                const Galaxy = getGalaxyInstance();
                 self.deferred.reset();
                 self.deferred.execute(process => {
                     self.model.get("postchange")(process, self);
-                    if (self.model.get("listen_to_history")) {
-                        process.then(() => {
-                            self.stopListening(Galaxy.currHistoryPanel.collection);
-                        });
-                    }
                 });
             }
         });
@@ -279,6 +274,17 @@ export default FormBase.extend({
             var vm = document.createElement("div");
             $el.append(vm);
             new citationInstance({
+                propsData: {
+                    id: options.id,
+                    source: "tools"
+                }
+            }).$mount(vm);
+        }
+        if (options.xrefs && options.xrefs.length) {
+            var xrefInstance = Vue.extend(xrefs);
+            vm = document.createElement("div");
+            $el.append(vm);
+            new xrefInstance({
                 propsData: {
                     id: options.id,
                     source: "tools"

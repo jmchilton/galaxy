@@ -7,7 +7,8 @@ import tempfile
 from six import string_types
 
 from galaxy import model
-from galaxy.jobs.datasets import dataset_path_rewrites
+from galaxy.job_execution.datasets import dataset_path_rewrites
+from galaxy.model.none_like import NoneDataset
 from galaxy.tools import global_tool_errors
 from galaxy.tools.parameters import (
     visit_input_values,
@@ -38,7 +39,6 @@ from galaxy.util import (
     unicodify,
 )
 from galaxy.util.bunch import Bunch
-from galaxy.util.none_like import NoneDataset
 from galaxy.util.object_wrapper import wrap_with_safe_string
 from galaxy.util.template import fill_template
 from galaxy.work.context import WorkRequestContext
@@ -519,9 +519,10 @@ class ToolEvaluator(object):
             environment_variable_template = environment_variable_def["template"]
             fd, config_filename = tempfile.mkstemp(dir=directory)
             os.close(fd)
-            self.__write_workdir_file(config_filename, environment_variable_template, param_dict)
+            self.__write_workdir_file(config_filename, environment_variable_template, param_dict, strip=environment_variable_def.get("strip", False))
             config_file_basename = os.path.basename(config_filename)
-            environment_variable["value"] = "`cat %s`" % config_file_basename
+            # environment setup in job file template happens before `cd $working_directory`
+            environment_variable["value"] = '`cat "$_GALAXY_JOB_DIR/%s"`' % config_file_basename
             environment_variable["raw"] = True
             environment_variables.append(environment_variable)
 
@@ -573,11 +574,13 @@ class ToolEvaluator(object):
 
         return json.dumps(wrapped_json.json_wrap(self.tool.inputs, self.param_dict, handle_files=handle_files)), False
 
-    def __write_workdir_file(self, config_filename, content, context, is_template=True):
+    def __write_workdir_file(self, config_filename, content, context, is_template=True, strip=False):
         if is_template:
             value = fill_template(content, context=context, python_template_version=self.tool.python_template_version)
         else:
             value = unicodify(content)
+        if strip:
+            value = value.strip()
         with io.open(config_filename, "w", encoding='utf-8') as f:
             f.write(value)
         # For running jobs as the actual user, ensure the config file is globally readable

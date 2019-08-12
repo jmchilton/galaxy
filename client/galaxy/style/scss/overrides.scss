@@ -25,7 +25,7 @@ pre {
 }
 
 .btn-secondary {
-    border: 1px solid $border-default-color;
+    border: $border-default;
 }
 
 .popover .popover-body {
@@ -33,17 +33,52 @@ pre {
 }
 
 .dropdown-menu {
-    max-width: auto;
     .dropdown-item {
         text-decoration: none;
     }
 }
+
+.dropdown-item,
+.dropdown-header {
+    color: $text-color;
+}
+
+// Input fields
 
 input[type="checkbox"],
 input[type="radio"] {
     margin-left: 0.5ex;
     margin-right: 0.5ex;
     float: left;
+}
+
+select {
+    padding: 2px;
+    font-size: $font-size-base;
+    line-height: $line-height-base;
+}
+
+select,
+input,
+textarea {
+    font: inherit;
+}
+
+textarea,
+input[type="text"],
+input[type="password"] {
+    font-size: $font-size-base;
+    line-height: $line-height-base;
+}
+
+// Always style buttons and submits as bootstrap buttons
+input[type="submit"],
+button {
+    @extend .btn;
+    @extend .btn-secondary;
+    &.btn-primary {
+        @extend .btn-primary;
+    }
 }
 
 // Modal -- wider by default, scroll like Trello
@@ -65,6 +100,14 @@ input[type="radio"] {
     @extend .mb-2;
 }
 
+.tabbable {
+    .nav-tabs {
+        .nav-item {
+            cursor: pointer;
+        }
+    }
+}
+
 // Don't make blockquotes very large since they're often used in the toolform
 // and this does not look nice to have a quoted portion of a tool's help
 // documentation be rendered 150% larger.
@@ -84,4 +127,22 @@ pre.code {
     background: #1d1f21;
     color: white;
     padding: 1em;
+}
+
+// increase visibility of links within alert boxes
+.alert-info,
+.alert-danger,
+.alert-warning,
+.alert-success {
+    a {
+        font-weight: bold;
+    }
+}
+
+// increase visibility of dropdown menu section headers
+.dropdown-header {
+    font-size: 1rem;
+    color: $brand-dark;
+    padding: 0.5rem 1.5rem 0.5rem 1rem;
+    font-weight: bold;
 }

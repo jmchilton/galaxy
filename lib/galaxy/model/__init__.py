@@ -31,6 +31,7 @@ from sqlalchemy import (
     not_,
     or_,
     select,
+    text,
     true,
     type_coerce,
     types)
@@ -42,6 +43,7 @@ from sqlalchemy.orm import (
 )
 from sqlalchemy.schema import UniqueConstraint
 
+import galaxy.exceptions
 import galaxy.model.metadata
 import galaxy.model.orm.now
 import galaxy.model.tags
@@ -288,11 +290,13 @@ class JobLike(object):
 
     def set_streams(self, tool_stdout, tool_stderr, job_stdout=None, job_stderr=None, job_messages=None):
         def shrink_and_unicodify(what, stream):
-            stream = galaxy.util.unicodify(stream) or u''
-            if (len(stream) > galaxy.util.DATABASE_MAX_STRING_SIZE):
-                stream = galaxy.util.shrink_string_by_size(tool_stdout, galaxy.util.DATABASE_MAX_STRING_SIZE, join_by="\n..\n", left_larger=True, beginning_on_size_error=True)
-                log.info("%s for %s %d is greater than %s, only a portion will be logged to database", what, type(self), self.id, galaxy.util.DATABASE_MAX_STRING_SIZE_PRETTY)
-            return stream
+            if len(stream) > galaxy.util.DATABASE_MAX_STRING_SIZE:
+                log.info("%s for %s %d is greater than %s, only a portion will be logged to database",
+                         what,
+                         type(self),
+                         self.id,
+                         galaxy.util.DATABASE_MAX_STRING_SIZE_PRETTY)
+            return galaxy.util.shrink_and_unicodify(stream)
 
         self.tool_stdout = shrink_and_unicodify('tool_stdout', tool_stdout)
         self.tool_stderr = shrink_and_unicodify('tool_stderr', tool_stderr)
@@ -319,26 +323,27 @@ class JobLike(object):
 
         return "%s[%s,tool_id=%s]" % (self.__class__.__name__, extra, self.tool_id)
 
-    def get_stdout(self):
-        stdout = self.tool_stdout
+    @property
+    def stdout(self):
+        stdout = self.tool_stdout or ''
         if self.job_stdout:
             stdout += "\n" + self.job_stdout
         return stdout
 
-    def set_stdout(self, stdout):
+    @stdout.setter
+    def stdout(self, stdout):
         raise NotImplementedError("Attempt to set stdout, must set tool_stdout or job_stdout")
 
-    def get_stderr(self):
-        stderr = self.tool_stderr
+    @property
+    def stderr(self):
+        stderr = self.tool_stderr or ''
         if self.job_stderr:
             stderr += "\n" + self.job_stderr
         return stderr
 
-    def set_stderr(self, stderr):
+    @stderr.setter
+    def stderr(self, stderr):
         raise NotImplementedError("Attempt to set stdout, must set tool_stderr or job_stderr")
-
-    stdout = property(get_stdout, set_stdout)
-    stderr = property(get_stderr, set_stderr)
 
 
 class User(Dictifiable, RepresentById):
@@ -1633,13 +1638,10 @@ class History(HasTags, Dictifiable, UsesAnnotations, HasName, RepresentById):
         set_genome = genome_build not in [None, '?']
         for i, dataset in enumerate(datasets):
             dataset.hid = base_hid + i
-            # Don't let SA manage this.
-            delattr(dataset, "history")
+            dataset.history = self
             dataset.history_id = cached_id(self)
             if set_genome:
                 self.genome_build = genome_build
-        for dataset in datasets:
-            dataset.history_id = cached_id(self)
         return datasets
 
     def add_dataset_collection(self, history_dataset_collection, set_hid=True):
@@ -2156,8 +2158,10 @@ class Dataset(StorableObject, RepresentById):
     def get_file_name(self):
         if not self.external_filename:
             assert self.object_store is not None, "Object Store has not been initialized for dataset %s" % self.id
-            filename = self.object_store.get_filename(self)
-            return filename
+            if self.object_store.exists(self):
+                return self.object_store.get_filename(self)
+            else:
+                return ''
         else:
             filename = self.external_filename
         # Make filename absolute
@@ -2175,9 +2179,15 @@ class Dataset(StorableObject, RepresentById):
         # actual database column so if SA instantiates this object - the
         # attribute won't exist yet.
         if not getattr(self, "external_extra_files_path", None):
-            return self.object_store.get_filename(self, dir_only=True, extra_dir=self._extra_files_rel_path)
+            if self.object_store.exists(self, dir_only=True, extra_dir=self._extra_files_rel_path):
+                return self.object_store.get_filename(self, dir_only=True, extra_dir=self._extra_files_rel_path)
+            return ''
         else:
             return os.path.abspath(self.external_extra_files_path)
+
+    def create_extra_files_path(self):
+        if not self.extra_files_path_exists():
+            self.object_store.create(self, dir_only=True, extra_dir=self._extra_files_rel_path)
 
     def set_extra_files_path(self, extra_files_path):
         if not extra_files_path:
@@ -2266,11 +2276,12 @@ class Dataset(StorableObject, RepresentById):
     def full_delete(self):
         """Remove the file and extra files, marks deleted and purged"""
         # os.unlink( self.file_name )
-        self.object_store.delete(self)
+        try:
+            self.object_store.delete(self)
+        except galaxy.exceptions.ObjectNotFound:
+            pass
         if self.object_store.exists(self, extra_dir=self._extra_files_rel_path, dir_only=True):
             self.object_store.delete(self, entire_dir=True, extra_dir=self._extra_files_rel_path, dir_only=True)
-        # if os.path.exists( self.extra_files_path ):
-        #     shutil.rmtree( self.extra_files_path )
         # TODO: purge metadata files
         self.deleted = True
         self.purged = True
@@ -2389,6 +2400,14 @@ class DatasetInstance(object):
         self.dataset = dataset
         self.parent_id = parent_id
         self.validation_errors = validation_errors
+
+    @property
+    def peek(self):
+        return self._peek
+
+    @peek.setter
+    def peek(self, peek):
+        self._peek = unicodify(peek, strip_null=True)
 
     def update(self):
         self.update_time = galaxy.model.orm.now.now()
@@ -3407,6 +3426,7 @@ class LibraryDataset(RepresentById):
                     uploaded_by=ldda.user.email,
                     message=ldda.message,
                     date_uploaded=ldda.create_time.isoformat(),
+                    update_time=ldda.update_time.isoformat(),
                     file_size=int(ldda.get_size()),
                     file_ext=ldda.ext,
                     data_type=ldda.datatype.__class__.__module__ + '.' + ldda.datatype.__class__.__name__,
@@ -3575,6 +3595,32 @@ class LibraryDatasetDatasetAssociation(DatasetInstance, HasName, RepresentById):
             rval['metadata_' + name] = val
         return rval
 
+    def update_parent_folder_update_times(self):
+        # sets the update_time for all continaing folders up the tree
+        ldda = self
+
+        sql = text(
+            '''
+                WITH RECURSIVE parent_folders_of(folder_id) AS
+                    (SELECT folder_id
+                    FROM library_dataset
+                    WHERE id = :library_dataset_id
+                    UNION ALL
+                    SELECT library_folder.parent_id
+                    FROM library_folder, parent_folders_of
+                    WHERE library_folder.id = parent_folders_of.folder_id )
+                UPDATE library_folder
+                SET update_time =
+                    (SELECT update_time
+                    FROM library_dataset_dataset_association
+                    WHERE id = :ldda_id)
+                WHERE exists (SELECT 1 FROM parent_folders_of
+                    WHERE library_folder.id = parent_folders_of.folder_id)
+            ''').execution_options(autocommit=True)
+        ret = object_session(self).execute(sql, {'library_dataset_id': ldda.library_dataset_id, 'ldda_id': ldda.id})
+        if ret.rowcount < 1:
+            log.warn('Attempt to updated parent folder times failed: {0} records updated.'.format(ret.rowcount))
+
 
 class ExtendedMetadata(RepresentById):
     def __init__(self, data):
@@ -3662,7 +3708,7 @@ class ImplicitlyConvertedDatasetAssociation(RepresentById):
             try:
                 os.unlink(self.file_name)
             except Exception as e:
-                log.error("Failed to purge associated file (%s) from disk: %s" % (self.file_name, e))
+                log.error("Failed to purge associated file (%s) from disk: %s" % (self.file_name, unicodify(e)))
 
 
 DEFAULT_COLLECTION_NAME = "Unnamed Collection"
