@@ -350,17 +350,19 @@ class AppSchema(Schema):
             config_all = _ordered_load(f)
         self.raw_schema = config_all
         app_schema = config_all["mapping"][app_name]
+        reloadable_options = []
+        for key, option in app_schema["mapping"].items():
+            if option.get("reloadable", False):
+                reloadable_options.append(key)
         super(AppSchema, self).__init__(app_schema["mapping"])
         self.description = config_all.get("desc", None)
+        self.reloadable_options = reloadable_options
 
-    def get_app_option(self, name):
-        try:
-            raw_option = self.app_schema[name]
-        except KeyError:
-            raw_option = UNKNOWN_OPTION
-        option = OPTION_DEFAULTS.copy()
-        option.update(raw_option)
-        return option
+    def get_reloadable_option_defaults(self):
+        option_dict = {}
+        for key in self.reloadable_options:
+            option_dict[key] = self.get_app_option(key)["default"]
+        return option_dict
 
 
 GALAXY_APP = App(

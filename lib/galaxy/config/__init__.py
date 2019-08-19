@@ -42,6 +42,7 @@ from galaxy.util.properties import (
     read_properties_from_file,
     running_from_source,
 )
+from galaxy.webapps.config_manage import GALAXY_APP
 from galaxy.web.formatting import expand_pretty_datetime_format
 from galaxy.web_stack import (
     get_stack_facts,
@@ -106,22 +107,7 @@ LOGGING_CONFIG_DEFAULT = {
 #      self.foo must contain the initially loaded value. Otherwise it
 #      will be impossible to determine at runtime whether foo has been
 #      modified and needs to be reloaded.
-RELOADABLE_CONFIG_OPTIONS = {
-    'message_box_content': None,
-    'welcome_url': '/static/welcome.html',
-    'tool_name_boost': 9,
-    'tool_section_boost': 3,
-    'tool_description_boost': 2,
-    'tool_label_boost': 1,
-    'tool_stub_boost': 5,
-    'tool_help_boost': 0.5,
-    'tool_search_limit': 20,
-    'tool_enable_ngram_search': False,
-    'tool_ngram_minsize': 3,
-    'tool_ngram_maxsize': 4,
-    'admin_users': '',
-    'cleanup_job': 'always',
-}
+RELOADABLE_CONFIG_OPTIONS = GALAXY_APP.schema.get_reloadable_option_defaults()
 
 
 def resolve_path(path, root):
