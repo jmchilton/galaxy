@@ -169,6 +169,10 @@ PULSAR_PARAM_SPECS = dict(
         map=int,
         default=None,
     ),
+    remote_id_prefix=dict(
+        map=str,
+        default=None
+    )
 )
 
 
@@ -509,8 +513,9 @@ class PulsarJobRunner(AsynchronousJobRunner):
             encoded_job_id,
             job_key
         )
+        remote_job_id = self._remote_job_id(job_id)
         get_client_kwds = dict(
-            job_id=str(job_id),
+            job_id=remote_job_id,
             files_endpoint=files_endpoint,
             env=env
         )
@@ -646,7 +651,8 @@ class PulsarJobRunner(AsynchronousJobRunner):
         # TODO: Determine why this is set when using normal message queue updates
         # but not CLI submitted MQ updates...
         raw_job_id = job.get_job_runner_external_id() or job_wrapper.job_id
-        job_state.job_id = str(raw_job_id)
+        galaxy_job_id = self._galaxy_job_id(raw_job_id)
+        job_state.job_id = galaxy_job_id
         job_state.runner_url = job_wrapper.get_job_runner_url()
         job_state.job_destination = job_wrapper.job_destination
         job_state.job_wrapper = job_wrapper
@@ -696,6 +702,19 @@ class PulsarJobRunner(AsynchronousJobRunner):
             requirements=requirements,
             installed_tool_dependencies=installed_tool_dependencies,
         )
+
+    def _remote_job_id(self, galaxy_job_id):
+        remote_job_id = str(galaxy_job_id)
+        if self.runner_params.remote_id_prefix:
+            remote_job_id = "%s%s" % (self.runner_params.remote_id_prefix, remote_job_id)
+        return remote_job_id
+
+    def _galaxy_job_id(self, remote_job_id):
+        if self.runner_params.remote_id_prefix:
+            galaxy_job_id = remote_job_id[len(self.runner_params.remote_id_prefix)]
+        else:
+            galaxy_job_id = remote_job_id
+        return galaxy_job_id
 
     @staticmethod
     def __dependency_resolution(pulsar_client):
@@ -813,14 +832,20 @@ class PulsarMQJobRunner(PulsarJobRunner):
         self.client_manager.ensure_has_ack_consumers()
 
     def __async_update(self, full_status):
-        job_id = None
+        galaxy_job_id = None
         try:
-            job_id = full_status["job_id"]
-            job, job_wrapper = self.app.job_manager.job_handler.job_queue.job_pair_for_id(job_id)
+            remote_job_id = full_status["job_id"]
+            if len(remote_job_id) == 32:
+                # It is a UUID
+                sa_session = self.app.model.context.current
+                galaxy_job_id = sa_session.query(model.Job).filter(model.Job.job_runner_external_id==remote_job_id).first().id
+            else:
+                galaxy_job_id = self._galaxy_job_id(remote_job_id)
+            job, job_wrapper = self.app.job_manager.job_handler.job_queue.job_pair_for_id(galaxy_job_id)
             job_state = self._job_state(job, job_wrapper)
             self._update_job_state_for_status(job_state, full_status["status"], full_status=full_status)
         except Exception:
-            log.exception("Failed to update Pulsar job status for job_id %s", job_id)
+            log.exception("Failed to update Pulsar job status for job_id %s", galaxy_job_id)
             raise
             # Nothing else to do? - Attempt to fail the job?
 
