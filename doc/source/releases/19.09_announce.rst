@@ -53,6 +53,31 @@ To update an existing Galaxy repository run:
 
 See the `community hub <https://galaxyproject.org/develop/source-code/>`__ for additional details regarding the source code locations.
 
+Deprecation Notices
+===================
+
+The following Toolshed related Galaxy API endpoints are considered deprecated and staged for removal in the next release
+
+* We intend to deprecate the following endpoints in `api/toolshed.py`:
+    * category
+    * repository
+    * search
+    * show
+    * status
+    * tool_json
+* We intend to deprecate the following endpoints in `api/toolshed_repositories.py`:
+    * check_for_updates
+    * exported_workflows
+    * get_latest_installable_revision
+    * import_workflow
+    * import_workflows
+    * install
+    * repair_repository_revision
+    * shed_category
+    * shed_repository
+    * shed_search
+    * status
+
 Release Notes
 ===========================================================
 
