@@ -65,6 +65,7 @@ The following Toolshed related Galaxy API endpoints are considered deprecated an
     * show
     * status
     * tool_json
+&nbsp;
 * We intend to deprecate the following endpoints in `api/toolshed_repositories.py`:
     * check_for_updates
     * exported_workflows
