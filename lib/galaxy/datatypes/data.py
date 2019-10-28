@@ -46,6 +46,7 @@ valid_strand = ['+', '-', '.']
 
 DOWNLOAD_FILENAME_PATTERN_DATASET = "Galaxy${hid}-[${name}].${ext}"
 DOWNLOAD_FILENAME_PATTERN_COLLECTION_ELEMENT = "Galaxy${hdca_hid}-[${hdca_name}__${element_identifier}].${ext}"
+DEFAULT_MAX_PEEK_SIZE = 1000000  # 1 MB
 
 
 class DatatypeValidation(object):
@@ -453,7 +454,7 @@ class Data(object):
                 return open(data.file_name, 'rb')
         if not os.path.exists(data.file_name):
             raise webob.exc.HTTPNotFound("File Not Found (%s)." % data.file_name)
-        max_peek_size = 1000000  # 1 MB
+        max_peek_size = DEFAULT_MAX_PEEK_SIZE  # 1 MB
         if isinstance(data.datatype, datatypes.text.Html):
             max_peek_size = 10000000  # 10 MB for html
         preview = util.string_as_bool(preview)

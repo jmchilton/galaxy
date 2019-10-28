@@ -10,15 +10,22 @@ potential history flavor would allow objects to be referenced by HID. This
 second idea is unimplemented, it is just an example of the general concept of
 context specific processing.
 """
+import base64
+import codecs
 import logging
+import os
 import re
+import shutil
+import tempfile
 
+import markdown
+from weasyprint import CSS, HTML
+
+from galaxy.datatypes.data import DEFAULT_MAX_PEEK_SIZE
 from galaxy.exceptions import MalformedContents, MalformedId
-from galaxy.managers.collections import DatasetCollectionManager
-from galaxy.managers.hdas import HDAManager
 from galaxy.managers.hdcas import HDCASerializer
 from galaxy.managers.jobs import JobManager
-from galaxy.managers.workflows import WorkflowsManager
+from galaxy.util.sanitize_html import sanitize_html
 from .markdown_parse import GALAXY_MARKDOWN_FUNCTION_CALL_LINE, validate_galaxy_markdown
 
 log = logging.getLogger(__name__)
@@ -66,10 +73,10 @@ def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
     external links. Return expanded markdown and extra data useful for rendering
     custom container tags.
     """
-    hdas_manager = HDAManager(trans.app)
-    workflows_manager = WorkflowsManager(trans.app)
+    hda_manager = trans.app.hda_manager
+    workflow_manager = trans.app.workflow_manager
     job_manager = JobManager(trans.app)
-    collection_manager = DatasetCollectionManager(trans.app)
+    collection_manager = trans.app.dataset_collections_service
 
     extra_rendering_data = {}
 
@@ -95,22 +102,22 @@ def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
 
         if container == "history_dataset_display":
             assert object_id is not None
-            hda = hdas_manager.get_accessible(object_id, trans.user)
+            hda = hda_manager.get_accessible(object_id, trans.user)
             if "history_datasets" not in extra_rendering_data:
                 extra_rendering_data["history_datasets"] = {}
             extend_history_dataset_rendering_data("name", hda.name, "")
         elif container == "history_dataset_peek":
             assert object_id is not None
-            hda = hdas_manager.get_accessible(object_id, trans.user)
+            hda = hda_manager.get_accessible(object_id, trans.user)
             peek = hda.peek
             extend_history_dataset_rendering_data("peek", peek, "*No Dataset Peek Available*")
         elif container == "history_dataset_info":
-            hda = hdas_manager.get_accessible(object_id, trans.user)
+            hda = hda_manager.get_accessible(object_id, trans.user)
             info = hda.info
             extend_history_dataset_rendering_data("info", info, "*No Dataset Info Available*")
         elif container == "workflow_display":
             # TODO: should be workflow id...
-            stored_workflow = workflows_manager.get_stored_accessible_workflow(trans, encoded_id)
+            stored_workflow = workflow_manager.get_stored_accessible_workflow(trans, encoded_id)
             ensure_rendering_data_for("workflows", encoded_id)["name"] = stored_workflow.name
         elif container == "history_dataset_collection_display":
             hdca = collection_manager.get_dataset_collection_instance(trans, "history", encoded_id)
@@ -131,6 +138,117 @@ def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
 
     export_markdown = _remap_galaxy_markdown_calls(_remap, internal_galaxy_markdown)
     return export_markdown, extra_rendering_data
+
+
+def literal_via_fence(content):
+    return "\n%s\n" % "\n".join(["    %s" % l for l in content.splitlines()])
+
+
+def to_basic_markdown(trans, internal_galaxy_markdown):
+    """Replace Galaxy Markdown extensions with plain Markdown for PDF/HTML export.
+    """
+    # TODO: refactor duplication with ready_galaxy_markdown_for_export using visitor pattern.
+    hda_manager = trans.app.hda_manager
+    workflow_manager = trans.app.workflow_manager
+    job_manager = JobManager(trans.app)
+    collection_manager = trans.app.dataset_collections_service
+
+    def _remap(container, line):
+        id_match = re.search(UNENCODED_ID_PATTERN, line)
+        object_id = None
+        encoded_id = None
+        if id_match:
+            object_id = int(id_match.group(2))
+            encoded_id = trans.security.encode_id(object_id)
+            # This next line seems wrong, was it a copy paste thing?
+            # line = line.replace(id_match.group(), "%s=%s" % (id_match.group(1), encoded_id))
+
+        if container == "history_dataset_display":
+            assert object_id is not None
+            hda = hda_manager.get_accessible(object_id, trans.user)
+            name = hda.name or ""
+            dataset = hda.dataset
+            markdown = "Dataset: %s\n\n" % name
+            if hda.datatype.is_binary:
+                markdown += "Contents: *cannot display binary content*\n\n"
+            else:
+                markdown += "Contents:\n"
+                contents = open(dataset.file_name, "r").read(DEFAULT_MAX_PEEK_SIZE)
+                markdown += literal_via_fence(contents)
+            return (markdown, True)
+        elif container == "history_dataset_as_image":
+            assert object_id is not None
+            hda = hda_manager.get_accessible(object_id, trans.user)
+            name = hda.name or ""
+            dataset = hda.dataset
+            with open(dataset.file_name, "rb") as f:
+                base64_image_data = base64.b64encode(f.read()).decode("utf-8")
+            rval = ("![%s](data:image/png;base64,%s)" % (name, base64_image_data), True)
+            log.info(rval[0:1000])
+            return rval
+        elif container == "history_dataset_peek":
+            assert object_id is not None
+            hda = hda_manager.get_accessible(object_id, trans.user)
+            if hda.peek:
+                content = literal_via_fence(hda.peek)
+            else:
+                content = "*No Dataset Peek Available*"
+            return (content, True)
+        elif container == "history_dataset_info":
+            hda = hda_manager.get_accessible(object_id, trans.user)
+            info = hda.info or "*No Dataset Info Available*"
+            return ("Dataset Info: %s" % info, True)
+        elif container == "workflow_display":
+            # TODO: should be workflow id...
+            stored_workflow = workflow_manager.get_stored_accessible_workflow(trans, encoded_id)
+            return ("Workflow: %s" % stored_workflow.name, True)
+        elif container == "history_dataset_collection_display":
+            hdca = collection_manager.get_dataset_collection_instance(trans, "history", encoded_id)
+            name = hdca.name or ""
+            return ("Dataset Collection: %s" % name, True)
+        elif container == "tool_stdout":
+            job = job_manager.get_accessible_job(trans, object_id)
+            stdout = job.tool_stdout or "*No Standard Output Available*"
+            return ("Standard Output: %s" % stdout, True)
+        elif container == "tool_stderr":
+            job = job_manager.get_accessible_job(trans, object_id)
+            stderr = job.tool_stderr or "*No Standard Error Available*"
+            return ("Standard Error: %s" % stderr, True)
+        raise Exception("Unknown Galaxy Markdown directive.")
+
+    plain_markdown = _remap_galaxy_markdown_calls(_remap, internal_galaxy_markdown)
+    return plain_markdown
+
+
+def to_html(basic_markdown):
+    html = sanitize_html(markdown.markdown(basic_markdown))
+    return html
+
+
+def to_pdf(trans, basic_markdown):
+    as_html = to_html(basic_markdown)
+    directory = tempfile.mkdtemp('gxmarkdown')
+    index = os.path.join(directory, "index.html")
+    try:
+        output_file = codecs.open(index, "w", encoding="utf-8", errors="xmlcharrefreplace")
+        output_file.write(as_html)
+        output_file.close()
+        html = HTML(filename=index)
+        css_path = trans.app.config.markdown_export_css
+        assert os.path.exists(css_path)
+        with open(css_path, "r") as f:
+            css_content = f.read()
+        css = CSS(string=css_content)
+        return html.write_pdf(stylesheets=[css])
+        # font_config = FontConfiguration()
+        # stylesheets=[css], font_config=font_config
+    finally:
+        shutil.rmtree(directory)
+
+
+def internal_galaxy_markdown_to_pdf(trans, internal_galaxy_markdown):
+    basic_markdown = to_basic_markdown(trans, internal_galaxy_markdown)
+    return to_pdf(trans, basic_markdown)
 
 
 def resolve_invocation_markdown(trans, invocation, workflow_markdown):
@@ -291,6 +409,7 @@ def _validate(*args, **kwds):
 
 
 __all__ = (
+    'internal_galaxy_markdown_to_pdf',
     'ready_galaxy_markdown_for_export',
     'ready_galaxy_markdown_for_import',
     'resolve_invocation_markdown',
