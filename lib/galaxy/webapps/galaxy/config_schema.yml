@@ -2685,6 +2685,13 @@ mapping:
           the actual user, to remove the need to configure each user's environment
           individually.
 
+      markdown_export_css:
+        type: str
+        default: markdown_export.css
+        required: false
+        desc: |
+          CSS file to apply to Markdown exports to PDF.
+
       job_resource_params_file:
         type: str
         default: job_resource_params_conf.xml
