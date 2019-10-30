@@ -2,6 +2,7 @@
 @import "~bootstrap/scss/_functions.scss";
 @import "theme/blue.scss";
 @import "~bootstrap/scss/bootstrap.scss";
+@import "~bootstrap-vue/src/index.scss";
 
 // Bootstrap-related style overrides
 @import "overrides.scss";
@@ -105,6 +106,8 @@ body {
     @extend .d-flex;
     @extend .flex-column;
     @extend .full-content;
+    top: 0px;
+    left: 0px;
 }
 
 #columns {
@@ -132,7 +135,6 @@ body {
 #right {
     @extend .position-absolute;
     @extend .h-100;
-    @extend .overflow-hidden;
 }
 #left {
     @extend .unified-panel;
@@ -152,7 +154,6 @@ body {
     }
 }
 #center {
-    @extend .overflow-hidden;
     left: $panel-width;
     right: $panel-width;
     .center-container {
@@ -1021,6 +1022,9 @@ ul.manage-table-actions li {
     .ok {
         background: $state-success-bg;
     }
+    .error {
+        background: $state-danger-bg;
+    }
     .note {
         @extend .position-absolute;
         @extend .ml-2;
@@ -1355,6 +1359,9 @@ div.permissionContainer {
     }
     background: $panel-bg-color;
     min-height: 100%;
+    .tool-old-link {
+        font-weight: bold;
+    }
 }
 
 div.toolSectionTitle {
@@ -1363,11 +1370,12 @@ div.toolSectionTitle {
 }
 
 div.toolPanelLabel {
-    @extend .py-1;
+    @extend .pb-1;
+    @extend .pt-2;
     @extend .px-3;
     font-weight: bold;
-    font-size: $h4-font-size;
-    color: $text-muted;
+    font-size: $h5-font-size;
+    color: $text-light;
     text-transform: uppercase;
 }
 
@@ -1752,6 +1760,9 @@ div.toolSectionWrapper {
     max-height: 300px;
     min-width: 50px;
     min-height: 50px;
+}
+#input-choices-menu {
+    color: black;
 }
 
 /* For Vue */

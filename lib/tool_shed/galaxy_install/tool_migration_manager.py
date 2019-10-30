@@ -8,11 +8,11 @@ import os
 import shutil
 import tempfile
 import threading
+from collections import OrderedDict
 
 from galaxy import util
 from galaxy.tools.toolbox import ToolSection
 from galaxy.tools.toolbox.parser import ensure_tool_conf_item
-from galaxy.util.odict import odict
 from tool_shed.galaxy_install import install_manager
 from tool_shed.galaxy_install.datatypes import custom_datatype_manager
 from tool_shed.galaxy_install.metadata.installed_repository_metadata_manager import InstalledRepositoryMetadataManager
@@ -112,7 +112,7 @@ class ToolMigrationManager(object):
                     # tool_shed_accessible to True so that the value of migrate_tools.version can
                     # be correctly set in the database.
                     tool_shed_accessible = True
-                    missing_tool_configs_dict = odict()
+                    missing_tool_configs_dict = OrderedDict()
                 if tool_shed_accessible:
                     if len(self.proprietary_tool_confs) == 1:
                         plural = ''
@@ -146,9 +146,9 @@ class ToolMigrationManager(object):
                                 # Make sure all repository dependency records exist (as tool_shed_repository
                                 # table rows) in the Galaxy database.
                                 created_tool_shed_repositories = \
-                                    self.create_or_update_tool_shed_repository_records(name,
-                                                                                       changeset_revision,
-                                                                                       repository_dependencies_dict)
+                                    self.create_or_update_tool_shed_repository_records(name=name,
+                                                                                       changeset_revision=changeset_revision,
+                                                                                       repository_dependencies_dict=repository_dependencies_dict)
                                 # Order the repositories for proper installation.  This process is similar to the
                                 # process used when installing tool shed repositories, but does not handle managing
                                 # tool panel sections and other components since repository dependency definitions
@@ -192,8 +192,8 @@ class ToolMigrationManager(object):
                                                                                          installed_changeset_revision=changeset_revision,
                                                                                          ctx_rev=ctx_rev,
                                                                                          repository_clone_url=repository_clone_url,
-                                                                                         metadata_dict={},
                                                                                          status=self.app.install_model.ToolShedRepository.installation_status.NEW,
+                                                                                         metadata_dict={},
                                                                                          current_changeset_revision=None,
                                                                                          owner=self.repository_owner,
                                                                                          dist_to_shed=True)
@@ -386,7 +386,7 @@ class ToolMigrationManager(object):
         entries are automatically added to the reserved migrated_tools_conf.xml file as part of the migration process.
         """
         tool_configs_to_filter = []
-        tool_panel_dict_for_display = odict()
+        tool_panel_dict_for_display = OrderedDict()
         if self.tool_path:
             repo_install_dir = os.path.join(self.tool_path, relative_install_dir)
         else:
@@ -586,7 +586,7 @@ class ToolMigrationManager(object):
                 irm.update_tool_shed_repository_status(tool_shed_repository,
                                                        self.app.install_model.ToolShedRepository.installation_status.INSTALLED)
             else:
-                log.error('Error attempting to clone repository %s: %s', str(tool_shed_repository.name), str(error_message))
+                log.error('Error attempting to clone repository %s: %s', tool_shed_repository.name, error_message)
                 irm.update_tool_shed_repository_status(tool_shed_repository,
                                                        self.app.install_model.ToolShedRepository.installation_status.ERROR,
                                                        error_message=error_message)

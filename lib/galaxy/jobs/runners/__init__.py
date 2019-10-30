@@ -296,7 +296,7 @@ class BaseJobRunner(object):
         output_paths = {}
         for dataset_path in job_wrapper.get_output_fnames():
             path = dataset_path.real_path
-            if self.app.config.outputs_to_working_directory:
+            if job_wrapper.get_destination_configuration("outputs_to_working_directory", False):
                 path = dataset_path.false_path
             output_paths[dataset_path.dataset_id] = path
 
@@ -419,7 +419,8 @@ class BaseJobRunner(object):
             compute_tmp_directory = job_wrapper.tmp_directory()
 
         tool = job_wrapper.tool
-        tool_info = ToolInfo(tool.containers, tool.requirements, tool.requires_galaxy_python_environment, tool.docker_env_pass_through)
+        guest_ports = [ep.get('port') for ep in getattr(job_wrapper, 'interactivetools', [])]
+        tool_info = ToolInfo(tool.containers, tool.requirements, tool.requires_galaxy_python_environment, tool.docker_env_pass_through, guest_ports=guest_ports)
         job_info = JobInfo(
             compute_working_directory,
             compute_tool_directory,
@@ -429,11 +430,14 @@ class BaseJobRunner(object):
         )
 
         destination_info = job_wrapper.job_destination.params
-        return self.app.container_finder.find_container(
+        container = self.app.container_finder.find_container(
             tool_info,
             destination_info,
             job_info
         )
+        if container:
+            job_wrapper.set_container(container)
+        return container
 
     def _handle_runner_state(self, runner_state, job_state):
         try:
@@ -471,8 +475,12 @@ class BaseJobRunner(object):
             job = job_state.job_wrapper.get_job()
             exit_code = job_state.read_exit_code()
 
-            tool_stdout_path = os.path.join(job_wrapper.working_directory, "tool_stdout")
-            tool_stderr_path = os.path.join(job_wrapper.working_directory, "tool_stderr")
+            outputs_directory = os.path.join(job_wrapper.working_directory, "outputs")
+            if not os.path.exists(outputs_directory):
+                outputs_directory = job_wrapper.working_directory
+
+            tool_stdout_path = os.path.join(outputs_directory, "tool_stdout")
+            tool_stderr_path = os.path.join(outputs_directory, "tool_stderr")
             # TODO: These might not exist for running jobs at the upgrade to 19.XX, remove that
             # assumption in 20.XX.
             if os.path.exists(tool_stdout_path):

@@ -72,6 +72,7 @@ class ToolShedAppConfiguration(BaseAppConfiguration):
         self.file_path = resolve_path(kwargs.get("file_path", "database/community_files"), self.root)
         self.new_file_path = resolve_path(kwargs.get("new_file_path", "database/tmp"), self.root)
         self.cookie_path = kwargs.get("cookie_path", None)
+        self.cookie_domain = kwargs.get("cookie_domain", None)
         self.enable_quotas = string_as_bool(kwargs.get('enable_quotas', False))
         self.id_secret = kwargs.get("id_secret", "changethisinproductiontoo")
         # Tool stuff
@@ -185,7 +186,7 @@ class ToolShedAppConfiguration(BaseAppConfiguration):
         # Backwards compatibility for names used in too many places to fix
         self.datatypes_config = self.datatypes_config_file
 
-    def get(self, key, default):
+    def get(self, key, default=None):
         return self.config_dict.get(key, default)
 
     def get_bool(self, key, default):
