@@ -1,10 +1,5 @@
 <template>
-    <div class="width: 100%; height: 100%">
-        <nav class="navbar navbar-light bg-light">
-            <a class="fa fa-file-o" />
-            <a class="fa fa-folder-o" />
-            <a class="fa fa-sitemap fa-rotate-270" />
-        </nav>
+    <div class="unified-panel-body editor-body">
         <markdown-editor :initial-markdown="initialContent" :onupdate="onUpdate" ref="markdownEditor"> </markdown-editor>
     </div>
 </template>
@@ -41,3 +36,9 @@ export default {
     }
 };
 </script>
+
+<style scoped>
+.editor-body {
+    display: flex;
+}
+</style>
