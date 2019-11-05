@@ -428,7 +428,7 @@ class GalaxyAppConfiguration(BaseAppConfiguration):
             for ip in kwargs.get("fetch_url_whitelist", "").split(',')
             if len(ip.strip()) > 0
         ]
-        self.template_path = os.path.join(self.root, kwargs.get("template_path", "templates"))
+        self.template_path = os.path.join(self.root, kwargs.get("template_path", "templates/galaxy"))
         self.job_queue_cleanup_interval = int(kwargs.get("job_queue_cleanup_interval", "5"))
         self.cluster_files_directory = self.resolve_path(self.cluster_files_directory)
 
