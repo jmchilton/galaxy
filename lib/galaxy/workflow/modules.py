@@ -429,11 +429,6 @@ class SubWorkflowModule(WorkflowModule):
     def get_all_inputs(self, data_only=False, connectable_only=False):
         """ Get configure time data input descriptions. """
         # Filter subworkflow steps and get inputs
-        step_to_input_type = {
-            "data_input": "dataset",
-            "data_collection_input": "dataset_collection",
-            "parameter_input": "parameter",
-        }
         inputs = []
         if hasattr(self.subworkflow, 'input_steps'):
             for step in self.subworkflow.input_steps:
@@ -449,7 +444,7 @@ class SubWorkflowModule(WorkflowModule):
                     label=name,
                     multiple=False,
                     extensions=["data"],
-                    input_type=step_to_input_type[step_type],
+                    input_type=step.input_type,
                 )
                 if step.type == 'data_collection_input':
                     input['collection_type'] = step.tool_inputs.get('collection_type') if step.tool_inputs else None
