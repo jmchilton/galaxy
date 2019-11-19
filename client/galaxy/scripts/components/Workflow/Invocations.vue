@@ -1,9 +1,9 @@
 <template>
     <div>
-        <h2 class="mb-3">
+        <h2 class="mb-3" v-if="showTitle">
             <span id="invocations-title">Workflow Invocations</span>
         </h2>
-        <b-alert variant="info" show v-if="headerMessage">
+        <b-alert variant="info" show v-if="headerMessage && showTitle">
             {{ headerMessage }}
         </b-alert>
         <b-alert v-if="loading" variant="info" show>
@@ -24,8 +24,10 @@
                 :busy="loading"
             >
                 <template v-slot:table-caption>
-                    These invocations are not finished scheduling - one or more steps are waiting on others steps to be
-                    complete before the full structure of the jobs in the workflow can be determined.
+                    <p v-if="showTitle">
+                        These invocations are not finished scheduling - one or more steps are waiting on others steps to be
+                        complete before the full structure of the jobs in the workflow can be determined.
+                    </p>
                 </template>
                 <template v-slot:row-details="row">
                     <b-card>
@@ -79,6 +81,23 @@ import HistoryDropdown from "components/History/HistoryDropdown";
 import { mapCacheActions } from "vuex-cache";
 import { mapGetters } from "vuex";
 
+const DETAILS_FIELD = { key: "details", label: "" };
+const WORKFLOW_FIELD = { key: "workflow_id", label: "Workflow" };
+const HISTORY_FIELD = { key: "history_id", label: "History" };
+const INVOCATION_ID_FIELD = { key: "id", label: "Invocation ID", complex: true };
+const STATE_FIELD = { key: "state" };
+const UPDATE_TIME_FIELD = { key: "update_time", label: "Last Update" };
+const CREATE_TIME_FIELD = { key: "create_time", label: "Invocation Time", complex: true };
+const FIELDS = [
+    DETAILS_FIELD,
+    WORKFLOW_FIELD,
+    HISTORY_FIELD,
+    INVOCATION_ID_FIELD,
+    STATE_FIELD,
+    UPDATE_TIME_FIELD,
+    CREATE_TIME_FIELD,
+];
+
 export default {
     components: {
         WorkflowInvocationState,
@@ -91,18 +110,12 @@ export default {
         loading: { type: Boolean, default: true },
         noInvocationsMessage: { type: String },
         headerMessage: { type: String, default: "" },
-        ownerGrid: { type: Boolean, default: true }
+        showTitle: { type: Boolean, default: true },
+        ownerGrid: { type: Boolean, default: true },
+        simplified: { type: Boolean, default: false },
     },
     data() {
-        const fields = [
-            { key: "details", label: "" },
-            { key: "workflow_id", label: "Workflow" },
-            { key: "history_id", label: "History" },
-            { key: "id", label: "Invocation ID" },
-            { key: "state" },
-            { key: "update_time", label: "Last Update" },
-            { key: "create_time", label: "Invocation Time" }
-        ];
+        const fields = FIELDS.filter(field => (!this.simplified || !field.complex) ? true : false);
         return {
             invocationItemsModel: [],
             invocationFields: fields,

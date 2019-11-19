@@ -44,6 +44,8 @@ import DisplayStructure from "components/DisplayStructured.vue";
 import Vue from "vue";
 import { CloudAuth } from "components/User/CloudAuth";
 import store from "store";
+import WorkflowHome from "components/WorkflowHome.vue";
+
 
 /** Routes */
 export const getAnalysisRouter = Galaxy =>
@@ -65,6 +67,7 @@ export const getAnalysisRouter = Galaxy =>
             "(/)visualizations/(:action_id)": "show_visualizations",
             "(/)workflows/import": "show_workflows_import",
             "(/)workflows/run(/)": "show_workflows_run",
+            "(/)activities": "show_activities",
             "(/)workflows(/)list": "show_workflows",
             "(/)workflows/invocations": "show_workflow_invocations",
             "(/)workflows/invocations/report": "show_workflow_invocation_report",
@@ -377,6 +380,11 @@ export const getAnalysisRouter = Galaxy =>
                     this._loadCenterIframe("welcome");
                 }
             }
+        },
+
+        show_activities: function() {
+            this.page.hide_panels = true;
+            this._display_vue_helper(WorkflowHome);
         },
 
         /** load the center panel with a tool form described by the given params obj */

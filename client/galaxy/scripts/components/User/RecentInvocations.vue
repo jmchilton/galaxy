@@ -2,6 +2,8 @@
     <invocations
         :invocationItems="invocationItems"
         :loading="loading"
+        :showTitle="showTitle"
+        :simplified="simplified"
         headerMessage="Your most recent workflow invocations are displayed on this page."
         noInvocationsMessage="There are no workflow invocations to show."
     >
@@ -15,6 +17,16 @@ import { getRecentInvocations } from "./UserServices";
 export default {
     components: {
         Invocations
+    },
+    props: {
+        showTitle: {
+            type: Boolean,
+            default: true
+        },
+        simplified: {
+            type: Boolean,
+            default: false
+        }
     },
     data() {
         return {

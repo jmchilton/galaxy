@@ -20,7 +20,7 @@
                             v-model="filter"
                         />
                     </b-col>
-                    <b-col>
+                    <b-col v-if="!simplified">
                         <span class="float-right">
                             <b-button id="workflow-create" class="m-1" @click="createWorkflow">
                                 <span class="fa fa-plus" />
@@ -85,31 +85,27 @@ import { Services } from "./services.js";
 import WorkflowTags from "./WorkflowTags.vue";
 import WorkflowDropdown from "./WorkflowDropdown.vue";
 
+const NAME_FIELD = {key: "name", sortable: true};
+const TAGS_FIELD = {key: "tags", sortable: true};
+const BOOKMARK_FIELD = {key: "bookmark"};
+const EXECUTE_FIELD = {key: "execute", "label": ""};
+
+
 export default {
     components: {
         workflowtags: WorkflowTags,
         workflowdropdown: WorkflowDropdown
     },
+    props: {
+        simplified: {
+            type: Boolean,
+            default: false
+        }
+    },
     data() {
         return {
             error: null,
-            fields: [
-                {
-                    key: "name",
-                    sortable: true
-                },
-                {
-                    key: "tags",
-                    sortable: true
-                },
-                {
-                    key: "bookmark"
-                },
-                {
-                    key: "execute",
-                    label: ""
-                }
-            ],
+            fields: this.simplified ?  [NAME_FIELD, TAGS_FIELD, EXECUTE_FIELD] : [NAME_FIELD, TAGS_FIELD, BOOKMARK_FIELD, EXECUTE_FIELD],
             filter: "",
             loading: true,
             message: null,
