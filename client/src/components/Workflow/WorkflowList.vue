@@ -20,7 +20,7 @@
                             v-model="filter"
                         />
                     </b-col>
-                    <b-col>
+                    <b-col v-if="!simplified">
                         <span class="float-right">
                             <b-button id="workflow-create" class="m-1" @click="createWorkflow">
                                 <font-awesome-icon icon="plus" />
@@ -97,6 +97,18 @@ library.add(faPlus);
 library.add(faUpload);
 library.add(faSpinner);
 
+const NAME_FIELD = { key: "name", sortable: true };
+const TAGS_FIELD = { key: "tags", sortable: true };
+const BOOKMARK_FIELD = { key: "bookmark" };
+const EXECUTE_FIELD = { key: "execute", label: "" };
+const UPDATED_FIELD = {
+    label: "Updated",
+    key: "update_time",
+    sortable: true,
+};
+const SIMPLIFIED_FIELDS = [NAME_FIELD, TAGS_FIELD, EXECUTE_FIELD];
+const FIELDS = [NAME_FIELD, TAGS_FIELD, UPDATED_FIELD, BOOKMARK_FIELD, EXECUTE_FIELD];
+
 export default {
     components: {
         FontAwesomeIcon,
@@ -104,31 +116,16 @@ export default {
         Tags,
         WorkflowDropdown,
     },
+    props: {
+        simplified: {
+            type: Boolean,
+            default: false,
+        },
+    },
     data() {
         return {
             error: null,
-            fields: [
-                {
-                    key: "name",
-                    sortable: true,
-                },
-                {
-                    key: "tags",
-                    sortable: true,
-                },
-                {
-                    label: "Updated",
-                    key: "update_time",
-                    sortable: true,
-                },
-                {
-                    key: "bookmark",
-                },
-                {
-                    key: "execute",
-                    label: "",
-                },
-            ],
+            fields: this.simplified ? SIMPLIFIED_FIELDS : FIELDS,
             filter: "",
             loading: true,
             message: null,

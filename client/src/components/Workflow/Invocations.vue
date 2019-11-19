@@ -1,9 +1,9 @@
 <template>
     <div>
-        <h2 class="mb-3">
+        <h2 class="mb-3" v-if="showTitle">
             <span id="invocations-title">Workflow Invocations</span>
         </h2>
-        <b-alert variant="info" show v-if="headerMessage">
+        <b-alert variant="info" show v-if="headerMessage && showTitle">
             {{ headerMessage }}
         </b-alert>
         <loading-span v-if="loading" message="Loading workflow invocations" />
@@ -72,6 +72,21 @@ import LoadingSpan from "components/LoadingSpan";
 import { mapCacheActions } from "vuex-cache";
 import { mapGetters } from "vuex";
 
+const WORKFLOW_FIELD = { key: "workflow_id", label: "Workflow" };
+const HISTORY_FIELD = { key: "history_id", label: "History" };
+const STATE_FIELD = { key: "state" };
+const UPDATE_TIME_FIELD = { key: "update_time", label: "Updated" };
+const CREATE_TIME_FIELD = { key: "create_time", label: "Invoked", complex: true };
+const EXECUTE_FIELD = { key: "execute", label: "" };
+const FIELDS = [
+    WORKFLOW_FIELD,
+    HISTORY_FIELD,
+    STATE_FIELD,
+    UPDATE_TIME_FIELD,
+    CREATE_TIME_FIELD,
+    EXECUTE_FIELD,
+];
+
 export default {
     components: {
         UtcDate,
@@ -84,16 +99,11 @@ export default {
         noInvocationsMessage: { type: String, default: "" },
         headerMessage: { type: String, default: "" },
         ownerGrid: { type: Boolean, default: true },
+        showTitle: { type: Boolean, default: true },
+        simplified: { type: Boolean, default: false },
     },
     data() {
-        const fields = [
-            { key: "workflow_id", label: "Workflow" },
-            { key: "history_id", label: "History" },
-            { key: "create_time", label: "Invoked" },
-            { key: "update_time", label: "Updated" },
-            { key: "state" },
-            { key: "execute", label: "" },
-        ];
+        const fields = FIELDS.filter((field) => (!this.simplified || !field.complex ? true : false));
         return {
             invocationItemsModel: [],
             invocationFields: fields,
