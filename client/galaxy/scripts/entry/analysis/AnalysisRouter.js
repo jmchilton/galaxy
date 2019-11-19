@@ -307,17 +307,11 @@ export const getAnalysisRouter = Galaxy =>
         },
 
         show_plugins: function() {
-            const pluginListInstance = Vue.extend(PluginList);
-            const vm = document.createElement("div");
-            this.page.display(vm);
-            new pluginListInstance().$mount(vm);
+            this._display_vue_helper(PluginList);
         },
 
         show_workflows: function() {
-            const workflowListInstance = Vue.extend(WorkflowList);
-            const vm = document.createElement("div");
-            this.page.display(vm);
-            new workflowListInstance().$mount(vm);
+            this._display_vue_helper(WorkflowList);
         },
 
         show_workflows_create: function() {
@@ -335,10 +329,7 @@ export const getAnalysisRouter = Galaxy =>
         },
 
         show_workflows_import: function() {
-            const workflowImportInstance = Vue.extend(WorkflowImport);
-            const vm = document.createElement("div");
-            this.page.display(vm);
-            new workflowImportInstance().$mount(vm);
+            this._display_vue_helper(WorkflowImport);
         },
 
         show_custom_builds: function() {
