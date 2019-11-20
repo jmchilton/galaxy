@@ -203,12 +203,14 @@ def add_composite_file(dataset, registry, output_path, files_path):
             dp = path
 
         auto_decompress = composite_file_path.get('auto_decompress', True)
-        if auto_decompress and not datatype.composite_type and CompressedFile.can_decompress(dp):
+        if auto_decompress and (not datatype or not datatype.composite_type) and CompressedFile.can_decompress(dp):
             # It isn't an explictly composite datatype, so these are just extra files to attach
             # as composite data. It'd be better if Galaxy was communicating this to the tool
             # a little more explicitly so we didn't need to dispatch on the datatype and so we
             # could attach arbitrary extra composite data to an existing composite datatype if
             # if need be? Perhaps that would be a mistake though.
+            assert dp is not None, "dataset path is None, cannot decompress this for upload request - composite_file_path object is [%s]" % composite_file_path
+            assert files_path is not None, "files_path is None, cannot extract [%s] to this location" % dp
             CompressedFile(dp).extract(files_path)
         else:
             if not is_binary:
