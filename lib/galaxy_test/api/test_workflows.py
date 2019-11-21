@@ -3934,6 +3934,23 @@ input:
 
         assert invocation_tool_step_response.json()["job_id"] == job_id
 
+    @skip_without_tool("cat1")
+    def test_invocation_usage_targz(self):
+        workflow_id, invocation = self._run_workflow_once_get_invocation("test_invocation_targz")
+        invocation_id = invocation["id"]
+        url = "invocations/%s.tar.gz" % (workflow_id)
+        invocation_response = self._get(url)
+        self._assert_status_code_is(invocation_response, 200)
+
+        invocation_id = invocation["id"]
+        url = "invocations/%s.bag.zip" % (workflow_id)
+        invocation_response = self._get(url)
+        self._assert_status_code_is(invocation_response, 200)
+
+        url = "invocations/%s.bag.ofdonuts" % (workflow_id)
+        invocation_response = self._get(url)
+        self._assert_status_code_is(invocation_response, 400)
+
     def test_invocation_with_collection_mapping(self):
         workflow_id, invocation_id = self._run_mapping_workflow()
 
