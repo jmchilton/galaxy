@@ -20,7 +20,10 @@ from galaxy.managers.libraries import LibraryManager
 from galaxy.managers.roles import RoleManager
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.managers.users import UserManager
-from galaxy.managers.workflows import WorkflowsManager
+from galaxy.managers.workflows import (
+    WorkflowsManager,
+    WorkflowContentsManager,
+)
 from galaxy.model.database_heartbeat import DatabaseHeartbeat
 from galaxy.model.tags import GalaxyTagHandler
 from galaxy.queue_worker import (
@@ -111,6 +114,7 @@ class UniverseApplication(config.ConfiguresGalaxyMixin):
         self.library_manager = LibraryManager()
         self.role_manager = RoleManager(self)
         self.dynamic_tool_manager = DynamicToolManager(self)
+        self.workflow_contents_manager = WorkflowContentsManager(self)
 
         # ConfiguredFileSources
         self.file_sources = ConfiguredFileSources.from_app_config(self.config)
