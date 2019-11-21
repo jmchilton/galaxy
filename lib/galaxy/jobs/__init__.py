@@ -1468,7 +1468,8 @@ class JobWrapper(object, HasResourceParameters):
             log.exception("Unable to cleanup job %d", self.job_id)
 
     def _collect_extra_files(self, dataset, job_working_directory):
-        temp_file_path = os.path.join(job_working_directory, "dataset_%s_files" % (dataset.id))
+        tool_working_directory = os.path.join(job_working_directory , "working")
+        temp_file_path = os.path.join(tool_working_directory, "dataset_%s_files" % (dataset.id))
         extra_dir = None
         try:
             # This skips creation of directories - object store
@@ -1476,7 +1477,7 @@ class JobWrapper(object, HasResourceParameters):
             # not be created in the object store at all, which might be a
             # problem.
             for root, dirs, files in os.walk(temp_file_path):
-                extra_dir = root.replace(job_working_directory, '', 1).lstrip(os.path.sep)
+                extra_dir = root.replace(tool_working_directory, '', 1).lstrip(os.path.sep)
                 for f in files:
                     self.app.object_store.update_from_file(
                         dataset,

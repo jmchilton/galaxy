@@ -353,7 +353,7 @@ class ToolEvaluator(object):
                 param_dict[name] = DatasetFilenameWrapper(hda)
             # Provide access to a path to store additional files
             # TODO: path munging for cluster/dataset server relocatability
-            param_dict[name].files_path = os.path.abspath(os.path.join(job_working_directory, "dataset_%s_files" % (hda.dataset.id)))
+            param_dict[name].files_path = os.path.abspath(os.path.join(job_working_directory, "working", "dataset_%s_files" % (hda.dataset.id)))
             for child in hda.children:
                 param_dict["_CHILD___%s___%s" % (name, child.designation)] = DatasetFilenameWrapper(child)
         for out_name, output in self.tool.outputs.items():
