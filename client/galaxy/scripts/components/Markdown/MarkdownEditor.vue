@@ -1,9 +1,10 @@
 <template>
     <div style="display: flex; flex: 1; flex-direction: column">
         <ul class="galaxymark-toolbar" ref="menu" v-if="toolbar">
-            <li><a href="#" class="fa-2x fa fa-file" @click="selectData"></a></li>
-            <li><a href="#" class="fa-2x fa fa-folder" @click="selectDataCollection"></a></li>
+            <li><a href="#" class="fa-2x fa fa-file" @click="selectDataset"></a></li>
+            <li><a href="#" class="fa-2x fa fa-folder" @click="selectDatasetCollection"></a></li>
             <li><a href="#" class="fa-2x fa fa-sitemap fa-rotate-270" @click="selectWorkflow"></a></li>
+            <li><a href="#" class="fa-2x fa fa-image" @click="selectDatasetForImage"></a></li>
             <li>
                 <a href="#" class="fa-2x fa fa-question" @click="showMarkdownHelp" v-if="showMarkdownHelp != null"></a>
             </li>
@@ -80,11 +81,11 @@ export default {
         insertGalaxyMarkdownBlock(block) {
             this.insertMarkdown(`${FENCE}galaxy\n${block}\n${FENCE}\n`);
         },
-        selectData() {
+        _selectDataset(galaxyCall) {
             dialog(
                 response => {
                     const datasetId = response.id;
-                    this.insertGalaxyMarkdownBlock(`history_dataset_display(history_dataset_id=${datasetId})`);
+                    this.insertGalaxyMarkdownBlock(`${galaxyCall}(history_dataset_id=${datasetId})`);
                 },
                 {
                     multiple: false,
@@ -93,7 +94,13 @@ export default {
                 }
             );
         },
-        selectDataCollection() {
+        selectDataset() {
+            this._selectDataset("history_dataset_display");
+        },
+        selectDatasetForImage() {
+            this._selectDataset("history_dataset_as_image");
+        },
+        selectDatasetCollection() {
             datasetCollectionDialog(response => {
                 this.insertGalaxyMarkdownBlock(
                     `history_dataset_collection_display(history_dataset_collection_id=${response.id})`
