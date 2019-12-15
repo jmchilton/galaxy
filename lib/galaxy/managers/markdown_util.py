@@ -10,6 +10,7 @@ potential history flavor would allow objects to be referenced by HID. This
 second idea is unimplemented, it is just an example of the general concept of
 context specific processing.
 """
+import abc
 import base64
 import codecs
 import logging
@@ -19,6 +20,7 @@ import shutil
 import tempfile
 
 import markdown
+import six
 from weasyprint import CSS, HTML
 
 from galaxy.datatypes.data import DEFAULT_MAX_PEEK_SIZE
@@ -65,6 +67,167 @@ def ready_galaxy_markdown_for_import(trans, external_galaxy_markdown):
     return internal_markdown
 
 
+@six.add_metaclass(abc.ABCMeta)
+class GalaxyInternalMarkdownDirectiveHandler(object):
+
+    def walk(self, trans, internal_galaxy_markdown):
+        hda_manager = trans.app.hda_manager
+        workflow_manager = trans.app.workflow_manager
+        job_manager = JobManager(trans.app)
+        collection_manager = trans.app.dataset_collections_service
+
+        def _remap(container, line):
+            id_match = re.search(UNENCODED_ID_PATTERN, line)
+            object_id = None
+            encoded_id = None
+            if id_match:
+                object_id = int(id_match.group(2))
+                encoded_id = trans.security.encode_id(object_id)
+                line = line.replace(id_match.group(), "%s=%s" % (id_match.group(1), encoded_id))
+
+            if container == "history_dataset_display":
+                assert object_id is not None
+                hda = hda_manager.get_accessible(object_id, trans.user)
+                rval = self.handle_dataset_display(line, hda)
+            elif container == "history_dataset_as_image":
+                assert object_id is not None
+                hda = hda_manager.get_accessible(object_id, trans.user)
+                rval = self.handle_dataset_as_image(line, hda)
+            elif container == "history_dataset_peek":
+                assert object_id is not None
+                hda = hda_manager.get_accessible(object_id, trans.user)
+                rval = self.handle_dataset_peek(line, hda)
+            elif container == "history_dataset_info":
+                assert object_id is not None
+                hda = hda_manager.get_accessible(object_id, trans.user)
+                rval = self.handle_dataset_info(line, hda)
+            elif container == "workflow_display":
+                stored_workflow = workflow_manager.get_stored_accessible_workflow(trans, encoded_id)
+                # TODO: should be workflow id...
+                rval = self.handle_workflow_display(line, stored_workflow)
+            elif container == "history_dataset_collection_display":
+                hdca = collection_manager.get_dataset_collection_instance(trans, "history", encoded_id)
+                # TODO: should be workflow id...
+                rval = self.handle_dataset_collection_display(line, stored_workflow)
+            elif container == "tool_stdout":
+                job = job_manager.get_accessible_job(trans, object_id)
+                rval = self.handle_tool_stdout(line, job)
+            elif container == "tool_stderr":
+                job = job_manager.get_accessible_job(trans, object_id)
+                rval = self.handle_tool_stdout(line, job)
+            elif container == "job_parameters":
+                job = job_manager.get_accessible_job(trans, object_id)
+                rval = self.handle_job_parameters(line, job)
+            elif container == "job_metrics":
+                job = job_manager.get_accessible_job(trans, object_id)
+                rval = self.handle_job_metrics(line, job)
+            else:
+                raise MalformedContents("Unknown Galaxy Markdown directive encountered [%s]" % container)
+            if rval != None:
+                return rval
+            else:
+                return (line, False)
+
+        export_markdown = _remap_galaxy_markdown_calls(_remap, internal_galaxy_markdown)
+        return export_markdown
+
+    @abc.abstractmethod
+    def handle_dataset_display(self, line, hda):
+        pass
+
+    @abc.abstractmethod
+    def handle_dataset_as_image(self, line, hda):
+        pass
+
+    @abc.abstractmethod
+    def handle_dataset_peek(self, line, hda):
+        pass
+
+    @abc.abstractmethod
+    def handle_dataset_info(self, line, hda):
+        pass
+
+    @abc.abstractmethod
+    def handle_workflow_display(self, line, stored_workflow):
+        pass
+
+    @abc.abstractmethod
+    def handle_dataset_collection_display(self, line, hdca):
+        pass
+
+    @abc.abstractmethod
+    def handle_tool_stdout(self, line, job):
+        pass
+
+    @abc.abstractmethod
+    def handle_tool_stdout(self, line, job):
+        pass
+
+    @abc.abstractmethod
+    def handle_job_metrics(self, line, job):
+        pass
+
+    @abc.abstractmethod
+    def handle_job_parameters(self, line, job):
+        pass
+
+
+class ReadyForExportMarkdownDirectiveHandler(GalaxyInternalMarkdownDirectiveHandler):
+
+    def __init__(self, trans, extra_rendering_data={}):
+        self.trans = trans
+        self.extra_rendering_data = extra_rendering_data
+
+    def ensure_rendering_data_for(self, object_type, obj):
+        encoded_id = self.trans.security.encode_id(obj.id)
+        if object_type not in self.extra_rendering_data:
+            self.extra_rendering_data[object_type] = {}
+        object_type_data = self.extra_rendering_data[object_type]
+        if encoded_id not in object_type_data:
+            object_type_data[encoded_id] = {}
+        return object_type_data[encoded_id]
+
+    def extend_history_dataset_rendering_data(self, obj, key, val, default_val):
+        self.ensure_rendering_data_for("history_datasets", obj)[key] = val or default_val
+
+    def handle_dataset_display(self, line, hda):
+        self.extend_history_dataset_rendering_data(hda, "name", hda.name, "")
+
+    def handle_dataset_peek(self, line, hda):
+        self.extend_history_dataset_rendering_data(hda, "peek", hda.peek, "*No Dataset Peek Available*")
+
+    def handle_dataset_info(self, line, hda):
+        self.extend_history_dataset_rendering_data(hda, "info", info, "*No Dataset Info Available*")
+
+    def handle_workflow_display(self, line, stored_workflow):
+        self.ensure_rendering_data_for("workflows", stored_workflow)["name"] = stored_workflow.name
+
+    def handle_dataset_collection_display(self, line, hdca):
+        hdca_view = hdca_serializer.serialize_to_view(
+            hdca, user=self.trans.user, trans=trans, view="summary"
+        )
+        self.ensure_rendering_data_for("history_dataset_collections", hdca).update(hdca_view)
+
+    def handle_tool_stdout(self, line, job):
+        self.ensure_rendering_data_for("jobs", job)["tool_stdout"] = job.tool_stdout or "*No Standard Output Available*"
+
+    def handle_tool_stdout(self, line, job):
+        self.ensure_rendering_data_for("jobs", encoded_id)["tool_stderr"] = job.tool_stderr or "*No Standard Error Available*"
+
+    # Following three cases - the client side widgets have everything they need
+    # from the encoded ID. Don't implement a default on the base class though because
+    # it is good to force both Client and PDF/HTML export to deal with each new directive
+    # explicitly.
+    def handle_dataset_as_image(self, line, hda):
+        pass
+
+    def handle_job_metrics(self, line, job):
+        pass
+
+    def handle_job_parameters(self, line, job):
+        pass
+
+
 def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
     """Fill in details needed to render Galaxy flavored markdown.
 
@@ -73,72 +236,71 @@ def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
     external links. Return expanded markdown and extra data useful for rendering
     custom container tags.
     """
-    hda_manager = trans.app.hda_manager
-    workflow_manager = trans.app.workflow_manager
-    job_manager = JobManager(trans.app)
-    collection_manager = trans.app.dataset_collections_service
-
     extra_rendering_data = {}
-
-    def _remap(container, line):
-        id_match = re.search(UNENCODED_ID_PATTERN, line)
-        object_id = None
-        encoded_id = None
-        if id_match:
-            object_id = int(id_match.group(2))
-            encoded_id = trans.security.encode_id(object_id)
-            line = line.replace(id_match.group(), "%s=%s" % (id_match.group(1), encoded_id))
-
-        def ensure_rendering_data_for(object_type, encoded_id):
-            if object_type not in extra_rendering_data:
-                extra_rendering_data[object_type] = {}
-            object_type_data = extra_rendering_data[object_type]
-            if encoded_id not in object_type_data:
-                object_type_data[encoded_id] = {}
-            return object_type_data[encoded_id]
-
-        def extend_history_dataset_rendering_data(key, val, default_val):
-            ensure_rendering_data_for("history_datasets", encoded_id)[key] = val or default_val
-
-        if container == "history_dataset_display":
-            assert object_id is not None
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            if "history_datasets" not in extra_rendering_data:
-                extra_rendering_data["history_datasets"] = {}
-            extend_history_dataset_rendering_data("name", hda.name, "")
-        elif container == "history_dataset_peek":
-            assert object_id is not None
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            peek = hda.peek
-            extend_history_dataset_rendering_data("peek", peek, "*No Dataset Peek Available*")
-        elif container == "history_dataset_info":
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            info = hda.info
-            extend_history_dataset_rendering_data("info", info, "*No Dataset Info Available*")
-        elif container == "workflow_display":
-            # TODO: should be workflow id...
-            stored_workflow = workflow_manager.get_stored_accessible_workflow(trans, encoded_id)
-            ensure_rendering_data_for("workflows", encoded_id)["name"] = stored_workflow.name
-        elif container == "history_dataset_collection_display":
-            hdca = collection_manager.get_dataset_collection_instance(trans, "history", encoded_id)
-            hdca_serializer = HDCASerializer(trans.app)
-            hdca_view = hdca_serializer.serialize_to_view(
-                hdca, user=trans.user, trans=trans, view="summary"
-            )
-            if "history_dataset_collections" not in extra_rendering_data:
-                extra_rendering_data["history_dataset_collections"] = {}
-            ensure_rendering_data_for("history_dataset_collections", encoded_id).update(hdca_view)
-        elif container == "tool_stdout":
-            job = job_manager.get_accessible_job(trans, object_id)
-            ensure_rendering_data_for("jobs", encoded_id)["tool_stdout"] = job.tool_stdout or "*No Standard Output Available*"
-        elif container == "tool_stderr":
-            job = job_manager.get_accessible_job(trans, object_id)
-            ensure_rendering_data_for("jobs", encoded_id)["tool_stderr"] = job.tool_stderr or "*No Standard Error Available*"
-        return (line, False)
-
-    export_markdown = _remap_galaxy_markdown_calls(_remap, internal_galaxy_markdown)
+    # Walk Galaxy directives inside the Galaxy Markdown and collect dict-ified data
+    # needed to render this efficiently.
+    directive_handler = ReadyForExportMarkdownDirectiveHandler(trans, extra_rendering_data)
+    export_markdown = directive_handler.walk(trans, internal_galaxy_markdown)
     return export_markdown, extra_rendering_data
 
+
+class ToBasicMarkdownDirectiveHandler(GalaxyInternalMarkdownDirectiveHandler):
+
+    def __init__(self, markdown_formatting_helpers):
+        self.markdown_formatting_helpers = markdown_formatting_helpers
+
+    def handle_dataset_display(self, line, hda):
+        name = hda.name or ""
+        markdown = "Dataset: %s\n\n" % name
+        datatype = hda.datatype
+        if datatype is None:
+            markdown += "Contents: *cannot display - cannot format unknown datatype*\n\n"
+        else:
+            markdown += "Contents:\n"
+            markdown += datatype.display_as_markdown(hda, self.markdown_formatting_helpers)
+        return (markdown, True)
+
+    def handle_dataset_as_image(self, line, hda):
+        dataset = hda.dataset
+        with open(dataset.file_name, "rb") as f:
+            base64_image_data = base64.b64encode(f.read()).decode("utf-8")
+        rval = ("![%s](data:image/png;base64,%s)" % (name, base64_image_data), True)
+        return rval
+
+    def handle_dataset_peek(self, line, hda):
+        if hda.peek:
+            content = self.markdown_formatting_helpers.literal_via_fence(hda.peek)
+        else:
+            content = "*No Dataset Peek Available*"
+        return (content, True)
+
+    def handle_dataset_info(self, line, hda):
+        if hda.info:
+            content = self.markdown_formatting_helpers.literal_via_fence(hda.info)
+        else:
+            content = "*No Dataset Info Available*"
+        return (content, True)
+
+    def handle_workflow_display(self, line, stored_workflow):
+        return ("Workflow: %s" % stored_workflow.name, True)
+
+    def handle_dataset_collection_display(self, line, hdca):
+        name = hdca.name or ""
+        return ("Dataset Collection: %s" % name, True)
+
+    def handle_tool_stdout(self, line, job):
+        stdout = job.tool_stdout or "*No Standard Output Available*"
+        return ("Standard Output: %s" % stdout, True)
+
+    def handle_tool_stdout(self, line, job):
+        stderr = job.tool_stderr or "*No Standard Error Available*"
+        return ("Standard Error: %s" % stderr, True)
+
+    def handle_job_metrics(self, line, job):
+        return ("Job Metrics - this isn't implemented for PDF export yet", True)
+
+    def handle_job_parameters(self, line, job):
+        return ("Job Parameters - this isn't implemented for PDF export yet", True)
 
 
 class MarkdownFormatHelpers(object):
@@ -157,76 +319,8 @@ def to_basic_markdown(trans, internal_galaxy_markdown):
     """Replace Galaxy Markdown extensions with plain Markdown for PDF/HTML export.
     """
     markdown_formatting_helpers = MarkdownFormatHelpers()
-    # TODO: refactor duplication with ready_galaxy_markdown_for_export using visitor pattern.
-    hda_manager = trans.app.hda_manager
-    workflow_manager = trans.app.workflow_manager
-    job_manager = JobManager(trans.app)
-    collection_manager = trans.app.dataset_collections_service
-
-    def _remap(container, line):
-        id_match = re.search(UNENCODED_ID_PATTERN, line)
-        object_id = None
-        encoded_id = None
-        if id_match:
-            object_id = int(id_match.group(2))
-            encoded_id = trans.security.encode_id(object_id)
-            # This next line seems wrong, was it a copy paste thing?
-            # line = line.replace(id_match.group(), "%s=%s" % (id_match.group(1), encoded_id))
-
-        if container == "history_dataset_display":
-            assert object_id is not None
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            name = hda.name or ""
-            dataset = hda.dataset
-            markdown = "Dataset: %s\n\n" % name
-            datatype = hda.datatype
-            if datatype is None:
-                markdown += "Contents: *cannot display - cannot format unknown datatype*\n\n"
-            else:
-                markdown += "Contents:\n"
-                markdown += datatype.display_as_markdown(hda, markdown_formatting_helpers)
-            return (markdown, True)
-        elif container == "history_dataset_as_image":
-            assert object_id is not None
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            name = hda.name or ""
-            dataset = hda.dataset
-            with open(dataset.file_name, "rb") as f:
-                base64_image_data = base64.b64encode(f.read()).decode("utf-8")
-            rval = ("![%s](data:image/png;base64,%s)" % (name, base64_image_data), True)
-            log.info(rval[0:1000])
-            return rval
-        elif container == "history_dataset_peek":
-            assert object_id is not None
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            if hda.peek:
-                content = markdown_formatting_helpers.literal_via_fence(hda.peek)
-            else:
-                content = "*No Dataset Peek Available*"
-            return (content, True)
-        elif container == "history_dataset_info":
-            hda = hda_manager.get_accessible(object_id, trans.user)
-            info = hda.info or "*No Dataset Info Available*"
-            return ("Dataset Info: %s" % info, True)
-        elif container == "workflow_display":
-            # TODO: should be workflow id...
-            stored_workflow = workflow_manager.get_stored_accessible_workflow(trans, encoded_id)
-            return ("Workflow: %s" % stored_workflow.name, True)
-        elif container == "history_dataset_collection_display":
-            hdca = collection_manager.get_dataset_collection_instance(trans, "history", encoded_id)
-            name = hdca.name or ""
-            return ("Dataset Collection: %s" % name, True)
-        elif container == "tool_stdout":
-            job = job_manager.get_accessible_job(trans, object_id)
-            stdout = job.tool_stdout or "*No Standard Output Available*"
-            return ("Standard Output: %s" % stdout, True)
-        elif container == "tool_stderr":
-            job = job_manager.get_accessible_job(trans, object_id)
-            stderr = job.tool_stderr or "*No Standard Error Available*"
-            return ("Standard Error: %s" % stderr, True)
-        raise Exception("Unknown Galaxy Markdown directive.")
-
-    plain_markdown = _remap_galaxy_markdown_calls(_remap, internal_galaxy_markdown)
+    directive_handler = ToBasicMarkdownDirectiveHandler(markdown_formatting_helpers)
+    plain_markdown = directive_handler.walk(trans, internal_galaxy_markdown)
     return plain_markdown
 
 

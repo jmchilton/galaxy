@@ -5,21 +5,47 @@ from contextlib import contextmanager
 import mock
 
 from galaxy import model
-from galaxy.managers.markdown_util import to_basic_markdown
+from galaxy.managers.markdown_util import (
+    ready_galaxy_markdown_for_export,
+    to_basic_markdown,
+)
 from .base import BaseTestCase
 
 
-class MarkdownToBasicTestCase(BaseTestCase):
+class BaseExportTestCase(BaseTestCase):
 
     def setUp(self):
-        super(MarkdownToBasicTestCase, self).setUp()
-        self.test_dataset_path = None
+        super(BaseExportTestCase, self).setUp()
         self.app.hda_manager = mock.MagicMock()
         self.app.workflow_manager = mock.MagicMock()
         self.app.history_manager = mock.MagicMock()
 
+    def _new_hda(self, contents=None):
+        hda = model.HistoryDatasetAssociation()
+        hda.id = 1
+        if contents is not None:
+            hda.dataset = mock.MagicMock()
+            hda.dataset.purged = False
+            t = tempfile.NamedTemporaryFile(mode="w", delete=False)
+            t.write(contents)
+            hda.dataset.get_file_name.return_value = t.name
+        return hda
+
+    @contextmanager
+    def _expect_get_hda(self, hda, hda_id=1):
+        self.app.hda_manager.get_accessible.return_value = hda
+        yield
+        self.app.hda_manager.get_accessible.assert_called_once_with(hda.id, self.trans.user)
+
+
+class ToBasicMarkdownTestCase(BaseExportTestCase):
+
+    def setUp(self):
+        super(ToBasicMarkdownTestCase, self).setUp()
+        self.test_dataset_path = None
+
     def tearDown(self):
-        super(MarkdownToBasicTestCase, self).tearDown()
+        super(ToBasicMarkdownTestCase, self).tearDown()
         if self.test_dataset_path is not None:
             os.remove(self.test_dataset_path)
 
@@ -45,7 +71,7 @@ Another kind of code block:
         assert result == example
 
     def test_history_dataset_peek(self):
-        hda = model.HistoryDatasetAssociation()
+        hda = self._new_hda()
         hda.peek = "My Cool Peek"
         example = """# Example
 ```galaxy
@@ -109,21 +135,41 @@ history_dataset_display(history_dataset_id=1)
             result = self._to_basic(example)
         assert '<table' in result
 
-    def _new_hda(self, contents=None):
-        hda = model.HistoryDatasetAssociation()
-        if contents is not None:
-            hda.dataset = mock.MagicMock()
-            hda.dataset.purged = False
-            t = tempfile.NamedTemporaryFile(mode="w", delete=False)
-            t.write(contents)
-            hda.dataset.get_file_name.return_value = t.name
-        return hda
-
-    @contextmanager
-    def _expect_get_hda(self, hda, hda_id=1):
-        self.app.hda_manager.get_accessible.return_value = hda
-        yield
-        self.app.hda_manager.get_accessible.assert_called_once_with(hda_id, self.trans.user)
-
     def _to_basic(self, example):
         return to_basic_markdown(self.trans, example)
+
+
+class ReadyExportTestCase(BaseExportTestCase):
+
+    def test_ready_dataset_display(self):
+        hda = self._new_hda()
+        example = """
+```galaxy
+history_dataset_display(history_dataset_id=1)
+```
+"""
+        with self._expect_get_hda(hda):
+            export_markdown, extra_data = self._ready_export(example)
+        assert "history_datasets" in extra_data
+        assert len(extra_data["history_datasets"]) == 1
+
+    def test_ready_export_two_datasets(self):
+        hda = self._new_hda()
+        hda2 = self._new_hda()
+        hda2.id = 2
+        example = """
+```galaxy
+history_dataset_display(history_dataset_id=1)
+```
+
+```galaxy
+history_dataset_display(history_dataset_id=2)
+```
+"""
+        self.app.hda_manager.get_accessible.side_effect = [hda, hda2]
+        export_markdown, extra_data = self._ready_export(example)
+        assert "history_datasets" in extra_data
+        assert len(extra_data["history_datasets"]) == 2
+
+    def _ready_export(self, example):
+        return ready_galaxy_markdown_for_export(self.trans, example)
