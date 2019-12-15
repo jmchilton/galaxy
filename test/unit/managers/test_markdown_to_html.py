@@ -31,6 +31,16 @@ A Code Block Follows:
     assert "<pre><code>This is code right?\nHere is another line." in as_html
 
 
+def test_tables():
+    as_html = to_html("""
+|animal|sound|
+|------|-----|
+|dog   |bark |
+|cat   |meow |
+""")
+    assert "<table>" in as_html, as_html
+
+
 def test_tags_escaped():
     as_html = to_html("""
 Bad block approaches <br>

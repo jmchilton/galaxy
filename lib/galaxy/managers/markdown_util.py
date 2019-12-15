@@ -140,13 +140,23 @@ def ready_galaxy_markdown_for_export(trans, internal_galaxy_markdown):
     return export_markdown, extra_rendering_data
 
 
-def literal_via_fence(content):
-    return "\n%s\n" % "\n".join(["    %s" % l for l in content.splitlines()])
+
+class MarkdownFormatHelpers(object):
+    """Inject common markdown formatting helpers for per-datatype rendering."""
+
+    @staticmethod
+    def literal_via_fence(content):
+        return "\n%s\n" % "\n".join(["    %s" % l for l in content.splitlines()])
+
+    @staticmethod
+    def indicate_data_truncated(self):
+        return "\n**Warning:** The above data has been truncated to be embedded in this document.\n\n"
 
 
 def to_basic_markdown(trans, internal_galaxy_markdown):
     """Replace Galaxy Markdown extensions with plain Markdown for PDF/HTML export.
     """
+    markdown_formatting_helpers = MarkdownFormatHelpers()
     # TODO: refactor duplication with ready_galaxy_markdown_for_export using visitor pattern.
     hda_manager = trans.app.hda_manager
     workflow_manager = trans.app.workflow_manager
@@ -169,12 +179,12 @@ def to_basic_markdown(trans, internal_galaxy_markdown):
             name = hda.name or ""
             dataset = hda.dataset
             markdown = "Dataset: %s\n\n" % name
-            if hda.datatype.is_binary:
-                markdown += "Contents: *cannot display binary content*\n\n"
+            datatype = hda.datatype
+            if datatype is None:
+                markdown += "Contents: *cannot display - cannot format unknown datatype*\n\n"
             else:
                 markdown += "Contents:\n"
-                contents = open(dataset.file_name, "r").read(DEFAULT_MAX_PEEK_SIZE)
-                markdown += literal_via_fence(contents)
+                markdown += datatype.display_as_markdown(hda, markdown_formatting_helpers)
             return (markdown, True)
         elif container == "history_dataset_as_image":
             assert object_id is not None
@@ -190,7 +200,7 @@ def to_basic_markdown(trans, internal_galaxy_markdown):
             assert object_id is not None
             hda = hda_manager.get_accessible(object_id, trans.user)
             if hda.peek:
-                content = literal_via_fence(hda.peek)
+                content = markdown_formatting_helpers.literal_via_fence(hda.peek)
             else:
                 content = "*No Dataset Peek Available*"
             return (content, True)
@@ -221,7 +231,7 @@ def to_basic_markdown(trans, internal_galaxy_markdown):
 
 
 def to_html(basic_markdown):
-    html = sanitize_html(markdown.markdown(basic_markdown))
+    html = sanitize_html(markdown.markdown(basic_markdown, extensions=["tables"]))
     return html
 
 

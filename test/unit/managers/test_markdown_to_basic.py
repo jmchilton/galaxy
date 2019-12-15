@@ -77,7 +77,7 @@ history_dataset_display(history_dataset_id=1)
 """
         with self._expect_get_hda(hda):
             result = self._to_basic(example)
-        assert "Contents: *cannot display binary content*" in result
+        assert "Contents:\n*cannot display binary content*\n" in result
 
     def test_history_display_text(self):
         hda = self._new_hda(contents="MooCow")
@@ -91,13 +91,32 @@ history_dataset_display(history_dataset_id=1)
             result = self._to_basic(example)
         assert "Contents:\n\n    MooCow\n\n" in result
 
+    def test_history_display_gtf(self):
+        gtf = """chr13	Cufflinks	transcript	3405463	3405542	1000	.	.	gene_id "CUFF.50189"; transcript_id "CUFF.50189.1"; FPKM "6.3668918357"; frac "1.000000"; conf_lo "0.000000"; conf_hi "17.963819"; cov "0.406914";
+chr13	Cufflinks	exon	3405463	3405542	1000	.	.	gene_id "CUFF.50189"; transcript_id "CUFF.50189.1"; exon_number "1"; FPKM "6.3668918357"; frac "1.000000"; conf_lo "0.000000"; conf_hi "17.963819"; cov "0.406914";
+chr13	Cufflinks	transcript	3473337	3473372	1000	.	.	gene_id "CUFF.50191"; transcript_id "CUFF.50191.1"; FPKM "11.7350749444"; frac "1.000000"; conf_lo "0.000000"; conf_hi "35.205225"; cov "0.750000";
+"""
+        example = """# Example
+```galaxy
+history_dataset_display(history_dataset_id=1)
+```
+"""
+        hda = self._new_hda(contents=gtf)
+        hda.extension = 'gtf'
+        from galaxy.datatypes.tabular import Tabular
+        assert isinstance(hda.datatype, Tabular)
+        with self._expect_get_hda(hda):
+            result = self._to_basic(example)
+        assert '<table' in result
+
     def _new_hda(self, contents=None):
         hda = model.HistoryDatasetAssociation()
         if contents is not None:
-            hda.dataset = mock.Mock()
+            hda.dataset = mock.MagicMock()
+            hda.dataset.purged = False
             t = tempfile.NamedTemporaryFile(mode="w", delete=False)
             t.write(contents)
-            hda.dataset.file_name = t.name
+            hda.dataset.get_file_name.return_value = t.name
         return hda
 
     @contextmanager

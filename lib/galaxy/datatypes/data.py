@@ -466,6 +466,31 @@ class Data(object):
                                               truncated_data=open(data.file_name, 'rb').read(max_peek_size),
                                               data=data)
 
+    def display_as_markdown(self, dataset_instance, markdown_format_helpers):
+        """Prepare for embedding dataset into a basic Markdown document.
+
+        This is a somewhat experimental interface and should not be implemented
+        on datatypes not tightly tied to a Galaxy version (e.g. datatypes in the
+        Tool Shed).
+
+        Speaking very losely - the datatype should should load a bounded amount
+        of data from the supplied dataset instance and prepare for embedding it
+        into Markdown. This should be relatively vanilla Markdown - the result of
+        this is bleached and it should not contain nested Galaxy Markdown
+        directives.
+
+        If the data cannot reasonably be displayed, just indicate this and do
+        not throw an exception.
+        """
+        if self.is_binary:
+            result = "*cannot display binary content*\n"
+        else:
+            contents = open(dataset_instance.file_name, "r").read(DEFAULT_MAX_PEEK_SIZE)
+            result = markdown_format_helpers.literal_via_fence(contents)
+            if len(contents) == DEFAULT_MAX_PEEK_SIZE:
+                result += markdown_format_helpers.indicate_data_truncated()
+        return result
+
     def _yield_user_file_content(self, trans, from_dataset, filename):
         """This method is responsible for sanitizing the HTML if needed."""
         if trans.app.config.sanitize_all_html and trans.response.get_content_type() == "text/html":
