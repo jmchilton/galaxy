@@ -48,3 +48,11 @@ Bad block approaches <br>
 <script>window.location.href = "bad_place";</script>
 """)
     assert "<script>" not in as_html, as_html
+
+
+def test_embed_img_tags():
+    as_html = to_html("""
+![Red dot](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==)
+""")
+    assert "img" in as_html, as_html
+    assert "iVBORw0KGgoAAAANSUhEUgAAAAUAAA" in as_html, as_html

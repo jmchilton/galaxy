@@ -231,7 +231,8 @@ def to_basic_markdown(trans, internal_galaxy_markdown):
 
 
 def to_html(basic_markdown):
-    html = sanitize_html(markdown.markdown(basic_markdown, extensions=["tables"]))
+    # Allow data: urls so we can embed images.
+    html = sanitize_html(markdown.markdown(basic_markdown, extensions=["tables"]), allow_data_urls=True)
     return html
 
 
