@@ -190,19 +190,6 @@ def test_subworkflow_parsing():
     assert subworkflow_step["type"] == "subworkflow"
 
 
-# No longer unmet - need a new test I think.
-# def test_checks_requirements():
-#     """Test that tool proxy will not load unmet requirements."""
-#     exception = None
-#     try:
-#         tool_proxy(_cwl_tool_path("draft3_custom/unmet-requirement.cwl"))
-#     except Exception as e:
-#         exception = e
-
-#     assert exception is not None
-#     assert "Unsupported requirement SubworkflowFeatureRequirement" in str(exception), str(exception)
-
-
 def test_checks_is_a_tool():
     """Test that tool proxy cannot be created for a workflow."""
     exception = None
