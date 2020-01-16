@@ -182,8 +182,25 @@ class KubernetesStagingContainerIntegrationTestCase(CancelsJob, BaseKubernetesSt
         return active
 
 
-@integration_util.skip_unless_kubernetes()
-@integration_util.skip_unless_fixed_port()
+class KubernetesStagingContainerExtendedMetadataIntegrationTestCase(BaseKubernetesStagingTest):
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        config["jobs_directory"] = cls.jobs_directory
+        config["file_path"] = cls.jobs_directory
+        config["job_config_file"] = job_config(CONTAINERIZED_TEMPLATE, cls.jobs_directory)
+        config["default_job_shell"] = '/bin/sh'
+        # Disable local tool dependency resolution.
+        config["tool_dependency_dir"] = "none"
+        config['metadata_strategy'] = 'extended'
+        set_infrastucture_url(config)
+
+    @skip_without_tool("job_environment_default")
+    def test_job_environment(self):
+        job_env = self._run_and_get_environment_properties()
+        assert job_env.some_env == '42'
+
+
 class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTest):
 
     @classmethod
