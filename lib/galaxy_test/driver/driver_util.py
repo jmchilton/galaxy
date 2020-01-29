@@ -520,9 +520,12 @@ def serve_webapp(webapp, port=None, host=None):
     for port in attempt_ports(port):
         try:
             server = httpserver.serve(webapp, host=host, port=port, start_loop=False)
+            print("server created!!!!!!")
             break
         except socket.error as e:
-            if e[0] == 98:
+            if e.errno == 98:
+                print(e)
+                print("Port already bound somehow...")
                 continue
             raise
 
