@@ -663,8 +663,19 @@ class ServerWrapper(object):
 
     def __init__(self, name, host, port):
         self.name = name
-        self.host = host
+        self._serve_host = host
         self.port = port
+
+    @property
+    def serve_host(self):
+        return self._serve_host
+
+    @property
+    def host(self):
+        if self._serve_host == "0.0.0.0":
+            return "localhost"
+        else:
+            return self._serve_host
 
     @property
     def app(self):
@@ -791,7 +802,7 @@ def launch_uwsgi(kwargs, tempdir, prefix=DEFAULT_CONFIG_PREFIX, config_object=No
     for port in attempt_ports(port):
         server_wrapper = attempt_port_bind(port)
         try:
-            set_and_wait_for_http_target(prefix, host, port, sleep_tries=50)
+            set_and_wait_for_http_target(prefix, server_wrapper.host, port, sleep_tries=50)
             log.info("Test-managed uwsgi web server for %s started at %s:%s" % (name, host, port))
             return server_wrapper
         except Exception:
