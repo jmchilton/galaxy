@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         python-version: [3.7]
-        subset: ['upload_datatype', 'extended_metadata', 'kubernetes', 'not (upload_datatype or extended_metadata or kubernetes)']
+        subset: ['upload_datatype', 'extended_metadata', 'KubernetesDependencyResolutionIntegrationTestCase', 'not (upload_datatype or extended_metadata or kubernetes)']
     services:
       postgres:
         image: postgres:11
@@ -26,14 +26,14 @@ jobs:
           - 5672:5672
     steps:
     - name: Setup Minikube
-      if: matrix.subset == 'kubernetes'
+      if: matrix.subset == 'KubernetesDependencyResolutionIntegrationTestCase'
       id: minikube
       uses: CodingNagger/minikube-setup-action@v1.0.2
     - name: Launch Minikube
-      if: matrix.subset == 'kubernetes'
+      if: matrix.subset == 'KubernetesDependencyResolutionIntegrationTestCase'
       run: eval ${{ steps.minikube.outputs.launcher }}
     - name: Check pods
-      if: matrix.subset == 'kubernetes'
+      if: matrix.subset == 'KubernetesDependencyResolutionIntegrationTestCase'
       run: |
         kubectl get pods
     - uses: actions/checkout@v1
