@@ -20,6 +20,14 @@ from galaxy_test.driver import integration_util
 from .test_containerized_jobs import EXTENDED_TIMEOUT, MulledJobTestCases
 from .test_job_environments import BaseJobEnvironmentIntegrationTestCase
 
+from galaxy.jobs.runners.util.pykube_util import (
+    ensure_pykube,
+    Job,
+    Pod,
+    pykube_client_from_dict,
+)
+
+
 TOOL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'tools'))
 AMQP_URL = os.environ.get("GALAXY_TEST_AMQP_URL", "amqp://guest:guest@localhost:5672//")
 GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST = os.environ.get("GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST", "host.docker.internal")
@@ -165,8 +173,15 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
         set_infrastucture_url(config)
 
     def test_mulled_simple(self):
-        self.dataset_populator.run_tool("mulled_example_simple", {}, self.history_id)
-        self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
+        try:
+            self.dataset_populator.run_tool("mulled_example_simple", {}, self.history_id)
+            self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
+        except Exception:
+            print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nMOOOOO COW\n\n\n\n\n\n\n\n\n\n\n")
+            pykube_api = pykube_client_from_dict({})
+            pods = Pod.objects(pykube_api).filter()
+            for pod in pods:
+                print(pod)
         output = self.dataset_populator.get_history_dataset_content(self.history_id, timeout=EXTENDED_TIMEOUT)
         assert "0.7.15-r1140" in output
 
