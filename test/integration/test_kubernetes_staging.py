@@ -13,6 +13,7 @@ rabbitmq installed via Homebrew, and if a fixed port is set for the test.
 """
 import os
 import random
+import socket
 import string
 import tempfile
 
@@ -27,7 +28,7 @@ from .test_job_environments import BaseJobEnvironmentIntegrationTestCase
 from .test_local_job_cancellation import CancelsJob
 
 TOOL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'tools'))
-GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST = os.environ.get("GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST", "host.docker.internal")
+GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST = os.environ.get("GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST", "SOCKET_HOSTNAME")
 AMQP_URL = integration_util.AMQP_URL
 GALAXY_TEST_KUBERNETES_NAMESPACE = os.environ.get("GALAXY_TEST_K8S_NAMESPACE", "default")
 
@@ -223,7 +224,14 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
 
 
 def set_infrastucture_url(config):
-    infrastructure_url = "http://%s:$UWSGI_PORT" % GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST
+    host = GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST
+    if host == "DOCKER_INTERNAL":
+        host = "host.docker.internal"
+    elif host == "SOCKET_HOSTNAME":
+        host = socket.gethostname()
+    elif host == "SOCKET_FQDN":
+        host = socket.getfqdn()
+    infrastructure_url = "http://%s:$UWSGI_PORT" % host
     config["galaxy_infrastructure_url"] = infrastructure_url
 
 
