@@ -12,6 +12,7 @@ rabbitmq installed via Homebrew, and if a fixed port is set for the test.
 
 """
 import os
+import socket
 import string
 import tempfile
 
@@ -179,8 +180,11 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
         except Exception:
             print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nMOOOOO COW\n\n\n\n\n\n\n\n\n\n\n")
             import subprocess
+            import socket
             subprocess.run("ifconfig")
             subprocess.run("hostname")
+            print(socket.gethostname())
+            print(socket.getfqdn())
             pykube_api = pykube_client_from_dict({})
             pods = Pod.objects(pykube_api).filter()
             for pod in pods:
@@ -196,7 +200,14 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
 
 
 def set_infrastucture_url(config):
-    infrastructure_url = "http://%s:$UWSGI_PORT" % GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST
+    host = GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST
+    if host == "DOCKER_INTERNAL":
+        host = "host.docker.internal"
+    elif host == "SOCKET_HOSTNAME":
+        host = socket.gethostname()
+    elif host == "SOCKET_FQDN":
+        host = socket.getfqdn()
+    infrastructure_url = "http://%s:$UWSGI_PORT" % host
     config["galaxy_infrastructure_url"] = infrastructure_url
 
 
