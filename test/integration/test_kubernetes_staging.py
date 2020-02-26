@@ -178,10 +178,19 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
             self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
         except Exception:
             print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nMOOOOO COW\n\n\n\n\n\n\n\n\n\n\n")
+            import subprocess
+            subprocess.run("ifconfig")
+            subprocess.run("hostname")
             pykube_api = pykube_client_from_dict({})
             pods = Pod.objects(pykube_api).filter()
             for pod in pods:
-                print(pod)
+                for container in pod.obj["spec"]["containers"]:
+                    container_log = pod.logs(
+                        container=container["name"],
+                        timestamps=True,
+                        tail_lines=100,
+                    )
+                    print(container_log)
         output = self.dataset_populator.get_history_dataset_content(self.history_id, timeout=EXTENDED_TIMEOUT)
         assert "0.7.15-r1140" in output
 
