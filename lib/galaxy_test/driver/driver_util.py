@@ -634,7 +634,8 @@ def explicitly_configured_host_and_port(prefix, config_object):
     port_env_key = "%s_TEST_PORT" % prefix
     port_random_env_key = "%s_TEST_PORT_RANDOM" % prefix
     default_web_host = getattr(config_object, "default_web_host", DEFAULT_WEB_HOST)
-    host = os.environ.get(host_env_key, default_web_host)
+    # host = os.environ.get(host_env_key, default_web_host)
+    host = default_web_host  # WHY?
     print("\n\n\n\n\n\n\n\n\nSETUPWEB\n\n\n\n\n\n\n\n")
     print(default_web_host)
     print(config_object)
