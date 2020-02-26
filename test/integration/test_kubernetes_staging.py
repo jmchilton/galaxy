@@ -95,6 +95,7 @@ tools:
 def job_config(template_str, jobs_directory):
     job_conf_template = string.Template(template_str)
     container_amqp_url = to_infrastructure_uri(AMQP_URL)
+    container_amqp_url = "amqp://badhost:5672"  # does this break it?
     job_conf_str = job_conf_template.substitute(jobs_directory=jobs_directory,
                                                 tool_directory=TOOL_DIR,
                                                 k8s_config_path=integration_util.k8s_config_path(),
