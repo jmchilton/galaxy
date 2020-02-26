@@ -296,6 +296,7 @@ class PulsarJobRunner(AsynchronousJobRunner):
         return job_state
 
     def _update_job_state_for_status(self, job_state, pulsar_status, full_status=None):
+        log.info("in _update_job_state_for_status...")
         if pulsar_status == "complete":
             self.mark_as_finished(job_state)
             return None

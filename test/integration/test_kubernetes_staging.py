@@ -217,8 +217,29 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
         set_infrastucture_url(config)
 
     def test_mulled_simple(self):
-        self.dataset_populator.run_tool("mulled_example_simple", {}, self.history_id)
-        self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
+        try:
+            self.dataset_populator.run_tool("mulled_example_simple", {}, self.history_id)
+            self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
+        except Exception:
+            print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nMOOOOO COW\n\n\n\n\n\n\n\n\n\n\n")
+            import subprocess
+            import socket
+            subprocess.run("ifconfig")
+            subprocess.run("hostname")
+            print(socket.gethostname())
+            print(socket.getfqdn())
+            HOST_UP  = True if os.system("ping -c 1 rabbitmq") is 0 else False
+            print("HOST_UP %s" % HOST_UP)
+            pykube_api = pykube_client_from_dict({})
+            pods = Pod.objects(pykube_api).filter()
+            for pod in pods:
+                for container in pod.obj["spec"]["containers"]:
+                    container_log = pod.logs(
+                        container=container["name"],
+                        timestamps=True,
+                        tail_lines=100,
+                    )
+                    print(container_log)
         output = self.dataset_populator.get_history_dataset_content(self.history_id, timeout=EXTENDED_TIMEOUT)
         assert "0.7.15-r1140" in output
 
