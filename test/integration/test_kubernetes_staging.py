@@ -203,6 +203,7 @@ class KubernetesStagingContainerExtendedMetadataIntegrationTestCase(BaseKubernet
 
 
 class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTest):
+    default_web_host = "0.0.0.0"  # Doesn't work - why?
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
