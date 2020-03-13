@@ -535,7 +535,7 @@ do
               integration_extra=$2
               shift 2
           else
-              integration_extra="./test/integration"
+              integration_extra="-s ./test/integration"
               shift 1
           fi
           ;;
