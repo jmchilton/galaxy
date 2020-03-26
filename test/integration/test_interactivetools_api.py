@@ -1,6 +1,7 @@
 """Integration tests for realtime tools."""
 
 import os
+import tempfile
 
 import pytest
 import requests
@@ -14,6 +15,11 @@ from .test_containerized_jobs import (
     ContainerizedIntegrationTestCase,
     disable_dependency_resolution,
     DOCKERIZED_JOB_CONFIG_FILE,
+)
+from .test_kubernetes_staging import (
+    CONTAINERIZED_TEMPLATE,
+    set_infrastucture_url,
+    job_config,
 )
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
@@ -141,4 +147,47 @@ class InteractiveToolsRemoteProxyIntegrationTestCase(BaseInteractiveToolsIntegra
         config["job_config_file"] = DOCKERIZED_JOB_CONFIG_FILE
         config["interactivetools_proxy_host"] = interactivetools_proxy_host
         config["interactivetools_map"] = interactivetools_map
+        disable_dependency_resolution(config)
+
+
+@integration_util.skip_unless_kubernetes()
+@integration_util.skip_unless_amqp()
+class KubeInteractiveToolsRemoteProxyIntegrationTestCase(BaseInteractiveToolsIntegrationTestCase, RunsInterativeToolTests):
+    """
+    $ git clone https://github.com/galaxyproject/gx-it-proxy.git $HOME/gx-it-proxy
+    $ cd $HOME/gx-it-proxy/docker/k8s
+    $ # Setup proxy inside K8 cluster with kubectl - including forwarding port 8910
+    $ bash run.sh
+    $ cd ../..  # back session.
+    $ # Need new DB for every test.
+    $ rm -rf $HOME/gxitk8proxy.sqlite
+    $ ./lib/createdb.js --sessions $HOME/gxitk8proxy.sqlite
+    $ ./lib/main.js --port 9002 --ip 0.0.0.0 --verbose --sessions $HOME/gxitk8proxy.sqlite --forwardIP localhost --forwardPort 8910 &
+    $ cd back/to/galaxy
+    $ GALAXY_TEST_K8S_EXTERNAL_PROXY_HOST="localhost:9002" GALAXY_TEST_EXTERNAL_PROXY_MAP="$HOME/gxitexproxy.sqlite" pytest -s test/integration/test_interactivetools_api.py::KubeInteractiveToolsRemoteProxyIntegrationTestCase
+    """
+    require_uwsgi = True
+
+    @classmethod
+    def setUpClass(cls):
+        # realpath for docker deployed in a VM on Mac, also done in driver_util.
+        cls.jobs_directory = os.path.realpath(tempfile.mkdtemp())
+        super(KubeInteractiveToolsRemoteProxyIntegrationTestCase, cls).setUpClass()
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        interactivetools_map = os.environ.get("GALAXY_TEST_K8S_EXTERNAL_PROXY_MAP")
+        interactivetools_proxy_host = os.environ.get("GALAXY_TEST_K8S_EXTERNAL_PROXY_HOST")
+        if not interactivetools_map or not interactivetools_proxy_host:
+            pytest.skip("External proxy not configured for test [map=%s,host=%s]" % (interactivetools_map, interactivetools_proxy_host))
+
+        config["interactivetools_proxy_host"] = interactivetools_proxy_host
+        config["interactivetools_map"] = interactivetools_map
+
+        config["jobs_directory"] = cls.jobs_directory
+        config["file_path"] = cls.jobs_directory
+        config["job_config_file"] = job_config(CONTAINERIZED_TEMPLATE, cls.jobs_directory)
+        config["default_job_shell"] = '/bin/sh'
+
+        set_infrastucture_url(config)
         disable_dependency_resolution(config)
