@@ -844,6 +844,7 @@ class PulsarJobRunner(AsynchronousJobRunner):
         return metadata_kwds
 
     def __async_update(self, full_status):
+        log.info("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n IN AN UPDATE \n\n\n\n\n\n\n\n\n\n")
         galaxy_job_id = None
         try:
             remote_job_id = full_status["job_id"]

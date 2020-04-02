@@ -28,7 +28,7 @@ from .test_job_environments import BaseJobEnvironmentIntegrationTestCase
 from .test_local_job_cancellation import CancelsJob
 
 TOOL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'tools'))
-GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST = os.environ.get("GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST", "SOCKET_HOSTNAME")
+GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST = os.environ.get("GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST", "DOCKER_INTERNAL")
 AMQP_URL = integration_util.AMQP_URL
 GALAXY_TEST_KUBERNETES_NAMESPACE = os.environ.get("GALAXY_TEST_K8S_NAMESPACE", "default")
 
@@ -246,6 +246,12 @@ class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTes
 
 
 def set_infrastucture_url(config):
+    host = get_infrastructure_host()
+    infrastructure_url = "http://%s:$UWSGI_PORT" % host
+    config["galaxy_infrastructure_url"] = infrastructure_url
+
+
+def get_infrastructure_host():
     host = GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST
     if host == "DOCKER_INTERNAL":
         host = "host.docker.internal"
@@ -253,20 +259,20 @@ def set_infrastucture_url(config):
         host = socket.gethostname()
     elif host == "SOCKET_FQDN":
         host = socket.getfqdn()
-    infrastructure_url = "http://%s:$UWSGI_PORT" % host
-    config["galaxy_infrastructure_url"] = infrastructure_url
+    return host
 
 
 def to_infrastructure_uri(uri):
     # remap MQ or file server URI hostnames for in-container versions, this is sloppy
     # should actually parse the URI and rebuild with correct host
     # similar code found in Pulsar integration_tests.py.
+    host = get_infrastructure_host()
     infrastructure_uri = uri
-    if GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST:
+    if host:
         if "0.0.0.0" in infrastructure_uri:
-            infrastructure_uri = infrastructure_uri.replace("0.0.0.0", GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST)
+            infrastructure_uri = infrastructure_uri.replace("0.0.0.0", host)
         elif "localhost" in infrastructure_uri:
-            infrastructure_uri = infrastructure_uri.replace("localhost", GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST)
+            infrastructure_uri = infrastructure_uri.replace("localhost", host)
         elif "127.0.0.1" in infrastructure_uri:
-            infrastructure_uri = infrastructure_uri.replace("127.0.0.1", GALAXY_TEST_KUBERNETES_INFRASTRUCTURE_HOST)
+            infrastructure_uri = infrastructure_uri.replace("127.0.0.1", host)
     return infrastructure_uri
