@@ -5,7 +5,7 @@
             :onupdate="onUpdate"
             ref="markdownEditor"
             :toolbar="true"
-            :showMarkdownHelp="showMarkdownHelp"
+            :show-markdown-help="showMarkdownHelp"
         >
         </markdown-editor>
     </div>
@@ -18,31 +18,31 @@ import { save } from "./util";
 
 export default {
     components: {
-        MarkdownEditor
+        MarkdownEditor,
     },
-    data: function() {
+    data: function () {
         return {
             content: "",
-            showMarkdownHelp: showMarkdownHelp
+            showMarkdownHelp: showMarkdownHelp,
         };
     },
     props: {
         pageId: {
             required: true,
-            type: String
+            type: String,
         },
         initialContent: {
-            type: String
-        }
+            type: String,
+        },
     },
     methods: {
-        onUpdate: function(content) {
+        onUpdate: function (content) {
             this.content = content;
         },
-        saveContent: function() {
+        saveContent: function () {
             save(this.pageId, this.content);
-        }
-    }
+        },
+    },
 };
 </script>
 

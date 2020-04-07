@@ -1,23 +1,24 @@
 <template>
-    <StatelessTags :value="item.tags" @input="onInput" />
+    <StatelessTags :value="tags" @input="onInput" />
 </template>
 <script>
 import StatelessTags from "components/Tags/StatelessTags";
 export default {
     components: {
-        StatelessTags
+        StatelessTags,
     },
     props: {
-        item: {
-            type: Object,
-            required: true
-        }
+        index: {
+            type: Number,
+        },
+        tags: {
+            type: Array,
+        },
     },
     methods: {
         onInput(tags) {
-            this.item.tags = tags;
-            this.$emit("input", this.item);
-        }
-    }
+            this.$emit("input", tags, this.index);
+        },
+    },
 };
 </script>

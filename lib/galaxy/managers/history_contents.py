@@ -483,6 +483,10 @@ class HistoryContentsFilters(base.ModelFilterParser,
                     return sql.column(attr) >= self.parse_date(val)
                 if op == 'le':
                     return sql.column(attr) <= self.parse_date(val)
+                if op == 'gt':
+                    return sql.column(attr) > self.parse_date(val)
+                if op == 'lt':
+                    return sql.column(attr) < self.parse_date(val)
                 self.raise_filter_err(attr, op, val, 'bad op in filter')
 
             if attr == 'state':
@@ -507,7 +511,7 @@ class HistoryContentsFilters(base.ModelFilterParser,
     def decode_type_id(self, type_id):
         TYPE_ID_SEP = '-'
         split = type_id.split(TYPE_ID_SEP, 1)
-        return TYPE_ID_SEP.join([split[0], str(self.app.security.decode_id(split[1]))])
+        return TYPE_ID_SEP.join((split[0], str(self.app.security.decode_id(split[1]))))
 
     def parse_type_id_list(self, type_id_list_string, sep=','):
         """
@@ -530,6 +534,6 @@ class HistoryContentsFilters(base.ModelFilterParser,
             'name'          : {'op': ('eq', 'contains', 'like')},
             'state'         : {'op': ('eq', 'in')},
             'visible'       : {'op': ('eq'), 'val': self.parse_bool},
-            'create_time'   : {'op': ('le', 'ge'), 'val': self.parse_date},
-            'update_time'   : {'op': ('le', 'ge'), 'val': self.parse_date},
+            'create_time'   : {'op': ('le', 'ge', 'lt', 'gt'), 'val': self.parse_date},
+            'update_time'   : {'op': ('le', 'ge', 'lt', 'gt'), 'val': self.parse_date},
         })

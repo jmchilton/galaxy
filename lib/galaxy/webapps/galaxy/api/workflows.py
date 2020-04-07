@@ -26,6 +26,7 @@ from galaxy.managers import (
 from galaxy.managers.jobs import fetch_job_states, invocation_job_source_iter
 from galaxy.model.item_attrs import UsesAnnotations
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
+from galaxy.tools import recommendations
 from galaxy.tools.parameters import populate_state
 from galaxy.tools.parameters.basic import workflow_building_modes
 from galaxy.util.sanitize_html import sanitize_html
@@ -57,6 +58,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
         self.history_manager = histories.HistoryManager(app)
         self.workflow_manager = workflows.WorkflowsManager(app)
         self.workflow_contents_manager = workflows.WorkflowContentsManager(app)
+        self.tool_recommendations = recommendations.ToolRecommendations()
 
     def __get_full_shed_url(self, url):
         for name, shed_url in self.app.tool_shed_registry.tool_sheds.items():
@@ -196,7 +198,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
                 for tool_id in workflow['missing_tools']:
                     toolshed, _, owner, name, tool, version = tool_id.split('/')
                     shed_url = self.__get_full_shed_url(toolshed)
-                    repo_identifier = '/'.join([toolshed, owner, name])
+                    repo_identifier = '/'.join((toolshed, owner, name))
                     if repo_identifier not in workflows_by_toolshed:
                         workflows_by_toolshed[repo_identifier] = dict(shed=shed_url.rstrip('/'), repository=name, owner=owner, tools=[tool_id], workflows=[workflow['name']])
                     else:
@@ -266,7 +268,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
         :param  workflow_id:                 An existing workflow id. Either workflow_id, installed_repository_file or from_history_id must be specified
         :type   workflow_id:                 str
 
-        :param  parameters:                  If workflow_id is set - see _update_step_parameters()
+        :param  parameters:                  If workflow_id is set - see _step_parameters() in lib/galaxy/workflow/run_request.py
         :type   parameters:                  dict
 
         :param  ds_map:                      If workflow_id is set - a dictionary mapping each input step id to a dictionary with 2 keys: 'src' (which can be 'ldda', 'ld' or 'hda') and 'id' (which should be the id of a LibraryDatasetDatasetAssociation, LibraryDataset or HistoryDatasetAssociation respectively)
@@ -302,7 +304,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
         :param use_cached_job:               If set to True galaxy will attempt to find previously executed steps for all workflow steps with the exact same parameter combinations
                                              and will copy the outputs of the previously executed step.
         """
-        ways_to_create = set([
+        ways_to_create = {
             'archive_source',
             'workflow_id',
             'installed_repository_file',
@@ -310,7 +312,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
             'from_path',
             'shared_workflow_id',
             'workflow',
-        ])
+        }
 
         if len(ways_to_create.intersection(payload)) == 0:
             message = "One parameter among - %s - must be specified" % ", ".join(ways_to_create)
@@ -575,6 +577,7 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
             if 'annotation' in workflow_dict:
                 newAnnotation = sanitize_html(workflow_dict['annotation'])
                 self.add_item_annotation(trans.sa_session, trans.get_user(), stored_workflow, newAnnotation)
+                trans.sa_session.flush()
 
             if 'menu_entry' in workflow_dict or 'show_in_tool_panel' in workflow_dict:
                 if workflow_dict.get('menu_entry') or workflow_dict.get('show_in_tool_panel'):
@@ -628,6 +631,37 @@ class WorkflowsAPIController(BaseAPIController, UsesStoredWorkflowMixin, UsesAnn
             'outputs'           : module.get_all_outputs(),
             'config_form'       : module.get_config_form(),
             'post_job_actions'  : module.get_post_job_actions(inputs)
+        }
+
+    @expose_api
+    def get_tool_predictions(self, trans, payload, **kwd):
+        """
+        POST /api/workflows/get_tool_predictions
+        Fetch predicted tools for a workflow
+        :type   payload: dict
+        :param  payload: a dictionary containing two parameters:
+                         'tool_sequence' - comma separated sequence of tool ids
+                         'remote_model_url' - (optional) path to the deep learning model
+        """
+        remote_model_url = payload.get('remote_model_url', None)
+        if remote_model_url is None:
+            remote_model_url = trans.app.config.tool_recommendation_model_path
+        if 'tool_sequence' not in payload or remote_model_url is None:
+            return
+        is_model_set = True
+        recommended_tools = dict()
+        tool_sequence = ""
+        # collect tool recommendation preferences if set by admin
+        self.tool_recommendations.collect_admin_preferences(trans.app.config.admin_tool_recommendations_path)
+        # recreate the neural network model to be used for prediction
+        is_model_set = self.tool_recommendations.set_model(trans, remote_model_url)
+        if is_model_set is True:
+            # get the recommended tools for a tool sequence
+            tool_sequence = payload.get('tool_sequence', "")
+            recommended_tools = self.tool_recommendations.compute_tool_prediction(trans, tool_sequence)
+        return {
+            "current_tool": tool_sequence,
+            "predicted_data": recommended_tools
         }
 
     #

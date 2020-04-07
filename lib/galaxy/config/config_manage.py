@@ -30,12 +30,12 @@ if __name__ == '__main__':
 from galaxy.config import GALAXY_CONFIG_SCHEMA_PATH
 from galaxy.config.schema import (
     AppSchema,
+    OPTION_DEFAULTS,
     Schema,
 )
 from galaxy.util import safe_makedirs
 from galaxy.util.properties import nice_config_parser
 from galaxy.util.yaml_util import (
-    OPTION_DEFAULTS,
     ordered_dump,
     ordered_load,
 )
@@ -88,17 +88,11 @@ UWSGI_OPTIONS = OrderedDict([
     }),
     ('static-map.1', {
         'key': 'static-map',
-        'desc': """Mapping to serve style content.""",
-        'default': '/static/style=static/style/blue',
-        'type': 'str',
-    }),
-    ('static-map.2', {
-        'key': 'static-map',
-        'desc': """Mapping to serve the remainder of the static content.""",
+        'desc': """Mapping to serve static content.""",
         'default': '/static=static',
         'type': 'str',
     }),
-    ('static-map.3', {
+    ('static-map.2', {
         'key': 'static-map',
         'desc': """Mapping to serve the favicon.""",
         'default': '/favicon.ico=static/favicon.ico',
@@ -687,7 +681,7 @@ def _build_sample_yaml(args, app_desc):
     description = getattr(schema, "description", None)
     if description:
         description = description.lstrip()
-        as_comment = "\n".join(["# %s" % l for l in description.split("\n")]) + "\n"
+        as_comment = "\n".join("# %s" % l for l in description.split("\n")) + "\n"
         f.write(as_comment)
     _write_sample_section(args, f, 'uwsgi', Schema(UWSGI_OPTIONS), as_comment=False, uwsgi_hack=True)
     _write_sample_section(args, f, app_desc.app_name, schema)
@@ -701,7 +695,7 @@ def _write_to_file(args, f, path):
     else:
         contents = f
     if args.dry_run:
-        contents_indented = "\n".join([" |%s" % l for l in contents.splitlines()])
+        contents_indented = "\n".join(" |%s" % l for l in contents.splitlines())
         print("Overwriting %s with the following contents:\n%s" % (path, contents_indented))
         print("... skipping because --dry-run is enabled.")
     else:
@@ -756,7 +750,7 @@ def _write_option(args, f, key, option_value, as_comment=False, uwsgi_hack=False
     else:
         key_val_str = yaml.dump({key: value}, width=float("inf")).lstrip("{").rstrip("\n}")
     lines = "%s%s%s" % (comment, as_comment_str, key_val_str)
-    lines_idented = "\n".join([("  %s" % l) for l in lines.split("\n")])
+    lines_idented = "\n".join("  %s" % l for l in lines.split("\n"))
     f.write("%s\n\n" % lines_idented)
 
 

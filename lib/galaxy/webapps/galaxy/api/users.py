@@ -188,9 +188,9 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
             username = payload['username']
             email = payload['email']
             password = payload['password']
-            message = "\n".join([validate_email(trans, email),
+            message = "\n".join((validate_email(trans, email),
                                  validate_password(trans, password, password),
-                                 validate_publicname(trans, username)]).rstrip()
+                                 validate_publicname(trans, username))).rstrip()
             if message:
                 raise exceptions.RequestParameterInvalidException(message)
             else:
@@ -644,7 +644,11 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
         for name, value in user.preferences.items():
             if name in filter_types:
                 saved_values[name] = listify(value, do_strip=True)
-        inputs = []
+        inputs = [{
+            'type': 'hidden',
+            'name': 'helptext',
+            'label': 'In this section you may enable or disable Toolbox filters. Please contact your admin to configure filters as necessary.'
+        }]
         errors = {}
         factory = FilterFactory(trans.app.toolbox)
         for filter_type in filter_types:

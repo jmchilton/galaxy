@@ -10,13 +10,13 @@
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="(parameter, index) in parameters" v-bind:key="index">
-                    <td v-bind:style="{ 'padding-left': `${(parameter.depth - 1) * 10}px` }">
+                <tr v-for="(parameter, pIndex) in parameters" :key="pIndex">
+                    <td :style="{ 'padding-left': `${(parameter.depth - 1) * 10}px` }">
                         {{ parameter.text }}
                     </td>
                     <td v-if="Array.isArray(parameter.value)">
                         <ul style="padding-inline-start: 25px;">
-                            <li v-for="(elVal, index) in parameter.value" v-bind:key="index">
+                            <li v-for="(elVal, pvIndex) in parameter.value" :key="pvIndex">
                                 <span v-if="elVal.src == 'hda'">
                                     <a :href="appRoot() + 'datasets/' + elVal.id + '/show_params'">
                                         {{ elVal.hid }}: {{ elVal.name }}
@@ -53,27 +53,27 @@ Vue.use(BootstrapVue);
 export default {
     props: {
         jobId: {
-            type: String
+            type: String,
         },
         datasetId: {
-            type: String
+            type: String,
         },
         datasetType: {
             type: String,
-            default: "hda"
+            default: "hda",
         },
         includeTitle: {
             type: Boolean,
-            default: true
-        }
+            default: true,
+        },
     },
     data() {
         return {
             parameters: [],
-            hasParameterErrors: false
+            hasParameterErrors: false,
         };
     },
-    created: function() {
+    created: function () {
         let url;
         if (this.jobId) {
             url = `${getAppRoot()}api/jobs/${this.jobId}/parameters_display`;
@@ -83,31 +83,31 @@ export default {
         this.ajaxCall(url);
     },
     computed: {
-        anyNotes: function() {
+        anyNotes: function () {
             let hasNotes = false;
-            this.parameters.forEach(parameter => {
+            this.parameters.forEach((parameter) => {
                 hasNotes = hasNotes || parameter.notes;
             });
             return hasNotes;
-        }
+        },
     },
     methods: {
-        appRoot: function() {
+        appRoot: function () {
             return getAppRoot();
         },
-        ajaxCall: function(url) {
+        ajaxCall: function (url) {
             axios
                 .get(url)
-                .then(response => response.data)
-                .then(data => {
+                .then((response) => response.data)
+                .then((data) => {
                     this.hasParameterErrors = data.has_parameter_errors;
                     this.parameters = data.parameters;
                 })
-                .catch(e => {
+                .catch((e) => {
                     console.error(e);
                 });
-        }
-    }
+        },
+    },
 };
 </script>
 <style scoped>

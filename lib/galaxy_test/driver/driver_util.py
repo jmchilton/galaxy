@@ -463,7 +463,7 @@ def _get_static_settings():
         static_images_dir=os.path.join(static_dir, 'images', ''),
         static_favicon_dir=os.path.join(static_dir, 'favicon.ico'),
         static_scripts_dir=os.path.join(static_dir, 'scripts', ''),
-        static_style_dir=os.path.join(static_dir, 'style', 'blue'),
+        static_style_dir=os.path.join(static_dir, 'style'),
         static_robots_txt=os.path.join(static_dir, 'robots.txt'),
     )
 
@@ -784,7 +784,7 @@ def launch_uwsgi(kwargs, tempdir, prefix=DEFAULT_CONFIG_PREFIX, config_object=No
             handle_uwsgi_cli_command(uwsgi_command)
 
         # we don't want to quote every argument but we don't want to print unquoted ones either, so do this
-        log.info("Starting uwsgi with command line: %s", ' '.join([shlex_quote(x) for x in uwsgi_command]))
+        log.info("Starting uwsgi with command line: %s", ' '.join(shlex_quote(x) for x in uwsgi_command))
         p = subprocess.Popen(
             uwsgi_command,
             cwd=galaxy_root,

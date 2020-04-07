@@ -834,16 +834,19 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
                 return None
 
         tool_loaded = False
+        if not os.path.isdir(directory):
+            log.error("Failed to read tool directory %s.", directory)
+            return
         for name in os.listdir(directory):
-            if name.startswith('.' or '_'):
+            if name.startswith(('.', '_')):
                 # Very unlikely that we want to load tools from a hidden or private folder
                 continue
             child_path = os.path.join(directory, name)
             if os.path.isdir(child_path) and recursive:
                 self.__watch_directory(child_path, elems, integrated_elems, load_panel_dict, recursive)
             elif self._looks_like_a_tool(child_path):
-                quick_load(child_path, async_load=False)
-                tool_loaded = True
+                tool_id = quick_load(child_path, async_load=False)
+                tool_loaded = bool(tool_id)
         if (tool_loaded or force_watch) and self._tool_watcher:
             self._tool_watcher.watch_directory(directory, quick_load)
 
@@ -1048,24 +1051,29 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
             if elt:
                 yield elt
 
-    def get_tool_to_dict(self, trans, tool):
+    def get_tool_to_dict(self, trans, tool, tool_help=False):
         """Return tool's to_dict.
         Use cache if present, store to cache otherwise.
         Note: The cached tool's to_dict is specific to the calls from toolbox.
         """
+        to_dict = None
         if not trans.user_is_admin:
-            to_dict = self._tool_to_dict_cache.get(tool.id, None)
+            if not tool_help:
+                to_dict = self._tool_to_dict_cache.get(tool.id, None)
             if not to_dict:
-                to_dict = tool.to_dict(trans, link_details=True)
-                self._tool_to_dict_cache[tool.id] = to_dict
+                to_dict = tool.to_dict(trans, link_details=True, tool_help=tool_help)
+                if not tool_help:
+                    self._tool_to_dict_cache[tool.id] = to_dict
         else:
-            to_dict = self._tool_to_dict_cache_admin.get(tool.id, None)
+            if not tool_help:
+                to_dict = self._tool_to_dict_cache_admin.get(tool.id, None)
             if not to_dict:
-                to_dict = tool.to_dict(trans, link_details=True)
-                self._tool_to_dict_cache_admin[tool.id] = to_dict
+                to_dict = tool.to_dict(trans, link_details=True, tool_help=tool_help)
+                if not tool_help:
+                    self._tool_to_dict_cache_admin[tool.id] = to_dict
         return to_dict
 
-    def to_dict(self, trans, in_panel=True, **kwds):
+    def to_dict(self, trans, in_panel=True, tool_help=False, **kwds):
         """
         Create a dictionary representation of the toolbox.
         Uses primitive cache for toolbox-specific tool 'to_dict's.
@@ -1076,9 +1084,9 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
             for elt in panel_elts:
                 # Only use cache for objects that are Tools.
                 if hasattr(elt, "tool_type"):
-                    rval.append(self.get_tool_to_dict(trans, elt))
+                    rval.append(self.get_tool_to_dict(trans, elt, tool_help=tool_help))
                 else:
-                    kwargs = dict(trans=trans, link_details=True, toolbox=self)
+                    kwargs = dict(trans=trans, link_details=True, tool_help=tool_help, toolbox=self)
                     rval.append(elt.to_dict(**kwargs))
         else:
             filter_method = self._build_filter_method(trans)
@@ -1086,7 +1094,7 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
                 tool = filter_method(tool, panel_item_types.TOOL)
                 if not tool:
                     continue
-                rval.append(self.get_tool_to_dict(trans, tool))
+                rval.append(self.get_tool_to_dict(trans, tool, tool_help=tool_help))
         return rval
 
     def _lineage_in_panel(self, panel_dict, tool=None, tool_lineage=None):
@@ -1215,9 +1223,10 @@ class BaseGalaxyToolBox(AbstractToolBox):
             return
         app_config_dict = self.app.config.config_dict
         conf_file = app_config_dict.get("dependency_resolvers_config_file")
-        default_tool_dependency_dir = os.path.join(self.app.config.data_dir, self.app.config.appschema['tool_dependency_dir'].get('default'))
-        self.dependency_manager = build_dependency_manager(app_config_dict=app_config_dict, conf_file=conf_file,
-                                                           default_tool_dependency_dir=default_tool_dependency_dir)
+        default_tool_dependency_dir = os.path.join(
+            self.app.config.data_dir, self.app.config.schema.defaults['tool_dependency_dir'])
+        self.dependency_manager = build_dependency_manager(
+            app_config_dict=app_config_dict, conf_file=conf_file, default_tool_dependency_dir=default_tool_dependency_dir)
 
     def reload_dependency_manager(self):
         self._init_dependency_manager()

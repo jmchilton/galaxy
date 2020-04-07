@@ -617,8 +617,8 @@ class WorkflowContentsManager(UsesAnnotations):
                 else:
                     data['upgrade_messages'][step.order_index] = {module.tool.name: "\n".join(module.version_changes)}
             # Get user annotation.
-            annotation_str = self.get_item_annotation_str(trans.sa_session, trans.user, step) or ''
             config_form = module.get_config_form(step=step)
+            annotation_str = self.get_item_annotation_str(trans.sa_session, trans.user, step) or ''
             # Pack attributes into plain dictionary
             step_dict = {
                 'id': step.order_index,
@@ -942,7 +942,7 @@ class WorkflowContentsManager(UsesAnnotations):
 
             # Encode input connections as dictionary
             input_conn_dict = {}
-            unique_input_names = set([conn.input_name for conn in input_connections])
+            unique_input_names = {conn.input_name for conn in input_connections}
             for input_name in unique_input_names:
                 input_conn_dicts = []
                 for conn in input_connections:
@@ -1133,7 +1133,7 @@ class WorkflowContentsManager(UsesAnnotations):
         steps_by_external_id[external_id] = step
         if 'workflow_outputs' in step_dict:
             workflow_outputs = step_dict['workflow_outputs']
-            found_output_names = set([])
+            found_output_names = set()
             for workflow_output in workflow_outputs:
                 # Allow workflow outputs as list of output_names for backward compatibility.
                 if not isinstance(workflow_output, dict):

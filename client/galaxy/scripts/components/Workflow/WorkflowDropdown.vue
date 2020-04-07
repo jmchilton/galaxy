@@ -8,27 +8,54 @@
             aria-expanded="false"
         >
             <span :class="icon" />
-            {{ workflow.name }}
+            <span>{{ workflow.name }}</span>
         </b-link>
         <p v-if="workflow.description">{{ workflow.description }}</p>
         <div v-if="workflow.shared" class="dropdown-menu" aria-labelledby="workflow-dropdown">
-            <a class="dropdown-item" href="#" @click.prevent="onCopy">Copy</a>
-            <a class="dropdown-item" :href="urlViewShared">View</a>
+            <a class="dropdown-item" href="#" @click.prevent="onCopy">
+                <span class="fa fa-copy fa-fw mr-1" />
+                <span>Copy</span>
+            </a>
+            <a class="dropdown-item" :href="urlViewShared">
+                <span class="fa fa-eye fa-fw mr-1" />
+                <span>View</span>
+            </a>
         </div>
         <div v-else class="dropdown-menu" aria-labelledby="workflow-dropdown">
-            <a class="dropdown-item" :href="urlEdit">Edit</a>
-            <a class="dropdown-item" href="#" @click.prevent="onCopy">Copy</a>
-            <a class="dropdown-item" :href="urlDownload">Download</a>
-            <a class="dropdown-item" href="#" @click.prevent="onRename">Rename</a>
-            <a class="dropdown-item" :href="urlShare">Share</a>
-            <a class="dropdown-item" :href="urlView">View</a>
-            <a class="dropdown-item" href="#" @click.prevent="onDelete">Delete</a>
+            <a class="dropdown-item" :href="urlEdit">
+                <span class="fa fa-edit fa-fw mr-1" />
+                <span>Edit</span>
+            </a>
+            <a class="dropdown-item" href="#" @click.prevent="onCopy">
+                <span class="fa fa-copy fa-fw mr-1" />
+                <span>Copy</span>
+            </a>
+            <a class="dropdown-item" :href="urlDownload">
+                <span class="fa fa-download fa-fw mr-1" />
+                <span>Download</span>
+            </a>
+            <a class="dropdown-item" href="#" @click.prevent="onRename">
+                <span class="fa fa-signature fa-fw mr-1" />
+                <span>Rename</span>
+            </a>
+            <a class="dropdown-item" :href="urlShare">
+                <span class="fa fa-share-alt fa-fw mr-1" />
+                <span>Share</span>
+            </a>
+            <a class="dropdown-item" :href="urlView">
+                <span class="fa fa-eye fa-fw mr-1" />
+                <span>View</span>
+            </a>
+            <a class="dropdown-item" href="#" @click.prevent="onDelete">
+                <span class="fa fa-trash fa-fw mr-1" />
+                <span>Delete</span>
+            </a>
         </div>
     </div>
 </template>
 <script>
 import { getAppRoot } from "onload/loadConfig";
-import { Services } from "./services.js";
+import { Services } from "./services";
 export default {
     props: ["workflow"],
     computed: {
@@ -53,44 +80,44 @@ export default {
             if (this.workflow.shared) {
                 return "fa fa-share-alt";
             }
-            return null;
-        }
+            return "fa fa-caret-down";
+        },
     },
     created() {
         this.root = getAppRoot();
         this.services = new Services({ root: this.root });
     },
     methods: {
-        onCopy: function() {
+        onCopy: function () {
             this.services
                 .copyWorkflow(this.workflow)
-                .then(newWorkflow => {
+                .then((newWorkflow) => {
                     this.$emit("onAdd", newWorkflow);
                     this.$emit(
                         "onSuccess",
                         `Successfully copied workflow '${this.workflow.name}' to '${newWorkflow.name}'.`
                     );
                 })
-                .catch(error => {
+                .catch((error) => {
                     this.$emit("onError", error);
                 });
         },
-        onDelete: function() {
+        onDelete: function () {
             const id = this.workflow.id;
             const name = this.workflow.name;
             if (window.confirm(`Are you sure you want to delete workflow '${name}'?`)) {
                 this.services
                     .deleteWorkflow(id)
-                    .then(message => {
+                    .then((message) => {
                         this.$emit("onRemove", id);
                         this.$emit("onSuccess", message);
                     })
-                    .catch(error => {
+                    .catch((error) => {
                         this.$emit("onError", error);
                     });
             }
         },
-        onRename: function() {
+        onRename: function () {
             const id = this.workflow.id;
             const name = this.workflow.name;
             const newName = window.prompt(`Enter a new name for workflow '${name}'`, name);
@@ -102,11 +129,11 @@ export default {
                         this.$emit("onUpdate", id, data);
                         this.$emit("onSuccess", `Successfully changed name of workflow '${name}' to '${newName}'.`);
                     })
-                    .catch(error => {
+                    .catch((error) => {
                         this.$emit("onError", error);
                     });
             }
-        }
-    }
+        },
+    },
 };
 </script>

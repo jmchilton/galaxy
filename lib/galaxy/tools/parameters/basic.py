@@ -1832,7 +1832,7 @@ class DataToolParameter(BaseDataToolParameter):
             value = [value]
         if value:
             try:
-                return ", ".join(["%s: %s" % (item.hid, item.name) for item in value])
+                return ", ".join("%s: %s" % (item.hid, item.name) for item in value)
             except Exception:
                 pass
         return "No dataset."
@@ -1913,7 +1913,7 @@ class DataToolParameter(BaseDataToolParameter):
             ref = getattr(ref, attribute)
         if call_attribute:
             ref = ref()
-        return ref
+        return str(ref)
 
     def to_dict(self, trans, other_values={}):
         # create dictionary and fill default parameters

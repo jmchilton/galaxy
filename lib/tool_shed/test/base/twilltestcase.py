@@ -26,12 +26,15 @@ from twill.other_packages._mechanize_dist import ClientForm
 
 import galaxy.model.tool_shed_install as galaxy_model
 import galaxy.util
-import tool_shed.webapp.util.hgweb_config
 from galaxy.security import idencoding
 from galaxy.util import smart_str, unicodify
 from galaxy_test.base.api_util import get_master_api_key
 from galaxy_test.driver.testcase import FunctionalTestCase
-from tool_shed.util import hg_util, xml_util
+from tool_shed.util import (
+    hg_util,
+    hgweb_config,
+    xml_util,
+)
 from . import common, test_db_util
 
 # Set a 10 minute timeout for repository installation.
@@ -54,7 +57,7 @@ class ShedTwillTestCase(FunctionalTestCase):
         self.security = idencoding.IdEncodingHelper(id_secret='changethisinproductiontoo')
         self.history_id = None
         self.hgweb_config_dir = os.environ.get('TEST_HG_WEB_CONFIG_DIR')
-        self.hgweb_config_manager = tool_shed.webapp.util.hgweb_config.HgWebConfigManager()
+        self.hgweb_config_manager = hgweb_config.hgweb_config_manager
         self.hgweb_config_manager.hgweb_config_dir = self.hgweb_config_dir
         self.tool_shed_test_tmp_dir = os.environ.get('TOOL_SHED_TEST_TMP_DIR', None)
         self.host = os.environ.get('TOOL_SHED_TEST_HOST')
@@ -183,7 +186,7 @@ class ShedTwillTestCase(FunctionalTestCase):
                         hdas.append(hda)
             json_data = hdas
         if show_details:
-            params['details'] = ','.join([hda['id'] for hda in json_data])
+            params['details'] = ','.join(hda['id'] for hda in json_data)
             api_url = '/api/histories/%s/contents' % encoded_history_id
             json_data = self.json_from_url(api_url, params=params)
         return json_data
@@ -1151,7 +1154,7 @@ class ShedTwillTestCase(FunctionalTestCase):
     def get_tool_panel_section_from_api(self, metadata):
         tool_metadata = metadata['tools']
         tool_guid = quote_plus(tool_metadata[0]['guid'], safe='')
-        api_url = '/%s' % '/'.join(['api', 'tools', tool_guid])
+        api_url = '/api/tools/%s' % tool_guid
         self.visit_galaxy_url(api_url)
         tool_dict = loads(self.last_page())
         tool_panel_section = tool_dict['panel_section_name']
@@ -1580,10 +1583,9 @@ class ShedTwillTestCase(FunctionalTestCase):
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
     def update_tool_shed_status(self):
-        params = {
-            'all_installed_repositories': True
-        }
-        self.visit_galaxy_url('/admin_toolshed/update_tool_shed_status_for_installed_repository', params=params)
+        api_key = get_master_api_key()
+        response = requests.get(self.galaxy_url + "/api/tool_shed_repositories/check_for_updates?key=" + api_key)
+        assert response.status_code != 403, response.content
 
     def upload_file(self,
                     repository,
