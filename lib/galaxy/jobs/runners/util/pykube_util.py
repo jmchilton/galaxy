@@ -85,8 +85,10 @@ def stop_job(job, cleanup="always"):
                   if 'failed' in job.obj['status'] else False)
     # Scale down the job just in case even if cleanup is never
     job.scale(replicas=0)
-    if (cleanup == "always" or
-            (cleanup == "onsuccess" and not job_failed)):
+    api_delete = cleanup == "always"
+    if not api_delete and cleanup == "onsuccess" and not job_failed:
+        api_delete = True
+    if api_delete:
         delete_options = {
             "apiVersion": "v1",
             "kind": "DeleteOptions",
