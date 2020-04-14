@@ -520,9 +520,12 @@ def serve_webapp(webapp, port=None, host=None):
     for port in attempt_ports(port):
         try:
             server = httpserver.serve(webapp, host=host, port=port, start_loop=False)
+            print("server created!!!!!!")
             break
         except socket.error as e:
-            if e[0] == 98:
+            if e.errno == 98:
+                print(e)
+                print("Port already bound somehow...")
                 continue
             raise
 
@@ -635,8 +638,13 @@ def explicitly_configured_host_and_port(prefix, config_object):
     port_env_key = "%s_TEST_PORT" % prefix
     port_random_env_key = "%s_TEST_PORT_RANDOM" % prefix
     default_web_host = getattr(config_object, "default_web_host", DEFAULT_WEB_HOST)
-    host = os.environ.get(host_env_key, default_web_host)
-
+    # host = os.environ.get(host_env_key, default_web_host)
+    host = default_web_host  # WHY?
+    print("os.environ.get(host_env_key) is %s" % os.environ.get(host_env_key))
+    print("\n\n\n\n\n\n\n\n\nSETUPWEB\n\n\n\n\n\n\n\n")
+    print(default_web_host)
+    print(config_object)
+    print(host)
     if os.environ.get(port_random_env_key, None) is not None:
         # Ignore the port environment variable, it wasn't explictly configured.
         port = None
@@ -664,8 +672,19 @@ class ServerWrapper(object):
 
     def __init__(self, name, host, port):
         self.name = name
-        self.host = host
+        self._serve_host = host
         self.port = port
+
+    @property
+    def serve_host(self):
+        return self._serve_host
+
+    @property
+    def host(self):
+        if self._serve_host == "0.0.0.0":
+            return "localhost"
+        else:
+            return self._serve_host
 
     @property
     def app(self):
@@ -797,7 +816,7 @@ def launch_uwsgi(kwargs, tempdir, prefix=DEFAULT_CONFIG_PREFIX, config_object=No
     for port in attempt_ports(port):
         server_wrapper = attempt_port_bind(port)
         try:
-            set_and_wait_for_http_target(prefix, host, port, sleep_tries=50)
+            set_and_wait_for_http_target(prefix, server_wrapper.host, port, sleep_tries=50)
             log.info("Test-managed uwsgi web server for %s started at %s:%s" % (name, host, port))
             return server_wrapper
         except Exception:

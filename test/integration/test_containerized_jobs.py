@@ -18,17 +18,7 @@ EXTENDED_TIMEOUT = 120
 
 
 class MulledJobTestCases(object):
-    def test_explicit(self):
-        self.dataset_populator.run_tool("mulled_example_explicit", {}, self.history_id)
-        self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
-        output = self.dataset_populator.get_history_dataset_content(self.history_id, timeout=EXTENDED_TIMEOUT)
-        assert "0.7.15-r1140" in output
-
-    def test_mulled_simple(self):
-        self.dataset_populator.run_tool("mulled_example_simple", {}, self.history_id)
-        self.dataset_populator.wait_for_history(self.history_id, assert_ok=True)
-        output = self.dataset_populator.get_history_dataset_content(self.history_id, timeout=EXTENDED_TIMEOUT)
-        assert "0.7.15-r1140" in output
+    pass
 
 
 class ContainerizedIntegrationTestCase(integration_util.IntegrationTestCase):
