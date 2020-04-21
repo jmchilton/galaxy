@@ -185,7 +185,8 @@ class KubernetesStagingContainerIntegrationTestCase(CancelsJob, BaseKubernetesSt
 
 
 @integration_util.skip_unless_kubernetes()
-@integration_util.skip_unless_fixed_port()
+@integration_util.skip_unless_amqp()
+@integration_util.skip_if_github_workflow()
 class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTest):
 
     @classmethod

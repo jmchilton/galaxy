@@ -61,6 +61,13 @@ def skip_unless_fixed_port():
     return pytest.mark.skip("GALAXY_TEST_PORT must be set for this test.")
 
 
+def skip_if_github_workflow():
+    if os.environ.get("GITHUB_WORKFLOW", None) is None:
+        return _identity
+
+    return pytest.mark.skip("This test is skipped for Github workflows.")
+
+
 class IntegrationInstance(UsesApiTestCaseMixin):
     """Unit test case with utilities for spinning up Galaxy."""
 
