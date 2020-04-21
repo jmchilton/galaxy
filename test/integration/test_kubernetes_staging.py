@@ -24,6 +24,7 @@ from galaxy_test.base.populators import skip_without_tool
 from galaxy_test.driver import integration_util
 from .test_containerized_jobs import EXTENDED_TIMEOUT, MulledJobTestCases
 from .test_job_environments import BaseJobEnvironmentIntegrationTestCase
+from .test_kubernetes_runner import KubernetesDatasetPopulator
 from .test_local_job_cancellation import CancelsJob
 
 TOOL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'tools'))
@@ -119,6 +120,7 @@ class BaseKubernetesStagingTest(BaseJobEnvironmentIntegrationTestCase, MulledJob
 
     def setUp(self):
         super(BaseKubernetesStagingTest, self).setUp()
+        self.dataset_populator = KubernetesDatasetPopulator(self.galaxy_interactor)
         self.history_id = self.dataset_populator.new_history()
 
     @classmethod
