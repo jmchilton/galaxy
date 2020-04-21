@@ -62,10 +62,10 @@ def skip_unless_fixed_port():
 
 
 def skip_if_github_workflow():
-    if os.environ.get("GITHUB_WORKFLOW", None) is None:
+    if os.environ.get("GITHUB_ACTIONS", None) is None:
         return _identity
 
-    return pytest.mark.skip("This test is skipped for Github workflows.")
+    return pytest.mark.skip("This test is skipped for Github actions.")
 
 
 class IntegrationInstance(UsesApiTestCaseMixin):
