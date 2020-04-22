@@ -114,6 +114,7 @@ def job_config(template_str, jobs_directory):
 
 @integration_util.skip_unless_kubernetes()
 @integration_util.skip_unless_amqp()
+@integration_util.skip_if_github_workflow()
 class BaseKubernetesStagingTest(BaseJobEnvironmentIntegrationTestCase, MulledJobTestCases):
     # Test leverages $UWSGI_PORT in job code, need to set this up.
     require_uwsgi = True
@@ -184,9 +185,6 @@ class KubernetesStagingContainerIntegrationTestCase(CancelsJob, BaseKubernetesSt
         return active
 
 
-@integration_util.skip_unless_kubernetes()
-@integration_util.skip_unless_amqp()
-@integration_util.skip_if_github_workflow()
 class KubernetesDependencyResolutionIntegrationTestCase(BaseKubernetesStagingTest):
 
     @classmethod
