@@ -250,12 +250,13 @@ class DatasetCollectionManager(object):
 
         if recursive:
             for dataset in dataset_collection_instance.collection.dataset_instances:
-                self.hda_manager.error_unless_owner(dataset, user=trans.get_user(), current_history=trans.history)
-                if not dataset.deleted:
-                    dataset.deleted = True
+                if dataset:
+                    self.hda_manager.error_unless_owner(dataset, user=trans.get_user(), current_history=trans.history)
+                    if not dataset.deleted:
+                        dataset.deleted = True
 
-                if purge and not dataset.purged:
-                    self.hda_manager.purge(dataset)
+                    if purge and not dataset.purged:
+                        self.hda_manager.purge(dataset)
 
         trans.sa_session.flush()
 
