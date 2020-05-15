@@ -12,6 +12,7 @@ from .interactor import (
 
 DESCRIPTION = """Script to quickly run a tool test against a running Galaxy instance."""
 ALL_TESTS = "*all_tests*"
+SKIP_DYNAMIC_HELP = """Register tests as skips instead of errors if dynamic parameters are invalid - this is meant to attempt to skip tests against production servers without test tool data tables available."""
 
 
 def main(argv=None):
@@ -63,7 +64,8 @@ def main(argv=None):
         try:
             verify_tool(
                 tool_id, galaxy_interactor, test_index=test_index, tool_version=tool_version,
-                register_job_data=register, quiet=not verbose, force_path_paste=args.force_path_paste
+                register_job_data=register, quiet=not verbose, force_path_paste=args.force_path_paste,
+                skip_on_dynamic_param_errors=args.skip_on_dynamic_param_errors
             )
 
             if verbose:
@@ -103,6 +105,7 @@ def _arg_parser():
     parser.add_argument('-o', '--output', default=None, help='directory to dump outputs to')
     parser.add_argument('--append', default=False, action="store_true", help="Extend a test record json (created with --output-json) with additional tests.")
     parser.add_argument('-j', '--output-json', default=None, help='output metadata json')
+    parser.add_argument('--skip-on-dynamic-param-errors', default=False, action="store_true", help=SKIP_DYNAMIC_HELP)
     parser.add_argument('--verbose', default=False, action="store_true", help="Verbose logging.")
     return parser
 
