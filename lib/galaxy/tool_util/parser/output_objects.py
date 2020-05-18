@@ -259,6 +259,7 @@ class ToolOutputCollectionStructure(object):
         self.collection_type_from_rules = collection_type_from_rules
         self.structured_like = structured_like
         self.dataset_collector_descriptions = dataset_collector_descriptions or []
+        self.fields = fields
         if collection_type and collection_type_source:
             raise ValueError("Cannot set both type and type_source on collection output.")
         if collection_type is None and structured_like is None and dataset_collector_descriptions is None and collection_type_source is None and collection_type_from_rules is None:
@@ -274,7 +275,7 @@ class ToolOutputCollectionStructure(object):
         else:
             collection_type = self.collection_type
             assert collection_type
-            collection_prototype = type_registry.prototype(collection_type)
+            collection_prototype = type_registry.prototype(collection_type, fields=self.fields)
             collection_prototype.collection_type = collection_type
         return collection_prototype
 
