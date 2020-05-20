@@ -82,8 +82,6 @@ def tool_proxy(tool_path=None, tool_object=None, strict_cwl_validation=True, too
     grab relevant data.
     """
     ensure_cwltool_available()
-    # if uuid is None:
-    #    raise Exception("tool_proxy must be called with non-None uuid")
     tool = _to_cwl_tool_object(
         tool_path=tool_path,
         tool_object=tool_object,

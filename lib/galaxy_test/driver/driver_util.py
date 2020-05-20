@@ -213,11 +213,13 @@ def setup_galaxy_config(
     config = dict(
         admin_users='test@bx.psu.edu',
         allow_library_path_paste=True,
+        allow_path_paste=True,
         allow_user_creation=True,
         allow_user_deletion=True,
         api_allow_run_as='test@bx.psu.edu',
         auto_configure_logging=logging_config_file is None,
         check_migrate_tools=False,
+        check_upload_content=False,
         chunk_upload_size=100,
         conda_prefix=conda_prefix,
         conda_auto_init=conda_auto_init,
@@ -254,6 +256,7 @@ def setup_galaxy_config(
         logging=LOGGING_CONFIG_DEFAULT,
         monitor_thread_join_timeout=5,
         object_store_store_by="uuid",
+        strict_cwl_validation=False,
     )
     if not use_shared_connection_for_amqp:
         config["amqp_internal_connection"] = "sqlalchemy+sqlite:///%s?isolation_level=IMMEDIATE" % os.path.join(tmpdir, "control.sqlite")
