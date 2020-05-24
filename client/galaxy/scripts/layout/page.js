@@ -22,7 +22,12 @@ const View = Backbone.View.extend({
             show_inactivity_warning: false,
             inactivity_box_content: "",
             hide_panels: false,
-            hide_masthead: false
+            hide_masthead: false,
+            masthead_show_analysis: true,
+            masthead_show_workflows: true,
+            masthead_show_workflows: true,
+            masthead_show_activities: false,
+            masthead_show_scratchbook: true,
         });
 
         // attach global objects, build mastheads

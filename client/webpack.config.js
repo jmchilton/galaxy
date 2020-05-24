@@ -21,6 +21,7 @@ module.exports = (env = {}, argv = {}) => {
             login: ["polyfills", "bundleEntries", "entry/login"],
             analysis: ["polyfills", "bundleEntries", "entry/analysis"],
             admin: ["polyfills", "bundleEntries", "entry/admin"],
+            activities: ["polyfills", "bundleEntries", "entry/activities"],
             generic: ["polyfills", "bundleEntries", "entry/generic"]
         },
         output: {

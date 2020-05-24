@@ -44,25 +44,39 @@ const Collection = Backbone.Collection.extend({
         //
         // Analyze data tab.
         //
-        this.add({
-            id: "analysis",
-            title: _l("Analyze Data"),
-            url: "",
-            tooltip: _l("Analysis home view")
-        });
+        console.log(options);
+        console.log(options.masthead_show_analysis);
+        if(options.masthead_show_analysis) {
+            this.add({
+                id: "analysis",
+                title: _l("Analyze Data"),
+                url: "",
+                tooltip: _l("Analysis home view")
+            });
+        }
+
+        if(options.masthead_show_activities) {
+            this.add({
+                id: "activities",
+                title: _l("Activities"),
+                url: "activities",
+                tooltip: _l("Simplified workflows for Galaxy")
+            });
+        }
 
         //
         // Workflow tab.
         //
-        this.add({
-            id: "workflow",
-            title: _l("Workflow"),
-            tooltip: _l("Chain tools into workflows"),
-            disabled: !Galaxy.user.id,
-            url: "workflows/list",
-            target: "__use_router__"
-        });
-
+        if(options.masthead_show_workflow) {
+            this.add({
+                id: "workflow",
+                title: _l("Workflow"),
+                tooltip: _l("Chain tools into workflows"),
+                disabled: !Galaxy.user.id,
+                url: "workflows/list",
+                target: "__use_router__"
+            });
+        }
         //
         // Visualization tab.
         //
@@ -91,39 +105,40 @@ const Collection = Backbone.Collection.extend({
         //
         // 'Shared Items' or Libraries tab.
         //
-        this.add({
-            id: "shared",
-            title: _l("Shared Data"),
-            url: "javascript:void(0)",
-            tooltip: _l("Access published resources"),
-            menu: [
-                {
-                    title: _l("Data Libraries"),
-                    url: "library/list"
-                },
-                {
-                    title: _l("Histories"),
-                    url: "histories/list_published",
-                    target: "__use_router__"
-                },
-                {
-                    title: _l("Workflows"),
-                    url: "workflows/list_published",
-                    target: "__use_router__"
-                },
-                {
-                    title: _l("Visualizations"),
-                    url: "visualizations/list_published",
-                    target: "__use_router__"
-                },
-                {
-                    title: _l("Pages"),
-                    url: "pages/list_published",
-                    target: "__use_router__"
-                }
-            ]
-        });
-
+        if(options.masthead_show_shared_data) {
+            this.add({
+                id: "shared",
+                title: _l("Shared Data"),
+                url: "javascript:void(0)",
+                tooltip: _l("Access published resources"),
+                menu: [
+                    {
+                        title: _l("Data Libraries"),
+                        url: "library/list"
+                    },
+                    {
+                        title: _l("Histories"),
+                        url: "histories/list_published",
+                        target: "__use_router__"
+                    },
+                    {
+                        title: _l("Workflows"),
+                        url: "workflows/list_published",
+                        target: "__use_router__"
+                    },
+                    {
+                        title: _l("Visualizations"),
+                        url: "visualizations/list_published",
+                        target: "__use_router__"
+                    },
+                    {
+                        title: _l("Pages"),
+                        url: "pages/list_published",
+                        target: "__use_router__"
+                    }
+                ]
+            });
+        }
         //
         // Webhooks
         //

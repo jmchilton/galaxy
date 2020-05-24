@@ -275,9 +275,17 @@ class JSAppLauncher(BaseUIController):
         self._check_require_login(trans)
         return self._bootstrapped_client(trans, **kwd)
 
+    @web.expose
+    def activities_client(self, trans, **kwd):
+        self._check_require_login(trans)
+        return self._bootstrapped_client(trans, app_name="activities", hide_panels=True, **kwd)
+
     def _bootstrapped_client(self, trans, app_name='analysis', **kwd):
         js_options = self._get_js_options(trans)
         js_options['config'].update(self._get_extended_config(trans))
+        if not kwd.get("hide_panels", False):
+            # TODO: still needed?
+            js_options['config']['hide_panels'] = False
         return self.template(trans, app_name, options=js_options, **kwd)
 
     def _get_js_options(self, trans, root=None):
