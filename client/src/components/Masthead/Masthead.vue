@@ -99,6 +99,9 @@ export default {
             tab.toggle = frames.visible;
             tab.icon = (frames.visible && "fa-eye") || "fa-eye-slash";
         },
+        refreshMenu() {
+            this.baseTabs = fetchMenu(this.menuOptions);
+        },
     },
     data() {
         return {

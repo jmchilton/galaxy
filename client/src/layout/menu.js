@@ -33,33 +33,37 @@ export function fetchMenu(options = {}) {
     const Galaxy = getGalaxyInstance();
     const menu = [];
 
-    //
-    // Chat server tab
-    //
     const extendedNavItem = new CommunicationServerView();
     menu.push(extendedNavItem.render());
 
-    //
-    // Analyze data tab.
-    //
-    menu.push({
-        id: "analysis",
-        title: _l("Analyze Data"),
-        url: "",
-        tooltip: _l("Analysis home view"),
-    });
+    if (options.masthead_show_analysis) {
+        menu.push({
+            id: "analysis",
+            title: _l("Analyze Data"),
+            url: "",
+            tooltip: _l("Analysis home view"),
+        });
+    }
 
-    //
-    // Workflow tab.
-    //
-    menu.push({
-        id: "workflow",
-        title: _l("Workflow"),
-        tooltip: _l("Chain tools into workflows"),
-        disabled: !Galaxy.user.id,
-        url: "workflows/list",
-        target: "__use_router__",
-    });
+    if (options.masthead_show_activities) {
+        menu.push({
+            id: "activities",
+            title: _l("Activities"),
+            url: "activities",
+            tooltip: _l("Run and monitor workflows"),
+        });
+    }
+
+    if (options.masthead_show_workflows) {
+        menu.push({
+            id: "workflow",
+            title: _l("Workflow"),
+            tooltip: _l("Chain tools into workflows"),
+            disabled: !Galaxy.user.id,
+            url: "workflows/list",
+            target: "__use_router__",
+        });
+    }
 
     //
     // Visualization tab.
@@ -86,41 +90,40 @@ export function fetchMenu(options = {}) {
         });
     }
 
-    //
-    // 'Shared Items' or Libraries tab.
-    //
-    menu.push({
-        id: "shared",
-        title: _l("Shared Data"),
-        url: "javascript:void(0)",
-        tooltip: _l("Access published resources"),
-        menu: [
-            {
-                title: _l("Data Libraries"),
-                url: "library/list",
-            },
-            {
-                title: _l("Histories"),
-                url: "histories/list_published",
-                target: "__use_router__",
-            },
-            {
-                title: _l("Workflows"),
-                url: "workflows/list_published",
-                target: "__use_router__",
-            },
-            {
-                title: _l("Visualizations"),
-                url: "visualizations/list_published",
-                target: "__use_router__",
-            },
-            {
-                title: _l("Pages"),
-                url: "pages/list_published",
-                target: "__use_router__",
-            },
-        ],
-    });
+    if (options.masthead_show_shared_data) {
+        menu.push({
+            id: "shared",
+            title: _l("Shared Data"),
+            url: "javascript:void(0)",
+            tooltip: _l("Access published resources"),
+            menu: [
+                {
+                    title: _l("Data Libraries"),
+                    url: "library/list",
+                },
+                {
+                    title: _l("Histories"),
+                    url: "histories/list_published",
+                    target: "__use_router__",
+                },
+                {
+                    title: _l("Workflows"),
+                    url: "workflows/list_published",
+                    target: "__use_router__",
+                },
+                {
+                    title: _l("Visualizations"),
+                    url: "visualizations/list_published",
+                    target: "__use_router__",
+                },
+                {
+                    title: _l("Pages"),
+                    url: "pages/list_published",
+                    target: "__use_router__",
+                },
+            ],
+        });
+    }
 
     //
     // Admin.
@@ -290,6 +293,5 @@ export function fetchMenu(options = {}) {
         }
     }
     menu.push(userTab);
-
     return menu;
 }

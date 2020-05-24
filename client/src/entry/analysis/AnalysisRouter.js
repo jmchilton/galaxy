@@ -47,6 +47,7 @@ import { CloudAuth } from "components/User/CloudAuth";
 import { ExternalIdentities } from "components/User/ExternalIdentities";
 import Vue from "vue";
 import store from "store";
+import WorkflowHome from "components/WorkflowHome.vue";
 
 /** Routes */
 export const getAnalysisRouter = (Galaxy) =>
@@ -72,6 +73,7 @@ export const getAnalysisRouter = (Galaxy) =>
             "(/)workflows/import": "show_workflows_import",
             "(/)workflows/trs_import": "show_workflows_trs_import",
             "(/)workflows/run(/)": "show_workflows_run",
+            "(/)activities": "show_activities",
             "(/)workflows(/)list": "show_workflows",
             "(/)workflows/invocations": "show_workflow_invocations",
             "(/)workflows/invocations/report": "show_workflow_invocation_report",
@@ -368,6 +370,16 @@ export const getAnalysisRouter = (Galaxy) =>
                     this._loadCenterIframe("welcome");
                 }
             }
+        },
+
+        show_activities: function () {
+            this.page.hidePanels();
+            this.page.config.masthead_show_activities = true;
+            this.page.config.masthead_show_workflows = false;
+            this.page.config.masthead_show_scratchbook = false;
+            this.page.config.masthead_show_analysis = false;
+            this.page.config.masthead_show_shared_data = false;
+            this._display_vue_helper(WorkflowHome);
         },
 
         /** load the center panel with a tool form described by the given params obj */
