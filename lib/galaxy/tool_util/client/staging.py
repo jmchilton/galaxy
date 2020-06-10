@@ -84,6 +84,20 @@ class StagingInterace(object):
                 if file_path is not None:
                     src = _attach_file(fetch_payload, file_path)
                     fetch_payload["targets"][0]["elements"][0].update(src)
+
+                if upload_target.composite_data:
+                    composite_items = []
+                    for i, composite_data in enumerate(upload_target.composite_data):
+                        composite_item_src = _attach_file(fetch_payload, composite_data, index=i)
+                        composite_items.append(composite_item_src)
+                    fetch_payload["targets"][0]["elements"][0]["src"] = "composite"
+                    fetch_payload["targets"][0]["elements"][0]["composite"] = {
+                        "items": composite_items,
+                    }
+
+                tags = upload_target.properties.get("tags")
+                if tags:
+                    fetch_payload["targets"][0]["elements"][0]["tags"] = tags
                 fetch_payload["targets"][0]["elements"][0]["name"] = name
             elif isinstance(upload_target, FileLiteralTarget):
                 fetch_payload = _fetch_payload(history_id)
@@ -91,6 +105,9 @@ class StagingInterace(object):
                     "src": "pasted",
                     "paste_content": upload_target.contents
                 })
+                tags = upload_target.properties.get("tags")
+                if tags:
+                    fetch_payload["targets"][0]["elements"][0]["tags"] = tags
             elif isinstance(upload_target, DirectoryUploadTarget):
                 fetch_payload = _fetch_payload(history_id, file_type="directory")
                 fetch_payload["targets"][0].pop("elements")
@@ -104,6 +121,8 @@ class StagingInterace(object):
                     "src": "pasted",
                     "paste_content": content,
                 })
+                tags = upload_target.properties.get("tags")
+                fetch_payload["targets"][0]["elements"][0]["tags"] = tags
             return self._fetch_post(fetch_payload, files_attached=files_attached[0])
 
         # Save legacy upload_func to target older Galaxy servers
