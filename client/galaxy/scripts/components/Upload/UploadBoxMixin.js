@@ -9,6 +9,7 @@ import { getGalaxyInstance } from "app";
 import UploadFtp from "mvc/upload/upload-ftp";
 import LazyLimited from "mvc/lazy/lazy-limited";
 import { findExtension } from "./utils";
+import { filesDialog } from "utils/data";
 
 export default {
     components: {
@@ -185,6 +186,21 @@ export default {
         },
         /** Show/hide ftp popup */
         _eventFtp: function () {
+            filesDialog((items) => {
+                this.uploadbox.add(items.map((item) => {
+                    console.log("returned from callback");
+                    console.log(item);
+                    const rval = {
+                        mode: "ftp",
+                        name: item.label,
+                        size: item.size,
+                        path: item.url,
+                    };
+                    console.log(rval);
+                    return rval;
+                }));
+            }, {multiple: true});
+            /*
             this.ftp.show(
                 new UploadFtp({
                     collection: this.collection,
@@ -204,6 +220,7 @@ export default {
                     },
                 }).$el
             );
+                */
         },
         /** Create a new file */
         _eventCreate: function () {

@@ -209,7 +209,12 @@ export default {
                                 inputs[`${prefix}url_paste`] = it.get("url_paste");
                                 break;
                             case "ftp":
-                                inputs[`${prefix}ftp_files`] = it.get("file_path");
+                                const uri = it.get("file_path");
+                                let how = "ftp_files";
+                                if(uri.indexOf("://") >= 0) {
+                                    how = "url_paste";
+                                }
+                                inputs[`${prefix}${how}`] = uri;
                                 break;
                             case "local":
                                 data.files.push({

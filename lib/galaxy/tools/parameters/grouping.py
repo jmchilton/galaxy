@@ -352,9 +352,9 @@ class UploadDataset(Group):
                 url_paste = open(url_paste_file, 'r').read()
 
                 def start_of_url(content):
-                    start_of_url_paste = content.lstrip()[0:8].lower()
+                    start_of_url_paste = content.lstrip()[0:10].lower()
                     looks_like_url = False
-                    for url_prefix in ["http://", "https://", "ftp://", "file://"]:
+                    for url_prefix in ["http://", "https://", "ftp://", "file://", "gxfiles://"]:
                         if start_of_url_paste.startswith(url_prefix):
                             looks_like_url = True
                             break

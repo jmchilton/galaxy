@@ -133,7 +133,7 @@ export default {
             enableSources: false,
             btnLocalTitle: _l("Choose local files"),
             btnCreateTitle: _l("Paste/Fetch data"),
-            btnFtpTitle: _l("Choose FTP files"),
+            btnFtpTitle: _l("Choose remote files"),
             btnStartTitle: _l("Start"),
             btnStopTitle: _l("Pause"),
             btnResetTitle: _l("Reset"),

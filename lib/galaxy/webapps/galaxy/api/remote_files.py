@@ -8,6 +8,7 @@ import time
 from operator import itemgetter
 
 from galaxy import exceptions
+from galaxy.files import ProvidesUserFileSourcesUserContext
 from galaxy.util import (
     jstree,
     smart_str,
@@ -94,6 +95,12 @@ class RemoteFilesAPIController(BaseAPIController):
                 except Exception:
                     log.exception('Could not get user import files')
                     raise exceptions.InternalServerError('Could not get the files from your import directory folder.')
+        elif target and "://" in target:
+            file_sources = self.app.file_sources
+            file_source_path = file_sources.get_file_source_path(target)
+            file_source = file_source_path.file_source
+            user_context = ProvidesUserFileSourcesUserContext(trans)
+            response = file_source.list(file_source_path.path, recursive=False, user_context=user_context)
         else:
             user_ftp_base_dir = trans.app.config.ftp_upload_dir
             if user_ftp_base_dir is None:
@@ -130,6 +137,18 @@ class RemoteFilesAPIController(BaseAPIController):
         # sort by path
         response = sorted(response, key=itemgetter("path"))
         return response
+
+    @expose_api
+    def plugins(self, trans, **kwd):
+        """
+        GET /api/remote_files/plugins
+
+        Display plugin information for each of the gxfiles:// URI targets available.
+
+        :returns:   list of configured plugins
+        :rtype:     list
+        """
+        return self.app.file_sources.plugins_to_dict()
 
     def __create_jstree(self, directory, disable='folders', allowlist=None):
         """
