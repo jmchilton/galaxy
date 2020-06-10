@@ -67,11 +67,13 @@ EXAMPLE_1 = {
         "elements": [
             {
                 "identifier": "i1",
-                "contents": "0"
+                "contents": "0",
+                "class": "File",
             },
             {
                 "identifier": "i2",
-                "contents": "1"
+                "contents": "1",
+                "class": "File",
             },
         ]
     },
@@ -104,11 +106,13 @@ EXAMPLE_2 = {
         "elements": [
             {
                 "identifier": "i1",
-                "contents": "0"
+                "contents": "0",
+                "class": "File",
             },
             {
                 "identifier": "i2",
-                "contents": "1"
+                "contents": "1",
+                "class": "File",
             },
         ]
     },
@@ -149,10 +153,12 @@ EXAMPLE_3 = {
                 "elements": [
                     {
                         "identifier": "forward",
+                        "class": "File",
                         "contents": "TestData123"
                     },
                     {
                         "identifier": "reverse",
+                        "class": "File",
                         "contents": "TestData123"
                     },
                 ]
@@ -189,17 +195,20 @@ EXAMPLE_4 = {
         "elements": [
             {
                 "identifier": "i1",
-                "content": "0",
+                "contents": "0",
+                "class": "File",
                 "tags": ["random", "group:type:single"]
             },
             {
                 "identifier": "i2",
-                "content": "1",
+                "contents": "1",
+                "class": "File",
                 "tags": ["random", "group:type:paired"]
             },
             {
                 "identifier": "i3",
-                "content": "2",
+                "contents": "2",
+                "class": "File",
                 "tags": ["random", "group:type:paired"]
             },
         ]
