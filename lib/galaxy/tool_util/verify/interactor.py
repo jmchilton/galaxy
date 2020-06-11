@@ -628,6 +628,16 @@ class GalaxyInteractorApi(object):
             if files is not None:
                 del data["__files"]
 
+                # files doesn't really work with json, so dump the parameters
+                # and do a normal POST with request's data parameter.
+                if json:
+                    json = False
+                    new_items = {}
+                    for key, val in data.items():
+                        if isinstance(val, dict) or isinstance(val, list):
+                            new_items[key] = dumps(val)
+                    data.update(new_items)
+
         kwd = {
             'files': files,
         }
@@ -637,7 +647,6 @@ class GalaxyInteractorApi(object):
         else:
             data.update(params)
             kwd['data'] = data
-
         return requests.post("%s/%s" % (self.api_url, path), **kwd)
 
     def _delete(self, path, data=None, key=None, admin=False, anon=False):

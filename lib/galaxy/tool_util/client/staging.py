@@ -70,7 +70,8 @@ class StagingInterace(object):
                 else:
                     files_attached[0] = True
                     path = uri[len("file://"):]
-                    upload_payload["files_%d|file_data" % index] = self._attach_file(path)
+                    upload_payload["__files"]["files_%s|file_data" % index] = self._attach_file(path)
+                    return {"src": "files"}
 
             fetch_payload = None
             if isinstance(upload_target, FileUploadTarget):
@@ -256,7 +257,9 @@ def _upload_payload(history_id, tool_id=UPLOAD_TOOL_ID, file_type="auto", dbkey=
 
 
 def _fetch_payload(history_id, file_type="auto", dbkey="?", **kwd):
-    element = {}
+    element = {
+        "ext": file_type,
+    }
     for arg in ['to_posix_lines', 'space_to_tab']:
         if arg in kwd:
             element[arg] = kwd[arg]
@@ -271,6 +274,6 @@ def _fetch_payload(history_id, file_type="auto", dbkey="?", **kwd):
     payload = {
         "history_id": history_id,
         "targets": targets,
-        "__files": []
+        "__files": {}
     }
     return payload

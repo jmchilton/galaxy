@@ -112,8 +112,8 @@ def _fetch_target(upload_config, target):
         requested_ext = item.get("ext", None)
         registry = upload_config.registry
         datatype = registry.get_datatype_by_extension(requested_ext)
+        composite = item.pop("composite", None)
         if datatype and datatype.composite_type:
-            composite = item.pop("composite", {})
             composite_type = datatype.composite_type
             writable_files = datatype.writable_files
             assert composite_type == "auto_primary_file", "basic composite uploads not yet implemented"
@@ -170,6 +170,8 @@ def _fetch_target(upload_config, target):
                 writable_files_idx += 1
             return rval
         else:
+            if composite:
+                raise Exception("Non-composite datatype [%s] attempting to be created with composite data." % datatype)
             return _resolve_item_with_primary(item)
 
     def _resolve_item_with_primary(item):
