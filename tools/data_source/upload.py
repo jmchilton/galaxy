@@ -184,7 +184,7 @@ def add_composite_file(dataset, registry, output_path, files_path):
         is_url = path_or_url.find('://') != -1  # todo fixme
         if is_url:
             try:
-                temp_name = sniff.stream_to_file(urlopen(path_or_url), prefix='url_paste')
+                temp_name = sniff.stream_url_to_file(path_or_url)
             except Exception as e:
                 raise UploadProblemException('Unable to fetch %s\n%s' % (path_or_url, unicodify(e)))
 
