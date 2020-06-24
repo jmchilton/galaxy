@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 
 UPLOAD_TOOL_ID = "upload1"
 LOAD_TOOLS_FROM_PATH = True
+DEFAULT_USE_FETCH_API = True
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -33,7 +34,6 @@ class StagingInterace(object):
     _attach_file, _log, etc..) to adapt to bioblend (for Planemo) or using the
     tool test interactor infrastructure.
     """
-    use_fetch_api = True
 
     @abc.abstractmethod
     def _post(self, api_path, payload, files_attached=False):
@@ -136,7 +136,7 @@ class StagingInterace(object):
                 else:
                     files_attached[0] = True
                     path = uri[len("file://"):]
-                    upload_payload["files_%d|file_data" % index] = self._attach_file(path)
+                    upload_payload["__files"]["files_%d|file_data" % index] = self._attach_file(path)
 
             if isinstance(upload_target, FileUploadTarget):
                 file_path = upload_target.path
@@ -234,11 +234,16 @@ class StagingInterace(object):
     def _log(self, message):
         log.debug(message)
 
+    @abc.abstractproperty
+    def use_fetch_api(self):
+        """Return true is this should use (modern) data fetch API."""
+
 
 class InteractorStaging(StagingInterace):
 
-    def __init__(self, galaxy_interactor):
+    def __init__(self, galaxy_interactor, use_fetch_api=DEFAULT_USE_FETCH_API):
         self.galaxy_interactor = galaxy_interactor
+        self._use_fetch_api = use_fetch_api
 
     def _post(self, api_path, payload, files_attached=False):
         response = self.galaxy_interactor._post(api_path, payload, json=True)
@@ -247,6 +252,11 @@ class InteractorStaging(StagingInterace):
 
     def _handle_job(self, job_response):
         self.galaxy_interactor.wait_for_job(job_response["id"])
+
+    @property
+    def use_fetch_api(self):
+        return self._use_fetch_api
+
 
 def _file_path_to_name(file_path):
     if file_path is not None:
@@ -272,6 +282,7 @@ def _upload_payload(history_id, tool_id=UPLOAD_TOOL_ID, file_type="auto", dbkey=
         tool_input["files_0|NAME"] = kwd['file_name']
     tool_input["files_0|type"] = "upload_dataset"
     payload["inputs"] = tool_input
+    payload["__files"] = {}
     return payload
 
 

@@ -242,7 +242,7 @@ class ToolsUploadTestCase(ApiTestCase):
 
     @skip_without_datatype("velvet")
     @uses_test_history(require_new=False)
-    def test_composite_datatype_stage(self, history_id):
+    def test_composite_datatype_stage_fetch(self, history_id):
         job = {
             "input1": {
                 "class": "File",
@@ -254,8 +254,23 @@ class ToolsUploadTestCase(ApiTestCase):
                 ]
             }
         }
-        print(history_id)
         inputs, datsets = stage_inputs(self.galaxy_interactor, history_id, job, use_path_paste=False)
+
+    @skip_without_datatype("velvet")
+    @uses_test_history(require_new=False)
+    def test_composite_datatype_stage_upload1(self, history_id):
+        job = {
+            "input1": {
+                "class": "File",
+                "format": "velvet",
+                "composite_data": [
+                    "test-data/simple_line.txt",
+                    "test-data/simple_line_alternative.txt",
+                    "test-data/simple_line_x2.txt",
+                ]
+            }
+        }
+        inputs, datsets = stage_inputs(self.galaxy_interactor, history_id, job, use_path_paste=False, use_fetch_api=False)
 
     @skip_without_datatype("velvet")
     @uses_test_history(require_new=False)
