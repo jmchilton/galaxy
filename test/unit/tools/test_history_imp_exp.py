@@ -10,7 +10,8 @@ from galaxy.exceptions import MalformedContents
 from galaxy.objectstore.test_helpers import TestConfig
 from galaxy.tools.imp_exp import JobExportHistoryArchiveWrapper, JobImportHistoryArchiveWrapper, unpack_tar_gz_archive
 from galaxy.tools.imp_exp.export_history import create_archive
-from ..unittest_utils.galaxy_mock import MockApp
+from galaxy.util.bunch import Bunch
+#from ..unittest_utils.galaxy_mock import MockApp
 
 
 # good enough for the very specific tests we're writing as of now...
@@ -39,12 +40,8 @@ def _run_jihaw_cleanup(archive_dir, app=None):
 
 
 def _mock_app(store_by="id"):
-    app = MockApp()
-    test_object_store_config = TestConfig(store_by=store_by)
-    app.object_store = test_object_store_config.object_store
-    app.model.Dataset.object_store = app.object_store
-    app.datatypes_registry.set_external_metadata_tool = MockSetExternalTool()
-    return app
+    from galaxy.model.test_helpers import DataApp
+    return DataApp()
 
 
 def _run_jihaw_cleanup_check_secure(history_archive, msg):

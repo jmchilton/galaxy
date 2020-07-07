@@ -357,9 +357,12 @@ class ModelImportStore(object):
                         tag_handler.set_tags_from_list(user=self.user, item=dataset_instance, new_tags_list=tag_list)
 
                 if self.app:
-                    self.app.datatypes_registry.set_external_metadata_tool.regenerate_imported_metadata_if_needed(
-                        dataset_instance, history, job
-                    )
+                    datatypes_registry = self.app.datatypes_registry
+                    set_metadata_tool = getattr(datatypes_registry, "set_external_metadata_tool", None)
+                    if set_metadata_tool:
+                        set_metadata_tool.regenerate_imported_metadata_if_needed(
+                            dataset_instance, history, job
+                        )
 
                 if model_class == "HistoryDatasetAssociation":
                     if object_key in dataset_attrs:

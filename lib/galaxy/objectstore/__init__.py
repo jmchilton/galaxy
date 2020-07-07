@@ -214,7 +214,7 @@ class BaseObjectStore(ObjectStore):
             config_dict = {}
         self.running = True
         self.config = config
-        self.check_old_style = config.object_store_check_old_style
+        self.check_old_style = getattr(config, "object_store_check_old_style", False)
         extra_dirs = {}
         extra_dirs['job_work'] = config.jobs_directory
         extra_dirs['temp'] = config.new_file_path
@@ -499,7 +499,7 @@ class DiskObjectStore(ConcreteObjectStore):
             # Create the file if it does not exist
             if not dir_only:
                 open(path, 'w').close()  # Should be rb?
-                umask_fix_perms(path, self.config.umask, 0o666)
+                fix_perms(path, self.config)
 
     def _empty(self, obj, **kwargs):
         """Override `ObjectStore`'s stub by checking file size on disk."""
@@ -582,7 +582,7 @@ class DiskObjectStore(ConcreteObjectStore):
                 else:
                     path = self._get_filename(obj, **kwargs)
                     shutil.copy(file_name, path)
-                    umask_fix_perms(path, self.config.umask, 0o666)
+                    fix_perms(path, self.config)
             except IOError as ex:
                 log.critical('Error copying %s to %s: %s' % (file_name, self.__get_filename(obj, **kwargs), ex))
                 raise ex
@@ -1078,6 +1078,10 @@ def _create_object_in_session(obj):
         object_session(obj).flush()
     else:
         raise Exception(NO_SESSION_ERROR_MESSAGE)
+
+
+def fix_perms(path, config):
+    umask_fix_perms(path, getattr(config, "umask", os.umask(0o77)), 0o666)
 
 
 class ObjectStorePopulator(object):
