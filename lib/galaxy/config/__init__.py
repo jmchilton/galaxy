@@ -494,6 +494,10 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
             except IOError:
                 log.error("CONFIGURATION ERROR: Can't open supplied whitelist file from path: %s", self.whitelist_file)
 
+
+        import mercurial.pycompat
+        log.info("\n\n\n\n\n\n\n\n\n\n\n\n%s\n\n\n\n\n\n\n\n\n" % mercurial.pycompat.getattr)
+
         self.persistent_communication_rooms = listify(self.persistent_communication_rooms, do_strip=True)
         # The transfer manager and deferred job queue
         self.enable_beta_job_managers = string_as_bool(kwargs.get('enable_beta_job_managers', 'False'))
