@@ -86,7 +86,7 @@ lxml==4.5.0
 mako==1.1.2
 markdown==3.1.1
 markupsafe==1.1.1
-mercurial==5.4.2
+mercurial==5.3.2
 mistune==0.8.4
 monotonic==1.5
 msgpack==1.0.0
