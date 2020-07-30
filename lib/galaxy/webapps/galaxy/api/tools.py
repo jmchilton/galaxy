@@ -412,6 +412,7 @@ class ToolsController(BaseAPIController, UsesVisualizationMixin):
         request_version = '1'
         if "history_id" not in payload:
             raise exceptions.RequestParameterMissingException("history_id must be specified")
+        log.info("in fetch with payload %s" % payload)
         history_id = payload.pop("history_id")
         clean_payload = {}
         files_payload = {}
@@ -434,6 +435,7 @@ class ToolsController(BaseAPIController, UsesVisualizationMixin):
                 'file_count': str(len(files_payload))
             },
         }
+        log.info("request_json is going to be %s" % request)
         create_payload.update(files_payload)
         return self._create(trans, create_payload, **kwd)
 
