@@ -293,6 +293,7 @@ def _fetch_payload(history_id, file_type="auto", dbkey="?", **kwd):
     for arg in ['to_posix_lines', 'space_to_tab']:
         if arg in kwd:
             element[arg] = kwd[arg]
+    element['to_posix_lines'] = True
     if 'file_name' in kwd:
         element['name'] = kwd['file_name']
     target = {
@@ -304,6 +305,7 @@ def _fetch_payload(history_id, file_type="auto", dbkey="?", **kwd):
     payload = {
         "history_id": history_id,
         "targets": targets,
+        "to_posix_lines": True,
         "__files": {}
     }
     return payload
