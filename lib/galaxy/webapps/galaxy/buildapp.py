@@ -1191,6 +1191,7 @@ def wrap_in_middleware(app, global_conf, application_stack, **local_conf):
     # Statsd request timing and profiling
     statsd_host = conf.get('statsd_host', None)
     if statsd_host:
+        raise Exception("MooCow!!!")
         from galaxy.web.framework.middleware.statsd import StatsdMiddleware
         app = wrap_if_allowed(app, stack, StatsdMiddleware,
                               args=(statsd_host,
