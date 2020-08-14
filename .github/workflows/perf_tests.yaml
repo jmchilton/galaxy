@@ -44,3 +44,7 @@ jobs:
     - name: Run tests
       run: './run_tests.sh -api "lib/galaxy_test/api/test_configuration.py"'
       working-directory: 'galaxy root'
+    - name: Download stats
+      run: "curl -H 'Accept: application/csv' -G 'http://localhost:8086/query' --data-urlencode 'db=telegraf' --data-urlencode 'q=select * from galaxy_' -o timings.csv"
+    - name: Dump Stats
+      run: cat timings.csv
