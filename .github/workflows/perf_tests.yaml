@@ -1,0 +1,83 @@
+name: Performance Tests
+on: [push, pull_request]
+env:
+  GALAXY_TEST_COLLECT_STATSD: 'true'
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        python-version: [3.7]
+    services:
+      metrics:
+        image: samuelebistoletti/docker-statsd-influxdb-grafana:latest
+        ports:
+        - 3003:3003
+        - 3004:8888
+        - 8086:8086
+        - 8125:8125/udp
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: 'galaxy root'
+    - uses: actions/checkout@v2
+      with:
+        path: 'galaxy root base'
+        ref: ${{ github.event.pull_request.head.sha }}
+    - name: Clone galaxyproject/galaxy-test-data
+      uses: actions/checkout@v2
+      with:
+        repository: galaxyproject/galaxy-test-data
+        path: galaxy-test-data
+    - uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Cache venv dir
+      uses: actions/cache@v1
+      id: pip-cache
+      with:
+        path: ~/.cache/pip
+        key: pip-cache-${{ matrix.python-version }}-${{ hashFiles('galaxy root/requirements.txt') }}
+    - name: Move test data
+      run: rsync -av --remove-source-files --exclude .git galaxy-test-data/ 'galaxy root/test-data/'
+    - name: Move test data base
+      run: rsync -av --remove-source-files --exclude .git galaxy-test-data/ 'galaxy root base/test-data/'
+    - name: Run tests
+      run: './run_tests.sh --ci_test_metrics --structured_data_report_file "pr.json" -api "lib/galaxy_test/api/test_tools_upload.py"'
+      working-directory: 'galaxy root'
+    - name: Run tests base
+      run: './run_tests.sh --ci_test_metrics --structured_data_report_file "target.json" -api "lib/galaxy_test/api/test_tools_upload.py"'
+      working-directory: 'galaxy root base'
+    - name: Generate test HTML
+      run: '. .venv/bin/activate; python scripts/tests_markdown.py --output_path pr.html pr.json'
+      working-directory: 'galaxy root'
+    - uses: actions/upload-artifact@v2.0.1
+      with:
+        name: 'Performance Metrics PR'
+        path: 'galaxy root/pr.html'
+    - name: Generate combined test HTML
+      run: '. .venv/bin/activate; python scripts/tests_markdown.py --output_path pr_vs_target.html pr.json "../galaxy root base/target.json"'
+      working-directory: 'galaxy root'
+    - uses: actions/upload-artifact@v2.0.1
+      with:
+        name: 'Performance Metrics (PR vs Target)'
+        path: 'galaxy root/pr_vs_target.html'
+    - name: Sleep 5
+      run: sleep 5
+    - name: Which curl
+      run: which curl
+    - name: Download stats
+      run: "curl -H 'Accept: application/csv' -G 'http://localhost:8086/query' --data-urlencode 'db=telegraf' --data-urlencode 'q=select * from galaxy_' -o timings.csv"
+    - name: Show databases
+      run: "curl -H 'Accept: application/csv' -G 'http://localhost:8086/query' --data-urlencode 'db=telegraf' --data-urlencode 'q=show databases' -o databases.csv"
+    - name: Show databases
+      run: "curl -H 'Accept: application/csv' -G 'http://localhost:8086/query' --data-urlencode 'db=telegraf' --data-urlencode 'q=show series' -o series.csv"
+    - name: Dump Stats
+      run: cat timings.csv
+    - name: Dump Databases
+      run: cat databases.csv
+    - name: Dump series
+      run: cat series.csv
+    - name: tail series
+      run: tail -n 10 series.csv

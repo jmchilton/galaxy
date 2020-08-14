@@ -1,11 +1,15 @@
+import sys
+
 try:
     import statsd
 except ImportError:
     statsd = None
 
+from galaxy.util import asbool
+
 
 # TODO: optimize with two separate implementations around statsd_influxdb?
-class GalaxyStatsdClient:
+class VanillaGalaxyStatsdClient:
 
     def __init__(self,
                  statsd_host,
@@ -17,7 +21,7 @@ class GalaxyStatsdClient:
                            "Please install the python statsd module to use this functionality.")
 
         self.metric_infix = ''
-        self.statsd_influxdb = statsd_influxdb
+        self.statsd_influxdb = asbool(statsd_influxdb)
         if self.statsd_influxdb:
             statsd_prefix = statsd_prefix.strip(',')
         self.statsd_client = statsd.StatsClient(statsd_host, statsd_port, prefix=statsd_prefix)
@@ -38,3 +42,45 @@ class GalaxyStatsdClient:
             return ',path='
         else:
             return ''
+
+
+CURRENT_TEST = None
+CURRENT_TEST_METRICS = None
+
+
+class PyTestGalaxyStatsdClient(VanillaGalaxyStatsdClient):
+
+    def timing(self, path, time, tags=None):
+        metrics = CURRENT_TEST_METRICS
+        if metrics is not None:
+            timing = metrics["timing"]
+            if path not in timing:
+                timing[path] = []
+            timing[path].append({"time": time, "tags": tags})
+        super().timing(path, time, tags=tags)
+
+    def incr(self, path, n=1, tags=None):
+        metrics = CURRENT_TEST_METRICS
+        if metrics is not None:
+            counter = metrics["counter"]
+            if path not in counter:
+                counter[path] = []
+            counter[path].append({"n": n, "tags": tags})
+        super().incr(path, n=n, tags=tags)
+
+    def _effective_infix(self, path, tags):
+        current_test = CURRENT_TEST
+        if current_test is not None:
+            tags = tags or {}
+            tags["test"] = current_test
+        return super()._effective_infix(path, tags)
+
+
+# Replace stats collector if in pytest environment
+if 'pytest' in sys.modules:
+    GalaxyStatsdClient = PyTestGalaxyStatsdClient
+else:
+    GalaxyStatsdClient = VanillaGalaxyStatsdClient
+
+
+__all__ = ('GalaxyStatsdClient',)

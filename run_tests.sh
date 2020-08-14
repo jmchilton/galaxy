@@ -509,6 +509,19 @@ do
           export GALAXY_TEST_VERBOSE_ERRORS
           shift
           ;;
+      --ci_test_metrics)
+          GALAXY_CONFIG_OVERRIDE_STATSD_PREFIX="galaxy"
+          export GALAXY_CONFIG_OVERRIDE_STATSD_PREFIX
+          GALAXY_CONFIG_OVERRIDE_STATSD_HOST="localhost"
+          export GALAXY_CONFIG_OVERRIDE_STATSD_HOST
+          GALAXY_CONFIG_OVERRIDE_STATSD_INFLUXDB="true"
+          export GALAXY_CONFIG_OVERRIDE_STATSD_INFLUXDB
+          GALAXY_CONFIG_OVERRIDE_DATABASE_LOG_QUERY_COUNTS="true"
+          export GALAXY_CONFIG_OVERRIDE_DATABASE_LOG_QUERY_COUNTS
+          GALAXY_CONFIG_OVERRIDE_ENABLE_PER_REQUEST_SQL_DEBUGGING="true"
+          export GALAXY_CONFIG_OVERRIDE_ENABLE_PER_REQUEST_SQL_DEBUGGING
+          shift
+          ;;
       -c|--coverage)
           # Must have coverage installed (try `which coverage`) - only valid with --unit
           # for now. Would be great to get this to work with functional tests though.
@@ -647,7 +660,11 @@ else
     xunit_args=""
 fi
 if [ -n "$structured_data_report_file" ]; then
-    structured_data_args="--with-structureddata --structured-data-file $structured_data_report_file"
+    if [ "$test_script" = 'pytest' ]; then
+        structured_data_args="--json-report --json-report-file $structured_data_report_file"
+    else
+        structured_data_args="--with-structureddata --structured-data-file $structured_data_report_file"
+    fi
 else
     structured_data_args=""
 fi
@@ -656,7 +673,7 @@ if [ "$test_script" = 'pytest' ]; then
     if [ "$coverage_arg" = '--with-coverage' ]; then
         coverage_arg="--cov-report term --cov=lib"
     fi
-    "$test_script" -v --html "$report_file" $coverage_arg  $xunit_args $extra_args "$@"
+    "$test_script" -v $structured_data_args --html "$report_file" $coverage_arg  $xunit_args $extra_args "$@"
 else
     python $test_script $coverage_arg -v --with-nosehtml --html-report-file $report_file $xunit_args $structured_data_args $extra_args "$@"
 fi
