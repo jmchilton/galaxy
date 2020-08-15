@@ -38,7 +38,7 @@ class StatsdMiddleware:
             times = QUERY_COUNT_LOCAL.times
             self.galaxy_stasd_client.timing("sql." + page, sum(times) * 1000.)
             self.galaxy_stasd_client.incr("sqlqueries." + page, len(times))
-            raise Exception("FooBar?")
+            # raise Exception("FooBar?")
         except AttributeError:
             # Not logging query counts, skip
             pass
