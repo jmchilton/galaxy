@@ -62,3 +62,5 @@ jobs:
       run: cat databases.csv
     - name: Dump series
       run: cat series.csv
+    - name: tail series
+      run: tail -n 10 series.csv
