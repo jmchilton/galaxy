@@ -2,6 +2,7 @@ try:
     import statsd
 except ImportError:
     statsd = None
+from galaxy.util import asbool
 
 
 # TODO: optimize with two separate implementations around statsd_influxdb?
@@ -17,7 +18,7 @@ class GalaxyStatsdClient:
                            "Please install the python statsd module to use this functionality.")
 
         self.metric_infix = ''
-        self.statsd_influxdb = statsd_influxdb
+        self.statsd_influxdb = asbool(statsd_influxdb)
         if self.statsd_influxdb:
             statsd_prefix = statsd_prefix.strip(',')
         self.statsd_client = statsd.StatsClient(statsd_host, statsd_port, prefix=statsd_prefix)
