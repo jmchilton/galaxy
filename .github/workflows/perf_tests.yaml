@@ -44,7 +44,7 @@ jobs:
     - name: Move test data
       run: rsync -av --remove-source-files --exclude .git galaxy-test-data/ 'galaxy root/test-data/'
     - name: Run tests
-      run: './run_tests.sh -api "lib/galaxy_test/api/test_configuration.py"'
+      run: './run_tests.sh -api "lib/galaxy_test/api/test_tools_upload.py"'
       working-directory: 'galaxy root'
     - name: Sleep 5
       run: sleep 5

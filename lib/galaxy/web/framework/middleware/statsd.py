@@ -2,10 +2,13 @@
 Middleware for sending request statistics to statsd.
 """
 
+import logging
 import time
 
 from galaxy.model.orm.engine_factory import QUERY_COUNT_LOCAL
 from galaxy.web.statsd_client import GalaxyStatsdClient
+
+log = logging.getLogger(__name__)
 
 
 class StatsdMiddleware:
@@ -38,8 +41,10 @@ class StatsdMiddleware:
             times = QUERY_COUNT_LOCAL.times
             self.galaxy_stasd_client.timing("sql." + page, sum(times) * 1000.)
             self.galaxy_stasd_client.incr("sqlqueries." + page, len(times))
+            log.info("SENT DATA!!!!")
             # raise Exception("FooBar?")
         except AttributeError:
+            log.info("IN ATTRIBUTE ERRROR....")
             # Not logging query counts, skip
             pass
         return req
