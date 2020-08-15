@@ -27,7 +27,6 @@ class StatsdMiddleware:
             statsd_prefix,
             statsd_influxdb
         )
-        raise Exception("Why isn't this...")
 
     def __call__(self, environ, start_response):
         start_time = time.time()
@@ -36,6 +35,7 @@ class StatsdMiddleware:
         page = environ.get('controller_action_key', None) or environ.get('PATH_INFO', "NOPATH").strip('/').replace('/', '.')
         self.galaxy_stasd_client.timing(page, dt)
         try:
+            raise Exception("Why isn't this...")
             times = QUERY_COUNT_LOCAL.times
             self.galaxy_stasd_client.timing("sql." + page, sum(times) * 1000.)
             self.galaxy_stasd_client.incr("sqlqueries." + page, len(times))
