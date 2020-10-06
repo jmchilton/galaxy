@@ -526,6 +526,9 @@ class XmlToolSource(ToolSource):
         # - Enable buggy interpreter attribute.
         return self.root.get("profile", "16.01")
 
+    def parse_license(self):
+        return self.root.get("license")
+
     def parse_python_template_version(self):
         python_template_version = self.root.get("python_template_version", None)
         if python_template_version is not None:

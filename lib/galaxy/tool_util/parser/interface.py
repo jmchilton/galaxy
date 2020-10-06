@@ -222,6 +222,10 @@ class ToolSource(metaclass=ABCMeta):
         """
 
     @abstractmethod
+    def parse_license(self):
+        """Return license corresponding to tool wrapper."""
+
+    @abstractmethod
     def parse_python_template_version(self):
         """
         Return minimum python version that the tool template has been developed against.

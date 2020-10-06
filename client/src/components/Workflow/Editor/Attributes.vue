@@ -30,6 +30,10 @@
                 These notes will be visible when this workflow is viewed.
             </div>
         </div>
+        <div id="workflow-license-area" class="mt-2">
+            <b>License</b>
+            <LicenseSelector :license="licenseCurrent" @onLicense="onLicense" />
+        </div>
         <div class="mt-2">
             <b>Tags</b>
             <Tags :tags="tagsCurrent" @input="onTags" />
@@ -45,6 +49,7 @@ import Vue from "vue";
 import BootstrapVue from "bootstrap-vue";
 import { Services } from "components/Workflow/services";
 import Tags from "components/Common/Tags";
+import LicenseSelector from "components/License/LicenseSelector";
 
 Vue.use(BootstrapVue);
 
@@ -52,6 +57,7 @@ export default {
     name: "Attributes",
     components: {
         Tags,
+        LicenseSelector,
     },
     props: {
         id: {
@@ -67,6 +73,10 @@ export default {
             required: true,
         },
         annotation: {
+            type: String,
+            default: "",
+        },
+        license: {
             type: String,
             default: "",
         },
@@ -87,6 +97,7 @@ export default {
         return {
             message: null,
             messageVariant: null,
+            licenseCurrent: this.license,
             tagsCurrent: this.tags,
             versionCurrent: this.version,
         };
@@ -118,6 +129,9 @@ export default {
         version() {
             this.versionCurrent = this.version;
         },
+        license() {
+            this.licenseCurrent = this.license;
+        },
     },
     methods: {
         onTags(tags) {
@@ -133,6 +147,11 @@ export default {
         },
         onVersion() {
             this.$emit("onVersion", this.versionCurrent);
+        },
+        onLicense(license) {
+            this.licenseCurrent = license;
+            this.onAttributes({ license });
+            this.$emit("onLicense", this.licenseCurrent);
         },
         onError(error) {
             this.message = error;

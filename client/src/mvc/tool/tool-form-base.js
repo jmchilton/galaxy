@@ -13,6 +13,7 @@ import FormBase from "mvc/form/form-view";
 import Webhooks from "mvc/webhooks";
 import Citations from "components/Citations.vue";
 import xrefs from "components/xrefs.vue";
+import License from "components/License/License.vue";
 import Vue from "vue";
 import axios from "axios";
 import { Toast } from "ui/toast";
@@ -296,6 +297,17 @@ export default FormBase.extend({
                 propsData: {
                     id: options.id,
                     source: "tools",
+                },
+            }).$mount(vm);
+        }
+        if (options.license) {
+            var licenseInstance = Vue.extend(License);
+            vm = document.createElement("div");
+            $el.append(vm);
+            new licenseInstance({
+                propsData: {
+                    licenseId: options.license,
+                    title: "Tool License:",
                 },
             }).$mount(vm);
         }

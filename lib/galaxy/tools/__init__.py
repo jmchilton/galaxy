@@ -889,6 +889,7 @@ class Tool(Dictifiable):
 
         # Is this a 'hidden' tool (hidden in tool menu)
         self.hidden = tool_source.parse_hidden()
+        self.license = tool_source.parse_license()
 
         self.__parse_legacy_features(tool_source)
 
@@ -2198,6 +2199,7 @@ class Tool(Dictifiable):
             'history_id'    : trans.security.encode_id(history.id) if history else None,
             'display'       : self.display_interface,
             'action'        : action,
+            'license'       : self.license,
             'method'        : self.method,
             'enctype'       : self.enctype
         })

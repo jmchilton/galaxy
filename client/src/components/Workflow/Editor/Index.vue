@@ -104,6 +104,7 @@
                                     :parameters="parameters"
                                     :annotation="annotation"
                                     :version="version"
+                                    :license="license"
                                     :versions="versions"
                                     @onVersion="onVersion"
                                     @onRename="onRename"
@@ -171,6 +172,10 @@ export default {
             required: true,
         },
         annotation: {
+            type: String,
+            default: "",
+        },
+        license: {
             type: String,
             default: "",
         },
@@ -380,6 +385,7 @@ export default {
                     const markdown = report.markdown || reportDefault;
                     this.markdownText = markdown;
                     this.markdownConfig = report;
+                    this.license = data.license;
                     showUpgradeMessage(data);
                     getVersions(this.id).then((versions) => {
                         this.versions = versions;

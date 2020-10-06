@@ -1,0 +1,82 @@
+<template>
+    <div v-if="license == null">
+        Loading license information...
+    </div>
+    <div class="text-muted" v-else-if="license.name">
+        <span v-if="title">
+            {{ title }}
+        </span>
+        {{ license.name }}
+        <a target="_blank" :href="license.url">
+            <font-awesome-icon icon="link" />
+        </a>
+        <slot name="buttons"></slot>
+    </div>
+    <div v-else>
+        Unknown License (<i>{{ license.url }}</i
+        >)
+        <slot name="buttons"></slot>
+    </div>
+</template>
+
+<script>
+import { getAppRoot } from "onload/loadConfig";
+import axios from "axios";
+import LoadingSpan from "components/LoadingSpan";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { library } from "@fortawesome/fontawesome-svg-core";
+
+import { faLink } from "@fortawesome/free-solid-svg-icons";
+library.add(faLink);
+
+export default {
+    components: {
+        LoadingSpan,
+        FontAwesomeIcon,
+    },
+    props: {
+        licenseId: {
+            type: String,
+        },
+        inputLicenseInfo: {
+            type: Object,
+            required: false,
+        },
+        title: {
+            type: String,
+            default: null,
+        },
+    },
+    data() {
+        return {
+            license: this.inputLicenseInfo,
+        };
+    },
+    created() {
+        if (this.license == null) {
+            this.fetchLicense();
+        }
+    },
+    methods: {
+        fetchLicense() {
+            this.license = null;
+            const url = `${getAppRoot()}api/licenses/${this.licenseId}`;
+            axios
+                .get(url)
+                .then((response) => response.data)
+                .then((data) => {
+                    this.license = data;
+                });
+        },
+    },
+    watch: {
+        licenseId: function (newLicense, oldLicense) {
+            if (newLicense != oldLicense) {
+                this.fetchLicense();
+            }
+        },
+    },
+};
+</script>
+
+<style></style>

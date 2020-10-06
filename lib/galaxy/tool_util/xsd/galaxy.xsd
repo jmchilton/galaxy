@@ -184,6 +184,14 @@ automatically if profile is set to any version newer than ``16.01``, such as
 ``16.04``.</xs:documentation>
         </xs:annotation>
       </xs:attribute>
+      <xs:attribute name="license" type="xs:string">
+        <xs:annotation>
+          <xs:documentation xml:lang="en">This string specifies any full URI or a
+a short SPDX (https://spdx.org/licenses/) identifier for a license for this tool
+wrapper. The tool wrapper version can be indepedent of the underlying tool. This
+license covers the tool XML and associated scripts shipped with the tool.</xs:documentation>
+        </xs:annotation>
+      </xs:attribute>
       <xs:attribute name="python_template_version" type="xs:float">
         <xs:annotation>
           <xs:documentation xml:lang="en">This string specifies the minimum Python
