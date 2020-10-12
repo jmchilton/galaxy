@@ -106,6 +106,7 @@
                                     :version="version"
                                     :license="license"
                                     :versions="versions"
+                                    :creator="creator"
                                     @onVersion="onVersion"
                                     @onRename="onRename"
                                 />
@@ -178,6 +179,10 @@ export default {
         license: {
             type: String,
             default: "",
+        },
+        creator: {
+            type: Object,
+            default: null,
         },
         moduleSections: {
             type: Array,
@@ -386,6 +391,9 @@ export default {
                     this.markdownText = markdown;
                     this.markdownConfig = report;
                     this.license = data.license;
+                    this.creator = data.creator;
+                    console.log("in load with creator");
+                    console.log(this.creator);
                     showUpgradeMessage(data);
                     getVersions(this.id).then((versions) => {
                         this.versions = versions;

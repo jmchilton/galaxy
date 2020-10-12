@@ -1,10 +1,11 @@
 <template>
-    <div id="edit-attributes" class="right-content p-2">
+    <div id="edit-attributes" class="right-content p-2" itemscope itemtype="http://schema.org/CreativeWork">
         <b-alert :variant="messageVariant" :show="!!message">
             {{ message }}
         </b-alert>
         <div id="workflow-name-area">
             <b>Name</b>
+            <meta itemprop="name" :content="name" />
             <b-input id="workflow-name" :value="name" @change="onRename" />
         </div>
         <div id="workflow-version-area" class="mt-2">
@@ -25,6 +26,7 @@
         </div>
         <div id="workflow-annotation-area" class="mt-2">
             <b>Annotation</b>
+            <meta itemprop="description" :content="annotation" />
             <b-textarea id="workflow-annotation" :value="annotation" @change="onAnnotation" />
             <div class="form-text text-muted">
                 These notes will be visible when this workflow is viewed.
@@ -33,6 +35,10 @@
         <div id="workflow-license-area" class="mt-2">
             <b>License</b>
             <LicenseSelector :license="licenseCurrent" @onLicense="onLicense" />
+        </div>
+        <div id="workflow-creator-area" class="mt-2">
+            <b>Creator</b>
+            <CreatorEditor :creator="creatorCurrent" @onCreator="onCreator" />
         </div>
         <div class="mt-2">
             <b>Tags</b>
@@ -50,6 +56,7 @@ import BootstrapVue from "bootstrap-vue";
 import { Services } from "components/Workflow/services";
 import Tags from "components/Common/Tags";
 import LicenseSelector from "components/License/LicenseSelector";
+import CreatorEditor from "components/SchemaOrg/CreatorEditor";
 
 Vue.use(BootstrapVue);
 
@@ -58,6 +65,7 @@ export default {
     components: {
         Tags,
         LicenseSelector,
+        CreatorEditor,
     },
     props: {
         id: {
@@ -80,6 +88,10 @@ export default {
             type: String,
             default: "",
         },
+        creator: {
+            type: Object,
+            default: null,
+        },
         version: {
             type: Number,
             default: null,
@@ -100,6 +112,7 @@ export default {
             licenseCurrent: this.license,
             tagsCurrent: this.tags,
             versionCurrent: this.version,
+            creatorCurrent: this.creator,
         };
     },
     created() {
@@ -132,6 +145,10 @@ export default {
         license() {
             this.licenseCurrent = this.license;
         },
+        creator() {
+            console.log("Creator in Attributes");
+            this.creatorCurrent = this.creator;
+        },
     },
     methods: {
         onTags(tags) {
@@ -152,6 +169,13 @@ export default {
             this.licenseCurrent = license;
             this.onAttributes({ license });
             this.$emit("onLicense", this.licenseCurrent);
+        },
+        onCreator(creator) {
+            console.log("inside Attributes' onCreator... with ...");
+            console.log(creator);
+            this.creatorCurrent = creator;
+            this.onAttributes({ creator });
+            this.$emit("onCreator", this.creatorCurrent);
         },
         onError(error) {
             this.message = error;

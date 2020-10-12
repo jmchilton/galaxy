@@ -3,6 +3,7 @@
         Loading license information...
     </div>
     <div class="text-muted" v-else-if="license.name">
+        <link itemprop="license" :href="license.licenseId" />
         <span v-if="title">
             {{ title }}
         </span>

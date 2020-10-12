@@ -98,7 +98,7 @@ export default {
     methods: {
         onSave() {
             this.onLicense(this.currentLicenseInfo && this.currentLicenseInfo.licenseId);
-            this.editLicense = false;
+            this.disableEdit();
         },
         disableEdit() {
             this.editLicense = false;

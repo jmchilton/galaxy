@@ -727,7 +727,8 @@ class WorkflowContentsManager(UsesAnnotations):
         data['upgrade_messages'] = {}
         data['report'] = workflow.reports_config or {}
         data['license'] = workflow.license
-        data['creator_metadata'] = workflow.creator_metadata
+        log.info("creator_metadata is %s" % workflow.creator_metadata)
+        data['creator'] = workflow.creator_metadata
 
         input_step_types = set(workflow.input_step_types)
         # For each step, rebuild the form and encode the state
