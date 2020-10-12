@@ -107,10 +107,5 @@ export default {
             this.$emit("onLicense", license);
         },
     },
-    watch: {
-        license(newLicense, oldLicense) {
-            console.log("new license set....");
-        },
-    },
 };
 </script>
