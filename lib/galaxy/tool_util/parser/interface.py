@@ -231,6 +231,13 @@ class ToolSource(metaclass=ABCMeta):
         Return minimum python version that the tool template has been developed against.
         """
 
+    def parse_creator(self):
+        """Return list of metadata relating to creator/author of tool.
+
+        Result should be list of schema.org data model Person or Organization objects.
+        """
+        return []
+
     @property
     def macro_paths(self):
         return []

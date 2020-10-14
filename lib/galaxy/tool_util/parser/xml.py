@@ -535,6 +535,25 @@ class XmlToolSource(ToolSource):
             python_template_version = packaging.version.parse(python_template_version)
         return python_template_version
 
+    def parse_creator(self):
+        creators_el = self.root.find("creator")
+        if creators_el is None:
+            return None
+
+        creators = []
+        for creator_el in creators_el:
+            creator_as_dict = {}
+            if creator_el.tag == "person":
+                clazz = "Person"
+            elif creator_el.tag == "organization":
+                clazz = "Organization"
+            else:
+                continue
+            creator_as_dict["class"] = clazz
+            creator_as_dict.update(creator_el.attrib)
+            creators.append(creator_as_dict)
+        return creators
+
 
 def _test_elem_to_dict(test_elem, i):
     rval = dict(
