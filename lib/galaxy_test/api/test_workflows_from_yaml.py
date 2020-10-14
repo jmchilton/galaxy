@@ -30,6 +30,7 @@ class WorkflowsFromYamlApiTestCase(BaseWorkflowsApiTestCase):
         workflow = self._upload_and_download(WORKFLOW_SIMPLE_CAT_AND_RANDOM_LINES, client_convert=False)
 
         assert workflow["annotation"].startswith("Simple workflow that ")
+        creator = workflow["creator"]
 
         tool_count = {'random_lines1': 0, 'cat1': 0}
         input_found = False
