@@ -14,6 +14,7 @@ import Webhooks from "mvc/webhooks";
 import Citations from "components/Citations.vue";
 import xrefs from "components/xrefs.vue";
 import License from "components/License/License.vue";
+import Creators from "components/SchemaOrg/Creators.vue";
 import Vue from "vue";
 import axios from "axios";
 import { Toast } from "ui/toast";
@@ -72,10 +73,14 @@ export default FormBase.extend({
     _render: function () {
         var self = this;
         var options = this.model.attributes;
+        if (options.setupToolMicrodata) {
+            this.$el.attr("itemscope", "itemscope");
+            this.$el.attr("itemtype", "https://schema.org/CreativeWork");
+        }
         this.model.set({
             title:
                 options.fixed_title ||
-                `<b>${options.name}</b> ${options.description} (Galaxy Version ${options.version})`,
+                `<b itemprop="name">${options.name}</b> <span itemprop="description">${options.description}</span> (Galaxy Version ${options.version})`,
             operations: !options.hide_operations && this._operations(),
             onchange: function () {
                 self.deferred.reset();
@@ -308,6 +313,16 @@ export default FormBase.extend({
                 propsData: {
                     licenseId: options.license,
                     title: "Tool License:",
+                },
+            }).$mount(vm);
+        }
+        if (options.creator) {
+            var creatorsInstance = Vue.extend(Creators);
+            vm = document.createElement("div");
+            $el.append(vm);
+            new creatorsInstance({
+                propsData: {
+                    creators: options.creator,
                 },
             }).$mount(vm);
         }

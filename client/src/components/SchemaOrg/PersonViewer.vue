@@ -11,12 +11,16 @@
                 >)
             </span>
         </span>
-        <span v-else>
+        <span itemprop="email" v-else>
             {{ email }}
         </span>
         <a v-if="orcidLink" :href="orcidLink" target="_blank">
             <link itemprop="identifier" :href="orcidLink" />
             <font-awesome-icon v-b-tooltip.hover title="View orcid.org profile" :icon="['fab', 'orcid']" />
+        </a>
+        <a v-if="url" :href="url" target="_blank">
+            <link itemprop="url" :href="url" />
+            <font-awesome-icon v-b-tooltip.hover title="Organization URL" icon="link" />
         </a>
         <slot name="buttons"></slot>
     </span>
@@ -44,8 +48,19 @@ export default {
     },
     computed: {
         name() {
-            // allow building up from givenName, familyName...
-            return this.person.name;
+            let name = this.person.name;
+            let familyName = this.person.familyName;
+            let givenName = this.person.givenName;
+            if (name == null && (familyName || givenName)) {
+                if (givenName && familyName) {
+                    name = givenName + " " + familyName;
+                } else if (givenName) {
+                    name = givenName;
+                } else {
+                    name = familyName;
+                }
+            }
+            return name;
         },
         email() {
             let email = this.person.email;
@@ -54,11 +69,13 @@ export default {
             }
             return email;
         },
+        url() {
+            return this.person.url;
+        },
         orcidLink() {
             const identifier = this.person.identifier;
-            // TODO: also check http, maybe interpret any XXXX-XXXX-XXXX-XXXX as orcid ID.
-            console.log(identifier);
-            if (identifier && identifier.indexOf("https://orcid.org/") == 0) {
+            // Maybe interpret any XXXX-XXXX-XXXX-XXXX as orcid ID?
+            if (identifier && identifier.indexOf("orcid.org/") >= 0) {
                 return identifier;
             } else {
                 return null;
