@@ -8,7 +8,7 @@ export async function getCitations(source, id) {
         const request = await axios.get(`${getAppRoot()}api/${source}/${id}/citations`);
         const rawCitations = request.data;
         const citations = []
-        for(const rawCitation in rawCitations) {
+        for(const rawCitation of rawCitations) {
             try {
                 const cite = new Cite(rawCitation.content);
                 citations.push({ raw: rawCitation.content, cite: cite });

@@ -21,12 +21,10 @@
                 <a href="https://galaxyproject.org/citing-galaxy">cite Galaxy</a>.
             </div>
             <div class="citations-formatted">
-                <template v-for="citation in formattedCitations">
-                    <div :key="citation" class="formatted-reference" v-html="citation"></div>
-                </template>
+                <Citation class="formatted-reference" :citation="citation" :outputFormat="outputFormat" v-for="(citation, index) in citations" :key="index" />
             </div>
         </b-card>
-        <div v-else-if="formattedCitations.length">
+        <div v-else-if="citations.length">
             <b-btn v-b-toggle="id" variant="primary">Citations</b-btn>
             <b-collapse
                 :id="id.replace(/ /g, '_')"
@@ -37,9 +35,7 @@
                 @hidden="$emit('hidden')"
             >
                 <b-card>
-                    <template v-for="citation in formattedCitations">
-                        <div :key="citation" class="formatted-reference" v-html="citation"></div>
-                    </template>
+                    <Citation class="formatted-reference" :citation="citation" :outputFormat="outputFormat" v-for="(citation, index) in citations" :key="index" />
                 </b-card>
             </b-collapse>
         </div>
@@ -48,10 +44,8 @@
 <script>
 import Vue from "vue";
 import BootstrapVue from "bootstrap-vue";
-import axios from "axios";
-import Cite from "citation-js";
-import { getAppRoot } from "onload/loadConfig";
 import { getCitations } from "./services";
+import Citation from "./Citation";
 
 Vue.use(BootstrapVue);
 
@@ -62,6 +56,9 @@ const outputFormats = Object.freeze({
 });
 
 export default {
+    components: {
+        Citation,
+    },
     props: {
         source: {
             type: String,
@@ -85,27 +82,6 @@ export default {
             outputFormats,
             outputFormat: outputFormats.CITATION,
         };
-    },
-    computed: {
-        formattedCitations() {
-            const processed = [];
-            if (this.citations.length !== 0) {
-                for (const c of this.citations) {
-                    let link = "";
-                    if (c.cite.data && c.cite.data[0] && c.cite.data[0].URL) {
-                        link = `&nbsp<a href="${c.cite.data[0].URL}" target="_blank">[Link]</a>`;
-                    }
-                    const formattedCitation = c.cite.format(this.outputFormat, {
-                        format: "html",
-                        template: "apa",
-                        lang: "en-US",
-                        append: link,
-                    });
-                    processed.push(formattedCitation);
-                }
-            }
-            return processed;
-        },
     },
     updated() {
         this.$nextTick(() => {
