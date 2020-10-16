@@ -92,15 +92,13 @@ export default {
             this.editIndex = null;
         },
         editNewPerson() {
-            this.creatorsCurrent.push({ class: "Person", isNew: true });
+            this.creatorsCurrent.push({ class: "Person", isNew: true, name: "", identifier: "" });
             this.editIndex = this.creatorsCurrent.length - 1;
         },
         editNewOrganization() {
-            this.creatorsCurrent.push({ class: "Organization", isNew: true });
+            this.creatorsCurrent.push({ class: "Organization", isNew: true, name: "" });
             this.editIndex = this.creatorsCurrent.length - 1;
         },
     },
 };
 </script>
-
-<style></style>

@@ -41,6 +41,7 @@
 </template>
 
 <script>
+import ThingViewerMixin from "./ThingViewerMixin";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { faUser } from "@fortawesome/free-solid-svg-icons";
@@ -53,6 +54,7 @@ import BootstrapVue from "bootstrap-vue";
 library.add(faOrcid, faUser);
 
 export default {
+    mixins: [ThingViewerMixin],
     components: {
         FontAwesomeIcon,
     },
@@ -65,22 +67,13 @@ export default {
             default: "left",
         },
     },
+    data() {
+        return {
+            implicitMicrodataProperties: ["name", "givenName", "email", "familyName", "url", "identifier"],
+            thing: this.person,
+        };
+    },
     computed: {
-        explicitMetaAttributes() {
-            return this.items.filter(
-                (i) => ["name", "givenName", "email", "familyName", "url", "identifier"].indexOf(i.attribute) == -1
-            );
-        },
-        items() {
-            const items = [];
-            for (const key in this.person) {
-                if (key == "class") {
-                    continue;
-                }
-                items.push({ attribute: key, value: this.person[key] });
-            }
-            return items;
-        },
         name() {
             let name = this.person.name;
             const familyName = this.person.familyName;
@@ -103,16 +96,6 @@ export default {
                 }
             }
             return name;
-        },
-        email() {
-            let email = this.person.email;
-            if (email && email.indexOf("mailto:") == 0) {
-                email = email.slice("mailto:".length);
-            }
-            return email;
-        },
-        url() {
-            return this.person.url;
         },
         orcidLink() {
             const identifier = this.person.identifier;
