@@ -1,18 +1,25 @@
-<!--
-- Support more schema.org fields (givenName, familyName, etc..).
-- Support exporting raw JSON for this field in some way.
--->
 <template>
     <span itemprop="creator" itemscope itemtype="https://schema.org/Person">
-        <font-awesome-icon icon="user" />
+        <font-awesome-icon ref="button" icon="user" />
+        <b-popover
+            triggers="click blur"
+            :placement="hoverPlacement"
+            :target="this.$refs['button'] || 'works-lazily'"
+            title="Person"
+        >
+            <b-table striped :items="items"> </b-table>
+        </b-popover>
         <span v-if="name">
-            <span itemprop="name">{{ name }}</span>
+            <meta itemprop="name" :content="person.name" v-if="person.name" />
+            <meta itemprop="givenName" :content="person.givenName" v-if="person.givenName" />
+            <meta itemprop="familyName" :content="person.familyName" v-if="person.familyName" />
+            {{ name }}
             <span v-if="email">
-                (<span itemprop="email">{{ email }}</span
+                (<span itemprop="email" :content="person.email">{{ email }}</span
                 >)
             </span>
         </span>
-        <span itemprop="email" v-else>
+        <span itemprop="email" :content="person.email" v-else>
             {{ email }}
         </span>
         <a v-if="orcidLink" :href="orcidLink" target="_blank">
@@ -21,8 +28,14 @@
         </a>
         <a v-if="url" :href="url" target="_blank">
             <link itemprop="url" :href="url" />
-            <font-awesome-icon v-b-tooltip.hover title="Organization URL" icon="link" />
+            <font-awesome-icon v-b-tooltip.hover title="URL" icon="link" />
         </a>
+        <meta
+            v-for="attribute in explicitMetaAttributes"
+            :key="attribute.attribute"
+            :itemprop="attribute.attribute"
+            :content="attribute.value"
+        />
         <slot name="buttons"></slot>
     </span>
 </template>
@@ -47,19 +60,46 @@ export default {
         person: {
             type: Object,
         },
+        hoverPlacement: {
+            type: String,
+            default: "left",
+        },
     },
     computed: {
+        explicitMetaAttributes() {
+            return this.items.filter(
+                (i) => ["name", "givenName", "email", "familyName", "url", "identifier"].indexOf(i.attribute) == -1
+            );
+        },
+        items() {
+            const items = [];
+            for (const key in this.person) {
+                if (key == "class") {
+                    continue;
+                }
+                items.push({ attribute: key, value: this.person[key] });
+            }
+            return items;
+        },
         name() {
             let name = this.person.name;
-            let familyName = this.person.familyName;
-            let givenName = this.person.givenName;
+            const familyName = this.person.familyName;
+            const givenName = this.person.givenName;
             if (name == null && (familyName || givenName)) {
+                const honorificPrefix = this.person.honorificPrefix;
+                const honorificSuffix = this.person.honorificSuffix;
                 if (givenName && familyName) {
                     name = givenName + " " + familyName;
                 } else if (givenName) {
                     name = givenName;
                 } else {
                     name = familyName;
+                }
+                if (honorificPrefix) {
+                    name = honorificPrefix + " " + name;
+                }
+                if (honorificSuffix) {
+                    name = name + " " + honorificSuffix;
                 }
             }
             return name;
@@ -86,5 +126,3 @@ export default {
     },
 };
 </script>
-
-<style></style>
