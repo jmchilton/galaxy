@@ -44,6 +44,7 @@ const ATTRIBUTES_INFO = [
 ];
 const ATTRIBUTES = ATTRIBUTES_INFO.map((a) => a.key);
 
+import ThingFormMixin from "./ThingFormMixin";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { faEyeSlash, faLink } from "@fortawesome/free-solid-svg-icons";
@@ -51,6 +52,7 @@ import { faEyeSlash, faLink } from "@fortawesome/free-solid-svg-icons";
 library.add(faEyeSlash, faLink);
 
 export default {
+    mixins: [ThingFormMixin],
     components: {
         FontAwesomeIcon,
     },
@@ -65,59 +67,23 @@ export default {
         for (const attribute of ATTRIBUTES) {
             const showAttribute = attribute in this.person;
             if (showAttribute) {
-                currentValues[attribute] = this.person[attribute];
+                let value = this.person[attribute];
+                if (attribute == "email") {
+                    if (value.indexOf("mailto:") == 0) {
+                        value = value.slice("mailto:".length);
+                    }
+                }
+                currentValues[attribute] = value;
             }
             show[attribute] = showAttribute;
         }
         return {
+            attributeInfo: ATTRIBUTES_INFO,
             show: show,
             currentValues: currentValues,
             addAttribute: null,
+            schemaOrgClass: "Person",
         };
-    },
-    computed: {
-        addAttributes() {
-            const options = [{ value: null, text: "Add attribute" }];
-            for (const attribute of ATTRIBUTES_INFO) {
-                if (!this.show[attribute.key]) {
-                    options.push({ value: attribute.key, text: "- " + attribute.placeholder });
-                }
-            }
-            return options;
-        },
-        displayedAttributes() {
-            return ATTRIBUTES_INFO.filter((a) => this.show[a.key]);
-        },
-    },
-    watch: {
-        addAttribute() {
-            if (this.addAttribute) {
-                this.show[this.addAttribute] = true;
-            }
-            this.$nextTick(() => {
-                this.addAttribute = null;
-            });
-        },
-    },
-    methods: {
-        onSave(evt) {
-            evt.preventDefault();
-            const newPerson = {};
-            newPerson.class = "Person";
-            for (const attribute of ATTRIBUTES) {
-                if (this.show[attribute]) {
-                    newPerson[attribute] = this.currentValues[attribute];
-                }
-            }
-            this.$emit("onSave", newPerson);
-        },
-        onReset(evt) {
-            evt.preventDefault();
-            this.$emit("onReset");
-        },
-        onHide(attributeKey) {
-            this.show[attributeKey] = false;
-        },
     },
 };
 </script>
