@@ -11,10 +11,7 @@ import Deferred from "utils/deferred";
 import Ui from "mvc/ui/ui-misc";
 import FormBase from "mvc/form/form-view";
 import Webhooks from "mvc/webhooks";
-import Citations from "components/Citation/Citations.vue";
-import xrefs from "components/xrefs.vue";
-import License from "components/License/License.vue";
-import Creators from "components/SchemaOrg/Creators.vue";
+import ToolFooter from "components/Tool/ToolFooter.vue";
 import Vue from "vue";
 import axios from "axios";
 import { Toast } from "ui/toast";
@@ -281,8 +278,23 @@ export default FormBase.extend({
 
     /** Create footer */
     _footer: function () {
-        var options = this.model.attributes;
-        var $el = $("<div/>").append(this._templateHelp(options));
+        const options = this.model.attributes;
+        const $el = $("<div/>").append(this._templateHelp(options));
+        const toolFooterInstance = Vue.extend(ToolFooter);
+        const vm = document.createElement("div");
+        $el.append(vm);
+        const propsData = {
+            id: options.id,
+            hasCitations: options.citations,
+            xrefs: options.xrefs,
+            license: options.license,
+            creators: options.creator,
+            requirements: options.requirements,
+        };
+        new toolFooterInstance({
+            propsData
+        }).$mount(vm);
+        /*
         if (options.citations) {
             var citationInstance = Vue.extend(Citations);
             var vm = document.createElement("div");
@@ -327,6 +339,7 @@ export default FormBase.extend({
                 },
             }).$mount(vm);
         }
+        */
         return $el;
     },
 

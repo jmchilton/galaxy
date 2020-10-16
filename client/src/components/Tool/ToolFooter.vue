@@ -1,0 +1,116 @@
+<template>
+    <div class="tool-footer">
+        <b-button v-b-toggle.collapse-about>About this tool</b-button>
+        <b-collapse id="collapse-about" class="mt-2">
+            <b-card>
+                <div v-if="hasCitations" class="metadata-section">
+                    <span class="metadata-key">Citations:</span>
+                    <Citation v-for="(citation, index) in citations" :key="index" :citation="citation" output-format="bibliography" prefix="-" />
+                </div>
+                <div v-if="requirements && requirements.length > 0" class="metadata-section">
+                    <span class="metadata-key">Requirements:
+                        <a href="https://galaxyproject.org/tools/requirements/" target="_blank">
+                            <font-awesome-icon
+                                v-b-tooltip.hover
+                                title="Learn more about Galaxy Requirements"
+                                icon="question"
+                            />
+                        </a>
+                    </span>
+                    <div v-for="(requirement, index) in requirements" :key="index">
+                        - {{ requirement.name }}
+                        <span v-if="requirement.version">
+                            (Version {{ requirement.version }})
+                        </span>
+                    </div>
+                </div>
+                <div class="metadata-section">
+                    <span class="metadata-key">License:</span>
+                    <License v-if="license" :licenseId="license" />
+                </div>
+                <div v-if="xrefs && xrefs.length > 0" class="metadata-section">
+                    <span class="metadata-key">References:</span>
+                    <div v-for="(xref, index) in xrefs" :key="index">
+                        - {{ xref.reftype }}:
+                        <template v-if="xref.reftype == 'bio.tools'">
+                            <a :href="`https://bio.tools/${xref.value}`" target="_blank">{{ xref.value }}</a>
+                        </template>
+                        <template v-else>
+                            {{ xref.value }}
+                        </template>
+                    </div>
+                </div>
+                <div v-if="creators && creators.length > 0" class="metadata-section">
+                    <span class="metadata-key">Creators:</span>
+                    <Creators :creators="creators" />
+                </div>
+            </b-card>
+        </b-collapse>
+    </div>
+</template>
+
+<script>
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { library } from "@fortawesome/fontawesome-svg-core";
+import { faQuestion } from "@fortawesome/free-solid-svg-icons";
+
+library.add(faQuestion);
+
+import { getCitations } from "components/Citation/services";
+import Citation from "components/Citation/Citation.vue";
+import xrefs from "components/xrefs.vue";
+import License from "components/License/License.vue";
+import Creators from "components/SchemaOrg/Creators.vue";
+
+export default {
+    components: {
+        Citation, xrefs, License, Creators, FontAwesomeIcon,
+    },
+    props: {
+        id: {
+            type: String,
+        },
+        hasCitations: {
+            type: Boolean,
+            default: true,
+        },
+        xrefs: {
+            type: Array,
+        },
+        license: {
+            type: String,
+        },
+        creators: {
+            type: Array,
+        },
+        requirements: {
+            type: Array,
+        }
+    },
+    data() {
+        return {
+            citations: [],
+        };
+    },
+    created() {
+        if (this.hasCitations) {
+            getCitations("tools", this.id)
+                .then((citations) => {
+                    this.citations = citations;
+                })
+                .catch((e) => {
+                    console.error(e);
+                });
+        }
+    },
+}
+</script>
+
+<style scoped>
+.metadata-key {
+    font-weight: bold;
+}
+.metadata-section {
+    margin-bottom: 5px;
+}
+</style>
