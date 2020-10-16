@@ -4,6 +4,7 @@
 -->
 <template>
     <span itemprop="creator" itemscope itemtype="https://schema.org/Person">
+        <font-awesome-icon icon="user" />
         <span v-if="name">
             <span itemprop="name">{{ name }}</span>
             <span v-if="email">
@@ -29,13 +30,14 @@
 <script>
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
+import { faUser } from "@fortawesome/free-solid-svg-icons";
 
 import { faOrcid } from "@fortawesome/free-brands-svg-icons";
 
 import Vue from "vue";
 import BootstrapVue from "bootstrap-vue";
 
-library.add(faOrcid);
+library.add(faOrcid, faUser);
 
 export default {
     components: {

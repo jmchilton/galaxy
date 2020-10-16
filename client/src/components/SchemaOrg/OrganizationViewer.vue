@@ -4,6 +4,7 @@
 -->
 <template>
     <span itemprop="creator" itemscope itemtype="https://schema.org/Organization">
+        <font-awesome-icon icon="building" />
         <span v-if="name">
             <span itemprop="name">{{ name }}</span>
             <span v-if="email">
@@ -26,12 +27,13 @@
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
 
-import { faLink } from "@fortawesome/free-solid-svg-icons";
+// maybe faUsers instead of faBuilding?
+import { faLink, faBuilding } from "@fortawesome/free-solid-svg-icons";
 
 import Vue from "vue";
 import BootstrapVue from "bootstrap-vue";
 
-library.add(faLink);
+library.add(faLink, faBuilding);
 
 export default {
     components: {

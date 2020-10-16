@@ -15,11 +15,7 @@
                 api.search('orcid:0000-0002-6794-0756')
                 {'result': [{'orcid-identifier': {'uri': 'http://orcid.org/0000-0002-6794-0756', 'path': '0000-0002-6794-0756', 'host': 'orcid.org'}}], 'num-found': 1}
             -->
-            <b-form-input
-                id="identifier"
-                v-model="identifier"
-                placeholder="Enter identifier (typically an orcid.org URI)."
-            ></b-form-input>
+            <b-form-input id="identifier" v-model="identifier" placeholder="Enter identifier."></b-form-input>
         </b-form-group>
         <b-button type="submit" variant="primary">Save</b-button>
         <b-button type="reset" variant="danger">Cancel</b-button>
@@ -29,28 +25,31 @@
 <script>
 export default {
     props: {
-        person: {
+        organization: {
             type: Object,
         },
     },
     data() {
         return {
-            name: this.person && this.person.name,
-            email: this.person && this.person.email,
-            identifier: this.person && this.person.identifier,
+            name: this.organization && this.organization.name,
+            email: this.organization && this.organization.email,
+            identifier: this.organization && this.organization.identifier,
         };
     },
     methods: {
         onSave(evt) {
             evt.preventDefault();
-            const newPerson = {};
-            newPerson.class = "Person";
-            newPerson.email = this.email;
-            newPerson.name = this.name;
-            newPerson.identifier = this.identifier;
-            this.$emit("onSave", newPerson);
+            const newOrganization = {};
+            newOrganization.class = "Organization";
+            newOrganization.email = this.email;
+            newOrganization.name = this.name;
+            newOrganization.identifier = this.identifier;
+            console.log("newOrganization is ");
+            console.log(newOrganization);
+            this.$emit("onSave", newOrganization);
         },
         onReset(evt) {
+            console.log("in onReset");
             evt.preventDefault();
             this.$emit("onReset");
         },

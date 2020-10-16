@@ -38,7 +38,7 @@
         </div>
         <div id="workflow-creator-area" class="mt-2">
             <b>Creator</b>
-            <CreatorEditor :creator="creatorCurrent" @onCreator="onCreator" />
+            <CreatorEditor :creators="creatorCurrent" @onCreators="onCreator" />
         </div>
         <div class="mt-2">
             <b>Tags</b>
@@ -89,7 +89,6 @@ export default {
             default: "",
         },
         creator: {
-            type: Object,
             default: null,
         },
         version: {
@@ -106,13 +105,19 @@ export default {
         },
     },
     data() {
+        let creator = this.creator;
+        if (!creator) {
+            creator = [];
+        } else if (!(creator instanceof Array)) {
+            creator = [creator];
+        }
         return {
             message: null,
             messageVariant: null,
             licenseCurrent: this.license,
             tagsCurrent: this.tags,
             versionCurrent: this.version,
-            creatorCurrent: this.creator,
+            creatorCurrent: creator,
         };
     },
     created() {
@@ -146,8 +151,13 @@ export default {
             this.licenseCurrent = this.license;
         },
         creator() {
-            console.log("Creator in Attributes");
-            this.creatorCurrent = this.creator;
+            let creator = this.creator;
+            if (!creator) {
+                creator = [];
+            } else if (!(creator instanceof Array)) {
+                creator = [creator];
+            }
+            this.creatorCurrent = creator;
         },
     },
     methods: {
@@ -171,8 +181,6 @@ export default {
             this.$emit("onLicense", this.licenseCurrent);
         },
         onCreator(creator) {
-            console.log("inside Attributes' onCreator... with ...");
-            console.log(creator);
             this.creatorCurrent = creator;
             this.onAttributes({ creator });
             this.$emit("onCreator", this.creatorCurrent);
