@@ -7,12 +7,12 @@ export async function getCitations(source, id) {
     try {
         const request = await axios.get(`${getAppRoot()}api/${source}/${id}/citations`);
         const rawCitations = request.data;
-        const citations = []
-        for(const rawCitation of rawCitations) {
+        const citations = [];
+        for (const rawCitation of rawCitations) {
             try {
                 const cite = new Cite(rawCitation.content);
                 citations.push({ raw: rawCitation.content, cite: cite });
-            } catch(err) {
+            } catch (err) {
                 console.warn(`Error parsing bibtex: ${err}`);
             }
         }

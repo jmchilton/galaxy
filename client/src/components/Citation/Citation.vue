@@ -3,11 +3,7 @@
         {{ prefix }}
         <span v-html="citationHtml" />
         <a v-if="link" :href="link" target="_blank">
-            <font-awesome-icon
-                v-b-tooltip.hover
-                title="View Citation"
-                icon="link"
-            />
+            <font-awesome-icon v-b-tooltip.hover title="View Citation" icon="link" />
         </a>
     </div>
 </template>
@@ -49,8 +45,8 @@ export default {
             });
             return formattedCitation;
         },
-    }
-}
+    },
+};
 </script>
 
 <style>

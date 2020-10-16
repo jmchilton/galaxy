@@ -3,9 +3,7 @@
 export default {
     computed: {
         explicitMetaAttributes() {
-            return this.items.filter(
-                (i) => this.implicitMicrodataProperties.indexOf(i.attribute) == -1
-            );
+            return this.items.filter((i) => this.implicitMicrodataProperties.indexOf(i.attribute) == -1);
         },
         items() {
             const items = [];
@@ -28,4 +26,4 @@ export default {
             return this.thing.url;
         },
     },
-}
+};

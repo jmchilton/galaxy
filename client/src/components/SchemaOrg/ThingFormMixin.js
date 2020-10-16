@@ -40,8 +40,8 @@ export default {
                 const attribute = attributeInfo.key;
                 if (this.show[attribute]) {
                     let value = this.currentValues[attribute];
-                    if ( attribute == "email" ) {
-                        if ( value.indexOf("mailto:") !== 0 ) {
+                    if (attribute == "email") {
+                        if (value.indexOf("mailto:") !== 0) {
                             value = "mailto:" + value;
                         }
                     }
@@ -50,5 +50,5 @@ export default {
             }
             this.$emit("onSave", newThing);
         },
-    }
-}
+    },
+};

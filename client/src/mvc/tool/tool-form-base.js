@@ -215,28 +215,6 @@ export default FormBase.extend({
             });
         }
 
-        // button for version selection
-        if (options.requirements && options.requirements.length > 0) {
-            menu_button.addMenu({
-                icon: "fa-info-circle",
-                title: _l("Requirements"),
-                onclick: function () {
-                    if (!this.requirements_visible || self.portlet.collapsed) {
-                        this.requirements_visible = true;
-                        self.portlet.expand();
-                        self.message.update({
-                            persistent: true,
-                            message: self._templateRequirements(options),
-                            status: "info",
-                        });
-                    } else {
-                        this.requirements_visible = false;
-                        self.message.update({ message: "" });
-                    }
-                },
-            });
-        }
-
         // add toolshed url
         if (options.sharable_url) {
             menu_button.addMenu({
@@ -292,54 +270,8 @@ export default FormBase.extend({
             requirements: options.requirements,
         };
         new toolFooterInstance({
-            propsData
+            propsData,
         }).$mount(vm);
-        /*
-        if (options.citations) {
-            var citationInstance = Vue.extend(Citations);
-            var vm = document.createElement("div");
-            $el.append(vm);
-            new citationInstance({
-                propsData: {
-                    id: options.id,
-                    source: "tools",
-                },
-            }).$mount(vm);
-        }
-        if (options.xrefs && options.xrefs.length) {
-            var xrefInstance = Vue.extend(xrefs);
-            vm = document.createElement("div");
-            $el.append(vm);
-            new xrefInstance({
-                propsData: {
-                    id: options.id,
-                    source: "tools",
-                },
-            }).$mount(vm);
-        }
-        if (options.license) {
-            var licenseInstance = Vue.extend(License);
-            vm = document.createElement("div");
-            $el.append(vm);
-            new licenseInstance({
-                propsData: {
-                    licenseId: options.license,
-                    title: "Tool License:",
-                },
-            }).$mount(vm);
-        }
-        if (options.creator) {
-            var creatorsInstance = Vue.extend(Creators);
-            vm = document.createElement("div");
-            $el.append(vm);
-            new creatorsInstance({
-                propsData: {
-                    title: 'Tool Creators:',
-                    creators: options.creator,
-                },
-            }).$mount(vm);
-        }
-        */
         return $el;
     },
 
@@ -354,27 +286,5 @@ export default FormBase.extend({
             }
         });
         return $tmpl;
-    },
-
-    _templateRequirements: function (options) {
-        var nreq = options.requirements.length;
-        if (nreq > 0) {
-            var requirements_message = "This tool requires ";
-            _.each(options.requirements, (req, i) => {
-                requirements_message +=
-                    req.name +
-                    (req.version ? ` (Version ${req.version})` : "") +
-                    (i < nreq - 2 ? ", " : i == nreq - 2 ? " and " : "");
-            });
-            var requirements_link = $("<a/>")
-                .attr("target", "_blank")
-                .attr("href", "https://galaxyproject.org/tools/requirements/")
-                .text("here");
-            return $("<span/>")
-                .append(`${requirements_message}. Click `)
-                .append(requirements_link)
-                .append(" for more information.");
-        }
-        return "No requirements found.";
     },
 });

@@ -5,10 +5,17 @@
             <b-card>
                 <div v-if="hasCitations" class="metadata-section">
                     <span class="metadata-key">Citations:</span>
-                    <Citation v-for="(citation, index) in citations" :key="index" :citation="citation" output-format="bibliography" prefix="-" />
+                    <Citation
+                        v-for="(citation, index) in citations"
+                        :key="index"
+                        :citation="citation"
+                        output-format="bibliography"
+                        prefix="-"
+                    />
                 </div>
                 <div v-if="requirements && requirements.length > 0" class="metadata-section">
-                    <span class="metadata-key">Requirements:
+                    <span class="metadata-key"
+                        >Requirements:
                         <a href="https://galaxyproject.org/tools/requirements/" target="_blank">
                             <font-awesome-icon
                                 v-b-tooltip.hover
@@ -19,9 +26,7 @@
                     </span>
                     <div v-for="(requirement, index) in requirements" :key="index">
                         - {{ requirement.name }}
-                        <span v-if="requirement.version">
-                            (Version {{ requirement.version }})
-                        </span>
+                        <span v-if="requirement.version"> (Version {{ requirement.version }}) </span>
                     </div>
                 </div>
                 <div class="metadata-section">
@@ -64,7 +69,11 @@ import Creators from "components/SchemaOrg/Creators.vue";
 
 export default {
     components: {
-        Citation, xrefs, License, Creators, FontAwesomeIcon,
+        Citation,
+        xrefs,
+        License,
+        Creators,
+        FontAwesomeIcon,
     },
     props: {
         id: {
@@ -85,7 +94,7 @@ export default {
         },
         requirements: {
             type: Array,
-        }
+        },
     },
     data() {
         return {
@@ -103,7 +112,7 @@ export default {
                 });
         }
     },
-}
+};
 </script>
 
 <style scoped>

@@ -21,7 +21,13 @@
                 <a href="https://galaxyproject.org/citing-galaxy">cite Galaxy</a>.
             </div>
             <div class="citations-formatted">
-                <Citation class="formatted-reference" :citation="citation" :outputFormat="outputFormat" v-for="(citation, index) in citations" :key="index" />
+                <Citation
+                    class="formatted-reference"
+                    :citation="citation"
+                    :outputFormat="outputFormat"
+                    v-for="(citation, index) in citations"
+                    :key="index"
+                />
             </div>
         </b-card>
         <div v-else-if="citations.length">
@@ -35,7 +41,13 @@
                 @hidden="$emit('hidden')"
             >
                 <b-card>
-                    <Citation class="formatted-reference" :citation="citation" :outputFormat="outputFormat" v-for="(citation, index) in citations" :key="index" />
+                    <Citation
+                        class="formatted-reference"
+                        :citation="citation"
+                        :outputFormat="outputFormat"
+                        v-for="(citation, index) in citations"
+                        :key="index"
+                    />
                 </b-card>
             </b-collapse>
         </div>
