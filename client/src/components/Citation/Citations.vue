@@ -51,6 +51,7 @@ import BootstrapVue from "bootstrap-vue";
 import axios from "axios";
 import Cite from "citation-js";
 import { getAppRoot } from "onload/loadConfig";
+import { getCitations } from "./services";
 
 Vue.use(BootstrapVue);
 
@@ -112,17 +113,9 @@ export default {
         });
     },
     created() {
-        axios
-            .get(`${getAppRoot()}api/${this.source}/${this.id}/citations`)
-            .then((response) => {
-                response.data.forEach((rawCitation) => {
-                    try {
-                        const cite = new Cite(rawCitation.content);
-                        this.citations.push({ raw: rawCitation.content, cite: cite });
-                    } catch (err) {
-                        console.warn(`Error parsing bibtex: ${err}`);
-                    }
-                });
+        getCitations(this.source, this.id)
+            .then((citations) => {
+                this.citations = citations;
             })
             .catch((e) => {
                 console.error(e);
