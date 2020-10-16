@@ -1,5 +1,6 @@
 <template>
     <span>
+        {{ title }}
         <div v-for="(creator, index) in creators" :key="index">
             <CreatorViewer :creator="creator" />
         </div>
@@ -14,6 +15,10 @@ export default {
         CreatorViewer,
     },
     props: {
+        title: {
+            type: String,
+            default: "",
+        },
         creators: {
             type: Array,
         },

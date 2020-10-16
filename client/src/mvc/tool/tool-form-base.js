@@ -322,6 +322,7 @@ export default FormBase.extend({
             $el.append(vm);
             new creatorsInstance({
                 propsData: {
+                    title: 'Tool Creators:',
                     creators: options.creator,
                 },
             }).$mount(vm);
