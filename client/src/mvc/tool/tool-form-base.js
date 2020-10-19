@@ -14,7 +14,7 @@ import Webhooks from "mvc/webhooks";
 import ToolFooter from "components/Tool/ToolFooter.vue";
 import Vue from "vue";
 import axios from "axios";
-import { Toast } from "ui/toast";
+import { copy } from "utils/clipboard";
 
 export default FormBase.extend({
     initialize: function (options) {
@@ -189,18 +189,10 @@ export default FormBase.extend({
             icon: "fa-share",
             title: _l("Get link"),
             onclick: function () {
-                if (navigator.clipboard) {
-                    navigator.clipboard
-                        .writeText(`${window.location.origin + getAppRoot()}root?tool_id=${options.id}`)
-                        .then(() => {
-                            Toast.info("Link is copied to your clipboard");
-                        });
-                } else {
-                    prompt(
-                        "Copy to clipboard: Ctrl+C, Enter",
-                        `${window.location.origin + getAppRoot()}root?tool_id=${options.id}`
-                    );
-                }
+                copy(
+                    `${window.location.origin + getAppRoot()}root?tool_id=${options.id}`,
+                    "Link was copied to your clipboard",
+                );
             },
         });
 

@@ -1,10 +1,18 @@
 <template>
     <div class="tool-footer">
-        <b-button v-b-toggle.collapse-about>About this tool</b-button>
+        <!-- <b-button v-b-toggle.collapse-about>About this tool</b-button> -->
+        <b-link v-b-toggle.collapse-about>About this tool</b-link>
         <b-collapse id="collapse-about" class="mt-2">
             <b-card>
                 <div v-if="hasCitations" class="metadata-section">
                     <span class="metadata-key">Citations:</span>
+                    <font-awesome-icon
+                        v-b-tooltip.hover
+                        title="Copy all citations as BibTeX"
+                        icon="copy"
+                        style="cursor: pointer;"
+                        @click="copyBibtex"
+                    />
                     <Citation
                         v-for="(citation, index) in citations"
                         :key="index"
@@ -57,15 +65,16 @@
 <script>
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
-import { faQuestion } from "@fortawesome/free-solid-svg-icons";
+import { faQuestion, faCopy } from "@fortawesome/free-solid-svg-icons";
 
-library.add(faQuestion);
+library.add(faQuestion, faCopy);
 
 import { getCitations } from "components/Citation/services";
 import Citation from "components/Citation/Citation.vue";
 import xrefs from "components/xrefs.vue";
 import License from "components/License/License.vue";
 import Creators from "components/SchemaOrg/Creators.vue";
+import { copy } from "utils/clipboard";
 
 export default {
     components: {
@@ -112,6 +121,17 @@ export default {
                 });
         }
     },
+    methods: {
+        copyBibtex() {
+            var text = "";
+            this.citations.forEach((citation) => {
+                const cite = citation.cite;
+                const bibtex = cite.format('bibtex', {});
+                text += bibtex;
+            });
+            copy(text, "Citations copied to your clipboard as BibTeX");
+        },
+    }
 };
 </script>
 
