@@ -1,0 +1,11 @@
+# Set Galaxy URL to test (command-line overrides this).
+galaxy_url: http://localhost:8080
+
+# User API key to test with.
+#key:
+
+# Admin API key to test with.
+#admin_key:
+
+# Path to accumulate output metadata into.
+#output_json:
