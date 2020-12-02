@@ -38,3 +38,10 @@ jobs:
         with:
           name: API test results
           path: 'galaxy root/run_api_tests.html'
+      - name: Generate test HTML
+        run: '. .venv/bin/activate; python scripts/tests_markdown.py test.json'
+        working-directory: 'galaxy root'
+      - uses: actions/upload-artifact@v2.0.1
+        with:
+          name: 'Performance Metrics'
+          path: 'galaxy root/test.html'
