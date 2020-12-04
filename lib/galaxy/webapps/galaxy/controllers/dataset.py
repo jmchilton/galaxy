@@ -273,6 +273,7 @@ class DatasetInterface(BaseUIController, UsesAnnotations, UsesItemRatings, UsesE
             # permissions
             permission_disable = True
             permission_inputs = list()
+            permission_message = None
             if trans.user:
                 if data.dataset.actions:
                     in_roles = {}
@@ -296,17 +297,19 @@ class DatasetInterface(BaseUIController, UsesAnnotations, UsesItemRatings, UsesE
                         })
                     permission_disable = not can_manage_dataset
                 else:
+                    permission_message = 'This dataset is accessible by everyone (it is public).'
                     permission_inputs.append({
                         'name'      : 'access_public',
                         'type'      : 'hidden',
-                        'label'     : 'This dataset is accessible by everyone (it is public).',
+                        'label'     : permission_message,
                         'readonly'  : True
                     })
             else:
+                permission_message = 'Permissions not available (not logged in).'
                 permission_inputs.append({
                     'name'      : 'no_access',
                     'type'      : 'hidden',
-                    'label'     : 'Permissions not available (not logged in).',
+                    'label'     : permission_message,
                     'readonly'  : True
                 })
             return {
@@ -320,7 +323,8 @@ class DatasetInterface(BaseUIController, UsesAnnotations, UsesItemRatings, UsesE
                 'datatype_inputs'   : datatype_inputs,
                 'datatype_disable'  : datatype_disable,
                 'permission_inputs' : permission_inputs,
-                'permission_disable': permission_disable
+                'permission_disable': permission_disable,
+                'permission_message': permission_message,
             }
         else:
             return self.message_exception(trans, 'You do not have permission to edit this dataset\'s ( id: %s ) information.' % str(dataset_id))

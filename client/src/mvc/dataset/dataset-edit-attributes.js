@@ -40,6 +40,7 @@ var View = Backbone.View.extend({
                 _.each(self.forms, (form, key) => {
                     form.model.set("inputs", response[`${key}_inputs`]);
                     form.model.set("hide_operations", response[`${key}_disable`]);
+                    form.model.set("message", response[`${key}_message`]);
                     form.render();
                 });
                 self.$el.show();
