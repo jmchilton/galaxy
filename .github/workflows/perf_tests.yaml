@@ -54,10 +54,10 @@ jobs:
     - name: Move test data base
       run: rsync -av --remove-source-files --exclude .git galaxy-test-data/ 'galaxy root base/test-data/'
     - name: Run tests on PR branch
-      run: 'GALAXY_TEST_DBURI=$GALAXY_TEST_DBURI_PR ./run_tests.sh --ci_test_metrics --structured_data_report_file "pr.json" -api
+      run: GALAXY_TEST_DBURI=$GALAXY_TEST_DBURI_PR ./run_tests.sh --ci_test_metrics --structured_data_report_file "pr.json" -api
       working-directory: 'galaxy root'
     - name: Run tests on target branch
-      run: 'GALAXY_TEST_DBURI=$GALAXY_TEST_DBURI_TARGET ./run_tests.sh --ci_test_metrics --structured_data_report_file "target.json" -api
+      run: GALAXY_TEST_DBURI=$GALAXY_TEST_DBURI_TARGET ./run_tests.sh --ci_test_metrics --structured_data_report_file "target.json" -api
       working-directory: 'galaxy root base'
     - name: Generate test HTML
       run: '. .venv/bin/activate; python scripts/tests_markdown.py --output_path pr.html pr.json'
