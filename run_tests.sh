@@ -276,6 +276,7 @@ report_file="run_functional_tests.html"
 coverage_arg=""
 xunit_report_file=""
 structured_data_report_file=""
+structured_data_html=0
 SKIP_CLIENT_BUILD=${GALAXY_SKIP_CLIENT_BUILD:-1}
 if [ "$SKIP_CLIENT_BUILD" = "1" ];
 then
@@ -504,6 +505,10 @@ do
               exit 1
           fi
           ;;
+      --structured_data_html)
+          structured_data_html=1
+          shift
+          ;;
       --verbose_errors)
           GALAXY_TEST_VERBOSE_ERRORS=True
           export GALAXY_TEST_VERBOSE_ERRORS
@@ -679,5 +684,7 @@ else
 fi
 exit_status=$?
 echo "Testing complete. HTML report is in \"$report_file\"." 1>&2
+if [ "$structured_data_html" = '1' ]; then
+   python scripts/tests_markdown.py --output_path "${structured_data_report_file%.json}.html" "$structured_data_report_file"
+fi
 exit ${exit_status}
-
