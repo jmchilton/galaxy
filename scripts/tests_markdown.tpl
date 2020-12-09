@@ -27,11 +27,11 @@
 {% set state.skipped = raw_data.results.skipped | default(0) %}
 
 <div class="progress">
-  <div class="progress-bar progress-bar-success" style="width: {{ (state.passed / raw_data.results.total) * 100 }}%" aria-valuenow="{{ state.success }}" aria-valuemin="0" aria-valuemax="{{ raw_data.results.total }}" data-toggle="tooltip" title="{{state.success}} Passed">
+  <div class="progress-bar progress-bar-success" style="width: {{ (state.passed / raw_data.results.total) * 100 if raw_data.results.total else 0 }}%" aria-valuenow="{{ state.success }}" aria-valuemin="0" aria-valuemax="{{ raw_data.results.total }}" data-toggle="tooltip" title="{{state.success}} Passed">
   </div>
-  <div class="progress-bar progress-bar-warning" style="width: {{ (state.skipped / raw_data.results.total) * 100 }}%" aria-valuenow="{{ state.skipped }}" aria-valuemin="0" aria-valuemax="{{ raw_data.results.total }}" data-toggle="tooltip" title="{{state.skipped}} Skipped">
+  <div class="progress-bar progress-bar-warning" style="width: {{ (state.skipped / raw_data.results.total) * 100 if raw_data.results.total else 0 }}%" aria-valuenow="{{ state.skipped }}" aria-valuemin="0" aria-valuemax="{{ raw_data.results.total }}" data-toggle="tooltip" title="{{state.skipped}} Skipped">
   </div>
-  <div class="progress-bar progress-bar-danger" style="width: {{ ((state.failed) / raw_data.results.total) * 100 }}%" aria-valuenow="{{ state.failure }}" aria-valuemin="0" aria-valuemax="{{ raw_data.results.total }}" title="{{state.failed}} Failed">
+  <div class="progress-bar progress-bar-danger" style="width: {{ ((state.failed) / raw_data.results.total) * 100 if raw_data.results.total else 0 }}%" aria-valuenow="{{ state.failure }}" aria-valuemin="0" aria-valuemax="{{ raw_data.results.total }}" title="{{state.failed}} Failed">
   </div>
 </div>
 
