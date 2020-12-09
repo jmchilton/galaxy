@@ -1065,7 +1065,6 @@ class WorkflowPopulator(BaseWorkflowPopulator, ImporterGalaxyInterface):
         }
         return workflow_dict
 
-
     def _scale_workflow_dict_two_outputs(self, **kwd):
         collection_size = kwd.get("collection_size", 10)
         workflow_depth = kwd.get("workflow_depth", 10)

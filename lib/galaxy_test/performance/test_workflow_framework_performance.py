@@ -1,10 +1,10 @@
 import os
 
-from ._framework import PerformanceTestCase
-
 from galaxy_test.base.populators import (
     WorkflowPopulator,
 )
+from ._framework import PerformanceTestCase
+
 GALAXY_TEST_PERFORMANCE_TIMEOUT_DEFAULT = 5000
 GALAXY_TEST_PERFORMANCE_TIMEOUT = int(os.environ.get("GALAXY_TEST_PERFORMANCE_TIMEOUT", GALAXY_TEST_PERFORMANCE_TIMEOUT_DEFAULT))
 GALAXY_TEST_PERFORMANCE_COLLECTION_SIZE_DEFAULT = 4
@@ -21,13 +21,13 @@ class WorkflowFrameworkPerformanceTestCase(PerformanceTestCase):
         self.workflow_populator = WorkflowPopulator(self.galaxy_interactor)
 
     def test_run_simple(self):
-       self._run_performance_workflow("simple")
+        self._run_performance_workflow("simple")
 
     def test_run_wave(self):
-       self._run_performance_workflow("wave_simple")
+        self._run_performance_workflow("wave_simple")
 
-    def test_run_wave(self):
-       self._run_performance_workflow("two_output")
+    def test_run_two_output(self):
+        self._run_performance_workflow("two_output")
 
     def _run_performance_workflow(self, workflow_type):
         workflow_yaml = self.workflow_populator.scaling_workflow_yaml(
