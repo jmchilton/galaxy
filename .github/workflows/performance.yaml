@@ -1,4 +1,4 @@
-name: API tests
+name: Performance tests
 on: [push, pull_request]
 env:
   GALAXY_TEST_DBURI: 'postgres://postgres:postgres@localhost:5432/galaxy?client_encoding=utf8'
