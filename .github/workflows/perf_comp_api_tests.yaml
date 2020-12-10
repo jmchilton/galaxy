@@ -1,4 +1,4 @@
-name: Performance Tests
+name: Performance Tests (API TargetvsPR)
 on: [pull_request]
 env:
   GALAXY_TEST_DBURI_TARGET: 'postgres://postgres:postgres@localhost:5432/galaxy_target?client_encoding=utf8'
