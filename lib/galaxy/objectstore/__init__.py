@@ -18,6 +18,7 @@ import yaml
 
 from galaxy.exceptions import ObjectInvalid, ObjectNotFound
 from galaxy.util import (
+    asbool,
     directory_hash_id,
     force_symlink,
     parse_xml,
@@ -31,6 +32,7 @@ from galaxy.util.path import (
 from galaxy.util.sleeper import Sleeper
 
 NO_SESSION_ERROR_MESSAGE = "Attempted to 'create' object store entity in configuration with no database session present."
+DEFAULT_PRIVATE = False
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +93,9 @@ class ObjectStore(metaclass=abc.ABCMeta):
 
         This method will create a proper directory structure for
         the file if the directory does not already exist.
+
+        The method returns the concrete objectstore the supplied object is stored
+        in.
         """
         raise NotImplementedError()
 
@@ -194,6 +199,17 @@ class ObjectStore(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
+    def is_private(self, obj):
+        """Return True iff supplied object is stored in private ConcreteObjectStore."""
+
+    def object_store_ids(self, private=None):
+        """Return IDs of all concrete object stores - either private ones or non-private ones.
+
+        This should just return an empty list for non-nested object stores.
+        """
+        return []
+
+    @abc.abstractmethod
     def get_store_usage_percent(self):
         """Return the percentage indicating how full the store is."""
         raise NotImplementedError()
@@ -233,6 +249,8 @@ class BaseObjectStore(ObjectStore):
         extra_dirs.update({
             e['type']: e['path'] for e in config_dict.get('extra_dirs', [])})
         self.extra_dirs = extra_dirs
+        # Annotate this as true to prevent sharing of data.
+        self.private = config_dict.get("private", DEFAULT_PRIVATE)
 
     def shutdown(self):
         """Close any connections for this ObjectStore."""
@@ -264,10 +282,13 @@ class BaseObjectStore(ObjectStore):
         extra_dirs = []
         for extra_dir_type, extra_dir_path in self.extra_dirs.items():
             extra_dirs.append({"type": extra_dir_type, "path": extra_dir_path})
+        private = self.private
+        store_type = self.store_type
         return {
             'config': config_to_dict(self.config),
             'extra_dirs': extra_dirs,
-            'type': self.store_type,
+            'type': store_type,
+            'private': private
         }
 
     def _get_object_id(self, obj):
@@ -324,6 +345,16 @@ class BaseObjectStore(ObjectStore):
     def get_store_by(self, obj, **kwargs):
         return self._invoke('get_store_by', obj, **kwargs)
 
+    def is_private(self, obj):
+        return self._invoke('is_private', obj)
+
+    @classmethod
+    def parse_private_from_config_xml(clazz, config_xml):
+        private = DEFAULT_PRIVATE
+        if config_xml is not None:
+            private = asbool(config_xml.attrib.get('private', DEFAULT_PRIVATE))
+        return private
+
 
 class ConcreteObjectStore(BaseObjectStore):
     """Subclass of ObjectStore for stores that don't delegate (non-nested).
@@ -368,6 +399,9 @@ class ConcreteObjectStore(BaseObjectStore):
     def _get_store_by(self, obj):
         return self.store_by
 
+    def _is_private(self, obj):
+        return self.private
+
 
 class DiskObjectStore(ConcreteObjectStore):
     """
@@ -380,7 +414,7 @@ class DiskObjectStore(ConcreteObjectStore):
     >>> file_path=tempfile.mkdtemp()
     >>> obj = Bunch(id=1)
     >>> s = DiskObjectStore(Bunch(umask=0o077, jobs_directory=file_path, new_file_path=file_path, object_store_check_old_style=False), dict(files_dir=file_path))
-    >>> s.create(obj)
+    >>> o = s.create(obj)
     >>> s.exists(obj)
     True
     >>> assert s.get_filename(obj) == file_path + '/000/dataset_1.dat'
@@ -426,6 +460,7 @@ class DiskObjectStore(ConcreteObjectStore):
                     extra_dirs.append({"type": e.get('type'), "path": e.get('path')})
 
         config_dict["extra_dirs"] = extra_dirs
+        config_dict["private"] = BaseObjectStore.parse_private_from_config_xml(config_xml)
         return config_dict
 
     def to_dict(self):
@@ -537,6 +572,7 @@ class DiskObjectStore(ConcreteObjectStore):
             if not dir_only:
                 open(path, 'w').close()  # Should be rb?
                 umask_fix_perms(path, self.config.umask, 0o666)
+        return self
 
     def _empty(self, obj, **kwargs):
         """Override `ObjectStore`'s stub by checking file size on disk."""
@@ -667,7 +703,8 @@ class NestedObjectStore(BaseObjectStore):
 
     def _create(self, obj, **kwargs):
         """Create a backing file in a random backend."""
-        random.choice(list(self.backends.values())).create(obj, **kwargs)
+        objectstore = random.choice(list(self.backends.values()))
+        return objectstore.create(obj, **kwargs)
 
     def _empty(self, obj, **kwargs):
         """For the first backend that has this `obj`, determine if it is empty."""
@@ -701,10 +738,22 @@ class NestedObjectStore(BaseObjectStore):
         return self._call_method('_get_object_url', obj, None, False, **kwargs)
 
     def _get_concrete_store_name(self, obj):
-        return self._call_method('_get_concrete_store_name', obj, None, True)
+        return self._call_method('_get_concrete_store_name', obj, ObjectNotFound, True)
 
     def _get_concrete_store_description_markdown(self, obj):
-        return self._call_method('_get_concrete_store_description_markdown', obj, None, True)
+        return self._call_method('_get_concrete_store_description_markdown', obj, ObjectNotFound, True)
+
+    def _is_private(self, obj):
+        return self._call_method('_is_private', obj, ObjectNotFound, True)
+
+    def object_store_ids(self, private=None):
+        object_store_ids = []
+        for backend_id, backend in self.backends.items():
+            print(backend_id)
+            object_store_ids.extend(backend.object_store_ids(private=private))
+            if backend.private is private or private is None:
+                object_store_ids.append(backend_id)
+        return object_store_ids
 
     def _get_store_by(self, obj):
         return self._call_method('_get_store_by', obj, None, False)
@@ -874,20 +923,24 @@ class DistributedObjectStore(NestedObjectStore):
 
     def _create(self, obj, **kwargs):
         """The only method in which obj.object_store_id may be None."""
-        if obj.object_store_id is None or not self._exists(obj, **kwargs):
-            if obj.object_store_id is None or obj.object_store_id not in self.backends:
+        object_store_id = obj.object_store_id
+        if object_store_id is None or not self._exists(obj, **kwargs):
+            if object_store_id is None or object_store_id not in self.backends:
                 try:
-                    obj.object_store_id = random.choice(self.weighted_backend_ids)
+                    object_store_id = random.choice(self.weighted_backend_ids)
+                    obj.object_store_id = object_store_id
                 except IndexError:
                     raise ObjectInvalid('objectstore.create, could not generate '
-                                        'obj.object_store_id: %s, kwargs: %s'
+                                        'object_store_id: %s, kwargs: %s'
                                         % (str(obj), str(kwargs)))
                 log.debug("Selected backend '%s' for creation of %s %s"
-                          % (obj.object_store_id, obj.__class__.__name__, obj.id))
+                          % (object_store_id, obj.__class__.__name__, obj.id))
             else:
                 log.debug("Using preferred backend '%s' for creation of %s %s"
-                          % (obj.object_store_id, obj.__class__.__name__, obj.id))
-            self.backends[obj.object_store_id].create(obj, **kwargs)
+                          % (object_store_id, obj.__class__.__name__, obj.id))
+            return self.backends[object_store_id].create(obj, **kwargs)
+        else:
+            return self.backends[object_store_id]
 
     def _call_method(self, method, obj, default, default_is_exception, **kwargs):
         object_store_id = self.__get_store_id_for(obj, **kwargs)
@@ -948,7 +1001,9 @@ class HierarchicalObjectStore(NestedObjectStore):
             backend_config_dict["type"] = store_type
             backends_list.append(backend_config_dict)
 
-        return {"backends": backends_list}
+        config_dict = {"backends": backends_list}
+        config_dict["private"] = BaseObjectStore.parse_private_from_config_xml(config_xml)
+        return config_dict
 
     def to_dict(self):
         as_dict = super().to_dict()
@@ -968,7 +1023,7 @@ class HierarchicalObjectStore(NestedObjectStore):
 
     def _create(self, obj, **kwargs):
         """Call the primary object store."""
-        self.backends[0].create(obj, **kwargs)
+        return self.backends[0].create(obj, **kwargs)
 
 
 def type_to_object_store_class(store, fsmon=False):
@@ -1122,13 +1177,16 @@ class ObjectStorePopulator:
         self.object_store_id = None
         self.user = user
 
-    def set_object_store_id(self, data):
+    def set_object_store_id(self, data, require_sharable=False):
         # Create an empty file immediately.  The first dataset will be
         # created in the "default" store, all others will be created in
         # the same store as the first.
         data.dataset.object_store_id = self.object_store_id
         try:
-            self.object_store.create(data.dataset)
+            ensure_non_private = require_sharable
+            concrete_store = self.object_store.create(data.dataset, ensure_non_private=ensure_non_private)
+            if concrete_store.private and require_sharable:
+                raise Exception("Attempted to create shared output datasets in objectstore with sharing disabled")
         except ObjectInvalid:
             raise Exception('Unable to create output dataset: object store is full')
         self.object_store_id = data.dataset.object_store_id  # these will be the same thing after the first output

@@ -273,15 +273,15 @@ def test_hierarchical_store():
             _assert_key_has_value(as_dict, "type", "hierarchical")
 
 
-MIXED_STORE_BY_HIERARCHICAL_TEST_CONFIG = """<?xml version="1.0"?>
-<object_store type="hierarchical">
+MIXED_STORE_BY_DISTRIBUTED_TEST_CONFIG = """<?xml version="1.0"?>
+<object_store type="distributed">
     <backends>
         <backend id="files1" type="disk" weight="1" order="0" store_by="id">
             <files_dir path="${temp_directory}/files1"/>
             <extra_dir type="temp" path="${temp_directory}/tmp1"/>
             <extra_dir type="job_work" path="${temp_directory}/job_working_directory1"/>
         </backend>
-        <backend id="files2" type="disk" weight="1" order="1" store_by="uuid">
+        <backend id="files2" type="disk" weight="1" order="1" store_by="uuid" private="true">
             <files_dir path="${temp_directory}/files2"/>
             <extra_dir type="temp" path="${temp_directory}/tmp2"/>
             <extra_dir type="job_work" path="${temp_directory}/job_working_directory2"/>
@@ -292,10 +292,22 @@ MIXED_STORE_BY_HIERARCHICAL_TEST_CONFIG = """<?xml version="1.0"?>
 
 
 def test_mixed_store_by():
-    with TestConfig(MIXED_STORE_BY_HIERARCHICAL_TEST_CONFIG) as (directory, object_store):
+    with TestConfig(MIXED_STORE_BY_DISTRIBUTED_TEST_CONFIG) as (directory, object_store):
         as_dict = object_store.to_dict()
         assert as_dict["backends"][0]["store_by"] == "id"
         assert as_dict["backends"][1]["store_by"] == "uuid"
+
+        ids = object_store.object_store_ids()
+        print(ids)
+        assert len(ids) == 2
+
+        ids = object_store.object_store_ids(private=True)
+        assert len(ids) == 1
+        assert ids[0] == "files2"
+
+        ids = object_store.object_store_ids(private=False)
+        assert len(ids) == 1
+        assert ids[0] == "files1"
 
 
 DISTRIBUTED_TEST_CONFIG = """<?xml version="1.0"?>
@@ -456,7 +468,7 @@ def test_config_parse_pithos():
             assert len(extra_dirs) == 2
 
 
-S3_TEST_CONFIG = """<object_store type="s3">
+S3_TEST_CONFIG = """<object_store type="s3" private="true">
      <auth access_key="access_moo" secret_key="secret_cow" />
      <bucket name="unique_bucket_name_all_lowercase" use_reduced_redundancy="False" />
      <cache path="database/object_store_cache" size="1000" />
@@ -468,6 +480,7 @@ S3_TEST_CONFIG = """<object_store type="s3">
 
 S3_TEST_CONFIG_YAML = """
 type: s3
+private: true
 auth:
   access_key: access_moo
   secret_key: secret_cow
@@ -491,6 +504,7 @@ extra_dirs:
 def test_config_parse_s3():
     for config_str in [S3_TEST_CONFIG, S3_TEST_CONFIG_YAML]:
         with TestConfig(config_str, clazz=UnitializeS3ObjectStore) as (directory, object_store):
+            assert object_store.private
             assert object_store.access_key == "access_moo"
             assert object_store.secret_key == "secret_cow"
 

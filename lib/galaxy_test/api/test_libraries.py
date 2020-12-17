@@ -83,7 +83,7 @@ class LibrariesApiTestCase(ApiTestCase, TestsDatasets):
         self._assert_status_code_is(folder_response, 200)
         folder_id = folder_response.json()[0]['id']
         history_id = self.dataset_populator.new_history()
-        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3")['id']
+        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3", wait=True)['id']
         with self._different_user():
             payload = {'from_hda_id': hda_id}
             create_response = self._post("folders/%s/contents" % folder_id, payload)
@@ -258,7 +258,7 @@ class LibrariesApiTestCase(ApiTestCase, TestsDatasets):
         self._assert_status_code_is(folder_response, 200)
         folder_id = folder_response.json()[0]['id']
         history_id = self.dataset_populator.new_history()
-        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3")['id']
+        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3", wait=True)['id']
         payload = {'from_hda_id': hda_id}
         create_response = self._post("folders/%s/contents" % folder_id, payload)
         self._assert_status_code_is(create_response, 200)
@@ -274,7 +274,7 @@ class LibrariesApiTestCase(ApiTestCase, TestsDatasets):
         print(subfolder_response.json())
         subfolder_id = subfolder_response.json()['id']
         history_id = self.dataset_populator.new_history()
-        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3 sub")['id']
+        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3 sub", wait=True)['id']
         payload = {'from_hda_id': hda_id}
         create_response = self._post("folders/%s/contents" % subfolder_id, payload)
         self._assert_status_code_is(create_response, 200)
@@ -432,7 +432,8 @@ class LibrariesApiTestCase(ApiTestCase, TestsDatasets):
         self._assert_status_code_is(folder_response, 200)
         folder_id = folder_response.json()[0]['id']
         history_id = self.dataset_populator.new_history()
-        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3")['id']
+        hda_id = self.dataset_populator.new_dataset(history_id, content="1 2 3", wait=True)['id']
         payload = {'from_hda_id': hda_id, 'create_type': 'file', 'folder_id': folder_id}
         ld = self._post("libraries/%s/contents" % folder_id, payload)
+        ld.raise_for_status()
         return ld

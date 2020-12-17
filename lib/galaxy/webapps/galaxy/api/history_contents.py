@@ -102,6 +102,13 @@ class HistoryContentsController(BaseAPIController, UsesLibraryMixin, UsesLibrary
         else:
             contents_kwds['deleted'] = kwd.get('deleted', None)
             contents_kwds['visible'] = kwd.get('visible', None)
+            sharable = kwd.get('sharable', None)
+            if sharable is not None:
+                sharable = util.string_as_bool(sharable)
+                object_store_ids = self.app.object_store.object_store_ids(private=not sharable)
+                if object_store_ids:
+                    contents_kwds['object_store_ids'] = object_store_ids
+
             # details param allows a mixed set of summary and detailed hdas
             # Ever more convoluted due to backwards compat..., details
             # should be considered deprecated in favor of more specific
