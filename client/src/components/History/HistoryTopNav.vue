@@ -6,6 +6,7 @@
             <PriorityMenuItem
                 key="create-new-history"
                 title="Create New History"
+                class="history-new-button"
                 icon="fa fa-plus"
                 @click="createHistory"
             />

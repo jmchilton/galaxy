@@ -1,7 +1,7 @@
 <template>
     <b-alert show>
         <h4>
-            <i class="fa fa-info-circle"></i>
+            <i class="fa fa-info-circle empty-message"></i>
             This history is empty.
         </h4>
         <p>
