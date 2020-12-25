@@ -5,6 +5,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+from enum import Enum
 from json import (
     dump,
     dumps,
@@ -38,14 +39,27 @@ ATTRS_FILENAME_INVOCATIONS = 'invocation_attrs.txt'
 GALAXY_EXPORT_VERSION = "2"
 
 
+class ImportDiscardedDataType(Enum):
+    # Don't allow discarded 'okay' datasets on import, datasets will be marked deleted.
+    FORBID = 'forbid'
+    # Allow datasets to be imported as experimental DISCARDED datasets that are not deleted if file data unavailable.
+    ALLOW = 'allow'
+    # Import all datasets as discarded regardless of whether file data is available in the store.
+    FORCE = 'force'
+
+
+DEFAULT_DISCARDED_DATA_TYPE = ImportDiscardedDataType.FORBID
+
+
 class ImportOptions:
 
-    def __init__(self, allow_edit=False, allow_library_creation=False, allow_dataset_object_edit=None):
+    def __init__(self, allow_edit=False, allow_library_creation=False, allow_dataset_object_edit=None, discarded_data=DEFAULT_DISCARDED_DATA_TYPE):
         self.allow_edit = allow_edit
         self.allow_library_creation = allow_library_creation
         if allow_dataset_object_edit is None:
             allow_dataset_object_edit = allow_edit
         self.allow_dataset_object_edit = allow_dataset_object_edit
+        self.discarded_data = discarded_data
 
 
 class SessionlessContext:
