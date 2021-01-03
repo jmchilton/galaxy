@@ -2781,16 +2781,18 @@ mapper(model.Job, model.Job.table, properties=dict(
     external_output_metadata=relation(model.JobExternalOutputMetadata, lazy=True),
     tasks=relation(model.Task)
 ))
+# mypy hates the following column properties but it is mvdbeek code so I assume
+# we have integration tests?
 model.Job.any_output_dataset_deleted = column_property(  # type: ignore
-    exists([model.HistoryDatasetAssociation],
-           and_(model.Job.table.c.id == model.JobToOutputDatasetAssociation.table.c.job_id,
+    exists([model.HistoryDatasetAssociation.table.c.id],  # type: ignore
+           and_(model.Job.table.c.id == model.JobToOutputDatasetAssociation.table.c.job_id,  # type: ignore
                 model.HistoryDatasetAssociation.table.c.id == model.JobToOutputDatasetAssociation.table.c.dataset_id,
                 model.HistoryDatasetAssociation.table.c.deleted == true())
            )
 )
 model.Job.any_output_dataset_collection_instances_deleted = column_property(  # type: ignore
-    exists([model.HistoryDatasetCollectionAssociation.table.c.id],
-           and_(model.Job.table.c.id == model.JobToOutputDatasetCollectionAssociation.table.c.job_id,
+    exists([model.HistoryDatasetCollectionAssociation.table.c.id],  # type: ignore
+           and_(model.Job.table.c.id == model.JobToOutputDatasetCollectionAssociation.table.c.job_id,  # type: ignore
                 model.HistoryDatasetCollectionAssociation.table.c.id == model.JobToOutputDatasetCollectionAssociation.table.c.dataset_collection_id,
                 model.HistoryDatasetCollectionAssociation.table.c.deleted == true())
            )

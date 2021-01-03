@@ -30,6 +30,8 @@ testfixtures = "*"
 twill = "*"
 watchdog = "*"
 python-irodsclient = "*"
+sqlalchemy-stubs = "*"
+mypy = "*"
 
 [packages]
 numpy = "*"
