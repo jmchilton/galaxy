@@ -100,6 +100,12 @@ class CollectionBuildersTestCase(SeleniumTestCase):
         self.history_panel_wait_for_hid_hidden(1)
         self.history_panel_wait_for_hid_hidden(2)
 
+        self.history_panel_refresh_click()
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_wait_for_hid_ok(2)
+        self.history_panel_wait_for_hid_hidden(3)
+        self.history_panel_wait_for_hid_hidden(4)
+
     @selenium_test
     def test_build_simple_list_via_rules(self):
         self.perform_upload(self.get_filename("1.fasta"))
