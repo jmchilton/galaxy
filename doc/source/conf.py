@@ -47,7 +47,7 @@ sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pa
 extensions = ['recommonmark', 'sphinx.ext.intersphinx', 'sphinx_markdown_tables']
 if not SKIP_SOURCE:
     # TODO: Add https://pypi.org/project/sphinx-autodoc-typehints
-    extensions += ['sphinx.ext.doctest', 'sphinx.ext.todo', 'sphinx.ext.coverage', 'sphinx.ext.autodoc']
+    extensions += ['sphinx.ext.doctest', 'sphinx.ext.todo', 'sphinx.ext.coverage', 'sphinx.ext.autodoc', 'sphinx-pydantic']
     if not SKIP_VIEW_CODE:
         extensions.append('sphinx.ext.viewcode')
 

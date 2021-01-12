@@ -1,3 +1,9 @@
+"""Schema objects for communicating between layers of Galaxy.
+
+These are mostly implemented as pydanic models.
+
+.. pydantic:: galaxy.schema.BootstrapAdminUser
+"""
 import typing
 
 from pydantic import BaseModel

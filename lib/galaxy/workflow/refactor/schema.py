@@ -1,3 +1,64 @@
+"""
+
+Actions
+~~~~~~~
+
+.. pydantic:: galaxy.workflow.refactor.schema.AddInputAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.AddStepAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.ConnectAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.DisconnectAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.ExtractInputAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.ExtractLegacyParameter
+
+.. pydantic:: galaxy.workflow.refactor.schema.FileDefaultsAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.FillStepDefaultsAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateAnnotationAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateCreatorAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateNameAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateLicenseAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateOutputLabelAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateReportAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateStepLabelAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpdateStepPositionAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpgradeSubworkflowAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.UpgradeToolAction
+
+.. pydantic:: galaxy.workflow.refactor.schema.RemoveUnlabeledWorkflowOutputs
+
+Action Helpers
+~~~~~~~~~~~~~~
+
+.. pydantic:: galaxy.workflow.refactor.schema.StepReferenceByOrderIndex
+
+.. pydantic:: galaxy.workflow.refactor.schema.StepReferenceByLabel
+
+.. pydantic:: galaxy.workflow.refactor.schema.InputReferenceByOrderIndex
+
+.. pydantic:: galaxy.workflow.refactor.schema.InputReferenceByLabel
+
+.. pydantic:: galaxy.workflow.refactor.schema.OutputReferenceByOrderIndex
+
+.. pydantic:: galaxy.workflow.refactor.schema.OutputReferenceByLabel
+
+.. pydantic:: galaxy.workflow.refactor.schema.Position
+
+"""
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
