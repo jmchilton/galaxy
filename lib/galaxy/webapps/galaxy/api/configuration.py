@@ -7,19 +7,20 @@ import logging
 import os
 
 from galaxy.managers import configuration, users
+from galaxy.structured_app import StructuredApp
 from galaxy.web import (
     expose_api,
     expose_api_anonymous_and_sessionless,
     require_admin
 )
-from galaxy.webapps.base.controller import BaseAPIController
+from . import BaseGalaxyAPIController
 
 log = logging.getLogger(__name__)
 
 
-class ConfigurationController(BaseAPIController):
+class ConfigurationController(BaseGalaxyAPIController):
 
-    def __init__(self, app):
+    def __init__(self, app: StructuredApp):
         super().__init__(app)
         self.config_serializer = configuration.ConfigSerializer(app)
         self.admin_config_serializer = configuration.AdminConfigSerializer(app)

@@ -19,7 +19,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 from string import Template
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from boltons.iterutils import remap
@@ -370,6 +370,7 @@ class JobLike:
 class User(Dictifiable, RepresentById):
     use_pbkdf2 = True
     bootstrap_admin_user = False
+    api_keys: 'List[APIKeys]'
     """
     Data for a Galaxy user or admin and relations to their
     histories, credentials, and roles.

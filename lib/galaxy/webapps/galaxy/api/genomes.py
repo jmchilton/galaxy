@@ -1,6 +1,6 @@
 from galaxy import web
 from galaxy.web.framework.helpers import is_true
-from galaxy.webapps.base.controller import BaseAPIController
+from . import BaseGalaxyAPIController
 
 
 def get_id(base, format):
@@ -10,7 +10,7 @@ def get_id(base, format):
         return base
 
 
-class GenomesController(BaseAPIController):
+class GenomesController(BaseGalaxyAPIController):
     """
     RESTful controller for interactions with genome data.
     """

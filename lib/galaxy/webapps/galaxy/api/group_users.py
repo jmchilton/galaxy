@@ -5,12 +5,13 @@ import logging
 
 from galaxy import web
 from galaxy.util import unicodify
-from galaxy.webapps.base.controller import BaseAPIController, url_for
+from galaxy.webapps.base.controller import url_for
+from . import BaseGalaxyAPIController
 
 log = logging.getLogger(__name__)
 
 
-class GroupUsersAPIController(BaseAPIController):
+class GroupUsersAPIController(BaseGalaxyAPIController):
 
     @web.require_admin
     @web.legacy_expose_api

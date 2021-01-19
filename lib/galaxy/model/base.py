@@ -6,6 +6,7 @@ from inspect import (
     getmembers,
     isclass
 )
+from typing import Type
 
 from sqlalchemy import event
 from sqlalchemy.orm import (
@@ -47,6 +48,18 @@ class ModelMapping(Bunch):
         For backward compat., deprecated.
         """
         return self.context
+
+
+class SharedModelMapping(ModelMapping):
+    """Model mapping containing references to classes shared between Galaxy and ToolShed.
+
+    Generally things can be more strongly typed when importing models directly, but we need
+    a way to do app.model.<CLASS> for common code shared by the tool shed and Galaxy.
+    """
+    User: Type
+    GalaxySession: Type
+    APIKeys: Type
+    PasswordResetToken: Type
 
 
 def versioned_objects(iter):

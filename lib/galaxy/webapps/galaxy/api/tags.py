@@ -5,13 +5,14 @@ import logging
 
 from galaxy.exceptions import MessageException
 from galaxy.web import expose_api
-from galaxy.webapps.base.controller import BaseAPIController, UsesTagsMixin
+from galaxy.webapps.base.controller import UsesTagsMixin
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
+from . import BaseGalaxyAPIController
 
 log = logging.getLogger(__name__)
 
 
-class TagsController(BaseAPIController, UsesTagsMixin):
+class TagsController(BaseGalaxyAPIController, UsesTagsMixin):
 
     # Retag an item. All previous tags are deleted and new tags are applied.
     @expose_api

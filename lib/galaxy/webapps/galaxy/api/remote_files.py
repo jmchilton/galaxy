@@ -19,8 +19,8 @@ from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.remote_files import RemoteFilesManager
 from galaxy.structured_app import StructuredApp
 from galaxy.web import expose_api
-from galaxy.webapps.base.controller import BaseAPIController
 from . import (
+    BaseGalaxyAPIController,
     get_app,
     get_trans,
 )
@@ -104,7 +104,7 @@ class FastAPIRemoteFiles:
         return self.manager.get_files_source_plugins()
 
 
-class RemoteFilesAPIController(BaseAPIController):
+class RemoteFilesAPIController(BaseGalaxyAPIController):
 
     def __init__(self, app):
         super().__init__(app)
