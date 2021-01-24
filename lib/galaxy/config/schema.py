@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, Optional, Set
 
 from galaxy.exceptions import ConfigurationError
 from galaxy.util.yaml_util import ordered_load
@@ -21,11 +22,13 @@ UNKNOWN_OPTION = {
 
 
 class Schema:
+    """Wrapper around pykwalify mapping ensuring defaults set in entries."""
+    app_schema: Dict[str, Any]
 
-    def __init__(self, mapping):
+    def __init__(self, mapping: Dict[str, Any]) -> None:
         self.app_schema = mapping
 
-    def get_app_option(self, name):
+    def get_app_option(self, name: str) -> Any:
         try:
             raw_option = self.app_schema[name]
         except KeyError:
@@ -36,19 +39,21 @@ class Schema:
 
 
 class AppSchema(Schema):
+    raw_schema: Dict[str, Any]
+    description: Optional[str]
 
-    def __init__(self, schema_path, app_name):
+    def __init__(self, schema_path: str, app_name: str) -> None:
         self.raw_schema = self._read_schema(schema_path)
         self.description = self.raw_schema.get("desc", None)
         app_schema = self.raw_schema['mapping'][app_name]['mapping']
         self._preprocess(app_schema)
         super().__init__(app_schema)
 
-    def _read_schema(self, path):
+    def _read_schema(self, path) -> Dict[str, Any]:
         with open(path) as f:
             return ordered_load(f)
 
-    def _preprocess(self, app_schema):
+    def _preprocess(self, app_schema: Dict[str, Any]) -> None:
         """Populate schema collections used for app configuration."""
         self._defaults = {}  # {config option: default value or null}
         self._reloadable_options = set()  # config options we can reload at runtime
@@ -61,18 +66,18 @@ class AppSchema(Schema):
                 self._paths_to_resolve[key] = data.get('path_resolves_to')
 
     @property
-    def defaults(self):
+    def defaults(self) -> Dict[str, Any]:
         return self._defaults
 
     @property
-    def paths_to_resolve(self):
+    def paths_to_resolve(self) -> Dict[str, str]:
         return self._paths_to_resolve
 
     @property
-    def reloadable_options(self):
+    def reloadable_options(self) -> Set[str]:
         return self._reloadable_options
 
-    def validate_path_resolution_graph(self):
+    def validate_path_resolution_graph(self) -> None:
         """This method is for tests only: we SHOULD validate the schema's path resolution graph
            as part of automated testing; but we should NOT validate it at runtime.
         """

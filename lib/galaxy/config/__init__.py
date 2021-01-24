@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 from datetime import timedelta
-from typing import Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 import yaml
 from beaker.cache import CacheManager
@@ -283,7 +283,7 @@ class BaseAppConfiguration:
                     return f(value)
             return value
 
-        def strip_deprecated_dir(key, value):
+        def strip_deprecated_dir(key: str, value: Any) -> Any:
             resolves_to = self.schema.paths_to_resolve.get(key)
             if resolves_to:  # value contains paths that will be resolved
                 paths = listify(value, do_strip=True)
@@ -411,6 +411,8 @@ class BaseAppConfiguration:
 
 class CommonConfigurationMixin:
     """Shared configuration settings code for Galaxy and ToolShed."""
+    sentry_dsn: Optional[str]
+    config_dict: Dict[str, Any]
 
     @property
     def admin_users(self):
@@ -421,36 +423,39 @@ class CommonConfigurationMixin:
         self._admin_users = value
         self.admin_users_list = listify(value)
 
-    def is_admin_user(self, user):
+    def is_admin_user(self, user) -> bool:
         """Determine if the provided user is listed in `admin_users`."""
         return user and (user.email in self.admin_users_list or user.bootstrap_admin_user)
 
     @property
-    def sentry_dsn_public(self):
+    def sentry_dsn_public(self) -> Optional[str]:
         """
         Sentry URL with private key removed for use in client side scripts,
         sentry server will need to be configured to accept events
         """
         if self.sentry_dsn:
             return re.sub(r"^([^:/?#]+:)?//(\w+):(\w+)", r"\1//\2", self.sentry_dsn)
+        else:
+            return None
 
-    def get_bool(self, key, default):
+    def get_bool(self, key: str, default) -> bool:
         # Warning: the value of self.config_dict['foo'] may be different from self.foo
         if key in self.config_dict:
             return string_as_bool(self.config_dict[key])
         else:
             return default
 
-    def get(self, key, default=None):
+    def get(self, key: str, default=None):
         # Warning: the value of self.config_dict['foo'] may be different from self.foo
         return self.config_dict.get(key, default)
 
-    def _ensure_directory(self, path):
-        if path not in [None, False] and not os.path.isdir(path):
-            try:
-                os.makedirs(path)
-            except Exception as e:
-                raise ConfigurationError("Unable to create missing directory: {}\n{}".format(path, unicodify(e)))
+    def _ensure_directory(self, path: Optional[str]) -> None:
+        if path:
+            if not os.path.isdir(path):
+                try:
+                    os.makedirs(path)
+                except Exception as e:
+                    raise ConfigurationError("Unable to create missing directory: {}\n{}".format(path, unicodify(e)))
 
 
 class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
