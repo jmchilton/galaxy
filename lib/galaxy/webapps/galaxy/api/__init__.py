@@ -14,6 +14,8 @@ from fastapi import (
     Query,
 )
 from fastapi.params import Depends
+from fastapi_utils.cbv import cbv
+from fastapi_utils.inferring_router import InferringRouter
 from starlette.requests import Request
 
 from galaxy import (
@@ -104,3 +106,38 @@ class BaseGalaxyAPIController(BaseAPIController):
 
     def __init__(self, app: StructuredApp):
         super().__init__(app)
+
+
+class Router(InferringRouter):
+    """A FastAPI Inferring Router tailored to Galaxy.
+    """
+
+    def get(self, *args, **kwd):
+        """Extend FastAPI.get to accept a require_admin Galaxy flag."""
+        return super().get(*args, **self._handle_galaxy_kwd(kwd))
+
+    def put(self, *args, **kwd):
+        """Extend FastAPI.put to accept a require_admin Galaxy flag."""
+        return super().put(*args, **self._handle_galaxy_kwd(kwd))
+
+    def post(self, *args, **kwd):
+        """Extend FastAPI.post to accept a require_admin Galaxy flag."""
+        return super().post(*args, **self._handle_galaxy_kwd(kwd))
+
+    def _handle_galaxy_kwd(self, kwd):
+        require_admin = kwd.pop("require_admin", False)
+        if require_admin:
+            if "dependencies" in kwd:
+                kwd["dependencies"].append(AdminUserRequired)
+            else:
+                kwd["dependencies"] = [AdminUserRequired]
+        return kwd
+
+    @property
+    def cbv(self):
+        """Short-hand for frequently used Galaxy-pattern of FastAPI class based views.
+
+        Creates a class-based view for for this router, for more information see:
+        https://fastapi-utils.davidmontague.xyz/user-guide/class-based-views/
+        """
+        return cbv(self)
