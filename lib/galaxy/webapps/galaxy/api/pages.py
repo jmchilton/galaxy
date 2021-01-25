@@ -17,23 +17,20 @@ from galaxy.web import (
     expose_api_raw_anonymous_and_sessionless
 )
 from galaxy.webapps.base.controller import (
-    BaseAPIController,
     SharableItemSecurityMixin,
     SharableMixin
 )
+from . import BaseGalaxyAPIController, depends
 
 log = logging.getLogger(__name__)
 
 
-class PagesController(BaseAPIController, SharableItemSecurityMixin, UsesAnnotations, SharableMixin):
+class PagesController(BaseGalaxyAPIController, SharableItemSecurityMixin, UsesAnnotations, SharableMixin):
     """
     RESTful controller for interactions with pages.
     """
-
-    def __init__(self, app):
-        super().__init__(app)
-        self.manager = PageManager(app)
-        self.serializer = PageSerializer(app)
+    manager: PageManager = depends(PageManager)
+    serializer: PageSerializer = depends(PageSerializer)
 
     @expose_api_anonymous_and_sessionless
     def index(self, trans, deleted=False, **kwd):

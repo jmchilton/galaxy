@@ -6,12 +6,13 @@ import logging
 from sqlalchemy import false
 
 from galaxy import web
-from galaxy.webapps.base.controller import BaseAPIController, url_for
+from galaxy.webapps.base.controller import url_for
+from . import BaseGalaxyAPIController
 
 log = logging.getLogger(__name__)
 
 
-class GroupAPIController(BaseAPIController):
+class GroupAPIController(BaseGalaxyAPIController):
 
     @web.require_admin
     @web.legacy_expose_api

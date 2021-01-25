@@ -12,22 +12,23 @@ from galaxy.managers import (
     libraries,
     roles
 )
+from galaxy.structured_app import StructuredApp
 from galaxy.web import (
     expose_api,
     expose_api_anonymous,
 )
-from galaxy.webapps.base.controller import BaseAPIController
+from . import BaseGalaxyAPIController
 
 log = logging.getLogger(__name__)
 
 
-class LibrariesController(BaseAPIController):
+class LibrariesController(BaseGalaxyAPIController):
 
-    def __init__(self, app):
+    def __init__(self, app: StructuredApp):
         super().__init__(app)
         self.folder_manager = folders.FolderManager()
         self.library_manager = libraries.LibraryManager()
-        self.role_manager = roles.RoleManager(app)
+        self.role_manager = app[roles.RoleManager]
 
     @expose_api_anonymous
     def index(self, trans, **kwd):

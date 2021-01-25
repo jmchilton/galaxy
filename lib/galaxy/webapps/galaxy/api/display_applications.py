@@ -4,12 +4,12 @@ API operations on annotations.
 import logging
 
 from galaxy.web import legacy_expose_api, require_admin
-from galaxy.webapps.base.controller import BaseAPIController
+from . import BaseGalaxyAPIController
 
 log = logging.getLogger(__name__)
 
 
-class DisplayApplicationsController(BaseAPIController):
+class DisplayApplicationsController(BaseGalaxyAPIController):
 
     @legacy_expose_api
     def index(self, trans, **kwd):

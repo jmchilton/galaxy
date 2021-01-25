@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 
 class GalaxyWebApplication(galaxy.webapps.base.webapp.WebApplication):
-    pass
+    injection_aware = True
 
 
 def app_factory(global_conf, load_app_kwds=None, **kwargs):

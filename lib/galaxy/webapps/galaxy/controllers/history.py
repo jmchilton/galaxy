@@ -16,13 +16,14 @@ from sqlalchemy.orm import (
 
 import galaxy.util
 from galaxy import exceptions
-from galaxy import managers
 from galaxy import model
 from galaxy import web
+from galaxy.managers import histories
 from galaxy.model.item_attrs import (
     UsesAnnotations,
     UsesItemRatings
 )
+from galaxy.structured_app import StructuredApp
 from galaxy.util import (
     listify,
     Params,
@@ -48,6 +49,7 @@ from galaxy.webapps.base.controller import (
     WARNING,
 )
 from ._create_history_template import render_item
+from ..api import depends
 
 
 log = logging.getLogger(__name__)
@@ -236,12 +238,12 @@ class HistoryAllPublishedGrid(grids.Grid):
 
 class HistoryController(BaseUIController, SharableMixin, UsesAnnotations, UsesItemRatings,
                         ExportsHistoryMixin, ImportsHistoryMixin):
+    history_manager: histories.HistoryManager = depends(histories.HistoryManager)
+    history_export_view: histories.HistoryExportView = depends(histories.HistoryExportView)
+    history_serializer: histories.HistorySerializer = depends(histories.HistorySerializer)
 
-    def __init__(self, app):
+    def __init__(self, app: StructuredApp):
         super().__init__(app)
-        self.history_manager = managers.histories.HistoryManager(app)
-        self.history_export_view = managers.histories.HistoryExportView(app)
-        self.history_serializer = managers.histories.HistorySerializer(self.app)
 
     @web.expose
     def index(self, trans):
@@ -1208,7 +1210,7 @@ class HistoryController(BaseUIController, SharableMixin, UsesAnnotations, UsesIt
             trans.set_history(history)
             return self.history_data(trans, history)
         except exceptions.MessageException as msg_exc:
-            trans.response.status = msg_exc.err_code.code
+            trans.response.status = msg_exc.status_code
             return {'err_msg': msg_exc.err_msg, 'err_code': msg_exc.err_code.code}
 
     @web.json

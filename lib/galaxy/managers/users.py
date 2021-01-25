@@ -10,7 +10,7 @@ from datetime import datetime
 
 from markupsafe import escape
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, desc, exc, func, true
+from sqlalchemy import and_, exc, func, true
 from sqlalchemy.orm.exc import NoResultFound
 
 from galaxy import (
@@ -30,6 +30,7 @@ from galaxy.security.validate_user_input import (
     validate_password,
     validate_publicname
 )
+from galaxy.structured_app import BasicApp, StructuredApp
 from galaxy.util.hash_util import new_secure_hash
 from galaxy.web import url_for
 
@@ -69,7 +70,7 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
     # TODO: incorp BaseAPIController.validate_in_users_and_groups
     # TODO: incorp CreatesApiKeysMixin
     # TODO: incorporate UsesFormDefinitionsMixin?
-    def __init__(self, app):
+    def __init__(self, app: BasicApp):
         self.model_class = app.model.User
         super().__init__(app)
 
@@ -237,14 +238,6 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
         except exceptions.ObjectNotFound:
             return None
 
-    def by_email_like(self, email_with_wildcards, filters=None, order_by=None, **kwargs):
-        """
-        Find a user searching with SQL wildcards.
-        """
-        filters = self._munge_filters(self.model_class.email.like(email_with_wildcards), filters)
-        order_by = order_by or (model.User.email, )
-        return super().list(filters=filters, order_by=order_by, **kwargs)
-
     def by_api_key(self, api_key, sa_session=None):
         """
         Find a user by API key.
@@ -350,31 +343,8 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
         Create and return an API key for `user`.
         """
         # TODO: seems like this should return the model
+        # Also TODO: seems unused? drop and see what happens? -John
         return api_keys.ApiKeyManager(self.app).create_api_key(user)
-
-    # TODO: possibly move to ApiKeyManager
-    def valid_api_key(self, user):
-        """
-        Return this most recent APIKey for this user or None if none have been created.
-        """
-        query = (self.session().query(model.APIKeys)
-                 .filter_by(user=user)
-                 .order_by(desc(model.APIKeys.create_time)))
-        all = query.all()
-        if len(all):
-            return all[0]
-        return None
-
-    # TODO: possibly move to ApiKeyManager
-    def get_or_create_valid_api_key(self, user):
-        """
-        Return this most recent APIKey for this user or create one if none have been
-        created.
-        """
-        existing = self.valid_api_key(user)
-        if existing:
-            return existing
-        return self.create_api_key(self, user)
 
     # ---- preferences
     def preferences(self, user):
@@ -605,7 +575,7 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
 class UserSerializer(base.ModelSerializer, deletable.PurgableSerializerMixin):
     model_manager_class = UserManager
 
-    def __init__(self, app):
+    def __init__(self, app: StructuredApp):
         """
         Convert a User and associated data to a dictionary representation.
         """
