@@ -626,10 +626,29 @@ class BaseDatasetPopulator(BasePopulator):
             "access": json.dumps([role_id]),
             "manage": json.dumps([role_id]),
         }
+        response = self.update_permissions_raw(history_id, dataset_id, payload)
+        response.raise_for_status()
+        return response.json()
+
+    def make_public_raw(self, history_id, dataset_id):
+        role_id = self.user_private_role_id()
+        payload = {
+            "access": json.dumps([]),
+            "manage": json.dumps([role_id]),
+        }
+        response = self.update_permissions_raw(history_id, dataset_id, payload)
+        return response
+
+    def update_permissions_raw(self, history_id, dataset_id, payload):
         url = f"histories/{history_id}/contents/{dataset_id}/permissions"
+<<<<<<< HEAD
         update_response = self._put(url, payload, admin=True)
         assert update_response.status_code == 200, update_response.content
         return update_response.json()
+=======
+        update_response = self.galaxy_interactor._put(url, payload, admin=True)
+        return update_response
+>>>>>>> 48ecdb858e (private objectstores & dataset.sharable)
 
     def validate_dataset(self, history_id, dataset_id):
         url = f"histories/{history_id}/contents/{dataset_id}/validate"
@@ -1430,8 +1449,8 @@ class BaseDatasetCollectionPopulator:
         )
         return payload
 
-    def pair_identifiers(self, history_id, contents=None):
-        hda1, hda2 = self.__datasets(history_id, count=2, contents=contents)
+    def pair_identifiers(self, history_id, contents=None, wait=False):
+        hda1, hda2 = self.__datasets(history_id, count=2, contents=contents, wait=wait)
 
         element_identifiers = [
             dict(name="forward", src="hda", id=hda1["id"]),
@@ -1465,10 +1484,12 @@ class BaseDatasetCollectionPopulator:
         else:
             return self.dataset_populator.fetch(payload)
 
-    def __datasets(self, history_id, count, contents=None):
+    def __datasets(self, history_id, count, contents=None, wait=False):
         datasets = []
         for i in range(count):
-            new_kwds = {}
+            new_kwds = {
+                'wait': wait,
+            }
             if contents:
                 new_kwds["content"] = contents[i]
             datasets.append(self.dataset_populator.new_dataset(history_id, **new_kwds))
