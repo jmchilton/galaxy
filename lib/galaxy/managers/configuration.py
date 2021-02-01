@@ -192,6 +192,7 @@ class ConfigSerializer(base.ModelSerializer):
             'file_sources_configured': lambda config, key, **context: self.app.file_sources.custom_sources_configured,
             'upload_from_form_button': _use_config,
             'release_doc_base_url': _use_config,
+            'quota_source_labels': lambda config, key, **context: list(self.app.object_store.get_quota_source_map().get_quota_source_labels()),
             'user_library_import_dir_available': lambda config, key, **context: bool(config.get('user_library_import_dir')),
         }
 
