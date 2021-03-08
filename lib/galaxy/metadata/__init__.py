@@ -157,11 +157,14 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
 
         # export model objects and object store configuration for extended metadata also.
         export_directory = os.path.join(metadata_dir, "outputs_new")
+        sa_session.flush()
         with DirectoryModelExportStore(export_directory, for_edit=True, serialize_dataset_objects=True) as export_store:
-            for dataset in datasets_dict.values():
+            for out_name, dataset in datasets_dict.items():
+                log.info(f"writing output name {out_name}")
                 export_store.add_dataset(dataset)
 
             for name, dataset_collection in out_collections.items():
+                log.info(f"writing output collection {name}")
                 export_store.add_dataset_collection(dataset_collection)
                 output_collections[name] = {
                     'id': dataset_collection.id,

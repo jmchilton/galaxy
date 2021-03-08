@@ -4760,6 +4760,8 @@ class DatasetCollectionElement(Dictifiable, RepresentById):
         )
         serialization_options.attach_identifier(id_encoder, self, rval)
         element_obj = self.element_object
+        if element_obj is None:
+            raise Exception(f"Failing to serialize dataset collection element {rval} becuase element_object is None")
         if isinstance(element_obj, HistoryDatasetAssociation):
             rval["hda"] = element_obj.serialize(id_encoder, serialization_options, for_link=True)
         else:

@@ -528,6 +528,8 @@ class DefaultToolAction:
                 else:
                     handle_output(name, output)
                     log.info(f"Handled output named {name} for tool {tool.id} {handle_output_timer}")
+            else:
+                log.info(f"Filtering output [{name}] for {tool.id}")
 
         add_datasets_timer = tool.app.execution_timer_factory.get_timer(
             'internals.galaxy.tools.actions.add_datasets',
