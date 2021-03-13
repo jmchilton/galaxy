@@ -287,7 +287,10 @@ class ExecutionTracker:
 
         implicit_collection_jobs = model.ImplicitCollectionJobs()
         for output_name, output in self.tool.outputs.items():
-            if filter_output(output, self.example_params):
+            do_filter = filter_output(output, self.example_params)
+            if self.tool.id == "toolshed.g2.bx.psu.edu/repos/bgruening/salmon/salmon/1.3.0+galaxy1":
+                log.info(f"for mapping - filtering {output_name}? {do_filter} - geneMap {self.example_params.get('geneMap')}")
+            if do_filter:
                 continue
             output_collection_name = self.output_name(trans, history, params, output)
             effective_structure = self._mapped_output_structure(trans, output)
