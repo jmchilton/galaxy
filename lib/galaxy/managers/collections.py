@@ -105,8 +105,7 @@ class DatasetCollectionManager:
     def create(self, trans, parent, name, collection_type, element_identifiers=None,
                elements=None, implicit_collection_info=None, trusted_identifiers=None,
                hide_source_items=False, tags=None, copy_elements=False, history=None,
-               set_hid=True, flush=True, completed_job=None, output_name=None,
-               copy_dataset_instance_attributes=None):
+               set_hid=True, flush=True, completed_job=None, output_name=None):
         """
         PRECONDITION: security checks on ability to add to parent
         occurred during load.
@@ -129,7 +128,6 @@ class DatasetCollectionManager:
                 elements=elements,
                 hide_source_items=hide_source_items,
                 copy_elements=copy_elements,
-                copy_dataset_instance_attributes=copy_dataset_instance_attributes,
                 history=history,
             )
 
@@ -186,7 +184,7 @@ class DatasetCollectionManager:
         return self.__persist(dataset_collection_instance, flush=flush)
 
     def create_dataset_collection(self, trans, collection_type, element_identifiers=None, elements=None,
-                                  hide_source_items=None, copy_elements=False, history=None, copy_dataset_instance_attributes=None):
+                                  hide_source_items=None, copy_elements=False, history=None):
         # Make sure at least one of these is None.
         assert element_identifiers is None or elements is None
 
@@ -205,7 +203,6 @@ class DatasetCollectionManager:
                                                              element_identifiers=element_identifiers,
                                                              hide_source_items=hide_source_items,
                                                              copy_elements=copy_elements,
-                                                             copy_dataset_instance_attributes=copy_dataset_instance_attributes,
                                                              history=history)
         else:
             if has_subcollections:
@@ -227,7 +224,6 @@ class DatasetCollectionManager:
                                          element_identifiers,
                                          hide_source_items=False,
                                          copy_elements=False,
-                                         copy_dataset_instance_attributes=None,
                                          history=None):
         if collection_type_description.has_subcollections():
             # Nested collection - recursively create collections and update identifiers.
@@ -240,14 +236,12 @@ class DatasetCollectionManager:
                                                 element_identifiers=element_identifier['element_identifiers'],
                                                 hide_source_items=hide_source_items,
                                                 copy_elements=copy_elements,
-                                                copy_dataset_instance_attributes=copy_dataset_instance_attributes,
                                                 history=history)
         if not new_collection:
             elements = self.__load_elements(trans=trans,
                                             element_identifiers=element_identifiers,
                                             hide_source_items=hide_source_items,
                                             copy_elements=copy_elements,
-                                            copy_dataset_instance_attributes=copy_dataset_instance_attributes,
                                             history=history)
         return elements
 
@@ -259,18 +253,6 @@ class DatasetCollectionManager:
                 tags[tag.value] = tag
         for _, tag in tags.items():
             dataset_collection_instance.tags.append(tag.copy(cls=model.HistoryDatasetCollectionTagAssociation))
-
-    def set_collection_elements(self, dataset_collection, dataset_instances):
-        if dataset_collection.populated:
-            raise Exception("Cannot reset elements of an already populated dataset collection.")
-
-        collection_type = dataset_collection.collection_type
-        collection_type_description = self.collection_type_descriptions.for_collection_type(collection_type)
-        type_plugin = collection_type_description.rank_type_plugin()
-        builder.set_collection_elements(dataset_collection, type_plugin, dataset_instances)
-        dataset_collection.mark_as_populated()
-
-        return dataset_collection
 
     def collection_builder_for(self, dataset_collection):
         return builder.BoundCollectionBuilder(dataset_collection)
@@ -305,7 +287,7 @@ class DatasetCollectionManager:
         changed = self._set_from_dict(trans, dataset_collection_instance, payload)
         return changed
 
-    def copy(self, trans, parent, source, encoded_source_id, copy_elements=False, copy_dataset_instance_attributes=None):
+    def copy(self, trans, parent, source, encoded_source_id, copy_elements=False, dataset_instance_attributes=None):
         """
         PRECONDITION: security checks on ability to add to parent occurred
         during load.
@@ -315,8 +297,8 @@ class DatasetCollectionManager:
         copy_kwds = {}
         if copy_elements:
             copy_kwds["element_destination"] = parent  # e.g. a history
-        if copy_dataset_instance_attributes is not None:
-            copy_kwds["copy_dataset_instance_attributes"] = copy_dataset_instance_attributes
+        if dataset_instance_attributes is not None:
+            copy_kwds["dataset_instance_attributes"] = dataset_instance_attributes
         new_hdca = source_hdca.copy(**copy_kwds)
         new_hdca.copy_tags_from(target_user=trans.get_user(), source=source_hdca)
         if not copy_elements:
@@ -417,18 +399,17 @@ class DatasetCollectionManager:
             new_elements[key] = collection
         elements.update(new_elements)
 
-    def __load_elements(self, trans, element_identifiers, hide_source_items=False, copy_elements=False, copy_dataset_instance_attributes=None, history=None):
+    def __load_elements(self, trans, element_identifiers, hide_source_items=False, copy_elements=False, history=None):
         elements = {}
         for element_identifier in element_identifiers:
             elements[element_identifier["name"]] = self.__load_element(trans,
                                                                        element_identifier=element_identifier,
                                                                        hide_source_items=hide_source_items,
                                                                        copy_elements=copy_elements,
-                                                                       copy_dataset_instance_attributes=copy_dataset_instance_attributes,
                                                                        history=history)
         return elements
 
-    def __load_element(self, trans, element_identifier, hide_source_items, copy_elements, copy_dataset_instance_attributes=None, history=None):
+    def __load_element(self, trans, element_identifier, hide_source_items, copy_elements, history=None):
         # if not isinstance( element_identifier, dict ):
         #    # Is allowing this to just be the id of an hda too clever? Somewhat
         #    # consistent with other API methods though.
@@ -464,10 +445,6 @@ class DatasetCollectionManager:
             hda = self.hda_manager.get_accessible(decoded_id, trans.user)
             if copy_elements:
                 element = self.hda_manager.copy(hda, history=history or trans.history, hide_copy=True)
-                if copy_dataset_instance_attributes is not None:
-                    raise RequestParameterInvalidException("FOR TESTING, make sure this called - we want to be here...")
-                    if 'dbkey' in copy_dataset_instance_attributes:
-                        element.dbkey = copy_dataset_instance_attributes['dbkey']
             else:
                 element = hda
             if hide_source_items and self.hda_manager.get_owned(hda.id, user=trans.user, current_history=history or trans.history):

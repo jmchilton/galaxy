@@ -401,7 +401,7 @@ class User(Dictifiable, RepresentById):
         extra_user_preferences = self.preferences.get('extra_user_preferences')
         if extra_user_preferences:
             try:
-                data = json.loads(extra_user_preferences)
+                data.update(json.loads(extra_user_preferences))
             except Exception:
                 pass
         return data
@@ -3497,7 +3497,7 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
                     continue
                 val = val.file_name
             # If no value for metadata, look in datatype for metadata.
-            elif val is None and hasattr(hda.datatype, name):
+            elif not hda.metadata.element_is_set(name) and hasattr(hda.datatype, name):
                 val = getattr(hda.datatype, name)
             rval['metadata_' + name] = val
         return rval
@@ -4286,7 +4286,7 @@ class DatasetCollection(Dictifiable, UsesAnnotations, RepresentById):
         error_message = f"Dataset collection has no {get_by_attribute} with key {key}."
         raise KeyError(error_message)
 
-    def copy(self, destination=None, element_destination=None, copy_dataset_instance_attributes=None, flush=True):
+    def copy(self, destination=None, element_destination=None, dataset_instance_attributes=None, flush=True):
         new_collection = DatasetCollection(
             collection_type=self.collection_type,
             element_count=self.element_count
@@ -4296,7 +4296,7 @@ class DatasetCollection(Dictifiable, UsesAnnotations, RepresentById):
                 new_collection,
                 destination=destination,
                 element_destination=element_destination,
-                copy_dataset_instance_attributes=copy_dataset_instance_attributes,
+                dataset_instance_attributes=dataset_instance_attributes,
                 flush=flush
             )
         object_session(self).add(new_collection)
@@ -4538,7 +4538,7 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
                 break
         return matching_collection
 
-    def copy(self, element_destination=None, copy_dataset_instance_attributes=None):
+    def copy(self, element_destination=None, dataset_instance_attributes=None):
         """
         Create a copy of this history dataset collection association. Copy
         underlying collection.
@@ -4559,7 +4559,7 @@ class HistoryDatasetCollectionAssociation(DatasetCollectionInstance,
         collection_copy = self.collection.copy(
             destination=hdca,
             element_destination=element_destination,
-            copy_dataset_instance_attributes=copy_dataset_instance_attributes,
+            dataset_instance_attributes=dataset_instance_attributes,
             flush=False,
         )
         hdca.collection = collection_copy
@@ -4721,27 +4721,22 @@ class DatasetCollectionElement(Dictifiable, RepresentById):
         else:
             return [element_object]
 
-    def copy_to_collection(self, collection, destination=None, element_destination=None, copy_dataset_instance_attributes=None, flush=True):
+    def copy_to_collection(self, collection, destination=None, element_destination=None, dataset_instance_attributes=None, flush=True):
+        dataset_instance_attributes = dataset_instance_attributes or {}
         element_object = self.element_object
         if element_destination:
             if self.is_collection:
                 element_object = element_object.copy(
                     destination=destination,
                     element_destination=element_destination,
-                    copy_dataset_instance_attributes=copy_dataset_instance_attributes,
+                    dataset_instance_attributes=dataset_instance_attributes,
                     flush=flush
                 )
             else:
                 new_element_object = element_object.copy(flush=flush, copy_tags=element_object.tags)
-                if copy_dataset_instance_attributes is not None:
-                    if 'dbkey' in copy_dataset_instance_attributes:
-                        new_element_object.dbkey = copy_dataset_instance_attributes['dbkey']
-                    if 'ext' in copy_dataset_instance_attributes:
-                        target_ext = copy_dataset_instance_attributes['ext']
-                        if new_element_object.extension != target_ext:
-                            new_element_object.extension = target_ext
-                            # TODO: recalculate metadata...
-                        
+                for attribute, value in dataset_instance_attributes.items():
+                    setattr(new_element_object, attribute, value)
+
                 new_element_object.visible = False
                 if destination is not None and element_object.hidden_beneath_collection_instance:
                     new_element_object.hidden_beneath_collection_instance = destination
@@ -5004,6 +4999,8 @@ class Workflow(Dictifiable, RepresentById):
         copied_workflow.has_cycles = self.has_cycles
         copied_workflow.has_errors = self.has_errors
         copied_workflow.reports_config = self.reports_config
+        copied_workflow.license = self.license
+        copied_workflow.creator_metadata = self.creator_metadata
 
         # Map old step ids to new steps
         step_mapping = {}
