@@ -59,6 +59,7 @@ GALAXY_TEST_SELENIUM_USER_EMAIL = os.environ.get("GALAXY_TEST_SELENIUM_USER_EMAI
 GALAXY_TEST_SELENIUM_USER_PASSWORD = os.environ.get("GALAXY_TEST_SELENIUM_USER_PASSWORD", None)
 GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL = os.environ.get("GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL", DEFAULT_ADMIN_USER)
 GALAXY_TEST_SELENIUM_ADMIN_USER_PASSWORD = os.environ.get("GALAXY_TEST_SELENIUM_ADMIN_USER_PASSWORD", DEFAULT_ADMIN_PASSWORD)
+GALAXY_TEST_SELENIUM_SINGLE_USER_MODE = asbool(os.environ.get("GALAXY_TEST_SELENIUM_SINGLE_USER_MODE", False))
 
 # JS code to execute in Galaxy JS console to setup localStorage of session for logging and
 # logging "flatten" messages because it seems Selenium (with Chrome at least) only grabs
@@ -163,6 +164,17 @@ def selenium_test(f):
     return func_wrapper
 
 
+def requires_multi_user_galaxy(f):
+
+    @wraps(f)
+    def func_wrapper(self, *args, **kwds):
+        if self.single_user_mode:
+            raise unittest.SkipTest("Galaxy is running in single user mode and the test requires Galaxy to configured to allow multiple users.")
+        return f(self, *args, **kwds)
+
+    return func_wrapper
+
+
 retry_assertion_during_transitions = partial(retry_during_transitions, exception_check=lambda e: isinstance(e, AssertionError))
 
 
@@ -217,6 +229,11 @@ class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin):
     # login info with GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL /
     # GALAXY_TEST_SELENIUM_ADMIN_USER_PASSWORD
     requires_admin = False
+
+    @property
+    def single_user_mode(self):
+        # perhaps load this from config instead?
+        return GALAXY_TEST_SELENIUM_SINGLE_USER_MODE
 
     def _target_url_from_selenium(self):
         # Deal with the case when Galaxy has a different URL when being accessed by Selenium

@@ -145,6 +145,11 @@ class NavigatesGalaxy(HasDriver):
     def components(self):
         return SmartComponent(self.navigation, self)
 
+    @property
+    def single_user_mode(self):
+        """Sub-classes can override this to be True."""
+        return False
+
     def wait_length(self, wait_type):
         return wait_type.default_length * self.timeout_multiplier
 
