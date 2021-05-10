@@ -17,6 +17,7 @@
             key="view-all-histories"
             title="View All Histories"
             icon="fa fa-columns"
+            class="history-view-multi-button"
             @click="redirect('/history/view_multiple')"
         />
         <PriorityMenuItem
@@ -25,7 +26,13 @@
             icon="fas fa-save"
             @click="backboneRoute('/histories/list')"
         />
-        <PriorityMenuItem key="clear-history-cache" title="Clear Cache" icon="fa fa-refresh" @click.stop="clearCache" />
+        <PriorityMenuItem
+            key="clear-history-cache"
+            title="Clear Cache"
+            class="history-refresh-button"
+            icon="fa fa-refresh"
+            @click.stop="clearCache"
+        />
         <PriorityMenuItem
             key="use-legacy-history"
             title="Return to legacy history panel"
