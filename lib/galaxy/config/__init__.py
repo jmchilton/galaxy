@@ -856,13 +856,21 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
         self.redact_username_during_deletion = False
         self.redact_email_during_deletion = False
         self.redact_ip_address = False
-        self.redact_username_in_logs = False
-        self.redact_email_in_job_name = False
+
+        ## Defaults can be set from config...
+        # self.redact_username_in_logs = False
+        # self.redact_email_in_job_name = False
+
         self.redact_user_details_in_bugreport = False
         self.redact_user_address_during_deletion = False
+
+        if 'enable_beta_gdpr' in kwargs:
+            log.info("Using deprecated configuration option enable_beta_gdpr, please change to enable_gdpr")
+            self.enable_gdpr = string_as_bool(kwargs.get('enable_beta_gdpr'))
+
         # GDPR compliance mode changes values on a number of variables. Other
         # policies could change (non)overlapping subsets of these variables.
-        if self.enable_beta_gdpr:
+        if self.enable_gdpr:
             self.expose_user_name = False
             self.expose_user_email = False
 

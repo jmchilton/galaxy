@@ -2337,7 +2337,7 @@ mapping:
           shouldn't be exposed.  For semi-public Galaxies, it may make sense to expose
           just the username and not email, or vice versa.
 
-          If enable_beta_gdpr is set to true, then this option will be
+          If enable_gdpr is set to true, then this option will be
           overridden and set to false.
 
       expose_user_email:
@@ -2352,7 +2352,7 @@ mapping:
           shouldn't be exposed.  For semi-public Galaxies, it may make sense to expose
           just the username and not email, or vice versa.
 
-          If enable_beta_gdpr is set to true, then this option will be
+          If enable_gdpr is set to true, then this option will be
           overridden and set to false.
 
       fetch_url_allowlist:
@@ -2367,7 +2367,23 @@ mapping:
           It should be a comma-separated list of IP addresses or IP address/mask, e.g.
           10.10.10.10,10.0.1.0/24,fd00::/8
 
-      enable_beta_gdpr:
+      redact_username_in_logs:
+        type: bool
+        default: false
+        required: false
+        desc: |
+          Remove username from logs produced by Galaxy. This will be overridden
+          and forced to true if enable_gdpr is set to true.
+
+      redact_email_in_job_name:
+	type: bool
+        default: false
+        required: false
+        desc: |
+           Remove email address from job names produced by Galaxy. This will be overridden
+           and forced to true if enable_gdpr is set to true.
+
+      enable_gdpr:
         type: bool
         default: false
         required: false
