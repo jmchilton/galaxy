@@ -447,9 +447,7 @@ class BaseJobRunner:
         )
 
         destination_info = job_wrapper.job_destination.params
-        destination_id = job_wrapper.job_destination.id
-        container_finder = self.app.destination_container_finders.get(destination_id, self.app.container_finder)
-        container = container_finder.find_container(
+        container = self.app.container_finder.find_container(
             tool_info,
             destination_info,
             job_info
