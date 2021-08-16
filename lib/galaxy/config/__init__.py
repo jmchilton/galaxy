@@ -18,6 +18,7 @@ import sys
 import tempfile
 import threading
 import time
+from copy import deepcopy
 from datetime import timedelta
 from typing import Dict, Optional, Set
 
@@ -1168,7 +1169,7 @@ class ConfiguresGalaxyMixin:
         self.toolbox = tools.ToolBox(self.config.tool_configs, self.config.tool_path, self)
         galaxy_root_dir = os.path.abspath(self.config.root)
         file_path = os.path.abspath(self.config.file_path)
-        app_info = AppInfo(
+        app_info_kwargs = dict(
             galaxy_root_dir=galaxy_root_dir,
             default_file_path=file_path,
             tool_data_path=self.config.tool_data_path,
@@ -1183,6 +1184,7 @@ class ConfiguresGalaxyMixin:
             involucro_auto_init=self.config.involucro_auto_init,
             mulled_channels=self.config.mulled_channels,
         )
+        app_info = AppInfo(**app_info_kwargs)
         mulled_resolution_cache = None
         if self.config.mulled_resolution_cache_type:
             cache_opts = {
@@ -1192,7 +1194,8 @@ class ConfiguresGalaxyMixin:
             }
             mulled_resolution_cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache('mulled_resolution')
         self.container_finder = containers.ContainerFinder(app_info, mulled_resolution_cache=mulled_resolution_cache)
-        self._set_enabled_container_types()
+        self.destination_container_finders = {}
+        self._set_enabled_container_types(app_info_kwargs, mulled_resolution_cache)
         index_help = getattr(self.config, "index_tool_help", True)
         self.toolbox_search = galaxy.tools.search.ToolBoxSearch(self.toolbox, index_dir=self.config.tool_search_index_dir, index_help=index_help)
 
@@ -1201,15 +1204,28 @@ class ConfiguresGalaxyMixin:
         self.toolbox_search.build_index(tool_cache=self.tool_cache)
         self.tool_cache.reset_status()
 
-    def _set_enabled_container_types(self):
+    def _set_enabled_container_types(self, app_info_kwargs, mulled_resolution_cache):
         container_types_to_destinations = collections.defaultdict(list)
         for destinations in self.job_config.destinations.values():
             for destination in destinations:
+                self._set_destination_container_finder(destination, app_info_kwargs, mulled_resolution_cache)
                 for enabled_container_type in self.container_finder._enabled_container_types(destination.params):
                     container_types_to_destinations[enabled_container_type].append(destination)
         self.toolbox.dependency_manager.set_enabled_container_types(container_types_to_destinations)
         self.toolbox.dependency_manager.resolver_classes.update(self.container_finder.container_registry.resolver_classes)
         self.toolbox.dependency_manager.dependency_resolvers.extend(self.container_finder.container_registry.container_resolvers)
+
+    def _set_destination_container_finder(self, destination, app_info_kwargs, mulled_resolution_cache):
+        if 'container_resolvers' in destination.params:
+            from galaxy.tool_util.deps import containers
+            from galaxy.tool_util.deps.dependencies import AppInfo
+            log.debug(f"Destination '{destination.id}' overrides default container resolvers")
+            _app_info_kwargs = app_info_kwargs.copy()
+            _app_info_kwargs['container_resolvers_config_file'] = None
+            _app_info_kwargs['container_resolvers_config_dict'] = deepcopy(destination.params['container_resolvers'])
+            app_info = AppInfo(**_app_info_kwargs)
+            container_finder = containers.ContainerFinder(app_info, mulled_resolution_cache=mulled_resolution_cache)
+            self.destination_container_finders[destination.id] = container_finder
 
     def _configure_tool_data_tables(self, from_shed_config):
         from galaxy.tools.data import ToolDataTableManager
