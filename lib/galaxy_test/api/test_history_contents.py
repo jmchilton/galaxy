@@ -8,7 +8,7 @@ from typing import (
 )
 from datetime import datetime
 
-from galaxy.model.unittest_utils.store_fixtures import one_hda_model_store_dict
+from galaxy.model.unittest_utils.store_fixtures import deferred_hda_model_store_dict, one_hda_model_store_dict
 from galaxy.webapps.galaxy.services.history_contents import DirectionOptions
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -196,12 +196,30 @@ class HistoryContentsApiTestCase(ApiTestCase):
     def test_import_as_discarded_from_dict(self):
         as_list = self.dataset_populator.create_contents_from_store(
             self.history_id,
-            store_dict=one_hda_model_store_dict(),
+            store_dict=one_hda_model_store_dict(
+                include_source=False,
+            ),
         )
         assert len(as_list) == 1
         new_hda = as_list[0]
         assert new_hda["model_class"] == "HistoryDatasetAssociation"
         assert new_hda["state"] == "discarded"
+        assert not new_hda["deleted"]
+
+        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
+        contents_response.raise_for_status()
+
+    def test_import_as_deferred_from_discarded_with_source_dict(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=one_hda_model_store_dict(
+                include_source=True,
+            ),
+        )
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "deferred"
         assert not new_hda["deleted"]
 
         contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
@@ -224,6 +242,20 @@ class HistoryContentsApiTestCase(ApiTestCase):
         assert len(as_list) == 1
         hdcas = [e for e in as_list if e["history_content_type"] == "dataset_collection"]
         assert len(hdcas) == 1
+
+    def test_import_as_deferred_from_dict(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=deferred_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "deferred"
+        assert not new_hda["deleted"]
+
+        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
+        contents_response.raise_for_status()
 
     def _create_copy(self):
         hda1 = self.dataset_populator.new_dataset(self.history_id)
@@ -1008,56 +1040,4 @@ class HistoryContentsApiNearTestCase(ApiTestCase):
             self._create_list_in_history(history_id)
             result = self._get_content(history_id, self.AFTER, hid=7, limit=3)
             assert len(result) == 1
-<<<<<<< HEAD
             assert result[0]["hid"] == 8  # hid + 1
-
-
-def one_hda_model_store_dict():
-    dataset_hash = dict(
-        model_class="DatasetHash",
-        hash_function=TEST_HASH_FUNCTION,
-        hash_value=TEST_HASH_VALUE,
-        extra_files_path=None,
-    )
-    dataset_source = dict(
-        model_class="DatasetSource",
-        source_uri=TEST_SOURCE_URI,
-        extra_files_path=None,
-        transform=None,
-        hashes=[],
-    )
-    metadata = {
-        "dbkey": "?",
-    }
-    file_metadata = dict(
-        hashes=[dataset_hash],
-        sources=[dataset_source],
-        created_from_basename="dataset.txt",
-    )
-    serialized_hda = dict(
-        encoded_id="id_hda1",
-        model_class="HistoryDatasetAssociation",
-        create_time=now().__str__(),
-        update_time=now().__str__(),
-        name="my cool name",
-        info="my cool info",
-        blurb="a blurb goes here...",
-        peek="A bit of the data...",
-        extension="txt",
-        metadata=metadata,
-        designation=None,
-        deleted=False,
-        visible=True,
-        dataset_uuid=str(uuid4()),
-        annotation="my cool annotation",
-        file_metadata=file_metadata,
-    )
-
-    return {
-        "datasets": [
-            serialized_hda,
-        ]
-    }
-=======
-            assert result[0]['hid'] == 8  # hid + 1
->>>>>>> 2596cd63a4 (Improve DISCARDED dataset state.)

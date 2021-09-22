@@ -112,6 +112,7 @@ dataset_details:
     _: 'table#dataset-details'
     tool_parameters: 'table#tool-parameters'
     transform_action: '[data-transform-action="${action}"]'
+    deferred_source_uri: '.deferred-dataset-source-uri'
 
 history_panel:
   menu:

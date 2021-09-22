@@ -534,6 +534,14 @@ DatasetListItemView.prototype.templates = (() => {
         ],
         "dataset"
     );
+    summaryTemplates[STATES.DEFERRED] = BASE_MVC.wrapTemplate(
+        [
+            "<div>",
+            _l("This dataset is remote, has not be ingested by Galaxy, and full metadata may not be available"),
+            "</div>",
+        ],
+        "dataset"
+    );
     summaryTemplates[STATES.QUEUED] = BASE_MVC.wrapTemplate(
         ["<div>", _l("This job is waiting to run"), "</div>"],
         "dataset"

@@ -3297,10 +3297,17 @@ class Dataset(StorableObject, Serializable, _HasTable):
         OK = "ok"
         EMPTY = "empty"
         ERROR = "error"
-        DISCARDED = "discarded"
         PAUSED = "paused"
         SETTING_METADATA = "setting_metadata"
         FAILED_METADATA = "failed_metadata"
+        # Non-deleted, non-purged datasets that don't have physical files.
+        # These shouldn't have objectstores attached -
+        # 'deferred' can be materialized for jobs using
+        # attached DatasetSource objects but 'discarded'
+        # cannot (e.g. imported histories). These should still
+        # be able to have history contents associated (normal HDAs?)
+        DEFERRED = "deferred"
+        DISCARDED = "discarded"
 
         @classmethod
         def values(self):
@@ -3315,6 +3322,7 @@ class Dataset(StorableObject, Serializable, _HasTable):
         states.OK,
         states.EMPTY,
         states.ERROR,
+        states.DEFERRED,
         states.DISCARDED,
         states.FAILED_METADATA,
     )
