@@ -6,6 +6,7 @@
 import { capitalize, camelize } from "underscore.string";
 
 import Discarded from "./Discarded";
+import Deferred from "./Deferred";
 import Empty from "./Empty";
 import Error from "./Error";
 import New from "./New";
@@ -20,6 +21,7 @@ import Upload from "./Upload";
 export default {
     inject: ["STATES"],
     components: {
+        Deferred,
         Discarded,
         Empty,
         Error,

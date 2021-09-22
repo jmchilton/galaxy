@@ -391,7 +391,15 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                             raise MalformedContents(f"Invalid dataset path: {temp_dataset_file_name}")
 
                     discarded_data = self.import_options.discarded_data
-                    if not file_name or not os.path.exists(temp_dataset_file_name) or discarded_data is ImportDiscardedDataType.FORCE:
+                    dataset_state = dataset_attrs.get('state', dataset_instance.states.OK)
+                    if dataset_state == dataset_instance.states.DEFERRED:
+                        dataset_instance._state = dataset_instance.states.DEFERRED
+                        dataset_instance.deleted = False
+                        dataset_instance.purged = False
+                        dataset_instance.dataset.state = dataset_instance.states.DEFERRED
+                        dataset_instance.dataset.deleted = False
+                        dataset_instance.dataset.purged = False
+                    elif not file_name or not os.path.exists(temp_dataset_file_name) or discarded_data is ImportDiscardedDataType.FORCE:
                         dataset_instance._state = dataset_instance.states.DISCARDED
                         deleted = discarded_data == ImportDiscardedDataType.FORBID
                         dataset_instance.deleted = deleted
@@ -400,7 +408,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         dataset_instance.dataset.deleted = deleted
                         dataset_instance.dataset.purged = deleted
                     else:
-                        dataset_instance.state = dataset_attrs.get('state', dataset_instance.states.OK)
+                        dataset_instance.state = dataset_state
                         self.object_store.update_from_file(dataset_instance.dataset, file_name=temp_dataset_file_name, create=True)
 
                         # Import additional files if present. Histories exported previously might not have this attribute set.

@@ -5,6 +5,7 @@ import string
 
 from galaxy.model import Dataset
 from galaxy_test.api.test_history_contents import (
+    deferred_hda_model_store_dict,
     one_hda_model_store_dict,
 )
 from ._base import BaseObjectStoreIntegrationTestCase, files_count
@@ -130,9 +131,18 @@ class ObjectStoreSelectionIntegrationTestCase(BaseObjectStoreIntegrationTestCase
 
             # assure discarded datsets don't have an object store ID populated
             # and don't create files in the object store.
-            self.dataset_populator.create_from_store(
+            self.dataset_populator.create_contents_from_store(
                 history_id,
                 store_dict=one_hda_model_store_dict(),
+            )
+            self._assert_file_counts(1, 2, 10, 10)
+            assert self._latest_dataset.object_store_id is None
+
+            # assure deferred datsets don't have an object store ID populated
+            # and don't create files in the object store.
+            self.dataset_populator.create_contents_from_store(
+                history_id,
+                store_dict=deferred_hda_model_store_dict(),
             )
             self._assert_file_counts(1, 2, 10, 10)
             assert self._latest_dataset.object_store_id is None

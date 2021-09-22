@@ -219,6 +219,20 @@ class HistoryContentsApiTestCase(ApiTestCase):
         hdcas = [e for e in as_list if e["history_content_type"] == "dataset_collection"]
         assert len(hdcas) == 1
 
+    def test_import_as_deferred_from_dict(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=deferred_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "deferred"
+        assert not new_hda["deleted"]
+
+        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
+        contents_response.raise_for_status()
+
     def test_hda_copy(self):
         hda1 = self.dataset_populator.new_dataset(self.history_id)
         create_data = dict(
@@ -829,6 +843,55 @@ def one_hda_model_store_dict():
         dataset_uuid=str(uuid4()),
         annotation="my cool annotation",
         file_metadata=file_metadata,
+    )
+
+    return {
+        'datasets': [
+            serialized_hda,
+        ]
+    }
+
+
+def deferred_hda_model_store_dict():
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source = dict(
+        model_class="DatasetSource",
+        source_uri=TEST_SOURCE_URI,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = {
+        'dbkey': '?',
+    }
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source],
+        created_from_basename="dataset.txt",
+    )
+    serialized_hda = dict(
+        encoded_id="id_hda1",
+        model_class="HistoryDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension="txt",
+        metadata=metadata,
+        designation=None,
+        deleted=False,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+        state='deferred',
     )
 
     return {
