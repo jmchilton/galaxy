@@ -63,6 +63,7 @@ DICT_STORE_ATTRS_KEY_COLLECTIONS = "collections"
 DICT_STORE_ATTRS_KEY_JOBS = "jobs"
 DICT_STORE_ATTRS_KEY_IMPLICIT_COLLECTION_JOBS = "implicit_collection_jobs"
 DICT_STORE_ATTRS_KEY_LIBRARIES = "libraries"
+DICT_STORE_ATTRS_KEY_INVOCATIONS = "invocations"
 
 
 class ImportOptions:
@@ -1125,6 +1126,12 @@ class DictImportModelStore(ModelImportStore):
 
     def implicit_collection_jobs_properties(self):
         return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_IMPLICIT_COLLECTION_JOBS) or []
+
+    def invocations_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_INVOCATIONS) or []
+
+    def workflow_paths(self):
+        return []
 
 
 def get_import_model_store_for_dict(as_dict, **kwd):
