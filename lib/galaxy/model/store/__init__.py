@@ -69,6 +69,13 @@ ATTRS_FILENAME_LIBRARY_FOLDERS = "library_folders_attrs.txt"
 TRACEBACK = "traceback.txt"
 GALAXY_EXPORT_VERSION = "2"
 
+DICT_STORE_ATTRS_KEY_HISTORY = "history"
+DICT_STORE_ATTRS_KEY_DATASETS = "datasets"
+DICT_STORE_ATTRS_KEY_COLLECTIONS = "collections"
+DICT_STORE_ATTRS_KEY_JOBS = "jobs"
+DICT_STORE_ATTRS_KEY_IMPLICIT_COLLECTION_JOBS = "implicit_collection_jobs"
+DICT_STORE_ATTRS_KEY_LIBRARIES = "libraries"
+
 
 JsonDictT = Dict[str, Any]
 
@@ -937,6 +944,39 @@ def get_import_model_store_for_directory(archive_dir, **kwd):
         return DirectoryImportModelStoreLatest(archive_dir, **kwd)
     else:
         return DirectoryImportModelStore1901(archive_dir, **kwd)
+
+
+class DictImportModelStore(ModelImportStore):
+    object_key = "encoded_id"
+
+    def __init__(self, store_as_dict, **kwd):
+        self._store_as_dict = store_as_dict
+        super().__init__(**kwd)
+
+    def defines_new_history(self) -> bool:
+        return DICT_STORE_ATTRS_KEY_HISTORY in self._store_as_dict
+
+    def new_history_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_HISTORY) or {}
+
+    def datasets_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_DATASETS) or []
+
+    def collections_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_COLLECTIONS) or []
+
+    def library_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_LIBRARIES) or []
+
+    def jobs_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_JOBS) or []
+
+    def implicit_collection_jobs_properties(self):
+        return self._store_as_dict.get(DICT_STORE_ATTRS_KEY_IMPLICIT_COLLECTION_JOBS) or []
+
+
+def get_import_model_store_for_dict(as_dict, **kwd):
+    return DictImportModelStore(as_dict, **kwd)
 
 
 class BaseDirectoryImportModelStore(ModelImportStore):
