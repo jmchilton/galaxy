@@ -4,10 +4,13 @@ import os
 import pathlib
 import shutil
 from tempfile import mkdtemp, NamedTemporaryFile
+from typing import Any, Dict
+from uuid import uuid4
 
 from galaxy import model
 from galaxy.model import store
 from galaxy.model.metadata import MetadataTempFile
+from galaxy.model.orm.now import now
 from galaxy.model.unittest_utils import GalaxyDataTestApp
 from galaxy.objectstore.unittest_utils import Config as TestConfig
 from galaxy.util.compression_utils import CompressedFile
@@ -15,6 +18,9 @@ from galaxy.util.compression_utils import CompressedFile
 TESTCASE_DIRECTORY = pathlib.Path(__file__).parent
 TEST_PATH_1 = TESTCASE_DIRECTORY / '1.txt'
 TEST_PATH_2 = TESTCASE_DIRECTORY / '2.bed'
+TEST_SOURCE_URI = "http://google.com/dataset.txt"
+TEST_HASH_FUNCTION = "MD5"
+TEST_HASH_VALUE = "moocowpretendthisisahas"
 
 
 def test_import_export_history():
@@ -74,6 +80,89 @@ def test_import_export_datasets():
 
     assert imported_job.input_datasets
     assert imported_job.input_datasets[0].dataset == datasets[0]
+
+
+def one_hda_model_store_dict():
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source: Dict[str, Any] = dict(
+        model_class="DatasetSource",
+        source_uri=TEST_SOURCE_URI,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = {
+        'dbkey': '?',
+    }
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source],
+        created_from_basename="dataset.txt",
+    )
+    serialized_hda = dict(
+        encoded_id="id_hda1",
+        model_class="HistoryDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension="txt",
+        metadata=metadata,
+        designation=None,
+        deleted=False,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+    )
+
+    return {
+        'datasets': [
+            serialized_hda,
+        ]
+    }
+
+
+def test_import_from_dict():
+    app = _mock_app()
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+
+    import_history = model.History(name="Test History for Dict Import", user=u)
+    sa_session.add(import_history)
+
+    import_dict = one_hda_model_store_dict()
+
+    import_options = store.ImportOptions()
+    import_model_store = store.get_import_model_store_for_dict(import_dict, app=app, user=u, import_options=import_options)
+    with import_model_store.target_history(default_history=import_history):
+        import_model_store.perform_import(import_history)
+
+    datasets = import_history.datasets
+    assert len(datasets) == 1
+    imported_hda = datasets[0]
+    assert imported_hda.name == "my cool name"
+    assert imported_hda.hid == 1
+    # it wasn't deleted going in but we delete discarded datasets by default
+    assert imported_hda.state == "discarded"
+    assert imported_hda.deleted
+
+    assert len(imported_hda.dataset.hashes) == 1
+    assert len(imported_hda.dataset.sources) == 1
+    assert imported_hda.dataset.created_from_basename == "dataset.txt"
+    imported_dataset_hash = imported_hda.dataset.hashes[0]
+    imported_dataset_source = imported_hda.dataset.sources[0]
+    assert imported_dataset_hash.hash_function == TEST_HASH_FUNCTION
+    assert imported_dataset_hash.hash_value == TEST_HASH_VALUE
+    assert imported_dataset_source.source_uri == TEST_SOURCE_URI
 
 
 def test_import_library_require_permissions():
