@@ -7,19 +7,31 @@ from tempfile import (
     mkdtemp,
     NamedTemporaryFile,
 )
+from typing import Any, Dict, NamedTuple
+
+from sqlalchemy.orm.scoping import scoped_session
 
 import pytest
 
 from galaxy import model
 from galaxy.model import store
 from galaxy.model.metadata import MetadataTempFile
+from galaxy.model.orm.now import now
 from galaxy.model.unittest_utils import GalaxyDataTestApp
+from galaxy.model.unittest_utils.store_fixtures import (
+    one_hda_model_store_dict,
+    one_ld_library_model_store_dict,
+    TEST_HASH_FUNCTION,
+    TEST_HASH_VALUE,
+    TEST_SOURCE_URI,
+)
 from galaxy.objectstore.unittest_utils import Config as TestConfig
 from galaxy.util.compression_utils import CompressedFile
 
 TESTCASE_DIRECTORY = pathlib.Path(__file__).parent
 TEST_PATH_1 = TESTCASE_DIRECTORY / "1.txt"
 TEST_PATH_2 = TESTCASE_DIRECTORY / "2.bed"
+DEFAULT_OBJECT_STORE_BY = "id"
 
 
 def test_import_export_history():
@@ -105,6 +117,45 @@ def test_import_export_datasets():
 
     assert imported_job.input_datasets
     assert imported_job.input_datasets[0].dataset == datasets[0]
+
+
+def test_import_from_dict():
+    fixture_context = setup_fixture_context_with_history()
+    import_dict = one_hda_model_store_dict()
+    perform_import_from_store_dict(fixture_context, import_dict)
+    import_history = fixture_context.history
+
+    datasets = import_history.datasets
+    assert len(datasets) == 1
+    imported_hda = datasets[0]
+    assert imported_hda.name == "my cool name"
+    assert imported_hda.hid == 1
+    # it wasn't deleted going in but we delete discarded datasets by default
+    assert imported_hda.state == "discarded"
+    assert imported_hda.deleted
+
+    assert len(imported_hda.dataset.hashes) == 1
+    assert len(imported_hda.dataset.sources) == 1
+    assert imported_hda.dataset.created_from_basename == "dataset.txt"
+    imported_dataset_hash = imported_hda.dataset.hashes[0]
+    imported_dataset_source = imported_hda.dataset.sources[0]
+    assert imported_dataset_hash.hash_function == TEST_HASH_FUNCTION
+    assert imported_dataset_hash.hash_value == TEST_HASH_VALUE
+    assert imported_dataset_source.source_uri == TEST_SOURCE_URI
+
+
+def test_import_library_from_dict():
+    fixture_context = setup_fixture_context_with_history()
+    import_dict = one_ld_library_model_store_dict()
+    import_options = store.ImportOptions()
+    import_options.allow_library_creation = True
+    perform_import_from_store_dict(fixture_context, import_dict, import_options=import_options)
+
+    sa_session = fixture_context.sa_session
+    all_libraries = sa_session.query(model.Library).all()
+    assert len(all_libraries) == 1, len(all_libraries)
+    all_lddas = sa_session.query(model.LibraryDatasetDatasetAssociation).all()
+    assert len(all_lddas) == 1, len(all_lddas)
 
 
 def test_import_library_require_permissions():
@@ -542,12 +593,47 @@ def _create_datasets(sa_session, history, n, extension="txt"):
     ]
 
 
-def _mock_app(store_by="id"):
+def _mock_app(store_by=DEFAULT_OBJECT_STORE_BY):
     app = GalaxyDataTestApp()
     test_object_store_config = TestConfig(store_by=store_by)
     app.object_store = test_object_store_config.object_store
     app.model.Dataset.object_store = app.object_store
     return app
+
+
+class StoreFixtureContextWithUser(NamedTuple):
+    app: GalaxyDataTestApp
+    sa_session: scoped_session
+    user: model.User
+
+
+def setup_fixture_context_with_user(user_email="test@example.com", store_by=DEFAULT_OBJECT_STORE_BY) -> StoreFixtureContextWithUser:
+    app = _mock_app(store_by=store_by)
+    sa_session = app.model.context
+    user = model.User(email=user_email, password="password")
+    return StoreFixtureContextWithUser(app=app, sa_session=sa_session, user=user)
+
+
+class StoreFixtureContextWithHistory(NamedTuple):
+    app: GalaxyDataTestApp
+    sa_session: scoped_session
+    user: model.User
+    history: model.History
+
+
+def setup_fixture_context_with_history(history_name="Test History for Model Store", **kwd) -> StoreFixtureContextWithHistory:
+    app, sa_session, user = setup_fixture_context_with_user(**kwd)
+    history = model.History(name=history_name, user=user)
+    sa_session.add(history)
+    sa_session.flush()
+    return StoreFixtureContextWithHistory(app, sa_session, user, history)
+
+
+def perform_import_from_store_dict(fixture_context: StoreFixtureContextWithHistory, import_dict: Dict[str, Any], import_options=None):
+    import_options = import_options or store.ImportOptions()
+    import_model_store = store.get_import_model_store_for_dict(import_dict, app=fixture_context.app, user=fixture_context.user, import_options=import_options)
+    with import_model_store.target_history(default_history=fixture_context.history):
+        import_model_store.perform_import(fixture_context.history)
 
 
 class Options:
