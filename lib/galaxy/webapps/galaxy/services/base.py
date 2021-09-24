@@ -32,6 +32,7 @@ from galaxy.model.store import (
     BagArchiveModelExportStore,
     get_import_model_store_for_dict,
     get_import_model_store_for_directory,
+    ImportDiscardedDataType,
     ImportOptions,
     ModelExportStore,
     TarModelExportStore,
@@ -158,6 +159,7 @@ class ConsumesModelStores:
         for_library=False,
     ):
         import_options = ImportOptions(
+            discarded_data=ImportDiscardedDataType.FORCE,
             allow_library_creation=for_library,
         )
         galaxy_user = None
