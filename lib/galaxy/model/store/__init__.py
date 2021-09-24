@@ -6,6 +6,7 @@ import shutil
 import tarfile
 import tempfile
 from collections import defaultdict
+from enum import Enum
 from json import (
     dump,
     dumps,
@@ -48,14 +49,32 @@ DICT_STORE_ATTRS_KEY_IMPLICIT_COLLECTION_JOBS = "implicit_collection_jobs"
 DICT_STORE_ATTRS_KEY_LIBRARIES = "libraries"
 
 
-class ImportOptions:
+class ImportDiscardedDataType(Enum):
+    # Don't allow discarded 'okay' datasets on import, datasets will be marked deleted.
+    FORBID = 'forbid'
+    # Allow datasets to be imported as experimental DISCARDED datasets that are not deleted if file data unavailable.
+    ALLOW = 'allow'
+    # Import all datasets as discarded regardless of whether file data is available in the store.
+    FORCE = 'force'
 
-    def __init__(self, allow_edit=False, allow_library_creation=False, allow_dataset_object_edit=None):
+
+DEFAULT_DISCARDED_DATA_TYPE = ImportDiscardedDataType.FORBID
+
+
+class ImportOptions:
+    allow_edit: bool
+    allow_library_creation: bool
+    allow_dataset_object_edit: bool
+    discarded_data: ImportDiscardedDataType
+
+    def __init__(self, allow_edit=False, allow_library_creation=False, allow_dataset_object_edit=None, discarded_data=DEFAULT_DISCARDED_DATA_TYPE):
         self.allow_edit = allow_edit
         self.allow_library_creation = allow_library_creation
         if allow_dataset_object_edit is None:
-            allow_dataset_object_edit = allow_edit
-        self.allow_dataset_object_edit = allow_dataset_object_edit
+            self.allow_dataset_object_edit = allow_edit
+        else:
+            self.allow_dataset_object_edit = allow_dataset_object_edit
+        self.discarded_data = discarded_data
 
 
 class SessionlessContext:
@@ -371,12 +390,15 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         if not in_directory(temp_dataset_file_name, file_source_root):
                             raise MalformedContents(f"Invalid dataset path: {temp_dataset_file_name}")
 
-                    if not file_name or not os.path.exists(temp_dataset_file_name):
-                        dataset_instance.state = dataset_instance.states.DISCARDED
-                        dataset_instance.deleted = True
-                        dataset_instance.purged = True
-                        dataset_instance.dataset.deleted = True
-                        dataset_instance.dataset.purged = True
+                    discarded_data = self.import_options.discarded_data
+                    if not file_name or not os.path.exists(temp_dataset_file_name) or discarded_data is ImportDiscardedDataType.FORCE:
+                        dataset_instance._state = dataset_instance.states.DISCARDED
+                        deleted = discarded_data == ImportDiscardedDataType.FORBID
+                        dataset_instance.deleted = deleted
+                        dataset_instance.purged = deleted
+                        dataset_instance.dataset.state = dataset_instance.states.DISCARDED
+                        dataset_instance.dataset.deleted = deleted
+                        dataset_instance.dataset.purged = deleted
                     else:
                         dataset_instance.state = dataset_attrs.get('state', dataset_instance.states.OK)
                         self.object_store.update_from_file(dataset_instance.dataset, file_name=temp_dataset_file_name, create=True)

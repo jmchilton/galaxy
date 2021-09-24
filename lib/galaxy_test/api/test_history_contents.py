@@ -198,6 +198,9 @@ class HistoryContentsApiTestCase(ApiTestCase):
         assert new_hda["state"] == "discarded"
         assert not new_hda["deleted"]
 
+        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
+        contents_response.raise_for_status()
+
     def test_export_and_imported_discarded_collection(self):
         create_response = self.dataset_collection_populator.create_list_in_history(history_id=self.history_id, direct_upload=True).json()
         self.dataset_populator.wait_for_history(self.history_id)
