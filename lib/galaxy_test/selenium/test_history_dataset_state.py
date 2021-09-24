@@ -1,3 +1,6 @@
+from galaxy.model.unittest_utils.store_fixtures import (
+    one_hda_model_store_dict,
+)
 from .framework import (
     selenium_test,
     SeleniumTestCase,
@@ -72,6 +75,25 @@ class HistoryDatasetStateTestCase(SeleniumTestCase, UsesHistoryItemAssertions):
             self.sleep_for(self.wait_types.JOB_COMPLETION)
         self.history_panel_wait_for_hid_ok(FIRST_HID)
         self.assert_item_dbkey_displayed_as(FIRST_HID, "apiMel3")
+
+    @selenium_test
+    def test_dataset_state_discarded(self):
+        self.history_panel_create_new()
+        history_id = self.current_history_id()
+        self.dataset_populator.create_contents_from_store(
+            history_id,
+            store_dict=one_hda_model_store_dict(),
+        )
+        if not self.is_beta_history():
+            self.history_panel_refresh_click()
+        self.history_panel_wait_for_hid_state(FIRST_HID, state='discarded', allowed_force_refreshes=1)
+        self.history_panel_click_item_title(hid=FIRST_HID, wait=True)
+        self.screenshot("history_panel_dataset_discarded")
+        self.assert_item_summary_includes(FIRST_HID, "job creating")
+        self._assert_downloadable(FIRST_HID, is_downloadable=False)
+
+        self.history_panel_item_view_dataset_details(FIRST_HID)
+        self.screenshot("dataset_details_discarded")
 
     def _prepare_dataset(self):
         self.history_panel_create_new()

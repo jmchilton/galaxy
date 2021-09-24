@@ -7,9 +7,8 @@ from typing import (
     List,
 )
 from datetime import datetime
-from uuid import uuid4
 
-from galaxy.model.orm.now import now
+from galaxy.model.unittest_utils.store_fixtures import one_hda_model_store_dict
 from galaxy.webapps.galaxy.services.history_contents import DirectionOptions
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -204,6 +203,9 @@ class HistoryContentsApiTestCase(ApiTestCase):
         assert new_hda["model_class"] == "HistoryDatasetAssociation"
         assert new_hda["state"] == "discarded"
         assert not new_hda["deleted"]
+
+        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
+        contents_response.raise_for_status()
 
     def test_export_and_imported_discarded_collection(self):
         create_response = self.dataset_collection_populator.create_list_in_history(history_id=self.history_id, direct_upload=True).json()
@@ -1006,6 +1008,7 @@ class HistoryContentsApiNearTestCase(ApiTestCase):
             self._create_list_in_history(history_id)
             result = self._get_content(history_id, self.AFTER, hid=7, limit=3)
             assert len(result) == 1
+<<<<<<< HEAD
             assert result[0]["hid"] == 8  # hid + 1
 
 
@@ -1055,3 +1058,6 @@ def one_hda_model_store_dict():
             serialized_hda,
         ]
     }
+=======
+            assert result[0]['hid'] == 8  # hid + 1
+>>>>>>> 2596cd63a4 (Improve DISCARDED dataset state.)

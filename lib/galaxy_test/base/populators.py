@@ -913,10 +913,15 @@ class BaseDatasetPopulator(BasePopulator):
             src = "hdca"
         return dict(src=src, id=history_content["id"])
 
-    def dataset_storage_info(self, dataset_id: str) -> dict:
-        storage_response = self._get(f"datasets/{dataset_id}/storage")
-        storage_response.raise_for_status()
-        return storage_response.json()
+    def dataset_storage_info(self, dataset_id: str) -> Dict[str, Any]:
+        response = self.dataset_storage_info_raw(dataset_id)
+        response.raise_for_status()
+        return response.json()
+
+    def dataset_storage_info_raw(self, dataset_id: str) -> Response:
+        storage_url = f"datasets/{dataset_id}/storage"
+        get_storage_response = self._get(storage_url)
+        return get_storage_response
 
     def get_roles(self) -> list:
         roles_response = self._get("roles", admin=True)
