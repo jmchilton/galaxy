@@ -1,11 +1,13 @@
 import textwrap
 
+from galaxy_test.base.api_asserts import assert_has_keys
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
     DatasetPopulator,
     skip_without_tool,
 )
 from ._framework import ApiTestCase
+from .test_history_contents import one_hda_model_store_dict
 
 
 class DatasetsApiTestCase(ApiTestCase):
@@ -218,3 +220,25 @@ class DatasetsApiTestCase(ApiTestCase):
             f"histories/{self.history_id}/contents/{hda_id}", data={"datatype": "invalid"}, json=True
         )
         self._assert_status_code_is(invalidly_updated_hda_response, 400)
+
+    def test_storage_show(self):
+        hda = self.dataset_populator.new_dataset(self.history_id, wait=True)
+        hda_details = self.dataset_populator.get_history_dataset_details(self.history_id, dataset=hda)
+        dataset_id = hda_details["dataset_id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(dataset_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description")
+
+    def test_storage_show_on_discarded(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=one_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        hda_details = self.dataset_populator.get_history_dataset_details(
+            self.history_id, dataset_id=as_list[0]["id"], assert_ok=False
+        )
+        dataset_id = hda_details["dataset_id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(dataset_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description")
+
+        assert storage_info_dict["object_store_id"] is None

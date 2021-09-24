@@ -6,9 +6,8 @@ from typing import (
     Any,
     List,
 )
-from uuid import uuid4
 
-from galaxy.model.orm.now import now
+from galaxy.model.unittest_utils.store_fixtures import one_hda_model_store_dict
 from galaxy.webapps.galaxy.services.history_contents import DirectionOptions
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -206,6 +205,9 @@ class HistoryContentsApiTestCase(ApiTestCase):
         assert new_hda["model_class"] == "HistoryDatasetAssociation"
         assert new_hda["state"] == "discarded"
         assert not new_hda["deleted"]
+
+        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
+        contents_response.raise_for_status()
 
     def test_export_and_imported_discarded_collection(self):
         create_response = self.dataset_collection_populator.create_list_in_history(
@@ -1011,51 +1013,3 @@ class HistoryContentsApiNearTestCase(ApiTestCase):
             result = self._get_content(history_id, self.AFTER, hid=7, limit=3)
             assert len(result) == 1
             assert result[0]["hid"] == 8  # hid + 1
-
-
-def one_hda_model_store_dict():
-    dataset_hash = dict(
-        model_class="DatasetHash",
-        hash_function=TEST_HASH_FUNCTION,
-        hash_value=TEST_HASH_VALUE,
-        extra_files_path=None,
-    )
-    dataset_source = dict(
-        model_class="DatasetSource",
-        source_uri=TEST_SOURCE_URI,
-        extra_files_path=None,
-        transform=None,
-        hashes=[],
-    )
-    metadata = {
-        "dbkey": "?",
-    }
-    file_metadata = dict(
-        hashes=[dataset_hash],
-        sources=[dataset_source],
-        created_from_basename="dataset.txt",
-    )
-    serialized_hda = dict(
-        encoded_id="id_hda1",
-        model_class="HistoryDatasetAssociation",
-        create_time=now().__str__(),
-        update_time=now().__str__(),
-        name="my cool name",
-        info="my cool info",
-        blurb="a blurb goes here...",
-        peek="A bit of the data...",
-        extension="txt",
-        metadata=metadata,
-        designation=None,
-        deleted=False,
-        visible=True,
-        dataset_uuid=str(uuid4()),
-        annotation="my cool annotation",
-        file_metadata=file_metadata,
-    )
-
-    return {
-        "datasets": [
-            serialized_hda,
-        ]
-    }
