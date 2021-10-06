@@ -4,7 +4,9 @@ import os
 import pathlib
 import shutil
 from tempfile import mkdtemp, NamedTemporaryFile
-from typing import Any, Dict
+from typing import Any, Dict, NamedTuple
+
+from sqlalchemy.orm.scoping import scoped_session
 
 from galaxy import model
 from galaxy.model import store
@@ -23,6 +25,7 @@ from ..test_galaxy_mapping import _invocation_for_workflow, _workflow_from_steps
 TESTCASE_DIRECTORY = pathlib.Path(__file__).parent
 TEST_PATH_1 = TESTCASE_DIRECTORY / '1.txt'
 TEST_PATH_2 = TESTCASE_DIRECTORY / '2.bed'
+DEFAULT_OBJECT_STORE_BY = "id"
 
 
 def test_import_export_history():
@@ -113,20 +116,10 @@ def test_import_export_datasets():
 
 
 def test_import_from_dict():
-    app = _mock_app()
-    sa_session = app.model.context
-
-    u = model.User(email="collection@example.com", password="password")
-
-    import_history = model.History(name="Test History for Dict Import", user=u)
-    sa_session.add(import_history)
-
+    fixture_context = setup_fixture_context_with_history()
     import_dict = one_hda_model_store_dict()
-
-    import_options = store.ImportOptions()
-    import_model_store = store.get_import_model_store_for_dict(import_dict, app=app, user=u, import_options=import_options)
-    with import_model_store.target_history(default_history=import_history):
-        import_model_store.perform_import(import_history)
+    perform_import_from_store_dict(fixture_context, import_dict)
+    import_history = fixture_context.history
 
     datasets = import_history.datasets
     assert len(datasets) == 1
@@ -155,6 +148,7 @@ def test_import_allow_discarded():
 
     import_history = model.History(name="Test History for Dict Import", user=u)
     sa_session.add(import_history)
+    sa_session.flush()
 
     import_dict = one_hda_model_store_dict()
 
@@ -634,12 +628,47 @@ class TestApp(GalaxyDataTestApp):
     workflow_contents_manager = MockWorkflowContentsManager()
 
 
-def _mock_app(store_by="id"):
+def _mock_app(store_by=DEFAULT_OBJECT_STORE_BY):
     app = TestApp()
     test_object_store_config = TestConfig(store_by=store_by)
     app.object_store = test_object_store_config.object_store
     app.model.Dataset.object_store = app.object_store  # type: ignore
     return app
+
+
+class StoreFixtureContextWithUser(NamedTuple):
+    app: TestApp
+    sa_session: scoped_session
+    user: model.User
+
+
+def setup_fixture_context_with_user(user_email="test@example.com", store_by=DEFAULT_OBJECT_STORE_BY) -> StoreFixtureContextWithUser:
+    app = _mock_app(store_by=store_by)
+    sa_session = app.model.context
+    user = model.User(email=user_email, password="password")
+    return StoreFixtureContextWithUser(app=app, sa_session=sa_session, user=user)
+
+
+class StoreFixtureContextWithHistory(NamedTuple):
+    app: TestApp
+    sa_session: scoped_session
+    user: model.User
+    history: model.History
+
+
+def setup_fixture_context_with_history(history_name="Test History for Model Store", **kwd) -> StoreFixtureContextWithHistory:
+    app, sa_session, user = setup_fixture_context_with_user(**kwd)
+    history = model.History(name=history_name, user=user)
+    sa_session.add(history)
+    sa_session.flush()
+    return StoreFixtureContextWithHistory(app, sa_session, user, history)
+
+
+def perform_import_from_store_dict(fixture_context: StoreFixtureContextWithHistory, import_dict: Dict[str, Any], import_options=None):
+    import_options = import_options or store.ImportOptions()
+    import_model_store = store.get_import_model_store_for_dict(import_dict, app=fixture_context.app, user=fixture_context.user, import_options=import_options)
+    with import_model_store.target_history(default_history=fixture_context.history):
+        import_model_store.perform_import(fixture_context.history)
 
 
 class Options:
