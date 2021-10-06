@@ -2702,6 +2702,24 @@ class PageSummaryBase(BaseModel):
     )
 
 
+class MaterializeDatasetInstanceAPIRequest(BaseModel):
+    history_id: EncodedDatabaseIdField
+    source: DatasetSourceType = Field(
+        None,
+        title="Source",
+        description="The source of the content. Can be other history element to be copied or library elements.",
+    )
+    content: EncodedDatabaseIdField = Field(
+        None,
+        title="Content",
+        description=(
+            "Depending on the `source` it can be:\n"
+            "- The encoded id from the library dataset\n"
+            "- The encoded id from the HDA\n"
+        ),
+    )
+
+
 class CreatePagePayload(PageSummaryBase):
     content_format: PageContentFormat = ContentFormatField
     content: Optional[str] = ContentField

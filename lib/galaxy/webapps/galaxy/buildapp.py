@@ -355,6 +355,11 @@ def populate_api_routes(webapp, app):
         action="validate",
         conditions=dict(method=["PUT"]),
     )
+    webapp.mapper.connect("history_contents_materialize",
+                          "/api/histories/{history_id}/materialize",
+                          controller="history_contents",
+                          action="materialize",
+                          conditions=dict(method=["POST"]))
     webapp.mapper.connect(
         "history_contents_extra_files",
         "/api/histories/{history_id}/contents/{history_content_id}/extra_files",

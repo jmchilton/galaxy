@@ -14,6 +14,7 @@ from galaxy.managers.markdown_util import generate_branded_pdf
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.tasks import (
     GeneratePdfDownload,
+    MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
 )
 from galaxy.structured_app import MinimalManagerApp
@@ -74,6 +75,15 @@ def recalculate_user_disk_usage(session: galaxy_scoped_session, user_id=None):
 def purge_hda(hda_manager: HDAManager, hda_id):
     hda = hda_manager.by_id(hda_id)
     hda_manager._purge(hda)
+
+
+@galaxy_task(ignore_result=True)
+def materialize(
+    hda_manager: HDAManager,
+    request: MaterializeDatasetInstanceTaskRequest,
+):
+    """Materialize datasets using HDAManager."""
+    hda_manager.materialize(request)
 
 
 @galaxy_task
