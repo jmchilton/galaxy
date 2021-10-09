@@ -39,12 +39,12 @@ from galaxy.util import (
 )
 from galaxy.util.custom_logging import LOGLV_TRACE
 from galaxy.util.dbkeys import GenomeBuilds
-from galaxy.util.dynamic import HasDynamicProperties
 from galaxy.util.properties import (
     find_config_file,
     read_properties_from_file,
     running_from_source,
 )
+from galaxy.util.typing_util import HasDynamicProperties
 from galaxy.web.formatting import expand_pretty_datetime_format
 from galaxy.web_stack import get_stack_facts
 from ..version import VERSION_MAJOR, VERSION_MINOR

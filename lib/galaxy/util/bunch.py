@@ -1,4 +1,4 @@
-from .dynamic import HasDynamicProperties
+from .typing_util import HasDynamicProperties
 
 
 class Bunch(HasDynamicProperties):
