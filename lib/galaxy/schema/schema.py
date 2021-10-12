@@ -2162,6 +2162,11 @@ class CreateLibraryPayload(BaseModel):
     )
 
 
+class CreateLibrariesFromStore(Model):
+    store_content_base64: Optional[str]
+    store_dict: Optional[Dict[str, Any]]
+
+
 class UpdateLibraryPayload(BaseModel):
     name: Optional[str] = Field(
         None,

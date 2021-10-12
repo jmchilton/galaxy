@@ -138,6 +138,19 @@ def skip_without_tool(tool_id):
     return method_wrapper
 
 
+def skip_without_asgi(method):
+
+    @wraps(method)
+    def wrapped_method(api_test_case, *args, **kwd):
+        config = api_test_case.galaxy_interactor.get("configuration").json()
+        asgi_enabled = config.get("asgi_enabled", False)
+        if not asgi_enabled:
+            raise unittest.SkipTest("ASGI not enabled, skipping test")
+        return method(api_test_case, *args, **kwd)
+
+    return wrapped_method
+
+
 def skip_without_datatype(extension):
     """Decorate an API test method as requiring a specific datatype.
 
@@ -216,8 +229,7 @@ def uses_test_history(**test_history_kwd):
 
 def _raise_skip_if(check, *args):
     if check:
-        from nose.plugins.skip import SkipTest
-        raise SkipTest(*args)
+        raise unittest.SkipTest(*args)
 
 
 class BasePopulator(metaclass=ABCMeta):
@@ -1346,6 +1358,17 @@ class LibraryPopulator:
         role_id = self.user_private_role_id()
         self.set_permissions(library_id, role_id)
         return library
+
+    def create_from_store_raw(self, payload: Dict[str, Any]) -> Response:
+        create_response = self.galaxy_interactor.post("libraries/from_store", payload, json=True, admin=True)
+        return create_response
+
+    def create_from_store(self, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        create_response = self.create_from_store_raw(payload)
+        print(create_response.content)
+        create_response.raise_for_status()
+        return create_response.json()
 
     def new_library(self, name):
         data = dict(name=name)
