@@ -14,6 +14,7 @@ from galaxy.model.metadata import MetadataTempFile
 from galaxy.model.unittest_utils import GalaxyDataTestApp
 from galaxy.model.unittest_utils.store_fixtures import (
     one_hda_model_store_dict,
+    one_ld_library_model_store_dict,
     TEST_HASH_FUNCTION,
     TEST_HASH_VALUE,
     TEST_SOURCE_URI,
@@ -138,6 +139,20 @@ def test_import_from_dict():
     assert imported_dataset_hash.hash_function == TEST_HASH_FUNCTION
     assert imported_dataset_hash.hash_value == TEST_HASH_VALUE
     assert imported_dataset_source.source_uri == TEST_SOURCE_URI
+
+
+def test_import_library_from_dict():
+    fixture_context = setup_fixture_context_with_history()
+    import_dict = one_ld_library_model_store_dict()
+    import_options = store.ImportOptions()
+    import_options.allow_library_creation = True
+    perform_import_from_store_dict(fixture_context, import_dict, import_options=import_options)
+
+    sa_session = fixture_context.sa_session
+    all_libraries = sa_session.query(model.Library).all()
+    assert len(all_libraries) == 1, len(all_libraries)
+    all_lddas = sa_session.query(model.LibraryDatasetDatasetAssociation).all()
+    assert len(all_lddas) == 1, len(all_lddas)
 
 
 def test_import_allow_discarded():
