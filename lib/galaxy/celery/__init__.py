@@ -3,13 +3,9 @@ from functools import (
     lru_cache,
     wraps,
 )
+from typing import Any, Dict
 
-from celery import (
-    Celery,
-    shared_task,
-)
-from kombu import serialization
-from lagom import magic_bind_to_container
+from celery import Celery
 
 from galaxy.config import Configuration
 from galaxy.main_config import find_config
@@ -21,6 +17,8 @@ from ._serialization import (
 )
 
 log = get_logger(__name__)
+
+TASKS_MODULES = ['galaxy.celery.tasks']
 
 
 @lru_cache(maxsize=1)
@@ -63,7 +61,13 @@ def get_config():
 def get_broker():
     config = get_config()
     if config:
-        return config.amqp_internal_connection
+        return config.celery_broker or config.amqp_internal_connection
+
+
+def get_backend():
+    config = get_config()
+    if config:
+        return config.celery_backend
 
 
 def get_history_audit_table_prune_interval():
@@ -75,7 +79,15 @@ def get_history_audit_table_prune_interval():
 
 
 broker = get_broker()
-celery_app = Celery("galaxy", broker=broker, include=["galaxy.celery.tasks"])
+backend = get_backend()
+celery_app_kwd: Dict[str, Any] = {
+    'broker': broker,
+    'include': TASKS_MODULES,
+}
+if backend:
+    celery_app_kwd["backend"] = backend
+
+celery_app = Celery("galaxy", **celery_app_kwd)
 prune_interval = get_history_audit_table_prune_interval()
 if prune_interval > 0:
     celery_app.conf.beat_schedule = {
@@ -103,13 +115,9 @@ def galaxy_task(*args, **celery_task_kwd):
     def decorate(func):
         CELERY_TASKS.append(func.__name__)
 
-        @shared_task(**celery_task_kwd)
-        @wraps(func)
-        def wrapper(*args, **kwds):
-            app = get_galaxy_app()
+        @shared_task(**celery_task_kwd)@wraps(fun)args, **kwds):
+            app = get_galaxy_app
             assert app
-            return magic_bind_to_container(app)(func)(*args, **kwds)
-
         return wrapper
 
     if len(args) == 1 and callable(args[0]):
