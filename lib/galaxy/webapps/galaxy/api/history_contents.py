@@ -35,6 +35,7 @@ from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryContentItem,
     AnyJobStateSummary,
+    AsyncFile,
     DatasetAssociationRoles,
     DeleteHistoryContentPayload,
     DeleteHistoryContentResult,
@@ -460,6 +461,26 @@ class FastAPIHistoryContents:
         """
         archive = self.service.get_dataset_collection_archive_for_download(trans, id)
         return StreamingResponse(archive.get_iterator(), headers=archive.get_headers())
+
+    @router.get(
+        "/api/histories/{history_id}/contents/dataset_collections/{id}/prepare_download",
+        summary="TODO",
+    )
+    @router.get(
+        "/api/dataset_collection/{id}/prepare_download",
+        summary="TODO",
+        tags=["dataset collections"],
+    )
+    def prepare_collection_download(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        id: EncodedDatabaseIdField = HistoryHDCAIDPathParam,
+    ) -> AsyncFile:
+        """Download the content of a history dataset collection as a `zip` archive
+        while maintaining approximate collection structure.
+        """
+        return self.service.prepare_collection_download(trans, id)
 
     @router.post(
         "/api/histories/{history_id}/contents/{type}s",
@@ -891,6 +912,19 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
         archive = self.service.get_dataset_collection_archive_for_download(trans, id)
         trans.response.headers.update(archive.get_headers())
         return archive.response()
+
+    @expose_api_anonymous
+    def prepare_collection_download(self, trans, id, history_id=None, **kwd):
+        """
+        GET /api/histories/{history_id}/contents/dataset_collections/{id}/prepare_download
+        GET /api/dataset_collection/{id}/prepare_download
+
+        Return a short term storage token to monitor download of the collection.
+
+        :param id: encoded HistoryDatasetCollectionAssociation (HDCA) id
+        :param history_id: encoded id string of the HDCA's History
+        """
+        return self.service.prepare_collection_download(trans, id)
 
     @expose_api_anonymous
     def create(self, trans, history_id, payload, **kwd):
