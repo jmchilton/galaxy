@@ -824,7 +824,7 @@ def populate_api_routes(webapp, app):
         "/api/configuration/toolbox",
         controller="configuration",
         action="reload_toolbox",
-        conditions=dict(method=["PUT"]),
+        conditions=dict(method=["PUT"])
     )
     webapp.mapper.resource("configuration", "configuration", path_prefix="/api")
     webapp.mapper.connect(
@@ -935,6 +935,12 @@ def populate_api_routes(webapp, app):
         action="download_dataset_collection",
         conditions=dict(method=["GET"]),
     )
+
+    webapp.mapper.connect("/api/histories/{history_id}/contents/dataset_collections/{id}/prepare_download",
+                          controller='history_contents',
+                          action='prepare_collection_download',
+                          conditions=dict(method=["GET"]))
+
     webapp.mapper.connect(
         "/api/dataset_collections/{id}/download",
         controller="history_contents",
@@ -977,6 +983,7 @@ def populate_api_routes(webapp, app):
         controller="history_contents",
         conditions=dict(method=["GET"]),
     )
+
     # ---- visualizations registry ---- generic template renderer
     # @deprecated: this route should be considered deprecated
     webapp.add_route(

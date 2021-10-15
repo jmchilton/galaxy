@@ -4,7 +4,12 @@ from typing import (
     Optional,
 )
 
-from galaxy.exceptions import AuthenticationRequired
+from celery.result import AsyncResult
+
+from galaxy.exceptions import (
+    AuthenticationRequired,
+    ConfigDoesNotAllowException,
+)
 from galaxy.managers.base import (
     decode_with_security,
     encode_with_security,
@@ -15,7 +20,13 @@ from galaxy.managers.base import (
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.model import User
 from galaxy.schema.fields import EncodedDatabaseIdField
+from galaxy.schema.schema import AsyncTaskResultSummary
 from galaxy.security.idencoding import IdEncodingHelper
+
+
+def ensure_celery_tasks_enabled(config):
+    if not config.enable_celery_tasks:
+        raise ConfigDoesNotAllowException("This operation requires asynchronous tasks to be enabled on the Galaxy server and they are not, please contact the server admin.")
 
 
 class ServiceBase:
@@ -87,3 +98,12 @@ class ServiceBase:
         """Gets the authenticated user and prevents access from anonymous users."""
         self.check_user_is_authenticated(trans)
         return cast(User, trans.user)
+
+
+def async_task_summary(async_result: AsyncResult) -> AsyncTaskResultSummary:
+    return AsyncTaskResultSummary(
+        id=async_result.id,
+        ignored=async_result.ignored,
+        name=async_result.name,
+        queue=async_result.queue,
+    )

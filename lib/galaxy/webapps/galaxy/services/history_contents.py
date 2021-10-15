@@ -19,6 +19,9 @@ from pydantic import (
 from typing_extensions import Literal
 
 from galaxy import exceptions
+from galaxy.celery.tasks import (
+    prepare_dataset_collection_download,
+)
 from galaxy.managers import (
     folders,
     hdas,
@@ -52,6 +55,7 @@ from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryContentItem,
     AnyJobStateSummary,
+    AsyncFile,
     ContentsNearResult,
     ContentsNearStats,
     CreateNewCollectionPayload,
@@ -66,10 +70,18 @@ from galaxy.schema.schema import (
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
 )
+from galaxy.schema.tasks import (
+    PrepareDatasetCollectionDownload,
+)
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util.zipstream import ZipstreamWrapper
+from galaxy.web.short_term_storage import ShortTermStorageAllocator
 from galaxy.webapps.galaxy.api.common import parse_serialization_params
-from galaxy.webapps.galaxy.services.base import ServiceBase
+from galaxy.webapps.galaxy.services.base import (
+    async_task_summary,
+    ensure_celery_tasks_enabled,
+    ServiceBase,
+)
 
 log = logging.getLogger(__name__)
 
@@ -179,6 +191,7 @@ class HistoriesContentsService(ServiceBase):
         hda_deserializer: hdas.HDADeserializer,
         hdca_serializer: hdcas.HDCASerializer,
         history_contents_filters: history_contents.HistoryContentsFilters,
+        short_term_storage_allocator: ShortTermStorageAllocator,
     ):
         super().__init__(security)
         self.history_manager = history_manager
@@ -191,6 +204,7 @@ class HistoriesContentsService(ServiceBase):
         self.hda_deserializer = hda_deserializer
         self.hdca_serializer = hdca_serializer
         self.history_contents_filters = history_contents_filters
+        self.short_term_storage_allocator = short_term_storage_allocator
 
     def index(
         self,
@@ -326,6 +340,24 @@ class HistoriesContentsService(ServiceBase):
             error_message = "Error in API while creating dataset collection archive"
             log.exception(error_message)
             raise exceptions.InternalServerError(error_message)
+
+    def prepare_collection_download(self, trans, id: EncodedDatabaseIdField) -> AsyncFile:
+        ensure_celery_tasks_enabled(trans.app.config)
+        dataset_collection_instance = self.__get_accessible_collection(trans, id)
+        archive_name = f"{dataset_collection_instance.hid}: {dataset_collection_instance.name}"
+        short_term_storage_target = self.short_term_storage_allocator.new_target(
+            filename=archive_name,
+            mime_type="application/x-zip-compressed"
+        )
+        request = PrepareDatasetCollectionDownload(
+            short_term_storage_request_id=short_term_storage_target.request_id,
+            history_dataset_collection_association_id=dataset_collection_instance.id,
+        )
+        result = prepare_dataset_collection_download.delay(request=request)
+        return AsyncFile(
+            storage_request_id=short_term_storage_target.request_id,
+            task=async_task_summary(result)
+        )
 
     def __stream_dataset_collection(self, trans, dataset_collection_instance):
         archive = hdcas.stream_dataset_collection(
