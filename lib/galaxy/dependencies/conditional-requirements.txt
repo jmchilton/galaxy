@@ -39,3 +39,6 @@ influxdb
 
 # Deep learning packages for tool recommendation
 tensorflow==2.5.1
+
+# weasyprint has problematic requirements so make it optional (is this still true? -John)
+weasyprint
