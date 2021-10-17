@@ -636,8 +636,10 @@ def build_galaxy_app(simple_kwargs):
     )
     # Build the Universe Application
     app = GalaxyUniverseApplication(**simple_kwargs)
-    if not simple_kwargs.get("enable_celery_tasks"):
-        rebind_container_to_task(app)
+
+    # Is this still needed with shared_tasks and delayed lagom evaluation?
+    # if not simple_kwargs.get("enable_celery_tasks"):
+    #    rebind_container_to_task(app)
 
     log.info("Embedded Galaxy application started")
 
