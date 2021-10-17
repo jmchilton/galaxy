@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from threading import local
 from typing import Any, Dict
 
 from celery import Celery
@@ -13,16 +14,30 @@ log = get_logger(__name__)
 
 TASKS_MODULES = ['galaxy.celery.tasks']
 
+APP_LOCAL = local()
+
+
+def set_thread_app(app):
+    APP_LOCAL.app = app
+
+
+def get_galaxy_app():
+    try:
+        return APP_LOCAL.app
+    except AttributeError:
+        import galaxy.app
+        if galaxy.app.app:
+            return galaxy.app.app
+    return build_app()
+
 
 @lru_cache(maxsize=1)
-def get_galaxy_app():
-    import galaxy.app
-    if galaxy.app.app:
-        return galaxy.app.app
+def build_app():
     kwargs = get_app_properties()
     if kwargs:
         kwargs['check_migrate_tools'] = False
         kwargs['check_migrate_databases'] = False
+        import galaxy.app
         galaxy_app = galaxy.app.GalaxyManagerApplication(configure_logging=False, **kwargs)
         return galaxy_app
 
