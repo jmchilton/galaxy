@@ -65,6 +65,7 @@ from galaxy.web.short_term_storage import ShortTermStorageAllocator
 from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ConsumesModelStores,
+    model_store_stoarge_target,
     ServesExportStores,
     ServiceBase,
 )
@@ -313,9 +314,11 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
             trans.user,
             current_history=trans.history
         )
-        export_filename = f"{history.name}.{model_store_format}"
-        mime_type = 'application/x-gzip'  # e.g. application/x-tar
-        short_term_storage_target = self.short_term_storage_allocator.new_target(export_filename, mime_type)
+        short_term_storage_target = model_store_stoarge_target(
+            self.short_term_storage_allocator,
+            history.name,
+            model_store_format,
+        )
         request = GenerateHistoryDownload(
             history_id=history.id,
             model_store_format=model_store_format,

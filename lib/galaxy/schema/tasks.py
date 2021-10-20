@@ -1,6 +1,9 @@
 from pydantic import BaseModel, Field
 
-from .schema import DatasetSourceType
+from .schema import (
+    DatasetSourceType,
+    HistoryContentType,
+)
 from ..schema import PdfDocumentType
 
 
@@ -40,6 +43,15 @@ class GenerateHistoryDownload(BaseModel):
     user: RequestUser
     include_hidden: bool
     include_deleted: bool
+
+
+class GenerateHistoryContentDownload(BaseModel):
+    content_type: HistoryContentType
+    content_id: int
+    model_store_format: str
+    short_term_storage_request_id: str
+    include_files: bool
+    user: RequestUser
 
 
 class MaterializeDatasetInstanceTaskRequest(BaseModel):

@@ -35,7 +35,12 @@ from galaxy.model.store import (
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import AsyncTaskResultSummary
 from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.util import ready_name_for_url
 from galaxy.util.compression_utils import CompressedFile
+from galaxy.web.short_term_storage import (
+    ShortTermStorageAllocator,
+    ShortTermStorageTarget
+)
 
 
 def ensure_celery_tasks_enabled(config):
@@ -117,6 +122,19 @@ class ServiceBase:
 class ServedExportStore(NamedTuple):
     export_store: ModelExportStore
     export_target: Any
+
+
+def model_store_stoarge_target(short_term_storage_allocator: ShortTermStorageAllocator, file_name: str, model_store_format: str) -> ShortTermStorageTarget:
+    cleaned_filename = ready_name_for_url(f"{file_name}.{model_store_format}")
+    if model_store_format.endswith("gz"):
+        mime_type = 'application/x-gzip'
+    else:
+        mime_type = 'application/x-tar'
+
+    return short_term_storage_allocator.new_target(
+        cleaned_filename,
+        mime_type,
+    )
 
 
 class ServesExportStores:

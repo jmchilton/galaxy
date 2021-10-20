@@ -832,6 +832,21 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
         return self.service.show(trans, id, serialization_params, contents_type, fuzzy_count)
 
     @expose_api_anonymous
+    def prepare_store_download(self, trans, history_id, history_content_id, **kwd):
+        """
+        GET /api/histories/{history_id}/contents/{id}/prepare_store_download
+        GET /api/histories/{history_id}/contents/{type}/{id}/prepare_store_download
+        """
+        contents_type = self.__get_contents_type(kwd)
+        return self.service.prepare_store_download(
+            trans,
+            history_content_id,
+            model_store_format=kwd.get("model_store_format", "tar.gz"),
+            contents_type=contents_type,
+            include_files=util.string_as_bool(kwd.get("include_files", False))
+        )
+
+    @expose_api_anonymous
     def index_jobs_summary(self, trans, history_id, **kwd):
         """
         * GET /api/histories/{history_id}/jobs_summary

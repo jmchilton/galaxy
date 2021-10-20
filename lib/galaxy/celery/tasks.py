@@ -12,6 +12,7 @@ from galaxy.managers.markdown_util import generate_branded_pdf
 from galaxy.managers.model_stores import ModelStoreManager
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.tasks import (
+    GenerateHistoryContentDownload,
     GenerateHistoryDownload,
     GeneratePdfDownload,
     MaterializeDatasetInstanceTaskRequest,
@@ -108,6 +109,14 @@ def prepare_history_download(
     request: GenerateHistoryDownload,
 ):
     model_store_manager.prepare_history_download(request)
+
+
+@galaxy_task(action="generate and stage a history content model store for download")
+def prepare_history_content_download(
+    model_store_manager: ModelStoreManager,
+    request: GenerateHistoryContentDownload,
+):
+    model_store_manager.prepare_history_content_download(request)
 
 
 @galaxy_task(action="cleanup the history audit table")

@@ -23,6 +23,7 @@ from galaxy import exceptions
 from galaxy.celery.tasks import (
     materialize as materialize_task,
     prepare_dataset_collection_download,
+    prepare_history_content_download,
 )
 from galaxy.managers import (
     folders,
@@ -79,6 +80,7 @@ from galaxy.schema.schema import (
     UpdateHistoryContentsBatchPayload,
 )
 from galaxy.schema.tasks import (
+    GenerateHistoryContentDownload,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
 )
@@ -90,6 +92,7 @@ from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ConsumesModelStores,
     ensure_celery_tasks_enabled,
+    model_store_stoarge_target,
     ServesExportStores,
     ServiceBase,
 )
@@ -362,6 +365,43 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
                     raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
 
             return open(served_export_store.export_target.name, "rb")
+
+    def prepare_store_download(
+        self,
+        trans,
+        id: EncodedDatabaseIdField,
+        model_store_format: str,
+        contents_type: HistoryContentType = HistoryContentType.dataset,
+        include_files: bool = False,
+    ):
+        if contents_type == HistoryContentType.dataset:
+            hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
+            content_id = hda.id
+            content_name = hda.name
+        elif contents_type == HistoryContentType.dataset_collection:
+            dataset_collection_instance = self.__get_accessible_collection(trans, id)
+            content_id = dataset_collection_instance.id
+            content_name = dataset_collection_instance.name
+        else:
+            raise exceptions.UnknownContentsType(f'Unknown contents type: {contents_type}')
+        short_term_storage_target = model_store_stoarge_target(
+            self.short_term_storage_allocator,
+            content_name,
+            model_store_format,
+        )
+        request = GenerateHistoryContentDownload(
+            model_store_format=model_store_format,
+            short_term_storage_request_id=short_term_storage_target.request_id,
+            include_files=include_files,
+            user=trans.async_request_user,
+            content_type=HistoryContentType.dataset,
+            content_id=content_id,
+        )
+        result = prepare_history_content_download.delay(request=request)
+        return AsyncFile(
+            storage_request_id=short_term_storage_target.request_id,
+            task=async_task_summary(result)
+        )
 
     def index_jobs_summary(
         self,
