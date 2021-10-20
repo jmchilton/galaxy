@@ -819,13 +819,18 @@ class BaseDatasetPopulator(BasePopulator):
         wait_on(history_has_length, desc="import history population")
 
     def wait_on_download(self, download_request_response: Response) -> Response:
+        storage_request_id = self.assert_download_request_ok(download_request_response)
+        return self.wait_on_download_request(storage_request_id)
+
+    def assert_download_request_ok(self, download_request_response: Response) -> str:
+        """Assert response is valid and okay and extract storage request ID."""
         api_asserts.assert_status_code_is(download_request_response, 200)
         download_async = download_request_response.json()
         assert "storage_request_id" in download_async
         storage_request_id = download_async["storage_request_id"]
-        return self.wait_on_download_request(storage_request_id)
+        return storage_request_id
 
-    def wait_on_download_request(self, storage_request_id: str) -> Response:
+    def wait_for_download_ready(self, storage_request_id):
         def is_ready():
             is_ready_response = self._get(f"short_term_storage/{storage_request_id}/ready")
             is_ready_response.raise_for_status()
@@ -835,6 +840,8 @@ class BaseDatasetPopulator(BasePopulator):
         wait_on(is_ready, "waiting for download to become ready")
         assert is_ready()
 
+    def wait_on_download_request(self, storage_request_id: str) -> Response:
+        self.wait_for_download_ready(storage_request_id)
         download_contents_response = self._get(f"short_term_storage/{storage_request_id}")
         download_contents_response.raise_for_status()
         return download_contents_response
@@ -845,12 +852,25 @@ class BaseDatasetPopulator(BasePopulator):
         contents = contents_response.json()
         return len(contents)
 
-    def reimport_history(self, history_id, history_name, wait_on_history_length, export_kwds, url, api_key):
-        # Export the history.
-        download_path = self.export_url(history_id, export_kwds, api_key, check_download=True)
+    def reimport_history(self, history_id, history_name, wait_on_history_length, export_kwds, url, api_key, task_based=False):
+        if not task_based:
+            # Export the history.
+            download_path = self.export_url(history_id, export_kwds, api_key, check_download=True)
 
-        # Create download for history
-        full_download_url = f"{url}{download_path}?key={api_key}"
+            # Create download for history
+            full_download_url = f"{url}{download_path}?key={api_key}"
+        else:
+            # Give modern endpoint the legacy endpoint defaults for kwds...
+            if "include_files" in export_kwds:
+                export_kwds["include_files"] = True
+            if "include_hidden" not in export_kwds:
+                export_kwds["include_hidden"] = "true"
+            if "include_deleted" not in export_kwds:
+                export_kwds["include_hidden"] = "false"
+            prepare_download_response = self._get(f"histories/{history_id}/prepare_download", export_kwds)
+            storage_request_id = self.assert_download_request_ok(prepare_download_response)
+            self.wait_for_download_ready(storage_request_id)
+            full_download_url = f"{url}/api/short_term_storage/{storage_request_id}?key={api_key}"
 
         import_data = dict(archive_source=full_download_url, archive_type="url")
 

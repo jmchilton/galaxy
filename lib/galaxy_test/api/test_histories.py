@@ -1,4 +1,5 @@
 import time
+from typing import ClassVar
 from uuid import uuid4
 
 from requests import (
@@ -239,6 +240,7 @@ class HistoriesApiTestCase(ApiTestCase, BaseHistories):
 
 
 class ImportExportTests(BaseHistories):
+    task_based: ClassVar[bool]
 
     def _set_up_populators(self):
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
@@ -390,7 +392,7 @@ class ImportExportTests(BaseHistories):
         self.dataset_populator.wait_for_history(history_id, assert_ok=assert_ok)
 
         return self.dataset_populator.reimport_history(
-            history_id, history_name, wait_on_history_length=wait_on_history_length, export_kwds=export_kwds, url=self.url, api_key=self.galaxy_interactor.api_key
+            history_id, history_name, wait_on_history_length=wait_on_history_length, export_kwds=export_kwds, url=self.url, api_key=self.galaxy_interactor.api_key, task_based=self.task_based
         )
 
     def _import_history_and_wait(self, import_data, history_name, wait_on_history_length=None):
@@ -445,6 +447,7 @@ class ImportExportTests(BaseHistories):
 
 
 class ImportExportHistoryTestCase(ApiTestCase, ImportExportTests):
+    task_based = False
 
     def setUp(self):
         super().setUp()

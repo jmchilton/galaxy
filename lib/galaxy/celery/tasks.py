@@ -7,17 +7,18 @@ from sqlalchemy.orm.scoping import (
 )
 
 from galaxy import model
-from galaxy.app import MinimalManagerApp
 from galaxy.config import GalaxyAppConfiguration
-from galaxy.jobs.manager import JobManager
 from galaxy.managers.collections import DatasetCollectionManager
 from galaxy.managers.hdas import HDAManager
 from galaxy.managers.lddas import LDDAManager
 from galaxy.managers.markdown_util import generate_branded_pdf
+from galaxy.managers.model_stores import ModelStoreManager
 from galaxy.schema.tasks import (
+    GenerateHistoryDownload,
     GeneratePdfDownload,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
+    SetupHistoryExportJob,
 )
 from galaxy.util import ExecutionTimer
 from galaxy.util.custom_logging import get_logger
@@ -37,7 +38,7 @@ serialization.register(
 )
 
 
-def galaxy_task(*args, **celery_task_kwd):
+def galaxy_task(*args, action=None, **celery_task_kwd):
     if 'serializer' not in celery_task_kwd:
         celery_task_kwd['serializer'] = PYDANTIC_AWARE_SERIALIER_NAME
 
@@ -48,7 +49,18 @@ def galaxy_task(*args, **celery_task_kwd):
         def wrapper(*args, **kwds):
             app = get_galaxy_app()
             assert app
-            return app.magic_partial(func)(*args, **kwds)
+            desc = func.__name__
+            if action is not None:
+                desc += f" to {action}"
+            timer = ExecutionTimer()
+            try:
+                rval = app.magic_partial(func)(*args, **kwds)
+                message = f"Successfully executed Celery task {desc} {timer}"
+                log.info(message)
+                return rval
+            except Exception:
+                log.warning(f"Celery task execution failed for {desc} {timer}")
+                raise
 
         return wrapper
 
@@ -58,7 +70,7 @@ def galaxy_task(*args, **celery_task_kwd):
         return decorate
 
 
-@galaxy_task(ignore_result=True)
+@galaxy_task(ignore_result=True, action="recalcuate a user's disk usage")
 def recalculate_user_disk_usage(session: scoped_session, user_id=None):
     if user_id:
         user = session.query(model.User).get(user_id)
@@ -71,7 +83,7 @@ def recalculate_user_disk_usage(session: scoped_session, user_id=None):
         log.error("Recalculate user disk usage task received without user_id.")
 
 
-@galaxy_task(ignore_result=True)
+@galaxy_task(ignore_result=True, action="purge a history dataset")
 def purge_hda(hda_manager: HDAManager, hda_id):
     hda = hda_manager.by_id(hda_id)
     hda_manager._purge(hda)
@@ -86,7 +98,7 @@ def materialize(
     hda_manager.materialize(request)
 
 
-@galaxy_task
+@galaxy_task(action="set dataset association metadata")
 def set_metadata(hda_manager: HDAManager, ldda_manager: LDDAManager, dataset_id, model_class='HistoryDatasetAssociation'):
     if model_class == 'HistoryDatasetAssociation':
         dataset = hda_manager.by_id(dataset_id)
@@ -95,57 +107,46 @@ def set_metadata(hda_manager: HDAManager, ldda_manager: LDDAManager, dataset_id,
     dataset.datatype.set_meta(dataset)
 
 
-@galaxy_task(ignore_result=True)
+@galaxy_task(ignore_result=True, action="setup and queue a history export job")
 def export_history(
-        app: MinimalManagerApp,
-        sa_session: scoped_session,
-        job_manager: JobManager,
-        store_directory,
-        history_id,
-        job_id,
-        include_hidden=False,
-        include_deleted=False):
-    history = sa_session.query(model.History).get(history_id)
-    with model.store.DirectoryModelExportStore(store_directory, app=app, export_files="symlink") as export_store:
-        export_store.export_history(history, include_hidden=include_hidden, include_deleted=include_deleted)
-    job = sa_session.query(model.Job).get(job_id)
-    job.state = model.Job.states.NEW
-    sa_session.flush()
-    job_manager.enqueue(job)
+    model_store_manager: ModelStoreManager,
+    request: SetupHistoryExportJob,
+):
+    model_store_manager.setup_history_export_job(request)
 
 
-@galaxy_task
+@galaxy_task(action="stage a dataset collection zip for download")
 def prepare_dataset_collection_download(
     request: PrepareDatasetCollectionDownload,
     collection_manager: DatasetCollectionManager,
 ):
-    timer = ExecutionTimer()
     collection_manager.write_dataset_collection(request)
-    log.info(f"Collection download file staged {timer}")
 
 
-@galaxy_task
+@galaxy_task(action="generate and stage a PDF for download")
 def prepare_pdf_download(
     request: GeneratePdfDownload,
     config: GalaxyAppConfiguration,
     short_term_storage_monitor: ShortTermStorageMonitor
 ):
-    timer = ExecutionTimer()
     generate_branded_pdf(request, config, short_term_storage_monitor)
-    log.debug(f"Successfully generated PDF for download {timer}")
 
 
-@galaxy_task
+@galaxy_task(action="generate and stage a history model store for download")
+def prepare_history_download(
+    model_store_manager: ModelStoreManager,
+    request: GenerateHistoryDownload,
+):
+    model_store_manager.prepare_history_download(request)
+
+
+@galaxy_task(action="cleanup the history audit table")
 def prune_history_audit_table(sa_session: scoped_session):
     """Prune ever growing history_audit table."""
-    timer = ExecutionTimer()
     model.HistoryAudit.prune(sa_session)
-    log.debug(f"Successfully pruned history_audit table {timer}")
 
 
-@galaxy_task
+@galaxy_task(action="cleanup short term storage files")
 def cleanup_short_term_storage(storage_monitor: ShortTermStorageMonitor):
     """Cleanup short term storage."""
-    timer = ExecutionTimer()
     storage_monitor.cleanup()
-    log.debug(f"Successfully cleaned up short term storage {timer}")
