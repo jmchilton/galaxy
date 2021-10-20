@@ -3,7 +3,9 @@ from galaxy.jobs.manager import JobManager
 from galaxy.managers.histories import HistoryManager
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.structured_app import MinimalManagerApp
+from galaxy.schema.schema import HistoryContentType
 from galaxy.schema.tasks import (
+    GenerateHistoryContentDownload,
     GenerateHistoryDownload,
     SetupHistoryExportJob,
 )
@@ -59,3 +61,19 @@ class ModelStoreManager:
                 short_term_storage_target.path
             ) as export_store:
                 export_store.export_history(history, include_hidden=include_hidden, include_deleted=include_deleted)
+
+    def prepare_history_content_download(self, request: GenerateHistoryContentDownload):
+        model_store_format = request.model_store_format
+        export_files = "symlink" if request.include_files else None
+        with storage_context(
+            request.short_term_storage_request_id, self._short_term_storage_monitor
+        ) as short_term_storage_target:
+            with model.store.get_export_store_factory(self._app, model_store_format, export_files=export_files)(
+                short_term_storage_target.path
+            ) as export_store:
+                if request.content_type == HistoryContentType.dataset:
+                    hda = self._sa_session.query(model.HistoryDatasetAssociation).get(request.content_id)
+                    export_store.add_dataset(hda)
+                else:
+                    hdca = self._sa_session.query(model.HistoryDatasetCollectionAssociation).get(request.content_id)
+                    export_store.export_collection(hdca)

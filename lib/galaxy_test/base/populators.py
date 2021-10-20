@@ -558,16 +558,23 @@ class BaseDatasetPopulator(BasePopulator):
     def create_contents_from_store(
         self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
     ) -> List[Dict[str, Any]]:
+        if store_dict is not None:
+            assert isinstance(store_dict, dict)
+        if store_path is not None:
+            assert isinstance(store_path, str)
         payload = _store_payload(store_dict=store_dict, store_path=store_path)
         create_response = self.create_contents_from_store_raw(history_id, payload)
         create_response.raise_for_status()
         return create_response.json()
 
     def download_contents_to_store(self, history_id: str, history_content: Dict[str, Any], extension=".tgz") -> str:
-        url = f"histories/{history_id}/contents/{history_content['history_content_type']}s/{history_content['id']}.{extension}"
-        return self._get_to_tempfile(url)
+        url = f"histories/{history_id}/contents/{history_content['history_content_type']}s/{history_content['id']}/prepare_store_download"
+        download_response = self._get(url, dict(include_files=False, model_store_format=extension))
+        storage_request_id = self.assert_download_request_ok(download_response)
+        self.wait_for_download_ready(storage_request_id)
+        return self._get_to_tempfile(f"short_term_storage/{storage_request_id}")
 
-    def reupload_contents(self, history_content: Dict[str, Any], extension: str = ".tgz", task_based: bool = False):
+    def reupload_contents(self, history_content: Dict[str, Any]):
         history_id = history_content["history_id"]
         temp_tar = self.download_contents_to_store(history_id, history_content, "tgz")
         with tarfile.open(name=temp_tar) as tf:
@@ -2467,7 +2474,7 @@ def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Opti
     if store_dict is not None:
         payload["store_dict"] = store_dict
     if store_path is not None:
-        payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read())
+        payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read()).decode("utf-8")
     return payload
 
 

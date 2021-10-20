@@ -300,6 +300,20 @@ def populate_api_routes(webapp, app):
         path_prefix="/api/histories/{history_id}/contents",
         parent_resources=dict(member_name="history", collection_name="histories"),
     )
+    webapp.mapper.connect(
+        "history_contents_download_dataset_store",
+        "/api/histories/{history_id}/contents/datasets/{history_content_id}/prepare_store_download",
+        controller="history_contents",
+        action="prepare_store_download",
+        conditions=dict(method=["GET"]),
+    )
+    webapp.mapper.connect(
+        "history_contents_download_collection_store",
+        "/api/histories/{history_id}/contents/dataset_collections/{history_content_id}/prepare_store_download",
+        controller="history_contents",
+        action="prepare_store_download",
+        conditions=dict(method=["GET"]),
+    )
     # Legacy access to HDA details via histories/{history_id}/contents/{hda_id}
     webapp.mapper.resource(
         "content",
