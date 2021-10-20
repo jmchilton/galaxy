@@ -425,6 +425,31 @@ class FastAPIHistoryContents:
         )
 
     @router.get(
+        "/api/histories/{history_id}/contents/{type}s/{id}/prepare_store_download",
+        summary="TODO",
+    )
+    def prepare_store_download(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        id: EncodedDatabaseIdField = HistoryItemIDPathParam,
+        type: HistoryContentType = ContentTypeQueryParam,
+        model_store_format: str = Query(
+            default="tar.gz",
+        ),
+        include_files: bool = Query(
+            default=False,
+        ),
+    ):
+        return self.service.prepare_store_download(
+            trans,
+            id,
+            model_store_format=model_store_format,
+            contents_type=type,
+            include_files=include_files,
+        )
+
+    @router.get(
         "/api/histories/{history_id}/jobs_summary",
         summary="Return job state summary info for jobs, implicit groups jobs for collections or workflow invocations.",
     )
@@ -800,7 +825,7 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
             trans, history_id, index_params, legacy_params, serialization_params, filter_parameters
         )
 
-    @expose_api_anonymous_allow_files
+    @expose_api_anonymous
     def show(self, trans, id, history_id, **kwd):
         """
         GET /api/histories/{history_id}/contents/{id}{.format}
@@ -851,6 +876,21 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
         if fuzzy_count:
             fuzzy_count = int(fuzzy_count)
         return self.service.show(trans, id, serialization_params, contents_type, fuzzy_count)
+
+    @expose_api_anonymous
+    def prepare_store_download(self, trans, history_id, history_content_id, **kwd):
+        """
+        GET /api/histories/{history_id}/contents/{id}/prepare_store_download
+        GET /api/histories/{history_id}/contents/{type}/{id}/prepare_store_download
+        """
+        contents_type = self.__get_contents_type(kwd)
+        return self.service.prepare_store_download(
+            trans,
+            history_content_id,
+            model_store_format=kwd.get("model_store_format", "tar.gz"),
+            contents_type=contents_type,
+            include_files=util.string_as_bool(kwd.get("include_files", False)),
+        )
 
     @expose_api_anonymous
     def index_jobs_summary(self, trans, history_id, **kwd):
