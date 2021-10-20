@@ -5,7 +5,6 @@ import re
 from enum import Enum
 from typing import (
     Any,
-    BinaryIO,
     Dict,
     Iterable,
     List,
@@ -25,7 +24,10 @@ from typing_extensions import (
 
 from galaxy import exceptions
 from galaxy.celery.tasks import materialize as materialize_task
-from galaxy.celery.tasks import prepare_dataset_collection_download
+from galaxy.celery.tasks import (
+    prepare_dataset_collection_download,
+    prepare_history_content_download,
+)
 from galaxy.managers import (
     folders,
     hdas,
@@ -91,6 +93,7 @@ from galaxy.schema.schema import (
     UpdateHistoryContentsBatchPayload,
 )
 from galaxy.schema.tasks import (
+    GenerateHistoryContentDownload,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
 )
@@ -102,6 +105,7 @@ from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ConsumesModelStores,
     ensure_celery_tasks_enabled,
+    model_store_stoarge_target,
     ServesExportStores,
     ServiceBase,
 )
@@ -306,7 +310,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         serialization_params: SerializationParams,
         contents_type: HistoryContentType,
         fuzzy_count: Optional[int] = None,
-    ) -> Union[AnyHistoryContentItem, BinaryIO]:
+    ) -> AnyHistoryContentItem:
         """
         Return detailed information about an HDA or HDCA within a history
 
@@ -337,26 +341,45 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
 
         :returns:   dictionary containing detailed HDA or HDCA information
         """
-        download_format = serialization_params.format or "json"
-        if download_format == "json":
-            if contents_type == HistoryContentType.dataset:
-                return self.__show_dataset(trans, id, serialization_params)
-            elif contents_type == HistoryContentType.dataset_collection:
-                return self.__show_dataset_collection(trans, id, serialization_params, fuzzy_count)
-            raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
-        else:
-            served_export_store = self.serve_export_store(trans.app, download_format)
-            with served_export_store.export_store:
-                if contents_type == HistoryContentType.dataset:
-                    hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
-                    served_export_store.export_store.add_dataset(hda)
-                elif contents_type == HistoryContentType.dataset_collection:
-                    dataset_collection_instance = self.__get_accessible_collection(trans, id)
-                    served_export_store.export_store.export_collection(dataset_collection_instance)
-                else:
-                    raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
+        if contents_type == HistoryContentType.dataset:
+            return self.__show_dataset(trans, id, serialization_params)
+        elif contents_type == HistoryContentType.dataset_collection:
+            return self.__show_dataset_collection(trans, id, serialization_params, fuzzy_count)
+        raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
 
-            return open(served_export_store.export_target.name, "rb")
+    def prepare_store_download(
+        self,
+        trans: ProvidesHistoryContext,
+        id: EncodedDatabaseIdField,
+        model_store_format: str,
+        contents_type: HistoryContentType = HistoryContentType.dataset,
+        include_files: bool = False,
+    ) -> AsyncFile:
+        if contents_type == HistoryContentType.dataset:
+            hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
+            content_id = hda.id
+            content_name = hda.name
+        elif contents_type == HistoryContentType.dataset_collection:
+            dataset_collection_instance = self.__get_accessible_collection(trans, id)
+            content_id = dataset_collection_instance.id
+            content_name = dataset_collection_instance.name
+        else:
+            raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
+        short_term_storage_target = model_store_stoarge_target(
+            self.short_term_storage_allocator,
+            content_name,
+            model_store_format,
+        )
+        request = GenerateHistoryContentDownload(
+            model_store_format=model_store_format,
+            short_term_storage_request_id=short_term_storage_target.request_id,
+            include_files=include_files,
+            user=trans.async_request_user,
+            content_type=HistoryContentType.dataset,
+            content_id=content_id,
+        )
+        result = prepare_history_content_download.delay(request=request)
+        return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))
 
     def index_jobs_summary(
         self,

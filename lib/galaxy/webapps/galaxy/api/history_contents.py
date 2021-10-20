@@ -441,6 +441,31 @@ class FastAPIHistoryContents:
             fuzzy_count=fuzzy_count,
         )
 
+    @router.post(
+        "/api/histories/{history_id}/contents/{type}s/{id}/prepare_store_download",
+        summary="Prepare a dataset or dataset collection for export-style download.",
+    )
+    def prepare_store_download(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        id: EncodedDatabaseIdField = HistoryItemIDPathParam,
+        type: HistoryContentType = ContentTypeQueryParam,
+        model_store_format: str = Query(
+            default="tar.gz",
+        ),
+        include_files: bool = Query(
+            default=False,
+        ),
+    ) -> AsyncFile:
+        return self.service.prepare_store_download(
+            trans,
+            id,
+            model_store_format=model_store_format,
+            contents_type=type,
+            include_files=include_files,
+        )
+
     @router.get(
         "/api/histories/{history_id}/jobs_summary",
         summary="Return job state summary info for jobs, implicit groups jobs for collections or workflow invocations.",

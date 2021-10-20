@@ -1,5 +1,6 @@
 import time
 from typing import ClassVar
+from unittest import SkipTest
 from uuid import uuid4
 
 from requests import put
@@ -335,7 +336,7 @@ class ImportExportTests(BaseHistories):
         self.dataset_populator.delete_dataset(history_id, deleted_hda["id"])
 
         imported_history_id = self._reimport_history(
-            history_id, history_name, wait_on_history_length=2, export_kwds={"include_deleted": "True"}
+            history_id, history_name, wait_on_history_length=2, export_kwds={"include_deleted": True}
         )
         self._assert_history_length(imported_history_id, 2)
 
@@ -366,7 +367,7 @@ class ImportExportTests(BaseHistories):
         self.dataset_populator.wait_for_history(history_id, assert_ok=False)
 
         imported_history_id = self._reimport_history(
-            history_id, history_name, assert_ok=False, wait_on_history_length=4, export_kwds={"include_deleted": "True"}
+            history_id, history_name, assert_ok=False, wait_on_history_length=4, export_kwds={"include_deleted": True}
         )
         self._assert_history_length(imported_history_id, 4)
 
@@ -381,6 +382,8 @@ class ImportExportTests(BaseHistories):
         )
 
     def test_import_metadata_regeneration(self):
+        if self.task_based:
+            raise SkipTest("skipping test_import_metadata_regeneration for task based...")
         history_name = f"for_import_metadata_regeneration_{uuid4()}"
         history_id = self.dataset_populator.new_history(name=history_name)
         self.dataset_populator.new_dataset(
