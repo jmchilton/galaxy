@@ -60,7 +60,7 @@ from galaxy.web.short_term_storage import ShortTermStorageAllocator
 from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ConsumesModelStores,
-    model_store_stoarge_target,
+    model_store_storage_target,
     ServesExportStores,
     ServiceBase,
 )
@@ -311,7 +311,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         include_deleted: bool = False,
     ) -> AsyncFile:
         history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
-        short_term_storage_target = model_store_stoarge_target(
+        short_term_storage_target = model_store_storage_target(
             self.short_term_storage_allocator,
             history.name,
             model_store_format,

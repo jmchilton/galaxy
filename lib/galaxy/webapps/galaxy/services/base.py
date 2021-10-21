@@ -129,7 +129,7 @@ class ServedExportStore(NamedTuple):
     export_target: Any
 
 
-def model_store_stoarge_target(
+def model_store_storage_target(
     short_term_storage_allocator: ShortTermStorageAllocator, file_name: str, model_store_format: str
 ) -> ShortTermStorageTarget:
     cleaned_filename = ready_name_for_url(f"{file_name}.{model_store_format}")

@@ -10,6 +10,7 @@ from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.tasks import (
     GenerateHistoryContentDownload,
     GenerateHistoryDownload,
+    GenerateInvocationDownload,
     GeneratePdfDownload,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
@@ -99,6 +100,14 @@ def prepare_history_content_download(
     request: GenerateHistoryContentDownload,
 ):
     model_store_manager.prepare_history_content_download(request)
+
+
+@galaxy_task(action="generate and stage a workflow invocation store for download")
+def prepare_invocation_download(
+    model_store_manager: ModelStoreManager,
+    request: GenerateInvocationDownload,
+):
+    model_store_manager.prepare_invocation_download(request)
 
 
 @galaxy_task(action="pruning history audit table")

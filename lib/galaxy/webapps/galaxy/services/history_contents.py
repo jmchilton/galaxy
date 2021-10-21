@@ -105,7 +105,7 @@ from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ConsumesModelStores,
     ensure_celery_tasks_enabled,
-    model_store_stoarge_target,
+    model_store_storage_target,
     ServesExportStores,
     ServiceBase,
 )
@@ -365,7 +365,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
             content_name = dataset_collection_instance.name
         else:
             raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
-        short_term_storage_target = model_store_stoarge_target(
+        short_term_storage_target = model_store_storage_target(
             self.short_term_storage_allocator,
             content_name,
             model_store_format,

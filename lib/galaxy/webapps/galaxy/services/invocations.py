@@ -95,7 +95,7 @@ class InvocationsService(ServiceBase):
             sort_by=invocation_payload.sort_by,
             sort_desc=invocation_payload.sort_desc,
         )
-        invocation_dict = self._serialize_workflow_invocations(invocations, serialization_params)
+        invocation_dict = self.serialize_workflow_invocations(invocations, serialization_params)
         return invocation_dict, total_matches
 
     def serialize_workflow_invocation(
@@ -110,7 +110,7 @@ class InvocationsService(ServiceBase):
         as_dict = invocation.to_dict(view, step_details=step_details, legacy_job_state=legacy_job_state)
         return self.security.encode_all_ids(as_dict, recursive=True)
 
-    def _serialize_workflow_invocations(
+    def serialize_workflow_invocations(
         self,
         invocations,
         params: InvocationSerializationParams,
