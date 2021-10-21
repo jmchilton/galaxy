@@ -1199,6 +1199,7 @@ def populate_api_routes(webapp, app):
         )
 
     connect_invocation_endpoint("show", r"{.format:[\w\.]+}", action="show_invocation")
+    connect_invocation_endpoint("prepare_store_download", "/prepare_store_download", action="prepare_store_download")
     connect_invocation_endpoint("show_report", "/report", action="show_invocation_report")
     connect_invocation_endpoint("show_report_pdf", "/report.pdf", action="show_invocation_report_pdf")
     connect_invocation_endpoint("biocompute/download", "/biocompute/download", action="download_invocation_bco")
