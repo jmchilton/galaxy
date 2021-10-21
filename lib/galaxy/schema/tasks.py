@@ -57,6 +57,14 @@ class GenerateHistoryContentDownload(BaseModel):
     user: RequestUser
 
 
+class GenerateInvocationDownload(BaseModel):
+    invocation_id: int
+    model_store_format: str
+    short_term_storage_request_id: str
+    include_files: bool
+    user: RequestUser
+
+
 class MaterializeDatasetInstanceTaskRequest(BaseModel):
     history_id: int
     user: RequestUser

@@ -1,7 +1,6 @@
 import json
 import os
 import shutil
-import tarfile
 import time
 from json import dumps
 from tempfile import mkdtemp
@@ -33,6 +32,7 @@ from galaxy_test.base.populators import (
     WorkflowPopulator,
 )
 from galaxy_test.base.workflow_fixtures import (
+    WORKFLOW_INPUTS_AS_OUTPUTS,
     WORKFLOW_NESTED_REPLACEMENT_PARAMETER,
     WORKFLOW_NESTED_RUNTIME_PARAMETER,
     WORKFLOW_NESTED_SIMPLE,
@@ -49,6 +49,7 @@ from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_WITH_CUSTOM_REPORT_1,
     WORKFLOW_WITH_CUSTOM_REPORT_1_TEST_DATA,
     WORKFLOW_WITH_DYNAMIC_OUTPUT_COLLECTION,
+    WORKFLOW_WITH_MAPPED_OUTPUT_COLLECTION,
     WORKFLOW_WITH_OUTPUT_COLLECTION,
     WORKFLOW_WITH_OUTPUT_COLLECTION_MAPPING,
     WORKFLOW_WITH_RULES_1,
@@ -109,7 +110,46 @@ steps:
 """
 
 
-class BaseWorkflowsApiTestCase(ApiTestCase):
+class RunsWorkflowFixtures:
+    workflow_populator: WorkflowPopulator
+
+    def _run_workflow_with_inputs_as_outputs(self, history_id: str) -> RunJobsSummary:
+        summary = self.workflow_populator.run_workflow(
+            WORKFLOW_INPUTS_AS_OUTPUTS,
+            test_data={"input1": "hello world", "text_input": {"value": "A text variable", "type": "raw"}},
+            history_id=history_id,
+        )
+        return summary
+
+    def _run_workflow_with_output_collections(self, history_id: str) -> RunJobsSummary:
+        summary = self.workflow_populator.run_workflow(
+            WORKFLOW_WITH_MAPPED_OUTPUT_COLLECTION,
+            test_data="""
+input1:
+  collection_type: list
+  name: the_dataset_list
+  elements:
+    - identifier: el1
+      value: 1.fastq
+      type: File
+""",
+            history_id=history_id,
+            round_trip_format_conversion=True,
+        )
+        return summary
+
+    def _run_workflow_once_get_invocation(self, name: str):
+        workflow = self.workflow_populator.load_workflow(name=name)
+        workflow_request, history_id, workflow_id = self.workflow_populator.setup_workflow_run(workflow)
+        usages = self.workflow_populator.workflow_invocations(workflow_id)
+        assert len(usages) == 0
+        self.workflow_populator.invoke_workflow_raw(workflow_id, workflow_request, assert_ok=True)
+        usages = self.workflow_populator.workflow_invocations(workflow_id)
+        assert len(usages) == 1
+        return workflow_id, usages[0]
+
+
+class BaseWorkflowsApiTestCase(ApiTestCase, RunsWorkflowFixtures):
     # TODO: Find a new file for this class.
 
     def setUp(self):
@@ -1949,56 +1989,6 @@ input_c:
             assert len(elements) == 1
             elements0 = elements[0]
             assert elements0["element_identifier"] == "el1"
-
-    def _run_workflow_with_output_collections(self, history_id) -> RunJobsSummary:
-        summary = self._run_workflow(
-            """
-class: GalaxyWorkflow
-inputs:
-  input1:
-    type: data_collection_input
-    collection_type: list
-outputs:
-  wf_output_1:
-    outputSource: first_cat/out_file1
-steps:
-  first_cat:
-    tool_id: cat
-    in:
-      input1: input1
-""",
-            test_data="""
-input1:
-  collection_type: list
-  name: the_dataset_list
-  elements:
-    - identifier: el1
-      value: 1.fastq
-      type: File
-""",
-            history_id=history_id,
-            round_trip_format_conversion=True,
-        )
-        return summary
-
-    def _run_workflow_with_inputs_as_outputs(self, history_id) -> RunJobsSummary:
-        summary = self._run_workflow(
-            """
-class: GalaxyWorkflow
-inputs:
-  input1: data
-  text_input: text
-outputs:
-  wf_output_1:
-    outputSource: input1
-  wf_output_param:
-    outputSource: text_input
-steps: []
-""",
-            test_data={"input1": "hello world", "text_input": {"value": "A text variable", "type": "raw"}},
-            history_id=history_id,
-        )
-        return summary
 
     def test_workflow_input_as_output(self):
         with self.dataset_populator.test_history() as history_id:
@@ -4939,115 +4929,6 @@ steps: []
 
         assert invocation_tool_step_response.json()["job_id"] == job_id
 
-    @skip_without_tool("cat1")
-    def test_invocation_usage_targz(self):
-        workflow_id, invocation = self._run_workflow_once_get_invocation("test_invocation_targz")
-        invocation_id = invocation["id"]
-        url = f"invocations/{invocation_id}.tar.gz"
-        invocation_response = self._get(url)
-        self._assert_status_code_is(invocation_response, 200)
-
-        invocation_id = invocation["id"]
-        url = f"invocations/{invocation_id}.bag.zip"
-        invocation_response = self._get(url)
-        self._assert_status_code_is(invocation_response, 200)
-
-        url = f"invocations/{invocation_id}.bag.ofdonuts"
-        invocation_response = self._get(url)
-        self._assert_status_code_is(invocation_response, 400)
-
-    @skip_without_tool("cat1")
-    def test_export_import_invocation(self):
-        workflow_id, invocation = self._run_workflow_once_get_invocation("test_invocation_targz")
-        self.wait_for_invocation_and_jobs(invocation["history_id"], workflow_id, invocation["id"])
-        invocation_id = invocation["id"]
-        temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id)
-        with tarfile.open(name=temp_tar) as tf:
-            assert "invocation_attrs.txt" in tf.getnames()
-            invocation_attrs_f = tf.extractfile("invocation_attrs.txt")
-            assert invocation_attrs_f
-            invocation_attrs = json.load(invocation_attrs_f)
-            assert len(invocation_attrs) == 1
-
-            assert "jobs_attrs.txt" in tf.getnames()
-            job_attrs_f = tf.extractfile("jobs_attrs.txt")
-            assert job_attrs_f
-            job_attrs = json.load(job_attrs_f)
-            assert len(job_attrs) == 3  # cat1, 2 uploads...
-
-        with self.dataset_populator.test_history() as history_id:
-            response = self.workflow_populator.create_invocation_from_store(history_id, store_path=temp_tar)
-        invocation_details = self._assert_one_invocation_created_and_get_details(response)
-        invocation_steps = invocation_details["steps"]
-        for invocation_step in invocation_steps:
-            assert invocation_step["state"] == "scheduled"
-        jobs = []
-        for invocation_step in invocation_steps:
-            jobs.extend(invocation_step.get("jobs", []))
-        assert len(jobs) == 1
-
-        inputs = invocation_details["inputs"]
-        assert len(inputs) == 2
-        assert "0" in inputs
-        assert "1" in inputs
-        assert inputs["0"]["src"] == "hda"
-        assert inputs["1"]["src"] == "hda"
-        assert inputs["0"]["label"] == "WorkflowInput1"
-        assert inputs["1"]["label"] == "WorkflowInput2"
-
-    def test_export_import_invocation_collection_input(self):
-        with self.dataset_populator.test_history() as history_id:
-            summary = self._run_workflow_with_output_collections(history_id)
-            invocation_id = summary.invocation_id
-            temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id)
-
-            with self.dataset_populator.test_history() as history_id:
-                response = self.workflow_populator.create_invocation_from_store(history_id, store_path=temp_tar)
-
-            invocation_details = self._assert_one_invocation_created_and_get_details(response)
-            output_collections = invocation_details["output_collections"]
-            assert len(output_collections) == 1
-            assert "wf_output_1" in output_collections
-            out = output_collections["wf_output_1"]
-            assert out["src"] == "hdca"
-
-            inputs = invocation_details["inputs"]
-            assert inputs["0"]["src"] == "hdca"
-
-    def test_export_import_invocation_with_input_as_output(self):
-        with self.dataset_populator.test_history() as history_id:
-            summary = self._run_workflow_with_inputs_as_outputs(history_id)
-            invocation_id = summary.invocation_id
-            invocation_details = self._invocation_details(summary.workflow_id, invocation_id, step_details="true")
-            print(str(invocation_details))
-            temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id)
-
-            with self.dataset_populator.test_history() as history_id:
-                response = self.workflow_populator.create_invocation_from_store(history_id, store_path=temp_tar)
-
-            invocation_details = self._assert_one_invocation_created_and_get_details(response)
-            output_values = invocation_details["output_values"]
-            assert len(output_values) == 1
-            assert "wf_output_param" in output_values
-            out = output_values["wf_output_param"]
-            print(str(invocation_details))
-            assert out == "A text variable"
-            inputs = invocation_details["input_step_parameters"]
-            assert "text_input" in inputs
-
-    def _assert_one_invocation_created_and_get_details(self, response: Any) -> Dict[str, Any]:
-        assert isinstance(response, list)
-        assert len(response) == 1
-        invocation = response[0]
-        assert "state" in invocation
-        assert invocation["state"] == "scheduled"
-        imported_invocation_id = invocation["id"]
-        imported_workflow_id = invocation["workflow_id"]
-
-        invocation_details = self._invocation_details(imported_workflow_id, imported_invocation_id, step_details="true")
-        self._assert_has_keys(invocation_details, "inputs", "steps", "workflow_id")
-        return invocation_details
-
     def test_invocation_with_collection_mapping(self):
         workflow_id, invocation_id = self._run_mapping_workflow()
 
@@ -5264,21 +5145,6 @@ input_c:
         self._assert_status_code_is(action_response, 200)
         invocation_step_details = action_response.json()
         return invocation_step_details
-
-    def _run_workflow_once_get_invocation(self, name: str):
-        workflow = self.workflow_populator.load_workflow(name=name)
-        workflow_request, history_id, workflow_id = self._setup_workflow_run(workflow)
-        response = self._get(f"workflows/{workflow_id}/usage")
-        self._assert_status_code_is(response, 200)
-        assert len(response.json()) == 0
-        run_workflow_response = self._post(f"workflows/{workflow_id}/invocations", data=workflow_request)
-        self._assert_status_code_is(run_workflow_response, 200)
-
-        response = self._get(f"workflows/{workflow_id}/usage")
-        self._assert_status_code_is(response, 200)
-        usages = response.json()
-        assert len(usages) == 1
-        return workflow_id, usages[0]
 
     def _setup_random_x2_workflow_steps(self, name: str):
         workflow_request, history_id, workflow_id = self._setup_random_x2_workflow(name)

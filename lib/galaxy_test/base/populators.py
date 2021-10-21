@@ -1349,7 +1349,12 @@ class BaseWorkflowPopulator(BasePopulator):
 
         return wait_on_state(workflow_state, desc="workflow invocation state", timeout=timeout, assert_ok=assert_ok)
 
-    def history_invocations(self, history_id: str) -> list:
+    def workflow_invocations(self, workflow_id: str) -> List[Dict[str, Any]]:
+        response = self._get(f"workflows/{workflow_id}/invocations")
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def history_invocations(self, history_id: str) -> List[Dict[str, Any]]:
         history_invocations_response = self._get("invocations", {"history_id": history_id})
         api_asserts.assert_status_code_is(history_invocations_response, 200)
         return history_invocations_response.json()
@@ -1382,8 +1387,11 @@ class BaseWorkflowPopulator(BasePopulator):
         return r.json()
 
     def download_invocation_to_store(self, invocation_id, extension="tgz"):
-        url = f"invocations/{invocation_id}.{extension}"
-        return self._get_to_tempfile(url, suffix=extension)
+        url = f"invocations/{invocation_id}/prepare_store_download"
+        download_response = self._get(url, dict(include_files=False, model_store_format=extension))
+        storage_request_id = self.dataset_populator.assert_download_request_ok(download_response)
+        self.dataset_populator.wait_for_download_ready(storage_request_id)
+        return self._get_to_tempfile(f"short_term_storage/{storage_request_id}")
 
     def create_invocation_from_store_raw(
         self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
