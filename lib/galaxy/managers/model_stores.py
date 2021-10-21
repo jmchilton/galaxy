@@ -7,6 +7,7 @@ from galaxy.schema.schema import HistoryContentType
 from galaxy.schema.tasks import (
     GenerateHistoryContentDownload,
     GenerateHistoryDownload,
+    GenerateInvocationDownload,
     SetupHistoryExportJob,
 )
 from galaxy.web.short_term_storage import (
@@ -77,3 +78,15 @@ class ModelStoreManager:
                 else:
                     hdca = self._sa_session.query(model.HistoryDatasetCollectionAssociation).get(request.content_id)
                     export_store.export_collection(hdca)
+
+    def prepare_invocation_download(self, request: GenerateInvocationDownload):
+        model_store_format = request.model_store_format
+        export_files = "symlink" if request.include_files else None
+        with storage_context(
+            request.short_term_storage_request_id, self._short_term_storage_monitor
+        ) as short_term_storage_target:
+            with model.store.get_export_store_factory(self._app, model_store_format, export_files=export_files)(
+                short_term_storage_target.path
+            ) as export_store:
+                invocation = self._sa_session.query(model.WorkflowInvocation).get(request.invocation_id)
+                export_store.export_workflow_invocation(invocation)
