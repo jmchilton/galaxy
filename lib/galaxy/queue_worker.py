@@ -58,7 +58,9 @@ def send_control_task(app, task, noop_self=False, get_response=False, routing_ke
     if noop_self:
         payload["noop"] = app.config.server_name
     control_task = ControlTask(app.queue_worker)
-    return control_task.send_task(payload=payload, routing_key=routing_key, get_response=get_response)
+    rval = control_task.send_task(payload=payload, routing_key=routing_key, get_response=get_response)
+    log.info("returning from send_control_task....")
+    return rval
 
 
 class ControlTask:
@@ -133,7 +135,9 @@ class ControlTask:
 
 
 def reconfigure_watcher(app, **kwargs):
+    log.info("configuring watcher....")
     app.database_heartbeat.update_watcher_designation()
+    log.info("configured watcher....")
 
 
 def create_panel_section(app, **kwargs):
