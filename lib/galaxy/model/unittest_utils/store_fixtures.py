@@ -18,6 +18,13 @@ TEST_LIBRARY_ID = "id_library1"
 TEST_LIBRARY_DATASET_NAME = 'my cool library dataset'
 TEST_LIBRARY_DATASET_INFO = 'important info about the library dataset'
 
+BED_2_METADATA = {
+    "dbkey": "?",
+    "data_lines": 68,
+    "comment_lines": 0,
+    "columns": 6,
+}
+
 
 def one_ld_library_model_store_dict():
     dataset_hash = dict(
@@ -33,9 +40,7 @@ def one_ld_library_model_store_dict():
         transform=None,
         hashes=[],
     )
-    metadata = {
-        'dbkey': '?',
-    }
+    metadata = BED_2_METADATA
     file_metadata = dict(
         hashes=[dataset_hash],
         sources=[dataset_source],
@@ -111,9 +116,7 @@ def one_ld_library_deferred_model_store_dict():
         transform=None,
         hashes=[],
     )
-    metadata = {
-        'dbkey': '?',
-    }
+    metadata = BED_2_METADATA
     file_metadata = dict(
         hashes=[dataset_hash],
         sources=[dataset_source],
@@ -190,9 +193,7 @@ def one_hda_model_store_dict():
         transform=None,
         hashes=[],
     )
-    metadata = {
-        'dbkey': '?',
-    }
+    metadata = BED_2_METADATA
     file_metadata = dict(
         hashes=[dataset_hash],
         sources=[dataset_source],
@@ -226,6 +227,7 @@ def one_hda_model_store_dict():
 
 def deferred_hda_model_store_dict(
     source_uri=TEST_SOURCE_URI,
+    metadata_deferred=False,
 ):
     dataset_hash = dict(
         model_class="DatasetHash",
@@ -240,9 +242,7 @@ def deferred_hda_model_store_dict(
         transform=None,
         hashes=[],
     )
-    metadata = {
-        'dbkey': '?',
-    }
+    metadata = BED_2_METADATA
     file_metadata = dict(
         hashes=[dataset_hash],
         sources=[dataset_source],
@@ -258,7 +258,6 @@ def deferred_hda_model_store_dict(
         blurb="a blurb goes here...",
         peek="A bit of the data...",
         extension=TEST_EXTENSION,
-        metadata=metadata,
         designation=None,
         deleted=False,
         visible=True,
@@ -266,8 +265,10 @@ def deferred_hda_model_store_dict(
         annotation="my cool annotation",
         file_metadata=file_metadata,
         state='deferred',
+        metadata_deferred=metadata_deferred,
     )
-
+    if not metadata_deferred:
+        serialized_hda["metadata"] = metadata
     return {
         'datasets': [
             serialized_hda,

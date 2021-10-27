@@ -133,7 +133,11 @@ class DatasetInstanceMaterializer:
             create_dataset=False,  # is the default but lets make this really clear...
             history=history,
         )
-        materialized_dataset_instance.copy_from(dataset_instance, new_dataset=materialized_dataset, include_tags=attached)
+        materialized_dataset_instance.copy_from(dataset_instance, new_dataset=materialized_dataset, include_tags=attached, include_metadata=True)
+        if materialized_dataset_instance.metadata_deferred:
+            materialized_dataset_instance.init_meta()
+            materialized_dataset_instance.set_meta()
+            materialized_dataset_instance.metadata_deferred = False
         return materialized_dataset_instance
 
     def _find_closest_dataset_source(self, dataset: Dataset) -> DatasetSource:

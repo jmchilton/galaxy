@@ -39,6 +39,7 @@ def test_deferred_hdas_basic_attached():
     perform_import_from_store_dict(fixture_context, store_dict)
     deferred_hda = fixture_context.history.datasets[0]
     assert deferred_hda
+    _assert_2_bed_metadata(deferred_hda)
     assert deferred_hda.dataset.state == 'deferred'
     materializer = materializer_factory(True, object_store=fixture_context.app.object_store)
     materialized_hda = materializer.ensure_materialized(deferred_hda)
@@ -50,6 +51,7 @@ def test_deferred_hdas_basic_attached():
     path = object_store.get_filename(materialized_dataset)
     assert path
     _assert_path_contains_2_bed(path)
+    _assert_2_bed_metadata(materialized_hda)
 
 
 def test_deferred_hdas_basic_attached_store_by_uuid():
@@ -59,6 +61,7 @@ def test_deferred_hdas_basic_attached_store_by_uuid():
     perform_import_from_store_dict(fixture_context, store_dict)
     deferred_hda = fixture_context.history.datasets[0]
     assert deferred_hda
+    _assert_2_bed_metadata(deferred_hda)
     assert deferred_hda.dataset.state == 'deferred'
     materializer = materializer_factory(True, object_store=fixture_context.app.object_store)
     materialized_hda = materializer.ensure_materialized(deferred_hda)
@@ -78,6 +81,7 @@ def test_deferred_hdas_basic_detached(tmpdir):
     perform_import_from_store_dict(fixture_context, store_dict)
     deferred_hda = fixture_context.history.datasets[0]
     assert deferred_hda
+    _assert_2_bed_metadata(deferred_hda)
     assert deferred_hda.dataset.state == 'deferred'
     materializer = materializer_factory(False, transient_directory=tmpdir)
     materialized_hda = materializer.ensure_materialized(deferred_hda)
@@ -87,6 +91,7 @@ def test_deferred_hdas_basic_detached(tmpdir):
     assert external_filename
     assert external_filename.startswith(str(tmpdir))
     _assert_path_contains_2_bed(external_filename)
+    _assert_2_bed_metadata(materialized_hda)
 
 
 def test_deferred_hdas_basic_detached_from_detached_hda(tmpdir):
@@ -107,6 +112,7 @@ def test_deferred_hdas_basic_detached_from_detached_hda(tmpdir):
     assert external_filename
     assert external_filename.startswith(str(tmpdir))
     _assert_path_contains_2_bed(external_filename)
+    _assert_2_bed_metadata(materialized_hda)
 
 
 def test_deferred_hdas_basic_attached_from_detached_hda():
@@ -129,6 +135,7 @@ def test_deferred_hdas_basic_attached_from_detached_hda():
     path = object_store.get_filename(materialized_dataset)
     assert path
     _assert_path_contains_2_bed(path)
+    _assert_2_bed_metadata(materialized_hda)
 
 
 def test_deferred_ldda_basic_attached():
@@ -179,6 +186,28 @@ def test_deferred_hdas_basic_attached_file_sources(tmpdir):
     path = object_store.get_filename(materialized_dataset)
     assert path
     _assert_path_contains_2_bed(path)
+    _assert_2_bed_metadata(materialized_hda)
+
+
+def test_deferred_hdas_with_deferred_metadata():
+    fixture_context = setup_fixture_context_with_history()
+    store_dict = deferred_hda_model_store_dict(metadata_deferred=True)
+    perform_import_from_store_dict(fixture_context, store_dict)
+    deferred_hda = fixture_context.history.datasets[0]
+    assert deferred_hda
+    assert deferred_hda.dataset.state == 'deferred'
+    materializer = materializer_factory(True, object_store=fixture_context.app.object_store)
+    materialized_hda = materializer.ensure_materialized(deferred_hda)
+    materialized_dataset = materialized_hda.dataset
+    assert not materialized_hda.metadata_deferred
+    assert materialized_dataset.state == 'ok'
+    # only detached datasets would be created with an external_filename
+    assert not materialized_dataset.external_filename
+    object_store = fixture_context.app.object_store
+    path = object_store.get_filename(materialized_dataset)
+    assert path
+    _assert_path_contains_2_bed(path)
+    _assert_2_bed_metadata(materialized_hda)
 
 
 def _ensure_relations_attached_and_expunge(deferred_hda: HistoryDatasetAssociation, fixture_context) -> None:
@@ -189,6 +218,27 @@ def _ensure_relations_attached_and_expunge(deferred_hda: HistoryDatasetAssociati
     deferred_hda._metadata
     sa_session = fixture_context.sa_session
     sa_session.expunge_all()
+
+
+def _assert_2_bed_metadata(hda: HistoryDatasetAssociation) -> None:
+    # metadata_dbkey: ?
+    # metadata_data_lines: 68
+    # metadata_comment_lines: 0
+    # metadata_columns: 6
+    # metadata_column_types: ['str', 'int', 'int', 'str', 'int', 'str']
+    # metadata_column_names: []
+    # metadata_delimiter: '\t'
+    # metadata_chromCol: 1
+    # metadata_startCol: 2
+    # metadata_endCol: 3
+    # metadata_viz_filter_cols: [4]
+    assert hda.metadata.columns == 6
+    assert hda.metadata.data_lines == 68
+    assert hda.metadata.comment_lines == 0
+    assert hda.metadata.chromCol == 1
+    assert hda.metadata.startCol == 2
+    assert hda.metadata.endCol == 3
+    assert hda.metadata.viz_filter_cols == [4]
 
 
 def _assert_path_contains_2_bed(path) -> None:
