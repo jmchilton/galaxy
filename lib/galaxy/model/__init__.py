@@ -3746,6 +3746,7 @@ class DatasetInstance(UsesCreateAndUpdateTime, _HasTable):
         sa_session=None,
         extended_metadata=None,
         flush=True,
+        metadata_deferred=False,
         creating_job_id=None,
     ):
         self.name = name or "Unnamed dataset"
@@ -3759,6 +3760,7 @@ class DatasetInstance(UsesCreateAndUpdateTime, _HasTable):
         # set private variable to None here, since the attribute may be needed in by MetadataCollection.__init__
         self._metadata = None
         self.metadata = metadata or dict()
+        self.metadata_deferred = metadata_deferred
         self.extended_metadata = extended_metadata
         if (
             dbkey
@@ -4369,12 +4371,13 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
             self.version = self.version + 1 if self.version else 1
             session.add(past_hda)
 
-    def copy_from(self, other_hda, new_dataset=None, include_tags=True):
+    def copy_from(self, other_hda, new_dataset=None, include_tags=True, include_metadata=False):
         # This deletes the old dataset, so make sure to only call this on new things
         # in the history (e.g. during job finishing).
         old_dataset = self.dataset
-        self._metadata = None
-        self.metadata = other_hda.metadata
+        if include_metadata:
+            self._metadata = other_hda._metadata
+        self.metadata_deferred = other_hda.metadata_deferred
         self.info = other_hda.info
         self.blurb = other_hda.blurb
         self.peek = other_hda.peek
@@ -9548,6 +9551,7 @@ HistoryDatasetAssociation.table = Table(
     Column("tool_version", TEXT),
     Column("extension", TrimmedString(64)),
     Column("metadata", MetadataType, key="_metadata"),
+    Column("metadata_deferred", Boolean, key="metadata_deferred"),
     Column("parent_id", Integer, ForeignKey("history_dataset_association.id"), nullable=True),
     Column("designation", TrimmedString(255)),
     Column("deleted", Boolean, index=True, default=False),
@@ -9595,6 +9599,7 @@ LibraryDatasetDatasetAssociation.table = Table(
     Column("tool_version", TEXT),
     Column("extension", TrimmedString(64)),
     Column("metadata", MetadataType, key="_metadata"),
+    Column("metadata_deferred", Boolean, key="metadata_deferred"),
     Column("parent_id", Integer, ForeignKey("library_dataset_dataset_association.id"), nullable=True),
     Column("designation", TrimmedString(255)),
     Column("deleted", Boolean, index=True, default=False),
@@ -9605,6 +9610,7 @@ LibraryDatasetDatasetAssociation.table = Table(
     Column("user_id", Integer, ForeignKey("galaxy_user.id"), index=True),
     Column("message", TrimmedString(255)),
 )
+
 
 mapper_registry.map_imperatively(
     Dataset,
