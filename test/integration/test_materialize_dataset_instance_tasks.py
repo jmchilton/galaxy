@@ -2,6 +2,7 @@ import os
 
 from galaxy.model.unittest_utils.store_fixtures import (
     deferred_hda_model_store_dict,
+    deferred_hda_model_store_dict_bam,
     one_ld_library_deferred_model_store_dict,
     TEST_LIBRARY_NAME,
 )
@@ -69,12 +70,41 @@ class MaterializeDatasetInstanceTasaksIntegrationTestCase(IntegrationTestCase, U
         assert deferred_hda["model_class"] == "HistoryDatasetAssociation"
         assert deferred_hda["state"] == "deferred"
         assert not deferred_hda["deleted"]
+
         self.dataset_populator.materialize_dataset_instance(history_id, deferred_hda["id"])
         self.dataset_populator.wait_on_history_length(history_id, 2)
         new_hda_details = self.dataset_populator.get_history_dataset_details(history_id, hid=2, assert_ok=False, wait=False)
         assert new_hda_details["model_class"] == "HistoryDatasetAssociation"
         assert new_hda_details["state"] == "ok"
         assert not new_hda_details["deleted"]
+
+    @uses_test_history(require_new=True)
+    def test_materialize_history_dataset_bam(self, history_id: str):
+        as_list = self.dataset_populator.create_contents_from_store(
+            history_id,
+            store_dict=deferred_hda_model_store_dict_bam(),
+        )
+
+        assert len(as_list) == 1
+        deferred_hda = as_list[0]
+        assert deferred_hda["model_class"] == "HistoryDatasetAssociation"
+        assert deferred_hda["state"] == "deferred"
+        assert not deferred_hda["deleted"]
+
+        # assert bam metadata and such deferred...
+        deferred_hda_details = self.dataset_populator.get_history_dataset_details(history_id, hid=1, assert_ok=False, wait=False)
+        assert '>chrM' not in deferred_hda_details["metadata_reference_names"]
+        assert "metadata_bam_index" not in deferred_hda_details
+
+        self.dataset_populator.materialize_dataset_instance(history_id, deferred_hda["id"])
+        self.dataset_populator.wait_on_history_length(history_id, 2)
+        new_hda_details = self.dataset_populator.get_history_dataset_details(history_id, hid=2, assert_ok=False, wait=False)
+        assert new_hda_details["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda_details["state"] == "ok"
+        assert not new_hda_details["deleted"]
+
+        assert '>chrM' in new_hda_details["metadata_reference_names"]
+        assert "metadata_bam_index" in new_hda_details
 
     @uses_test_history(require_new=True)
     def test_materialize_library_dataset(self, history_id: str):
