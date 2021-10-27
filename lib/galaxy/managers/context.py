@@ -49,6 +49,7 @@ from galaxy.model import (
     Role,
 )
 from galaxy.model.base import ModelMapping
+from galaxy.schema.tasks import RequestUser
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.structured_app import MinimalManagerApp
 from galaxy.util import bunch
@@ -193,6 +194,10 @@ class ProvidesUserContext(ProvidesAppContext):
     Mixed in class must provide `user` and `app`
     properties.
     """
+
+    @property
+    def async_request_user(self) -> RequestUser:
+        return RequestUser(user_id=self.user.id)
 
     @abc.abstractproperty
     def user(self):

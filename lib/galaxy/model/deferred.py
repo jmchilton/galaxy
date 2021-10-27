@@ -1,7 +1,7 @@
 import abc
 import os
 import shutil
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Union
 
 from sqlalchemy.orm import object_session
 from sqlalchemy.orm.exc import DetachedInstanceError
@@ -13,7 +13,9 @@ from galaxy.files import ConfiguredFileSources
 from galaxy.model import (
     Dataset,
     DatasetSource,
+    History,
     HistoryDatasetAssociation,
+    LibraryDatasetDatasetAssociation,
 )
 from galaxy.objectstore import (
     ObjectStore,
@@ -75,7 +77,8 @@ class DatasetInstanceMaterializer:
 
     def ensure_materialized(
         self,
-        dataset_instance: HistoryDatasetAssociation
+        dataset_instance: Union[HistoryDatasetAssociation, LibraryDatasetDatasetAssociation],
+        target_history: Optional[History] = None,
     ) -> HistoryDatasetAssociation:
         """Create a new detached dataset instance from the supplied instance.
 
@@ -84,7 +87,7 @@ class DatasetInstanceMaterializer:
         """
         attached = self._attached
         dataset = dataset_instance.dataset
-        if dataset.state != Dataset.states.DEFERRED:
+        if dataset.state != Dataset.states.DEFERRED and isinstance(dataset_instance, HistoryDatasetAssociation):
             return dataset_instance
 
         materialized_dataset = Dataset()
@@ -120,10 +123,12 @@ class DatasetInstanceMaterializer:
             shutil.move(path, transient_paths.external_filename)
             materialized_dataset.external_filename = transient_paths.external_filename
 
-        try:
-            history = dataset_instance.history
-        except DetachedInstanceError:
-            history = None
+        history = target_history
+        if history is None and isinstance(dataset_instance, HistoryDatasetAssociation):
+            try:
+                history = dataset_instance.history
+            except DetachedInstanceError:
+                history = None
         materialized_dataset_instance = HistoryDatasetAssociation(
             create_dataset=False,  # is the default but lets make this really clear...
             history=history,

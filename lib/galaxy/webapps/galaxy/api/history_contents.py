@@ -19,6 +19,7 @@ from galaxy.managers import (
     history_contents
 )
 from galaxy.schema.schema import (
+    AsyncTaskResultSummary,
     DatasetPermissionAction,
     HistoryContentType,
     UpdateDatasetPermissionsPayload,
@@ -43,6 +44,7 @@ from galaxy.webapps.galaxy.services.history_contents import (
     HistoryContentsFilterList,
     HistoryContentsFilterQueryParams,
     HistoryContentsIndexLegacyParams,
+    MaterializeDatasetInstanceAPIRequest,
 )
 from . import BaseGalaxyAPIController, depends
 
@@ -323,6 +325,15 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
         serialization_params = parse_serialization_params(**kwd)
         create_payload = CreateHistoryContentFromStore(**payload)
         return self.service.create_from_store(trans, history_id, create_payload, serialization_params)
+
+    @expose_api_anonymous
+    def materialize(self, trans, history_id, payload, **kwd) -> AsyncTaskResultSummary:
+        try:
+            materialize_payload = MaterializeDatasetInstanceAPIRequest(history_id=history_id, **payload)
+            return self.service.materialize(trans, materialize_payload)
+        except Exception:
+            log.exception("Foo bar....")
+            raise
 
     @expose_api
     def show_roles(self, trans, encoded_dataset_id, **kwd):

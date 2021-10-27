@@ -44,6 +44,9 @@ class LibrariesApiTestCase(ApiTestCase):
         assert len(response) == 1
         library_summary = response[0]
         assert library_summary["name"] == TEST_LIBRARY_NAME
+        assert "id" in library_summary
+        ld = self.library_populator.get_library_contents_with_path(library_summary["id"], "/my cool name")
+        assert ld
 
     def test_delete(self):
         library = self.library_populator.new_library("DeleteTestLibrary")

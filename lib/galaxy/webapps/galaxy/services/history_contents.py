@@ -24,6 +24,7 @@ from galaxy import (
     util
 )
 from galaxy.celery.tasks import (
+    materialize as materialize_task,
     prepare_dataset_collection_download,
 )
 from galaxy.managers import (
@@ -31,7 +32,7 @@ from galaxy.managers import (
     hdas,
     hdcas,
     histories,
-    history_contents
+    history_contents,
 )
 from galaxy.managers.base import (
     ModelSerializer,
@@ -66,16 +67,19 @@ from galaxy.schema.schema import (
     AnyHistoryContentItem,
     AnyJobStateSummary,
     AsyncFile,
+    AsyncTaskResultSummary,
     DatasetAssociationRoles,
     DeleteHDCAResult,
     HistoryContentSource,
     HistoryContentType,
     JobSourceType,
+    MaterializeDatasetInstanceAPIRequest,
     Model,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
 )
 from galaxy.schema.tasks import (
+    MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
 )
 from galaxy.security.idencoding import IdEncodingHelper
@@ -500,6 +504,24 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
             )
             rval.append(hdca_dict)
         return rval
+
+    def materialize(
+        self, trans, request: MaterializeDatasetInstanceAPIRequest,
+    ) -> AsyncTaskResultSummary:
+        history_id = self.decode_id(request.history_id)
+        # DO THIS JUST TO MAKE SURE IT IS OWNED...
+        self.history_manager.get_owned(
+            history_id, trans.user, current_history=trans.history
+        )
+        assert trans.app.config.enable_celery_tasks
+        task_request = MaterializeDatasetInstanceTaskRequest(
+            history_id=history_id,
+            source=request.source,
+            content=self.decode_id(request.content),
+            user=trans.async_request_user,
+        )
+        results = materialize_task.delay(request=task_request)
+        return async_task_summary(results)
 
     def update_permissions(
         self, trans,

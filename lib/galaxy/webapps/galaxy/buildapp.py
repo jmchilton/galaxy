@@ -278,6 +278,11 @@ def populate_api_routes(webapp, app):
                           controller="history_contents",
                           action="update_batch",
                           conditions=dict(method=["PUT"]))
+    webapp.mapper.connect("history_contents_materialize",
+                          "/api/histories/{history_id}/materialize",
+                          controller="history_contents",
+                          action="materialize",
+                          conditions=dict(method=["POST"]))
     webapp.mapper.connect("history_contents_display",
                           "/api/histories/{history_id}/contents/{history_content_id}/display",
                           controller="datasets",

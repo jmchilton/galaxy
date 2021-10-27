@@ -1,8 +1,15 @@
 from pkg_resources import resource_string
 
-from galaxy.model import HistoryDatasetAssociation
+from galaxy.files.unittest_utils import (
+    TestPosixConfiguredFileSources,
+)
+from galaxy.model import (
+    HistoryDatasetAssociation,
+    LibraryDatasetDatasetAssociation,
+    store,
+)
 from galaxy.model.deferred import materializer_factory
-from galaxy.model.unittest_utils.store_fixtures import deferred_hda_model_store_dict
+from galaxy.model.unittest_utils.store_fixtures import deferred_hda_model_store_dict, one_ld_library_deferred_model_store_dict
 from .model.test_model_store import (
     perform_import_from_store_dict,
     setup_fixture_context_with_history,
@@ -113,6 +120,56 @@ def test_deferred_hdas_basic_attached_from_detached_hda():
 
     assert deferred_hda.dataset.state == 'deferred'
     materializer = materializer_factory(True, object_store=fixture_context.app.object_store, sa_session=fixture_context.sa_session)
+    materialized_hda = materializer.ensure_materialized(deferred_hda)
+    materialized_dataset = materialized_hda.dataset
+    assert materialized_dataset.state == 'ok'
+    # only detached datasets would be created with an external_filename
+    assert not materialized_dataset.external_filename
+    object_store = fixture_context.app.object_store
+    path = object_store.get_filename(materialized_dataset)
+    assert path
+    _assert_path_contains_2_bed(path)
+
+
+def test_deferred_ldda_basic_attached():
+    import_options = store.ImportOptions(
+        allow_library_creation=True,
+    )
+    fixture_context = setup_fixture_context_with_history()
+    store_dict = one_ld_library_deferred_model_store_dict()
+    perform_import_from_store_dict(fixture_context, store_dict, import_options=import_options)
+    deferred_ldda = fixture_context.sa_session.query(LibraryDatasetDatasetAssociation).all()[0]
+    assert deferred_ldda
+    assert deferred_ldda.dataset.state == 'deferred'
+
+    materializer = materializer_factory(True, object_store=fixture_context.app.object_store)
+    materialized_hda = materializer.ensure_materialized(deferred_ldda)
+    assert materialized_hda.history is None
+    materialized_dataset = materialized_hda.dataset
+    assert materialized_dataset.state == 'ok'
+    # only detached datasets would be created with an external_filename
+    assert not materialized_dataset.external_filename
+    object_store = fixture_context.app.object_store
+    path = object_store.get_filename(materialized_dataset)
+    assert path
+    _assert_path_contains_2_bed(path)
+
+
+def test_deferred_hdas_basic_attached_file_sources(tmpdir):
+    root = tmpdir / "root"
+    root.mkdir()
+    content_path = root / "2.bed"
+    content_path.write_text(CONTENTS_2_BED, encoding="utf-8")
+    file_sources = TestPosixConfiguredFileSources(root)
+    fixture_context = setup_fixture_context_with_history()
+    store_dict = deferred_hda_model_store_dict(
+        source_uri="gxfiles://test1/2.bed",
+    )
+    perform_import_from_store_dict(fixture_context, store_dict)
+    deferred_hda = fixture_context.history.datasets[0]
+    assert deferred_hda
+    assert deferred_hda.dataset.state == 'deferred'
+    materializer = materializer_factory(True, object_store=fixture_context.app.object_store, file_sources=file_sources)
     materialized_hda = materializer.ensure_materialized(deferred_hda)
     materialized_dataset = materialized_hda.dataset
     assert materialized_dataset.state == 'ok'
