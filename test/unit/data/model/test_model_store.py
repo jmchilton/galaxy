@@ -141,24 +141,13 @@ def test_import_from_dict():
 
 
 def test_import_allow_discarded():
-    app = _mock_app()
-    sa_session = app.model.context
-
-    u = model.User(email="collection@example.com", password="password")
-
-    import_history = model.History(name="Test History for Dict Import", user=u)
-    sa_session.add(import_history)
-    sa_session.flush()
-
+    fixture_context = setup_fixture_context_with_history()
     import_dict = one_hda_model_store_dict()
-
     import_options = store.ImportOptions(
         discarded_data=store.ImportDiscardedDataType.ALLOW,
     )
-    import_model_store = store.get_import_model_store_for_dict(import_dict, app=app, user=u, import_options=import_options)
-    with import_model_store.target_history(default_history=import_history):
-        import_model_store.perform_import(import_history)
-
+    perform_import_from_store_dict(fixture_context, import_dict, import_options=import_options)
+    import_history = fixture_context.history
     datasets = import_history.datasets
     assert len(datasets) == 1
     imported_hda = datasets[0]
