@@ -268,6 +268,11 @@ def populate_api_routes(webapp, app):
                            name_prefix='history_',
                            path_prefix='/api/histories/{history_id}',
                            parent_resources=dict(member_name='history', collection_name='histories'))
+    webapp.mapper.connect("history_contents_from_store",
+                          "/api/histories/{history_id}/contents_from_store",
+                          controller="history_contents",
+                          action="create_from_store",
+                          conditions=dict(method=["POST"]))
     webapp.mapper.connect("history_contents_batch_update",
                           "/api/histories/{history_id}/contents",
                           controller="history_contents",
@@ -500,6 +505,13 @@ def populate_api_routes(webapp, app):
     webapp.mapper.connect('/api/licenses', controller='licenses', action='index', conditions=dict(method="GET"))
     webapp.mapper.connect('/api/licenses/{id}', controller='licenses', action='get', conditions=dict(method="GET"))
     webapp.mapper.resource_with_deleted('history', 'histories', path_prefix='/api')
+    webapp.mapper.connect(
+        'create_histories_from_store',
+        '/api/histories/from_store',
+        controller='histories',
+        action='create_from_store',
+        conditions=dict(method=['POST'])
+    )
     webapp.mapper.connect('/api/histories/{history_id}/citations', action='citations', controller="histories")
     webapp.mapper.connect('/api/histories/{id}/sharing', action='sharing', controller="histories", conditions=dict(method=["GET"]))
     webapp.mapper.connect('/api/histories/{id}/enable_link_access', action='enable_link_access', controller="histories", conditions=dict(method=["PUT"]))

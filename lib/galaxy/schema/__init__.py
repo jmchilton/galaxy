@@ -77,6 +77,11 @@ class SerializationParams(BaseModel):
             'to the ones included in the `view`.'
         ),
     )
+    format: Optional[str] = Field(
+        default=None,
+        title="Format",
+        description="Format to serialize results into.",
+    )
     default_view: Optional[str] = Field(
         default=None,
         title='Default View',

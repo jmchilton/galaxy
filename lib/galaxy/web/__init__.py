@@ -9,7 +9,9 @@ from .framework.decorators import (
     error,
     expose,
     expose_api,
+    expose_api_allow_files,
     expose_api_anonymous,
+    expose_api_anonymous_allow_files,
     expose_api_anonymous_and_sessionless,
     expose_api_raw,
     expose_api_raw_anonymous,
@@ -26,7 +28,8 @@ from .framework.decorators import (
 )
 
 __all__ = ('do_not_cache', 'error', 'expose', 'expose_api',
-        'expose_api_anonymous', 'expose_api_anonymous_and_sessionless',
+        'expose_api_allow_files', 'expose_api_anonymous',
+        'expose_api_anonymous_allow_files', 'expose_api_anonymous_and_sessionless',
         'expose_api_raw', 'expose_api_raw_anonymous',
         'expose_api_raw_anonymous_and_sessionless',
         'format_return_as_json', 'httpexceptions', 'json', 'json_pretty',

@@ -5,6 +5,7 @@ import os
 import re
 from typing import (
     Any,
+    BinaryIO,
     Dict,
     List,
     Optional,
@@ -84,7 +85,9 @@ from galaxy.web.short_term_storage import ShortTermStorageAllocator
 from galaxy.webapps.galaxy.api.common import parse_serialization_params
 from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
+    ConsumesModelStores,
     ensure_celery_tasks_enabled,
+    ServesExportStores,
     ServiceBase,
 )
 
@@ -196,6 +199,14 @@ class CreateHistoryContentPayloadFromCopy(CreateHistoryContentPayloadBase):
     )
 
 
+class CreateHistoryContentFromStore(Model):
+    store_content_base64: Optional[str]
+    store_dict: Optional[Dict[str, Any]]
+
+    class Config:
+        extra = Extra.allow
+
+
 class CreateHistoryContentPayloadFromCollection(CreateHistoryContentPayloadFromCopy):
     dbkey: Optional[str] = Field(
         default=None,
@@ -218,7 +229,7 @@ class CreateHistoryContentPayload(CreateHistoryContentPayloadFromCollection):
         extra = Extra.allow
 
 
-class HistoriesContentsService(ServiceBase):
+class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelStores):
     """Common interface/service logic for interactions with histories contents in the context of the API.
 
     Provides the logic of the actions invoked by API controllers and uses type definitions
@@ -279,7 +290,7 @@ class HistoriesContentsService(ServiceBase):
         serialization_params: SerializationParams,
         contents_type: HistoryContentType = HistoryContentType.dataset,
         fuzzy_count: Optional[int] = None,
-    ) -> AnyHistoryContentItem:
+    ) -> Union[AnyHistoryContentItem, BinaryIO]:
         """
         Return detailed information about an HDA or HDCA within a history
 
@@ -310,11 +321,26 @@ class HistoriesContentsService(ServiceBase):
 
         :returns:   dictionary containing detailed HDA or HDCA information
         """
-        if contents_type == HistoryContentType.dataset:
-            return self.__show_dataset(trans, id, serialization_params)
-        elif contents_type == HistoryContentType.dataset_collection:
-            return self.__show_dataset_collection(trans, id, serialization_params, fuzzy_count)
-        raise exceptions.UnknownContentsType(f'Unknown contents type: {contents_type}')
+        download_format = serialization_params.format or "json"
+        if download_format == "json":
+            if contents_type == HistoryContentType.dataset:
+                return self.__show_dataset(trans, id, serialization_params)
+            elif contents_type == HistoryContentType.dataset_collection:
+                return self.__show_dataset_collection(trans, id, serialization_params, fuzzy_count)
+            raise exceptions.UnknownContentsType(f'Unknown contents type: {contents_type}')
+        else:
+            served_export_store = self.serve_export_store(trans.app, download_format)
+            with served_export_store.export_store:
+                if contents_type == HistoryContentType.dataset:
+                    hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
+                    served_export_store.export_store.add_dataset(hda)
+                elif contents_type == HistoryContentType.dataset_collection:
+                    dataset_collection_instance = self.__get_accessible_collection(trans, id)
+                    served_export_store.export_store.export_collection(dataset_collection_instance)
+                else:
+                    raise exceptions.UnknownContentsType(f'Unknown contents type: {contents_type}')
+
+            return open(served_export_store.export_target.name, "rb")
 
     def index_jobs_summary(
         self, trans,
@@ -445,6 +471,35 @@ class HistoriesContentsService(ServiceBase):
         elif history_content_type == HistoryContentType.dataset_collection:
             return self.__create_dataset_collection(trans, history, payload, serialization_params)
         raise exceptions.UnknownContentsType(f'Unknown contents type: {payload.type}')
+
+    def create_from_store(
+        self, trans,
+        history_id: EncodedDatabaseIdField,
+        payload: CreateHistoryContentFromStore,
+        serialization_params: SerializationParams,
+    ) -> List[AnyHistoryContentItem]:
+        history = self.history_manager.get_owned(
+            self.decode_id(history_id), trans.user, current_history=trans.history
+        )
+        object_tracker = self.create_objects_from_store(
+            trans,
+            payload,
+            history=history,
+        )
+        rval: List[AnyHistoryContentItem] = []
+        serialization_params.default_view = 'detailed'
+        for hda in object_tracker.hdas_by_key.values():
+            if hda.visible:
+                hda_dict = self.hda_serializer.serialize_to_view(
+                    hda, user=trans.user, trans=trans, **serialization_params.dict()
+                )
+                rval.append(hda_dict)
+        for hdca in object_tracker.hdcas_by_key.values():
+            hdca_dict = self.hdca_serializer.serialize_to_view(
+                hdca, user=trans.user, trans=trans, **serialization_params.dict()
+            )
+            rval.append(hdca_dict)
+        return rval
 
     def update_permissions(
         self, trans,

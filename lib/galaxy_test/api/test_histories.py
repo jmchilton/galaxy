@@ -1,16 +1,26 @@
 import time
+from uuid import uuid4
 
 from requests import (
     put
 )
 
+from galaxy.model.orm.now import now
 from galaxy_test.api.sharable import SharingApiTests
+from galaxy_test.base.api_asserts import (
+    assert_has_keys,
+)
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
     DatasetPopulator,
     skip_without_tool,
 )
 from ._framework import ApiTestCase
+
+TEST_SOURCE_URI = "http://google.com/dataset.txt"
+TEST_HASH_FUNCTION = "MD5"
+TEST_HASH_VALUE = "moocowpretendthisisahas"
+TEST_HISTORY_NAME = "My history in a model store"
 
 
 class BaseHistories:
@@ -30,8 +40,18 @@ class BaseHistories:
         self.assertEqual(create_response["name"], name)
         return create_response
 
+    def _assert_history_length(self, history_id, n):
+        contents_response = self._get(f"histories/{history_id}/contents")
+        self._assert_status_code_is(contents_response, 200)
+        contents = contents_response.json()
+        assert len(contents) == n, contents
+
 
 class HistoriesApiTestCase(ApiTestCase, BaseHistories):
+
+    def setUp(self):
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
 
     def test_create_history(self):
         # Create a history.
@@ -211,6 +231,11 @@ class HistoriesApiTestCase(ApiTestCase, BaseHistories):
         self._assert_status_code_is(tag_create_response, 200)
 
     # TODO: (CE) test_create_from_copy
+    def test_import_from_model_store_dict(self):
+        response = self.dataset_populator.create_from_store(store_dict=history_model_store_dict())
+        assert_has_keys(response, "name", "id")
+        assert response["name"] == TEST_HISTORY_NAME
+        self._assert_history_length(response["id"], 1)
 
 
 class ImportExportTests(BaseHistories):
@@ -376,12 +401,6 @@ class ImportExportTests(BaseHistories):
             self.dataset_populator.wait_on_history_length(imported_history_id, wait_on_history_length)
 
         return imported_history_id
-
-    def _assert_history_length(self, history_id, n):
-        contents_response = self._get(f"histories/{history_id}/contents")
-        self._assert_status_code_is(contents_response, 200)
-        contents = contents_response.json()
-        assert len(contents) == n, contents
 
     def _check_imported_dataset(self, history_id, hid, assert_ok=True, has_job=True, hda_checker=None, job_checker=None):
         imported_dataset_metadata = self.dataset_populator.get_history_dataset_details(
@@ -561,3 +580,54 @@ class SharingHistoryTestCase(ApiTestCase, BaseHistories, SharingApiTests):
         update_url = self._api_url(url, **{"use_admin_key": True})
         update_response = put(update_url, json=payload)
         return update_response
+
+
+def history_model_store_dict():
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source = dict(
+        model_class="DatasetSource",
+        source_uri=TEST_SOURCE_URI,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = {
+        'dbkey': '?',
+    }
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source],
+        created_from_basename="dataset.txt",
+    )
+    serialized_hda = dict(
+        encoded_id="id_hda1",
+        model_class="HistoryDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension="txt",
+        metadata=metadata,
+        designation=None,
+        deleted=False,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+    )
+
+    return {
+        'datasets': [
+            serialized_hda,
+        ],
+        'history': {
+            'name': TEST_HISTORY_NAME,
+        },
+    }

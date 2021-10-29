@@ -1,21 +1,37 @@
+import base64
+from tempfile import mkdtemp, NamedTemporaryFile
 from typing import (
+    Any,
     List,
+    NamedTuple,
     Optional,
+    Type,
 )
 
 from celery.result import AsyncResult
 
 from galaxy.exceptions import (
     ConfigDoesNotAllowException,
+    RequestParameterInvalidException,
 )
 from galaxy.managers.base import (
     decode_with_security,
     encode_with_security,
     SortableManager,
 )
+from galaxy.model.store import (
+    BagArchiveModelExportStore,
+    get_import_model_store_for_dict,
+    get_import_model_store_for_directory,
+    ImportDiscardedDataType,
+    ImportOptions,
+    ModelExportStore,
+    TarModelExportStore,
+)
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import AsyncTaskResultSummary
 from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.util.compression_utils import CompressedFile
 
 
 def ensure_celery_tasks_enabled(config):
@@ -68,6 +84,86 @@ class ServiceBase:
         if order_by_query and ORDER_BY_SEP_CHAR in order_by_query:
             return [manager.parse_order_by(o) for o in order_by_query.split(ORDER_BY_SEP_CHAR)]
         return manager.parse_order_by(order_by_query)
+
+
+class ServedExportStore(NamedTuple):
+    export_store: ModelExportStore
+    export_target: Any
+
+
+class ServesExportStores:
+
+    def serve_export_store(self, app, download_format: str):
+        export_store_class: Type[ModelExportStore]
+        export_store_class_kwds = {
+            "app": app,
+            "export_files": None,
+            "serialize_dataset_objects": False,
+        }
+        export_target = NamedTemporaryFile("wb")
+        if download_format in ["tar.gz", "tgz"]:
+            export_store_class = TarModelExportStore
+            export_store_class_kwds["gzip"] = True
+        elif download_format.startswith("bag."):
+            bag_archiver = download_format[len("bag."):]
+            if bag_archiver not in ["zip", "tar", "tgz"]:
+                raise RequestParameterInvalidException(f"Unknown download format [{download_format}]")
+            export_store_class = BagArchiveModelExportStore
+            export_store_class_kwds["bag_archiver"] = bag_archiver
+        else:
+            raise RequestParameterInvalidException(f"Unknown download format [{download_format}]")
+        export_store = export_store_class(export_target.name, **export_store_class_kwds)
+        return ServedExportStore(export_store, export_target)
+
+
+class ConsumesModelStores:
+
+    def create_objects_from_store(
+        self,
+        trans,
+        payload,
+        history=None,
+    ):
+        import_options = ImportOptions(
+            discarded_data=ImportDiscardedDataType.FORCE,
+        )
+        if payload.store_content_base64:
+            source_content = payload.store_content_base64
+            assert source_content
+            tf = NamedTemporaryFile("wb")
+            tf.write(base64.b64decode(source_content))
+            tf.flush()
+            temp_dir = mkdtemp()
+            target_dir = CompressedFile(tf.name).extract(temp_dir)
+            model_import_store = get_import_model_store_for_directory(
+                target_dir,
+                import_options=import_options,
+                app=trans.app,
+                user=trans.user
+            )
+        else:
+            store_dict = payload.store_dict
+            assert isinstance(store_dict, dict)
+            model_import_store = get_import_model_store_for_dict(
+                store_dict,
+                import_options=import_options,
+                app=trans.app,
+                user=trans.user
+            )
+
+        new_history = history is None
+        if new_history:
+            if not model_import_store.defines_new_history():
+                raise RequestParameterInvalidException("Supplied model store doesn't define new history to import.")
+            with model_import_store.target_history(legacy_history_naming=False) as new_history:
+                object_tracker = model_import_store.perform_import(new_history, new_history=True)
+                object_tracker.new_history = new_history
+        else:
+            object_tracker = model_import_store.perform_import(
+                history=history,
+                new_history=new_history,
+            )
+        return object_tracker
 
 
 def async_task_summary(async_result: AsyncResult) -> AsyncTaskResultSummary:
