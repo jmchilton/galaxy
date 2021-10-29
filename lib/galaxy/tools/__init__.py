@@ -2693,11 +2693,11 @@ class SetMetadataTool(Tool):
     tool_type = 'set_metadata'
     requires_setting_metadata = False
 
-    def regenerate_imported_metadata_if_needed(self, hda, history, job):
+    def regenerate_imported_metadata_if_needed(self, hda, history, user, session_id):
         if len(hda.metadata_file_types) > 0:
             job, *_ = self.tool_action.execute_via_app(
-                self, self.app, job.session_id,
-                history.id, job.user, incoming={'input1': hda}, overwrite=False
+                self, self.app, session_id,
+                history.id, user, incoming={'input1': hda}, overwrite=False
             )
             self.app.job_manager.enqueue(job=job, tool=self)
 

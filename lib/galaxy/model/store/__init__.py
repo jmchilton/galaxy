@@ -448,9 +448,23 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         self.tag_handler.set_tags_from_list(user=self.user, item=dataset_instance, new_tags_list=tag_list, flush=False)
 
                 if self.app:
-                    self.app.datatypes_registry.set_external_metadata_tool.regenerate_imported_metadata_if_needed(
-                        dataset_instance, history, job
-                    )
+                    # If dataset instance is discarded or deferred, don't attempt to regenerate
+                    # metadata for it.
+                    if dataset_instance.state == dataset_instance.states.OK:
+                        regenerate_kwds: Dict[str, Any] = {}
+                        if job:
+                            regenerate_kwds["user"] = job.user
+                            regenerate_kwds["session_id"] = job.session_id
+                        else:
+                            user = history.user
+                            regenerate_kwds["user"] = user
+                            if user is None:
+                                regenerate_kwds["session_id"] = history.galaxy_sessions[0].galaxy_session.id
+                            else:
+                                regenerate_kwds["session_id"] = None
+                        self.app.datatypes_registry.set_external_metadata_tool.regenerate_imported_metadata_if_needed(
+                            dataset_instance, history, **regenerate_kwds
+                        )
 
                 if model_class == "HistoryDatasetAssociation":
                     if object_key in dataset_attrs:
