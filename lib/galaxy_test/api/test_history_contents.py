@@ -187,6 +187,25 @@ class HistoryContentsApiTestCase(ApiTestCase):
         assert new_hda["state"] == "discarded"
         assert not new_hda["deleted"]
 
+    def test_export_and_imported_discarded_bam(self):
+        contents = self.dataset_populator.new_dataset(
+            self.history_id, content=open(self.test_data_resolver.get_filename("1.bam"), 'rb'), file_type='bam', wait=True
+        )
+        temp_tar = self.dataset_populator.download_contents_to_store(self.history_id, contents, "tgz")
+        with tarfile.open(name=temp_tar) as tf:
+            assert "datasets_attrs.txt" in tf.getnames()
+
+        second_history_id = self.dataset_populator.new_history()
+        as_list = self.dataset_populator.create_contents_from_store(
+            second_history_id,
+            store_path=temp_tar,
+        )
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "discarded"
+        assert not new_hda["deleted"]
+
     def test_import_as_discarded_from_dict(self):
         as_list = self.dataset_populator.create_contents_from_store(
             self.history_id,
