@@ -21,7 +21,12 @@ def get_posix_file_source_config(root_dir: str, roles: str, groups: str) -> str:
   writable: true
   requires_roles: {roles}
   requires_groups: {groups}
-
+- type: posix
+  id: testdatafiles
+  label: Galaxy Stock Test Data
+  doc: Galaxy's test-data directory.
+  root: test-data
+  writable: false
 """
 
 
