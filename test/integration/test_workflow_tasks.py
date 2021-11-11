@@ -62,6 +62,7 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
 
         invocation_details = self.workflow_populator.get_invocation(invocation_id, step_details="true")
         invocation_steps = invocation_details["steps"]
+        assert len(invocation_steps) == 3
         invocation_step0 = invocation_steps[0]
         assert invocation_step0["order_index"] == 0
         assert "output" in invocation_step0["outputs"]
