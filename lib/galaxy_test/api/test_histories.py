@@ -1,5 +1,9 @@
 import time
+<<<<<<< HEAD
 from uuid import uuid4
+=======
+from typing import ClassVar
+>>>>>>> d6aa1cc6e6 (Task-based prepare download for history import/export.)
 
 from requests import put
 
@@ -267,6 +271,11 @@ class HistoriesApiTestCase(ApiTestCase, BaseHistories):
 
 
 class ImportExportTests(BaseHistories):
+<<<<<<< HEAD
+=======
+    task_based: ClassVar[bool]
+
+>>>>>>> d6aa1cc6e6 (Task-based prepare download for history import/export.)
     def _set_up_populators(self):
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
         self.dataset_collection_populator = DatasetCollectionPopulator(self.galaxy_interactor)
@@ -442,10 +451,14 @@ class ImportExportTests(BaseHistories):
         self.dataset_populator.wait_for_history(history_id, assert_ok=assert_ok)
 
         return self.dataset_populator.reimport_history(
+<<<<<<< HEAD
             history_id,
             history_name,
             wait_on_history_length=wait_on_history_length,
             export_kwds=export_kwds,
+=======
+            history_id, history_name, wait_on_history_length=wait_on_history_length, export_kwds=export_kwds, api_key=self.galaxy_interactor.api_key, task_based=self.task_based
+>>>>>>> d6aa1cc6e6 (Task-based prepare download for history import/export.)
         )
 
     def _import_history_and_wait(self, import_data, history_name, wait_on_history_length=None):
@@ -500,6 +513,11 @@ class ImportExportTests(BaseHistories):
 
 
 class ImportExportHistoryTestCase(ApiTestCase, ImportExportTests):
+<<<<<<< HEAD
+=======
+    task_based = False
+
+>>>>>>> d6aa1cc6e6 (Task-based prepare download for history import/export.)
     def setUp(self):
         super().setUp()
         self._set_up_populators()

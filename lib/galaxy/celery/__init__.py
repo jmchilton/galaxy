@@ -143,16 +143,30 @@ serialization.register(
 )
 
 
-def galaxy_task(*args, **celery_task_kwd):
+def galaxy_task(*args, action=None, **celery_task_kwd):
     if "serializer" not in celery_task_kwd:
         celery_task_kwd["serializer"] = PYDANTIC_AWARE_SERIALIER_NAME
 
     def decorate(func):
-        CELERY_TASKS.append(func.__name__)
 
-        @shared_task(**celery_task_kwd)@wraps(fun)args, **kwds):
-            app = get_galaxy_app
+        @shared_task(**celery_task_kwd)
+        @wraps(func)
+        def wrapper(*args, **kwds):
+            app = get_galaxy_app()
             assert app
+            desc = func.__name__
+            if action is not None:
+                desc += f" to {action}"
+            timer = ExecutionTimer()
+            try:
+                rval = app.magic_partial(func)(*args, **kwds)
+                message = f"Successfully executed Celery task {desc} {timer}"
+                log.info(message)
+                return rval
+            except Exception:
+                log.warning(f"Celery task execution failed for {desc} {timer}")
+                raise
+
         return wrapper
 
     if len(args) == 1 and callable(args[0]):

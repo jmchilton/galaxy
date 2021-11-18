@@ -6,7 +6,6 @@ from typing import (
     List,
     NamedTuple,
     Optional,
-    Type,
 )
 
 from celery.result import AsyncResult
@@ -26,13 +25,12 @@ from galaxy.managers.base import (
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.model import User
 from galaxy.model.store import (
-    BagArchiveModelExportStore,
+    get_export_store_factory,
     get_import_model_store_for_dict,
     get_import_model_store_for_directory,
     ImportDiscardedDataType,
     ImportOptions,
     ModelExportStore,
-    TarModelExportStore,
 )
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import AsyncTaskResultSummary
@@ -124,25 +122,8 @@ class ServedExportStore(NamedTuple):
 class ServesExportStores:
 
     def serve_export_store(self, app, download_format: str):
-        export_store_class: Type[ModelExportStore]
-        export_store_class_kwds = {
-            "app": app,
-            "export_files": None,
-            "serialize_dataset_objects": False,
-        }
         export_target = NamedTemporaryFile("wb")
-        if download_format in ["tar.gz", "tgz"]:
-            export_store_class = TarModelExportStore
-            export_store_class_kwds["gzip"] = True
-        elif download_format.startswith("bag."):
-            bag_archiver = download_format[len("bag."):]
-            if bag_archiver not in ["zip", "tar", "tgz"]:
-                raise RequestParameterInvalidException(f"Unknown download format [{download_format}]")
-            export_store_class = BagArchiveModelExportStore
-            export_store_class_kwds["bag_archiver"] = bag_archiver
-        else:
-            raise RequestParameterInvalidException(f"Unknown download format [{download_format}]")
-        export_store = export_store_class(export_target.name, **export_store_class_kwds)
+        export_store = get_export_store_factory(app, download_format)(export_target.name)
         return ServedExportStore(export_store, export_target)
 
 

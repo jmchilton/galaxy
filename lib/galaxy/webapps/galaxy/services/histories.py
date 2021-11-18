@@ -19,8 +19,13 @@ from sqlalchemy import (
     true,
 )
 
-from galaxy import exceptions as glx_exceptions
-from galaxy import model
+from galaxy import (
+    exceptions as glx_exceptions,
+    model
+)
+from galaxy.celery.tasks import (
+    prepare_history_download,
+)
 from galaxy.managers.citations import CitationsManager
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.histories import (
@@ -38,6 +43,7 @@ from galaxy.schema import (
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
+    AsyncFile,
     CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
@@ -49,10 +55,15 @@ from galaxy.schema.schema import (
     JobImportHistoryResponse,
     LabelValuePair,
 )
+from galaxy.schema.tasks import (
+    GenerateHistoryDownload,
+)
 from galaxy.schema.types import LatestLiteral
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import restore_text
+from galaxy.web.short_term_storage import ShortTermStorageAllocator
 from galaxy.webapps.galaxy.services.base import (
+    async_task_summary,
     ConsumesModelStores,
     ServesExportStores,
     ServiceBase,
@@ -79,6 +90,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         citations_manager: CitationsManager,
         history_export_view: HistoryExportView,
         filters: HistoryFilters,
+        short_term_storage_allocator: ShortTermStorageAllocator,
     ):
         super().__init__(security)
         self.manager = manager
@@ -89,6 +101,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self.history_export_view = history_export_view
         self.filters = filters
         self.shareable_service = ShareableService(self.manager, self.serializer)
+        self.short_term_storage_allocator = short_term_storage_allocator
 
     def index(
         self,
@@ -285,6 +298,38 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
             with served_export_store.export_store:
                 served_export_store.export_store.export_history(history)
             return open(served_export_store.export_target.name, "rb")
+
+    def prepare_download(
+        self,
+        trans: ProvidesHistoryContext,
+        history_id: EncodedDatabaseIdField,
+        model_store_format: str,
+        include_files: bool = False,
+        include_hidden: bool = False,
+        include_deleted: bool = False,
+    ) -> AsyncFile:
+        history = self.manager.get_accessible(
+            self.decode_id(history_id),
+            trans.user,
+            current_history=trans.history
+        )
+        export_filename = f"{history.name}.{model_store_format}"
+        mime_type = 'application/x-gzip'  # e.g. application/x-tar
+        short_term_storage_target = self.short_term_storage_allocator.new_target(export_filename, mime_type)
+        request = GenerateHistoryDownload(
+            history_id=history.id,
+            model_store_format=model_store_format,
+            short_term_storage_request_id=short_term_storage_target.request_id,
+            include_files=include_files,
+            include_deleted=include_deleted,
+            include_hidden=include_hidden,
+            user=trans.async_request_user,
+        )
+        result = prepare_history_download.delay(request=request)
+        return AsyncFile(
+            storage_request_id=short_term_storage_target.request_id,
+            task=async_task_summary(result)
+        )
 
     def update(
         self,
