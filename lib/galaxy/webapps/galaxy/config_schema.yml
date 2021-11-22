@@ -493,6 +493,34 @@ mapping:
           changes are found, modified tours are automatically reloaded. Takes the same values as the
           'watch_tools' option.
 
+      short_term_storage_dir:
+        type: str
+        default: short_term_web_storage
+        path_resolves_to: cache_dir
+        required: false
+        desc: |
+          Location of files available for a short time as downloads (short term storage).
+
+      short_term_storage_default_duration:
+        type: int
+        required: false
+        desc: |
+          Default duration before short term storage files can be cleaned up.
+
+      short_term_storage_maximum_duration:
+        type: int
+        required: false
+        desc: |
+          Default duration before short term storage files can be cleaned up.
+
+      short_term_storage_cleanup_interval:
+        type: int
+        required: false
+        default: 3600
+        desc: |
+          How many seconds between instances of short term storage being cleaned up in default
+          Celery task configuration.
+
       file_sources_config_file:
         type: str
         default: file_sources_conf.yml
@@ -500,6 +528,13 @@ mapping:
         required: false
         desc: |
           Configured FileSource plugins.
+
+      file_sources:
+        type: seq
+        sequence:
+          - type: any
+        desc: |
+          FileSource plugins described embedded into Galaxy's config.
 
       enable_mulled_containers:
         type: bool
@@ -3363,6 +3398,18 @@ mapping:
           Offload long-running tasks to a Celery task queue.
           Activate this only if you have setup a Celery worker for Galaxy.
           For details, see https://docs.galaxyproject.org/en/master/admin/production.html
+
+      celery_broker:
+        type: str
+        required: false
+        desc: |
+          Celery broker (if unset falls back to amqp_internal_connection).
+
+      celery_backend:
+        type: str
+        required: false
+        desc: |
+          If set, it will be the results backend for Celery.
 
       use_pbkdf2:
         type: bool

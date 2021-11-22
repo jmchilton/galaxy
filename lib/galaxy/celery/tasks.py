@@ -2,21 +2,27 @@ from functools import wraps
 
 from celery import shared_task
 from kombu import serialization
-from lagom import magic_bind_to_container
 
 from galaxy import model
 from galaxy.app import MinimalManagerApp
+from galaxy.config import GalaxyAppConfiguration
 from galaxy.jobs.manager import JobManager
+from galaxy.managers.collections import DatasetCollectionManager
 from galaxy.managers.hdas import HDAManager
 from galaxy.managers.lddas import LDDAManager
+from galaxy.managers.markdown_util import generate_branded_pdf
 from galaxy.model.scoped_session import galaxy_scoped_session
+from galaxy.schema.tasks import (
+    GeneratePdfDownload,
+    PrepareDatasetCollectionDownload,
+)
 from galaxy.util import ExecutionTimer
 from galaxy.util.custom_logging import get_logger
+from galaxy.web.short_term_storage import ShortTermStorageMonitor
 from . import get_galaxy_app
 from ._serialization import schema_dumps, schema_loads
 
 log = get_logger(__name__)
-CELERY_TASKS = []
 PYDANTIC_AWARE_SERIALIER_NAME = 'pydantic-aware-json'
 
 
@@ -33,14 +39,13 @@ def galaxy_task(*args, **celery_task_kwd):
         celery_task_kwd['serializer'] = PYDANTIC_AWARE_SERIALIER_NAME
 
     def decorate(func):
-        CELERY_TASKS.append(func.__name__)
 
         @shared_task(**celery_task_kwd)
         @wraps(func)
         def wrapper(*args, **kwds):
             app = get_galaxy_app()
             assert app
-            return magic_bind_to_container(app)(func)(*args, **kwds)
+            return app.magic_partial(func)(*args, **kwds)
 
         return wrapper
 
@@ -98,8 +103,38 @@ def export_history(
 
 
 @galaxy_task
+def prepare_dataset_collection_download(
+    request: PrepareDatasetCollectionDownload,
+    collection_manager: DatasetCollectionManager,
+):
+    """Create a short term storage file tracked and available for download of target collection."""
+    timer = ExecutionTimer()
+    collection_manager.write_dataset_collection(request)
+    log.info(f"Collection download file staged {timer}")
+
+
+@galaxy_task
+def prepare_pdf_download(
+    request: GeneratePdfDownload,
+    config: GalaxyAppConfiguration,
+    short_term_storage_monitor: ShortTermStorageMonitor
+):
+    timer = ExecutionTimer()
+    generate_branded_pdf(request, config, short_term_storage_monitor)
+    log.debug(f"Successfully generated PDF for download {timer}")
+
+
+@galaxy_task
 def prune_history_audit_table(sa_session: galaxy_scoped_session):
     """Prune ever growing history_audit table."""
     timer = ExecutionTimer()
     model.HistoryAudit.prune(sa_session)
     log.debug(f"Successfully pruned history_audit table {timer}")
+
+
+@galaxy_task
+def cleanup_short_term_storage(storage_monitor: ShortTermStorageMonitor):
+    """Cleanup short term storage."""
+    timer = ExecutionTimer()
+    storage_monitor.cleanup()
+    log.debug(f"Successfully cleaned up short term storage {timer}")
