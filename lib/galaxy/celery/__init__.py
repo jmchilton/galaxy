@@ -7,9 +7,12 @@ from threading import local
 from typing import Any, Dict
 
 from celery import Celery
+from celery import shared_task
+from kombu import serialization
 
 from galaxy.config import Configuration
 from galaxy.main_config import find_config
+from galaxy.util import ExecutionTimer
 from galaxy.util.custom_logging import get_logger
 from galaxy.util.properties import load_app_properties
 from ._serialization import (
@@ -21,8 +24,16 @@ log = get_logger(__name__)
 
 MAIN_TASK_MODULE = 'galaxy.celery.tasks'
 TASKS_MODULES = [MAIN_TASK_MODULE]
+PYDANTIC_AWARE_SERIALIER_NAME = 'pydantic-aware-json'
 
 APP_LOCAL = local()
+
+serialization.register(
+    PYDANTIC_AWARE_SERIALIER_NAME,
+    encoder=schema_dumps,
+    decoder=schema_loads,
+    content_type='application/json'
+)
 
 
 def set_thread_app(app):
@@ -132,15 +143,6 @@ if cleanup_interval > 0:
 if beat_schedule:
     celery_app.conf.beat_schedule = beat_schedule
 celery_app.conf.timezone = "UTC"
-
-
-CELERY_TASKS = []
-PYDANTIC_AWARE_SERIALIER_NAME = "pydantic-aware-json"
-
-
-serialization.register(
-    PYDANTIC_AWARE_SERIALIER_NAME, encoder=schema_dumps, decoder=schema_loads, content_type="application/json"
-)
 
 
 def galaxy_task(*args, action=None, **celery_task_kwd):

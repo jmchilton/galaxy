@@ -1759,7 +1759,6 @@ class DirectoryModelExportStore(ModelExportStore):
             jobs_attrs_out.write(json_encoder.encode(jobs_attrs))
         return jobs_attrs
 
-
     def export_history(self, history: model.History, include_hidden: bool = False, include_deleted: bool = False) -> None:
         app = self.app
         export_directory = self.export_directory
@@ -1820,19 +1819,6 @@ class DirectoryModelExportStore(ModelExportStore):
             self.add_dataset(ldda, add_dataset)
         for folder in library_folder.folders:
             self.export_library_folder(folder, include_hidden=include_hidden, include_deleted=include_deleted)
-
-    def export_collection(self, collection, include_deleted=False):
-        self.add_dataset_collection(collection)
-
-        # export jobs for these datasets
-        for collection_dataset in collection.dataset_instances:
-            if collection_dataset.deleted and not include_deleted:
-                include_files = False
-            else:
-                include_files = True
-
-            self.add_dataset(collection_dataset, include_files=include_files)
-            self.collection_datasets[collection_dataset.id] = True
 
     def export_workflow_invocation(self, workflow_invocation, include_hidden=False, include_deleted=False):
         self.included_invocations.append(workflow_invocation)

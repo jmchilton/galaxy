@@ -15,16 +15,12 @@ class ImportExportHistoryOutputsToWorkingDirIntegrationTestCase(ImportExportTest
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
-        config['outputs_to_working_directory'] = True
+        config["outputs_to_working_directory"] = True
+        config["metadata_strategy"] = "extended"
 
     def setUp(self):
         super().setUp()
         self._set_up_populators()
-
-    @classmethod
-    def handle_galaxy_config_kwds(cls, config):
-        config["metadata_strategy"] = "extended"
-        config["outputs_to_working_directory"] = True
 
 
 class ImportExportHistoryViaTasksIntegrationTestCase(ImportExportTests, IntegrationTestCase, UsesCeleryTasks):

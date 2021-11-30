@@ -1,11 +1,8 @@
-from sqlalchemy.orm.scoping import (
-    scoped_session,
-)
-
 from galaxy import model
 from galaxy.app import MinimalManagerApp
 from galaxy.jobs.manager import JobManager
 from galaxy.managers.histories import HistoryManager
+from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.schema import (
     HistoryContentType,
 )
@@ -27,7 +24,7 @@ class ModelStoreManager:
         self,
         app: MinimalManagerApp,
         history_manager: HistoryManager,
-        sa_session: scoped_session,
+        sa_session: galaxy_scoped_session,
         job_manager: JobManager,
         short_term_storage_monitor: ShortTermStorageMonitor,
     ):

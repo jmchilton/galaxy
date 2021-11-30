@@ -1,7 +1,3 @@
-from functools import wraps
-
-from kombu import serialization
-
 from galaxy import model
 from galaxy.celery import galaxy_task
 from galaxy.config import GalaxyAppConfiguration
@@ -20,23 +16,10 @@ from galaxy.schema.tasks import (
     PrepareDatasetCollectionDownload,
     SetupHistoryExportJob,
 )
-from galaxy.structured_app import MinimalManagerApp
-from galaxy.util import ExecutionTimer
 from galaxy.util.custom_logging import get_logger
 from galaxy.web.short_term_storage import ShortTermStorageMonitor
-from . import get_galaxy_app
-from ._serialization import schema_dumps, schema_loads
 
 log = get_logger(__name__)
-PYDANTIC_AWARE_SERIALIER_NAME = 'pydantic-aware-json'
-
-
-serialization.register(
-    PYDANTIC_AWARE_SERIALIER_NAME,
-    encoder=schema_dumps,
-    decoder=schema_loads,
-    content_type='application/json'
-)
 
 
 @galaxy_task(ignore_result=True, action="recalcuate a user's disk usage")
