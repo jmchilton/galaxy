@@ -7,10 +7,13 @@ import json
 import tarfile
 from typing import Any, Dict
 
+from requests import Response
+
 from galaxy_test.api.test_workflows import RunsWorkflowFixtures
 from galaxy_test.base import api_asserts
 from galaxy_test.base.populators import (
     DatasetPopulator,
+    RunJobsSummary,
     skip_without_tool,
     WorkflowPopulator,
 )
@@ -91,6 +94,7 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
         with self.dataset_populator.test_history() as history_id:
             response = self.workflow_populator.create_invocation_from_store(history_id, store_path=temp_tar)
         invocation_details = self._assert_one_invocation_created_and_get_details(response)
+
         invocation_steps = invocation_details["steps"]
         for invocation_step in invocation_steps:
             assert invocation_step["state"] == "scheduled"
@@ -138,6 +142,18 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
             inputs = invocation_details["inputs"]
             assert inputs["0"]["src"] == "hdca"
 
+            self._rerun_imported_workflow(summary, invocation_details)
+
+    def _rerun_imported_workflow(self, summary: RunJobsSummary, create_response: Response):
+        workflow_id = create_response["workflow_id"]
+        history_id = self.dataset_populator.new_history()
+        new_workflow_request = summary.workflow_request.copy()
+        new_workflow_request["history"] = f"hist_id={history_id}"
+        invocation_response = self.workflow_populator.invoke_workflow_raw(workflow_id, new_workflow_request)
+        invocation_response.raise_for_status()
+        invocation_id = invocation_response.json()["id"]
+        self.workflow_populator.wait_for_workflow(workflow_id, invocation_id, history_id, assert_ok=True)
+
     def test_export_import_invocation_with_input_as_output(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow_with_inputs_as_outputs(history_id)
@@ -157,6 +173,8 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
             assert out == "A text variable"
             inputs = invocation_details["input_step_parameters"]
             assert "text_input" in inputs
+
+            self._rerun_imported_workflow(summary, invocation_details)
 
     def _assert_one_invocation_created_and_get_details(self, response: Any) -> Dict[str, Any]:
         assert isinstance(response, list)
