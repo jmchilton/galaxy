@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from .schema import (
@@ -60,6 +62,13 @@ class GenerateInvocationDownload(BaseModel):
     short_term_storage_request_id: str
     include_files: bool
     user: RequestUser
+
+
+class ImportModelStoreTaskRequest(BaseModel):
+    user: RequestUser
+    history_id: Optional[int]
+    source_uri: str
+    for_library: bool
 
 
 class MaterializeDatasetInstanceTaskRequest(BaseModel):

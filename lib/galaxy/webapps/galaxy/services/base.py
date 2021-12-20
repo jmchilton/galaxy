@@ -1,5 +1,4 @@
-import base64
-from tempfile import mkdtemp, NamedTemporaryFile
+from tempfile import NamedTemporaryFile
 from typing import (
     Any,
     cast,
@@ -13,7 +12,6 @@ from celery.result import AsyncResult
 from galaxy.exceptions import (
     AuthenticationRequired,
     ConfigDoesNotAllowException,
-    RequestParameterInvalidException,
 )
 from galaxy.managers.base import (
     decode_with_security,
@@ -23,20 +21,16 @@ from galaxy.managers.base import (
     SortableManager,
 )
 from galaxy.managers.context import ProvidesUserContext
+from galaxy.managers.model_stores import create_objects_from_store
 from galaxy.model import User
 from galaxy.model.store import (
     get_export_store_factory,
-    get_import_model_store_for_dict,
-    get_import_model_store_for_directory,
-    ImportDiscardedDataType,
-    ImportOptions,
     ModelExportStore,
 )
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import AsyncTaskResultSummary
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import ready_name_for_url
-from galaxy.util.compression_utils import CompressedFile
 from galaxy.web.short_term_storage import (
     ShortTermStorageAllocator,
     ShortTermStorageTarget
@@ -154,50 +148,16 @@ class ConsumesModelStores:
         history=None,
         for_library=False,
     ):
-        import_options = ImportOptions(
-            discarded_data=ImportDiscardedDataType.FORCE,
-            allow_library_creation=for_library,
-        )
         galaxy_user = None
         if isinstance(trans.user, User):
             galaxy_user = trans.user
-        if payload.store_content_base64:
-            source_content = payload.store_content_base64
-            assert source_content
-            tf = NamedTemporaryFile("wb")
-            tf.write(base64.b64decode(source_content))
-            tf.flush()
-            temp_dir = mkdtemp()
-            target_dir = CompressedFile(tf.name).extract(temp_dir)
-            model_import_store = get_import_model_store_for_directory(
-                target_dir,
-                import_options=import_options,
-                app=trans.app,
-                user=galaxy_user
-            )
-        else:
-            store_dict = payload.store_dict
-            assert isinstance(store_dict, dict)
-            model_import_store = get_import_model_store_for_dict(
-                store_dict,
-                import_options=import_options,
-                app=trans.app,
-                user=galaxy_user,
-            )
-
-        new_history = history is None and not for_library
-        if new_history:
-            if not model_import_store.defines_new_history():
-                raise RequestParameterInvalidException("Supplied model store doesn't define new history to import.")
-            with model_import_store.target_history(legacy_history_naming=False) as new_history:
-                object_tracker = model_import_store.perform_import(new_history, new_history=True)
-                object_tracker.new_history = new_history
-        else:
-            object_tracker = model_import_store.perform_import(
-                history=history,
-                new_history=new_history,
-            )
-        return object_tracker
+        return create_objects_from_store(
+            app=trans.app,
+            galaxy_user=galaxy_user,
+            payload=payload,
+            history=history,
+            for_library=for_library,
+        )
 
 
 def async_task_summary(async_result: AsyncResult) -> AsyncTaskResultSummary:

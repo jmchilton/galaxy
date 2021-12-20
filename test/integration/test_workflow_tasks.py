@@ -7,8 +7,6 @@ import json
 import tarfile
 from typing import Any, Dict
 
-from requests import Response
-
 from galaxy_test.api.test_workflows import RunsWorkflowFixtures
 from galaxy_test.base import api_asserts
 from galaxy_test.base.populators import (
@@ -144,7 +142,7 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
 
             self._rerun_imported_workflow(summary, invocation_details)
 
-    def _rerun_imported_workflow(self, summary: RunJobsSummary, create_response: Response):
+    def _rerun_imported_workflow(self, summary: RunJobsSummary, create_response: Dict[str, Any]):
         workflow_id = create_response["workflow_id"]
         history_id = self.dataset_populator.new_history()
         new_workflow_request = summary.workflow_request.copy()

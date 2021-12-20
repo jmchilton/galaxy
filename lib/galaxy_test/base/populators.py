@@ -545,9 +545,19 @@ class BaseDatasetPopulator(BasePopulator):
         create_response = self._post("histories/from_store", payload, json=True)
         return create_response
 
+    def create_from_store_raw_async(self, payload: Dict[str, Any]) -> Response:
+        create_response = self._post("histories/from_store_async", payload, json=True)
+        return create_response
+
     def create_from_store(self, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None) -> Dict[str, Any]:
         payload = _store_payload(store_dict=store_dict, store_path=store_path)
         create_response = self.create_from_store_raw(payload)
+        create_response.raise_for_status()
+        return create_response.json()
+
+    def create_from_store_async(self, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None) -> Dict[str, Any]:
+        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        create_response = self.create_from_store_raw_async(payload)
         create_response.raise_for_status()
         return create_response.json()
 
@@ -1087,24 +1097,28 @@ class BaseDatasetPopulator(BasePopulator):
         api_asserts.assert_status_code_is(import_response, 200)
         return import_response.json()["id"]
 
-    def import_history_and_wait_for_name(self, import_data, history_name):
-        def history_names():
-            return {h["name"]: h for h in self.get_histories()}
+    def wait_for_history_with_name(self, history_name: str, desc: str) -> Dict[str, Any]:
+        def has_history_with_name():
+            histories = self.history_names()
+            return histories.get(history_name, None)
 
+        target_history = wait_on(has_history_with_name, desc=desc)
+        return target_history
+
+    def import_history_and_wait_for_name(self, import_data, history_name):
         import_name = f"imported from archive: {history_name}"
-        assert import_name not in history_names()
+        assert import_name not in self.history_names()
 
         job_id = self.import_history(import_data)
         self.wait_for_job(job_id, assert_ok=True)
 
-        def has_history_with_name():
-            histories = history_names()
-            return histories.get(import_name, None)
-
-        imported_history = wait_on(has_history_with_name, desc="import history")
+        imported_history = self.wait_for_history_with_name(import_name, "import history")
         imported_history_id = imported_history["id"]
         self.wait_for_history(imported_history_id)
         return imported_history_id
+
+    def history_names(self) -> Dict[str, Dict]:
+        return {h["name"]: h for h in self.get_histories()}
 
     def rename_history(self, history_id, new_name):
         update_url = f"histories/{history_id}"
