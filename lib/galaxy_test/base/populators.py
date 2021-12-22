@@ -571,18 +571,14 @@ class BaseDatasetPopulator(BasePopulator):
         create_response.raise_for_status()
         return create_response.json()
 
-    def download_contents_to_store(self, history_id: str, history_content: Dict[str, Any], extension=".tgz", task_based=False) -> str:
-        if not task_based:
-            url = f"histories/{history_id}/contents/{history_content['history_content_type']}s/{history_content['id']}.{extension}"
-            return self._get_to_tempfile(url)
-        else:
-            url = f"histories/{history_id}/contents/{history_content['history_content_type']}s/{history_content['id']}/prepare_store_download"
-            download_response = self._get(url, dict(include_files=False, model_store_format=extension))
-            storage_request_id = self.assert_download_request_ok(download_response)
-            self.wait_for_download_ready(storage_request_id)
-            return self._get_to_tempfile(f"short_term_storage/{storage_request_id}")
+    def download_contents_to_store(self, history_id: str, history_content: Dict[str, Any], extension=".tgz") -> str:
+        url = f"histories/{history_id}/contents/{history_content['history_content_type']}s/{history_content['id']}/prepare_store_download"
+        download_response = self._get(url, dict(include_files=False, model_store_format=extension))
+        storage_request_id = self.assert_download_request_ok(download_response)
+        self.wait_for_download_ready(storage_request_id)
+        return self._get_to_tempfile(f"short_term_storage/{storage_request_id}")
 
-    def reupload_contents(self, history_content: Dict[str, Any], extension: str = ".tgz", task_based: bool = False):
+    def reupload_contents(self, history_content: Dict[str, Any]):
         history_id = history_content["history_id"]
         temp_tar = self.download_contents_to_store(history_id, history_content, "tgz")
         with tarfile.open(name=temp_tar) as tf:

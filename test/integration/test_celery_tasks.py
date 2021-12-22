@@ -93,7 +93,7 @@ class CeleryTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks):
         hda1 = self.dataset_populator.new_dataset(history_id, wait=True)
 
         contents = hda1
-        temp_tar = self.dataset_populator.download_contents_to_store(history_id, contents, "tgz", task_based=True)
+        temp_tar = self.dataset_populator.download_contents_to_store(history_id, contents, "tgz")
         with tarfile.open(name=temp_tar) as tf:
             assert "datasets_attrs.txt" in tf.getnames()
 

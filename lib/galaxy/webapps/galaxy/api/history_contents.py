@@ -50,6 +50,7 @@ from galaxy.web import (
     expose_api,
     expose_api_anonymous,
     expose_api_anonymous_allow_files,
+    expose_api_raw_anonymous,
 )
 from galaxy.webapps.base.controller import (
     UsesLibraryMixinItems,
@@ -420,6 +421,37 @@ class FastAPIHistoryContents:
             serialization_params=serialization_params,
             contents_type=type,
             fuzzy_count=fuzzy_count,
+        )
+
+    @router.get(
+        '/api/histories/{history_id}/contents/{type}s/{id}/prepare_store_download',
+        summary='TODO',
+    )
+    @router.get(
+        '/api/histories/{history_id}/contents/{id}',
+        name='history_content',
+        summary='TODO.',
+        deprecated=True,
+    )
+    def prepare_store_download(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        id: EncodedDatabaseIdField = HistoryItemIDPathParam,
+        type: HistoryContentType = ContentTypeQueryParam,
+        model_store_format: str = Query(
+            default="tar.gz",
+        ),
+        include_files: bool = Query(
+            default=False,
+        ),
+    ):
+        return self.service.prepare_store_download(
+            trans,
+            id,
+            model_store_format=model_store_format,
+            contents_type=type,
+            include_files=include_files,
         )
 
     @router.get(

@@ -5,7 +5,6 @@ import re
 from enum import Enum
 from typing import (
     Any,
-    BinaryIO,
     Dict,
     List,
     Optional,
@@ -314,7 +313,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         serialization_params: SerializationParams,
         contents_type: HistoryContentType,
         fuzzy_count: Optional[int] = None,
-    ) -> Union[AnyHistoryContentItem, BinaryIO]:
+    ) -> AnyHistoryContentItem:
         """
         Return detailed information about an HDA or HDCA within a history
 
@@ -345,26 +344,11 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
 
         :returns:   dictionary containing detailed HDA or HDCA information
         """
-        download_format = serialization_params.format or "json"
-        if download_format == "json":
-            if contents_type == HistoryContentType.dataset:
-                return self.__show_dataset(trans, id, serialization_params)
-            elif contents_type == HistoryContentType.dataset_collection:
-                return self.__show_dataset_collection(trans, id, serialization_params, fuzzy_count)
-            raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
-        else:
-            served_export_store = self.serve_export_store(trans.app, download_format)
-            with served_export_store.export_store:
-                if contents_type == HistoryContentType.dataset:
-                    hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
-                    served_export_store.export_store.add_dataset(hda)
-                elif contents_type == HistoryContentType.dataset_collection:
-                    dataset_collection_instance = self.__get_accessible_collection(trans, id)
-                    served_export_store.export_store.export_collection(dataset_collection_instance)
-                else:
-                    raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
-
-            return open(served_export_store.export_target.name, "rb")
+        if contents_type == HistoryContentType.dataset:
+            return self.__show_dataset(trans, id, serialization_params)
+        elif contents_type == HistoryContentType.dataset_collection:
+            return self.__show_dataset_collection(trans, id, serialization_params, fuzzy_count)
+        raise exceptions.UnknownContentsType(f'Unknown contents type: {contents_type}')
 
     def prepare_store_download(
         self,
