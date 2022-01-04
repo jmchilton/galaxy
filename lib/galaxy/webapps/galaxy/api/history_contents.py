@@ -35,6 +35,7 @@ from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryContentItem,
     AnyJobStateSummary,
+    AsyncFile,
     AsyncTaskResultSummary,
     DatasetAssociationRoles,
     DeleteHistoryContentPayload,
@@ -495,6 +496,26 @@ class FastAPIHistoryContents:
         """
         archive = self.service.get_dataset_collection_archive_for_download(trans, id)
         return StreamingResponse(archive.get_iterator(), headers=archive.get_headers())
+
+    @router.get(
+        '/api/histories/{history_id}/contents/dataset_collections/{id}/prepare_download',
+        summary='TODO',
+    )
+    @router.get(
+        '/api/dataset_collection/{id}/prepare_download',
+        summary='TODO',
+        tags=["dataset collections"],
+    )
+    def prepare_collection_download(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        id: EncodedDatabaseIdField = HistoryHDCAIDPathParam,
+    ) -> AsyncFile:
+        """Download the content of a history dataset collection as a `zip` archive
+        while maintaining approximate collection structure.
+        """
+        return self.service.prepare_collection_download(trans, id)
 
     @router.post(
         "/api/histories/{history_id}/contents/{type}s",
