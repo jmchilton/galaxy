@@ -566,6 +566,10 @@ class BaseDatasetPopulator(BasePopulator):
         return create_response
 
     def create_contents_from_store(self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        if store_dict is not None:
+            assert isinstance(store_dict, dict)
+        if store_path is not None:
+            assert isinstance(store_path, str)
         payload = _store_payload(store_dict=store_dict, store_path=store_path)
         create_response = self.create_contents_from_store_raw(history_id, payload)
         create_response.raise_for_status()
@@ -2441,7 +2445,7 @@ def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Opti
     if store_dict is not None:
         payload["store_dict"] = store_dict
     if store_path is not None:
-        payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read())
+        payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read()).decode("utf-8")
     return payload
 
 
