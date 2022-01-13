@@ -200,29 +200,6 @@ class CollectionElementIdentifier(Model):
 CollectionElementIdentifier.update_forward_refs()
 
 
-class CreateNewCollectionPayload(Model):
-    collection_type: Optional[str] = Field(
-        default=None,
-        title="Collection Type",
-        description="The type of the collection. For example, `list`, `paired`, `list:paired`.",
-    )
-    element_identifiers: Optional[List[CollectionElementIdentifier]] = Field(
-        default=None,
-        title="Element Identifiers",
-        description="List of elements that should be in the new collection.",
-    )
-    name: Optional[str] = Field(
-        default=None,
-        title="Name",
-        description="The name of the new collection.",
-    )
-    hide_source_items: Optional[bool] = Field(
-        default=False,
-        title="Hide Source Items",
-        description="Whether to mark the original HDAs as hidden.",
-    )
-
-
 class CreateHistoryContentFromStore(Model):
     store_content_base64: Optional[str]
     store_dict: Optional[Dict[str, Any]]
