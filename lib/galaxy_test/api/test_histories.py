@@ -3,7 +3,14 @@ from uuid import uuid4
 
 from requests import put
 
+from galaxy.model.unittest_utils.store_fixtures import (
+    history_model_store_dict,
+    TEST_HISTORY_NAME,
+)
 from galaxy_test.api.sharable import SharingApiTests
+from galaxy_test.base.api_asserts import (
+    assert_has_keys,
+)
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
     DatasetPopulator,
@@ -27,6 +34,12 @@ class BaseHistories:
         self._assert_has_keys(create_response, "name", "id")
         self.assertEqual(create_response["name"], name)
         return create_response
+
+    def _assert_history_length(self, history_id, n):
+        contents_response = self._get(f"histories/{history_id}/contents")
+        self._assert_status_code_is(contents_response, 200)
+        contents = contents_response.json()
+        assert len(contents) == n, contents
 
 
 class HistoriesApiTestCase(ApiTestCase, BaseHistories):
@@ -245,6 +258,13 @@ class HistoriesApiTestCase(ApiTestCase, BaseHistories):
         assert source_hda["history_id"] != copied_hda["history_id"]
         assert source_hda["hid"] == copied_hda["hid"] == 2
 
+    # TODO: (CE) test_create_from_copy
+    def test_import_from_model_store_dict(self):
+        response = self.dataset_populator.create_from_store(store_dict=history_model_store_dict())
+        assert_has_keys(response, "name", "id")
+        assert response["name"] == TEST_HISTORY_NAME
+        self._assert_history_length(response["id"], 1)
+
 
 class ImportExportTests(BaseHistories):
     def _set_up_populators(self):
@@ -437,15 +457,7 @@ class ImportExportTests(BaseHistories):
 
         return imported_history_id
 
-    def _assert_history_length(self, history_id, n):
-        contents_response = self._get(f"histories/{history_id}/contents")
-        self._assert_status_code_is(contents_response, 200)
-        contents = contents_response.json()
-        assert len(contents) == n, contents
-
-    def _check_imported_dataset(
-        self, history_id, hid, assert_ok=True, has_job=True, hda_checker=None, job_checker=None
-    ):
+    def _check_imported_dataset(self, history_id, hid, assert_ok=True, has_job=True, hda_checker=None, job_checker=None):
         imported_dataset_metadata = self.dataset_populator.get_history_dataset_details(
             history_id=history_id,
             hid=hid,

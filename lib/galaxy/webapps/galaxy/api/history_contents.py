@@ -48,7 +48,7 @@ from galaxy.schema.schema import (
 from galaxy.web import (
     expose_api,
     expose_api_anonymous,
-    expose_api_raw_anonymous,
+    expose_api_anonymous_allow_files,
 )
 from galaxy.webapps.base.controller import (
     UsesLibraryMixinItems,
@@ -61,6 +61,7 @@ from galaxy.webapps.galaxy.api.common import (
     query_serialization_params,
 )
 from galaxy.webapps.galaxy.services.history_contents import (
+    CreateHistoryContentFromStore,
     CreateHistoryContentPayload,
     DatasetDetailsType,
     DirectionOptions,
@@ -776,11 +777,11 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
             trans, history_id, index_params, legacy_params, serialization_params, filter_parameters
         )
 
-    @expose_api_anonymous
+    @expose_api_anonymous_allow_files
     def show(self, trans, id, history_id, **kwd):
         """
-        GET /api/histories/{history_id}/contents/{id}
-        GET /api/histories/{history_id}/contents/{type}/{id}
+        GET /api/histories/{history_id}/contents/{id}{.format}
+        GET /api/histories/{history_id}/contents/{type}/{id}{.format}
 
         return detailed information about an HDA or HDCA within a history
 
@@ -814,6 +815,9 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
                             The UI uses this parameter to fetch a "balanced" concept of
                             the "start" of large collections at every depth of the
                             collection.
+        :param  format:     Defaults to json like a typical entry but allow exporting as tar.gz,
+                            bagit.tar.gz
+        :type   format:     str
 
         :rtype:     dict
         :returns:   dictionary containing detailed HDA or HDCA information
@@ -990,6 +994,19 @@ class HistoryContentsController(BaseGalaxyAPIController, UsesLibraryMixinItems, 
         create_payload = CreateHistoryContentPayload(**payload)
         create_payload.type = kwd.get("type") or create_payload.type
         return self.service.create(trans, history_id, create_payload, serialization_params)
+
+    @expose_api_anonymous
+    def create_from_store(self, trans, history_id, payload, **kwd):
+        """
+        POST /api/histories/{history_id}/contents_from_store
+        Create history contents from model store.
+        Input can a tarfile created with build_objects script distributed
+        with galaxy-data, from an exported history with files stipped out,
+        or hand-crafted JSON dictionary.
+        """
+        serialization_params = parse_serialization_params(**kwd)
+        create_payload = CreateHistoryContentFromStore(**payload)
+        return self.service.create_from_store(trans, history_id, create_payload, serialization_params)
 
     @expose_api
     def show_roles(self, trans, encoded_dataset_id, **kwd):
