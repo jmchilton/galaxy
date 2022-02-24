@@ -19,7 +19,8 @@ from ._serialization import (
 
 log = get_logger(__name__)
 
-TASKS_MODULES = ['galaxy.celery.tasks']
+MAIN_TASK_MODULE = 'galaxy.celery.tasks'
+TASKS_MODULES = [MAIN_TASK_MODULE]
 
 APP_LOCAL = local()
 
@@ -92,6 +93,14 @@ def get_history_audit_table_prune_interval():
         return 3600
 
 
+def get_cleanup_short_term_storage_interval():
+    config = get_config()
+    if config:
+        return config.short_term_storage_cleanup_interval
+    else:
+        return 3600
+
+
 broker = get_broker()
 backend = get_backend()
 celery_app_kwd: Dict[str, Any] = {
@@ -101,15 +110,27 @@ celery_app_kwd: Dict[str, Any] = {
 if backend:
     celery_app_kwd["backend"] = backend
 
-celery_app = Celery("galaxy", **celery_app_kwd)
+celery_app = Celery('galaxy', **celery_app_kwd)
+
+# setup cron like tasks...
+beat_schedule: Dict[str, Dict[str, Any]] = {}
+
 prune_interval = get_history_audit_table_prune_interval()
 if prune_interval > 0:
-    celery_app.conf.beat_schedule = {
-        "prune-history-audit-table": {
-            "task": "galaxy.celery.tasks.prune_history_audit_table",
-            "schedule": prune_interval,
-        },
+    beat_schedule["prune-history-audit-table"] = {
+        "task": f'{MAIN_TASK_MODULE}.prune_history_audit_table',
+        "schedule": prune_interval,
     }
+
+cleanup_interval = get_cleanup_short_term_storage_interval()
+if cleanup_interval > 0:
+    beat_schedule["cleanup-short-term-storage"] = {
+        "task": f'{MAIN_TASK_MODULE}.cleanup_short_term_storage',
+        "schedule": cleanup_interval
+    }
+
+if beat_schedule:
+    celery_app.conf.beat_schedule = beat_schedule
 celery_app.conf.timezone = "UTC"
 
 

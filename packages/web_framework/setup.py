@@ -38,6 +38,8 @@ PACKAGES = [
     "galaxy.web.framework.middleware",
     "galaxy.web.legacy_framework",
     "galaxy.web.proxy",
+    "galaxy.web.short_term_storage",
+    "galaxy.web.proxy",
 ]
 ENTRY_POINTS = """
         [console_scripts]
