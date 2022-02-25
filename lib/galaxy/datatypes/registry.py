@@ -48,6 +48,7 @@ class Registry:
         self.log.addHandler(logging.NullHandler())
         self.config = config
         self.datatypes_by_extension = {}
+        self.datatypes_by_suffix_inferences = {}
         self.mimetypes_by_extension = {}
         self.datatype_converters = {}
         # Converters defined in local datatypes_conf.xml
@@ -336,6 +337,16 @@ class Registry:
                                 self.datatypes_by_extension[extension].max_optional_metadata_filesize = elem.get(
                                     "max_optional_metadata_filesize", None
                                 )
+                                infer_from_suffixes = []
+                                # read from element instead of attribute so we can customize references to
+                                # compressed files in the future (e.g. maybe some day faz will be a compressed fasta
+                                # or something along those lines)
+                                for infer_from in elem.findall("infer_from"):
+                                    suffix = infer_from.get("suffix", None)
+                                    if suffix is None:
+                                        raise Exception("Failed to parse infer_from datatype element")
+                                    infer_from_suffixes.append(suffix)
+                                    self.datatypes_by_suffix_inferences[suffix] = datatype_instance
                                 for converter in elem.findall("converter"):
                                     # Build the list of datatype converters which will later be loaded into the calling app's toolbox.
                                     converter_config = converter.get("file", None)
@@ -409,6 +420,10 @@ class Registry:
                                         compressed_datatype_class.edam_data = edam_data
                                     compressed_datatype_instance = compressed_datatype_class()
                                     self.datatypes_by_extension[compressed_extension] = compressed_datatype_instance
+                                    for suffix in infer_from_suffixes:
+                                        self.datatypes_by_suffix_inferences[
+                                            f"{suffix}.{auto_compressed_type}"
+                                        ] = compressed_datatype_instance
                                     if display_in_upload and compressed_extension not in self.upload_file_formats:
                                         self.upload_file_formats.append(compressed_extension)
                                     self.datatype_info_dicts.append(
@@ -626,6 +641,28 @@ class Registry:
                                     if sniffer_class is not None:
                                         if sniffer_class not in sniffer_elem_classes:
                                             self.sniffer_elems.append(elem)
+
+    def get_datatype_from_filename(self, name):
+        generic_datatype_instance = self.get_datatype_by_extension("data")
+        if "." not in name:
+            return generic_datatype_instance
+        name_parts = name.rsplit(".", 3)
+        possible_extensions = []
+        for extension_segments in [3, 2, 1]:
+            if len(name_parts) < extension_segments + 1:
+                continue
+            possible_extensions.append(".".join(name_parts[-extension_segments:]))
+
+        infer_from = self.datatypes_by_suffix_inferences
+        for possible_extension in possible_extensions:
+            if possible_extension in infer_from:
+                return infer_from[possible_extension]
+
+        for possible_extension in possible_extensions:
+            if possible_extension in self.datatypes_by_extension:
+                return self.datatypes_by_extension[possible_extension]
+
+        return generic_datatype_instance
 
     def is_extension_unsniffable_binary(self, ext):
         datatype = self.get_datatype_by_extension(ext)
