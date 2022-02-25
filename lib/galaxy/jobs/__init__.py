@@ -1858,7 +1858,10 @@ class JobWrapper(HasResourceParameters):
 
                     # Handles retry internally on error for instance...
                     self._finish_dataset(output_name, dataset, job, context, final_job_state, remote_metadata_directory)
-                if not final_job_state == job.states.ERROR:
+                if (
+                    not final_job_state == job.states.ERROR
+                    and not dataset_assoc.dataset.dataset.state == model.Dataset.states.DEFERRED
+                ):
                     dataset_assoc.dataset.dataset.state = model.Dataset.states.OK
             try:
                 self.discover_outputs(job, inp_data, out_data, out_collections, final_job_state=final_job_state)
