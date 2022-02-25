@@ -2482,7 +2482,7 @@ def wait_on_state(
     if skip_states is None:
         skip_states = ["running", "queued", "new", "ready", "stop", "stopped", "setting_metadata"]
     if ok_states is None:
-        ok_states = ["ok", "scheduled"]
+        ok_states = ["ok", "scheduled", "deferred"]
     try:
         return wait_on(get_state, desc=desc, timeout=timeout)
     except TimeoutAssertionError as e:

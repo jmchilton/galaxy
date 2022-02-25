@@ -963,8 +963,8 @@ export default {
             } else if (this.elementsType == "ftp") {
                 metadataOptions["path"] = _l("Path");
             } else if (this.elementsType == "remote_files") {
-                // IS THIS NEEDED?
                 metadataOptions["url"] = _l("URL");
+                metadataOptions["url_deferred"] = _l("URL (deferred)");
             } else if (this.elementsType == "library_datasets") {
                 metadataOptions["name"] = _l("Name");
             } else if (this.elementsType == "datasets") {
@@ -1017,7 +1017,17 @@ export default {
         validOnlyOnePath() {
             let valid = true;
             const mappingAsDict = this.mappingAsDict;
-            if (mappingAsDict.ftp_path && mappingAsDict.url) {
+            let pathSourceCount = 0;
+            if (mappingAsDict.ftp_path) {
+                pathSourceCount += 1;
+            }
+            if (mappingAsDict.url) {
+                pathSourceCount += 1;
+            }
+            if (mappingAsDict.url_deferred) {
+                pathSourceCount += 1;
+            }
+            if (pathSourceCount > 1) {
                 // Can only specify one of these.
                 valid = false;
             }
@@ -1028,7 +1038,7 @@ export default {
             const mappingAsDict = this.mappingAsDict;
             const requiresSourceColumn =
                 this.elementsType == "ftp" || this.elementsType == "raw" || this.elementsType == "remote_files";
-            if (requiresSourceColumn && !mappingAsDict.ftp_path && !mappingAsDict.url) {
+            if (requiresSourceColumn && !mappingAsDict.ftp_path && !mappingAsDict.url && !mappingAsDict.url_deferred) {
                 valid = false;
             }
             return valid;
@@ -1591,8 +1601,13 @@ export default {
         },
         _datasetFor(dataIndex, data, mappingAsDict) {
             const res = {};
-            if (mappingAsDict.url) {
-                const urlColumn = mappingAsDict.url.columns[0];
+            if (mappingAsDict.url || mappingAsDict.url_deferred) {
+                let urlColumn;
+                if (mappingAsDict.url) {
+                    urlColumn = mappingAsDict.url.columns[0];
+                } else {
+                    urlColumn = mappingAsDict.url_deferred.columns[0];
+                }
                 let url = data[dataIndex][urlColumn];
                 url = url.trim();
                 if (url.indexOf("://") == -1) {
@@ -1606,6 +1621,9 @@ export default {
                 }
                 res["url"] = url;
                 res["src"] = "url";
+                if (mappingAsDict.url_deferred) {
+                    res["deferred"] = true;
+                }
             } else if (mappingAsDict.ftp_path) {
                 const ftpPathColumn = mappingAsDict.ftp_path.columns[0];
                 const ftpPath = data[dataIndex][ftpPathColumn];
