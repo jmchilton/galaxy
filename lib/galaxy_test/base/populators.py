@@ -405,6 +405,18 @@ class BaseDatasetPopulator(BasePopulator):
         assert len(hdas) == 1
         return hdas[0]
 
+    def create_deferred_hda(self, history_id, uri: str, ext: Optional[str] = None) -> Dict[str, Any]:
+        item = {
+            "src": "url",
+            "url": uri,
+            "deferred": True,
+        }
+        if ext:
+            item["ext"] = ext
+        output = self.fetch_hda(history_id, item)
+        details = self.get_history_dataset_details(history_id, dataset=output)
+        return details
+
     def tag_dataset(self, history_id, hda_id, tags):
         url = f"histories/{history_id}/contents/{hda_id}"
         response = self._put(url, {"tags": tags}, json=True)
@@ -2682,7 +2694,7 @@ def wait_on_state(
     if skip_states is None:
         skip_states = ["running", "queued", "new", "ready", "stop", "stopped", "setting_metadata", "waiting"]
     if ok_states is None:
-        ok_states = ["ok", "scheduled"]
+        ok_states = ["ok", "scheduled", "deferred"]
     try:
         return wait_on(get_state, desc=desc, timeout=timeout)
     except TimeoutAssertionError as e:
