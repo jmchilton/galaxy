@@ -196,7 +196,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
             history_properties = self.new_history_properties()
             history_name = history_properties.get("name")
             if history_name and legacy_history_naming:
-                history_name = f"imported from archive: {history_name}""
+                history_name = f"imported from archive: {history_name}"
             elif history_name:
                 pass  # history_name = history_name
             else:

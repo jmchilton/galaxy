@@ -8,7 +8,6 @@ corresponding to files in other contexts.
 import abc
 import logging
 import os
-from collections import namedtuple
 from typing import (
     Any,
     Callable,
@@ -19,7 +18,6 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
-
 from sqlalchemy.orm.scoping import ScopedSession
 
 import galaxy.model
@@ -49,6 +47,9 @@ DEFAULT_CHUNK_SIZE = 1000
 
 class MaxDiscoveredFilesExceededError(ValueError):
     pass
+
+
+CollectorT = Any  # TODO: setup an interface for these file collectors data classes.
 
 
 class ModelPersistenceContext(metaclass=abc.ABCMeta):
@@ -734,7 +735,6 @@ def persist_elements_to_folder(model_persistence_context, elements, library_fold
             visible = fields_match.visible
             ext = fields_match.ext
             dbkey = fields_match.dbkey
-            info = element.get("info", None)
             link_data = discovered_file.match.link_data
 
             # Create new primary dataset
@@ -743,10 +743,7 @@ def persist_elements_to_folder(model_persistence_context, elements, library_fold
             sources = fields_match.sources
             hashes = fields_match.hashes
             created_from_basename = fields_match.created_from_basename
-            state = "ok"
-            if hasattr(discovered_file, "error_message"):
-                info = discovered_file.error_message
-                state = "error"
+            info, state = discovered_file.discovered_state(element)
             model_persistence_context.create_dataset(
                 ext=ext,
                 designation=designation,
@@ -779,7 +776,6 @@ def persist_hdas(elements, model_persistence_context, final_job_state="ok"):
                 designation = fields_match.designation
                 ext = fields_match.ext
                 dbkey = fields_match.dbkey
-                info = element.get("info", None)
                 link_data = discovered_file.match.link_data
 
                 # Create new primary dataset
@@ -791,17 +787,7 @@ def persist_hdas(elements, model_persistence_context, final_job_state="ok"):
                     sa_session = (
                         model_persistence_context.sa_session or model_persistence_context.import_store.sa_session
                     )
-                    primary_dataset = sa_session.query(galaxy.model.HistoryDatasetAssociation).get(hda_id)
-
-                sources = fields_match.sources
-                hashes = fields_match.hashes
-                created_from_basename = fields_match.created_from_basename
-                extra_files = fields_match.extra_files
-                state = final_job_state
-                if hasattr(discovered_file, "error_message"):
-                    state = "error"
-                    info = discovered_file.error_message
-                dataset = model_persistence_context.create_dataset(
+                info, state = discovered_file.discovered_state(element, final_job_state)
                     ext=ext,
                     designation=designation,
                     visible=True,
@@ -882,7 +868,14 @@ def replace_request_syntax_sugar(obj):
             obj["hashes"].extend(new_hashes)
 
 
-DiscoveredFile = namedtuple("DiscoveredFile", ["path", "collector", "match"])
+class DiscoveredResultState(NamedTuple):
+    info: Optional[str]
+    state: str
+    def discovered_state(self, element: Dict[str, Any], final_job_state='ok') -> DiscoveredResultState:
+        return DiscoveredResultState(info, final_job_state)
+
+
+DiscoveredResult = Union[DiscoveredFile, 'DiscoveredFileError']
 
 
 def discovered_file_for_element(
@@ -890,7 +883,7 @@ def discovered_file_for_element(
     model_persistence_context: Union["JobContext", "SessionlessJobContext", SessionlessModelPersistenceContext],
     parent_identifiers=None,
     collector=None,
-):
+) -> DiscoveredResult:
     model_persistence_context.increment_discovered_file_count()
     parent_identifiers = parent_identifiers or []
     target_directory = discover_target_directory(
@@ -935,7 +928,7 @@ def discover_target_directory(dir_name, job_working_directory):
 
 
 class JsonCollectedDatasetMatch:
-    def __init__(self, as_dict, collector, filename, path=None, parent_identifiers=None):
+    def __init__(self, as_dict, collector: Optional[CollectorT], filename, path=None, parent_identifiers=None):
         parent_identifiers = parent_identifiers or []
         self.as_dict = as_dict
         self.collector = collector
@@ -1025,12 +1018,11 @@ class JsonCollectedDatasetMatch:
 
 
 class RegexCollectedDatasetMatch(JsonCollectedDatasetMatch):
-    def __init__(self, re_match, collector, filename, path=None):
-        super().__init__(re_match.groupdict(), collector, filename, path=path)
+    def __init__(self, re_match, collector: Optional[CollectorT], filename, path=None):
+        super().__init__(
+            re_match.groupdict(), collector, filename, path=path
+        )
 
 
-class DiscoveredFileError(NamedTuple):
-    error_message: str
-    collector: Any  # TODO: setup interface for this
-    match: JsonCollectedDatasetMatch
-    path: Optional[str] = None
+    def discovered_state(self, element: Dict[str, Any], final_job_state='ok') -> DiscoveredResultState:
+        return DiscoveredResultState(info, 'error')
