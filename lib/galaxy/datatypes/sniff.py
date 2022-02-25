@@ -538,6 +538,12 @@ def guess_ext(fname, sniff_order, is_binary=False):
     return "txt"  # default text data type file extension
 
 
+def guess_ext_from_file_name(fname, registry, requested_ext="auto"):
+    if requested_ext != "auto":
+        return requested_ext
+    return registry.get_datatype_from_filename(fname).file_ext
+
+
 class FilePrefix:
     def __init__(self, filename):
         non_utf8_error = None
