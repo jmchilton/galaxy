@@ -934,3 +934,21 @@ class ToolsUploadTestCase(ApiTestCase):
             assert hda["name"] == "1.fastqsanger.gz"
             assert hda["file_ext"] == "fastqsanger.gz"
             assert hda["state"] == "ok"
+
+    @uses_test_history(require_new=False)
+    @skip_if_github_down
+    def test_upload_deferred(self, history_id):
+        item = {
+            "src": "url",
+            "url": "https://raw.githubusercontent.com/galaxyproject/galaxy/dev/test-data/1.bam",
+            "ext": "bam",
+            "deferred": True
+        }
+        output = self.dataset_populator.fetch_hda(
+            history_id, item
+        )
+        details = self.dataset_populator.get_history_dataset_details(
+            history_id, dataset=output, wait=True, assert_ok=False
+        )
+        # history becomes in error - that isn't good but the dataset seems okay...
+        assert details["state"] == "deferred"

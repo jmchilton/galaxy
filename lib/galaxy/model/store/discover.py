@@ -875,7 +875,21 @@ class DiscoveredResultState(NamedTuple):
         return DiscoveredResultState(info, final_job_state)
 
 
-DiscoveredResult = Union[DiscoveredFile, 'DiscoveredFileError']
+class DiscoveredDeferredFile(NamedTuple):
+    collector: Optional[CollectorT]
+    match: 'JsonCollectedDatasetMatch'
+
+    def discovered_state(self, element: Dict[str, Any], final_job_state='ok') -> DiscoveredResultState:
+        info = element.get("info", None)
+        state = 'deferred' if final_job_state == 'ok' else final_job_state
+        return DiscoveredResultState(info, state)
+
+    @property
+    def path(self):
+        return None
+
+
+DiscoveredResult = Union[DiscoveredFile, DiscoveredDeferredFile, 'DiscoveredFileError']
 
 
 def discovered_file_for_element(
@@ -892,6 +906,9 @@ def discovered_file_for_element(
     filename = dataset.get("filename")
     error_message = dataset.get("error_message")
     if error_message is None:
+        if dataset.get("state") == "deferred":
+            return DiscoveredDeferredFile(collector, JsonCollectedDatasetMatch(dataset, collector, None, parent_identifiers=parent_identifiers))
+
         # handle link_data_only here, verify filename is in directory if not linking...
         if not dataset.get("link_data_only"):
             path = os.path.join(target_directory, filename)
