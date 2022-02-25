@@ -13,6 +13,7 @@ from galaxy.schema.tasks import (
     SetupHistoryExportJob,
 )
 from galaxy.util.custom_logging import get_logger
+from galaxy.web.short_term_storage import ShortTermStorageMonitor
 
 log = get_logger(__name__)
 
@@ -75,3 +76,9 @@ def prepare_pdf_download(
 def prune_history_audit_table(sa_session: galaxy_scoped_session):
     """Prune ever growing history_audit table."""
     model.HistoryAudit.prune(sa_session)
+
+
+@galaxy_task(action="clean up short term storage")
+def cleanup_short_term_storage(storage_monitor: ShortTermStorageMonitor):
+    """Cleanup short term storage."""
+    storage_monitor.cleanup()
