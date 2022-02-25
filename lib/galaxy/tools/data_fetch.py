@@ -342,10 +342,10 @@ def _fetch_target(upload_config, target):
             if space_to_tab:
                 transform.append({"action": "spaces_to_tabs"})
             effective_state = "deferred"
-            ext = "data"
-            # mark it as ext...
-            # mark it as deferred...
-            pass
+            registry = upload_config.registry
+            ext = sniff.guess_ext_from_file_name(
+                name, registry=registry, requested_ext=requested_ext
+            )
         rval = {
             "name": name,
             "dbkey": dbkey,

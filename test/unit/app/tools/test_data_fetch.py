@@ -55,7 +55,9 @@ def test_deferred_uri_get():
         }
         execute_context.execute_request(request)
         output = _unnamed_output(execute_context)
-        assert output["elements"][0]["state"] == "deferred"
+        hda_result = output["elements"][0]
+        assert hda_result["state"] == "deferred"
+        assert hda_result["ext"] == "bed"
 
 
 def test_simple_list_path_get():

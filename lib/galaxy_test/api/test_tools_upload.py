@@ -936,7 +936,7 @@ class ToolsUploadTestCase(ApiTestCase):
             assert hda["state"] == "ok"
 
     @uses_test_history(require_new=False)
-    @skip_if_github_down
+    #  @skip_if_github_down - it is deferred and shouldn't be needed ideally.
     def test_upload_deferred(self, history_id):
         item = {
             "src": "url",
@@ -952,3 +952,4 @@ class ToolsUploadTestCase(ApiTestCase):
         )
         # history becomes in error - that isn't good but the dataset seems okay...
         assert details["state"] == "deferred"
+        assert details["file_ext"] == "bam"
