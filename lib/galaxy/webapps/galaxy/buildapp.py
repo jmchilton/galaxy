@@ -324,6 +324,14 @@ def populate_api_routes(webapp, app):
         conditions=dict(method=["PUT"]),
     )
     webapp.mapper.connect(
+        "history_contents_from_store",
+        "/api/histories/{history_id}/contents_from_store",
+        controller="history_contents",
+        action="create_from_store",
+        conditions=dict(method=["POST"]),
+    )
+
+    webapp.mapper.connect(
         "history_contents_display",
         "/api/histories/{history_id}/contents/{history_content_id}/display",
         controller="datasets",
@@ -805,6 +813,13 @@ def populate_api_routes(webapp, app):
     )
     webapp.mapper.connect(
         "/api/histories/{id}/slug", action="set_slug", controller="histories", conditions=dict(method=["PUT"])
+    )
+    webapp.mapper.connect(
+        "create_histories_from_store",
+        "/api/histories/from_store",
+        controller="histories",
+        action="create_from_store",
+        conditions=dict(method=["POST"]),
     )
     webapp.mapper.connect(
         "dynamic_tool_confs",

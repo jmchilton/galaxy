@@ -5,6 +5,7 @@ import logging
 from typing import (
     Any,
     Dict,
+    List,
     Optional,
     Union,
 )
@@ -19,6 +20,7 @@ from galaxy import util
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
+    CreateLibrariesFromStore,
     CreateLibraryPayload,
     DeleteLibraryPayload,
     LegacyLibraryPermissionsPayload,
@@ -112,6 +114,18 @@ class FastAPILibraries:
     ) -> LibrarySummary:
         """Creates a new library and returns its summary information. Currently, only admin users can create libraries."""
         return self.service.create(trans, payload)
+
+    @router.post(
+        "/api/libraries/from_store",
+        summary="Create libraries from a model store.",
+        require_admin=True,
+    )
+    def create_from_store(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        payload: CreateLibrariesFromStore = Body(...),
+    ) -> List[LibrarySummary]:
+        return self.service.create_from_store(trans, payload)
 
     @router.put(
         "/api/libraries/{id}",

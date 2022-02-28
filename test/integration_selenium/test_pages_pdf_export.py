@@ -1,6 +1,4 @@
-from galaxy_test.driver.integration_util import (
-    UsesCeleryTasks,
-)
+from galaxy_test.driver.integration_util import UsesCeleryTasks
 from .framework import (
     selenium_test,
     SeleniumIntegrationTestCase,
