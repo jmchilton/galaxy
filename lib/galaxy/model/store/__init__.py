@@ -441,6 +441,10 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         hda.hid = dataset_attrs["hid"]
                     else:
                         object_import_tracker.requires_hid.append(hda)
+                else:
+                    pass
+                    # ldda = cast(model.LibraryDatasetDatasetAssociation, dataset_instance)
+                    # ldda.user = self.user
 
                 file_source_root = self.file_source_root
 

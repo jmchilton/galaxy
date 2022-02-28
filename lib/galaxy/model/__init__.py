@@ -2662,9 +2662,9 @@ class History(Base, HasTags, Dictifiable, UsesAnnotations, HasName, Serializable
         else:
             if set_hid:
                 dataset.hid = self._next_hid()
+        add_object_to_object_session(dataset, self)
         if quota and is_dataset and self.user:
             self.user.adjust_total_disk_usage(dataset.quota_amount(self.user))
-        add_object_to_object_session(dataset, self)
         dataset.history = self
         if is_dataset and genome_build not in [None, "?"]:
             self.genome_build = genome_build
@@ -3729,6 +3729,14 @@ class DatasetSource(Base, Dictifiable, Serializable):
         serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
+    def copy(self) -> "DatasetSource":
+        new_source = DatasetSource()
+        new_source.source_uri = self.source_uri
+        new_source.extra_files_path = self.extra_files_path
+        new_source.transform = self.transform
+        new_source.hashes = [h.copy() for h in self.hashes]
+        return new_source
+
 
 class DatasetSourceHash(Base, Serializable):
     __tablename__ = "dataset_source_hash"
@@ -3747,6 +3755,12 @@ class DatasetSourceHash(Base, Serializable):
         )
         serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
+
+    def copy(self) -> "DatasetSourceHash":
+        new_hash = DatasetSourceHash()
+        new_hash.hash_function = self.hash_function
+        new_hash.hash_value = self.hash_value
+        return new_hash
 
 
 class DatasetHash(Base, Dictifiable, Serializable):
@@ -3770,6 +3784,13 @@ class DatasetHash(Base, Dictifiable, Serializable):
         )
         serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
+
+    def copy(self) -> "DatasetHash":
+        new_hash = DatasetHash()
+        new_hash.hash_function = self.hash_function
+        new_hash.hash_value = self.hash_value
+        new_hash.extra_files_path = self.extra_files_path
+        return new_hash
 
 
 def datatype_for_extension(extension, datatypes_registry=None) -> "Data":
@@ -3852,7 +3873,8 @@ class DatasetInstance(UsesCreateAndUpdateTime, _HasTable):
             if flush:
                 sa_session.add(dataset)
                 sa_session.flush()
-        add_object_to_object_session(self, dataset)
+        elif dataset:
+            add_object_to_object_session(self, dataset)
         self.dataset = dataset
         self.parent_id = parent_id
 
@@ -3867,6 +3889,10 @@ class DatasetInstance(UsesCreateAndUpdateTime, _HasTable):
     @property
     def ext(self):
         return self.extension
+
+    @property
+    def has_deferred_data(self):
+        return self.get_dataset_state() == Dataset.states.DEFERRED
 
     def get_dataset_state(self):
         # self._state is currently only used when setting metadata externally
@@ -4444,7 +4470,7 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
             self.version = self.version + 1 if self.version else 1
             session.add(past_hda)
 
-    def copy_from(self, other_hda):
+    def copy_from(self, other_hda, new_dataset=None, include_tags=True):
         # This deletes the old dataset, so make sure to only call this on new things
         # in the history (e.g. during job finishing).
         old_dataset = self.dataset
@@ -4459,9 +4485,11 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
         self.visible = other_hda.visible
         self.validated_state = other_hda.validated_state
         self.validated_state_message = other_hda.validated_state_message
-        self.copy_tags_from(self.history.user, other_hda)
-        self.dataset = other_hda.dataset
-        old_dataset.full_delete()
+        if include_tags and self.history:
+            self.copy_tags_from(self.history.user, other_hda)
+        self.dataset = new_dataset or other_hda.dataset
+        if old_dataset:
+            old_dataset.full_delete()
 
     def copy(self, parent_id=None, copy_tags=None, flush=True, copy_hid=True, new_name=None):
         """
@@ -5687,6 +5715,27 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
         return self._dataset_states_and_extensions_summary
 
     @property
+    def has_deferred_data(self):
+        if not hasattr(self, "_has_deferred_data"):
+            has_deferred_data = False
+            if object_session(self):
+                # TODO: Optimize by just querying without returning the states...
+                q = self._get_nested_collection_attributes(dataset_attributes=("state",))
+                for (state,) in q:
+                    if state == Dataset.states.DEFERRED:
+                        has_deferred_data = True
+                        break
+            else:
+                # This will be in a remote tool evaluation context, so can't query database
+                for dataset_element in self.dataset_elements_and_identifiers():
+                    if dataset_element.hda.state == Dataset.states.DEFERRED:
+                        has_deferred_data = True
+                        break
+            self._has_deferred_data = has_deferred_data
+
+        return self._has_deferred_data
+
+    @property
     def populated_optimized(self):
         if not hasattr(self, "_populated_optimized"):
             _populated_optimized = True
@@ -5968,6 +6017,10 @@ class DatasetCollectionInstance(HasName, UsesCreateAndUpdateTime):
             changed[key] = new_val
 
         return changed
+
+    @property
+    def has_deferred_data(self):
+        return self.collection.has_deferred_data
 
 
 class HistoryDatasetCollectionAssociation(
@@ -6445,6 +6498,10 @@ class DatasetCollectionElement(Base, Dictifiable, Serializable):
             return element_object.dataset_instances
         else:
             return [element_object]
+
+    @property
+    def has_deferred_data(self):
+        return self.element_object.has_deferred_data
 
     def copy_to_collection(
         self,
