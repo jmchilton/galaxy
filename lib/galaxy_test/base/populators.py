@@ -799,6 +799,17 @@ class BaseDatasetPopulator(BasePopulator):
         tool_response = self._post(url, data=payload)
         return tool_response
 
+    def materialize_dataset_instance(self, history_id: str, id: str, source: str = "hda"):
+        materialize_payload = dict(
+            source=source,
+            content=id,
+        )
+        create_response = self._post(f"histories/{history_id}/materialize", materialize_payload)
+        create_response.raise_for_status()
+        create_response_json = create_response.json()
+        assert "id" in create_response_json
+        return create_response_json
+
     def get_history_dataset_content(self, history_id: str, wait=True, filename=None, type="text", raw=False, **kwds):
         dataset_id = self.__history_content_id(history_id, wait=wait, **kwds)
         data = {}

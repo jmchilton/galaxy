@@ -3632,6 +3632,14 @@ class DatasetSource(Base, Dictifiable, Serializable):
         serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
 
+    def copy(self) -> "DatasetSource":
+        new_source = DatasetSource()
+        new_source.source_uri = self.source_uri
+        new_source.extra_files_path = self.extra_files_path
+        new_source.transform = self.transform
+        new_source.hashes = [h.copy() for h in self.hashes]
+        return new_source
+
 
 class DatasetSourceHash(Base, Serializable):
     __tablename__ = "dataset_source_hash"
@@ -3650,6 +3658,12 @@ class DatasetSourceHash(Base, Serializable):
         )
         serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
+
+    def copy(self) -> "DatasetSourceHash":
+        new_hash = DatasetSourceHash()
+        new_hash.hash_function = self.hash_function
+        new_hash.hash_value = self.hash_value
+        return new_hash
 
 
 class DatasetHash(Base, Dictifiable, Serializable):
@@ -3673,6 +3687,13 @@ class DatasetHash(Base, Dictifiable, Serializable):
         )
         serialization_options.attach_identifier(id_encoder, self, rval)
         return rval
+
+    def copy(self) -> "DatasetHash":
+        new_hash = DatasetHash()
+        new_hash.hash_function = self.hash_function
+        new_hash.hash_value = self.hash_value
+        new_hash.extra_files_path = self.extra_files_path
+        return new_hash
 
 
 def datatype_for_extension(extension, datatypes_registry=None) -> "Data":
@@ -4348,7 +4369,7 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
             self.version = self.version + 1 if self.version else 1
             session.add(past_hda)
 
-    def copy_from(self, other_hda):
+    def copy_from(self, other_hda, new_dataset=None, include_tags=True):
         # This deletes the old dataset, so make sure to only call this on new things
         # in the history (e.g. during job finishing).
         old_dataset = self.dataset
@@ -4363,9 +4384,11 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
         self.visible = other_hda.visible
         self.validated_state = other_hda.validated_state
         self.validated_state_message = other_hda.validated_state_message
-        self.copy_tags_from(self.history.user, other_hda)
-        self.dataset = other_hda.dataset
-        old_dataset.full_delete()
+        if include_tags and self.history:
+            self.copy_tags_from(self.history.user, other_hda)
+        self.dataset = new_dataset or other_hda.dataset
+        if old_dataset:
+            old_dataset.full_delete()
 
     def copy(self, parent_id=None, copy_tags=None, flush=True, copy_hid=True, new_name=None):
         """
