@@ -24,6 +24,7 @@ from typing_extensions import (
 )
 
 from galaxy import exceptions
+from galaxy.celery.tasks import materialize as materialize_task
 from galaxy.celery.tasks import prepare_dataset_collection_download
 from galaxy.managers import (
     folders,
@@ -64,6 +65,7 @@ from galaxy.schema.schema import (
     AnyHistoryContentItem,
     AnyJobStateSummary,
     AsyncFile,
+    AsyncTaskResultSummary,
     BulkOperationItemError,
     ColletionSourceType,
     ContentsNearResult,
@@ -83,11 +85,15 @@ from galaxy.schema.schema import (
     HistoryContentsWithStatsResult,
     HistoryContentType,
     JobSourceType,
+    MaterializeDatasetInstanceRequest,
     Model,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
 )
-from galaxy.schema.tasks import PrepareDatasetCollectionDownload
+from galaxy.schema.tasks import (
+    MaterializeDatasetInstanceTaskRequest,
+    PrepareDatasetCollectionDownload,
+)
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util.zipstream import ZipstreamWrapper
 from galaxy.web.short_term_storage import ShortTermStorageAllocator
@@ -498,6 +504,24 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
             )
             rval.append(hdca_dict)
         return rval
+
+    def materialize(
+        self,
+        trans,
+        request: MaterializeDatasetInstanceRequest,
+    ) -> AsyncTaskResultSummary:
+        history_id = self.decode_id(request.history_id)
+        # DO THIS JUST TO MAKE SURE IT IS OWNED...
+        self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
+        assert trans.app.config.enable_celery_tasks
+        task_request = MaterializeDatasetInstanceTaskRequest(
+            history_id=history_id,
+            source=request.source,
+            content=self.decode_id(request.content),
+            user=trans.async_request_user,
+        )
+        results = materialize_task.delay(request=task_request)
+        return async_task_summary(results)
 
     def update_permissions(
         self,

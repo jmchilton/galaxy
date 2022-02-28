@@ -504,6 +504,16 @@ class BaseDatasetPopulator(BasePopulator):
         if assert_ok:
             self.wait_for_history(history_id, assert_ok=True, timeout=timeout)
 
+    def wait_for_jobs(
+        self, jobs: Union[List[dict], List[str]], assert_ok: bool = False, timeout: timeout_type = DEFAULT_TIMEOUT
+    ):
+        for job in jobs:
+            if isinstance(job, dict):
+                job_id = job["id"]
+            else:
+                job_id = job
+            self.wait_for_job(job_id, assert_ok=assert_ok, timeout=timeout)
+
     def wait_for_job(self, job_id: str, assert_ok: bool = False, timeout: timeout_type = DEFAULT_TIMEOUT):
         return wait_on_state(
             lambda: self.get_job_details(job_id, full=True), desc="job state", assert_ok=assert_ok, timeout=timeout
@@ -733,6 +743,17 @@ class BaseDatasetPopulator(BasePopulator):
     def tools_post(self, payload: dict, url="tools") -> Response:
         tool_response = self._post(url, data=payload)
         return tool_response
+
+    def materialize_dataset_instance(self, history_id: str, id: str, source: str = "hda"):
+        materialize_payload = dict(
+            source=source,
+            content=id,
+        )
+        create_response = self._post(f"histories/{history_id}/materialize", materialize_payload, json=True)
+        create_response.raise_for_status()
+        create_response_json = create_response.json()
+        assert "id" in create_response_json
+        return create_response_json
 
     def get_history_dataset_content(self, history_id: str, wait=True, filename=None, type="text", raw=False, **kwds):
         dataset_id = self.__history_content_id(history_id, wait=wait, **kwds)

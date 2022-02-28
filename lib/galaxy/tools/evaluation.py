@@ -11,11 +11,16 @@ from typing import (
     Dict,
     List,
     Optional,
+    Union,
 )
 
 from galaxy import model
 from galaxy.job_execution.compute_environment import ComputeEnvironment
 from galaxy.job_execution.setup import ensure_configs_directory
+from galaxy.model.deferred import (
+    materialize_collection_input,
+    materializer_factory,
+)
 from galaxy.model.none_like import NoneDataset
 from galaxy.security.object_wrapper import wrap_with_safe_string
 from galaxy.structured_app import (
@@ -84,6 +89,11 @@ def global_tool_logs(func, config_file, action_str):
         raise e
 
 
+DeferrableObjectsT = Union[
+    model.DatasetInstance, model.HistoryDatasetCollectionAssociation, model.DatasetCollectionElement
+]
+
+
 class ToolEvaluator:
     """An abstraction linking together a tool and a job runtime to evaluate
     tool inputs in an isolated, testable manner.
@@ -91,6 +101,7 @@ class ToolEvaluator:
 
     app: MinimalToolApp
     job: model.Job
+    materialize_datasets: bool = True
 
     def __init__(self, app: MinimalToolApp, tool, job, local_working_directory):
         self.app = app
@@ -127,6 +138,27 @@ class ToolEvaluator:
 
         # Restore input / output data lists
         inp_data, out_data, out_collections = job.io_dicts()
+
+        deferred_objects: Dict[str, DeferrableObjectsT] = self._deferred_datasets(inp_data)
+
+        def find_deferred_collections(input, value, context, prefixed_name=None, **kwargs):
+            if (
+                isinstance(value, (model.HistoryDatasetCollectionAssociation, model.DatasetCollectionElement))
+                and value.has_deferred_data
+            ):
+                deferred_objects[prefixed_name] = value
+
+        visit_input_values(self.tool.inputs, incoming, find_deferred_collections)
+        undeferred_objects = self._undeferred_objects(deferred_objects, self.local_working_directory)
+        for key, value in undeferred_objects.items():
+            if isinstance(value, model.DatasetInstance):
+                inp_data[key] = value
+
+        def replace_deferred(input, value, context, prefixed_name=None, **kwargs):
+            if prefixed_name in undeferred_objects:
+                return undeferred_objects[prefixed_name]
+
+        visit_input_values(self.tool.inputs, incoming, replace_deferred)
 
         if get_special:
             special = get_special()
@@ -195,6 +227,43 @@ class ToolEvaluator:
 
         # Return the dictionary of parameters
         return param_dict
+
+    def _undeferred_objects(
+        self, deferred_objects: Dict[str, DeferrableObjectsT], job_working_directory: str
+    ) -> Dict[str, DeferrableObjectsT]:
+        if not self.materialize_datasets:
+            return {}
+
+        undeferred_objects: Dict[str, DeferrableObjectsT] = {}
+        transient_directory = os.path.join(job_working_directory, "inputs")
+        safe_makedirs(transient_directory)
+        dataset_materializer = materializer_factory(
+            False,  # unattached to a session.
+            transient_directory=transient_directory,
+            file_sources=self.app.file_sources,
+        )
+        for key, value in deferred_objects.items():
+            if isinstance(value, model.DatasetInstance):
+                if value.state != model.Dataset.states.DEFERRED:
+                    continue
+
+                assert isinstance(value, (model.HistoryDatasetAssociation, model.LibraryDatasetDatasetAssociation))
+                undeferred = dataset_materializer.ensure_materialized(value)
+                undeferred_objects[key] = undeferred
+            else:
+                undeferred_collection = materialize_collection_input(value, dataset_materializer)
+                undeferred_objects[key] = undeferred_collection
+
+        return undeferred_objects
+
+    def _deferred_datasets(
+        self, input_datasets: Dict[str, Optional[model.DatasetInstance]]
+    ) -> Dict[str, DeferrableObjectsT]:
+        deferred_datasets: Dict[str, DeferrableObjectsT] = {}
+        for key, value in input_datasets.items():
+            if value is not None and value.state == model.Dataset.states.DEFERRED:
+                deferred_datasets[key] = value
+        return deferred_datasets
 
     def __walk_inputs(self, inputs, input_values, func):
         def do_walk(inputs, input_values):
@@ -667,6 +736,8 @@ class PartialToolEvaluator(ToolEvaluator):
     ToolEvaluator that only builds Environment Variables.
     """
 
+    materialize_datasets = False
+
     def build(self):
         config_file = self.tool.config_file
         global_tool_logs(self._build_environment_variables, config_file, "Building Environment Variables")
@@ -675,6 +746,8 @@ class PartialToolEvaluator(ToolEvaluator):
 
 class RemoteToolEvaluator(ToolEvaluator):
     """ToolEvaluator that skips unnecessary steps already executed during job setup."""
+
+    materialize_datasets = True
 
     def execute_tool_hooks(self, inp_data, out_data, incoming):
         # These have already run while preparing the job

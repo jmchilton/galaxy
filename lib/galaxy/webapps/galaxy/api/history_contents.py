@@ -38,6 +38,7 @@ from galaxy.schema.schema import (
     AnyHistoryContentItem,
     AnyJobStateSummary,
     AsyncFile,
+    AsyncTaskResultSummary,
     DatasetAssociationRoles,
     DeleteHistoryContentPayload,
     DeleteHistoryContentResult,
@@ -47,6 +48,8 @@ from galaxy.schema.schema import (
     HistoryContentsResult,
     HistoryContentsWithStatsResult,
     HistoryContentType,
+    MaterializeDatasetInstanceAPIRequest,
+    MaterializeDatasetInstanceRequest,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
     UpdateHistoryContentsPayload,
@@ -812,3 +815,21 @@ class FastAPIHistoryContents:
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         response.headers.update(result.stats.to_headers())
         return result.contents
+
+    @router.post(
+        # "/api/histories/{history_id}/contents/datasets/{id}/materialize",
+        #   id: EncodedDatabaseIdField = HistoryItemIDPathParam,
+        "/api/histories/{history_id}/materialize",
+        summary="Materialize a deferred dataset into real, usable dataset.",
+    )
+    def materialize(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        materialize_api_payload: MaterializeDatasetInstanceAPIRequest = Body(...),
+    ) -> AsyncTaskResultSummary:
+        materializae_request = MaterializeDatasetInstanceRequest(
+            history_id=history_id,
+            **materialize_api_payload.dict(),
+        )
+        return self.service.materialize(trans, materializae_request)
