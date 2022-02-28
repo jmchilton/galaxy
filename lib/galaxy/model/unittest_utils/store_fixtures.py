@@ -10,6 +10,7 @@ from galaxy.model.orm.now import now
 TEST_SOURCE_URI = "https://raw.githubusercontent.com/galaxyproject/galaxy/dev/test-data/2.bed"
 TEST_HASH_FUNCTION = "MD5"
 TEST_HASH_VALUE = "moocowpretendthisisahas"
+TEST_HISTORY_NAME = "My history in a model store"
 TEST_EXTENSION = "bed"
 TEST_LIBRARY_NAME = "My cool library"
 TEST_LIBRARY_DESCRIPTION = "My cool library - a description"
@@ -79,6 +80,7 @@ def one_ld_library_model_store_dict():
     }
 
     root_folder: Dict[str, Any] = {
+        "model_class": "LibraryFolder",
         "name": TEST_ROOT_FOLDER_NAME,
         "description": TEST_ROOT_FOLDER_DESCRIPTION,
         "genome_build": None,
@@ -87,6 +89,7 @@ def one_ld_library_model_store_dict():
         "datasets": [ld],
     }
     serialized_library = {
+        "model_class": "Library",
         "encoded_id": TEST_LIBRARY_ID,
         "name": TEST_LIBRARY_NAME,
         "description": TEST_LIBRARY_DESCRIPTION,
@@ -103,7 +106,55 @@ def one_ld_library_model_store_dict():
     }
 
 
-def one_hda_model_store_dict():
+def one_hda_model_store_dict(
+    include_source=True,
+):
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source: Dict[str, Any] = dict(
+        model_class="DatasetSource",
+        source_uri=TEST_SOURCE_URI,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = BED_2_METADATA
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source] if include_source else [],
+        created_from_basename="dataset.txt",
+    )
+    serialized_hda = dict(
+        encoded_id="id_hda1",
+        model_class="HistoryDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension=TEST_EXTENSION,
+        metadata=metadata,
+        designation=None,
+        deleted=False,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+    )
+
+    return {
+        "datasets": [
+            serialized_hda,
+        ]
+    }
+
+
+def history_model_store_dict():
     dataset_hash = dict(
         model_class="DatasetHash",
         hash_function=TEST_HASH_FUNCTION,
@@ -135,11 +186,62 @@ def one_hda_model_store_dict():
         extension=TEST_EXTENSION,
         metadata=metadata,
         designation=None,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+    )
+
+    return {
+        "datasets": [
+            serialized_hda,
+        ],
+        "history": {
+            "name": TEST_HISTORY_NAME,
+        },
+    }
+
+
+def deferred_hda_model_store_dict(
+    source_uri=TEST_SOURCE_URI,
+):
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source: Dict[str, Any] = dict(
+        model_class="DatasetSource",
+        source_uri=source_uri,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = BED_2_METADATA
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source],
+        created_from_basename="dataset.txt",
+    )
+    serialized_hda = dict(
+        encoded_id="id_hda1",
+        model_class="HistoryDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension=TEST_EXTENSION,
+        metadata=metadata,
+        designation=None,
         deleted=False,
         visible=True,
         dataset_uuid=str(uuid4()),
         annotation="my cool annotation",
         file_metadata=file_metadata,
+        state="deferred",
     )
 
     return {

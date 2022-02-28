@@ -34,6 +34,7 @@ from galaxy.schema import (
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
+    CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
     ExportHistoryArchivePayload,
@@ -261,6 +262,18 @@ class FastAPIHistories:
         serialization_params: SerializationParams = Depends(query_serialization_params),
     ) -> AnyHistoryView:
         return self.service.update(trans, id, payload, serialization_params)
+
+    @router.post(
+        "/api/histories/from_store",
+        summary="Create histories from a model store.",
+    )
+    def create_from_store(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        serialization_params: SerializationParams = Depends(query_serialization_params),
+        payload: CreateHistoryFromStore = Body(...),
+    ) -> AnyHistoryView:
+        return self.service.create_from_store(trans, payload, serialization_params)
 
     @router.get(
         "/api/histories/{id}/exports",

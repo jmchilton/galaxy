@@ -1,3 +1,4 @@
+import tarfile
 import time
 import urllib.parse
 from datetime import datetime
@@ -7,7 +8,9 @@ from typing import (
     Optional,
     Tuple,
 )
+from uuid import uuid4
 
+from galaxy.model.orm.now import now
 from galaxy.webapps.galaxy.services.history_contents import DirectionOptions
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -16,6 +19,10 @@ from galaxy_test.base.populators import (
     skip_without_tool,
 )
 from ._framework import ApiTestCase
+
+TEST_SOURCE_URI = "http://google.com/dataset.txt"
+TEST_HASH_FUNCTION = "MD5"
+TEST_HASH_VALUE = "moocowpretendthisisahas"
 
 
 # TODO: Test anonymous access.
@@ -165,6 +172,62 @@ class HistoryContentsApiTestCase(ApiTestCase):
         show_response = self.__show(hda1)
         self._assert_status_code_is(show_response, 200)
         self.__assert_matches_hda(hda1, show_response.json())
+
+    def test_export_and_imported_discarded(self):
+        hda1 = self.dataset_populator.new_dataset(self.history_id, wait=True)
+
+        second_history_id, as_list = self.dataset_populator.reupload_contents(hda1)
+
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "discarded"
+        assert not new_hda["deleted"]
+
+    def test_export_and_imported_discarded_bam(self):
+        contents = self.dataset_populator.new_dataset(
+            self.history_id,
+            content=open(self.test_data_resolver.get_filename("1.bam"), "rb"),
+            file_type="bam",
+            wait=True,
+        )
+        second_history_id, as_list = self.dataset_populator.reupload_contents(contents)
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "discarded"
+        assert not new_hda["deleted"]
+
+    def test_import_as_discarded_from_dict(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=one_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        new_hda = as_list[0]
+        assert new_hda["model_class"] == "HistoryDatasetAssociation"
+        assert new_hda["state"] == "discarded"
+        assert not new_hda["deleted"]
+
+    def test_export_and_imported_discarded_collection(self):
+        create_response = self.dataset_collection_populator.create_list_in_history(
+            history_id=self.history_id, direct_upload=True
+        ).json()
+        self.dataset_populator.wait_for_history(self.history_id)
+        contents = create_response["outputs"][0]
+        temp_tar = self.dataset_populator.download_contents_to_store(self.history_id, contents, "tgz")
+        with tarfile.open(name=temp_tar) as tf:
+            assert "datasets_attrs.txt" in tf.getnames()
+            assert "collections_attrs.txt" in tf.getnames()
+
+        second_history_id = self.dataset_populator.new_history()
+        as_list = self.dataset_populator.create_contents_from_store(
+            second_history_id,
+            store_path=temp_tar,
+        )
+        assert len(as_list) == 1
+        hdcas = [e for e in as_list if e["history_content_type"] == "dataset_collection"]
+        assert len(hdcas) == 1
 
     def _create_copy(self):
         hda1 = self.dataset_populator.new_dataset(self.history_id)
@@ -1284,3 +1347,51 @@ class HistoryContentsApiBulkOperationTestCase(ApiTestCase):
     def _assert_bulk_success(self, bulk_operation_result, expected_success_count: int):
         assert bulk_operation_result["success_count"] == expected_success_count, bulk_operation_result
         assert not bulk_operation_result["errors"]
+
+
+def one_hda_model_store_dict():
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source = dict(
+        model_class="DatasetSource",
+        source_uri=TEST_SOURCE_URI,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = {
+        "dbkey": "?",
+    }
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source],
+        created_from_basename="dataset.txt",
+    )
+    serialized_hda = dict(
+        encoded_id="id_hda1",
+        model_class="HistoryDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension="txt",
+        metadata=metadata,
+        designation=None,
+        deleted=False,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+    )
+
+    return {
+        "datasets": [
+            serialized_hda,
+        ]
+    }

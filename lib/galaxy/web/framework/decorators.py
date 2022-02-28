@@ -266,7 +266,9 @@ def legacy_expose_api_anonymous(func, to_json=True):
 
 
 # ----------------------------------------------------------------------------- (new) api decorators
-def expose_api(func, to_json=True, user_required=True, user_or_session_required=True, handle_jsonp=True):
+def expose_api(
+    func, to_json=True, user_required=True, user_or_session_required=True, handle_jsonp=True, allow_files=False
+):
     """
     Expose this function via the API.
     """
@@ -471,6 +473,14 @@ def expose_api_raw(func):
 
 def expose_api_raw_anonymous(func):
     return expose_api(func, to_json=False, user_required=False)
+
+
+def expose_api_allow_files(func, to_json=True):
+    return expose_api(func, to_json=to_json, allow_files=True)
+
+
+def expose_api_anonymous_allow_files(func, to_json=True):
+    return expose_api(func, to_json=to_json, user_required=False, allow_files=True)
 
 
 def expose_api_raw_anonymous_and_sessionless(func):

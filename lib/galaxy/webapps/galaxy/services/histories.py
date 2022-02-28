@@ -39,6 +39,7 @@ from galaxy.schema import (
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
+    CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
     ExportHistoryArchivePayload,
@@ -52,7 +53,11 @@ from galaxy.schema.schema import (
 from galaxy.schema.types import LatestLiteral
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import restore_text
-from galaxy.webapps.galaxy.services.base import ServiceBase
+from galaxy.webapps.galaxy.services.base import (
+    ConsumesModelStores,
+    ServesExportStores,
+    ServiceBase,
+)
 from galaxy.webapps.galaxy.services.sharable import ShareableService
 
 log = logging.getLogger(__name__)
@@ -60,7 +65,7 @@ log = logging.getLogger(__name__)
 DEFAULT_ORDER_BY = "create_time-dsc"
 
 
-class HistoriesService(ServiceBase):
+class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
     """Common interface/service logic for interactions with histories in the context of the API.
 
     Provides the logic of the actions invoked by API controllers and uses type definitions
@@ -228,6 +233,22 @@ class HistoriesService(ServiceBase):
 
         return self._serialize_history(trans, new_history, serialization_params)
 
+    def create_from_store(
+        self,
+        trans,
+        payload: CreateHistoryFromStore,
+        serialization_params: SerializationParams,
+    ) -> AnyHistoryView:
+        if trans.anonymous:
+            raise glx_exceptions.AuthenticationRequired("You need to be logged in to create histories.")
+        if trans.user and trans.user.bootstrap_admin_user:
+            raise glx_exceptions.RealUserRequiredException("Only real users can create histories.")
+        object_tracker = self.create_objects_from_store(
+            trans,
+            payload,
+        )
+        return self._serialize_history(trans, object_tracker.new_history, serialization_params)
+
     def _save_upload_file_tmp(self, upload_file) -> str:
         try:
             suffix = Path(upload_file.filename).suffix
@@ -263,7 +284,14 @@ class HistoriesService(ServiceBase):
             )
         else:
             history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
-        return self._serialize_history(trans, history, serialization_params)
+        download_format = serialization_params.format or "json"
+        if download_format == "json":
+            return self._serialize_history(trans, history, serialization_params)
+        else:
+            served_export_store = self.serve_export_store(trans.app, download_format)
+            with served_export_store.export_store:
+                served_export_store.export_store.export_history(history)
+            return open(served_export_store.export_target.name, "rb")
 
     def update(
         self,
