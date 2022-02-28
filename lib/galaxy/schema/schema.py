@@ -1221,6 +1221,11 @@ class CreateNewCollectionPayload(Model):
     )
 
 
+class CreateHistoryFromStore(Model):
+    store_content_base64: Optional[str]
+    store_dict: Optional[Dict[str, Any]]
+
+
 class JobExportHistoryArchiveModel(Model):
     id: EncodedDatabaseIdField = Field(
         ...,
@@ -2171,6 +2176,11 @@ class CreateLibraryPayload(BaseModel):
         title="Synopsis",
         description="A short text describing the contents of the Library.",
     )
+
+
+class CreateLibrariesFromStore(Model):
+    store_content_base64: Optional[str]
+    store_dict: Optional[Dict[str, Any]]
 
 
 class UpdateLibraryPayload(BaseModel):

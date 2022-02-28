@@ -58,6 +58,7 @@ from galaxy.webapps.galaxy.api.common import (
     query_serialization_params,
 )
 from galaxy.webapps.galaxy.services.history_contents import (
+    CreateHistoryContentFromStore,
     CreateHistoryContentPayload,
     DatasetDetailsType,
     DirectionOptions,
@@ -709,6 +710,22 @@ class FastAPIHistoryContents:
         if isinstance(archive, HistoryContentsArchiveDryRunResult):
             return archive
         return StreamingResponse(archive.response(), headers=archive.get_headers())
+
+    @router.post("/api/histories/{history_id}/contents_from_store", summary="Create contents from store.")
+    def create_from_store(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        serialization_params: SerializationParams = Depends(query_serialization_params),
+        create_payload: CreateHistoryContentFromStore = Body(...),
+    ) -> List[AnyHistoryContentItem]:
+        """
+        Create history contents from model store.
+        Input can be a tarfile created with build_objects script distributed
+        with galaxy-data, from an exported history with files stripped out,
+        or hand-crafted JSON dictionary.
+        """
+        return self.service.create_from_store(trans, history_id, create_payload, serialization_params)
 
     @router.get(
         "/api/histories/{history_id}/contents/{direction}/{hid}/{limit}",
