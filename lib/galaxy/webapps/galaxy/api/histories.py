@@ -38,6 +38,7 @@ from galaxy.schema.fields import (
 )
 from galaxy.schema.schema import (
     AnyHistoryView,
+    CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
     ExportHistoryArchivePayload,
@@ -266,6 +267,18 @@ class FastAPIHistories:
         serialization_params: SerializationParams = Depends(query_serialization_params),
     ) -> AnyHistoryView:
         return self.service.update(trans, id, payload, serialization_params)
+
+    @router.post(
+        "/api/histories/from_store",
+        summary="Create histories from a model store.",
+    )
+    def create_from_store(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        serialization_params: SerializationParams = Depends(query_serialization_params),
+        payload: CreateHistoryFromStore = Body(...),
+    ) -> AnyHistoryView:
+        return self.service.create_from_store(trans, payload, serialization_params)
 
     @router.get(
         "/api/histories/{id}/exports",
@@ -638,6 +651,12 @@ class HistoriesController(BaseGalaxyAPIController):
         create_payload = CreateHistoryPayload(**payload)
         serialization_params = parse_serialization_params(**kwd)
         return self.service.create(trans, create_payload, serialization_params)
+
+    @expose_api
+    def create_from_store(self, trans, payload, **kwd):
+        create_payload = CreateHistoryFromStore(**payload)
+        serialization_params = parse_serialization_params(**kwd)
+        return self.service.create_from_store(trans, create_payload, serialization_params)
 
     @expose_api
     def delete(self, trans, id, **kwd):

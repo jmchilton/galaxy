@@ -37,11 +37,14 @@ API tests and Selenium tests routinely use requests directly and that is totally
 requests should just be filtered through the verb abstractions if that functionality
 is then added to populators to be shared across tests or across testing frameworks.
 """
+import base64
 import contextlib
 import json
 import os
 import random
 import string
+import tarfile
+import tempfile
 import time
 import unittest
 import urllib.parse
@@ -144,6 +147,18 @@ def skip_without_tool(tool_id):
     return method_wrapper
 
 
+def skip_without_asgi(method):
+    @wraps(method)
+    def wrapped_method(api_test_case, *args, **kwd):
+        config = api_test_case.galaxy_interactor.get("configuration").json()
+        asgi_enabled = config.get("asgi_enabled", False)
+        if not asgi_enabled:
+            raise unittest.SkipTest("ASGI not enabled, skipping test")
+        return method(api_test_case, *args, **kwd)
+
+    return wrapped_method
+
+
 def skip_without_datatype(extension):
     """Decorate an API test method as requiring a specific datatype.
 
@@ -220,9 +235,7 @@ def uses_test_history(**test_history_kwd):
 
 def _raise_skip_if(check, *args):
     if check:
-        from nose.plugins.skip import SkipTest
-
-        raise SkipTest(*args)
+        raise unittest.SkipTest(*args)
 
 
 def conformance_tests_gen(directory, filename="conformance_tests.yaml"):
@@ -444,6 +457,15 @@ class BasePopulator(metaclass=ABCMeta):
     def _delete(self, route, data=None, headers=None, admin=False, json: bool = False) -> Response:
         """DELETE against target Galaxy instance on specified route."""
 
+    def _get_to_tempfile(self, route, suffix=None, **kwd) -> str:
+        """Perform a _get and store the result in a tempfile."""
+        get_response = self._get(route, **kwd)
+        get_response.raise_for_status()
+        temp_file = tempfile.NamedTemporaryFile("wb", delete=False, suffix=suffix)
+        temp_file.write(get_response.content)
+        temp_file.flush()
+        return temp_file.name
+
 
 class BaseDatasetPopulator(BasePopulator):
     """Abstract description of API operations optimized for testing
@@ -516,6 +538,46 @@ class BaseDatasetPopulator(BasePopulator):
         response = self._put(url, {"tags": tags}, json=True)
         response.raise_for_status()
         return response.json()
+
+    def create_from_store_raw(self, payload: Dict[str, Any]) -> Response:
+        create_response = self._post("histories/from_store", payload, json=True)
+        return create_response
+
+    def create_from_store(
+        self, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        create_response = self.create_from_store_raw(payload)
+        create_response.raise_for_status()
+        return create_response.json()
+
+    def create_contents_from_store_raw(self, history_id: str, payload: Dict[str, Any]) -> Response:
+        create_response = self._post(f"histories/{history_id}/contents_from_store", payload, json=True)
+        return create_response
+
+    def create_contents_from_store(
+        self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        create_response = self.create_contents_from_store_raw(history_id, payload)
+        create_response.raise_for_status()
+        return create_response.json()
+
+    def download_contents_to_store(self, history_id: str, history_content: Dict[str, Any], extension=".tgz") -> str:
+        url = f"histories/{history_id}/contents/{history_content['history_content_type']}s/{history_content['id']}.{extension}"
+        return self._get_to_tempfile(url)
+
+    def reupload_contents(self, history_content: Dict[str, Any], extension: str = ".tgz", task_based: bool = False):
+        history_id = history_content["history_id"]
+        temp_tar = self.download_contents_to_store(history_id, history_content, "tgz")
+        with tarfile.open(name=temp_tar) as tf:
+            assert "datasets_attrs.txt" in tf.getnames()
+        new_history_id = self.new_history()
+        as_list = self.create_contents_from_store(
+            new_history_id,
+            store_path=temp_tar,
+        )
+        return new_history_id, as_list
 
     def wait_for_tool_run(
         self,
@@ -1726,6 +1788,19 @@ class LibraryPopulator:
         self.set_permissions(library_id, role_id)
         return library
 
+    def create_from_store_raw(self, payload: Dict[str, Any]) -> Response:
+        create_response = self.galaxy_interactor.post("libraries/from_store", payload, json=True, admin=True)
+        return create_response
+
+    def create_from_store(
+        self, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        create_response = self.create_from_store_raw(payload)
+        print(create_response.content)
+        create_response.raise_for_status()
+        return create_response.json()
+
     def new_library(self, name):
         data = dict(name=name)
         create_response = self.galaxy_interactor.post("libraries", data=data, admin=True, json=True)
@@ -2320,6 +2395,18 @@ def wait_on_state(
     except TimeoutAssertionError as e:
         response = state_func()
         raise TimeoutAssertionError(f"{e} Current response containing state [{response.json()}].")
+
+
+def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    # Ensure only one store method set.
+    assert store_dict is not None or store_path is not None
+    assert store_dict is None or store_path is None
+    if store_dict is not None:
+        payload["store_dict"] = store_dict
+    if store_path is not None:
+        payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read())
+    return payload
 
 
 class GiHttpMixin:

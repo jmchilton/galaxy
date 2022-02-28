@@ -169,14 +169,16 @@ class ModelImportStore(metaclass=abc.ABCMeta):
         """Trust HID when importing objects into a new History."""
 
     @contextlib.contextmanager
-    def target_history(self, default_history=None):
+    def target_history(self, default_history=None, legacy_history_naming=True):
         new_history = None
 
         if self.defines_new_history():
             history_properties = self.new_history_properties()
             history_name = history_properties.get("name")
-            if history_name:
+            if history_name and legacy_history_naming:
                 history_name = f"imported from archive: {history_name}"
+            elif history_name:
+                pass  # history_name = history_name
             else:
                 history_name = "unnamed imported history"
 
@@ -226,6 +228,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
         self._import_jobs(object_import_tracker, history)
         self._import_implicit_collection_jobs(object_import_tracker)
         self._flush()
+        return object_import_tracker
 
     def _attach_dataset_hashes(self, dataset_or_file_attrs, dataset_instance):
         if "hashes" in dataset_or_file_attrs:
@@ -865,6 +868,8 @@ class ObjectImportTracker:
         self.hdca_copied_from_sinks = {}
         self.jobs_by_key = {}
         self.requires_hid = []
+
+        self.new_history = None
 
     def find_hda(
         self, input_key: ObjectKeyType, hda_id: Optional[int] = None
@@ -1515,11 +1520,12 @@ class DirectoryModelExportStore(ModelExportStore):
                 self.collection_datasets[collection_dataset.id] = True
 
         # Write datasets' attributes to file.
+        actions_backref = model.Dataset.actions  # type: ignore[attr-defined]
         query = (
             sa_session.query(model.HistoryDatasetAssociation)
             .filter(model.HistoryDatasetAssociation.history == history)
             .join(model.Dataset)
-            .options(joinedload(model.HistoryDatasetAssociation.dataset).joinedload(model.Dataset.actions))
+            .options(joinedload(model.HistoryDatasetAssociation.dataset).joinedload(actions_backref))
             .order_by(model.HistoryDatasetAssociation.hid)
             .filter(model.Dataset.purged == expression.false())
         )

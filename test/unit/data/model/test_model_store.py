@@ -7,11 +7,14 @@ from tempfile import (
     mkdtemp,
     NamedTemporaryFile,
 )
-from typing import Any, Dict, NamedTuple
-
-from sqlalchemy.orm.scoping import scoped_session
+from typing import (
+    Any,
+    Dict,
+    NamedTuple,
+)
 
 import pytest
+from sqlalchemy.orm.scoping import scoped_session
 
 from galaxy import model
 from galaxy.model import store

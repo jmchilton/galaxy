@@ -265,7 +265,9 @@ def legacy_expose_api_anonymous(func, to_json=True):
 
 
 # ----------------------------------------------------------------------------- (new) api decorators
-def expose_api(func, to_json=True, user_required=True, user_or_session_required=True, handle_jsonp=True):
+def expose_api(
+    func, to_json=True, user_required=True, user_or_session_required=True, handle_jsonp=True, allow_files=False
+):
     """
     Expose this function via the API.
     """
@@ -337,7 +339,8 @@ def expose_api(func, to_json=True, user_required=True, user_or_session_required=
             except ValidationError as e:
                 raise validation_error_to_message_exception(e)
             if to_json:
-                rval = format_return_as_json(rval, jsonp_callback, pretty=trans.debug)
+                if not allow_files or not hasattr(rval, "read"):
+                    rval = format_return_as_json(rval, jsonp_callback, pretty=trans.debug)
             return rval
         except MessageException as e:
             traceback_string = format_exc()
@@ -470,6 +473,14 @@ def expose_api_raw(func):
 
 def expose_api_raw_anonymous(func):
     return expose_api(func, to_json=False, user_required=False)
+
+
+def expose_api_allow_files(func, to_json=True):
+    return expose_api(func, to_json=to_json, allow_files=True)
+
+
+def expose_api_anonymous_allow_files(func, to_json=True):
+    return expose_api(func, to_json=to_json, user_required=False, allow_files=True)
 
 
 def expose_api_raw_anonymous_and_sessionless(func):
