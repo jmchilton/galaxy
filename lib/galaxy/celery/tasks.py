@@ -9,6 +9,7 @@ from galaxy.managers.model_stores import ModelStoreManager
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.tasks import (
     GeneratePdfDownload,
+    MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
     SetupHistoryExportJob,
 )
@@ -35,6 +36,15 @@ def recalculate_user_disk_usage(session: galaxy_scoped_session, user_id=None):
 def purge_hda(hda_manager: HDAManager, hda_id):
     hda = hda_manager.by_id(hda_id)
     hda_manager._purge(hda)
+
+
+@galaxy_task(ignore_result=True, action="materializing dataset instance")
+def materialize(
+    hda_manager: HDAManager,
+    request: MaterializeDatasetInstanceTaskRequest,
+):
+    """Materialize datasets using HDAManager."""
+    hda_manager.materialize(request)
 
 
 @galaxy_task(action="set dataset association metadata")
