@@ -1,5 +1,10 @@
 import textwrap
 
+from galaxy.model.unittest_utils.store_fixtures import (
+    deferred_hda_model_store_dict,
+    one_hda_model_store_dict,
+    TEST_SOURCE_URI,
+)
 from galaxy_test.base.api_asserts import assert_has_keys
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -7,7 +12,6 @@ from galaxy_test.base.populators import (
     skip_without_tool,
 )
 from ._framework import ApiTestCase
-from .test_history_contents import one_hda_model_store_dict
 
 
 class DatasetsApiTestCase(ApiTestCase):
@@ -234,11 +238,26 @@ class DatasetsApiTestCase(ApiTestCase):
             store_dict=one_hda_model_store_dict(),
         )
         assert len(as_list) == 1
-        hda_details = self.dataset_populator.get_history_dataset_details(
-            self.history_id, dataset_id=as_list[0]["id"], assert_ok=False
-        )
-        dataset_id = hda_details["dataset_id"]
-        storage_info_dict = self.dataset_populator.dataset_storage_info(dataset_id)
-        assert_has_keys(storage_info_dict, "object_store_id", "name", "description")
+        hda_id = as_list[0]["id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(hda_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description", "sources", "hashes")
 
         assert storage_info_dict["object_store_id"] is None
+        sources = storage_info_dict["sources"]
+        assert len(sources) == 1
+        assert sources[0]["source_uri"] == TEST_SOURCE_URI
+
+    def test_storage_show_on_deferred(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=deferred_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        hda_id = as_list[0]["id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(hda_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description", "sources", "hashes")
+
+        assert storage_info_dict["object_store_id"] is None
+        sources = storage_info_dict["sources"]
+        assert len(sources) == 1
+        assert sources[0]["source_uri"] == TEST_SOURCE_URI

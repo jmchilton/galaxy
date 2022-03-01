@@ -435,21 +435,41 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         if not in_directory(temp_dataset_file_name, file_source_root):
                             raise MalformedContents(f"Invalid dataset path: {temp_dataset_file_name}")
 
+                    has_good_source = False
+                    file_metadata = dataset_attrs.get("file_metadata") or {}
+                    if "sources" in file_metadata:
+                        for source_attrs in file_metadata["sources"]:
+                            extra_files_path = source_attrs["extra_files_path"]
+                            if extra_files_path is None:
+                                has_good_source = True
+
                     discarded_data = self.import_options.discarded_data
-                    if (
+                    dataset_state = dataset_attrs.get("state", dataset_instance.states.OK)
+                    if dataset_state == dataset_instance.states.DEFERRED:
+                        dataset_instance._state = dataset_instance.states.DEFERRED
+                        dataset_instance.deleted = False
+                        dataset_instance.purged = False
+                        dataset_instance.dataset.state = dataset_instance.states.DEFERRED
+                        dataset_instance.dataset.deleted = False
+                        dataset_instance.dataset.purged = False
+                    elif (
                         not file_name
                         or not os.path.exists(temp_dataset_file_name)
                         or discarded_data is ImportDiscardedDataType.FORCE
                     ):
-                        dataset_instance._state = dataset_instance.states.DISCARDED
-                        deleted = discarded_data == ImportDiscardedDataType.FORBID
+                        is_discarded = not has_good_source
+                        target_state = (
+                            dataset_instance.states.DISCARDED if is_discarded else dataset_instance.states.DEFERRED
+                        )
+                        dataset_instance._state = target_state
+                        deleted = is_discarded and (discarded_data == ImportDiscardedDataType.FORBID)
                         dataset_instance.deleted = deleted
                         dataset_instance.purged = deleted
-                        dataset_instance.dataset.state = dataset_instance.states.DISCARDED
+                        dataset_instance.dataset.state = target_state
                         dataset_instance.dataset.deleted = deleted
                         dataset_instance.dataset.purged = deleted
                     else:
-                        dataset_instance.state = dataset_attrs.get("state", dataset_instance.states.OK)
+                        dataset_instance.state = dataset_state
                         self.object_store.update_from_file(
                             dataset_instance.dataset, file_name=temp_dataset_file_name, create=True
                         )
@@ -480,7 +500,6 @@ class ModelImportStore(metaclass=abc.ABCMeta):
 
                     if dataset_instance.deleted:
                         dataset_instance.dataset.deleted = True
-                    file_metadata = dataset_attrs.get("file_metadata") or {}
                     self._attach_dataset_hashes(file_metadata, dataset_instance)
                     self._attach_dataset_sources(file_metadata, dataset_instance)
                     if "created_from_basename" in file_metadata:

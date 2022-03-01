@@ -106,6 +106,83 @@ def one_ld_library_model_store_dict():
     }
 
 
+def one_ld_library_deferred_model_store_dict():
+    dataset_hash = dict(
+        model_class="DatasetHash",
+        hash_function=TEST_HASH_FUNCTION,
+        hash_value=TEST_HASH_VALUE,
+        extra_files_path=None,
+    )
+    dataset_source: Dict[str, Any] = dict(
+        model_class="DatasetSource",
+        source_uri=TEST_SOURCE_URI,
+        extra_files_path=None,
+        transform=None,
+        hashes=[],
+    )
+    metadata = BED_2_METADATA
+    file_metadata = dict(
+        hashes=[dataset_hash],
+        sources=[dataset_source],
+        created_from_basename="dataset.txt",
+    )
+    serialized_ldda = dict(
+        encoded_id=TEST_LDDA_ID,
+        model_class="LibraryDatasetDatasetAssociation",
+        create_time=now().__str__(),
+        update_time=now().__str__(),
+        name="my cool name",
+        info="my cool info",
+        blurb="a blurb goes here...",
+        peek="A bit of the data...",
+        extension=TEST_EXTENSION,
+        metadata=metadata,
+        designation=None,
+        deleted=False,
+        visible=True,
+        dataset_uuid=str(uuid4()),
+        annotation="my cool annotation",
+        file_metadata=file_metadata,
+        state="deferred",
+    )
+
+    ld = {
+        "name": TEST_LIBRARY_DATASET_NAME,
+        "info": TEST_LIBRARY_DATASET_INFO,
+        "order_id": 0,
+        "ldda": {
+            "model_class": "LibraryDatasetDatasetAssocation",
+            "encoded_id": TEST_LDDA_ID,
+        },
+    }
+
+    root_folder: Dict[str, Any] = {
+        "model_class": "LibraryFolder",
+        "name": TEST_ROOT_FOLDER_NAME,
+        "description": TEST_ROOT_FOLDER_DESCRIPTION,
+        "genome_build": None,
+        "deleted": False,
+        "folders": [],
+        "datasets": [ld],
+    }
+    serialized_library = {
+        "model_class": "Library",
+        "encoded_id": TEST_LIBRARY_ID,
+        "name": TEST_LIBRARY_NAME,
+        "description": TEST_LIBRARY_DESCRIPTION,
+        "synopsis": TEST_LIBRARY_SYNOPSIS,
+        "root_folder": root_folder,
+    }
+    return {
+        "libraries": [
+            serialized_library,
+        ],
+        "datasets": [
+            serialized_ldda,
+        ],
+    }
+
+
 def one_hda_model_store_dict(
     include_source=True,
 ):
