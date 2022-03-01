@@ -165,8 +165,8 @@ def test_import_from_dict():
     assert imported_hda.name == "my cool name"
     assert imported_hda.hid == 1
     # it wasn't deleted going in but we delete discarded datasets by default
-    assert imported_hda.state == "discarded"
-    assert imported_hda.deleted
+    assert imported_hda.state == "deferred"
+    assert not imported_hda.deleted
 
     assert len(imported_hda.dataset.hashes) == 1
     assert len(imported_hda.dataset.sources) == 1
