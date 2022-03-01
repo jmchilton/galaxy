@@ -1,4 +1,10 @@
+from galaxy.model.unittest_utils.store_fixtures import (
+    history_model_store_dict,
+)
 from galaxy_test.api.test_histories import ImportExportTests
+from galaxy_test.base.api_asserts import (
+    assert_has_keys,
+)
 from galaxy_test.driver.integration_util import (
     IntegrationTestCase,
     setup_celery_includes,
@@ -33,3 +39,14 @@ class ImportExportHistoryViaTasksIntegrationTestCase(ImportExportTests, Integrat
     def setUp(self):
         super().setUp()
         self._set_up_populators()
+
+    def test_import_from_model_store_async(self):
+        async_history_name = "Model store imported history"
+        store_dict = history_model_store_dict()
+        store_dict["history"]["name"] = async_history_name
+        response = self.dataset_populator.create_from_store_async(store_dict=store_dict)
+        assert_has_keys(response, "id")
+        self.dataset_populator.wait_for_history_with_name(
+            async_history_name,
+            "task based import history",
+        )
