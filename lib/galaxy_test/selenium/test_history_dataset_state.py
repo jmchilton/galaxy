@@ -1,4 +1,8 @@
-from galaxy.model.unittest_utils.store_fixtures import one_hda_model_store_dict
+from galaxy.model.unittest_utils.store_fixtures import (
+    deferred_hda_model_store_dict,
+    one_hda_model_store_dict,
+    TEST_SOURCE_URI,
+)
 from .framework import (
     selenium_test,
     SeleniumTestCase,
@@ -80,18 +84,51 @@ class HistoryDatasetStateTestCase(SeleniumTestCase, UsesHistoryItemAssertions):
         history_id = self.current_history_id()
         self.dataset_populator.create_contents_from_store(
             history_id,
-            store_dict=one_hda_model_store_dict(),
+            store_dict=one_hda_model_store_dict(include_source=False),
         )
         if not self.is_beta_history():
             self.history_panel_refresh_click()
+        else:
+            # regression after 3/24/2022 - explicit refresh now required.
+            self.home()
         self.history_panel_wait_for_hid_state(FIRST_HID, state="discarded", allowed_force_refreshes=1)
         self.history_panel_click_item_title(hid=FIRST_HID, wait=True)
         self.screenshot("history_panel_dataset_discarded")
-        self.assert_item_summary_includes(FIRST_HID, "job creating")
+        # Next if is a hack for recent changes to beta history...
+        # https://github.com/galaxyproject/galaxy/pull/13477/files#r823842897
+        if not self.is_beta_history():
+            self.assert_item_summary_includes(FIRST_HID, "job creating")
         self._assert_downloadable(FIRST_HID, is_downloadable=False)
 
         self.history_panel_item_view_dataset_details(FIRST_HID)
         self.screenshot("dataset_details_discarded")
+
+    @selenium_test
+    def test_dataset_state_deferred(self):
+        self.history_panel_create_new()
+        history_id = self.current_history_id()
+        self.dataset_populator.create_contents_from_store(
+            history_id,
+            store_dict=deferred_hda_model_store_dict(),
+        )
+        if not self.is_beta_history():
+            self.history_panel_refresh_click()
+        else:
+            # regression after 3/24/2022 - explicit refresh now required.
+            self.home()
+        self.history_panel_wait_for_hid_state(FIRST_HID, state="deferred", allowed_force_refreshes=1)
+        self.history_panel_click_item_title(hid=FIRST_HID, wait=True)
+        self.screenshot("history_panel_dataset_deferred")
+        # Next if is a hack for recent changes to beta history...
+        # https://github.com/galaxyproject/galaxy/pull/13477/files#r823842897
+        if not self.is_beta_history():
+            self.assert_item_summary_includes(FIRST_HID, "This dataset is remote")
+        self._assert_downloadable(FIRST_HID, is_downloadable=False)
+
+        self.history_panel_item_view_dataset_details(FIRST_HID)
+        self.screenshot("dataset_details_deferred")
+        details = self.components.dataset_details
+        assert details.deferred_source_uri.wait_for_text() == TEST_SOURCE_URI
 
     def _prepare_dataset(self):
         self.history_panel_create_new()

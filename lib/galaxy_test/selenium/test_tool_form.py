@@ -2,8 +2,8 @@ import json
 
 import pytest
 
+from galaxy.model.unittest_utils.store_fixtures import one_hda_model_store_dict
 from galaxy.selenium.navigates_galaxy import retry_call_during_transitions
-from galaxy_test.api.test_history_contents import one_hda_model_store_dict
 from galaxy_test.base import rules_test_data
 from galaxy_test.base.populators import (
     flakey,
@@ -191,7 +191,7 @@ class LoggedInToolFormTestCase(SeleniumTestCase):
         history_id = self.current_history_id()
         self.dataset_populator.create_contents_from_store(
             history_id,
-            store_dict=one_hda_model_store_dict(),
+            store_dict=one_hda_model_store_dict(include_source=False),
         )
 
         self.home()
