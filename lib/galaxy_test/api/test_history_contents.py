@@ -1,4 +1,3 @@
-import tarfile
 import time
 import urllib.parse
 from datetime import datetime
@@ -7,10 +6,6 @@ from typing import (
     List,
 )
 
-from galaxy.model.unittest_utils.store_fixtures import (
-    deferred_hda_model_store_dict,
-    one_hda_model_store_dict,
-)
 from galaxy.webapps.galaxy.services.history_contents import DirectionOptions
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -172,97 +167,6 @@ class HistoryContentsApiTestCase(ApiTestCase):
         show_response = self.__show(hda1)
         self._assert_status_code_is(show_response, 200)
         self.__assert_matches_hda(hda1, show_response.json())
-
-    def test_export_and_imported_discarded(self):
-        hda1 = self.dataset_populator.new_dataset(self.history_id, wait=True)
-
-        second_history_id, as_list = self.dataset_populator.reupload_contents(hda1)
-
-        assert len(as_list) == 1
-        new_hda = as_list[0]
-        assert new_hda["model_class"] == "HistoryDatasetAssociation"
-        assert new_hda["state"] == "discarded"
-        assert not new_hda["deleted"]
-
-    def test_export_and_imported_discarded_bam(self):
-        contents = self.dataset_populator.new_dataset(
-            self.history_id,
-            content=open(self.test_data_resolver.get_filename("1.bam"), "rb"),
-            file_type="bam",
-            wait=True,
-        )
-        second_history_id, as_list = self.dataset_populator.reupload_contents(contents)
-        assert len(as_list) == 1
-        new_hda = as_list[0]
-        assert new_hda["model_class"] == "HistoryDatasetAssociation"
-        assert new_hda["state"] == "discarded"
-        assert not new_hda["deleted"]
-
-    def test_import_as_discarded_from_dict(self):
-        as_list = self.dataset_populator.create_contents_from_store(
-            self.history_id,
-            store_dict=one_hda_model_store_dict(
-                include_source=False,
-            ),
-        )
-        assert len(as_list) == 1
-        new_hda = as_list[0]
-        assert new_hda["model_class"] == "HistoryDatasetAssociation"
-        assert new_hda["state"] == "discarded"
-        assert not new_hda["deleted"]
-
-        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
-        contents_response.raise_for_status()
-
-    def test_import_as_deferred_from_discarded_with_source_dict(self):
-        as_list = self.dataset_populator.create_contents_from_store(
-            self.history_id,
-            store_dict=one_hda_model_store_dict(
-                include_source=True,
-            ),
-        )
-        assert len(as_list) == 1
-        new_hda = as_list[0]
-        assert new_hda["model_class"] == "HistoryDatasetAssociation"
-        assert new_hda["state"] == "deferred"
-        assert not new_hda["deleted"]
-
-        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
-        contents_response.raise_for_status()
-
-    def test_export_and_imported_discarded_collection(self):
-        create_response = self.dataset_collection_populator.create_list_in_history(
-            history_id=self.history_id, direct_upload=True
-        ).json()
-        self.dataset_populator.wait_for_history(self.history_id)
-        contents = create_response["outputs"][0]
-        temp_tar = self.dataset_populator.download_contents_to_store(self.history_id, contents, "tgz")
-        with tarfile.open(name=temp_tar) as tf:
-            assert "datasets_attrs.txt" in tf.getnames()
-            assert "collections_attrs.txt" in tf.getnames()
-
-        second_history_id = self.dataset_populator.new_history()
-        as_list = self.dataset_populator.create_contents_from_store(
-            second_history_id,
-            store_path=temp_tar,
-        )
-        assert len(as_list) == 1
-        hdcas = [e for e in as_list if e["history_content_type"] == "dataset_collection"]
-        assert len(hdcas) == 1
-
-    def test_import_as_deferred_from_dict(self):
-        as_list = self.dataset_populator.create_contents_from_store(
-            self.history_id,
-            store_dict=deferred_hda_model_store_dict(),
-        )
-        assert len(as_list) == 1
-        new_hda = as_list[0]
-        assert new_hda["model_class"] == "HistoryDatasetAssociation"
-        assert new_hda["state"] == "deferred"
-        assert not new_hda["deleted"]
-
-        contents_response = self._get(f"histories/{self.history_id}/contents?v=dev&view=betawebclient")
-        contents_response.raise_for_status()
 
     def _create_copy(self):
         hda1 = self.dataset_populator.new_dataset(self.history_id)
