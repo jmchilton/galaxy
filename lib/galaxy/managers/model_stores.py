@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import os
 from tempfile import (
     mkdtemp,
@@ -33,6 +34,8 @@ from galaxy.web.short_term_storage import (
     ShortTermStorageMonitor,
     storage_context,
 )
+
+log = logging.getLogger(__name__)
 
 
 class ModelStoreManager:

@@ -876,6 +876,11 @@ class BaseDatasetPopulator(BasePopulator):
                 history_content_id = history_contents[-1]["id"]
         return history_content_id
 
+    def get_history_contents(self, history_id: str) -> List[Dict[str, Any]]:
+        contents_response = self._get_contents_request(history_id)
+        contents_response.raise_for_status()
+        return contents_response.json()
+
     def _get_contents_request(self, history_id: str, suffix: str = "", data=None) -> Response:
         if data is None:
             data = {}
@@ -1082,7 +1087,7 @@ class BaseDatasetPopulator(BasePopulator):
         api_asserts.assert_status_code_is(history_index_response, 200)
         return history_index_response.json()
 
-    def wait_on_history_length(self, history_id, wait_on_history_length):
+    def wait_on_history_length(self, history_id: str, wait_on_history_length: int):
         def history_has_length():
             history_length = self.history_length(history_id)
             return None if history_length != wait_on_history_length else True

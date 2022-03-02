@@ -375,7 +375,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
             short_term_storage_request_id=short_term_storage_target.request_id,
             include_files=include_files,
             user=trans.async_request_user,
-            content_type=HistoryContentType.dataset,
+            content_type=contents_type,
             content_id=content_id,
         )
         result = prepare_history_content_download.delay(request=request)
