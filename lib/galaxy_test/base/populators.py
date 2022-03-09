@@ -1335,6 +1335,29 @@ class BaseWorkflowPopulator(BasePopulator):
         r.raise_for_status()
         return r.json()
 
+    def download_invocation_to_store(self, invocation_id, extension="tgz"):
+        url = f"invocations/{invocation_id}.{extension}"
+        return self._get_to_tempfile(url, suffix=extension)
+
+    def create_invocation_from_store_raw(
+        self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+    ) -> Response:
+        url = "invocations/from_store"
+        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        payload["history_id"] = history_id
+        create_response = self._post(url, payload, json=True)
+        return create_response
+
+    def create_invocation_from_store(
+        self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+    ) -> Response:
+        create_response = self.create_invocation_from_store_raw(
+            history_id, store_dict=store_dict, store_path=store_path
+        )
+        print(create_response.content)
+        create_response.raise_for_status()
+        return create_response.json()
+
     def get_biocompute_object(self, invocation_id):
         bco_response = self._get(f"invocations/{invocation_id}/biocompute")
         bco_response.raise_for_status()

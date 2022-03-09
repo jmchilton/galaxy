@@ -30,6 +30,10 @@ from galaxy.model.unittest_utils.store_fixtures import (
 )
 from galaxy.objectstore.unittest_utils import Config as TestConfig
 from galaxy.util.compression_utils import CompressedFile
+from ..test_galaxy_mapping import (
+    _invocation_for_workflow,
+    _workflow_from_steps,
+)
 
 TESTCASE_DIRECTORY = pathlib.Path(__file__).parent
 TEST_PATH_1 = TESTCASE_DIRECTORY / "1.txt"
@@ -243,6 +247,32 @@ def test_import_export_library():
 
     assert len(new_root.folders) == 1
     assert len(new_root.datasets) == 1
+
+
+def test_import_export_invocation():
+    app = _mock_app()
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+
+    workflow_1 = _workflow_from_steps(u, [])
+    sa_session.add(workflow_1)
+    workflow_invocation = _invocation_for_workflow(u, workflow_1)
+    sa_session.add(workflow_invocation)
+    sa_session.flush()
+
+    temp_directory = mkdtemp()
+    with store.DirectoryModelExportStore(temp_directory, app=app) as export_store:
+        export_store.export_workflow_invocation(workflow_invocation)
+
+    h2 = model.History(user=u)
+    sa_session.add(h2)
+    sa_session.flush()
+
+    import_model_store = store.get_import_model_store_for_directory(
+        temp_directory, app=app, user=u, import_options=store.ImportOptions()
+    )
+    import_model_store.perform_import(history=h2)
 
 
 def test_finalize_job_state():
@@ -596,8 +626,28 @@ def _create_datasets(sa_session, history, n, extension="txt"):
     ]
 
 
+class MockWorkflowContentsManager:
+    def store_workflow_to_path(self, path, stored_workflow, workflow, **kwd):
+        with open(path, "w") as f:
+            f.write("MY COOL WORKFLOW!!!")
+
+    def read_workflow_from_path(self, app, user, path, allow_in_directory=None):
+        stored_workflow = model.StoredWorkflow()
+        stored_workflow.user = user
+        workflow = model.Workflow()
+        stored_workflow.latest_workflow = workflow
+        sa_session = app.model.context
+        sa_session.add_all((stored_workflow, workflow))
+        sa_session.flush()
+        return workflow
+
+
+class TestApp(GalaxyDataTestApp):
+    workflow_contents_manager = MockWorkflowContentsManager()
+
+
 def _mock_app(store_by=DEFAULT_OBJECT_STORE_BY):
-    app = GalaxyDataTestApp()
+    app = TestApp()
     test_object_store_config = TestConfig(store_by=store_by)
     app.object_store = test_object_store_config.object_store
     app.model.Dataset.object_store = app.object_store
@@ -605,7 +655,7 @@ def _mock_app(store_by=DEFAULT_OBJECT_STORE_BY):
 
 
 class StoreFixtureContextWithUser(NamedTuple):
-    app: GalaxyDataTestApp
+    app: TestApp
     sa_session: scoped_session
     user: model.User
 
@@ -620,7 +670,7 @@ def setup_fixture_context_with_user(
 
 
 class StoreFixtureContextWithHistory(NamedTuple):
-    app: GalaxyDataTestApp
+    app: TestApp
     sa_session: scoped_session
     user: model.User
     history: model.History
