@@ -35,6 +35,16 @@ class RequestUser(BaseModel):
     # session_id: Optional[str]
 
 
+class GenerateHistoryDownload(BaseModel):
+    history_id: int
+    model_store_format: str
+    short_term_storage_request_id: str
+    include_files: bool
+    user: RequestUser
+    include_hidden: bool
+    include_deleted: bool
+
+
 class MaterializeDatasetInstanceTaskRequest(BaseModel):
     history_id: int
     user: RequestUser
