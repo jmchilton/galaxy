@@ -14,10 +14,12 @@ from json import (
 )
 from typing import (
     Any,
+    Callable,
     cast,
     Dict,
     List,
     Optional,
+    Type,
     Union,
 )
 
@@ -29,6 +31,7 @@ from sqlalchemy.sql import expression
 from galaxy.exceptions import (
     MalformedContents,
     ObjectNotFound,
+    RequestParameterInvalidException,
 )
 from galaxy.model.metadata import MetadataCollection
 from galaxy.model.orm.util import (
@@ -1774,7 +1777,9 @@ class DirectoryModelExportStore(ModelExportStore):
             jobs_attrs_out.write(json_encoder.encode(jobs_attrs))
         return jobs_attrs
 
-    def export_history(self, history, include_hidden=False, include_deleted=False):
+    def export_history(
+        self, history: model.History, include_hidden: bool = False, include_deleted: bool = False
+    ) -> None:
         app = self.app
         export_directory = self.export_directory
 
@@ -2062,6 +2067,27 @@ class BagArchiveModelExportStore(BagDirectoryModelExportStore):
         rval = bdb.archive_bag(self.export_directory, self.bag_archiver)
         shutil.move(rval, self.out_file)
         shutil.rmtree(self.export_directory)
+
+
+def get_export_store_factory(app, download_format: str, export_files=None) -> Callable[[str], ModelExportStore]:
+    export_store_class: Union[Type[TarModelExportStore], Type[BagArchiveModelExportStore]]
+    export_store_class_kwds = {
+        "app": app,
+        "export_files": export_files,
+        "serialize_dataset_objects": False,
+    }
+    if download_format in ["tar.gz", "tgz"]:
+        export_store_class = TarModelExportStore
+        export_store_class_kwds["gzip"] = True
+    elif download_format.startswith("bag."):
+        bag_archiver = download_format[len("bag.") :]
+        if bag_archiver not in ["zip", "tar", "tgz"]:
+            raise RequestParameterInvalidException(f"Unknown download format [{download_format}]")
+        export_store_class = BagArchiveModelExportStore
+        export_store_class_kwds["bag_archiver"] = bag_archiver
+    else:
+        raise RequestParameterInvalidException(f"Unknown download format [{download_format}]")
+    return lambda path: export_store_class(path, **export_store_class_kwds)
 
 
 def tar_export_directory(export_directory, out_file, gzip):
