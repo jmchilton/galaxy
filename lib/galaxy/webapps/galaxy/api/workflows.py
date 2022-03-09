@@ -9,11 +9,13 @@ import os
 from typing import (
     Any,
     Dict,
+    Optional,
 )
 
 import requests
 from gxformat2._yaml import ordered_dump
 from markupsafe import escape
+from pydantic import Extra
 from sqlalchemy import (
     desc,
     false,
@@ -40,7 +42,10 @@ from galaxy.managers.workflows import (
     WorkflowUpdateOptions,
 )
 from galaxy.model.item_attrs import UsesAnnotations
-from galaxy.schema.schema import InvocationIndexPayload
+from galaxy.schema.schema import (
+    InvocationIndexPayload,
+    Model,
+)
 from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
 from galaxy.tools import recommendations
@@ -50,6 +55,8 @@ from galaxy.util.sanitize_html import sanitize_html
 from galaxy.version import VERSION
 from galaxy.web import (
     expose_api,
+    expose_api_allow_files,
+    expose_api_anonymous,
     expose_api_anonymous_and_sessionless,
     expose_api_raw,
     expose_api_raw_anonymous_and_sessionless,
@@ -61,6 +68,10 @@ from galaxy.webapps.base.controller import (
     UsesStoredWorkflowMixin,
 )
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
+from galaxy.webapps.galaxy.services.base import (
+    ConsumesModelStores,
+    ServesExportStores,
+)
 from galaxy.workflow.extract import extract_workflow
 from galaxy.workflow.modules import module_factory
 from galaxy.workflow.run import queue_invoke
@@ -70,7 +81,23 @@ from . import BaseGalaxyAPIController
 log = logging.getLogger(__name__)
 
 
-class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, UsesAnnotations, SharableMixin):
+class CreateInvocationFromStore(Model):
+    store_content_base64: Optional[str]
+    store_dict: Optional[Dict[str, Any]]
+    history_id: Optional[str]
+
+    class Config:
+        extra = Extra.allow
+
+
+class WorkflowsAPIController(
+    BaseGalaxyAPIController,
+    UsesStoredWorkflowMixin,
+    UsesAnnotations,
+    SharableMixin,
+    ServesExportStores,
+    ConsumesModelStores,
+):
     def __init__(self, app: StructuredApp):
         super().__init__(app)
         self.history_manager = app.history_manager
@@ -924,16 +951,46 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
         trans.response.headers["total_matches"] = total_matches
         return self.workflow_manager.serialize_workflow_invocations(invocations, **kwd)
 
-    @expose_api
+    @expose_api_anonymous
+    def create_invocations_from_store(self, trans, payload, **kwd):
+        """
+        POST /api/invocations/from_store
+
+        Create invocation(s) from a supplied model store.
+
+        Input can a tarfile created with build_objects script distributed
+        with galaxy-data, from an exported history with files stipped out,
+        or hand-crafted JSON dictionary.
+        """
+        create_payload = CreateInvocationFromStore(**payload)
+        # refactor into a service...
+        return self._create_from_store(trans, create_payload)
+
+    def _create_from_store(self, trans, payload: CreateInvocationFromStore):
+        history = self.history_manager.get_owned(
+            self.decode_id(payload.history_id), trans.user, current_history=trans.history
+        )
+        object_tracker = self.create_objects_from_store(
+            trans,
+            payload,
+            history=history,
+        )
+        return self.workflow_manager.serialize_workflow_invocations(object_tracker.invocations_by_key.values())
+
+    @expose_api_allow_files
     def show_invocation(self, trans: GalaxyWebTransaction, invocation_id, **kwd):
         """
-        GET /api/workflows/{workflow_id}/invocations/{invocation_id}
-        GET /api/invocations/{invocation_id}
+        GET /api/workflows/{workflow_id}/invocations/{invocation_id}{.format}
+        GET /api/invocations/{invocation_id}{.format}
 
         Get detailed description of workflow invocation
 
         :param  invocation_id:      the invocation id (required)
         :type   invocation_id:      str
+
+        :param  format:             Defaults to json like a typical entry but allow exporting as tar.gz,
+                                    bagit.tar.gz
+        :type   format:             str
 
         :param  step_details:       fetch details about individual invocation steps
                                     and populate a steps attribute in the resulting
@@ -955,13 +1012,21 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
         """
         decoded_workflow_invocation_id = self.decode_id(invocation_id)
         workflow_invocation = self.workflow_manager.get_invocation(trans, decoded_workflow_invocation_id, eager=True)
-        if workflow_invocation:
+        if not workflow_invocation:
+            raise exceptions.ObjectNotFound()
+
+        download_format = kwd.get("format") or "json"
+        if download_format == "json":
             step_details = util.string_as_bool(kwd.pop("step_details", "False"))
             legacy_job_state = util.string_as_bool(kwd.pop("legacy_job_state", "False"))
             return self.__encode_invocation(
-                workflow_invocation, step_details=step_details, legacy_job_state=legacy_job_state, **kwd
+                workflow_invocation, step_details=step_details, legacy_job_state=legacy_job_state
             )
-        return None
+        else:
+            served_export_store = self.serve_export_store(trans.app, download_format)
+            with served_export_store.export_store:
+                served_export_store.export_store.export_workflow_invocation(workflow_invocation)
+            return open(served_export_store.export_target.name, "rb")
 
     @expose_api
     def cancel_invocation(self, trans: ProvidesUserContext, invocation_id, **kwd):
