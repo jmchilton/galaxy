@@ -50,7 +50,6 @@ from galaxy.schema.schema import (
 from galaxy.web import (
     expose_api,
     expose_api_anonymous,
-    expose_api_anonymous_allow_files,
     expose_api_raw_anonymous,
 )
 from galaxy.webapps.base.controller import (
