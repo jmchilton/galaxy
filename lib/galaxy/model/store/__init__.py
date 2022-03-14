@@ -372,7 +372,12 @@ class ModelImportStore(metaclass=abc.ABCMeta):
 
                 handle_dataset_object_edit(dataset_instance)
             else:
-                metadata = dataset_attrs["metadata"]
+                metadata_deferred = dataset_attrs.get("metadata_deferred", False)
+                metadata = dataset_attrs.get("metadata")
+                if metadata is None and not metadata_deferred:
+                    raise MalformedContents("metadata_deferred must be true if no metadata found in dataset attributes")
+                if metadata is None:
+                    metadata = {"dbkey": "?"}
 
                 model_class = dataset_attrs.get("model_class", "HistoryDatasetAssociation")
                 dataset_instance: model.DatasetInstance
@@ -389,6 +394,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         deleted=dataset_attrs.get("deleted", False),
                         dbkey=metadata["dbkey"],
                         tool_version=metadata.get("tool_version"),
+                        metadata_deferred=metadata_deferred,
                         history=history,
                         create_dataset=True,
                         flush=False,
@@ -408,6 +414,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         deleted=dataset_attrs.get("deleted", False),
                         dbkey=metadata["dbkey"],
                         tool_version=metadata.get("tool_version"),
+                        metadata_deferred=metadata_deferred,
                         user=self.user,
                         create_dataset=True,
                         flush=False,
