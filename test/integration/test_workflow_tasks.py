@@ -66,14 +66,15 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
         invocation_details = self.workflow_populator.get_invocation(invocation_id, step_details="true")
         invocation_steps = invocation_details["steps"]
         assert len(invocation_steps) == 3
+        order_indices = [i["order_index"] for i in invocation_steps]
         invocation_step0 = invocation_steps[0]
-        assert invocation_step0["order_index"] == 0
+        assert invocation_step0["order_index"] == 0, f"order_index was not 0, indices was {order_indices}"
         assert "output" in invocation_step0["outputs"]
         invocation_step1 = invocation_steps[1]
-        assert invocation_step1["order_index"] == 1
+        assert invocation_step1["order_index"] == 1, f"order_index was not 1, indices was {order_indices}"
         assert "output" in invocation_step1["outputs"]
         invocation_step2 = invocation_steps[2]
-        assert invocation_step2["order_index"] == 2
+        assert invocation_step2["order_index"] == 2, f"order_index was not 2, indices was {order_indices}"
         assert "out_file1" in invocation_step2["outputs"]
 
         self._print_invocation(invocation_id)
