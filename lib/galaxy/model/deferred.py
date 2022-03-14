@@ -142,8 +142,15 @@ class DatasetInstanceMaterializer:
             history=history,
         )
         materialized_dataset_instance.copy_from(
-            dataset_instance, new_dataset=materialized_dataset, include_tags=attached
+            dataset_instance, new_dataset=materialized_dataset, include_tags=attached, include_metadata=True
         )
+        require_metadata_regeneration = (
+            materialized_dataset_instance.has_metadata_files or materialized_dataset_instance.metadata_deferred
+        )
+        if require_metadata_regeneration:
+            materialized_dataset_instance.init_meta()
+            materialized_dataset_instance.set_meta()
+            materialized_dataset_instance.metadata_deferred = False
         return materialized_dataset_instance
 
     def _stream_source(self, target_source: DatasetSource, datatype) -> str:
