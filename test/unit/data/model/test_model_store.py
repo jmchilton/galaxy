@@ -21,6 +21,7 @@ from galaxy.model import store
 from galaxy.model.metadata import MetadataTempFile
 from galaxy.model.unittest_utils import GalaxyDataTestApp
 from galaxy.model.unittest_utils.store_fixtures import (
+    deferred_hda_model_store_dict,
     one_hda_model_store_dict,
     one_ld_library_model_store_dict,
     TEST_HASH_FUNCTION,
@@ -208,6 +209,26 @@ def test_import_allow_discarded():
     # it wasn't deleted going in but we delete discarded datasets by default
     assert imported_hda.state == "discarded"
     assert not imported_hda.deleted
+    assert not imported_hda.metadata_deferred
+
+
+def test_import_deferred_metadata():
+    fixture_context = setup_fixture_context_with_history()
+    import_dict = deferred_hda_model_store_dict(metadata_deferred=True)
+    import_options = store.ImportOptions(
+        discarded_data=store.ImportDiscardedDataType.ALLOW,
+    )
+    perform_import_from_store_dict(fixture_context, import_dict, import_options=import_options)
+    import_history = fixture_context.history
+    datasets = import_history.datasets
+    assert len(datasets) == 1
+    imported_hda = datasets[0]
+    assert imported_hda.name == "my cool name"
+    assert imported_hda.hid == 1
+    # it wasn't deleted going in but we delete discarded datasets by default
+    assert imported_hda.state == "deferred"
+    assert not imported_hda.deleted
+    assert imported_hda.metadata_deferred
 
 
 def test_import_library_require_permissions():
