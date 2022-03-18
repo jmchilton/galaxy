@@ -317,6 +317,17 @@ class FastAPIHistories:
     ) -> AnyHistoryView:
         return self.service.create_from_store(trans, payload, serialization_params)
 
+    @router.post(
+        "/api/histories/from_store_async",
+        summary="Launch a task to create histories from a model store.",
+    )
+    def create_from_store_async(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        payload: CreateHistoryFromStore = Body(...),
+    ) -> AnyHistoryView:
+        return self.service.create_from_store_async(trans, payload)
+
     @router.get(
         "/api/histories/{id}/exports",
         summary=("Get previous history exports (to links). Effectively returns serialized JEHA objects."),
