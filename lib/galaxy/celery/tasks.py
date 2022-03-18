@@ -12,6 +12,7 @@ from galaxy.schema.tasks import (
     GenerateHistoryDownload,
     GenerateInvocationDownload,
     GeneratePdfDownload,
+    ImportModelStoreTaskRequest,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
     SetupHistoryExportJob,
@@ -108,6 +109,14 @@ def prepare_invocation_download(
     request: GenerateInvocationDownload,
 ):
     model_store_manager.prepare_invocation_download(request)
+
+
+@galaxy_task(action="import objects from a target model store")
+def import_model_store(
+    model_store_manager: ModelStoreManager,
+    request: ImportModelStoreTaskRequest,
+):
+    model_store_manager.import_model_store(request)
 
 
 @galaxy_task(action="pruning history audit table")

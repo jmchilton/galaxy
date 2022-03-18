@@ -95,6 +95,27 @@ class DeleteHistoryPayload(BaseModel):
     )
 
 
+class PrepareDownloadPayload(BaseModel):
+    format: str = Field(
+        "tar.gz",
+        title="Format",
+        description="Model store format.",
+    )
+    include_files: bool = Field(
+        default=True, title="Include files", description="Include dataset files in generated history model store."
+    )
+    include_deleted: bool = Field(
+        default=False,
+        title="Include deleted",
+        description="Include file contents for deleted datasets (if include_files is True).",
+    )
+    include_hidden: bool = Field(
+        False,
+        title="Include hidden",
+        description="Include file contents for hidden datasets (if include_files is True).",
+    )
+
+
 @as_form
 class CreateHistoryFormData(CreateHistoryPayload):
     """Uses Form data instead of JSON"""
@@ -195,32 +216,15 @@ class FastAPIHistories:
         self,
         trans: ProvidesHistoryContext = DependsOnTrans,
         id: EncodedDatabaseIdField = HistoryIDPathParam,
-        format: str = Query(
-            "tar.gz",
-            title="Format",
-            description="Model store format.",
-        ),
-        include_files: bool = Query(
-            True, title="Include files", description="Include dataset files in generated history model store."
-        ),
-        include_deleted: bool = Query(
-            False,
-            title="Include deleted",
-            description="Include file contents for deleted datasets (if include_files is True).",
-        ),
-        include_hidden: bool = Query(
-            False,
-            title="Include hidden",
-            description="Include file contents for hidden datasets (if include_files is True).",
-        ),
+        payload: PrepareDownloadPayload = Body(...),
     ) -> AsyncFile:
         return self.service.prepare_download(
             trans,
             id,
-            format,
-            include_files=include_files,
-            include_deleted=include_deleted,
-            include_hidden=include_hidden,
+            payload.format,
+            include_files=payload.include_files,
+            include_deleted=payload.include_deleted,
+            include_hidden=payload.include_hidden,
         )
 
     @router.get(
@@ -311,6 +315,17 @@ class FastAPIHistories:
         payload: CreateHistoryFromStore = Body(...),
     ) -> AnyHistoryView:
         return self.service.create_from_store(trans, payload, serialization_params)
+
+    @router.post(
+        "/api/histories/from_store_async",
+        summary="Launch a task to create histories from a model store.",
+    )
+    def create_from_store_async(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        payload: CreateHistoryFromStore = Body(...),
+    ) -> AnyHistoryView:
+        return self.service.create_from_store_async(trans, payload)
 
     @router.get(
         "/api/histories/{id}/exports",
