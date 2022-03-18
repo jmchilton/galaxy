@@ -21,7 +21,10 @@ from sqlalchemy import (
 
 from galaxy import exceptions as glx_exceptions
 from galaxy import model
-from galaxy.celery.tasks import prepare_history_download
+from galaxy.celery.tasks import (
+    import_model_store,
+    prepare_history_download,
+)
 from galaxy.files.uris import validate_uri_access
 from galaxy.managers.citations import CitationsManager
 from galaxy.managers.context import ProvidesHistoryContext
@@ -41,6 +44,7 @@ from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
     AsyncFile,
+    AsyncTaskResultSummary,
     CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
@@ -52,7 +56,10 @@ from galaxy.schema.schema import (
     JobImportHistoryResponse,
     LabelValuePair,
 )
-from galaxy.schema.tasks import GenerateHistoryDownload
+from galaxy.schema.tasks import (
+    GenerateHistoryDownload,
+    ImportModelStoreTaskRequest,
+)
 from galaxy.schema.types import LatestLiteral
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import restore_text
@@ -247,15 +254,35 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         payload: CreateHistoryFromStore,
         serialization_params: SerializationParams,
     ) -> AnyHistoryView:
-        if trans.anonymous:
-            raise glx_exceptions.AuthenticationRequired("You need to be logged in to create histories.")
-        if trans.user and trans.user.bootstrap_admin_user:
-            raise glx_exceptions.RealUserRequiredException("Only real users can create histories.")
+        self._ensure_can_create_history(trans)
         object_tracker = self.create_objects_from_store(
             trans,
             payload,
         )
         return self._serialize_history(trans, object_tracker.new_history, serialization_params)
+
+    def create_from_store_async(
+        self,
+        trans,
+        payload: CreateHistoryFromStore,
+    ) -> AsyncTaskResultSummary:  # TODO: serialized task somehow...
+        self._ensure_can_create_history(trans)
+        from galaxy.managers.model_stores import payload_to_source_uri
+
+        source_uri = payload_to_source_uri(payload)
+        request = ImportModelStoreTaskRequest(
+            user=trans.async_request_user,
+            source_uri=source_uri,
+            for_library=False,
+        )
+        result = import_model_store.delay(request=request)
+        return async_task_summary(result)
+
+    def _ensure_can_create_history(self, trans):
+        if trans.anonymous:
+            raise glx_exceptions.AuthenticationRequired("You need to be logged in to create histories.")
+        if trans.user and trans.user.bootstrap_admin_user:
+            raise glx_exceptions.RealUserRequiredException("Only real users can create histories.")
 
     def _save_upload_file_tmp(self, upload_file) -> str:
         try:
