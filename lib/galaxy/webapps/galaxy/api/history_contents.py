@@ -43,6 +43,7 @@ from galaxy.schema.schema import (
     HistoryContentsArchiveDryRunResult,
     HistoryContentsResult,
     HistoryContentType,
+    MaterializeDatasetInstanceAPIRequest,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
     UpdateHistoryContentsPayload,
@@ -73,7 +74,6 @@ from galaxy.webapps.galaxy.services.history_contents import (
     HistoryContentsIndexJobsSummaryParams,
     HistoryContentsIndexParams,
     LegacyHistoryContentsIndexParams,
-    MaterializeDatasetInstanceAPIRequest,
 )
 from . import (
     BaseGalaxyAPIController,
