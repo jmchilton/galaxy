@@ -157,13 +157,13 @@ steps:
             "0": self.dataset_populator.ds_entry(hdca_id),
         }
         invocation_id = self.workflow_populator.invoke_workflow_and_wait(
-            workflow_id, history_id=history_id, inputs=inputs, assert_ok=True
+            workflow_id, history_id=history_id, inputs=inputs
         )
         jobs1 = self.__jobs_index(data={"workflow_id": workflow_id})
         jobs2 = self.__jobs_index(data={"invocation_id": invocation_id})
         assert len(jobs1) == len(jobs2) == 1
         second_invocation_id = self.workflow_populator.invoke_workflow_and_wait(
-            workflow_id, history_id=history_id, inputs=inputs, assert_ok=True
+            workflow_id, history_id=history_id, inputs=inputs
         )
         workflow_jobs = self.__jobs_index(data={"workflow_id": workflow_id})
         second_invocation_jobs = self.__jobs_index(data={"invocation_id": second_invocation_id})
