@@ -155,7 +155,8 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
 
             self._rerun_imported_workflow(summary, invocation_details)
 
-    def test_export_import_invocation_with_input_as_output(self):
+    def test_export_import_invocation_with_step_parameter(self):
+        # Run this to ensure order indices are preserved.
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow_with_runtime_data_column_parameter(history_id)
             invocation_details = self._export_and_import_worklflow_invocation(summary)
