@@ -1517,7 +1517,7 @@ class BaseWorkflowPopulator(BasePopulator):
         history_id: Optional[str] = None,
         inputs: Optional[dict] = None,
         request: Optional[dict] = None,
-    ):
+    ) -> Response:
         invoke_return = self.invoke_workflow(workflow_id, history_id=history_id, inputs=inputs, request=request)
         invocation_id = invoke_return.json()["id"]
 

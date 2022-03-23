@@ -998,7 +998,7 @@ steps:
         workflow["steps"]["0"]["uuid"] = str(uuid4())
         workflow["steps"]["1"]["uuid"] = str(uuid4())
         workflow_request, _, workflow_id = self._setup_workflow_run(workflow, inputs_by=inputs_by)
-        invocation_id = self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=workflow_request)
+        invocation_id = self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=workflow_request).json()["id"]
         invocation = self._invocation_details(workflow_id, invocation_id)
         assert invocation["state"] == "scheduled", invocation
 
@@ -3175,7 +3175,7 @@ steps:
         # We launch a workflow
         with self.dataset_populator.test_history() as history_id_one, self.dataset_populator.test_history() as history_id_two:
             workflow_request, _, workflow_id = self._setup_workflow_run(workflow, history_id=history_id_one)
-            invocation_id = self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=workflow_request)
+            invocation_id = self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=workflow_request).json()["id"]
             invocation_1 = self.workflow_populator.get_invocation(invocation_id)
             # We copy the workflow inputs to a new history
             new_workflow_request = workflow_request.copy()
