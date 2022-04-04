@@ -144,6 +144,7 @@ class DatasetInstanceMaterializer:
         materialized_dataset_instance = HistoryDatasetAssociation(
             create_dataset=False,  # is the default but lets make this really clear...
             history=history,
+            attached=attached,
         )
         materialized_dataset_instance.copy_from(
             dataset_instance, new_dataset=materialized_dataset, include_tags=attached, include_metadata=True

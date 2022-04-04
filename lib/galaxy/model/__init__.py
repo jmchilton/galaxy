@@ -3875,7 +3875,8 @@ class DatasetInstance(UsesCreateAndUpdateTime, _HasTable):
             if flush:
                 sa_session.add(dataset)
                 sa_session.flush()
-        add_object_to_object_session(self, dataset)
+        elif dataset:
+            add_object_to_object_session(self, dataset)
         self.dataset = dataset
         self.parent_id = parent_id
 
@@ -4427,6 +4428,7 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
         copied_from_history_dataset_association=None,
         copied_from_library_dataset_dataset_association=None,
         sa_session=None,
+        attached=True,
         **kwd,
     ):
         """
@@ -4440,6 +4442,10 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
         self.history = history
         self.copied_from_history_dataset_association = copied_from_history_dataset_association
         self.copied_from_library_dataset_dataset_association = copied_from_library_dataset_dataset_association
+        if not attached and object_session(self):
+            # add_object_to_object_session wasn't called, why do I need to do this?
+            # I guess a behavior that is changing with the next version of sqlalchemy?
+            object_session(self).expunge(self)
 
     def __create_version__(self, session):
         state = inspect(self)
