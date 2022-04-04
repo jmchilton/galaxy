@@ -64,6 +64,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Union,
 )
 
 import cwltest
@@ -2446,9 +2447,14 @@ class BaseDatasetCollectionPopulator:
         )
         return payload
 
-    def wait_for_fetched_collection(self, fetch_response):
-        self.dataset_populator.wait_for_job(fetch_response["jobs"][0]["id"], assert_ok=True)
-        initial_dataset_collection = fetch_response["output_collections"][0]
+    def wait_for_fetched_collection(self, fetch_response: Union[Dict[str, Any], Response]):
+        fetch_response_dict: Dict[str, Any]
+        if isinstance(fetch_response, Response):
+            fetch_response_dict = fetch_response.json()
+        else:
+            fetch_response_dict = fetch_response
+        self.dataset_populator.wait_for_job(fetch_response_dict["jobs"][0]["id"], assert_ok=True)
+        initial_dataset_collection = fetch_response_dict["output_collections"][0]
         dataset_collection = self.dataset_populator.get_history_collection_details(
             initial_dataset_collection["history_id"], hid=initial_dataset_collection["hid"]
         )
