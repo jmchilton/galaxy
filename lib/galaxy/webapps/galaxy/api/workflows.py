@@ -64,7 +64,6 @@ from galaxy.util.sanitize_html import sanitize_html
 from galaxy.version import VERSION
 from galaxy.web import (
     expose_api,
-    expose_api_allow_files,
     expose_api_anonymous,
     expose_api_anonymous_and_sessionless,
     expose_api_raw,
@@ -929,7 +928,7 @@ class WorkflowsAPIController(
             object_tracker.invocations_by_key.values(), serialization_params
         )
 
-    @expose_api_allow_files
+    @expose_api
     def show_invocation(self, trans: GalaxyWebTransaction, invocation_id, **kwd):
         """
         GET /api/workflows/{workflow_id}/invocations/{invocation_id}{.format}
@@ -939,10 +938,6 @@ class WorkflowsAPIController(
 
         :param  invocation_id:      the invocation id (required)
         :type   invocation_id:      str
-
-        :param  format:             Defaults to json like a typical entry but allow exporting as tar.gz,
-                                    bagit.tar.gz
-        :type   format:             str
 
         :param  step_details:       fetch details about individual invocation steps
                                     and populate a steps attribute in the resulting
@@ -967,14 +962,7 @@ class WorkflowsAPIController(
         if not workflow_invocation:
             raise exceptions.ObjectNotFound()
 
-        download_format = kwd.get("format") or "json"
-        if download_format == "json":
-            return self.__encode_invocation(workflow_invocation, **kwd)
-        else:
-            served_export_store = self.serve_export_store(trans.app, download_format)
-            with served_export_store.export_store:
-                served_export_store.export_store.export_workflow_invocation(workflow_invocation)
-            return open(served_export_store.export_target.name, "rb")
+        return self.__encode_invocation(workflow_invocation, **kwd)
 
     @expose_api
     def prepare_store_download(self, trans, invocation_id, **kwd):
