@@ -51,31 +51,23 @@ FilterValueQueryParam: Optional[List[str]] = Query(
     example="2015-01-29",
 )
 
-SeriializationFormatQueryParam: Optional[str] = Query(
-    None,
-    title="Format",
-    description="Format of the returned response (typically just json).",
-)
-
 
 def parse_serialization_params(
     view: Optional[str] = None,
     keys: Optional[str] = None,
     default_view: Optional[str] = None,
-    format: Optional[str] = None,
     **_,  # Additional params are ignored
 ) -> SerializationParams:
     key_list = None
     if keys:
         key_list = keys.split(",")
-    return SerializationParams(view=view, keys=key_list, default_view=default_view, format=format)
+    return SerializationParams(view=view, keys=key_list, default_view=default_view)
 
 
 def query_serialization_params(
     view: Optional[str] = SerializationViewQueryParam,
     keys: Optional[str] = SerializationKeysQueryParam,
     default_view: Optional[str] = SerializationDefaultViewQueryParam,
-    format: Optional[str] = SeriializationFormatQueryParam,
 ) -> SerializationParams:
     return parse_serialization_params(view=view, keys=keys, default_view=default_view, format=format)
 
