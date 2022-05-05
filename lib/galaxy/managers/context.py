@@ -43,7 +43,10 @@ from typing import (
     Optional,
 )
 
-from galaxy.exceptions import UserActivationRequiredException
+from galaxy.exceptions import (
+    AuthenticationRequired,
+    UserActivationRequiredException,
+)
 from galaxy.model import (
     Dataset,
     History,
@@ -200,6 +203,8 @@ class ProvidesUserContext(ProvidesAppContext):
 
     @property
     def async_request_user(self) -> RequestUser:
+        if self.user is None:
+            raise AuthenticationRequired("The async task requires user authentication.")
         return RequestUser(user_id=self.user.id)
 
     @abc.abstractproperty
