@@ -692,6 +692,14 @@ def populate_api_routes(webapp, app):
         conditions=dict(method=["GET"]),
     )
 
+    webapp.mapper.connect(
+        "create_invovactions_from_store",
+        "/api/invocations/from_store",
+        controller="workflows",
+        action="create_invocations_from_store",
+        conditions=dict(method=["POST"]),
+    )
+
     # API refers to usages and invocations - these mean the same thing but the
     # usage routes should be considered deprecated.
     invoke_names = {
@@ -742,7 +750,7 @@ def populate_api_routes(webapp, app):
             conditions=conditions,
         )
 
-    connect_invocation_endpoint("show", "", action="show_invocation")
+    connect_invocation_endpoint("show", r"{.format:[\w\.]+}", action="show_invocation")
     connect_invocation_endpoint("show_report", "/report", action="show_invocation_report")
     connect_invocation_endpoint("show_report_pdf", "/report.pdf", action="show_invocation_report_pdf")
     connect_invocation_endpoint("biocompute/download", "/biocompute/download", action="download_invocation_bco")
