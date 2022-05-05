@@ -126,39 +126,22 @@ class ToolEvaluator:
         incoming = {p.name: p.value for p in job.parameters}
         incoming = self.tool.params_from_strings(incoming, self.app)
 
-        # Full parameter validation
-        request_context = WorkRequestContext(app=self.app, user=self._user, history=self._history)
         self.file_sources_dict = compute_environment.get_file_sources_dict()
 
-        def validate_inputs(input, value, context, **kwargs):
-            value = input.from_json(value, request_context, context)
-            input.validate(value, request_context)
-
-        visit_input_values(self.tool.inputs, incoming, validate_inputs)
+        # Full parameter validation
+        self._validate_incoming(incoming)
 
         # Restore input / output data lists
         inp_data, out_data, out_collections = job.io_dicts()
 
-        deferred_objects: Dict[str, DeferrableObjectsT] = self._deferred_datasets(inp_data)
+        # collect deferred datasets and collections.
+        deferred_objects = self._deferred_objects(inp_data, incoming)
 
-        def find_deferred_collections(input, value, context, prefixed_name=None, **kwargs):
-            if (
-                isinstance(value, (model.HistoryDatasetCollectionAssociation, model.DatasetCollectionElement))
-                and value.has_deferred_data
-            ):
-                deferred_objects[prefixed_name] = value
+        # materialize deferred datasets
+        materialized_objects = self._materialize_objects(deferred_objects, self.local_working_directory)
 
-        visit_input_values(self.tool.inputs, incoming, find_deferred_collections)
-        undeferred_objects = self._undeferred_objects(deferred_objects, self.local_working_directory)
-        for key, value in undeferred_objects.items():
-            if isinstance(value, model.DatasetInstance):
-                inp_data[key] = value
-
-        def replace_deferred(input, value, context, prefixed_name=None, **kwargs):
-            if prefixed_name in undeferred_objects:
-                return undeferred_objects[prefixed_name]
-
-        visit_input_values(self.tool.inputs, incoming, replace_deferred)
+        # replace materialized objects back into tool input parameters
+        self._replaced_deferred_objects(inp_data, incoming, materialized_objects)
 
         if get_special:
             special = get_special()
@@ -228,7 +211,7 @@ class ToolEvaluator:
         # Return the dictionary of parameters
         return param_dict
 
-    def _undeferred_objects(
+    def _materialize_objects(
         self, deferred_objects: Dict[str, DeferrableObjectsT], job_working_directory: str
     ) -> Dict[str, DeferrableObjectsT]:
         if not self.materialize_datasets:
@@ -256,14 +239,55 @@ class ToolEvaluator:
 
         return undeferred_objects
 
-    def _deferred_datasets(
-        self, input_datasets: Dict[str, Optional[model.DatasetInstance]]
+    def _replaced_deferred_objects(
+        self,
+        inp_data: Dict[str, Optional[model.DatasetInstance]],
+        incoming: dict,
+        materalized_objects: Dict[str, DeferrableObjectsT],
+    ):
+        for key, value in materalized_objects.items():
+            if isinstance(value, model.DatasetInstance):
+                inp_data[key] = value
+
+        def replace_deferred(input, value, context, prefixed_name=None, **kwargs):
+            if prefixed_name in materalized_objects:
+                return materalized_objects[prefixed_name]
+
+        visit_input_values(self.tool.inputs, incoming, replace_deferred)
+
+    def _validate_incoming(self, incoming: dict):
+        request_context = WorkRequestContext(app=self.app, user=self._user, history=self._history)
+
+        def validate_inputs(input, value, context, **kwargs):
+            value = input.from_json(value, request_context, context)
+            input.validate(value, request_context)
+
+        visit_input_values(self.tool.inputs, incoming, validate_inputs)
+
+    def _deferred_objects(
+        self,
+        input_datasets: Dict[str, Optional[model.DatasetInstance]],
+        incoming: dict,
     ) -> Dict[str, DeferrableObjectsT]:
-        deferred_datasets: Dict[str, DeferrableObjectsT] = {}
+        """Collect deferred objects required for execution.
+
+        Walk input datasets and collections and find inputs that need to be materialized.
+        """
+        deferred_objects: Dict[str, DeferrableObjectsT] = {}
         for key, value in input_datasets.items():
             if value is not None and value.state == model.Dataset.states.DEFERRED:
-                deferred_datasets[key] = value
-        return deferred_datasets
+                deferred_objects[key] = value
+
+        def find_deferred_collections(input, value, context, prefixed_name=None, **kwargs):
+            if (
+                isinstance(value, (model.HistoryDatasetCollectionAssociation, model.DatasetCollectionElement))
+                and value.has_deferred_data
+            ):
+                deferred_objects[prefixed_name] = value
+
+        visit_input_values(self.tool.inputs, incoming, find_deferred_collections)
+
+        return deferred_objects
 
     def __walk_inputs(self, inputs, input_values, func):
         def do_walk(inputs, input_values):

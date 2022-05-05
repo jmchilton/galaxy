@@ -1,7 +1,5 @@
 import base64
-import json
 import logging
-import os
 from tempfile import (
     mkdtemp,
     NamedTemporaryFile,
@@ -19,6 +17,7 @@ from galaxy.model.store import (
     ImportDiscardedDataType,
     ImportOptions,
     ObjectImportTracker,
+    source_uri_to_import_store,
 )
 from galaxy.schema.schema import HistoryContentType
 from galaxy.schema.tasks import (
@@ -147,58 +146,6 @@ class ModelStoreManager:
                 new_history=new_history,
             )
         return object_tracker
-
-
-def source_uri_to_import_store(
-    source_uri,
-    app,
-    galaxy_user,
-    import_options,
-):
-    # TODO: Move this into galaxy.model.store.
-    # TODO: handle non file:// URIs.
-    if source_uri.endswith(".json"):
-        if source_uri.startswith("file://"):
-            target_path = source_uri[len("file://") :]
-        else:
-            target_path = source_uri
-        with open(target_path, "r") as f:
-            store_dict = json.load(f)
-        assert isinstance(store_dict, dict)
-        model_import_store = get_import_model_store_for_dict(
-            store_dict,
-            import_options=import_options,
-            app=app,
-            user=galaxy_user,
-        )
-    else:
-        target_dir = source_uri[len("file://") :]
-        assert os.path.isdir(source_uri)
-        model_import_store = get_import_model_store_for_directory(
-            target_dir, import_options=import_options, app=app, user=galaxy_user
-        )
-    return model_import_store
-
-
-def payload_to_source_uri(payload) -> str:
-    if payload.store_content_base64:
-        source_content = payload.store_content_base64
-        assert source_content
-        with NamedTemporaryFile("wb") as tf:
-            tf.write(base64.b64decode(source_content))
-            tf.flush()
-            temp_dir = mkdtemp()
-            target_dir = os.path.abspath(CompressedFile(tf.name).extract(temp_dir))
-        source_uri = f"file://{target_dir}"
-    else:
-        store_dict = payload.store_dict
-        assert isinstance(store_dict, dict)
-        temp_dir = mkdtemp()
-        import_json = os.path.join(temp_dir, "import_store.json")
-        with open(import_json, "w") as f:
-            json.dump(store_dict, f)
-        source_uri = f"file://{import_json}"
-    return source_uri
 
 
 def create_objects_from_store(
