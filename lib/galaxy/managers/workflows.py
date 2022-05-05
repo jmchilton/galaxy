@@ -70,6 +70,7 @@ from galaxy.util.search import (
     RawTextTerm,
 )
 from galaxy.web import url_for
+from galaxy.work.context import WorkRequestContext
 from galaxy.workflow.modules import (
     is_tool_module_type,
     module_factory,
@@ -506,8 +507,6 @@ class WorkflowContentsManager(UsesAnnotations):
         return dict_or_raw_description
 
     def read_workflow_from_path(self, app, user, path, allow_in_directory=None):
-        from galaxy.work.context import WorkRequestContext
-
         trans = WorkRequestContext(app=self.app, user=user)
 
         as_dict = {"src": "from_path", "path": path}
@@ -802,8 +801,6 @@ class WorkflowContentsManager(UsesAnnotations):
     def store_workflow_to_path(self, workflow_path, stored_workflow, workflow, **kwd):
         trans = kwd.get("trans")
         if trans is None:
-            from galaxy.work.context import WorkRequestContext
-
             trans = WorkRequestContext(app=self.app, user=kwd.get("user"), history=kwd.get("history"))
 
         workflow = stored_workflow.latest_workflow
