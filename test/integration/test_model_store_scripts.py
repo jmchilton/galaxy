@@ -2,11 +2,11 @@ import json
 import os
 
 from galaxy.model.store.load_objects import main
-from galaxy_test.api.test_histories import (
+from galaxy.model.unittest_utils.store_fixtures import (
     history_model_store_dict,
+    one_hda_model_store_dict,
     TEST_HISTORY_NAME,
 )
-from galaxy_test.api.test_history_contents import one_hda_model_store_dict
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver.integration_util import IntegrationTestCase
 

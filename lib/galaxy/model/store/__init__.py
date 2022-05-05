@@ -46,6 +46,7 @@ from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import (
     FILENAME_VALID_CHARS,
     in_directory,
+    safe_makedirs,
 )
 from galaxy.util.bunch import Bunch
 from galaxy.util.path import safe_walk
@@ -66,6 +67,7 @@ ATTRS_FILENAME_COLLECTIONS = "collections_attrs.txt"
 ATTRS_FILENAME_EXPORT = "export_attrs.txt"
 ATTRS_FILENAME_LIBRARIES = "libraries_attrs.txt"
 ATTRS_FILENAME_LIBRARY_FOLDERS = "library_folders_attrs.txt"
+ATTRS_FILENAME_INVOCATIONS = "invocation_attrs.txt"
 TRACEBACK = "traceback.txt"
 GALAXY_EXPORT_VERSION = "2"
 
@@ -256,6 +258,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
         self._reassign_hids(object_import_tracker, history)
         self._import_jobs(object_import_tracker, history)
         self._import_implicit_collection_jobs(object_import_tracker)
+        self._import_workflow_invocations(object_import_tracker, history)
         self._flush()
         return object_import_tracker
 
@@ -762,6 +765,189 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                 history.stage_addition(obj)
             history.add_pending_items()
 
+    def _import_workflow_invocations(self, object_import_tracker, history):
+        #
+        # Create jobs.
+        #
+        object_key = self.object_key
+
+        for workflow_key, workflow_path in self.workflow_paths():
+            workflows_directory = os.path.join(self.archive_dir, "workflows")
+            workflow = self.app.workflow_contents_manager.read_workflow_from_path(
+                self.app, self.user, workflow_path, allow_in_directory=workflows_directory
+            )
+            object_import_tracker.workflows_by_key[workflow_key] = workflow
+
+        invocations_attrs = self.invocations_properties()
+        for invocation_attrs in invocations_attrs:
+            assert not self.import_options.allow_edit
+            imported_invocation = model.WorkflowInvocation()
+            imported_invocation.user = self.user
+            imported_invocation.history = history
+            workflow = object_import_tracker.workflows_by_key[invocation_attrs["workflow"]]
+            imported_invocation.workflow = workflow
+            state = invocation_attrs["state"]
+            if state in model.WorkflowInvocation.non_terminal_states:
+                state = model.WorkflowInvocation.states.CANCELLED
+            imported_invocation.state = state
+            restore_times(imported_invocation, invocation_attrs)
+
+            self._session_add(imported_invocation)
+            self._flush()
+
+            def attach_workflow_step(imported_object, attrs):
+                order_index = attrs["order_index"]
+                imported_object.workflow_step = workflow.step_by_index(order_index)
+
+            for step_attrs in invocation_attrs["steps"]:
+                imported_invocation_step = model.WorkflowInvocationStep()
+                imported_invocation_step.workflow_invocation = imported_invocation
+                attach_workflow_step(imported_invocation_step, step_attrs)
+                restore_times(imported_invocation_step, step_attrs)
+                imported_invocation_step.action = step_attrs["action"]
+
+                # TODO: ensure terminal...
+                imported_invocation_step.state = step_attrs["state"]
+
+                if "job" in step_attrs:
+                    job = object_import_tracker.jobs_by_key[step_attrs["job"][object_key]]
+                    imported_invocation_step.job = job
+                elif "implicit_collection_jobs" in step_attrs:
+                    icj = object_import_tracker.implicit_collection_jobs_by_key[
+                        step_attrs["implicit_collection_jobs"][object_key]
+                    ]
+                    imported_invocation_step.implicit_collection_jobs = icj
+
+                # TODO: handle step outputs...
+                output_dicts = step_attrs["outputs"]
+                step_outputs = []
+                for output_dict in output_dicts:
+                    step_output = model.WorkflowInvocationStepOutputDatasetAssociation()
+                    step_output.output_name = output_dict["output_name"]
+                    dataset_link_attrs = output_dict["dataset"]
+                    if dataset_link_attrs:
+                        dataset = object_import_tracker.find_hda(dataset_link_attrs[object_key])
+                        assert dataset
+                        step_output.dataset = dataset
+
+                    step_outputs.append(step_output)
+
+                imported_invocation_step.output_datasets = step_outputs
+
+                output_collection_dicts = step_attrs["output_collections"]
+                step_output_collections = []
+                for output_collection_dict in output_collection_dicts:
+                    step_output_collection = model.WorkflowInvocationStepOutputDatasetCollectionAssociation()
+                    step_output_collection.output_name = output_collection_dict["output_name"]
+                    dataset_collection_link_attrs = output_collection_dict["dataset_collection"]
+                    if dataset_collection_link_attrs:
+                        dataset_collection = object_import_tracker.find_hdca(dataset_collection_link_attrs[object_key])
+                        assert dataset_collection
+                        step_output_collection.dataset_collection = dataset_collection
+
+                    step_output_collections.append(step_output_collection)
+
+                imported_invocation_step.output_dataset_collections = step_output_collections
+
+            input_parameters = []
+            for input_parameter_attrs in invocation_attrs["input_parameters"]:
+                input_parameter = model.WorkflowRequestInputParameter()
+                input_parameter.value = input_parameter_attrs["value"]
+                input_parameter.name = input_parameter_attrs["name"]
+                input_parameter.type = input_parameter_attrs["type"]
+                input_parameter.workflow_invocation = imported_invocation
+                self._session_add(input_parameter)
+                input_parameters.append(input_parameter)
+
+            # invocation_attrs["input_parameters"] = input_parameters
+
+            step_states = []
+            for step_state_attrs in invocation_attrs["step_states"]:
+                step_state = model.WorkflowRequestStepState()
+                step_state.value = step_state_attrs["value"]
+                attach_workflow_step(step_state, step_state_attrs)
+                step_state.workflow_invocation = imported_invocation
+                self._session_add(step_state)
+                step_states.append(step_state)
+
+            input_step_parameters = []
+            for input_step_parameter_attrs in invocation_attrs["input_step_parameters"]:
+                input_step_parameter = model.WorkflowRequestInputStepParameter()
+                input_step_parameter.parameter_value = input_step_parameter_attrs["parameter_value"]
+                attach_workflow_step(input_step_parameter, input_step_parameter_attrs)
+                input_step_parameter.workflow_invocation = imported_invocation
+                self._session_add(input_step_parameter)
+                input_step_parameters.append(input_step_parameter)
+
+            input_datasets = []
+            for input_dataset_attrs in invocation_attrs["input_datasets"]:
+                input_dataset = model.WorkflowRequestToInputDatasetAssociation()
+                attach_workflow_step(input_dataset, input_dataset_attrs)
+                input_dataset.workflow_invocation = imported_invocation
+                input_dataset.name = input_dataset_attrs["name"]
+                dataset_link_attrs = input_dataset_attrs["dataset"]
+                if dataset_link_attrs:
+                    dataset = object_import_tracker.find_hda(dataset_link_attrs[object_key])
+                    assert dataset
+                    input_dataset.dataset = dataset
+                self._session_add(input_dataset)
+                input_datasets.append(input_dataset)
+
+            input_dataset_collections = []
+            for input_dataset_collection_attrs in invocation_attrs["input_dataset_collections"]:
+                input_dataset_collection = model.WorkflowRequestToInputDatasetCollectionAssociation()
+                attach_workflow_step(input_dataset_collection, input_dataset_collection_attrs)
+                input_dataset_collection.workflow_invocation = imported_invocation
+                input_dataset_collection.name = input_dataset_collection_attrs["name"]
+                dataset_collection_link_attrs = input_dataset_collection_attrs["dataset_collection"]
+                if dataset_collection_link_attrs:
+                    dataset_collection = object_import_tracker.find_hdca(dataset_collection_link_attrs[object_key])
+                    assert dataset_collection
+                    input_dataset_collection.dataset_collection = dataset_collection
+
+                self._session_add(input_dataset_collection)
+                input_dataset_collections.append(input_dataset_collection)
+
+            output_dataset_collections = []
+            for output_dataset_collection_attrs in invocation_attrs["output_dataset_collections"]:
+                output_dataset_collection = model.WorkflowInvocationOutputDatasetCollectionAssociation()
+                output_dataset_collection.workflow_invocation = imported_invocation
+                attach_workflow_step(output_dataset_collection, output_dataset_collection_attrs)
+                workflow_output = output_dataset_collection_attrs["workflow_output"]
+                label = workflow_output.get("label")
+                workflow_output = workflow.workflow_output_for(label)
+                output_dataset_collection.workflow_output = workflow_output
+                self._session_add(output_dataset_collection)
+                output_dataset_collections.append(output_dataset_collection)
+
+            output_datasets = []
+            for output_dataset_attrs in invocation_attrs["output_datasets"]:
+                output_dataset = model.WorkflowInvocationOutputDatasetAssociation()
+                output_dataset.workflow_invocation = imported_invocation
+                attach_workflow_step(output_dataset, output_dataset_attrs)
+                workflow_output = output_dataset_attrs["workflow_output"]
+                label = workflow_output.get("label")
+                workflow_output = workflow.workflow_output_for(label)
+                output_dataset.workflow_output = workflow_output
+                self._session_add(output_dataset)
+                output_datasets.append(output_dataset)
+
+            output_values = []
+            for output_value_attrs in invocation_attrs["output_values"]:
+                output_value = model.WorkflowInvocationOutputValue()
+                output_value.workflow_invocation = imported_invocation
+                output_value.value = output_value_attrs["value"]
+                attach_workflow_step(output_value, output_value_attrs)
+                workflow_output = output_value_attrs["workflow_output"]
+                label = workflow_output.get("label")
+                workflow_output = workflow.workflow_output_for(label)
+                output_value.workflow_output = workflow_output
+                self._session_add(output_value)
+                output_values.append(output_value)
+
+            if object_key in invocation_attrs:
+                object_import_tracker.invocations_by_key[invocation_attrs[object_key]] = imported_invocation
+
     def _import_jobs(self, object_import_tracker, history):
         self._flush()
         object_key = self.object_key
@@ -796,11 +982,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
             imported_job.tool_version = job_attrs["tool_version"]
             self._set_job_attributes(imported_job, job_attrs, force_terminal=True)
 
-            try:
-                imported_job.create_time = datetime.datetime.strptime(job_attrs["create_time"], "%Y-%m-%dT%H:%M:%S.%f")
-                imported_job.update_time = datetime.datetime.strptime(job_attrs["update_time"], "%Y-%m-%dT%H:%M:%S.%f")
-            except Exception:
-                pass
+            restore_times(imported_job, job_attrs)
             self._session_add(imported_job)
 
             # Connect jobs to input and output datasets.
@@ -815,6 +997,8 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                 object_import_tracker.jobs_by_key[job_attrs[object_key]] = imported_job
 
     def _import_implicit_collection_jobs(self, object_import_tracker):
+        object_key = self.object_key
+
         implicit_collection_jobs_attrs = self.implicit_collection_jobs_properties()
         for icj_attrs in implicit_collection_jobs_attrs:
             icj = model.ImplicitCollectionJobs()
@@ -832,6 +1016,8 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                 icja.order_index = order_index
                 icj.jobs.append(icja)
                 self._session_add(icja)
+
+            object_import_tracker.implicit_collection_jobs_by_key[icj_attrs[object_key]] = icj
 
             self._session_add(icj)
 
@@ -895,6 +1081,9 @@ class ObjectImportTracker:
         self.hda_copied_from_sinks = {}
         self.hdca_copied_from_sinks = {}
         self.jobs_by_key = {}
+        self.invocations_by_key = {}
+        self.implicit_collection_jobs_by_key = {}
+        self.workflows_by_key = {}
         self.requires_hid = []
 
         self.new_history = None
@@ -1010,32 +1199,15 @@ class BaseDirectoryImportModelStore(ModelImportStore):
         return datasets_attrs
 
     def collections_properties(self):
-        collections_attrs_file_name = os.path.join(self.archive_dir, ATTRS_FILENAME_COLLECTIONS)
-        if os.path.exists(collections_attrs_file_name):
-            collections_attrs = load(open(collections_attrs_file_name))
-        else:
-            collections_attrs = []
-        return collections_attrs
+        return self._read_list_if_exists(ATTRS_FILENAME_COLLECTIONS)
 
     def library_properties(self):
-        libraries_attrs_file_name = os.path.join(self.archive_dir, ATTRS_FILENAME_LIBRARIES)
-        if os.path.exists(libraries_attrs_file_name):
-            libraries_attrs = load(open(libraries_attrs_file_name))
-        else:
-            libraries_attrs = []
-
-        library_folder_attrs_file_name = os.path.join(self.archive_dir, ATTRS_FILENAME_LIBRARY_FOLDERS)
-        if os.path.exists(library_folder_attrs_file_name):
-            libraries_attrs += load(open(library_folder_attrs_file_name))
-
+        libraries_attrs = self._read_list_if_exists(ATTRS_FILENAME_LIBRARIES)
+        libraries_attrs.extend(self._read_list_if_exists(ATTRS_FILENAME_LIBRARY_FOLDERS))
         return libraries_attrs
 
     def jobs_properties(self):
-        jobs_attr_file_name = os.path.join(self.archive_dir, ATTRS_FILENAME_JOBS)
-        try:
-            return load(open(jobs_attr_file_name))
-        except FileNotFoundError:
-            return []
+        return self._read_list_if_exists(ATTRS_FILENAME_JOBS)
 
     def implicit_collection_jobs_properties(self):
         implicit_collection_jobs_attrs_file_name = os.path.join(
@@ -1045,6 +1217,19 @@ class BaseDirectoryImportModelStore(ModelImportStore):
             return load(open(implicit_collection_jobs_attrs_file_name))
         except FileNotFoundError:
             return []
+
+    def invocations_properties(self):
+        return self._read_list_if_exists(ATTRS_FILENAME_INVOCATIONS)
+
+    def workflow_paths(self):
+        workflows_directory = os.path.join(self.archive_dir, "workflows")
+        if not os.path.exists(workflows_directory):
+            return []
+
+        for name in os.listdir(workflows_directory):
+            assert name.endswith(".gxwf.yml")
+            workflow_key = name[0 : -len(".gxwf.yml")]
+            yield workflow_key, os.path.join(workflows_directory, name)
 
     def _set_job_attributes(self, imported_job, job_attrs, force_terminal=False):
         ATTRIBUTES = (
@@ -1068,6 +1253,27 @@ class BaseDirectoryImportModelStore(ModelImportStore):
         if force_terminal and raw_state and raw_state not in model.Job.terminal_states:
             raw_state = model.Job.states.ERROR
         imported_job.set_state(raw_state)
+
+    def _read_list_if_exists(self, file_name, required=False):
+        file_name = os.path.join(self.archive_dir, file_name)
+        if os.path.exists(file_name):
+            attrs = load(open(file_name))
+        else:
+            if required:
+                raise Exception("Failed to find file [%s] in model store archive" % file_name)
+            attrs = []
+        return attrs
+
+
+def restore_times(model_object, attrs):
+    try:
+        model_object.create_time = datetime.datetime.strptime(attrs["create_time"], "%Y-%m-%dT%H:%M:%S.%f")
+    except Exception:
+        pass
+    try:
+        model_object.update_time = datetime.datetime.strptime(attrs["update_time"], "%Y-%m-%dT%H:%M:%S.%f")
+    except Exception:
+        pass
 
 
 class DirectoryImportModelStore1901(BaseDirectoryImportModelStore):
@@ -1235,6 +1441,14 @@ class ModelExportStore(metaclass=abc.ABCMeta):
         """Export history to store."""
 
     @abc.abstractmethod
+    def export_library(self, history, include_hidden=False, include_deleted=False):
+        """Export library to store."""
+
+    @abc.abstractmethod
+    def export_workflow_invocation(self, workflow_invocation, include_hidden=False, include_deleted=False):
+        """Export workflow invocation to store."""
+
+    @abc.abstractmethod
     def add_dataset_collection(
         self, collection: Union[model.DatasetCollection, model.HistoryDatasetCollectionAssociation]
     ):
@@ -1307,11 +1521,16 @@ class DirectoryModelExportStore(ModelExportStore):
         self.included_collections: List[Union[model.DatasetCollection, model.HistoryDatasetCollectionAssociation]] = []
         self.included_libraries: List[model.Library] = []
         self.included_library_folders: List[model.LibraryFolder] = []
+        self.included_invocations: List[model.WorkflowInvocation] = []
         self.collection_datasets: Set[int] = set()
         self.collections_attrs: List[Union[model.DatasetCollection, model.HistoryDatasetCollectionAssociation]] = []
         self.dataset_id_to_path: Dict[int, Tuple[Optional[str], Optional[str]]] = {}
 
         self.job_output_dataset_associations: Dict[int, Dict[str, model.DatasetInstance]] = {}
+
+    @property
+    def workflows_directory(self):
+        return os.path.join(self.export_directory, "workflows")
 
     def serialize_files(self, dataset: model.DatasetInstance, as_dict: JsonDictT) -> None:
         if self.export_files is None:
@@ -1545,17 +1764,7 @@ class DirectoryModelExportStore(ModelExportStore):
             if collection.state != "ok":
                 break
 
-            self.add_dataset_collection(collection)
-
-            # export jobs for these datasets
-            for collection_dataset in collection.dataset_instances:
-                if collection_dataset.deleted and not include_deleted:
-                    include_files = False
-                else:
-                    include_files = True
-
-                self.add_dataset(collection_dataset, include_files=include_files)
-                self.collection_datasets.add(collection_dataset.id)
+            self.export_collection(collection, include_deleted=include_deleted)
 
         # Write datasets' attributes to file.
         actions_backref = model.Dataset.actions  # type: ignore[attr-defined]
@@ -1597,6 +1806,24 @@ class DirectoryModelExportStore(ModelExportStore):
             self.add_dataset(ldda, add_dataset)
         for folder in library_folder.folders:
             self.export_library_folder_contents(folder, include_hidden=include_hidden, include_deleted=include_deleted)
+
+    def export_workflow_invocation(
+        self, workflow_invocation: model.WorkflowInvocation, include_hidden=False, include_deleted=False
+    ):
+        self.included_invocations.append(workflow_invocation)
+        for input_dataset in workflow_invocation.input_datasets:
+            self.add_dataset(input_dataset.dataset)
+        for output_dataset in workflow_invocation.output_datasets:
+            self.add_dataset(output_dataset.dataset)
+        for input_dataset_collection in workflow_invocation.input_dataset_collections:
+            self.export_collection(input_dataset_collection.dataset_collection)
+        for output_dataset_collection in workflow_invocation.output_dataset_collections:
+            self.export_collection(output_dataset_collection.dataset_collection)
+        for workflow_invocation_step in workflow_invocation.steps:
+            for assoc in workflow_invocation_step.output_datasets:
+                self.add_dataset(assoc.dataset)
+            for assoc in workflow_invocation_step.output_dataset_collections:
+                self.export_collection(assoc.dataset_collection)
 
     def add_job_output_dataset_associations(
         self, job_id: int, name: str, dataset_instance: model.DatasetInstance
@@ -1687,13 +1914,7 @@ class DirectoryModelExportStore(ModelExportStore):
             jobs_dict = {}
             implicit_collection_jobs_dict = {}
 
-            def record_associated_jobs(obj):
-                # Get the job object.
-                job = None
-                for assoc in getattr(obj, "creating_job_associations", []):
-                    # For mapped over jobs obj could be DatasetCollection, which has no creating_job_association
-                    job = assoc.job
-                    break
+            def record_job(job):
                 if not job:
                     # No viable job.
                     return
@@ -1704,7 +1925,16 @@ class DirectoryModelExportStore(ModelExportStore):
                     implicit_collection_jobs = icja.implicit_collection_jobs
                     implicit_collection_jobs_dict[implicit_collection_jobs.id] = implicit_collection_jobs
 
-            for hda, _ in self.included_datasets.values():
+            def record_associated_jobs(obj):
+                # Get the job object.
+                job = None
+                for assoc in getattr(obj, "creating_job_associations", []):
+                    # For mapped over jobs obj could be DatasetCollection, which has no creating_job_association
+                    job = assoc.job
+                    break
+                record_job(job)
+
+            for hda, _include_files in self.included_datasets.values():
                 # Get the associated job, if any. If this hda was copied from another,
                 # we need to find the job that created the original hda
                 job_hda = hda
@@ -1720,6 +1950,15 @@ class DirectoryModelExportStore(ModelExportStore):
                 record_associated_jobs(hdca)
 
             self.export_jobs(jobs_dict.values(), jobs_attrs=jobs_attrs)
+
+            for invocation in self.included_invocations:
+                for step in invocation.steps:
+                    for job in step.jobs:
+                        record_job(job)
+                    if step.implicit_collection_jobs:
+                        implicit_collection_jobs = step.implicit_collection_jobs
+                        implicit_collection_jobs_dict[implicit_collection_jobs.id] = implicit_collection_jobs
+
             # Get jobs' attributes.
 
             icjs_attrs = []
@@ -1730,6 +1969,30 @@ class DirectoryModelExportStore(ModelExportStore):
             icjs_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_IMPLICIT_COLLECTION_JOBS)
             with open(icjs_attrs_filename, "w") as icjs_attrs_out:
                 icjs_attrs_out.write(json_encoder.encode(icjs_attrs))
+
+        invocations_attrs = []
+
+        for invocation in self.included_invocations:
+            invocation_attrs = invocation.serialize(self.security, self.serialization_options)
+
+            workflows_directory = self.workflows_directory
+            safe_makedirs(workflows_directory)
+
+            workflow = invocation.workflow
+            workflow_key = self.serialization_options.get_identifier(self.security, workflow)
+            workflow_path = os.path.join(workflows_directory, workflow_key + ".gxwf.yml")
+            history = invocation.history
+            assert invocation_attrs
+            invocation_attrs["workflow"] = workflow_key
+
+            self.app.workflow_contents_manager.store_workflow_to_path(
+                workflow_path, workflow.stored_workflow, workflow, user=history.user, history=history
+            )
+            invocations_attrs.append(invocation_attrs)
+
+        invocations_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_INVOCATIONS)
+        with open(invocations_attrs_filename, "w") as invocations_attrs_out:
+            dump(invocations_attrs, invocations_attrs_out)
 
         export_attrs_filename = os.path.join(export_directory, ATTRS_FILENAME_EXPORT)
         with open(export_attrs_filename, "w") as export_attrs_out:

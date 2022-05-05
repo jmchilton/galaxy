@@ -30,6 +30,10 @@ from galaxy.model.unittest_utils.store_fixtures import (
 )
 from galaxy.objectstore.unittest_utils import Config as TestConfig
 from galaxy.util.compression_utils import CompressedFile
+from ..test_galaxy_mapping import (
+    _invocation_for_workflow,
+    _workflow_from_steps,
+)
 
 TESTCASE_DIRECTORY = pathlib.Path(__file__).parent
 TEST_PATH_1 = TESTCASE_DIRECTORY / "1.txt"
@@ -243,6 +247,25 @@ def test_import_export_library():
 
     assert len(new_root.folders) == 1
     assert len(new_root.datasets) == 1
+
+
+def test_import_export_invocation():
+    app = _mock_app()
+    workflow_invocation = _setup_invocation(app)
+
+    temp_directory = mkdtemp()
+    with store.DirectoryModelExportStore(temp_directory, app=app) as export_store:
+        export_store.export_workflow_invocation(workflow_invocation)
+
+    sa_session = app.model.context
+    h2 = model.History(user=workflow_invocation.user)
+    sa_session.add(h2)
+    sa_session.flush()
+
+    import_model_store = store.get_import_model_store_for_directory(
+        temp_directory, app=app, user=workflow_invocation.user, import_options=store.ImportOptions()
+    )
+    import_model_store.perform_import(history=h2)
 
 
 def test_finalize_job_state():
@@ -566,6 +589,31 @@ def _setup_simple_cat_job(app, state="ok"):
     return u, h, d1, d2, j
 
 
+def _setup_invocation(app):
+    sa_session = app.model.context
+
+    u, h, d1, d2, j = _setup_simple_cat_job(app)
+
+    workflow_step_1 = model.WorkflowStep()
+    workflow_step_1.order_index = 0
+    workflow_step_1.type = "data_input"
+    sa_session.add(workflow_step_1)
+    workflow_1 = _workflow_from_steps(u, [workflow_step_1])
+    sa_session.add(workflow_1)
+    workflow_invocation = _invocation_for_workflow(u, workflow_1)
+    invocation_step = model.WorkflowInvocationStep()
+    invocation_step.workflow_step = workflow_step_1
+    sa_session.add(invocation_step)
+    output_assoc = model.WorkflowInvocationStepOutputDatasetAssociation()
+    output_assoc.dataset = d2
+    invocation_step.output_datasets = [output_assoc]
+    workflow_invocation.steps = [invocation_step]
+    workflow_invocation.user = u
+    sa_session.add(workflow_invocation)
+    sa_session.flush()
+    return workflow_invocation
+
+
 def _import_export_history(app, h, dest_export=None, export_files=None, include_hidden=False):
     if dest_export is None:
         dest_parent = mkdtemp()
@@ -596,8 +644,32 @@ def _create_datasets(sa_session, history, n, extension="txt"):
     ]
 
 
+class MockWorkflowContentsManager:
+    def store_workflow_to_path(self, path, stored_workflow, workflow, **kwd):
+        with open(path, "w") as f:
+            f.write("MY COOL WORKFLOW!!!")
+
+    def read_workflow_from_path(self, app, user, path, allow_in_directory=None):
+        stored_workflow = model.StoredWorkflow()
+        stored_workflow.user = user
+        workflow_step_1 = model.WorkflowStep()
+        workflow_step_1.order_index = 0
+        workflow_step_1.type = "data_input"
+        workflow = model.Workflow()
+        workflow.steps = [workflow_step_1]
+        stored_workflow.latest_workflow = workflow
+        sa_session = app.model.context
+        sa_session.add_all((stored_workflow, workflow))
+        sa_session.flush()
+        return workflow
+
+
+class TestApp(GalaxyDataTestApp):
+    workflow_contents_manager = MockWorkflowContentsManager()
+
+
 def _mock_app(store_by=DEFAULT_OBJECT_STORE_BY):
-    app = GalaxyDataTestApp()
+    app = TestApp()
     test_object_store_config = TestConfig(store_by=store_by)
     app.object_store = test_object_store_config.object_store
     app.model.Dataset.object_store = app.object_store
@@ -605,7 +677,7 @@ def _mock_app(store_by=DEFAULT_OBJECT_STORE_BY):
 
 
 class StoreFixtureContextWithUser(NamedTuple):
-    app: GalaxyDataTestApp
+    app: TestApp
     sa_session: scoped_session
     user: model.User
 
@@ -620,7 +692,7 @@ def setup_fixture_context_with_user(
 
 
 class StoreFixtureContextWithHistory(NamedTuple):
-    app: GalaxyDataTestApp
+    app: TestApp
     sa_session: scoped_session
     user: model.User
     history: model.History
