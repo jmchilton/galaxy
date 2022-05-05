@@ -184,11 +184,11 @@ def payload_to_source_uri(payload) -> str:
     if payload.store_content_base64:
         source_content = payload.store_content_base64
         assert source_content
-        tf = NamedTemporaryFile("wb")
-        tf.write(base64.b64decode(source_content))
-        tf.flush()
-        temp_dir = mkdtemp()
-        target_dir = os.path.abspath(CompressedFile(tf.name).extract(temp_dir))
+        with NamedTemporaryFile("wb") as tf:
+            tf.write(base64.b64decode(source_content))
+            tf.flush()
+            temp_dir = mkdtemp()
+            target_dir = os.path.abspath(CompressedFile(tf.name).extract(temp_dir))
         source_uri = f"file://{target_dir}"
     else:
         store_dict = payload.store_dict
@@ -215,11 +215,11 @@ def create_objects_from_store(
     if payload.store_content_base64:
         source_content = payload.store_content_base64
         assert source_content
-        tf = NamedTemporaryFile("wb")
-        tf.write(base64.b64decode(source_content))
-        tf.flush()
-        temp_dir = mkdtemp()
-        target_dir = CompressedFile(tf.name).extract(temp_dir)
+        with NamedTemporaryFile("wb") as tf:
+            tf.write(base64.b64decode(source_content))
+            tf.flush()
+            temp_dir = mkdtemp()
+            target_dir = CompressedFile(tf.name).extract(temp_dir)
         model_import_store = get_import_model_store_for_directory(
             target_dir, import_options=import_options, app=app, user=galaxy_user
         )
