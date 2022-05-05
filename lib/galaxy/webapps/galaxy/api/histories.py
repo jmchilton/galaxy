@@ -34,6 +34,7 @@ from galaxy.schema import (
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
+    AsyncFile,
     CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
@@ -185,6 +186,42 @@ class FastAPIHistories:
         serialization_params: SerializationParams = Depends(query_serialization_params),
     ) -> AnyHistoryView:
         return self.service.show(trans, serialization_params, id)
+
+    @router.post(
+        "/api/histories/{id}/prepare_download",
+        summary="Return a short term storage token to monitor download of the history.",
+    )
+    def prepare_download(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        id: EncodedDatabaseIdField = HistoryIDPathParam,
+        format: str = Query(
+            "tar.gz",
+            title="Format",
+            description="Model store format.",
+        ),
+        include_files: bool = Query(
+            True, title="Include files", description="Include dataset files in generated history model store."
+        ),
+        include_deleted: bool = Query(
+            False,
+            title="Include deleted",
+            description="Include file contents for deleted datasets (if include_files is True).",
+        ),
+        include_hidden: bool = Query(
+            False,
+            title="Include hidden",
+            description="Include file contents for hidden datasets (if include_files is True).",
+        ),
+    ) -> AsyncFile:
+        return self.service.prepare_download(
+            trans,
+            id,
+            format,
+            include_files=include_files,
+            include_deleted=include_deleted,
+            include_hidden=include_hidden,
+        )
 
     @router.get(
         "/api/histories/{id}/citations",

@@ -8,6 +8,7 @@ from galaxy.managers.markdown_util import generate_branded_pdf
 from galaxy.managers.model_stores import ModelStoreManager
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.tasks import (
+    GenerateHistoryDownload,
     GeneratePdfDownload,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
@@ -81,6 +82,14 @@ def prepare_pdf_download(
 ):
     """Create a short term storage file tracked and available for download of target PDF for Galaxy Markdown."""
     generate_branded_pdf(request, config, short_term_storage_monitor)
+
+
+@galaxy_task(action="generate and stage a history model store for download")
+def prepare_history_download(
+    model_store_manager: ModelStoreManager,
+    request: GenerateHistoryDownload,
+):
+    model_store_manager.prepare_history_download(request)
 
 
 @galaxy_task(action="pruning history audit table")
