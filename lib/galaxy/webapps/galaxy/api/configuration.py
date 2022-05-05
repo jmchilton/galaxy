@@ -70,9 +70,7 @@ class FastAPIConfiguration:
         Pass in `view` and a comma-seperated list of keys to control which
         configuration settings are returned.
         """
-        index = _index(self.configuration_manager, trans, view, keys)
-        index["asgi_enabled"] = True
-        return index
+        return _index(self.configuration_manager, trans, view, keys)
 
     @router.get(
         "/api/version",
