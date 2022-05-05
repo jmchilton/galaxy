@@ -81,7 +81,7 @@ from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ConsumesModelStores,
     ensure_celery_tasks_enabled,
-    model_store_stoarge_target,
+    model_store_storage_target,
     ServesExportStores,
 )
 from galaxy.webapps.galaxy.services.invocations import (
@@ -988,7 +988,7 @@ class WorkflowsAPIController(
             invocation_name = f"Invocation of {workflow_invocation.workflow.stored_workflow.name} at {workflow_invocation.create_time.isoformat()}"
         except AttributeError:
             invocation_name = f"Invocation of workflow at {workflow_invocation.create_time.isoformat()}"
-        short_term_storage_target = model_store_stoarge_target(
+        short_term_storage_target = model_store_storage_target(
             self.short_term_storage_allocator,
             invocation_name,
             model_store_format,
