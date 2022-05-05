@@ -931,8 +931,8 @@ class WorkflowsAPIController(
     @expose_api
     def show_invocation(self, trans: GalaxyWebTransaction, invocation_id, **kwd):
         """
-        GET /api/workflows/{workflow_id}/invocations/{invocation_id}{.format}
-        GET /api/invocations/{invocation_id}{.format}
+        GET /api/workflows/{workflow_id}/invocations/{invocation_id}
+        GET /api/invocations/{invocation_id}
 
         Get detailed description of workflow invocation
 
