@@ -3,6 +3,9 @@
         <h3 v-if="includeTitle">Dataset Storage</h3>
         <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
         <loading-span v-else-if="storageInfo == null"> </loading-span>
+        <div v-else-if="discarded">
+            <p>This dataset has been discarded and its files are not available to Galaxy.</p>
+        </div>
         <div v-else>
             <p>
                 This dataset is stored in
@@ -49,6 +52,11 @@ export default {
             descriptionRendered: null,
             errorMessage: null,
         };
+    },
+    computed: {
+        discarded() {
+            return this.storageInfo.dataset_state == "discarded";
+        },
     },
     created() {
         const datasetId = this.datasetId;
