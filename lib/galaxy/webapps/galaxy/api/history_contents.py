@@ -443,7 +443,7 @@ class FastAPIHistoryContents:
 
     @router.get(
         "/api/histories/{history_id}/contents/{type}s/{id}/prepare_store_download",
-        summary="TODO",
+        summary="Prepare a dataset or dataset collection for export-style download.",
     )
     def prepare_store_download(
         self,
