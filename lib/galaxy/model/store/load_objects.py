@@ -16,10 +16,10 @@ DESCRIPTION = """Load a Galaxy model store into a running Galaxy instance.
 See the corresponding galaxy-build-objects script for one possible way to
 create a model store to use with this script.
 
-This script creates all datasets in a "discarded" state. To actually
-load the datasets into a Galaxy instance's object store the underlying libraries need
-to be used directly and fed your Galaxy's database configuration and
-objectstore setup.
+This script creates all datasets in "discarded"/"deferred" states (depending on if
+source URIs are available). To actually load the datasets into a Galaxy instance's
+object store the underlying libraries need to be used directly and fed your Galaxy's
+database configuration and objectstore setup.
 """
 
 logging.basicConfig()
