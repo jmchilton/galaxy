@@ -1402,7 +1402,6 @@ class BaseWorkflowPopulator(BasePopulator):
         create_response = self.create_invocation_from_store_raw(
             history_id, store_dict=store_dict, store_path=store_path
         )
-        print(create_response.content)
         create_response.raise_for_status()
         return create_response.json()
 
@@ -2094,7 +2093,6 @@ class LibraryPopulator:
     ) -> List[Dict[str, Any]]:
         payload = _store_payload(store_dict=store_dict, store_path=store_path)
         create_response = self.create_from_store_raw(payload)
-        print(create_response.content)
         create_response.raise_for_status()
         return create_response.json()
 
