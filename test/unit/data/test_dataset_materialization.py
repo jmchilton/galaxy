@@ -327,17 +327,6 @@ def _ensure_relations_attached_and_expunge(deferred_hda: HistoryDatasetAssociati
 
 
 def _assert_2_bed_metadata(hda: HistoryDatasetAssociation) -> None:
-    # metadata_dbkey: ?
-    # metadata_data_lines: 68
-    # metadata_comment_lines: 0
-    # metadata_columns: 6
-    # metadata_column_types: ['str', 'int', 'int', 'str', 'int', 'str']
-    # metadata_column_names: []
-    # metadata_delimiter: '\t'
-    # metadata_chromCol: 1
-    # metadata_startCol: 2
-    # metadata_endCol: 3
-    # metadata_viz_filter_cols: [4]
     assert hda.metadata.columns == 6
     assert hda.metadata.data_lines == 68
     assert hda.metadata.comment_lines == 0
