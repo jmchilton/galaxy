@@ -317,7 +317,7 @@ def _deferred_element_count(dataset_collection: DatasetCollection) -> int:
 
 
 def _ensure_relations_attached_and_expunge(deferred_hda: HistoryDatasetAssociation, fixture_context) -> None:
-    # make sure everything needed is in session (soures, hashes, and metadata)...
+    # make sure everything needed is in session (sources, hashes, and metadata)...
     # point here is exercise deferred_hda.history throws a detached error.
     [s.hashes for s in deferred_hda.dataset.sources]
     deferred_hda.dataset.hashes
