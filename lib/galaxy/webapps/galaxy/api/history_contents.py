@@ -844,23 +844,35 @@ class FastAPIHistoryContents:
 
     @router.post(
         "/api/histories/{history_id}/contents/datasets/{id}/materialize",
-        #   id: EncodedDatabaseIdField = HistoryItemIDPathParam,
-        # "/api/histories/{history_id}/materialize",
         summary="Materialize a deferred dataset into real, usable dataset.",
     )
-    def materialize(
+    def materialize_dataset(
         self,
         trans: ProvidesHistoryContext = DependsOnTrans,
         history_id: EncodedDatabaseIdField = HistoryIDPathParam,
         id: EncodedDatabaseIdField = HistoryItemIDPathParam,
     ) -> AsyncTaskResultSummary:
-        # Make this a Body(...) once it has parameters...
-        materialize_api_payload = MaterializeDatasetInstanceAPIRequest()
         materializae_request = MaterializeDatasetInstanceRequest(
             history_id=history_id,
             source=DatasetSourceType.hda,
             content=id,
-            **materialize_api_payload.dict(),
+        )
+        rval = self.service.materialize(trans, materializae_request)
+        return rval
+
+    @router.post(
+        "/api/histories/{history_id}/materialize",
+        summary="Materialize a deferred library or HDA dataset into real, usable dataset in specified history.",
+    )
+    def materialize_to_history(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        materialize_api_payload: MaterializeDatasetInstanceAPIRequest = Body(...),
+    ) -> AsyncTaskResultSummary:
+        materializae_request: MaterializeDatasetInstanceRequest = MaterializeDatasetInstanceRequest(
+            history_id=history_id,
+            **materialize_api_payload.dict()
         )
         rval = self.service.materialize(trans, materializae_request)
         return rval

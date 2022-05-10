@@ -776,11 +776,18 @@ class BaseDatasetPopulator(BasePopulator):
         tool_response = self._post(url, data=payload)
         return tool_response
 
-    def materialize_dataset_instance(self, history_id: str, id: str):
-        materialize_payload = {}
-        create_response = self._post(
-            f"histories/{history_id}/contents/datasets/{id}/materialize", materialize_payload, json=True
-        )
+    def materialize_dataset_instance(self, history_id: str, id: str, source: str = "hda"):
+        payload: Dict[str, Any]
+        if source == "ldda":
+            url = f"histories/{history_id}/materialize"
+            payload = {
+                "source": "ldda",
+                "content": id,
+            }
+        else:
+            url = f"histories/{history_id}/contents/datasets/{id}/materialize"
+            payload = {}
+        create_response = self._post(url, payload, json=True)
         api_asserts.assert_status_code_is_ok(create_response)
         create_response_json = create_response.json()
         assert "id" in create_response_json

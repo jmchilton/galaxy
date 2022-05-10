@@ -2811,11 +2811,6 @@ class PageSummaryBase(BaseModel):
 
 
 class MaterializeDatasetInstanceAPIRequest(Model):
-    pass
-
-
-class MaterializeDatasetInstanceRequest(Model):
-    history_id: EncodedDatabaseIdField
     source: DatasetSourceType = Field(
         None,
         title="Source",
@@ -2830,6 +2825,10 @@ class MaterializeDatasetInstanceRequest(Model):
             "- The encoded id of the the HDA\n"
         ),
     )
+
+
+class MaterializeDatasetInstanceRequest(MaterializeDatasetInstanceAPIRequest):
+    history_id: EncodedDatabaseIdField
 
 
 class CreatePagePayload(PageSummaryBase):
