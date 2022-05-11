@@ -29,7 +29,6 @@ from galaxy import (
     model,
     util,
 )
-from galaxy.celery.tasks import prepare_invocation_download
 from galaxy.files.uris import (
     stream_url_to_str,
     validate_uri_access,
@@ -49,7 +48,6 @@ from galaxy.managers.workflows import (
 from galaxy.model.item_attrs import UsesAnnotations
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
-    AsyncFile,
     Model,
     SetSlugPayload,
     ShareWithPayload,
@@ -57,7 +55,6 @@ from galaxy.schema.schema import (
     SharingStatus,
     WorkflowSortByEnum,
 )
-from galaxy.schema.tasks import GenerateInvocationDownload
 from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
 from galaxy.tools import recommendations
@@ -73,7 +70,6 @@ from galaxy.web import (
     expose_api_raw_anonymous_and_sessionless,
     format_return_as_json,
 )
-from galaxy.web.short_term_storage import ShortTermStorageAllocator
 from galaxy.webapps.base.controller import (
     SharableMixin,
     url_for,
@@ -81,10 +77,7 @@ from galaxy.webapps.base.controller import (
 )
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
 from galaxy.webapps.galaxy.services.base import (
-    async_task_summary,
     ConsumesModelStores,
-    ensure_celery_tasks_enabled,
-    model_store_storage_target,
     ServesExportStores,
 )
 from galaxy.webapps.galaxy.services.invocations import (
@@ -140,7 +133,6 @@ class WorkflowsAPIController(
         self.workflow_manager = app.workflow_manager
         self.workflow_contents_manager = app.workflow_contents_manager
         self.tool_recommendations = recommendations.ToolRecommendations()
-        self.short_term_storage_allocator = app[ShortTermStorageAllocator]
 
     @expose_api
     def get_workflow_menu(self, trans: ProvidesUserContext, **kwd):
@@ -971,41 +963,15 @@ class WorkflowsAPIController(
     @expose_api
     def prepare_store_download(self, trans, invocation_id, **kwd):
         """
-        GET /api/workflows/{workflow_id}/invocations/{invocation_id}/prepare_store_download
-        GET /api/invocations/{invocation_id}/prepare_store_download
+        POST /api/workflows/{workflow_id}/invocations/{invocation_id}/prepare_store_download
+        POST /api/invocations/{invocation_id}/prepare_store_download
         """
-        return self._prepare_store_download(
+        return self.invocations_service.prepare_store_download(
             trans,
-            invocation_id,
+            EncodedDatabaseIdField(invocation_id),
             model_store_format=kwd.get("model_store_format", "tar.gz"),
             include_files=util.string_as_bool(kwd.get("include_files", False)),
         )
-
-    # Refactor into a service.
-    def _prepare_store_download(self, trans, invocation_id: str, model_store_format: str, include_files: bool):
-        ensure_celery_tasks_enabled(self.app.config)
-        decoded_workflow_invocation_id = self.decode_id(invocation_id)
-        workflow_invocation = self.workflow_manager.get_invocation(trans, decoded_workflow_invocation_id, eager=True)
-        if not workflow_invocation:
-            raise exceptions.ObjectNotFound()
-        try:
-            invocation_name = f"Invocation of {workflow_invocation.workflow.stored_workflow.name} at {workflow_invocation.create_time.isoformat()}"
-        except AttributeError:
-            invocation_name = f"Invocation of workflow at {workflow_invocation.create_time.isoformat()}"
-        short_term_storage_target = model_store_storage_target(
-            self.short_term_storage_allocator,
-            invocation_name,
-            model_store_format,
-        )
-        request = GenerateInvocationDownload(
-            model_store_format=model_store_format,
-            short_term_storage_request_id=short_term_storage_target.request_id,
-            include_files=include_files,
-            user=trans.async_request_user,
-            invocation_id=workflow_invocation.id,
-        )
-        result = prepare_invocation_download.delay(request=request)
-        return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))
 
     @expose_api
     def cancel_invocation(self, trans: ProvidesUserContext, invocation_id, **kwd):

@@ -1389,7 +1389,7 @@ class BaseWorkflowPopulator(BasePopulator):
 
     def download_invocation_to_store(self, invocation_id, extension="tgz"):
         url = f"invocations/{invocation_id}/prepare_store_download"
-        download_response = self._get(url, dict(include_files=False, model_store_format=extension))
+        download_response = self._post(url, dict(include_files=False, model_store_format=extension), json=True)
         storage_request_id = self.dataset_populator.assert_download_request_ok(download_response)
         self.dataset_populator.wait_for_download_ready(storage_request_id)
         return self._get_to_tempfile(f"short_term_storage/{storage_request_id}")
