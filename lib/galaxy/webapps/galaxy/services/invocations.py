@@ -23,6 +23,7 @@ from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AsyncFile,
     InvocationIndexQueryPayload,
+    Model,
 )
 from galaxy.schema.tasks import GenerateInvocationDownload
 from galaxy.security.idencoding import IdEncodingHelper
@@ -63,6 +64,11 @@ class InvocationSerializationParams(BaseModel):
 
 class InvocationIndexPayload(InvocationIndexQueryPayload):
     instance: bool = Field(default=False, description="Is provided workflow id for Workflow instead of StoredWorkflow?")
+
+
+class PrepareStoreDownloadPayload(Model):
+    model_store_format: str = Field(default="tar.gz")
+    include_files: bool = Field(default=False)
 
 
 class InvocationsService(ServiceBase):
@@ -119,9 +125,11 @@ class InvocationsService(ServiceBase):
         return invocation_dict, total_matches
 
     def prepare_store_download(
-        self, trans, invocation_id: EncodedDatabaseIdField, model_store_format: str, include_files: bool
+        self, trans, invocation_id: EncodedDatabaseIdField, payload: PrepareStoreDownloadPayload
     ):
         ensure_celery_tasks_enabled(trans.app.config)
+        model_store_format = payload.model_store_format
+        include_files = payload.include_files
         decoded_workflow_invocation_id = self.decode_id(invocation_id)
         workflow_invocation = self._workflows_manager.get_invocation(trans, decoded_workflow_invocation_id, eager=True)
         if not workflow_invocation:

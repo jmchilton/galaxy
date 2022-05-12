@@ -48,6 +48,7 @@ from galaxy.managers.workflows import (
 from galaxy.model.item_attrs import UsesAnnotations
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
+    AsyncFile,
     Model,
     SetSlugPayload,
     ShareWithPayload,
@@ -84,6 +85,7 @@ from galaxy.webapps.galaxy.services.invocations import (
     InvocationIndexPayload,
     InvocationSerializationParams,
     InvocationsService,
+    PrepareStoreDownloadPayload,
 )
 from galaxy.webapps.galaxy.services.workflows import (
     WorkflowIndexPayload,
@@ -961,19 +963,6 @@ class WorkflowsAPIController(
         return self.__encode_invocation(workflow_invocation, **kwd)
 
     @expose_api
-    def prepare_store_download(self, trans, invocation_id, **kwd):
-        """
-        POST /api/workflows/{workflow_id}/invocations/{invocation_id}/prepare_store_download
-        POST /api/invocations/{invocation_id}/prepare_store_download
-        """
-        return self.invocations_service.prepare_store_download(
-            trans,
-            EncodedDatabaseIdField(invocation_id),
-            model_store_format=kwd.get("model_store_format", "tar.gz"),
-            include_files=util.string_as_bool(kwd.get("include_files", False)),
-        )
-
-    @expose_api
     def cancel_invocation(self, trans: ProvidesUserContext, invocation_id, **kwd):
         """
         DELETE /api/workflows/{workflow_id}/invocations/{invocation_id}
@@ -1481,6 +1470,10 @@ StoredWorkflowIDPathParam: EncodedDatabaseIdField = Path(
     ..., title="Stored Workflow ID", description="The encoded database identifier of the Stored Workflow."
 )
 
+InvocationIDPathParam: EncodedDatabaseIdField = Path(
+    ..., title="Invocation ID", description="The encoded database identifier of the Invocation."
+)
+
 DeletedQueryParam: bool = Query(
     default=False, title="Display deleted", description="Whether to restrict result to deleted workflows."
 )
@@ -1554,6 +1547,7 @@ SkipStepCountsQueryParam: bool = Query(
 @router.cbv
 class FastAPIWorkflows:
     service: WorkflowsService = depends(WorkflowsService)
+    invocations_service: InvocationsService = depends(InvocationsService)
 
     @router.get(
         "/api/workflows",
@@ -1681,3 +1675,19 @@ class FastAPIWorkflows:
         """Sets a new slug to access this item by URL. The new slug must be unique."""
         self.service.shareable_service.set_slug(trans, id, payload)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.post(
+        "/api/invocations/{invocation_id}/prepare_store_download",
+        summary="Prepare a worklfow invocation export-style download.",
+    )
+    def prepare_store_download(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        invocation_id: EncodedDatabaseIdField = InvocationIDPathParam,
+        payload: PrepareStoreDownloadPayload = Body(...),
+    ) -> AsyncFile:
+        return self.invocations_service.prepare_store_download(
+            trans,
+            invocation_id,
+            payload,
+        )
