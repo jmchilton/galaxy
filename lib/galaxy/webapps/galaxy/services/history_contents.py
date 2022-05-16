@@ -89,6 +89,7 @@ from galaxy.schema.schema import (
     JobSourceType,
     MaterializeDatasetInstanceRequest,
     Model,
+    StoreContentSource,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
 )
@@ -216,12 +217,8 @@ class CollectionElementIdentifier(Model):
 CollectionElementIdentifier.update_forward_refs()
 
 
-class CreateHistoryContentFromStore(Model):
-    store_content_base64: Optional[str]
-    store_dict: Optional[Dict[str, Any]]
-
-    class Config:
-        extra = Extra.allow
+class CreateHistoryContentFromStore(StoreContentSource):
+    pass
 
 
 class CreateHistoryContentPayloadFromCollection(CreateHistoryContentPayloadFromCopy):

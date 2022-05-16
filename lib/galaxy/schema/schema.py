@@ -1221,9 +1221,13 @@ class CreateNewCollectionPayload(Model):
     )
 
 
-class CreateHistoryFromStore(Model):
+class StoreContentSource(Model):
     store_content_base64: Optional[str]
     store_dict: Optional[Dict[str, Any]]
+
+
+class CreateHistoryFromStore(StoreContentSource):
+    pass
 
 
 class JobExportHistoryArchiveModel(Model):
@@ -2178,9 +2182,8 @@ class CreateLibraryPayload(BaseModel):
     )
 
 
-class CreateLibrariesFromStore(Model):
-    store_content_base64: Optional[str]
-    store_dict: Optional[Dict[str, Any]]
+class CreateLibrariesFromStore(StoreContentSource):
+    pass
 
 
 class UpdateLibraryPayload(BaseModel):

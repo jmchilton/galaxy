@@ -49,11 +49,11 @@ from galaxy.model.item_attrs import UsesAnnotations
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AsyncFile,
-    Model,
     SetSlugPayload,
     ShareWithPayload,
     ShareWithStatus,
     SharingStatus,
+    StoreContentSource,
     WorkflowSortByEnum,
 )
 from galaxy.structured_app import StructuredApp
@@ -109,9 +109,7 @@ log = logging.getLogger(__name__)
 router = Router(tags=["workflows"])
 
 
-class CreateInvocationFromStore(Model):
-    store_content_base64: Optional[str]
-    store_dict: Optional[Dict[str, Any]]
+class CreateInvocationFromStore(StoreContentSource):
     history_id: Optional[str]
 
     class Config:
