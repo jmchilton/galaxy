@@ -11,6 +11,8 @@ from sqlalchemy import (
     Column,
 )
 
+from galaxy.model.migrations.util import drop_column
+
 # revision identifiers, used by Alembic.
 revision = "6a67bf27e6a6"
 down_revision = "b182f655505f"
@@ -24,5 +26,5 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_column("history_dataset_association", "metadata_deferred")
-    op.drop_column("library_dataset_dataset_association", "metadata_deferred")
+    drop_column("history_dataset_association", "metadata_deferred")
+    drop_column("library_dataset_dataset_association", "metadata_deferred")
