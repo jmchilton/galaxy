@@ -1934,6 +1934,7 @@ class DirectoryModelExportStore(ModelExportStore):
         self,
         collection: Union[model.DatasetCollection, model.HistoryDatasetCollectionAssociation],
         include_deleted: bool = False,
+        include_hidden: bool = False,
     ) -> None:
         self.add_dataset_collection(collection)
 
@@ -1942,6 +1943,7 @@ class DirectoryModelExportStore(ModelExportStore):
             collection.collection if isinstance(collection, model.HistoryDatasetCollectionAssociation) else collection
         )
         for collection_dataset in has_collection.dataset_instances:
+            # ignoring include_hidden since the datasets will default to hidden for this collection.
             if collection_dataset.deleted and not include_deleted:
                 include_files = False
             else:

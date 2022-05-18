@@ -129,7 +129,6 @@ class InvocationsService(ServiceBase):
     ):
         ensure_celery_tasks_enabled(trans.app.config)
         model_store_format = payload.model_store_format
-        include_files = payload.include_files
         decoded_workflow_invocation_id = self.decode_id(invocation_id)
         workflow_invocation = self._workflows_manager.get_invocation(trans, decoded_workflow_invocation_id, eager=True)
         if not workflow_invocation:
@@ -144,11 +143,10 @@ class InvocationsService(ServiceBase):
             model_store_format,
         )
         request = GenerateInvocationDownload(
-            model_store_format=model_store_format,
             short_term_storage_request_id=short_term_storage_target.request_id,
-            include_files=include_files,
             user=trans.async_request_user,
             invocation_id=workflow_invocation.id,
+            **payload.dict(),
         )
         result = prepare_invocation_download.delay(request=request)
         return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))

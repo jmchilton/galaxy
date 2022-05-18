@@ -95,7 +95,9 @@ class ModelStoreManager:
                     export_store.add_dataset(hda)
                 else:
                     hdca = self._sa_session.query(model.HistoryDatasetCollectionAssociation).get(request.content_id)
-                    export_store.export_collection(hdca)
+                    export_store.export_collection(
+                        hdca, include_hidden=request.include_hidden, include_deleted=request.include_deleted
+                    )
 
     def prepare_invocation_download(self, request: GenerateInvocationDownload):
         model_store_format = request.model_store_format
@@ -107,7 +109,9 @@ class ModelStoreManager:
                 short_term_storage_target.path
             ) as export_store:
                 invocation = self._sa_session.query(model.WorkflowInvocation).get(request.invocation_id)
-                export_store.export_workflow_invocation(invocation)
+                export_store.export_workflow_invocation(
+                    invocation, include_hidden=request.include_hidden, include_deleted=request.include_deleted
+                )
 
     def import_model_store(self, request: ImportModelStoreTaskRequest):
         import_options = ImportOptions(

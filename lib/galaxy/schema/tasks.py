@@ -8,6 +8,7 @@ from pydantic import (
 from .schema import (
     DatasetSourceType,
     HistoryContentType,
+    StoreExportPayload,
 )
 from ..schema import PdfDocumentType
 
@@ -40,30 +41,22 @@ class RequestUser(BaseModel):
     # session_id: Optional[str]
 
 
-class GenerateHistoryDownload(BaseModel):
+class GenerateHistoryDownload(StoreExportPayload):
     history_id: int
-    model_store_format: str
     short_term_storage_request_id: str
-    include_files: bool
     user: RequestUser
-    include_hidden: bool
-    include_deleted: bool
 
 
-class GenerateHistoryContentDownload(BaseModel):
+class GenerateHistoryContentDownload(StoreExportPayload):
     content_type: HistoryContentType
     content_id: int
-    model_store_format: str
     short_term_storage_request_id: str
-    include_files: bool
     user: RequestUser
 
 
-class GenerateInvocationDownload(BaseModel):
+class GenerateInvocationDownload(StoreExportPayload):
     invocation_id: int
-    model_store_format: str
     short_term_storage_request_id: str
-    include_files: bool
     user: RequestUser
 
 

@@ -267,7 +267,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self,
         trans,
         payload: CreateHistoryFromStore,
-    ) -> AsyncTaskResultSummary:  # TODO: serialized task somehow...
+    ) -> AsyncTaskResultSummary:
         self._ensure_can_create_history(trans)
         source_uri = payload_to_source_uri(payload)
         request = ImportModelStoreTaskRequest(
@@ -339,12 +339,9 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         )
         request = GenerateHistoryDownload(
             history_id=history.id,
-            model_store_format=payload.model_store_format,
             short_term_storage_request_id=short_term_storage_target.request_id,
-            include_files=payload.include_files,
-            include_deleted=payload.include_deleted,
-            include_hidden=payload.include_hidden,
             user=trans.async_request_user,
+            **payload.dict(),
         )
         result = prepare_history_download.delay(request=request)
         return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))

@@ -353,7 +353,6 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         contents_type: HistoryContentType = HistoryContentType.dataset,
     ) -> AsyncFile:
         model_store_format = payload.model_store_format
-        include_files = payload.include_files
         if contents_type == HistoryContentType.dataset:
             hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
             content_id = hda.id
@@ -370,12 +369,11 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
             model_store_format,
         )
         request = GenerateHistoryContentDownload(
-            model_store_format=model_store_format,
             short_term_storage_request_id=short_term_storage_target.request_id,
-            include_files=include_files,
             user=trans.async_request_user,
             content_type=contents_type,
             content_id=content_id,
+            **payload.dict(),
         )
         result = prepare_history_content_download.delay(request=request)
         return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))
