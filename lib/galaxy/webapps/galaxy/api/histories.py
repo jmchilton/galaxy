@@ -46,6 +46,7 @@ from galaxy.schema.schema import (
     ShareWithPayload,
     ShareWithStatus,
     SharingStatus,
+    StoreExportPayload,
 )
 from galaxy.schema.types import LatestLiteral
 from galaxy.webapps.galaxy.api.common import (
@@ -92,27 +93,6 @@ AllHistoriesQueryParam = Query(
 class DeleteHistoryPayload(BaseModel):
     purge: bool = Field(
         default=False, title="Purge", description="Whether to definitely remove this history from disk."
-    )
-
-
-class PrepareDownloadPayload(BaseModel):
-    format: str = Field(
-        "tar.gz",
-        title="Format",
-        description="Model store format.",
-    )
-    include_files: bool = Field(
-        default=True, title="Include files", description="Include dataset files in generated history model store."
-    )
-    include_deleted: bool = Field(
-        default=False,
-        title="Include deleted",
-        description="Include file contents for deleted datasets (if include_files is True).",
-    )
-    include_hidden: bool = Field(
-        False,
-        title="Include hidden",
-        description="Include file contents for hidden datasets (if include_files is True).",
     )
 
 
@@ -216,15 +196,12 @@ class FastAPIHistories:
         self,
         trans: ProvidesHistoryContext = DependsOnTrans,
         id: EncodedDatabaseIdField = HistoryIDPathParam,
-        payload: PrepareDownloadPayload = Body(...),
+        payload: StoreExportPayload = Body(...),
     ) -> AsyncFile:
         return self.service.prepare_download(
             trans,
             id,
-            payload.format,
-            include_files=payload.include_files,
-            include_deleted=payload.include_deleted,
-            include_hidden=payload.include_hidden,
+            payload=payload,
         )
 
     @router.get(

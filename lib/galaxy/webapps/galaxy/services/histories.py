@@ -56,6 +56,7 @@ from galaxy.schema.schema import (
     JobIdResponse,
     JobImportHistoryResponse,
     LabelValuePair,
+    StoreExportPayload,
 )
 from galaxy.schema.tasks import (
     GenerateHistoryDownload,
@@ -328,27 +329,21 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
             return open(served_export_store.export_target.name, "rb")
 
     def prepare_download(
-        self,
-        trans: ProvidesHistoryContext,
-        history_id: EncodedDatabaseIdField,
-        model_store_format: str,
-        include_files: bool = False,
-        include_hidden: bool = False,
-        include_deleted: bool = False,
+        self, trans: ProvidesHistoryContext, history_id: EncodedDatabaseIdField, payload: StoreExportPayload
     ) -> AsyncFile:
         history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
         short_term_storage_target = model_store_storage_target(
             self.short_term_storage_allocator,
             history.name,
-            model_store_format,
+            payload.model_store_format,
         )
         request = GenerateHistoryDownload(
             history_id=history.id,
-            model_store_format=model_store_format,
+            model_store_format=payload.model_store_format,
             short_term_storage_request_id=short_term_storage_target.request_id,
-            include_files=include_files,
-            include_deleted=include_deleted,
-            include_hidden=include_hidden,
+            include_files=payload.include_files,
+            include_deleted=payload.include_deleted,
+            include_hidden=payload.include_hidden,
             user=trans.async_request_user,
         )
         result = prepare_history_download.delay(request=request)

@@ -90,6 +90,7 @@ from galaxy.schema.schema import (
     MaterializeDatasetInstanceRequest,
     Model,
     StoreContentSource,
+    StoreExportPayload,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
 )
@@ -348,10 +349,11 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         self,
         trans: ProvidesHistoryContext,
         id: EncodedDatabaseIdField,
-        model_store_format: str,
+        payload: StoreExportPayload,
         contents_type: HistoryContentType = HistoryContentType.dataset,
-        include_files: bool = False,
     ) -> AsyncFile:
+        model_store_format = payload.model_store_format
+        include_files = payload.include_files
         if contents_type == HistoryContentType.dataset:
             hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
             content_id = hda.id

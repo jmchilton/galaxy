@@ -1230,6 +1230,27 @@ class CreateHistoryFromStore(StoreContentSource):
     pass
 
 
+class StoreExportPayload(Model):
+    model_store_format: str = Field(
+        default="tar.gz",
+        description="format of model store to export",
+    )
+    include_files: bool = Field(
+        default=True,
+        description="include materialized files in export when available",
+    )
+    include_deleted: bool = Field(
+        default=False,
+        title="Include deleted",
+        description="Include file contents for deleted datasets (if include_files is True).",
+    )
+    include_hidden: bool = Field(
+        default=False,
+        title="Include hidden",
+        description="Include file contents for hidden datasets (if include_files is True).",
+    )
+
+
 class JobExportHistoryArchiveModel(Model):
     id: EncodedDatabaseIdField = Field(
         ...,

@@ -51,6 +51,7 @@ from galaxy.schema.schema import (
     HistoryContentType,
     MaterializeDatasetInstanceAPIRequest,
     MaterializeDatasetInstanceRequest,
+    StoreExportPayload,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
     UpdateHistoryContentsPayload,
@@ -451,19 +452,13 @@ class FastAPIHistoryContents:
         history_id: EncodedDatabaseIdField = HistoryIDPathParam,
         id: EncodedDatabaseIdField = HistoryItemIDPathParam,
         type: HistoryContentType = ContentTypeQueryParam,
-        model_store_format: str = Query(
-            default="tar.gz",
-        ),
-        include_files: bool = Query(
-            default=False,
-        ),
+        payload: StoreExportPayload = Body(...),
     ) -> AsyncFile:
         return self.service.prepare_store_download(
             trans,
             id,
-            model_store_format=model_store_format,
             contents_type=type,
-            include_files=include_files,
+            payload=payload,
         )
 
     @router.get(

@@ -437,7 +437,7 @@ class BaseDatasetPopulator(BasePopulator):
     ) -> Dict[str, Any]:
         payload = _store_payload(store_dict=store_dict, store_path=store_path)
         create_response = self.create_from_store_raw(payload)
-        create_response.raise_for_status()
+        api_asserts.assert_status_code_is_ok(create_response)
         return create_response.json()
 
     def create_from_store_async(
