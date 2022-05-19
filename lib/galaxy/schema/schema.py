@@ -1231,9 +1231,20 @@ class CreateHistoryFromStore(StoreContentSource):
     pass
 
 
+class ModelStoreFormat(str, Enum):
+    """Available types of model stores for export."""
+
+    TGZ = "tgz"
+    TAR = "tar"
+    TAR_DOT_GZ = "tar.gz"
+    BAG_DOT_ZIP = "bag.zip"
+    BAG_DOT_TAR = "bag.tar"
+    BAG_DOT_TGZ = "bag.tgz"
+
+
 class StoreExportPayload(Model):
-    model_store_format: str = Field(
-        default="tar.gz",
+    model_store_format: ModelStoreFormat = Field(
+        default=ModelStoreFormat.TAR_DOT_GZ,
         description="format of model store to export",
     )
     include_files: bool = Field(

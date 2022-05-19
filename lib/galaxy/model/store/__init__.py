@@ -2191,6 +2191,9 @@ def get_export_store_factory(app, download_format: str, export_files=None) -> Ca
     if download_format in ["tar.gz", "tgz"]:
         export_store_class = TarModelExportStore
         export_store_class_kwds["gzip"] = True
+    elif download_format in ["tar"]:
+        export_store_class = TarModelExportStore
+        export_store_class_kwds["gzip"] = False
     elif download_format.startswith("bag."):
         bag_archiver = download_format[len("bag.") :]
         if bag_archiver not in ["zip", "tar", "tgz"]:
