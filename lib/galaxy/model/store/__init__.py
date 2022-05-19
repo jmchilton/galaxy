@@ -875,7 +875,10 @@ class ModelImportStore(metaclass=abc.ABCMeta):
             imported_invocation = model.WorkflowInvocation()
             imported_invocation.user = self.user
             imported_invocation.history = history
-            workflow = object_import_tracker.workflows_by_key[invocation_attrs["workflow"]]
+            workflow_key = invocation_attrs["workflow"]
+            if workflow_key not in object_import_tracker.workflows_by_key:
+                raise Exception(f"Failed to find key {workflow_key} in {object_import_tracker.workflows_by_key.keys()}")
+            workflow = object_import_tracker.workflows_by_key[workflow_key]
             imported_invocation.workflow = workflow
             state = invocation_attrs["state"]
             if state in model.WorkflowInvocation.non_terminal_states:
@@ -1324,6 +1327,8 @@ class BaseDirectoryImportModelStore(ModelImportStore):
             return []
 
         for name in os.listdir(workflows_directory):
+            if name.endswith(".ga") or name.endswith(".abstract.cwl") or name.endswith(".html"):
+                continue
             assert name.endswith(".gxwf.yml")
             workflow_key = name[0 : -len(".gxwf.yml")]
             yield workflow_key, os.path.join(workflows_directory, name)
@@ -2086,13 +2091,12 @@ class DirectoryModelExportStore(ModelExportStore):
 
             workflow = invocation.workflow
             workflow_key = self.serialization_options.get_identifier(self.security, workflow)
-            workflow_path = os.path.join(workflows_directory, workflow_key + ".gxwf.yml")
             history = invocation.history
             assert invocation_attrs
             invocation_attrs["workflow"] = workflow_key
 
-            self.app.workflow_contents_manager.store_workflow_to_path(
-                workflow_path, workflow.stored_workflow, workflow, user=history.user, history=history
+            self.app.workflow_contents_manager.store_workflow_artifacts(
+                workflows_directory, workflow_key, workflow, user=history.user, history=history
             )
             invocations_attrs.append(invocation_attrs)
 

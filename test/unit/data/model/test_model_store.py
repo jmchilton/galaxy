@@ -711,9 +711,13 @@ def _create_datasets(sa_session, history, n, extension="txt"):
 
 
 class MockWorkflowContentsManager:
-    def store_workflow_to_path(self, path, stored_workflow, workflow, **kwd):
+    def store_workflow_artifacts(self, directory, workflow_key, workflow, **kwd):
+        path = os.path.join(directory, f"{workflow_key}.gxwf.yml")
         with open(path, "w") as f:
             f.write("MY COOL WORKFLOW!!!")
+        path = os.path.join(directory, f"{workflow_key}.abstract.cwl")
+        with open(path, "w") as f:
+            f.write("MY COOL WORKFLOW as CWL!!!")
 
     def read_workflow_from_path(self, app, user, path, allow_in_directory=None):
         stored_workflow = model.StoredWorkflow()

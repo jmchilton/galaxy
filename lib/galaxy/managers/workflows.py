@@ -18,6 +18,9 @@ from gxformat2 import (
     ImportOptions,
     python_to_workflow,
 )
+from gxformat2.abstract import from_dict
+from gxformat2.cytoscape import to_cytoscape
+from gxformat2.yaml import ordered_dump
 from pydantic import BaseModel
 from sqlalchemy import (
     and_,
@@ -806,6 +809,19 @@ class WorkflowContentsManager(UsesAnnotations):
         workflow_path = stored_workflow.from_path
         self.store_workflow_to_path(workflow_path, stored_workflow, stored_workflow.latest_workflow, trans=trans)
 
+    def store_workflow_artifacts(self, directory, filename_base, workflow, **kwd):
+        modern_workflow_path = os.path.join(directory, f"{filename_base}.gxwf.yml")
+        legacy_workflow_path = os.path.join(directory, f"{filename_base}.ga")
+        abstract_cwl_workflow_path = os.path.join(directory, f"{filename_base}.abstract.cwl")
+        for path in [legacy_workflow_path, modern_workflow_path, abstract_cwl_workflow_path]:
+            self.app.workflow_contents_manager.store_workflow_to_path(path, workflow.stored_workflow, workflow, **kwd)
+        try:
+            cytoscape_path = os.path.join(directory, f"{filename_base}.html")
+            to_cytoscape(modern_workflow_path, cytoscape_path)
+        except Exception:
+            # completely optional and currently broken so ignore...
+            pass
+
     def store_workflow_to_path(self, workflow_path, stored_workflow, workflow, **kwd):
         trans = kwd.get("trans")
         if trans is None:
@@ -816,6 +832,10 @@ class WorkflowContentsManager(UsesAnnotations):
             if workflow_path.endswith(".ga"):
                 wf_dict = self._workflow_to_dict_export(trans, stored_workflow, workflow=workflow)
                 json.dump(wf_dict, f, indent=4)
+            elif workflow_path.endswith(".abstract.cwl"):
+                wf_dict = self._workflow_to_dict_export(trans, stored_workflow, workflow=workflow)
+                abstract_dict = from_dict(wf_dict)
+                ordered_dump(abstract_dict, f)
             else:
                 wf_dict = self._workflow_to_dict_export(trans, stored_workflow, workflow=workflow)
                 wf_dict = from_galaxy_native(wf_dict, None, json_wrapper=True)
