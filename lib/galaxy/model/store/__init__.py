@@ -2234,6 +2234,7 @@ def source_to_import_store(
     app: StoreAppProtocol,
     galaxy_user: Optional[model.User],
     import_options: Optional[ImportOptions],
+    model_store_format: Optional[str] = None,
 ) -> ModelImportStore:
     if isinstance(source, dict):
         if model_store_format is not None:
@@ -2270,15 +2271,23 @@ def source_to_import_store(
                 target_path, import_options=import_options, app=app, user=galaxy_user
             )
         else:
-            try:
-                temp_dir = mkdtemp()
-                target_dir = CompressedFile(target_path).extract(temp_dir)
-            finally:
-                if delete:
-                    os.remove(target_path)
-            model_import_store = get_import_model_store_for_directory(
-                target_dir, import_options=import_options, app=app, user=galaxy_user
-            )
+            model_store_format = model_store_format or "tgz"
+            if model_store_format in ["tar.gz", "tgz", "tar"]:
+                try:
+                    temp_dir = mkdtemp()
+                    target_dir = CompressedFile(target_path).extract(temp_dir)
+                finally:
+                    if delete:
+                        os.remove(target_path)
+                model_import_store = get_import_model_store_for_directory(
+                    target_dir, import_options=import_options, app=app, user=galaxy_user
+                )
+            elif model_store_format in ["bag.gz", "bag.tar", "bag.zip"]:
+                model_import_store = BagArchiveImportModelStore(
+                    target_path, import_options=import_options, app=app, user=galaxy_user
+                )
+            else:
+                raise Exception(f"Unknown model_store_format type encountered {model_store_format}")
 
     return model_import_store
 

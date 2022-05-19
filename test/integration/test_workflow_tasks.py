@@ -46,6 +46,9 @@ class WorkflowTasksIntegrationTestCase(
     def test_export_import_invocation_collection_input_uris(self):
         self._test_export_import_invocation_collection_input(True)
 
+    def test_export_import_invocation_collection_input_uris_bag_zip(self):
+        self._test_export_import_invocation_collection_input(True, "bag.zip")
+
     def test_export_import_invocation_collection_input_sts(self):
         self._test_export_import_invocation_collection_input(False)
 
@@ -55,10 +58,12 @@ class WorkflowTasksIntegrationTestCase(
     def test_export_import_invocation_with_input_as_output_sts(self):
         self._test_export_import_invocation_with_input_as_output(False)
 
-    def _test_export_import_invocation_collection_input(self, use_uris):
+    def _test_export_import_invocation_collection_input(self, use_uris, model_store_format="tgz"):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow_with_output_collections(history_id)
-            invocation_details = self._export_and_import_worklflow_invocation(summary, use_uris)
+            invocation_details = self._export_and_import_worklflow_invocation(
+                summary, use_uris, model_store_format=model_store_format
+            )
             output_collections = invocation_details["output_collections"]
             assert len(output_collections) == 1
             assert "wf_output_1" in output_collections
@@ -92,21 +97,26 @@ class WorkflowTasksIntegrationTestCase(
             invocation_details = self._export_and_import_worklflow_invocation(summary, use_uris)
             self._rerun_imported_workflow(summary, invocation_details)
 
-    def _export_and_import_worklflow_invocation(self, summary: RunJobsSummary, use_uris: bool = True) -> Dict[str, Any]:
+    def _export_and_import_worklflow_invocation(
+        self, summary: RunJobsSummary, use_uris: bool = True, model_store_format="tgz"
+    ) -> Dict[str, Any]:
         invocation_id = summary.invocation_id
+        extension = model_store_format or "tgz"
         if use_uris:
-            uri = "gxfiles://posix_test/invocation.tgz"
-            self.workflow_populator.download_invocation_to_uri(invocation_id, uri)
+            uri = f"gxfiles://posix_test/invocation.{extension}"
+            self.workflow_populator.download_invocation_to_uri(invocation_id, uri, extension=extension)
             root = self.root_dir
-            invocation_path = os.path.join(root, "invocation.tgz")
+            invocation_path = os.path.join(root, f"invocation.{extension}")
             assert os.path.exists(invocation_path)
             uri = invocation_path
         else:
-            temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id)
+            temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id, extension=extension)
             uri = temp_tar
 
         with self.dataset_populator.test_history() as history_id:
-            response = self.workflow_populator.create_invocation_from_store(history_id, store_path=uri)
+            response = self.workflow_populator.create_invocation_from_store(
+                history_id, store_path=uri, model_store_format=model_store_format
+            )
 
         imported_invocation_details = self._assert_one_invocation_created_and_get_details(response)
         return imported_invocation_details

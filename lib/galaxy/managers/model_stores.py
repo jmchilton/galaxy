@@ -200,6 +200,7 @@ def create_objects_from_store(
         app=app,
         galaxy_user=galaxy_user,
         import_options=import_options,
+        model_store_format=payload.model_store_format,
     )
     new_history = history is None and not for_library
     if new_history:

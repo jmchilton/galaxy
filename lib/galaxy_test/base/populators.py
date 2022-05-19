@@ -1419,19 +1419,27 @@ class BaseWorkflowPopulator(BasePopulator):
         assert task_ok, f"waiting on task to write invocation to {target_uri} that failed"
 
     def create_invocation_from_store_raw(
-        self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+        self,
+        history_id: str,
+        store_dict: Optional[Dict[str, Any]] = None,
+        store_path: Optional[str] = None,
+        model_store_format: Optional[str] = None,
     ) -> Response:
         url = "invocations/from_store"
-        payload = _store_payload(store_dict=store_dict, store_path=store_path)
+        payload = _store_payload(store_dict=store_dict, store_path=store_path, model_store_format=model_store_format)
         payload["history_id"] = history_id
         create_response = self._post(url, payload, json=True)
         return create_response
 
     def create_invocation_from_store(
-        self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
+        self,
+        history_id: str,
+        store_dict: Optional[Dict[str, Any]] = None,
+        store_path: Optional[str] = None,
+        model_store_format: Optional[str] = None,
     ) -> Response:
         create_response = self.create_invocation_from_store_raw(
-            history_id, store_dict=store_dict, store_path=store_path
+            history_id, store_dict=store_dict, store_path=store_path, model_store_format=model_store_format
         )
         api_asserts.assert_status_code_is_ok(create_response)
         return create_response.json()
@@ -2736,7 +2744,11 @@ def wait_on_state(
         raise TimeoutAssertionError(f"{e} Current response containing state [{response.json()}].")
 
 
-def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None) -> Dict[str, Any]:
+def _store_payload(
+    store_dict: Optional[Dict[str, Any]] = None,
+    store_path: Optional[str] = None,
+    model_store_format: Optional[str] = None,
+) -> Dict[str, Any]:
     payload: Dict[str, Any] = {}
     # Ensure only one store method set.
     assert store_dict is not None or store_path is not None
@@ -2747,6 +2759,8 @@ def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Opti
         payload["store_content_uri"] = "base64://" + base64.b64encode(open(store_path, "rb").read()).decode("utf-8")
     else:
         payload["store_content_uri"] = store_path
+    if model_store_format is not None:
+        payload["model_store_format"] = model_store_format
     return payload
 
 

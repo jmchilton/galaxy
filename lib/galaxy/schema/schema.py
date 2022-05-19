@@ -1221,15 +1221,6 @@ class CreateNewCollectionPayload(Model):
     )
 
 
-class StoreContentSource(Model):
-    store_content_uri: Optional[str]
-    store_dict: Optional[Dict[str, Any]]
-
-
-class CreateHistoryFromStore(StoreContentSource):
-    pass
-
-
 class ModelStoreFormat(str, Enum):
     """Available types of model stores for export."""
 
@@ -1239,6 +1230,16 @@ class ModelStoreFormat(str, Enum):
     BAG_DOT_ZIP = "bag.zip"
     BAG_DOT_TAR = "bag.tar"
     BAG_DOT_TGZ = "bag.tgz"
+
+
+class StoreContentSource(Model):
+    store_content_uri: Optional[str]
+    store_dict: Optional[Dict[str, Any]]
+    model_store_format: Optional["ModelStoreFormat"] = None
+
+
+class CreateHistoryFromStore(StoreContentSource):
+    pass
 
 
 class StoreExportPayload(Model):
