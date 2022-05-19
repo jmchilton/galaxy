@@ -6,12 +6,10 @@ from galaxy.jobs.manager import JobManager
 from galaxy.managers.histories import HistoryManager
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.model.store import (
-    get_import_model_store_for_dict,
-    get_import_model_store_for_directory,
     ImportDiscardedDataType,
     ImportOptions,
     ObjectImportTracker,
-    source_uri_to_import_store,
+    source_to_import_store,
 )
 from galaxy.schema.schema import HistoryContentType
 from galaxy.schema.tasks import (
@@ -25,7 +23,6 @@ from galaxy.schema.tasks import (
     WriteInvocationTo,
 )
 from galaxy.structured_app import MinimalManagerApp
-from galaxy.util.compression_utils import CompressedFile
 from galaxy.web.short_term_storage import (
     ShortTermStorageMonitor,
     storage_context,
@@ -166,7 +163,7 @@ class ModelStoreManager:
             galaxy_user = self._sa_session.query(model.User).get(user_id)
         else:
             galaxy_user = None
-        model_import_store = source_uri_to_import_store(
+        model_import_store = source_to_import_store(
             request.source_uri,
             self._app,
             galaxy_user,
@@ -198,29 +195,12 @@ def create_objects_from_store(
         discarded_data=ImportDiscardedDataType.FORCE,
         allow_library_creation=for_library,
     )
-    if payload.store_content_uri is not None:
-        uri = payload.store_content_uri
-        from galaxy.datatypes.sniff import stream_url_to_file
-
-        temp_name = stream_url_to_file(uri, app.file_sources, prefix="gx_import_model_store")
-        try:
-            temp_dir = mkdtemp()
-            target_dir = CompressedFile(temp_name).extract(temp_dir)
-        finally:
-            os.remove(temp_name)
-        model_import_store = get_import_model_store_for_directory(
-            target_dir, import_options=import_options, app=app, user=galaxy_user
-        )
-    else:
-        store_dict = payload.store_dict
-        assert isinstance(store_dict, dict)
-        model_import_store = get_import_model_store_for_dict(
-            store_dict,
-            import_options=import_options,
-            app=app,
-            user=galaxy_user,
-        )
-
+    model_import_store = source_to_import_store(
+        payload.store_content_uri or payload.store_dict,
+        app=app,
+        galaxy_user=galaxy_user,
+        import_options=import_options,
+    )
     new_history = history is None and not for_library
     if new_history:
         if not model_import_store.defines_new_history():

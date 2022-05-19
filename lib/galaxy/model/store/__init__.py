@@ -39,6 +39,7 @@ from galaxy.exceptions import (
     RequestParameterInvalidException,
 )
 from galaxy.files import ConfiguredFileSources
+from galaxy.files.uris import stream_url_to_file
 from galaxy.model.mapping import GalaxyModelMapping
 from galaxy.model.metadata import MetadataCollection
 from galaxy.model.orm.util import (
@@ -2228,46 +2229,63 @@ def imported_store_for_metadata(directory, object_store=None):
     return import_model_store
 
 
-def source_uri_to_import_store(
-    source_uri,
-    app,
-    galaxy_user,
-    import_options,
-):
-    # TODO: handle non file:// URIs.
-    if source_uri.endswith(".json"):
-        if source_uri.startswith("file://"):
-            target_path = source_uri[len("file://") :]
-        else:
-            target_path = source_uri
-        with open(target_path, "r") as f:
-            store_dict = load(f)
-        assert isinstance(store_dict, dict)
+def source_to_import_store(
+    source: Union[str, dict],
+    app: StoreAppProtocol,
+    galaxy_user: Optional[model.User],
+    import_options: Optional[ImportOptions],
+) -> ModelImportStore:
+    if isinstance(source, dict):
+        if model_store_format is not None:
+            raise Exception(
+                "Can only specify a model_store_format as an argument to source_to_import_store in conjuction with URIs"
+            )
         model_import_store = get_import_model_store_for_dict(
-            store_dict,
+            source,
             import_options=import_options,
             app=app,
             user=galaxy_user,
         )
     else:
-        target_dir = source_uri[len("file://") :]
-        assert os.path.isdir(source_uri)
-        model_import_store = get_import_model_store_for_directory(
-            target_dir, import_options=import_options, app=app, user=galaxy_user
-        )
+        source_uri: str = str(source)
+        delete = False
+        if source_uri.startswith("file://"):
+            source_uri = source_uri[len("file://") :]
+        if "://" in source_uri:
+            source_uri = stream_url_to_file(source_uri, app.file_sources, prefix="gx_import_model_store")
+            delete = True
+        target_path = source_uri
+        if target_path.endswith(".json"):
+            with open(target_path, "r") as f:
+                store_dict = load(f)
+            assert isinstance(store_dict, dict)
+            model_import_store = get_import_model_store_for_dict(
+                store_dict,
+                import_options=import_options,
+                app=app,
+                user=galaxy_user,
+            )
+        elif os.path.isdir(target_path):
+            model_import_store = get_import_model_store_for_directory(
+                target_path, import_options=import_options, app=app, user=galaxy_user
+            )
+        else:
+            try:
+                temp_dir = mkdtemp()
+                target_dir = CompressedFile(target_path).extract(temp_dir)
+            finally:
+                if delete:
+                    os.remove(target_path)
+            model_import_store = get_import_model_store_for_directory(
+                target_dir, import_options=import_options, app=app, user=galaxy_user
+            )
+
     return model_import_store
 
 
 def payload_to_source_uri(payload) -> str:
-    if payload.store_content_base64:
-        source_content = payload.store_content_base64
-        assert source_content
-        with NamedTemporaryFile("wb") as tf:
-            tf.write(base64.b64decode(source_content))
-            tf.flush()
-            temp_dir = mkdtemp()
-            target_dir = os.path.abspath(CompressedFile(tf.name).extract(temp_dir))
-        source_uri = f"file://{target_dir}"
+    if payload.store_content_uri:
+        source_uri = payload.store_content_uri
     else:
         store_dict = payload.store_dict
         assert isinstance(store_dict, dict)
