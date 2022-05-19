@@ -1,5 +1,4 @@
 import abc
-import base64
 import contextlib
 import datetime
 import os
@@ -13,10 +12,7 @@ from json import (
     dumps,
     load,
 )
-from tempfile import (
-    mkdtemp,
-    NamedTemporaryFile,
-)
+from tempfile import mkdtemp
 from typing import (
     Any,
     Callable,

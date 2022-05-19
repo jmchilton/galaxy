@@ -2744,7 +2744,7 @@ def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Opti
     if store_dict is not None:
         payload["store_dict"] = store_dict
     if store_path is not None and "://" not in store_path:
-        payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read()).decode("utf-8")
+        payload["store_content_uri"] = "base64://" + base64.b64encode(open(store_path, "rb").read()).decode("utf-8")
     else:
         payload["store_content_uri"] = store_path
     return payload

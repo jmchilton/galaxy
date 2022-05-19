@@ -1,9 +1,3 @@
-import base64
-import os
-from tempfile import (
-    mkdtemp,
-    NamedTemporaryFile,
-)
 from typing import Optional
 
 from galaxy import model
@@ -204,22 +198,11 @@ def create_objects_from_store(
         discarded_data=ImportDiscardedDataType.FORCE,
         allow_library_creation=for_library,
     )
-    if payload.store_content_base64 is not None:
-        source_content = payload.store_content_base64
-        assert source_content
-        with NamedTemporaryFile("wb") as tf:
-            tf.write(base64.b64decode(source_content))
-            tf.flush()
-            temp_dir = mkdtemp()
-            target_dir = CompressedFile(tf.name).extract(temp_dir)
-        model_import_store = get_import_model_store_for_directory(
-            target_dir, import_options=import_options, app=app, user=galaxy_user
-        )
-    elif payload.store_content_uri is not None:
+    if payload.store_content_uri is not None:
         uri = payload.store_content_uri
         from galaxy.datatypes.sniff import stream_url_to_file
 
-        temp_name = stream_url_to_file(uri, app.file_sources)
+        temp_name = stream_url_to_file(uri, app.file_sources, prefix="gx_import_model_store")
         try:
             temp_dir = mkdtemp()
             target_dir = CompressedFile(temp_name).extract(temp_dir)

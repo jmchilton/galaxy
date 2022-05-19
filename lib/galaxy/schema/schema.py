@@ -1222,7 +1222,6 @@ class CreateNewCollectionPayload(Model):
 
 
 class StoreContentSource(Model):
-    store_content_base64: Optional[str]
     store_content_uri: Optional[str]
     store_dict: Optional[Dict[str, Any]]
 
