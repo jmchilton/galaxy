@@ -36,6 +36,7 @@ from galaxy.managers.histories import (
     HistorySerializer,
 )
 from galaxy.managers.users import UserManager
+from galaxy.model.store import payload_to_source_uri
 from galaxy.schema import (
     FilterQueryParams,
     SerializationParams,
@@ -267,8 +268,6 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         payload: CreateHistoryFromStore,
     ) -> AsyncTaskResultSummary:  # TODO: serialized task somehow...
         self._ensure_can_create_history(trans)
-        from galaxy.managers.model_stores import payload_to_source_uri
-
         source_uri = payload_to_source_uri(payload)
         request = ImportModelStoreTaskRequest(
             user=trans.async_request_user,

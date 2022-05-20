@@ -1,4 +1,5 @@
 import abc
+import base64
 import contextlib
 import datetime
 import os
@@ -11,6 +12,10 @@ from json import (
     dump,
     dumps,
     load,
+)
+from tempfile import (
+    mkdtemp,
+    NamedTemporaryFile,
 )
 from typing import (
     Any,
@@ -52,6 +57,7 @@ from galaxy.util import (
     safe_makedirs,
 )
 from galaxy.util.bunch import Bunch
+from galaxy.util.compression_utils import CompressedFile
 from galaxy.util.path import safe_walk
 from ..custom_types import json_encoder
 from ..item_attrs import (
@@ -2181,3 +2187,54 @@ def imported_store_for_metadata(directory, object_store=None):
     )
     import_model_store.perform_import()
     return import_model_store
+
+
+def source_uri_to_import_store(
+    source_uri,
+    app,
+    galaxy_user,
+    import_options,
+):
+    # TODO: handle non file:// URIs.
+    if source_uri.endswith(".json"):
+        if source_uri.startswith("file://"):
+            target_path = source_uri[len("file://") :]
+        else:
+            target_path = source_uri
+        with open(target_path, "r") as f:
+            store_dict = load(f)
+        assert isinstance(store_dict, dict)
+        model_import_store = get_import_model_store_for_dict(
+            store_dict,
+            import_options=import_options,
+            app=app,
+            user=galaxy_user,
+        )
+    else:
+        target_dir = source_uri[len("file://") :]
+        assert os.path.isdir(source_uri)
+        model_import_store = get_import_model_store_for_directory(
+            target_dir, import_options=import_options, app=app, user=galaxy_user
+        )
+    return model_import_store
+
+
+def payload_to_source_uri(payload) -> str:
+    if payload.store_content_base64:
+        source_content = payload.store_content_base64
+        assert source_content
+        with NamedTemporaryFile("wb") as tf:
+            tf.write(base64.b64decode(source_content))
+            tf.flush()
+            temp_dir = mkdtemp()
+            target_dir = os.path.abspath(CompressedFile(tf.name).extract(temp_dir))
+        source_uri = f"file://{target_dir}"
+    else:
+        store_dict = payload.store_dict
+        assert isinstance(store_dict, dict)
+        temp_dir = mkdtemp()
+        import_json = os.path.join(temp_dir, "import_store.json")
+        with open(import_json, "w") as f:
+            dump(store_dict, f)
+        source_uri = f"file://{import_json}"
+    return source_uri
