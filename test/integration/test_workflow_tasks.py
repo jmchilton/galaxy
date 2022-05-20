@@ -3,6 +3,7 @@
 Someday when the API tests can safely assume the target Galaxy has tasks enabled, this should be moved
 into the API test suite.
 """
+import os
 from typing import (
     Any,
     Dict,
@@ -15,6 +16,7 @@ from galaxy_test.base.populators import (
     RunJobsSummary,
     WorkflowPopulator,
 )
+from galaxy_test.driver.integration_setup import PosixFileSourceSetup
 from galaxy_test.driver.integration_util import (
     IntegrationTestCase,
     setup_celery_includes,
@@ -24,23 +26,39 @@ from galaxy_test.driver.integration_util import (
 celery_includes = setup_celery_includes()
 
 
-class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, RunsWorkflowFixtures):
+class WorkflowTasksIntegrationTestCase(
+    PosixFileSourceSetup, IntegrationTestCase, UsesCeleryTasks, RunsWorkflowFixtures
+):
 
     framework_tool_and_types = True
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
+        PosixFileSourceSetup.handle_galaxy_config_kwds(config, cls)
         cls.setup_celery_config(config)
 
     def setUp(self):
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
         self.workflow_populator = WorkflowPopulator(self.galaxy_interactor)
+        self._write_file_fixtures()
 
-    def test_export_import_invocation_collection_input(self):
+    def test_export_import_invocation_collection_input_uris(self):
+        self._test_export_import_invocation_collection_input(True)
+
+    def test_export_import_invocation_collection_input_sts(self):
+        self._test_export_import_invocation_collection_input(False)
+
+    def test_export_import_invocation_with_input_as_output_uris(self):
+        self._test_export_import_invocation_with_input_as_output(True)
+
+    def test_export_import_invocation_with_input_as_output_sts(self):
+        self._test_export_import_invocation_with_input_as_output(False)
+
+    def _test_export_import_invocation_collection_input(self, use_uris):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow_with_output_collections(history_id)
-            invocation_details = self._export_and_import_worklflow_invocation(summary)
+            invocation_details = self._export_and_import_worklflow_invocation(summary, use_uris)
             output_collections = invocation_details["output_collections"]
             assert len(output_collections) == 1
             assert "wf_output_1" in output_collections
@@ -52,10 +70,10 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
 
             self._rerun_imported_workflow(summary, invocation_details)
 
-    def test_export_import_invocation_with_input_as_output(self):
+    def _test_export_import_invocation_with_input_as_output(self, use_uris):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow_with_inputs_as_outputs(history_id)
-            invocation_details = self._export_and_import_worklflow_invocation(summary)
+            invocation_details = self._export_and_import_worklflow_invocation(summary, use_uris)
             output_values = invocation_details["output_values"]
             assert len(output_values) == 1
             assert "wf_output_param" in output_values
@@ -67,18 +85,28 @@ class WorkflowTasksIntegrationTestCase(IntegrationTestCase, UsesCeleryTasks, Run
             self._rerun_imported_workflow(summary, invocation_details)
 
     def test_export_import_invocation_with_step_parameter(self):
+        use_uris = False
         # Run this to ensure order indices are preserved.
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow_with_runtime_data_column_parameter(history_id)
-            invocation_details = self._export_and_import_worklflow_invocation(summary)
+            invocation_details = self._export_and_import_worklflow_invocation(summary, use_uris)
             self._rerun_imported_workflow(summary, invocation_details)
 
-    def _export_and_import_worklflow_invocation(self, summary: RunJobsSummary) -> Dict[str, Any]:
+    def _export_and_import_worklflow_invocation(self, summary: RunJobsSummary, use_uris: bool = True) -> Dict[str, Any]:
         invocation_id = summary.invocation_id
-        temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id)
+        if use_uris:
+            uri = "gxfiles://posix_test/invocation.tgz"
+            self.workflow_populator.download_invocation_to_uri(invocation_id, uri)
+            root = self.root_dir
+            invocation_path = os.path.join(root, "invocation.tgz")
+            assert os.path.exists(invocation_path)
+            uri = invocation_path
+        else:
+            temp_tar = self.workflow_populator.download_invocation_to_store(invocation_id)
+            uri = temp_tar
 
         with self.dataset_populator.test_history() as history_id:
-            response = self.workflow_populator.create_invocation_from_store(history_id, store_path=temp_tar)
+            response = self.workflow_populator.create_invocation_from_store(history_id, store_path=uri)
 
         imported_invocation_details = self._assert_one_invocation_created_and_get_details(response)
         return imported_invocation_details

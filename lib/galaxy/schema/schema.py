@@ -1223,6 +1223,7 @@ class CreateNewCollectionPayload(Model):
 
 class StoreContentSource(Model):
     store_content_base64: Optional[str]
+    store_content_uri: Optional[str]
     store_dict: Optional[Dict[str, Any]]
 
 
@@ -1248,6 +1249,14 @@ class StoreExportPayload(Model):
         default=False,
         title="Include hidden",
         description="Include file contents for hidden datasets (if include_files is True).",
+    )
+
+
+class WriteStoreToPayload(StoreExportPayload):
+    target_uri: str = Field(
+        ...,
+        title="Target URI",
+        description="Galaxy Files URI to write mode store content to.",
     )
 
 

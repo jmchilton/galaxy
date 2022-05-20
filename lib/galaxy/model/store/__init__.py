@@ -42,6 +42,7 @@ from galaxy.exceptions import (
     ObjectNotFound,
     RequestParameterInvalidException,
 )
+from galaxy.files import ConfiguredFileSources
 from galaxy.model.mapping import GalaxyModelMapping
 from galaxy.model.metadata import MetadataCollection
 from galaxy.model.orm.util import (
@@ -99,6 +100,7 @@ class StoreAppProtocol(Protocol):
     object_store: ObjectStore
     security: IdEncodingHelper
     model: GalaxyModelMapping
+    file_sources: ConfiguredFileSources
 
 
 class ImportDiscardedDataType(Enum):
@@ -1568,11 +1570,13 @@ class ModelExportStore(metaclass=abc.ABCMeta):
 
 class DirectoryModelExportStore(ModelExportStore):
     app: Optional[StoreAppProtocol]
+    file_sources: Optional[ConfiguredFileSources]
 
     def __init__(
         self,
         export_directory: str,
         app: Optional[StoreAppProtocol] = None,
+        file_sources: Optional[ConfiguredFileSources] = None,
         for_edit: bool = False,
         serialize_dataset_objects=None,
         export_files: Optional[str] = None,
@@ -1596,10 +1600,13 @@ class DirectoryModelExportStore(ModelExportStore):
             self.app = app
             security = app.security
             sessionless = False
+            if file_sources is None:
+                file_sources = app.file_sources
         else:
             sessionless = True
             security = IdEncodingHelper(id_secret="randomdoesntmatter")
 
+        self.file_sources = file_sources
         self.serialize_jobs = serialize_jobs
         self.sessionless = sessionless
         self.security = security
@@ -2106,16 +2113,29 @@ class DirectoryModelExportStore(ModelExportStore):
 
 
 class TarModelExportStore(DirectoryModelExportStore):
-    def __init__(self, out_file, gzip=True, **kwds):
+    def __init__(self, uri, gzip=True, **kwds):
         self.gzip = gzip
-        self.out_file = out_file
         temp_output_dir = tempfile.mkdtemp()
-        super().__init__(temp_output_dir, **kwds)
+        self.temp_output_dir = temp_output_dir
+        if "://" in str(uri):
+            self.out_file = os.path.join(temp_output_dir, "out")
+            self.file_source_uri = uri
+            export_directory = os.path.join(temp_output_dir, "export")
+        else:
+            self.out_file = uri
+            self.file_source_uri = None
+            export_directory = temp_output_dir
+        super().__init__(export_directory, **kwds)
 
     def _finalize(self):
         super()._finalize()
         tar_export_directory(self.export_directory, self.out_file, self.gzip)
-        shutil.rmtree(self.export_directory)
+        if self.file_source_uri:
+            file_source_path = self.file_sources.get_file_source_path(self.file_source_uri)
+            file_source = file_source_path.file_source
+            assert os.path.exists(self.out_file)
+            file_source.write_from(file_source_path.path, self.out_file)
+        shutil.rmtree(self.temp_output_dir)
 
 
 class BagDirectoryModelExportStore(DirectoryModelExportStore):
@@ -2129,18 +2149,32 @@ class BagDirectoryModelExportStore(DirectoryModelExportStore):
 
 
 class BagArchiveModelExportStore(BagDirectoryModelExportStore):
-    def __init__(self, out_file, bag_archiver="tgz", **kwds):
+    def __init__(self, uri, bag_archiver="tgz", **kwds):
         # bag_archiver in tgz, zip, tar
         self.bag_archiver = bag_archiver
-        self.out_file = out_file
         temp_output_dir = tempfile.mkdtemp()
-        super().__init__(temp_output_dir, **kwds)
+        self.temp_output_dir = temp_output_dir
+        if "://" in str(uri):
+            # self.out_file = os.path.join(temp_output_dir, "out")
+            self.file_source_uri = uri
+            export_directory = os.path.join(temp_output_dir, "export")
+        else:
+            self.out_file = uri
+            self.file_source_uri = None
+            export_directory = temp_output_dir
+        super().__init__(export_directory, **kwds)
 
     def _finalize(self):
         super()._finalize()
         rval = bdb.archive_bag(self.export_directory, self.bag_archiver)
-        shutil.move(rval, self.out_file)
-        shutil.rmtree(self.export_directory)
+        if not self.file_source_uri:
+            shutil.move(rval, self.out_file)
+        else:
+            file_source_path = self.file_sources.get_file_source_path(self.file_source_uri)
+            file_source = file_source_path.file_source
+            assert os.path.exists(rval)
+            file_source.write_from(file_source_path.path, rval)
+        shutil.rmtree(self.temp_output_dir)
 
 
 def get_export_store_factory(app, download_format: str, export_files=None) -> Callable[[str], ModelExportStore]:

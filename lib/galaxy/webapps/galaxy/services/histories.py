@@ -24,6 +24,7 @@ from galaxy import model
 from galaxy.celery.tasks import (
     import_model_store,
     prepare_history_download,
+    write_history_to,
 )
 from galaxy.files.uris import validate_uri_access
 from galaxy.managers.citations import CitationsManager
@@ -57,10 +58,12 @@ from galaxy.schema.schema import (
     JobImportHistoryResponse,
     LabelValuePair,
     StoreExportPayload,
+    WriteStoreToPayload,
 )
 from galaxy.schema.tasks import (
     GenerateHistoryDownload,
     ImportModelStoreTaskRequest,
+    WriteHistoryTo,
 )
 from galaxy.schema.types import LatestLiteral
 from galaxy.security.idencoding import IdEncodingHelper
@@ -345,6 +348,14 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         )
         result = prepare_history_download.delay(request=request)
         return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))
+
+    def write_store(
+        self, trans: ProvidesHistoryContext, history_id: EncodedDatabaseIdField, payload: WriteStoreToPayload
+    ) -> AsyncTaskResultSummary:
+        history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
+        request = WriteHistoryTo(user=trans.async_request_user, history_id=history.id, **payload.dict())
+        result = write_history_to.delay(request=request)
+        return async_task_summary(result)
 
     def update(
         self,

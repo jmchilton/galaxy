@@ -1,4 +1,5 @@
 import base64
+import os
 from tempfile import (
     mkdtemp,
     NamedTemporaryFile,
@@ -25,6 +26,9 @@ from galaxy.schema.tasks import (
     GenerateInvocationDownload,
     ImportModelStoreTaskRequest,
     SetupHistoryExportJob,
+    WriteHistoryContentTo,
+    WriteHistoryTo,
+    WriteInvocationTo,
 )
 from galaxy.structured_app import MinimalManagerApp
 from galaxy.util.compression_utils import CompressedFile
@@ -113,6 +117,46 @@ class ModelStoreManager:
                     invocation, include_hidden=request.include_hidden, include_deleted=request.include_deleted
                 )
 
+    def write_invocation_to(self, request: WriteInvocationTo):
+        model_store_format = request.model_store_format
+        export_files = "symlink" if request.include_files else None
+        target_uri = request.target_uri
+        with model.store.get_export_store_factory(self._app, model_store_format, export_files=export_files)(
+            target_uri
+        ) as export_store:
+            invocation = self._sa_session.query(model.WorkflowInvocation).get(request.invocation_id)
+            export_store.export_workflow_invocation(
+                invocation, include_hidden=request.include_hidden, include_deleted=request.include_deleted
+            )
+
+    def write_history_content_to(self, request: WriteHistoryContentTo):
+        model_store_format = request.model_store_format
+        export_files = "symlink" if request.include_files else None
+        target_uri = request.target_uri
+        with model.store.get_export_store_factory(self._app, model_store_format, export_files=export_files)(
+            target_uri
+        ) as export_store:
+            if request.content_type == HistoryContentType.dataset:
+                hda = self._sa_session.query(model.HistoryDatasetAssociation).get(request.content_id)
+                export_store.add_dataset(hda)
+            else:
+                hdca = self._sa_session.query(model.HistoryDatasetCollectionAssociation).get(request.content_id)
+                export_store.export_collection(
+                    hdca, include_hidden=request.include_hidden, include_deleted=request.include_deleted
+                )
+
+    def write_history_to(self, request: WriteHistoryTo):
+        model_store_format = request.model_store_format
+        export_files = "symlink" if request.include_files else None
+        target_uri = request.target_uri
+        with model.store.get_export_store_factory(self._app, model_store_format, export_files=export_files)(
+            target_uri
+        ) as export_store:
+            history = self._history_manager.by_id(request.history_id)
+            export_store.export_history(
+                history, include_hidden=request.include_hidden, include_deleted=request.include_deleted
+            )
+
     def import_model_store(self, request: ImportModelStoreTaskRequest):
         import_options = ImportOptions(
             discarded_data=ImportDiscardedDataType.FORCE,
@@ -160,7 +204,7 @@ def create_objects_from_store(
         discarded_data=ImportDiscardedDataType.FORCE,
         allow_library_creation=for_library,
     )
-    if payload.store_content_base64:
+    if payload.store_content_base64 is not None:
         source_content = payload.store_content_base64
         assert source_content
         with NamedTemporaryFile("wb") as tf:
@@ -168,6 +212,19 @@ def create_objects_from_store(
             tf.flush()
             temp_dir = mkdtemp()
             target_dir = CompressedFile(tf.name).extract(temp_dir)
+        model_import_store = get_import_model_store_for_directory(
+            target_dir, import_options=import_options, app=app, user=galaxy_user
+        )
+    elif payload.store_content_uri is not None:
+        uri = payload.store_content_uri
+        from galaxy.datatypes.sniff import stream_url_to_file
+
+        temp_name = stream_url_to_file(uri, app.file_sources)
+        try:
+            temp_dir = mkdtemp()
+            target_dir = CompressedFile(temp_name).extract(temp_dir)
+        finally:
+            os.remove(temp_name)
         model_import_store = get_import_model_store_for_directory(
             target_dir, import_options=import_options, app=app, user=galaxy_user
         )

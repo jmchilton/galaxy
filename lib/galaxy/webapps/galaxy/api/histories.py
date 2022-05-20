@@ -35,6 +35,7 @@ from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
     AsyncFile,
+    AsyncTaskResultSummary,
     CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
@@ -47,6 +48,7 @@ from galaxy.schema.schema import (
     ShareWithStatus,
     SharingStatus,
     StoreExportPayload,
+    WriteStoreToPayload,
 )
 from galaxy.schema.types import LatestLiteral
 from galaxy.webapps.galaxy.api.common import (
@@ -199,6 +201,22 @@ class FastAPIHistories:
         payload: StoreExportPayload = Body(...),
     ) -> AsyncFile:
         return self.service.prepare_download(
+            trans,
+            id,
+            payload=payload,
+        )
+
+    @router.post(
+        "/api/histories/{id}/write_store",
+        summary="Prepare history for export-style download and write to supplied URI.",
+    )
+    def write_store(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        id: EncodedDatabaseIdField = HistoryIDPathParam,
+        payload: WriteStoreToPayload = Body(...),
+    ) -> AsyncTaskResultSummary:
+        return self.service.write_store(
             trans,
             id,
             payload=payload,

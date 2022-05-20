@@ -1135,6 +1135,21 @@ class BaseDatasetPopulator(BasePopulator):
         wait_on(is_ready, "waiting for download to become ready")
         assert is_ready()
 
+    def wait_on_task(self, async_task_response: Response):
+        task_id = async_task_response.json()["id"]
+
+        def state():
+            state_response = self._get(f"tasks/{task_id}/state")
+            state_response.raise_for_status()
+            return state_response.json()
+
+        def is_ready():
+            is_complete = state() in ["SUCCESS", "FAILURE"]
+            return True if is_complete else None
+
+        wait_on(is_ready, "waiting for task to complete")
+        return state() == "SUCCESS"
+
     def wait_on_download_request(self, storage_request_id: str) -> Response:
         self.wait_for_download_ready(storage_request_id)
         download_contents_response = self._get(f"short_term_storage/{storage_request_id}")
@@ -1394,6 +1409,15 @@ class BaseWorkflowPopulator(BasePopulator):
         self.dataset_populator.wait_for_download_ready(storage_request_id)
         return self._get_to_tempfile(f"short_term_storage/{storage_request_id}")
 
+    def download_invocation_to_uri(self, invocation_id, target_uri, extension="tgz"):
+        url = f"invocations/{invocation_id}/write_store"
+        download_response = self._post(
+            url, dict(target_uri=target_uri, include_files=False, model_store_format=extension), json=True
+        )
+        api_asserts.assert_status_code_is_ok(download_response)
+        task_ok = self.dataset_populator.wait_on_task(download_response)
+        assert task_ok, f"waiting on task to write invocation to {target_uri} that failed"
+
     def create_invocation_from_store_raw(
         self, history_id: str, store_dict: Optional[Dict[str, Any]] = None, store_path: Optional[str] = None
     ) -> Response:
@@ -1409,7 +1433,7 @@ class BaseWorkflowPopulator(BasePopulator):
         create_response = self.create_invocation_from_store_raw(
             history_id, store_dict=store_dict, store_path=store_path
         )
-        create_response.raise_for_status()
+        api_asserts.assert_status_code_is_ok(create_response)
         return create_response.json()
 
     def get_biocompute_object(self, invocation_id):
@@ -2100,7 +2124,7 @@ class LibraryPopulator:
     ) -> List[Dict[str, Any]]:
         payload = _store_payload(store_dict=store_dict, store_path=store_path)
         create_response = self.create_from_store_raw(payload)
-        create_response.raise_for_status()
+        api_asserts.assert_status_code_is_ok(create_response)
         return create_response.json()
 
     def new_library(self, name):
@@ -2719,8 +2743,10 @@ def _store_payload(store_dict: Optional[Dict[str, Any]] = None, store_path: Opti
     assert store_dict is None or store_path is None
     if store_dict is not None:
         payload["store_dict"] = store_dict
-    if store_path is not None:
+    if store_path is not None and "://" not in store_path:
         payload["store_content_base64"] = base64.b64encode(open(store_path, "rb").read()).decode("utf-8")
+    else:
+        payload["store_content_uri"] = store_path
     return payload
 
 

@@ -55,6 +55,7 @@ from galaxy.schema.schema import (
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
     UpdateHistoryContentsPayload,
+    WriteStoreToPayload,
 )
 from galaxy.webapps.galaxy.api.common import (
     get_filter_query_params,
@@ -455,6 +456,25 @@ class FastAPIHistoryContents:
         payload: StoreExportPayload = Body(...),
     ) -> AsyncFile:
         return self.service.prepare_store_download(
+            trans,
+            id,
+            contents_type=type,
+            payload=payload,
+        )
+
+    @router.post(
+        "/api/histories/{history_id}/contents/{type}s/{id}/write_store",
+        summary="Prepare a dataset or dataset collection for export-style download and write to supplied URI.",
+    )
+    def write_store(
+        self,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        id: EncodedDatabaseIdField = HistoryItemIDPathParam,
+        type: HistoryContentType = ContentTypeQueryParam,
+        payload: WriteStoreToPayload = Body(...),
+    ) -> AsyncTaskResultSummary:
+        return self.service.write_store(
             trans,
             id,
             contents_type=type,

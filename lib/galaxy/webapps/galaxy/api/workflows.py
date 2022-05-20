@@ -49,12 +49,14 @@ from galaxy.model.item_attrs import UsesAnnotations
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AsyncFile,
+    AsyncTaskResultSummary,
     SetSlugPayload,
     ShareWithPayload,
     ShareWithStatus,
     SharingStatus,
     StoreContentSource,
     WorkflowSortByEnum,
+    WriteStoreToPayload,
 )
 from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
@@ -1689,3 +1691,20 @@ class FastAPIWorkflows:
             invocation_id,
             payload,
         )
+
+    @router.post(
+        "/api/invocations/{invocation_id}/write_store",
+        summary="Prepare a worklfow invocation export-style download and write to supplied URI.",
+    )
+    def write_store(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        invocation_id: EncodedDatabaseIdField = InvocationIDPathParam,
+        payload: WriteStoreToPayload = Body(...),
+    ) -> AsyncTaskResultSummary:
+        rval = self.invocations_service.write_store(
+            trans,
+            invocation_id,
+            payload,
+        )
+        return rval

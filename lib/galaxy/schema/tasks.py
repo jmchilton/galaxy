@@ -9,6 +9,7 @@ from .schema import (
     DatasetSourceType,
     HistoryContentType,
     StoreExportPayload,
+    WriteStoreToPayload,
 )
 from ..schema import PdfDocumentType
 
@@ -57,6 +58,22 @@ class GenerateHistoryContentDownload(StoreExportPayload):
 class GenerateInvocationDownload(StoreExportPayload):
     invocation_id: int
     short_term_storage_request_id: str
+    user: RequestUser
+
+
+class WriteInvocationTo(WriteStoreToPayload):
+    invocation_id: int
+    user: RequestUser
+
+
+class WriteHistoryContentTo(WriteStoreToPayload):
+    content_type: HistoryContentType
+    content_id: int
+    user: RequestUser
+
+
+class WriteHistoryTo(WriteStoreToPayload):
+    history_id: int
     user: RequestUser
 
 

@@ -16,6 +16,9 @@ from galaxy.schema.tasks import (
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
     SetupHistoryExportJob,
+    WriteHistoryContentTo,
+    WriteHistoryTo,
+    WriteInvocationTo,
 )
 from galaxy.util.custom_logging import get_logger
 from galaxy.web.short_term_storage import ShortTermStorageMonitor
@@ -109,6 +112,30 @@ def prepare_invocation_download(
     request: GenerateInvocationDownload,
 ):
     model_store_manager.prepare_invocation_download(request)
+
+
+@galaxy_task(action="generate and stage a workflow invocation store to file source URI")
+def write_invocation_to(
+    model_store_manager: ModelStoreManager,
+    request: WriteInvocationTo,
+):
+    model_store_manager.write_invocation_to(request)
+
+
+@galaxy_task(action="generate and stage a history store to file source URI")
+def write_history_to(
+    model_store_manager: ModelStoreManager,
+    request: WriteHistoryTo,
+):
+    model_store_manager.write_history_to(request)
+
+
+@galaxy_task(action="generate and stage a history content model store to file source URI")
+def write_history_content_to(
+    model_store_manager: ModelStoreManager,
+    request: WriteHistoryContentTo,
+):
+    model_store_manager.write_history_content_to(request)
 
 
 @galaxy_task(action="import objects from a target model store")

@@ -27,6 +27,7 @@ from galaxy.celery.tasks import materialize as materialize_task
 from galaxy.celery.tasks import (
     prepare_dataset_collection_download,
     prepare_history_content_download,
+    write_history_content_to,
 )
 from galaxy.managers import (
     folders,
@@ -93,11 +94,13 @@ from galaxy.schema.schema import (
     StoreExportPayload,
     UpdateDatasetPermissionsPayload,
     UpdateHistoryContentsBatchPayload,
+    WriteStoreToPayload,
 )
 from galaxy.schema.tasks import (
     GenerateHistoryContentDownload,
     MaterializeDatasetInstanceTaskRequest,
     PrepareDatasetCollectionDownload,
+    WriteHistoryContentTo,
 )
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util.zipstream import ZipstreamWrapper
@@ -377,6 +380,28 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         )
         result = prepare_history_content_download.delay(request=request)
         return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))
+
+    def write_store(
+        self,
+        trans: ProvidesHistoryContext,
+        id: EncodedDatabaseIdField,
+        payload: WriteStoreToPayload,
+        contents_type: HistoryContentType = HistoryContentType.dataset,
+    ):
+        ensure_celery_tasks_enabled(trans.app.config)
+        if contents_type == HistoryContentType.dataset:
+            hda = self.hda_manager.get_accessible(self.decode_id(id), trans.user)
+            content_id = hda.id
+        elif contents_type == HistoryContentType.dataset_collection:
+            dataset_collection_instance = self.__get_accessible_collection(trans, id)
+            content_id = dataset_collection_instance.id
+        else:
+            raise exceptions.UnknownContentsType(f"Unknown contents type: {contents_type}")
+        request = WriteHistoryContentTo(
+            user=trans.async_request_user, content_id=content_id, contents_type=contents_type, **payload.dict()
+        )
+        result = write_history_content_to.delay(request=request)
+        return async_task_summary(result)
 
     def index_jobs_summary(
         self,

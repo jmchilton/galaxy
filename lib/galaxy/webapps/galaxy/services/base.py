@@ -177,7 +177,7 @@ def async_task_summary(async_result: AsyncResult) -> AsyncTaskResultSummary:
         pass
 
     return AsyncTaskResultSummary(
-        id=async_result.id,
+        id=str(async_result.id),
         ignored=async_result.ignored,
         name=name,
         queue=queue,
