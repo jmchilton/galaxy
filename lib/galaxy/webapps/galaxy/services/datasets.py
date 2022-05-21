@@ -16,6 +16,7 @@ from pydantic import (
     BaseModel,
     Field,
 )
+from starlette.datastructures import URL
 
 from galaxy import exceptions as galaxy_exceptions
 from galaxy import (
@@ -41,6 +42,13 @@ from galaxy.managers.lddas import LDDAManager
 from galaxy.schema import (
     FilterQueryParams,
     SerializationParams,
+)
+from galaxy.schema.drs import (
+    AccessMethod,
+    AccessMethodType,
+    AccessURL,
+    Checksum,
+    DrsObject,
 )
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
@@ -366,6 +374,50 @@ class DatasetsService(ServiceBase, UsesVisualizationMixin):
             result.append(DatasetInheritanceChainEntry(name=f"{dep[0].name}", dep=dep[1]))
 
         return DatasetInheritanceChain(__root__=result)
+
+    def get_drs_object(
+        self,
+        trans: ProvidesHistoryContext,
+        object_id: EncodedDatabaseIdField,
+        request_url: URL,
+        hda_ldda: DatasetSourceType = DatasetSourceType.hda,
+    ) -> DrsObject:
+        decoded_dataset_id = self.decode_id(object_id)
+        dataset_instance = self.dataset_manager_by_type[hda_ldda].get_accessible(decoded_dataset_id, trans.user)
+        if not trans.app.security_agent.dataset_is_public(dataset_instance.dataset):
+            # Only public datasets may be access as DRS datasets currently
+            raise galaxy_exceptions.ObjectNotFound("Cannot find a public dataset with specified object ID.")
+
+        # TODO: issue warning if not being served on HTTPS @ 443 - required by the spec.
+        self_uri = f"drs://drs.{request_url.components.netloc}/{object_id}"
+        checksums: List[Checksum] = []
+        for dataset_hash in dataset_instance.dataset.hashes:
+            if dataset_hash.extra_files_path:
+                continue
+            type = dataset_hash.hash_function
+            checksum = dataset_hash.hash_value
+            checksums.append(Checksum(type=type, checksum=checksum))
+
+        if len(checksums) == 0:
+            # fire off a checksuming task and return a 202?
+            checksums.append(Checksum(type="md5", checksum="dummysum"))
+
+        base = str(request_url).split("/ga4gh", 1)[0]
+        access_url = base + f"/api/drs_download/{object_id}"
+
+        access_method = AccessMethod(
+            type=AccessMethodType.https,
+            access_url=AccessURL(url=access_url),
+        )
+
+        return DrsObject(
+            id=str(object_id),
+            self_uri=self_uri,
+            size=dataset_instance.dataset.file_size,
+            created_time=dataset_instance.create_time,
+            checksums=checksums,
+            access_methods=[access_method],
+        )
 
     def update_permissions(
         self,
