@@ -32,6 +32,7 @@ PACKAGE_DIRS=(
     web_framework
     app
     webapps
+    test_base
 )
 for ((i=0; i<${#PACKAGE_DIRS[@]}; i++)); do
     printf "\n========= TESTING PACKAGE ${PACKAGE_DIRS[$i]} =========\n\n"
