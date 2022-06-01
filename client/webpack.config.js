@@ -169,6 +169,12 @@ module.exports = (env = {}, argv = {}) => {
                     test: /\.(txt|tmpl)$/,
                     loader: "raw-loader",
                 },
+                {
+                    test: /\.yml$/,
+                    //loader: "yaml-loader",
+                    use: "yaml-loader",
+                    type: "json",
+                },
             ],
         },
         resolveLoader: {

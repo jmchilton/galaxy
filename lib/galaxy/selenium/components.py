@@ -4,20 +4,25 @@ from abc import (
     ABCMeta,
     abstractproperty,
 )
-from typing import Union
+from typing import (
+    Tuple,
+    Union,
+)
 
 from selenium.webdriver.common.by import By
 
 from galaxy.util.bunch import Bunch
 
+LocatorT = Tuple[By, str]
+
 
 class Target(metaclass=ABCMeta):
     @abstractproperty
-    def description(self):
+    def description(self) -> str:
         """Return a plain-text description of the browser target for logging/messages."""
 
     @abstractproperty
-    def element_locator(self):
+    def element_locator(self) -> LocatorT:
         """Return a (by, selector) Selenium elment locator tuple for this selector."""
 
 
@@ -178,6 +183,25 @@ class Component:
             return self._selectors["_"]
         else:
             raise Exception(f"No _ selector for [{self}]")
+
+    def element_locator(self, path: str) -> LocatorT:
+        if "." not in path:
+            reg_exp = re.compile(r"(.*)\(([^)]+)\)")
+            match = reg_exp.match(path)
+            if match:
+                component_name = match.group(1)
+                expression = match.group(2)
+                parts = expression.split(",")
+                parameters = {}
+                for part in parts:
+                    key, val = part.split("=", 1)
+                    parameters[key.strip()] = val.strip()
+                return getattr(self, component_name)(**parameters).element_locator
+            else:
+                return getattr(self, path).element_locator
+        else:
+            component_name, rest_path = path.split(".", 1)
+            return getattr(self, component_name).element_locator(rest_path)
 
     @staticmethod
     def from_dict(name, raw_value):

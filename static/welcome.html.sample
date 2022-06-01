@@ -19,6 +19,8 @@
                     <a target="_parent" href="../tours/core.galaxy_ui" class="btn btn-secondary btn-sm">Galaxy UI</a>
                     <a target="_parent" href="../tours/core.history" class="btn btn-secondary btn-sm">History</a>
                     <a target="_parent" href="../tours/core.windows" class="btn btn-secondary btn-sm">Window Manager</a>
+                    <a target="_parent" href="../tours/core.workflows_organization" class="btn btn-secondary btn-sm">Organizing and Searching Workflows</a>
+                    <a target="_parent" href="../tours/core.workflows_trs" class="btn btn-secondary btn-sm">Finding Workflows on Dockstore and WorkflowHub.eu</a>
                 </p>
             </div>
         </div>

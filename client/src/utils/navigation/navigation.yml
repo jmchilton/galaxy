@@ -513,6 +513,11 @@ workflows:
       annotation: '#workflow_annotation'
       submit: '#submit'
 
+  import:
+    selectors:
+      trs_search: '.trs-search'
+      trs_import: '.trs-import'
+
 trs_search:
   selectors:
     search: "#trs-search-query"
@@ -521,6 +526,8 @@ trs_search:
       selector: "//td[contains(text(), '${workflow_name}')]"
     import_button: ".workflow-import"
     select_server_button: "#dropdownTrsServer"
+    target: .trs-server-target
+    help: .trs-search-help
     import_version: '[data-version-name*="${version}"]'
     select_server:
       type: xpath

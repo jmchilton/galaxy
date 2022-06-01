@@ -2,6 +2,7 @@ import axios from "axios";
 import { getAppRoot } from "onload";
 import { mountVueComponent } from "utils/mountVueComponent";
 import Tour from "./Tour";
+import { ROOT_COMPONENT } from "utils/navigation";
 
 // delays and maximum number of attempts to wait for element
 const attempts = 100;
@@ -58,6 +59,12 @@ function doClick(targets) {
     }
 }
 
+function doAddTag(selector, value) {
+    if ( value !== null) {
+        getElement(selector).__vue__.performAddTags(value);
+    }
+}
+
 // insert text into the selected element
 function doInsert(selector, value) {
     if (value !== null) {
@@ -93,6 +100,11 @@ export async function runTour(tourId, tourData = null) {
     }
     const steps = [];
     Object.values(tourData.steps).forEach((step) => {
+        if(step.component) {
+            const element = ROOT_COMPONENT.findSelector(step.component);
+            delete step.component;
+            step.element = element;
+        }
         steps.push({
             element: step.element,
             title: step.title,
@@ -109,6 +121,7 @@ export async function runTour(tourId, tourData = null) {
                     }
                     doClick(preclick);
                     doInsert(step.element, step.textinsert);
+                    doAddTag(step.element, step.addtag);
                 });
             },
             onNext: () => {

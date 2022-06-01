@@ -14,7 +14,7 @@
                 <b-input id="trs-search-query" v-model="query" placeholder="search query" @keydown.esc="query = ''" />
                 <b-input-group-append>
                     <b-btn>
-                        <i v-b-popover.bottom="searchHelp" class="fa fa-question" title="Search Help" />
+                        <i v-b-popover.bottom="searchHelp" class="fa fa-question trs-search-help" title="Search Help" />
                     </b-btn>
                     <b-btn v-b-tooltip.hover title="clear search" @click="query = ''">
                         <i class="fa fa-times" />
@@ -34,11 +34,15 @@
                 v-else
                 :fields="fields"
                 :items="itemsComputed"
+                class="trs-search-results"
                 hover
                 striped
                 caption-top
                 :busy="searching"
                 @row-clicked="showRowDetails">
+                <template v-slot:cell(name)="name">
+                    <span class="result-name">{{ name }}</span>
+                </template>
                 <template v-slot:row-details="row">
                     <b-card>
                         <trs-tool :trs-tool="row.item.data" @onImport="importVersion(row.item.data.id, $event)" />

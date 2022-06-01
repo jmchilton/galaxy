@@ -27,8 +27,9 @@ class TourList(BaseModel):
 class TourStep(BaseModel):
     title: Optional[str] = Field(title="Title", description="Title displayed in the header of the step container")
     content: Optional[str] = Field(title="Content", description="Text shown to the user")
-    element: Optional[str] = Field(
-        title="Element", description="JQuery selector for the element to be described/clicked"
+    element: Optional[str] = Field(title="Element", description="CSS selector for the element to be described/clicked")
+    component: Optional[str] = Field(
+        title="Component", description="Path in navigation.yml to describe target element."
     )
     placement: Optional[str] = Field(
         title="Placement", description="Placement of the text box relative to the selected element"
@@ -42,6 +43,7 @@ class TourStep(BaseModel):
     textinsert: Optional[str] = Field(
         title="Text-insert", description="Text to insert if element is a text box (e.g. tool search or upload)"
     )
+    addtag: Optional[str] = Field(title="Add Tag", description="A tag to add to specified tag element.")
 
 
 class TourDetails(TourCore):
