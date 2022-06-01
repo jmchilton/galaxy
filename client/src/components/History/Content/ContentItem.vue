@@ -23,7 +23,7 @@
                             :icon="['far', 'square']"
                             @click.stop="$emit('update:selected', true)" />
                     </span>
-                    <span v-if="hasStateIcon">
+                    <span v-if="hasStateIcon" class="state-icon">
                         <icon fixed-width :icon="contentState.icon" :spin="contentState.spin" />
                     </span>
                     <span class="id hid">{{ id }}</span>
