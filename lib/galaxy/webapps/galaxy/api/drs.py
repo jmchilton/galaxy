@@ -6,10 +6,7 @@ from fastapi import (
     Path,
     Request,
 )
-from starlette.responses import (
-    FileResponse,
-    StreamingResponse,
-)
+from starlette.responses import FileResponse
 
 from galaxy.exceptions import ObjectNotFound
 from galaxy.managers.context import ProvidesHistoryContext
@@ -98,16 +95,11 @@ class DrsApi:
 
     @router.get(
         "/api/drs_download/{object_id}",
-        response_class=StreamingResponse,
+        response_class=FileResponse,
     )
     def download(
         self, trans: ProvidesHistoryContext = DependsOnTrans, object_id: EncodedDatabaseIdField = ObjectIDParam
     ):
         display_data, headers = self.service.display(trans, object_id, False, None, None, True)
-        if isinstance(display_data, IOBase):
-            file_name = getattr(display_data, "name", None)
-            if file_name:
-                return FileResponse(file_name, headers=headers)
-        elif isinstance(display_data, ZipstreamWrapper):
-            return StreamingResponse(display_data.response(), headers=headers)
-        return StreamingResponse(display_data, headers=headers)
+        assert isinstance(display_data, IOBase)
+        return FileResponse(file_name, headers=headers)
