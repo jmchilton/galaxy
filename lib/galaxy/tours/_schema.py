@@ -40,6 +40,7 @@ class TourStep(BaseModel):
     textinsert: Optional[str] = Field(
         title="Text-insert", description="Text to insert if element is a text box (e.g. tool search or upload)"
     )
+    addtag: Optional[str] = Field(title="Add Tag", description="A tag to add to specified tag element.")
 
 
 class TourDetails(TourCore):
