@@ -119,6 +119,40 @@ class Component {
             throw `No _ selector for [${this}]`;
         }
     }
+
+    findSelector(navigationPathStr) {
+        const splitPos = navigationPathStr.indexOf(".");
+        if (splitPos === -1) {
+            var regExp = /(.*)\(([^)]+)\)/;
+            const matches = regExp.exec(navigationPathStr);
+            if (matches) {
+                const componentName = matches[1];
+                const expression = matches[2];
+                const parts = expression.split(",");
+                const parameters = {};
+                for (const part of parts) {
+                    console.log(part);
+                    const [key, val] = part.split("=", 2);
+                    console.log(key);
+                    console.log(val);
+                    parameters[key.trim()] = val.trim();
+                }
+                return this[componentName](parameters).selector;
+            } else {
+                return this[navigationPathStr].selector;
+            }
+        } else {
+            const subComponentName = navigationPathStr.slice(0, splitPos);
+            const restOfPath = navigationPathStr.slice(splitPos + 1);
+            const subComponent = this[subComponentName];
+            if (!subComponent) {
+                console.log(this);
+                throw `Failed to find component ${subComponentName}`;
+            } else {
+                return subComponent.findSelector(restOfPath);
+            }
+        }
+    }
 }
 
 export const ROOT_COMPONENT = componentFromObject("root", NAVIGATION_DATA);
