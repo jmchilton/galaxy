@@ -1,0 +1,44 @@
+name: Organizing Workflows
+description: An introduction to organizing workflows.
+title_default: An introduction to organizing workflows.
+tags:
+  - "core"
+  - "UI"
+  - "workflows"
+
+steps:
+    - content: This short tour will walk you through Galaxy's facilities for searching and organizing workflows.
+
+    - title: Workflows
+      component: masthead.workflow
+      intro: Create, manage, import, export and share your <b>Workflows</b>.
+      postclick: true
+
+    - title: "Your Workflows"
+      component: workflows.workflow_table
+      intro: Your workflows will appear in this table. New workflows can be imported, extracted, created in a variety of ways.
+
+    - title: New Workflow
+      component: workflows.new_button
+      intro: Lets start by creating a new workflow to demonstrate tagging and searching with.
+      postclick: true
+
+    - title: Workflow Name
+      component: workflows.create.name
+      intro: Specify a workflow name here.
+      inserttext: Tour Workflow
+
+    - title: Workflow Annotation
+      component: workflows.create.annotation
+      intro: Enter an annotation or description of the workflow here. This can be generally be longer and should provide more details about what the workflow does, how to use it, what inputs are suitable, etc..
+      inserttext: A simple workflow for the tour, it doesn't do anything.
+
+    - title: Create
+      component: workflows.create.submit
+      intro: Hit the create button to create a new workflow.
+      postclick: true
+
+    - title: Tag
+      element: .vue-tags-input
+      intro: Some language about tags here...
+      addtag: tour_examples

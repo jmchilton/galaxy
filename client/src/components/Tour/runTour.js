@@ -59,6 +59,12 @@ function doClick(targets) {
     }
 }
 
+function doAddTag(selector, value) {
+    if (value !== null) {
+        getElement(selector).__vue__.performAddTags(value);
+    }
+}
+
 // insert text into the selected element
 function doInsert(selector, value) {
     if (value !== null) {
@@ -115,6 +121,7 @@ export async function runTour(tourId, tourData = null) {
                     }
                     doClick(preclick);
                     doInsert(step.element, step.textinsert);
+                    doAddTag(step.element, step.addtag);
                 });
             },
             onNext: () => {

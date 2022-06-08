@@ -1,6 +1,6 @@
 <!-- Modelled after Sam's ToolShed ServerSelection.vue -->
 <template>
-    <span v-if="!loading" class="m-1 text-muted">
+    <span v-if="!loading" class="m-1 text-muted trs-server-target">
         <span v-if="showDropdown" class="dropdown">
             <b-link
                 id="dropdownTrsServer"

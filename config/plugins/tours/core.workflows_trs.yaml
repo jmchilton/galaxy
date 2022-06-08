@@ -1,0 +1,83 @@
+name: Finding Workflows on Dockstore
+description: "An introduction to finding workflows on Dockstore and WorkflowHub.eu."
+title_default: "An introduction to finding and running workflows from Dockstore and WorkflowHub.eu."
+tags:
+  - "core"
+  - "UI"
+  - "workflows"
+
+steps:
+    - content: This short tour will walk you through searching <b>Dockstore</b> for Galaxy Workflows
+
+    - title: Workflows
+      component: masthead.workflow
+      intro: Create, manage, import, export and share your <b>Workflows</b>.
+      postclick: true
+
+    - title: "Your Workflows"
+      component: workflows.workflow_table
+      intro: Your workflows will appear in this table. New workflows can be imported, extracted, created in a variety of ways.
+
+    - title: Import Workflows
+      component: workflows.import_button
+      intro: A variety of methods for importing existing workflows can be found by clicking on this import button.
+      postclick: true
+
+    - title: GA4GH TRS Workflows
+      component: workflows.import.trs_import
+      intro: GA4GH TRS enabled repositories assign unique IDs to workflows. You can go to https://dockstore.com or https://workflowhub.eu/ and find IDs and plug them into the form specified by the following link.
+
+    - title: Workflow Search Link
+      component: workflows.import.trs_search
+      intro: We will use search from inside of Galaxy instead to find a workflow in this tour.
+      postclick: true
+
+    - title: Workflow Search Link
+      component: workflows.import.trs_search
+      intro: We will use search from inside of Galaxy instead to find a workflow in this tour.
+      postclick: true
+
+    - title: Target Repository
+      component: trs_search.target
+      intro: The GA4GH repository you're searching is shown here. If multiple such servers are configured, they can be selected here.
+
+    - title: Searching
+      component: trs_search.search
+      intro: Typing search text into this form input to search the target server. We 
+
+    - title: Searching Help
+      component: trs_search.help
+      intro: This button pops up quick help for advanced search features.
+
+    - title: ASHG Workflows
+      component: trs_search.search
+      intro: Alex Ostrovsky prepared some Plink workflows for ASHG, lets search for one!
+      textinsert: Plink filtering part 1
+
+    - title: Search Results
+      element: ".result-name"
+      intro: The search results appear here, click on one to expand details.
+      postclick: true
+
+    - title: Import Workflow
+      component: trs_import.import_version(version=main)
+      intro: Multiple versions of the workflow may be avialable, these will be shown here. Lets import the "main" version.
+      postclick: true
+
+    - title: Workflow Now Available
+      component: workflows.search_box
+      intro: The workflow should now be available in your workflow list. Lets search for it.
+      textinsert: 'name:ASHG'
+
+    - title: Workflow Now Available
+      component: workflows.search_box
+      intro: The workflow should now be available in your workflow list. Lets search for it.
+      textinsert: 'name:ASHG'
+
+    - title: Workflow Check Mark
+      component: workflows.trs_icon
+      intro: This checkmark indicates the workflow from imported from a GA4GH server.
+
+    - title: Workflow Run
+      element: .workflow-run
+      intro: If your Galaxy server has the required tools, the workflow can be executed with this button. If tools are missing, Galaxy will inform you and you will need to contact your Galaxy admin to get these tools installed.

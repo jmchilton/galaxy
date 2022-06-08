@@ -21,8 +21,8 @@
             </b-button>
             <div class="mt-4">
                 <h4>Import a Workflow from Configured GA4GH Tool Registry Servers (e.g. Dockstore)</h4>
-                Use either the Galaxy <a :href="trsSearchHref">search form</a> or
-                <a :href="trsImportHref">import from a TRS ID</a>.
+                Use either the Galaxy <a class="trs-search" :href="trsSearchHref">search form</a> or
+                <a class="trs-import" :href="trsImportHref">import from a TRS ID</a>.
             </div>
             <div class="mt-4">
                 <h4>Import a Workflow from myExperiment</h4>
