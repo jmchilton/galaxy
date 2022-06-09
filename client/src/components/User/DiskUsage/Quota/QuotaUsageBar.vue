@@ -1,19 +1,23 @@
 <template>
-    <div class="quota-usage-bar w-75 mx-auto my-5">
-        <h2 v-if="!isDefaultQuota" class="quota-storage-source">
+    <div class="quota-usage-bar mx-auto" :class="{ 'w-75': !embedded, 'my-5': !embedded, 'my-1': embedded }">
+        <component :is="sourceTag" v-if="!isDefaultQuota" class="quota-storage-source">
             <span class="storage-source-label">
                 <b>{{ quotaUsage.sourceLabel }}</b>
             </span>
             {{ storageSourceText }}
-        </h2>
-        <h3>
+        </component>
+        <component :is="usageTag">
             <b>{{ quotaUsage.niceTotalDiskUsage }}</b>
             <span v-if="quotaHasLimit"> of {{ quotaUsage.niceQuota }}</span> used
-        </h3>
+        </component>
         <span v-if="quotaHasLimit" class="quota-percent-text">
             {{ quotaUsage.quotaPercent }}{{ percentOfDiskQuotaUsedText }}
         </span>
-        <b-progress :value="quotaUsage.quotaPercent" :variant="progressVariant" max="100" />
+        <b-progress
+            v-if="quotaHasLimit || !embedded"
+            :value="quotaUsage.quotaPercent"
+            :variant="progressVariant"
+            max="100" />
     </div>
 </template>
 
@@ -26,6 +30,12 @@ export default {
         quotaUsage: {
             type: Object,
             required: true,
+        },
+        // If this is embedded in DatasetStorage or more intricate components like
+        // that - shrink everything and avoid h2/h3 (component already has those).
+        embedded: {
+            type: Boolean,
+            default: false,
         },
     },
     data() {
@@ -54,6 +64,13 @@ export default {
                 return "warning";
             }
             return "danger";
+        },
+        /** @returns {String} */
+        sourceTag() {
+            return this.embedded ? "div" : "h2";
+        },
+        usageTag() {
+            return this.embedded ? "div" : "h3";
         },
     },
 };

@@ -30,8 +30,9 @@ class PrivatePreventsSharingObjectStoreIntegrationTestCase(BaseObjectStoreIntegr
             hda = self.dataset_populator.new_dataset(history_id, content=TEST_INPUT_FILES_CONTENT, wait=True)
             content = self.dataset_populator.get_history_dataset_content(history_id, hda["id"])
             assert content.startswith(TEST_INPUT_FILES_CONTENT)
-            response = self.dataset_populator.make_public_raw(history_id, hda["id"])
-            assert response.status_code != 200
+            response = self.dataset_populator.make_dataset_public_raw(history_id, hda["id"])
+            api_asserts.assert_status_code_is(response, 400)
+            api_asserts.assert_error_code_is(response, 400008)
             api_asserts.assert_error_message_contains(response, "Attempting to share a non-sharable dataset.")
 
 
