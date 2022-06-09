@@ -68,7 +68,10 @@ from galaxy.model.scoped_session import (
 )
 from galaxy.model.tags import GalaxyTagHandler
 from galaxy.model.tool_shed_install import mapping as install_mapping
-from galaxy.objectstore import build_object_store_from_config
+from galaxy.objectstore import (
+    build_object_store_from_config,
+    ObjectStore,
+)
 from galaxy.queue_worker import (
     GalaxyQueueWorker,
     send_local_control_task,
@@ -449,6 +452,7 @@ class MinimalGalaxyApplication(BasicSharedApp, ConfiguresGalaxyMixin, HaltableCo
         self._configure_models(check_migrate_databases=self.config.check_migrate_databases, config_file=config_file)
         # Security helper
         self._configure_security()
+        self._register_singleton(ObjectStore, self.object_store)
         self._register_singleton(IdEncodingHelper, self.security)
         self._register_singleton(SharedModelMapping, self.model)
         self._register_singleton(GalaxyModelMapping, self.model)
