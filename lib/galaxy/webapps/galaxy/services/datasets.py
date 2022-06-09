@@ -93,6 +93,9 @@ class DatasetStorageDetails(Model):
     percent_used: Optional[float] = Field(
         description="The percentage indicating how full the store is.",
     )
+    sharable: bool = Field(
+        description="Is this dataset sharable.",
+    )
 
 
 class DatasetInheritanceChainEntry(Model):
@@ -307,6 +310,7 @@ class DatasetsService(ServiceBase, UsesVisualizationMixin):
 
         return DatasetStorageDetails(
             object_store_id=object_store_id,
+            sharable=dataset.sharable,
             name=name,
             description=description,
             percent_used=percent_used,

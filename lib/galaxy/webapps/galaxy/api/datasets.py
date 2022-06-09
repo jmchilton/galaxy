@@ -393,7 +393,30 @@ class DatasetsController(BaseGalaxyAPIController):
         Display user-facing storage details related to the objectstore a
         dataset resides in.
         """
+<<<<<<< HEAD
         return self.service.show_storage(trans, dataset_id, hda_ldda)
+=======
+        dataset_instance = self.get_hda_or_ldda(trans, hda_ldda=hda_ldda, dataset_id=dataset_id)
+        dataset = dataset_instance.dataset
+        object_store = self.app.object_store
+        object_store_id = dataset.object_store_id
+        name = object_store.get_concrete_store_name(dataset)
+        description = object_store.get_concrete_store_description_markdown(dataset)
+        # not really working (existing problem)
+        try:
+            percent_used = object_store.get_store_usage_percent()
+        except AttributeError:
+            # not implemented on nestedobjectstores yet.
+            percent_used = None
+
+        return {
+            'object_store_id': object_store_id,
+            'sharable': dataset.sharable,
+            'name': name,
+            'description': description,
+            'percent_used': percent_used,
+        }
+>>>>>>> 77b8810b5e (private objectstores & dataset.sharable)
 
     @web.expose_api_anonymous
     def show_inheritance_chain(self, trans, dataset_id, hda_ldda='hda', **kwd):
