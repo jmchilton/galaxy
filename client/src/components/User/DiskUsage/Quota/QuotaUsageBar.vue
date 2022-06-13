@@ -1,20 +1,20 @@
 <template>
     <div class="quota-usage-bar mx-auto" :class="{ 'w-75': !embedded, 'my-5': !embedded, 'my-1': embedded }">
-        <component :is="sourceTag" v-if="!isDefaultQuota" class="quota-storage-source">
+        <component :is="sourceTag" v-if="!isDefaultQuota && !embedded" class="quota-storage-source">
             <span class="storage-source-label">
                 <b>{{ quotaUsage.sourceLabel }}</b>
             </span>
             {{ storageSourceText }}
         </component>
-        <component :is="usageTag">
+        <component :is="usageTag" v-if="!compact">
             <b>{{ quotaUsage.niceTotalDiskUsage }}</b>
             <span v-if="quotaHasLimit"> of {{ quotaUsage.niceQuota }}</span> used
         </component>
-        <span v-if="quotaHasLimit" class="quota-percent-text">
+        <span v-if="quotaHasLimit && !compact" class="quota-percent-text">
             {{ quotaUsage.quotaPercent }}{{ percentOfDiskQuotaUsedText }}
         </span>
         <b-progress
-            v-if="quotaHasLimit || !embedded"
+            v-if="quotaHasLimit || !(embedded || compact)"
             :value="quotaUsage.quotaPercent"
             :variant="progressVariant"
             max="100" />
@@ -34,6 +34,10 @@ export default {
         // If this is embedded in DatasetStorage or more intricate components like
         // that - shrink everything and avoid h2/h3 (component already has those).
         embedded: {
+            type: Boolean,
+            default: false,
+        },
+        compact: {
             type: Boolean,
             default: false,
         },

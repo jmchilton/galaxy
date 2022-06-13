@@ -161,11 +161,16 @@ class ToolsService(ServiceBase):
         use_cached_job = payload.get("use_cached_job", False) or util.string_as_bool(
             inputs.get("use_cached_job", "false")
         )
-
+        preferred_object_store_id = payload.get("preferred_object_store_id", None)
         input_format = str(payload.get("input_format", "legacy"))
 
         vars = tool.handle_input(
-            trans, incoming, history=target_history, use_cached_job=use_cached_job, input_format=input_format
+            trans,
+            incoming,
+            history=target_history,
+            use_cached_job=use_cached_job,
+            input_format=input_format,
+            preferred_object_store_id=preferred_object_store_id,
         )
 
         new_pja_flush = False

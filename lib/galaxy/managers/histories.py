@@ -30,6 +30,7 @@ from galaxy.managers import (
     sharable,
 )
 from galaxy.managers.base import (
+    ModelDeserializingError,
     Serializer,
     SortableManager,
 )
@@ -37,6 +38,7 @@ from galaxy.schema.schema import (
     HDABasicInfo,
     ShareHistoryExtra,
 )
+from galaxy.security.validate_user_input import validate_preferred_object_store_id
 from galaxy.structured_app import MinimalManagerApp
 
 log = logging.getLogger(__name__)
@@ -425,6 +427,7 @@ class HistorySerializer(sharable.SharableModelSerializer, deletable.PurgableSeri
                 "annotation",
                 "tags",
                 "update_time",
+                "preferred_object_store_id",
             ],
         )
         self.add_view(
@@ -445,6 +448,7 @@ class HistorySerializer(sharable.SharableModelSerializer, deletable.PurgableSeri
                 "state_details",
                 "state_ids",
                 "hid_counter",
+                "preferred_object_store_id",
                 # 'community_rating',
                 # 'user_rating',
             ],
@@ -468,6 +472,7 @@ class HistorySerializer(sharable.SharableModelSerializer, deletable.PurgableSeri
                 # 'contents_states',
                 "contents_active",
                 "hid_counter",
+                "preferred_object_store_id",
             ],
             include_keys_from="summary",
         )
@@ -627,8 +632,16 @@ class HistoryDeserializer(sharable.SharableModelDeserializer, deletable.Purgable
             {
                 "name": self.deserialize_basestring,
                 "genome_build": self.deserialize_genome_build,
+                "preferred_object_store_id": self.deserialize_preferred_object_store_id,
             }
         )
+
+    def deserialize_preferred_object_store_id(self, item, key, val, **context):
+        preferred_object_store_id = val
+        validation_error = validate_preferred_object_store_id(self.app.object_store, preferred_object_store_id)
+        if validation_error:
+            raise ModelDeserializingError(validation_error)
+        return self.default_deserializer(item, key, preferred_object_store_id, **context)
 
 
 class HistoryFilters(sharable.SharableModelFilters, deletable.PurgableFiltersMixin):

@@ -358,6 +358,7 @@ class DefaultToolAction(ToolAction):
         completed_job=None,
         collection_info=None,
         job_callback=None,
+        preferred_object_store_id=None,
         flush_job=True,
     ):
         """
@@ -645,6 +646,7 @@ class DefaultToolAction(ToolAction):
         job_setup_timer = ExecutionTimer()
         # Create the job object
         job, galaxy_session = self._new_job_for_session(trans, tool, history)
+        job.preferred_object_store_id = preferred_object_store_id
         self._record_inputs(trans, tool, job, incoming, inp_data, inp_dataset_collections)
         self._record_outputs(job, out_data, output_collections)
         # execute immediate post job actions and associate post job actions that are to be executed after the job is complete

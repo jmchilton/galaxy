@@ -640,6 +640,7 @@ class User(Base, Dictifiable, RepresentById):
     last_password_change = Column(DateTime, default=now)
     external = Column(Boolean, default=False)
     form_values_id = Column(Integer, ForeignKey("form_values.id"), index=True)
+    preferred_object_store_id = Column(String(255), nullable=True)
     deleted = Column(Boolean, index=True, default=False)
     purged = Column(Boolean, index=True, default=False)
     disk_usage = Column(Numeric(15, 0), index=True)
@@ -715,6 +716,7 @@ class User(Base, Dictifiable, RepresentById):
         "deleted",
         "active",
         "last_password_change",
+        "preferred_object_store_id",
     ]
 
     def __init__(self, email=None, password=None, username=None):
@@ -1210,6 +1212,7 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     imported = Column(Boolean, default=False, index=True)
     params = Column(TrimmedString(255), index=True)
     handler = Column(TrimmedString(255), index=True)
+    preferred_object_store_id = Column(String(255), nullable=True)
 
     user = relationship("User")
     galaxy_session = relationship("GalaxySession")
@@ -2689,6 +2692,7 @@ class History(Base, HasTags, Dictifiable, UsesAnnotations, HasName, Serializable
     importable = Column(Boolean, default=False)
     slug = Column(TEXT)
     published = Column(Boolean, index=True, default=False)
+    preferred_object_store_id = Column(String(255), nullable=True)
 
     datasets = relationship(
         "HistoryDatasetAssociation", back_populates="history", cascade_backrefs=False, order_by=lambda: asc(HistoryDatasetAssociation.hid)  # type: ignore[has-type]
@@ -2787,6 +2791,7 @@ class History(Base, HasTags, Dictifiable, UsesAnnotations, HasName, Serializable
         "importable",
         "slug",
         "empty",
+        "preferred_object_store_id",
     ]
     default_name = "Unnamed history"
 
@@ -7701,6 +7706,7 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
     handler = Column(TrimmedString(255), index=True)
     uuid = Column(UUIDType())
     history_id = Column(Integer, ForeignKey("history.id"), index=True)
+    preferred_object_store_id = Column(String(255), nullable=True)
 
     history = relationship("History", back_populates="workflow_invocations")
     input_parameters = relationship("WorkflowRequestInputParameter", back_populates="workflow_invocation")

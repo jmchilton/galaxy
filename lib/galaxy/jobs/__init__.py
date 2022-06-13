@@ -1585,6 +1585,18 @@ class MinimalJobWrapper(HasResourceParameters):
 
         object_store_populator = ObjectStorePopulator(self.app, job.user)
         object_store_id = self.get_destination_configuration("object_store_id", None)
+        if object_store_id is None:
+            object_store_id = job.preferred_object_store_id
+        if object_store_id is None and job.workflow_invocation_step and job.workflow_invocation_step:
+            object_store_id = job.workflow_invocation_step.workflow_invocation.preferred_object_store_id
+        if object_store_id is None:
+            history = job.history
+            if history is not None:
+                object_store_id = history.preferred_object_store_id
+        if object_store_id is None:
+            user = job.user
+            if user is not None:
+                object_store_id = user.preferred_object_store_id
         require_sharable = job.requires_sharable_storage(self.app.security_agent)
 
         if object_store_id:

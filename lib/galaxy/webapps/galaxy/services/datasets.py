@@ -113,6 +113,9 @@ class DatasetStorageDetails(Model):
         description="Is this dataset sharable.",
     )
     quota: dict = Field(description="Information about quota sources around dataset storage.")
+    badges: List[Dict[str, Any]] = Field(
+        description="Fast summary parsed for digging into about target object store dataset is stored on."
+    )
 
 
 class DatasetInheritanceChainEntry(Model):
@@ -353,6 +356,7 @@ class DatasetsService(ServiceBase, UsesVisualizationMixin):
         object_store_id = dataset.object_store_id
         name = object_store.get_concrete_store_name(dataset)
         description = object_store.get_concrete_store_description_markdown(dataset)
+        badges = object_store.get_concrete_store_badges(dataset)
         # not really working (existing problem)
         try:
             percent_used = object_store.get_store_usage_percent()
@@ -382,6 +386,7 @@ class DatasetsService(ServiceBase, UsesVisualizationMixin):
             hashes=hashes,
             sources=sources,
             quota=quota,
+            badges=badges,
         )
 
     def show_inheritance_chain(

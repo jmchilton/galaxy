@@ -50,6 +50,7 @@ def execute(
     mapping_params,
     history: model.History,
     rerun_remap_job_id=None,
+    preferred_object_store_id=None,
     collection_info=None,
     workflow_invocation_uuid=None,
     invocation_step=None,
@@ -110,6 +111,7 @@ def execute(
             completed_job,
             collection_info,
             job_callback=job_callback,
+            preferred_object_store_id=preferred_object_store_id,
             flush_job=False,
         )
         if job:
