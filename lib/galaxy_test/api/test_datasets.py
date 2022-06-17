@@ -369,7 +369,7 @@ class DatasetsApiTestCase(ApiTestCase):
         dataset_map: Dict[int, str] = {}
         history_id = self.dataset_populator.new_history()
         for index in range(num_datasets):
-            hda = self.dataset_populator.new_dataset(history_id)
+            hda = self.dataset_populator.new_dataset(history_id, wait=True)
             dataset_map[index] = hda["id"]
 
         expected_deleted_source_ids = [
