@@ -75,6 +75,33 @@
                         @click="onRemoveFavorite">
                         <span class="fa fa-star" />
                     </b-button>
+                    <b-button
+                        v-if="allowObjectStoreSelection"
+                        id="tool-storage"
+                        role="button"
+                        variant="link"
+                        size="sm"
+                        @click="onShow"
+                        class="float-right">
+                        <span class="fa fa-database" />
+                    </b-button>
+                    <ToolTargetPreferredObjectStorePopover
+                        v-if="allowObjectStoreSelection"
+                        :tool-preferred-object-store-id="toolPreferredObjectStoreId"
+                        :user="user">
+                    </ToolTargetPreferredObjectStorePopover>
+                    <b-modal
+                        title="Tool Execution Preferred Object Store"
+                        v-model="showPreferredObjectStoreModal"
+                        modal-class="tool-preferred-object-store-modal"
+                        title-tag="h3"
+                        size="sm"
+                        hide-footer>
+                        <ToolSelectPreferredObjectStore
+                            :tool-preferred-object-store-id="toolPreferredObjectStoreId"
+                            :root="root"
+                            @updated="onUpdatePreferredObjectStoreId" />
+                    </b-modal>
                 </div>
                 <div class="portlet-title">
                     <font-awesome-icon icon="wrench" class="portlet-title-icon fa-fw mr-1" />
@@ -117,6 +144,9 @@ import { addFavorite, removeFavorite } from "components/Tool/services";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { faWrench } from "@fortawesome/free-solid-svg-icons";
+import ToolSelectPreferredObjectStore from "./ToolSelectPreferredObjectStore";
+import ToolTargetPreferredObjectStorePopover from "./ToolTargetPreferredObjectStorePopover";
+import { getAppRoot } from "onload/loadConfig";
 
 library.add(faWrench);
 
@@ -127,6 +157,8 @@ export default {
         ToolFooter,
         ToolHelp,
         ToolSourceMenuItem,
+        ToolSelectPreferredObjectStore,
+        ToolTargetPreferredObjectStorePopover,
     },
     props: {
         id: {
@@ -165,11 +197,22 @@ export default {
             type: Boolean,
             default: false,
         },
+        allowObjectStoreSelection: {
+            type: Boolean,
+            default: false,
+        },
+        preferredObjectStoreId: {
+            type: String,
+            default: null,
+        },
     },
     data() {
         return {
+            root: getAppRoot(),
             webhookDetails: [],
             errorText: null,
+            showPreferredObjectStoreModal: false,
+            toolPreferredObjectStoreId: this.preferredObjectStoreId,
         };
     },
     computed: {
@@ -246,6 +289,9 @@ export default {
                 }
             );
         },
+        onShow() {
+            this.showPreferredObjectStoreModal = true;
+        },
         onRemoveFavorite() {
             removeFavorite(this.user.id, this.id).then(
                 (data) => {
@@ -285,6 +331,11 @@ export default {
             const favorites = this.getFavorites();
             favorites[objectType] = newFavorites[objectType];
             this.$emit("onUpdateFavorites", this.user, JSON.stringify(favorites));
+        },
+        onUpdatePreferredObjectStoreId(toolPreferredObjectStoreId) {
+            this.showPreferredObjectStoreModal = false;
+            this.toolPreferredObjectStoreId = toolPreferredObjectStoreId;
+            this.$emit("updatePreferredObjectStoreId", toolPreferredObjectStoreId);
         },
     },
 };

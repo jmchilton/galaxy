@@ -8,29 +8,22 @@
             This target object store has been inherited from your user preferences (set in User -> Preferences ->
             Preferred Object Store). If that option is updated, this history will target that new default.
         </p>
-        <ObjectStoreDetailsProvider
-            :id="preferredObjectStoreId"
+        <ShowSelectedObjectStore
             v-if="preferredObjectStoreId"
-            v-slot="{ result: storageInfo, loading: isLoadingStorageInfo }">
-            <b-spinner v-if="isLoadingStorageInfo" />
-            <DescribeObjectStore
-                v-else
-                what="Galaxy will default to storing this history's datasets in "
-                :storage-info="storageInfo">
-            </DescribeObjectStore>
-        </ObjectStoreDetailsProvider>
-        <div>Change this preference object store target by clicking on the storage button in the history panel.</div>
+            :preferred-object-store-id="preferredObjectStoreId"
+            for-what="Galaxy will default to storing this history's datasets in "></ShowSelectedObjectStore>
+        <div v-localize>
+            Change this preference object store target by clicking on the storage button in the history panel.
+        </div>
     </b-popover>
 </template>
 
 <script>
-import { ObjectStoreDetailsProvider } from "components/providers/ObjectStoreProvider";
-import DescribeObjectStore from "components/ObjectStore/DescribeObjectStore";
+import ShowSelectedObjectStore from "components/ObjectStore/ShowSelectedObjectStore";
 
 export default {
     components: {
-        DescribeObjectStore,
-        ObjectStoreDetailsProvider,
+        ShowSelectedObjectStore,
     },
     props: {
         historyId: {

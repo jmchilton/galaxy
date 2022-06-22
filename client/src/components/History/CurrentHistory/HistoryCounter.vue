@@ -25,8 +25,8 @@
                     <span>{{ history.size | niceFileSize }}</span>
                 </b-button>
                 <HistoryTargetPreferredObjectStorePopover
-                    :historyId="history.id"
-                    :historyPreferredObjectStoreId="historyPreferredObjectStoreId"
+                    :history-id="history.id"
+                    :history-preferred-object-store-id="historyPreferredObjectStoreId"
                     :user="user">
                 </HistoryTargetPreferredObjectStorePopover>
                 <b-button-group>
@@ -121,7 +121,7 @@ export default {
             diffToNow: 0,
             reloadButtonCls: "fa fa-sync",
             showPreferredObjectStoreModal: false,
-            historyPreferredObjectStoreId: history.preferred_object_store_id,
+            historyPreferredObjectStoreId: this.history.preferred_object_store_id,
             root: getAppRoot(),
         };
     },

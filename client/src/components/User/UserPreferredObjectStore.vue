@@ -23,58 +23,14 @@
                 :size="modalSize"
                 @show="resetModal"
                 @hidden="resetModal">
-                <loading-span v-if="loading" :message="loadingObjectStoreInfoMessage" />
-                <div v-else>
-                    <b-alert class="object-store-selection-error" v-if="error" variant="danger" show>
-                        {{ error }}
-                    </b-alert>
-                    <b-row>
-                        <b-col cols="7">
-                            <b-button-group vertical size="lg" style="width: 100%">
-                                <b-button
-                                    id="no-preferred-object-store-button"
-                                    :variant="variant(null)"
-                                    class="preferred-object-store-select-button"
-                                    data-object-store-id="__null__"
-                                    @click="handleSubmit(null)"
-                                    ><i v-localize>{{ galaxySelectionDefalutTitle }}</i></b-button
-                                >
-                                <b-button
-                                    :variant="variant(object_store.object_store_id)"
-                                    :id="`preferred-object-store-button-${object_store.object_store_id}`"
-                                    v-for="object_store in objectStores"
-                                    :key="object_store.object_store_id"
-                                    class="preferred-object-store-select-button"
-                                    :data-object-store-id="object_store.object_store_id"
-                                    @click="handleSubmit(object_store.object_store_id)"
-                                    >{{ object_store.name }}
-                                    <ObjectStoreBadges :badges="object_store.badges" size="lg" :more-on-hover="false" />
-                                    <ProvidedQuotaSourceUsageBar :objectStore="object_store" :compact="true">
-                                    </ProvidedQuotaSourceUsageBar>
-                                </b-button>
-                            </b-button-group>
-                        </b-col>
-                        <b-col cols="5"
-                            ><p style="width: 100%" v-localize>{{ whyIsSelectionPreferredText }}</p></b-col
-                        >
-                    </b-row>
-                    <b-popover target="no-preferred-object-store-button" triggers="hover" :placement="popoverPlacement">
-                        <template v-slot:title
-                            ><span v-localize>{{ galaxySelectionDefalutTitle }}</span></template
-                        >
-                        <span v-localize>{{ galaxySelectionDefalutDescription }}</span>
-                    </b-popover>
-                    <b-popover
-                        v-for="object_store in objectStores"
-                        :key="object_store.object_store_id"
-                        :target="`preferred-object-store-button-${object_store.object_store_id}`"
-                        triggers="hover"
-                        :placement="popoverPlacement">
-                        <template v-slot:title>{{ object_store.name }}</template>
-                        <DescribeObjectStore :what="newDatasetsDescription" :storage-info="object_store">
-                        </DescribeObjectStore>
-                    </b-popover>
-                </div>
+                <SelectObjectStore
+                    :root="root"
+                    :parent-error="error"
+                    :for-what="newDatasetsDescription"
+                    :selected-object-store-id="selectedObjectStoreId"
+                    :default-option-title="galaxySelectionDefalutTitle"
+                    :default-option-description="galaxySelectionDefalutDescription"
+                    @onSubmit="handleSubmit" />
             </b-modal>
         </div>
     </b-row>
@@ -84,7 +40,8 @@
 import axios from "axios";
 import Vue from "vue";
 import { BAlert, BPopover, BButton, BButtonGroup, BModal, BRow, VBModal } from "bootstrap-vue";
-import selectionMixin from "components/ObjectStore/selectionMixin";
+import SelectObjectStore from "components/ObjectStore/SelectObjectStore";
+import { errorMessageAsString } from "utils/simple-error";
 
 Vue.use(VBModal);
 
@@ -96,9 +53,13 @@ export default {
         BModal,
         BRow,
         BAlert,
+        SelectObjectStore,
     },
-    mixins: [selectionMixin],
     props: {
+        root: {
+            type: String,
+            required: true,
+        },
         userId: {
             type: String,
             required: true,
@@ -110,12 +71,16 @@ export default {
     },
     data() {
         return {
+            error: null,
             popoverPlacement: "left",
             newDatasetsDescription: "New dataset outputs from tools and workflows",
             titleTag: "h3",
             modalSize: "sm",
             showModal: false,
             selectedObjectStoreId: this.preferredObjectStoreId,
+            galaxySelectionDefalutTitle: "Use Galaxy Defaults",
+            galaxySelectionDefalutDescription:
+                "Selecting this will reset Galaxy to default behaviors configured by your Galaxy administrator.",
         };
     },
     methods: {
@@ -125,7 +90,7 @@ export default {
             try {
                 await axios.put(`${this.root}api/users/current`, payload);
             } catch (e) {
-                this.handleError(e);
+                this.error = errorMessageAsString(e);
             }
             this.selectedObjectStoreId = preferredObjectStoreId;
             this.showModal = false;

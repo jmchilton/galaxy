@@ -59,7 +59,9 @@ describe("UserPreferredObjectStore.vue", () => {
         expect(galaxyDefaultOption.exists()).toBeTruthy();
         axiosMock.onPut("/api/users/current", expect.objectContaining({ preferred_object_store_id: null })).reply(202);
         await galaxyDefaultOption.trigger("click");
-        expect(wrapper.vm.$data.error).toBeNull();
+        await flushPromises();
+        const errorEl = wrapper.find(".object-store-selection-error");
+        expect(errorEl.exists()).toBeFalsy();
     });
 
     it("updates object store to default on selection null", async () => {
@@ -75,7 +77,9 @@ describe("UserPreferredObjectStore.vue", () => {
             .onPut("/api/users/current", expect.objectContaining({ preferred_object_store_id: "object_store_2" }))
             .reply(202);
         await objectStore2Option.trigger("click");
-        expect(wrapper.vm.$data.error).toBeNull();
+        await flushPromises();
+        const errorEl = wrapper.find(".object-store-selection-error");
+        expect(errorEl.exists()).toBeFalsy();
     });
 
     it("displayed error is user update fails", async () => {
