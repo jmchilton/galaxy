@@ -3,12 +3,10 @@ from typing import Union
 
 import requests
 
-#from galaxy.util import (
-#    CHUNK_SIZE,
-#    DEFAULT_SOCKET_TIMEOUT,
-#)
-CHUNK_SIZE=2048
-DEFAULT_SOCKET_TIMEOUT=60
+from galaxy.util import (
+    CHUNK_SIZE,
+    DEFAULT_SOCKET_TIMEOUT,
+)
 
 TargetPathT = Union[str, PathLike]
 
