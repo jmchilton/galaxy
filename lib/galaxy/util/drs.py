@@ -3,10 +3,12 @@ from typing import Union
 
 import requests
 
-from galaxy.util import (
-    CHUNK_SIZE,
-    DEFAULT_SOCKET_TIMEOUT,
-)
+#from galaxy.util import (
+#    CHUNK_SIZE,
+#    DEFAULT_SOCKET_TIMEOUT,
+#)
+CHUNK_SIZE=2048
+DEFAULT_SOCKET_TIMEOUT=60
 
 TargetPathT = Union[str, PathLike]
 
@@ -51,7 +53,16 @@ def fetch_drs_to_file(drs_uri: str, target_path: TargetPathT, force_http=False):
         raise _not_implemented(drs_uri, f"that is fetched via unimplemented types ({unimplemented_access_types})")
 
     access_method = filtered_access_methods[0]
-    access_url = access_method["access_url"]
+    try:
+        access_url = access_method["access_url"]
+    except KeyError:
+        access_id = access_method["access_id"]
+        access_get_url = f"{scheme}://{netspec}/ga4gh/drs/v1/objects/{object_id}/access/{access_id}"
+        access_response = requests.get(access_get_url, timeout=DEFAULT_SOCKET_TIMEOUT)
+        access_response.raise_for_status()
+        access_response_object = access_response.json()
+        access_url = access_response_object
+
     url = access_url["url"]
     headers_list = access_url.get("headers") or []
     headers_as_dict = {}
