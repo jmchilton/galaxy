@@ -1,6 +1,11 @@
 import json
 import logging
 import os
+from typing import (
+    Any,
+    Dict,
+    Optional,
+)
 
 from sqlalchemy import or_
 
@@ -8,6 +13,7 @@ from galaxy import (
     exceptions,
     util,
 )
+from galaxy.structured_app import MinimalApp
 from galaxy.tool_shed.galaxy_install.metadata.installed_repository_metadata_manager import (
     InstalledRepositoryMetadataManager,
 )
@@ -33,7 +39,10 @@ log = logging.getLogger(__name__)
 
 
 class InstallRepositoryManager:
-    def __init__(self, app, tpm=None):
+    app: MinimalApp
+    tpm: tool_panel_manager.ToolPanelManager
+
+    def __init__(self, app: MinimalApp, tpm: Optional[tool_panel_manager.ToolPanelManager] = None):
         self.app = app
         self.install_model = self.app.install_model
         self._view = views.DependencyResolversView(app)
@@ -301,7 +310,7 @@ class InstallRepositoryManager:
         query = self.install_model.context.query(self.install_model.ToolShedRepository).filter(or_(*clause_list))
         return encoded_kwd, query, tool_shed_repositories, encoded_repository_ids
 
-    def install(self, tool_shed_url, name, owner, changeset_revision, install_options):
+    def install(self, tool_shed_url: str, name: str, owner: str, changeset_revision: str, install_options: Dict[str, Any]):
         # Get all of the information necessary for installing the repository from the specified tool shed.
         repository_revision_dict, repo_info_dicts = self.__get_install_info_from_tool_shed(
             tool_shed_url, name, owner, changeset_revision
