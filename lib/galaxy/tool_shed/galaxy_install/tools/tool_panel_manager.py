@@ -1,7 +1,12 @@
 import errno
 import logging
+from typing import (
+    Any,
+    Dict,
+)
 
 from galaxy.exceptions import RequestParameterInvalidException
+from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.util.basic_util import strip_path
 from galaxy.tool_shed.util.repository_util import get_repository_owner
 from galaxy.tool_shed.util.shed_util_common import get_tool_panel_config_tool_path_install_dir
@@ -18,10 +23,12 @@ log = logging.getLogger(__name__)
 
 
 class ToolPanelManager:
-    def __init__(self, app):
+    app: StructuredApp
+
+    def __init__(self, app: StructuredApp):
         self.app = app
 
-    def add_to_shed_tool_config(self, shed_tool_conf_dict, elem_list):
+    def add_to_shed_tool_config(self, shed_tool_conf_dict: Dict[str, Any], elem_list: list) -> None:
         """
         "A tool shed repository is being installed so change the shed_tool_conf file.  Parse the
         config file to generate the entire list of config_elems instead of using the in-memory list
