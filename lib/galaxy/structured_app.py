@@ -27,6 +27,7 @@ from galaxy.objectstore import ObjectStore
 from galaxy.quota import QuotaAgent
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.vault import Vault
+from galaxy.tool_shed.tool_shed_registry import Registry as ToolShedRegistry
 from galaxy.tool_util.deps.views import DependencyResolversView
 from galaxy.tool_util.verify import test_data
 from galaxy.util.dbkeys import GenomeBuilds
@@ -126,6 +127,7 @@ class StructuredApp(MinimalManagerApp):
 
     amqp_internal_connection_obj: Optional[Connection]
     dependency_resolvers_view: DependencyResolversView
+    tool_dependency_dir: Optional[str]
     test_data_resolver: test_data.TestDataResolver
     trs_proxy: TrsProxy
     vault: Vault
@@ -134,6 +136,7 @@ class StructuredApp(MinimalManagerApp):
     data_provider_registry: Any  # 'galaxy.visualization.data_providers.registry.DataProviderRegistry'
     tool_data_tables: "ToolDataTableManager"
     tool_cache: Any  # 'galaxy.tools.cache.ToolCache'
+    tool_shed_registry: ToolShedRegistry
     tool_shed_repository_cache: Optional[Any]  # 'galaxy.tools.cache.ToolShedRepositoryCache'
     watchers: "ConfigWatchers"
     workflow_scheduling_manager: Any  # 'galaxy.workflow.scheduling_manager.WorkflowSchedulingManager'

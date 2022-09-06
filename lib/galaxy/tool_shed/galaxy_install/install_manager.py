@@ -4,7 +4,9 @@ import os
 from typing import (
     Any,
     Dict,
+    List,
     Optional,
+    Tuple,
 )
 
 from sqlalchemy import or_
@@ -13,7 +15,7 @@ from galaxy import (
     exceptions,
     util,
 )
-from galaxy.structured_app import MinimalApp
+from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.metadata.installed_repository_metadata_manager import (
     InstalledRepositoryMetadataManager,
 )
@@ -39,10 +41,10 @@ log = logging.getLogger(__name__)
 
 
 class InstallRepositoryManager:
-    app: MinimalApp
+    app: StructuredApp
     tpm: tool_panel_manager.ToolPanelManager
 
-    def __init__(self, app: MinimalApp, tpm: Optional[tool_panel_manager.ToolPanelManager] = None):
+    def __init__(self, app: StructuredApp, tpm: Optional[tool_panel_manager.ToolPanelManager] = None):
         self.app = app
         self.install_model = self.app.install_model
         self._view = views.DependencyResolversView(app)
@@ -69,7 +71,9 @@ class InstallRepositoryManager:
                 return repo_info_dict, tool_panel_section_key
         return None, None
 
-    def __get_install_info_from_tool_shed(self, tool_shed_url, name, owner, changeset_revision):
+    def __get_install_info_from_tool_shed(
+        self, tool_shed_url: str, name: str, owner: str, changeset_revision: str
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         params = dict(name=name, owner=owner, changeset_revision=changeset_revision)
         pathspec = ["api", "repositories", "get_repository_revision_install_info"]
         try:
@@ -310,7 +314,9 @@ class InstallRepositoryManager:
         query = self.install_model.context.query(self.install_model.ToolShedRepository).filter(or_(*clause_list))
         return encoded_kwd, query, tool_shed_repositories, encoded_repository_ids
 
-    def install(self, tool_shed_url: str, name: str, owner: str, changeset_revision: str, install_options: Dict[str, Any]):
+    def install(
+        self, tool_shed_url: str, name: str, owner: str, changeset_revision: str, install_options: Dict[str, Any]
+    ):
         # Get all of the information necessary for installing the repository from the specified tool shed.
         repository_revision_dict, repo_info_dicts = self.__get_install_info_from_tool_shed(
             tool_shed_url, name, owner, changeset_revision
@@ -333,7 +339,11 @@ class InstallRepositoryManager:
         return installed_tool_shed_repositories
 
     def __initiate_and_install_repositories(
-        self, tool_shed_url, repository_revision_dict, repo_info_dicts, install_options
+        self,
+        tool_shed_url: str,
+        repository_revision_dict: Dict[str, Any],
+        repo_info_dicts: List[Dict[str, Any]],
+        install_options: Dict[str, Any],
     ):
         try:
             has_repository_dependencies = repository_revision_dict["has_repository_dependencies"]
