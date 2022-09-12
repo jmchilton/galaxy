@@ -2,6 +2,11 @@ import errno
 import logging
 import os
 import time
+from typing import (
+    Optional,
+    List,
+    TYPE_CHECKING,
+)
 
 from galaxy.util import (
     etree,
@@ -11,6 +16,9 @@ from galaxy.util import (
 from galaxy.util.renamed_temporary_file import RenamedTemporaryFile
 from galaxy.util.tool_shed.xml_util import parse_xml
 from . import tool_panel_manager
+
+if TYPE_CHECKING:
+    from galaxy.tools.data_manager.manager import DataManager
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +33,7 @@ class DataManagerHandler:
         self.app = app
 
     @property
-    def data_managers_path(self):
+    def data_managers_path(self) -> Optional[str]:
         tree, error_message = parse_xml(self.app.config.shed_data_manager_config_file)
         if tree:
             root = tree.getroot()
@@ -60,7 +68,7 @@ class DataManagerHandler:
         repository,
         repository_tools_tups,
     ):
-        rval = []
+        rval: List['DataManager'] = []
         if "data_manager" in metadata_dict:
             tpm = tool_panel_manager.ToolPanelManager(self.app)
             repository_tools_by_guid = {}
