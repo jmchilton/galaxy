@@ -2,10 +2,17 @@ import json
 import logging
 import os
 import tempfile
+from typing import (
+    Any,
+    Dict,
+    List,
+    Tuple,
+)
 
 from sqlalchemy import and_
 
 from galaxy import util
+from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.repository_type import (
     REPOSITORY_DEPENDENCY_DEFINITION_FILENAME,
     TOOL_DEPENDENCY_DEFINITION_FILENAME,
@@ -38,11 +45,16 @@ from galaxy.web import url_for
 
 log = logging.getLogger(__name__)
 
+InvalidFileT = Tuple[str, str]
+
 
 class MetadataGenerator:
+    app: StructuredApp
+    invalid_file_tups: List[InvalidFileT]
+
     def __init__(
         self,
-        app,
+        app: StructuredApp,
         repository=None,
         changeset_revision=None,
         repository_clone_url=None,
@@ -121,8 +133,8 @@ class MetadataGenerator:
         ]
 
     def _generate_data_manager_metadata(
-        self, repo_dir, data_manager_config_filename, metadata_dict, shed_config_dict=None
-    ):
+        self, repo_dir, data_manager_config_filename, metadata_dict: Dict[str, Any], shed_config_dict=None
+    ) -> Dict[str, Any]:
         """
         Update the received metadata_dict with information from the parsed data_manager_config_filename.
         """
@@ -140,8 +152,8 @@ class MetadataGenerator:
         rel_data_manager_config_filename = os.path.join(
             relative_data_manager_dir, os.path.split(data_manager_config_filename)[1]
         )
-        data_managers = {}
-        invalid_data_managers = []
+        data_managers: Dict[str, dict] = {}
+        invalid_data_managers: List[dict] = []
         data_manager_metadata = {
             "config_filename": rel_data_manager_config_filename,
             "data_managers": data_managers,
