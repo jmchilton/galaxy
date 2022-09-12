@@ -284,7 +284,7 @@ def unique_id(KEY_SIZE=128):
     return md5(random_bits).hexdigest()
 
 
-def parse_xml(fname: typing.StrPath, strip_whitespace=True, remove_comments=True) -> etree.ElementTree:
+def parse_xml(fname: StrPath, strip_whitespace=True, remove_comments=True) -> etree.ElementTree:
     """Returns a parsed xml tree"""
     parser = None
     if remove_comments and LXML_AVAILABLE:

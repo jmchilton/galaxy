@@ -71,7 +71,7 @@ class DataManagers:
                 tool_path = os.path.dirname(xml_filename)
                 self.load_manager_from_elem(data_manager_elem, tool_path=tool_path)
 
-    def load_manager_from_elem(self, data_manager_elem, tool_path=None, add_manager=True) -> Optional['DataManager']:
+    def load_manager_from_elem(self, data_manager_elem, tool_path=None, add_manager=True) -> Optional["DataManager"]:
         try:
             data_manager = DataManager(self, data_manager_elem, tool_path=tool_path)
         except OSError as e:
