@@ -6,8 +6,10 @@ import time
 from collections import namedtuple
 from errno import ENOENT
 from typing import (
+    Any,
     Dict,
     List,
+    Optional,
 )
 from urllib.parse import urlparse
 
@@ -108,11 +110,16 @@ class ToolBoxRegistryImpl(ToolBoxRegistry):
         self.__toolbox.add_tool_to_tool_panel_view(tool, tool_panel_component)
 
 
+DynamicToolConfDict = Dict[str, Any]
+
+
 class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
     """
     Abstract container for managing a ToolPanel - containing tools and
     workflows optionally in labelled sections.
     """
+
+    _dynamic_tool_confs: List[DynamicToolConfDict]
 
     def __init__(
         self,
@@ -416,7 +423,7 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
                     tool_cache_data_dir=tool_cache_data_dir,
                 )
 
-    def get_shed_config_dict_by_filename(self, filename):
+    def get_shed_config_dict_by_filename(self, filename) -> Optional[DynamicToolConfDict]:
         filename = os.path.abspath(filename)
         dynamic_tool_conf_paths = []
         for shed_config_dict in self._dynamic_tool_confs:
@@ -754,7 +761,7 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
     def tools(self):
         return self._tools_by_id.copy().items()
 
-    def dynamic_confs(self, include_migrated_tool_conf=False):
+    def dynamic_confs(self, include_migrated_tool_conf=False) -> List[DynamicToolConfDict]:
         confs = []
         for dynamic_tool_conf_dict in self._dynamic_tool_confs:
             dynamic_tool_conf_filename = dynamic_tool_conf_dict["config_filename"]
@@ -762,7 +769,7 @@ class AbstractToolBox(Dictifiable, ManagesIntegratedToolPanelMixin):
                 confs.append(dynamic_tool_conf_dict)
         return confs
 
-    def default_shed_tool_conf_dict(self):
+    def default_shed_tool_conf_dict(self) -> DynamicToolConfDict:
         """If set, returns the first shed_tool_conf_dict corresponding to shed_tool_config_file, else the first dynamic conf."""
         dynamic_confs = self.dynamic_confs(include_migrated_tool_conf=False)
         # Pick the first tool config that doesn't set `is_shed_conf="false"` and that is not a migrated_tool_conf
