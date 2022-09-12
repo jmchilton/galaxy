@@ -204,7 +204,11 @@ class InstalledRepositoryManager:
         )
 
     def get_dependencies_for_repository(
-        self, tool_shed_url: str, repo_info_dict: Dict[str, repository_util.AnyRepositoryTupleT], includes_tool_dependencies, updating=False
+        self,
+        tool_shed_url: str,
+        repo_info_dict: Dict[str, repository_util.AnyRepositoryTupleT],
+        includes_tool_dependencies,
+        updating=False,
     ) -> Dict[str, Any]:
         """
         Return dictionaries containing the sets of installed and missing tool dependencies and repository
