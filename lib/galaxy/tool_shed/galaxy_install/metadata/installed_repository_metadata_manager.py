@@ -5,8 +5,8 @@ from typing import Optional
 from sqlalchemy import false
 
 from galaxy import util
-from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.tools import tool_panel_manager
+from galaxy.tool_shed.galaxy_install.client import InstallationTarget
 from galaxy.tool_shed.metadata.metadata_generator import MetadataGenerator
 from galaxy.tool_shed.util.repository_util import (
     get_installed_tool_shed_repository,
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 class InstalledRepositoryMetadataManager(MetadataGenerator):
     def __init__(
         self,
-        app: StructuredApp,
+        app: InstallationTarget,
         tpm: Optional[tool_panel_manager.ToolPanelManager] = None,
         repository=None,
         changeset_revision=None,
