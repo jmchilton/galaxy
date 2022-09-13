@@ -8,10 +8,10 @@ from typing import NamedTuple
 from sqlalchemy import false
 
 from galaxy import util
-from galaxy.util.sleeper import Sleeper
 from galaxy.model.tool_shed_install import ToolShedRepository
 from galaxy.tool_shed.util.repository_util import get_tool_shed_status_for_installed_repository
 from galaxy.tool_shed.util.shed_util_common import clean_dependency_relationships
+from galaxy.util.sleeper import Sleeper
 from galaxy.util.tool_shed.common_util import get_tool_shed_url_from_tool_shed_registry
 from galaxy.util.tool_shed.encoding_util import tool_shed_decode
 

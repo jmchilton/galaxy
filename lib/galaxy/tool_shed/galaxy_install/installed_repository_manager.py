@@ -9,8 +9,8 @@ from typing import (
     Any,
     Dict,
     List,
-    Optional,
     no_type_check,
+    Optional,
     Tuple,
 )
 
