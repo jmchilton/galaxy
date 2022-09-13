@@ -5,6 +5,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Optional,
     Tuple,
 )
 
@@ -45,11 +46,18 @@ from galaxy.web import url_for
 log = logging.getLogger(__name__)
 
 InvalidFileT = Tuple[str, str]
+HandleResultT = Tuple[List, bool, str]
 
 
 class MetadataGenerator:
     app: StructuredApp
     invalid_file_tups: List[InvalidFileT]
+    changeset_revision: str
+    repository_clone_url: str
+    shed_config_dict: Dict[str, Any]
+    metadata_dict: Dict[str, Any]
+    relative_install_dir: Optional[str]
+    repository_files_dir: Optional[str]
 
     def __init__(
         self,
@@ -259,6 +267,14 @@ class MetadataGenerator:
         tmp_url = remove_protocol_and_user_from_clone_url(self.repository_clone_url)
         return f"{tmp_url}/{guid_type}/{obj_id}/{version}"
 
+    def initial_metadata_dict(self) -> Dict[str, Any]:
+        if self.app.name == "galaxy":
+            # Shed related tool panel configs are only relevant to Galaxy.
+            metadata_dict = {"shed_config_filename": self.shed_config_dict.get("config_filename")}
+        else:
+            metadata_dict = {}
+        return metadata_dict
+
     def generate_metadata_for_changeset_revision(self):
         """
         Generate metadata for a repository using its files on disk.  To generate metadata
@@ -282,11 +298,7 @@ class MetadataGenerator:
         else:
             original_repository_metadata = None
         readme_file_names = _get_readme_file_names(str(self.repository.name))
-        if self.app.name == "galaxy":
-            # Shed related tool panel configs are only relevant to Galaxy.
-            metadata_dict = {"shed_config_filename": self.shed_config_dict.get("config_filename")}
-        else:
-            metadata_dict = {}
+        metadata_dict = self.initial_metadata_dict()
         readme_files = []
         invalid_tool_configs = []
         if self.resetting_all_metadata_on_repository:
@@ -832,7 +844,7 @@ class MetadataGenerator:
                         sample_file_metadata_paths.append(relative_path_to_sample_file)
         return sample_file_metadata_paths, sample_file_copy_paths
 
-    def handle_repository_elem(self, repository_elem, only_if_compiling_contained_td=False):
+    def handle_repository_elem(self, repository_elem, only_if_compiling_contained_td=False) -> HandleResultT:
         """
         Process the received repository_elem which is a <repository> tag either from a
         repository_dependencies.xml file or a tool_dependencies.xml file.  If the former,
@@ -1043,7 +1055,6 @@ class MetadataGenerator:
             else:
                 self.set_changeset_revision(changeset_revision)
             self.shed_config_dict = repository.get_shed_config_dict(self.app)
-            self.metadata_dict = {"shed_config_filename": self.shed_config_dict.get("config_filename", None)}
         else:
             if relative_install_dir is None and self.repository is not None:
                 relative_install_dir = repository.repo_path(self.app)
@@ -1052,7 +1063,10 @@ class MetadataGenerator:
             else:
                 self.set_changeset_revision(changeset_revision)
             self.shed_config_dict = {}
-            self.metadata_dict = {}
+        self._reset_attributes_after_repository_update(relative_install_dir)
+
+    def _reset_attributes_after_repository_update(self, relative_install_dir: Optional[str]):
+        self.metadata_dict = self.initial_metadata_dict()
         self.set_relative_install_dir(relative_install_dir)
         self.set_repository_files_dir()
         self.resetting_all_metadata_on_repository = False
