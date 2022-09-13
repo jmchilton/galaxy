@@ -22,7 +22,7 @@ REPOSITORY_OWNER = "devteam"
 
 
 class HasToolShedRegistry(Protocol):
-    tool_shed_registry: 'ToolShedRegistry'
+    tool_shed_registry: "ToolShedRegistry"
     name: str
 
 
