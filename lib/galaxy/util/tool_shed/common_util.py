@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from typing import Optional
 from urllib.parse import urljoin
 
 from routes import url_for
@@ -89,7 +90,7 @@ def get_repository_dependencies(app, tool_shed_url, repository_name, repository_
     return tool_shed_accessible, repository_dependencies_dict
 
 
-def get_protocol_from_tool_shed_url(tool_shed_url):
+def get_protocol_from_tool_shed_url(tool_shed_url: str) -> str:
     """Return the protocol from the received tool_shed_url if it exists."""
     try:
         if tool_shed_url.find("://") > 0:
@@ -99,8 +100,8 @@ def get_protocol_from_tool_shed_url(tool_shed_url):
         # that value when creating a header row.  If the tool_shed_url is not None, we have a problem.
         if tool_shed_url is not None:
             log.exception("Handled exception getting the protocol from Tool Shed URL %s", str(tool_shed_url))
-        # Default to HTTP protocol.
-        return "http"
+    # Default to HTTP protocol.
+    return "http"
 
 
 def get_tool_shed_repository_ids(as_string=False, **kwd):
@@ -125,7 +126,7 @@ def get_tool_shed_repository_ids(as_string=False, **kwd):
     return []
 
 
-def get_tool_shed_url_from_tool_shed_registry(app, tool_shed):
+def get_tool_shed_url_from_tool_shed_registry(app, tool_shed: str) -> Optional[str]:
     """
     The value of tool_shed is something like: toolshed.g2.bx.psu.edu.  We need the URL to this tool shed, which is
     something like: http://toolshed.g2.bx.psu.edu/
@@ -273,7 +274,7 @@ def remove_protocol_and_user_from_clone_url(repository_clone_url):
     return tmp_url.rstrip("/")
 
 
-def remove_protocol_from_tool_shed_url(tool_shed_url):
+def remove_protocol_from_tool_shed_url(tool_shed_url: str) -> str:
     """Return a partial Tool Shed URL, eliminating the protocol if it exists."""
     return util.remove_protocol_from_url(tool_shed_url)
 
