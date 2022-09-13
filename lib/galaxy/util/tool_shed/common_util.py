@@ -1,17 +1,29 @@
 import json
 import logging
 import os
-from typing import Optional
+from typing import (
+    Optional,
+    TYPE_CHECKING,
+)
 from urllib.parse import urljoin
 
 from routes import url_for
+from typing_extensions import Protocol
 
 from galaxy import util
 from galaxy.util.tool_shed import encoding_util
 
+if TYPE_CHECKING:
+    from .tool_shed_registry import Registry as ToolShedRegistry
+
 log = logging.getLogger(__name__)
 
 REPOSITORY_OWNER = "devteam"
+
+
+class HasToolShedRegistry(Protocol):
+    tool_shed_registry: 'ToolShedRegistry'
+    name: str
 
 
 def accumulate_tool_dependencies(tool_shed_accessible, tool_dependencies, all_tool_dependencies):
@@ -33,13 +45,13 @@ def check_tool_tag_set(elem, migrated_tool_configs_dict, missing_tool_configs_di
     return missing_tool_configs_dict
 
 
-def generate_clone_url_for_installed_repository(app, repository):
+def generate_clone_url_for_installed_repository(app: HasToolShedRegistry, repository) -> str:
     """Generate the URL for cloning a repository that has been installed into a Galaxy instance."""
     tool_shed_url = get_tool_shed_url_from_tool_shed_registry(app, str(repository.tool_shed))
     return util.build_url(tool_shed_url, pathspec=["repos", str(repository.owner), str(repository.name)])
 
 
-def generate_clone_url_for_repository_in_tool_shed(user, repository):
+def generate_clone_url_for_repository_in_tool_shed(user, repository) -> str:
     """Generate the URL for cloning a repository that is in the tool shed."""
     base_url = url_for("/", qualified=True).rstrip("/")
     if user:
@@ -50,7 +62,7 @@ def generate_clone_url_for_repository_in_tool_shed(user, repository):
         return f"{base_url}/repos/{repository.user.username}/{repository.name}"
 
 
-def generate_clone_url_from_repo_info_tup(app, repo_info_tup):
+def generate_clone_url_from_repo_info_tup(app: HasToolShedRegistry, repo_info_tup) -> str:
     """Generate the URL for cloning a repository given a tuple of toolshed, name, owner, changeset_revision."""
     # Example tuple: ['http://localhost:9009', 'blast_datatypes', 'test', '461a4216e8ab', False]
     (
@@ -126,7 +138,7 @@ def get_tool_shed_repository_ids(as_string=False, **kwd):
     return []
 
 
-def get_tool_shed_url_from_tool_shed_registry(app, tool_shed: str) -> Optional[str]:
+def get_tool_shed_url_from_tool_shed_registry(app: HasToolShedRegistry, tool_shed: str) -> Optional[str]:
     """
     The value of tool_shed is something like: toolshed.g2.bx.psu.edu.  We need the URL to this tool shed, which is
     something like: http://toolshed.g2.bx.psu.edu/
@@ -141,7 +153,7 @@ def get_tool_shed_url_from_tool_shed_registry(app, tool_shed: str) -> Optional[s
     return None
 
 
-def get_tool_shed_repository_url(app, tool_shed, owner, name):
+def get_tool_shed_repository_url(app: HasToolShedRegistry, tool_shed: str, owner: str, name: str):
     tool_shed_url = get_tool_shed_url_from_tool_shed_registry(app, tool_shed)
     if tool_shed_url:
         # Append a slash to the tool shed URL, because urlparse.urljoin will eliminate
@@ -170,12 +182,13 @@ def handle_galaxy_url(trans, **kwd):
     return galaxy_url
 
 
-def handle_tool_shed_url_protocol(app, shed_url):
+def handle_tool_shed_url_protocol(app: HasToolShedRegistry, shed_url: str) -> str:
     """Handle secure and insecure HTTP protocol since they may change over time."""
     try:
         if app.name == "galaxy":
             url = remove_protocol_from_tool_shed_url(shed_url)
             tool_shed_url = get_tool_shed_url_from_tool_shed_registry(app, url)
+            assert tool_shed_url
         else:
             tool_shed_url = str(url_for("/", qualified=True)).rstrip("/")
         return tool_shed_url
@@ -233,7 +246,7 @@ def parse_repository_dependency_tuple(repository_dependency_tuple, contains_erro
         return tool_shed, name, owner, changeset_revision, prior_installation_required, only_if_compiling_contained_td
 
 
-def remove_port_from_tool_shed_url(tool_shed_url):
+def remove_port_from_tool_shed_url(tool_shed_url: str) -> str:
     """Return a partial Tool Shed URL, eliminating the port if it exists."""
     try:
         if tool_shed_url.find(":") > 0:
@@ -250,14 +263,14 @@ def remove_port_from_tool_shed_url(tool_shed_url):
         return tool_shed_url
 
 
-def remove_protocol_and_port_from_tool_shed_url(tool_shed_url):
+def remove_protocol_and_port_from_tool_shed_url(tool_shed_url: str) -> str:
     """Return a partial Tool Shed URL, eliminating the protocol and/or port if either exists."""
     tool_shed = remove_protocol_from_tool_shed_url(tool_shed_url)
     tool_shed = remove_port_from_tool_shed_url(tool_shed)
     return tool_shed
 
 
-def remove_protocol_and_user_from_clone_url(repository_clone_url):
+def remove_protocol_and_user_from_clone_url(repository_clone_url: str) -> str:
     """Return a URL that can be used to clone a repository, eliminating the protocol and user if either exists."""
     if repository_clone_url.find("@") > 0:
         # We have an url that includes an authenticated user, something like:
