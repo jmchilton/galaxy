@@ -27,7 +27,10 @@ from galaxy.model.custom_types import (
     TrimmedString,
 )
 from galaxy.model.orm.now import now
-from galaxy.tool_util.toolbox.base import AbstractToolBox
+from galaxy.tool_util.toolbox.base import (
+    AbstractToolBox,
+    DynamicToolConfDict,
+)
 from galaxy.util import asbool
 from galaxy.util.bunch import Bunch
 from galaxy.util.dictifiable import Dictifiable
@@ -217,7 +220,7 @@ class ToolShedRepository(Base, _HasTable):
     def shed_config_filename(self, value):
         self.metadata_["shed_config_filename"] = os.path.abspath(value)
 
-    def get_shed_config_dict(self, app: HasToolBox):
+    def get_shed_config_dict(self, app: HasToolBox) -> DynamicToolConfDict:
         """
         Return the in-memory version of the shed_tool_conf file, which is stored in the config_elems entry
         in the shed_tool_conf_dict.
