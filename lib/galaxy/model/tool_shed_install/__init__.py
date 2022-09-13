@@ -5,7 +5,6 @@ from typing import (
     Optional,
     TYPE_CHECKING,
 )
-from typing_extensions import Protocol
 
 from sqlalchemy import (
     Boolean,
@@ -47,7 +46,7 @@ else:
     _HasTable = object
 
 
-class HasToolBox(Protocol):
+class HasToolBox(common_util.HasToolShedRegistry):
     tool_dependency_dir: Optional[str]
     toolbox: AbstractToolBox
 
