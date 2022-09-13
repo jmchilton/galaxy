@@ -756,6 +756,7 @@ class ToolDependency(Base, _HasTable):
                 self.tool_shed_repository.name,
                 self.tool_shed_repository.installed_changeset_revision,
             )
+        return None
 
     @property
     def is_installed(self):
