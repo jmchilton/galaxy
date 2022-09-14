@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 
 from sqlalchemy import false
 
@@ -11,6 +12,7 @@ from galaxy.tool_shed.util.repository_util import (
     get_repository_owner,
 )
 from galaxy.tool_shed.util.tool_util import generate_message_for_invalid_tools
+from galaxy.structured_app import StructuredApp
 from galaxy.util import inflector
 from galaxy.util.tool_shed import (
     common_util,
@@ -24,8 +26,8 @@ log = logging.getLogger(__name__)
 class InstalledRepositoryMetadataManager(MetadataGenerator):
     def __init__(
         self,
-        app,
-        tpm=None,
+        app: StructuredApp,
+        tpm: Optional[tool_panel_manager.ToolPanelManager] = None,
         repository=None,
         changeset_revision=None,
         repository_clone_url=None,
