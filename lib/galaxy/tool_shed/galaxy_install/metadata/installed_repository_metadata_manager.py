@@ -1,10 +1,15 @@
 import logging
 import os
-from typing import Optional
+from typing import (
+    Any,
+    Dict,
+    Optional,
+)
 
 from sqlalchemy import false
 
 from galaxy import util
+from galaxy.model.tool_shed_install import ToolShedRepository
 from galaxy.structured_app import MinimalManagerApp
 from galaxy.tool_shed.galaxy_install.tools import tool_panel_manager
 from galaxy.tool_shed.metadata.metadata_generator import MetadataGenerator
@@ -28,16 +33,16 @@ class InstalledRepositoryMetadataManager(MetadataGenerator):
         self,
         app: MinimalManagerApp,
         tpm: Optional[tool_panel_manager.ToolPanelManager] = None,
-        repository=None,
-        changeset_revision=None,
-        repository_clone_url=None,
-        shed_config_dict=None,
-        relative_install_dir=None,
-        repository_files_dir=None,
-        resetting_all_metadata_on_repository=False,
-        updating_installed_repository=False,
-        persist=False,
-        metadata_dict=None,
+        repository: Optional[ToolShedRepository] = None,
+        changeset_revision: Optional[str] = None,
+        repository_clone_url: Optional[str] = None,
+        shed_config_dict: Optional[Dict[str, Any]] = None,
+        relative_install_dir: Optional[str] = None,
+        repository_files_dir: Optional[str] = None,
+        resetting_all_metadata_on_repository: bool = False,
+        updating_installed_repository: bool = False,
+        persist: bool = False,
+        metadata_dict: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             app,
