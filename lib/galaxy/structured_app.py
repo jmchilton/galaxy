@@ -112,6 +112,9 @@ class MinimalManagerApp(MinimalApp):
     def is_job_handler(self) -> bool:
         pass
 
+    def wait_for_toolbox_reload(self, old_toolbox: "ToolBox") -> None:
+        ...
+
 
 class StructuredApp(MinimalManagerApp):
     """Interface defining typed description of the Galaxy UniverseApplication.
@@ -143,6 +146,3 @@ class StructuredApp(MinimalManagerApp):
     interactivetool_manager: Any
     api_keys_manager: Any  # 'galaxy.managers.api_keys.ApiKeyManager'
     visualizations_registry: Any  # 'galaxy.visualization.plugins.registry.VisualizationsRegistry'
-
-    def wait_for_toolbox_reload(self, old_toolbox: "ToolBox") -> None:
-        ...

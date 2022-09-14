@@ -7,7 +7,7 @@ from typing import (
 )
 
 from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.structured_app import StructuredApp
+from galaxy.structured_app import MinimalManagerApp
 from galaxy.tool_shed.util.basic_util import strip_path
 from galaxy.tool_shed.util.repository_util import get_repository_owner
 from galaxy.tool_shed.util.shed_util_common import get_tool_panel_config_tool_path_install_dir
@@ -24,9 +24,9 @@ log = logging.getLogger(__name__)
 
 
 class ToolPanelManager:
-    app: StructuredApp
+    app: MinimalManagerApp
 
-    def __init__(self, app: StructuredApp):
+    def __init__(self, app: MinimalManagerApp):
         self.app = app
 
     def add_to_shed_tool_config(self, shed_tool_conf_dict: Dict[str, Any], elem_list: list) -> None:

@@ -13,7 +13,7 @@ from typing import (
 from sqlalchemy import and_
 
 from galaxy import util
-from galaxy.structured_app import StructuredApp
+from galaxy.structured_app import MinimalManagerApp
 from galaxy.tool_shed.repository_type import (
     REPOSITORY_DEPENDENCY_DEFINITION_FILENAME,
     TOOL_DEPENDENCY_DEFINITION_FILENAME,
@@ -51,7 +51,7 @@ HandleResultT = Tuple[List, bool, str]
 
 
 class MetadataGenerator:
-    app: StructuredApp
+    app: MinimalManagerApp
     invalid_file_tups: List[InvalidFileT]
     changeset_revision: str
     repository_clone_url: str
@@ -62,7 +62,7 @@ class MetadataGenerator:
 
     def __init__(
         self,
-        app: StructuredApp,
+        app: MinimalManagerApp,
         repository=None,
         changeset_revision=None,
         repository_clone_url=None,
