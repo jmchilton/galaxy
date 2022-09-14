@@ -27,6 +27,7 @@ from galaxy.objectstore import ObjectStore
 from galaxy.quota import QuotaAgent
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.vault import Vault
+from galaxy.tool_shed.tool_shed_registry import Registry as ToolShedRegistry
 from galaxy.tool_util.deps.views import DependencyResolversView
 from galaxy.tool_util.verify import test_data
 from galaxy.util.dbkeys import GenomeBuilds
@@ -112,6 +113,9 @@ class MinimalManagerApp(MinimalApp):
     def is_job_handler(self) -> bool:
         pass
 
+    def wait_for_toolbox_reload(self, old_toolbox: "ToolBox") -> None:
+        ...
+
 
 class StructuredApp(MinimalManagerApp):
     """Interface defining typed description of the Galaxy UniverseApplication.
@@ -127,6 +131,7 @@ class StructuredApp(MinimalManagerApp):
 
     amqp_internal_connection_obj: Optional[Connection]
     dependency_resolvers_view: DependencyResolversView
+    tool_dependency_dir: Optional[str]
     test_data_resolver: test_data.TestDataResolver
     trs_proxy: TrsProxy
     vault: Vault
