@@ -181,9 +181,11 @@ class InstalledRepositoryMetadataManager(MetadataGenerator):
         super().set_repository(repository)
         self.repository_clone_url = common_util.generate_clone_url_for_installed_repository(self.app, repository)
 
-    def tool_shed_from_repository_clone_url(self):
+    def tool_shed_from_repository_clone_url(self) -> str:
         """Given a repository clone URL, return the tool shed that contains the repository."""
-        cleaned_repository_clone_url = common_util.remove_protocol_and_user_from_clone_url(self.repository_clone_url)
+        repository_clone_url = self.repository_clone_url
+        assert repository_clone_url
+        cleaned_repository_clone_url = common_util.remove_protocol_and_user_from_clone_url(repository_clone_url)
         return (
             common_util.remove_protocol_and_user_from_clone_url(cleaned_repository_clone_url)
             .split("/repos/")[0]

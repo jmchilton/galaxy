@@ -66,7 +66,7 @@ class MetadataGenerator:
         repository=None,
         changeset_revision: Optional[str] = None,
         repository_clone_url: Optional[str] = None,
-        shed_config_dict: Optional[Dict[str, Any]]=None,
+        shed_config_dict: Optional[Dict[str, Any]] = None,
         relative_install_dir=None,
         repository_files_dir=None,
         resetting_all_metadata_on_repository=False,
@@ -771,14 +771,14 @@ class MetadataGenerator:
         if rvs.invalid_tool_dependencies_dict:
             metadata_dict["invalid_tool_dependencies"] = rvs.invalid_tool_dependencies_dict
         if valid_repository_dependency_tups:
-            metadata_dict = self.update_repository_dependencies_metadata(
+            metadata_dict = self._update_repository_dependencies_metadata(
                 metadata=metadata_dict,
                 repository_dependency_tups=valid_repository_dependency_tups,
                 is_valid=True,
                 description=description,
             )
         if invalid_repository_dependency_tups:
-            metadata_dict = self.update_repository_dependencies_metadata(
+            metadata_dict = self._update_repository_dependencies_metadata(
                 metadata=metadata_dict,
                 repository_dependency_tups=invalid_repository_dependency_tups,
                 is_valid=False,
@@ -1040,13 +1040,15 @@ class MetadataGenerator:
                 return False
         return True
 
-    def set_changeset_revision(self, changeset_revision):
+    def set_changeset_revision(self, changeset_revision: Optional[str]):
         self.changeset_revision = changeset_revision
 
-    def set_relative_install_dir(self, relative_install_dir):
+    def set_relative_install_dir(self, relative_install_dir: Optional[str]):
         self.relative_install_dir = relative_install_dir
 
-    def set_repository(self, repository, relative_install_dir=None, changeset_revision=None):
+    def set_repository(
+        self, repository, relative_install_dir: Optional[str] = None, changeset_revision: Optional[str] = None
+    ):
         self.repository = repository
         # Shed related tool panel configs are only relevant to Galaxy.
         if self.app.name == "galaxy":
@@ -1065,9 +1067,9 @@ class MetadataGenerator:
             else:
                 self.set_changeset_revision(changeset_revision)
             self.shed_config_dict = {}
-        self._reset_attributes_after_repository_update()
+        self._reset_attributes_after_repository_update(relative_install_dir)
 
-    def _reset_attributes_after_repository_update(self, relative_install_dir):
+    def _reset_attributes_after_repository_update(self, relative_install_dir: Optional[str]):
         self.metadata_dict = self.initial_metadata_dict()
         self.set_relative_install_dir(relative_install_dir)
         self.set_repository_files_dir()
@@ -1076,13 +1078,16 @@ class MetadataGenerator:
         self.persist = False
         self.invalid_file_tups = []
 
-    def set_repository_clone_url(self, repository_clone_url):
-        self.repository_clone_url = repository_clone_url
-
-    def set_repository_files_dir(self, repository_files_dir=None):
+    def set_repository_files_dir(self, repository_files_dir: Optional[str] = None):
         self.repository_files_dir = repository_files_dir
 
-    def update_repository_dependencies_metadata(self, metadata, repository_dependency_tups, is_valid, description):
+    def _update_repository_dependencies_metadata(
+        self,
+        metadata: Dict[str, Any],
+        repository_dependency_tups: List[tuple],
+        is_valid: bool,
+        description: Optional[str],
+    ) -> Dict[str, Any]:
         if is_valid:
             repository_dependencies_dict = metadata.get("repository_dependencies", None)
         else:
@@ -1106,7 +1111,7 @@ class MetadataGenerator:
         return metadata
 
 
-def _get_readme_file_names(repository_name):
+def _get_readme_file_names(repository_name: str) -> List[str]:
     """Return a list of file names that will be categorized as README files for the received repository_name."""
     readme_files = ["readme", "read_me", "install"]
     valid_filenames = [f"{f}.txt" for f in readme_files]
