@@ -53,20 +53,21 @@ HandleResultT = Tuple[List, bool, str]
 class MetadataGenerator:
     app: MinimalManagerApp
     invalid_file_tups: List[InvalidFileT]
-    changeset_revision: str
-    repository_clone_url: str
+    changeset_revision: Optional[str]
+    repository_clone_url: Optional[str]
     shed_config_dict: Dict[str, Any]
     metadata_dict: Dict[str, Any]
     relative_install_dir: Optional[str]
     repository_files_dir: Optional[str]
+    persist: bool
 
     def __init__(
         self,
         app: MinimalManagerApp,
         repository=None,
-        changeset_revision=None,
-        repository_clone_url=None,
-        shed_config_dict=None,
+        changeset_revision: Optional[str] = None,
+        repository_clone_url: Optional[str] = None,
+        shed_config_dict: Optional[Dict[str, Any]]=None,
         relative_install_dir=None,
         repository_files_dir=None,
         resetting_all_metadata_on_repository=False,
@@ -199,7 +200,7 @@ class MetadataGenerator:
             # FIXME: default behavior is to fall back to tool.name.
             data_manager_name = data_manager_elem.get("name", data_manager_id)
             version = data_manager_elem.get("version", DataManager.DEFAULT_VERSION)
-            guid = self.generate_guid_for_object(DataManager.GUID_TYPE, data_manager_id, version)
+            guid = self._generate_guid_for_object(DataManager.GUID_TYPE, data_manager_id, version)
             data_tables = []
             if tool_file is None:
                 log.error(f'Data Manager entry is missing tool_file attribute in "{data_manager_config_filename}".')
@@ -264,7 +265,8 @@ class MetadataGenerator:
                     valid_tool_dependencies_dict["set_environment"] = [requirements_dict]
         return valid_tool_dependencies_dict
 
-    def generate_guid_for_object(self, guid_type, obj_id, version):
+    def _generate_guid_for_object(self, guid_type, obj_id, version) -> str:
+        assert self.repository_clone_url
         tmp_url = remove_protocol_and_user_from_clone_url(self.repository_clone_url)
         return f"{tmp_url}/{guid_type}/{obj_id}/{version}"
 
