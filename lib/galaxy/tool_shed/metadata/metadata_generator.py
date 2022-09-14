@@ -52,20 +52,21 @@ HandleResultT = Tuple[List, bool, str]
 class MetadataGenerator:
     app: MinimalManagerApp
     invalid_file_tups: List[InvalidFileT]
-    changeset_revision: str
-    repository_clone_url: str
+    changeset_revision: Optional[str]
+    repository_clone_url: Optional[str]
     shed_config_dict: Dict[str, Any]
     metadata_dict: Dict[str, Any]
     relative_install_dir: Optional[str]
     repository_files_dir: Optional[str]
+    persist: bool
 
     def __init__(
         self,
         app: MinimalManagerApp,
         repository=None,
-        changeset_revision=None,
-        repository_clone_url=None,
-        shed_config_dict=None,
+        changeset_revision: Optional[str] = None,
+        repository_clone_url: Optional[str] = None,
+        shed_config_dict: Optional[Dict[str, Any]] = None,
         relative_install_dir=None,
         repository_files_dir=None,
         resetting_all_metadata_on_repository=False,
@@ -198,7 +199,7 @@ class MetadataGenerator:
             # FIXME: default behavior is to fall back to tool.name.
             data_manager_name = data_manager_elem.get("name", data_manager_id)
             version = data_manager_elem.get("version", DataManager.DEFAULT_VERSION)
-            guid = self.generate_guid_for_object(DataManager.GUID_TYPE, data_manager_id, version)
+            guid = self._generate_guid_for_object(DataManager.GUID_TYPE, data_manager_id, version)
             data_tables = []
             if tool_file is None:
                 log.error(f'Data Manager entry is missing tool_file attribute in "{data_manager_config_filename}".')
@@ -263,7 +264,8 @@ class MetadataGenerator:
                     valid_tool_dependencies_dict["set_environment"] = [requirements_dict]
         return valid_tool_dependencies_dict
 
-    def generate_guid_for_object(self, guid_type, obj_id, version):
+    def _generate_guid_for_object(self, guid_type, obj_id, version) -> str:
+        assert self.repository_clone_url
         tmp_url = remove_protocol_and_user_from_clone_url(self.repository_clone_url)
         return f"{tmp_url}/{guid_type}/{obj_id}/{version}"
 
@@ -769,14 +771,14 @@ class MetadataGenerator:
         if rvs.invalid_tool_dependencies_dict:
             metadata_dict["invalid_tool_dependencies"] = rvs.invalid_tool_dependencies_dict
         if valid_repository_dependency_tups:
-            metadata_dict = self.update_repository_dependencies_metadata(
+            metadata_dict = self._update_repository_dependencies_metadata(
                 metadata=metadata_dict,
                 repository_dependency_tups=valid_repository_dependency_tups,
                 is_valid=True,
                 description=description,
             )
         if invalid_repository_dependency_tups:
-            metadata_dict = self.update_repository_dependencies_metadata(
+            metadata_dict = self._update_repository_dependencies_metadata(
                 metadata=metadata_dict,
                 repository_dependency_tups=invalid_repository_dependency_tups,
                 is_valid=False,
@@ -1038,13 +1040,15 @@ class MetadataGenerator:
                 return False
         return True
 
-    def set_changeset_revision(self, changeset_revision):
+    def set_changeset_revision(self, changeset_revision: Optional[str]):
         self.changeset_revision = changeset_revision
 
-    def set_relative_install_dir(self, relative_install_dir):
+    def set_relative_install_dir(self, relative_install_dir: Optional[str]):
         self.relative_install_dir = relative_install_dir
 
-    def set_repository(self, repository, relative_install_dir=None, changeset_revision=None):
+    def set_repository(
+        self, repository, relative_install_dir: Optional[str] = None, changeset_revision: Optional[str] = None
+    ):
         self.repository = repository
         # Shed related tool panel configs are only relevant to Galaxy.
         if self.app.name == "galaxy":
@@ -1074,13 +1078,16 @@ class MetadataGenerator:
         self.persist = False
         self.invalid_file_tups = []
 
-    def set_repository_clone_url(self, repository_clone_url):
-        self.repository_clone_url = repository_clone_url
-
-    def set_repository_files_dir(self, repository_files_dir=None):
+    def set_repository_files_dir(self, repository_files_dir: Optional[str] = None):
         self.repository_files_dir = repository_files_dir
 
-    def update_repository_dependencies_metadata(self, metadata, repository_dependency_tups, is_valid, description):
+    def _update_repository_dependencies_metadata(
+        self,
+        metadata: Dict[str, Any],
+        repository_dependency_tups: List[tuple],
+        is_valid: bool,
+        description: Optional[str],
+    ) -> Dict[str, Any]:
         if is_valid:
             repository_dependencies_dict = metadata.get("repository_dependencies", None)
         else:
@@ -1104,7 +1111,7 @@ class MetadataGenerator:
         return metadata
 
 
-def _get_readme_file_names(repository_name):
+def _get_readme_file_names(repository_name: str) -> List[str]:
     """Return a list of file names that will be categorized as README files for the received repository_name."""
     readme_files = ["readme", "read_me", "install"]
     valid_filenames = [f"{f}.txt" for f in readme_files]
