@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 
 class ToolShedMetadataGenerator(BaseMetadataGenerator):
     """A MetadataGenerator building on ToolShed's app and repository constructs."""
+
     repository: Optional[Repository]
 
     # why is mypy making me re-annotate these things from the base class, it didn't
@@ -71,7 +72,9 @@ class ToolShedMetadataGenerator(BaseMetadataGenerator):
         else:
             self.changeset_revision = changeset_revision
         if repository_clone_url is None and self.repository is not None:
-            self.repository_clone_url = common_util.generate_clone_url_for_repository_in_tool_shed(self.user, self.repository)
+            self.repository_clone_url = common_util.generate_clone_url_for_repository_in_tool_shed(
+                self.user, self.repository
+            )
         else:
             self.repository_clone_url = repository_clone_url
         if shed_config_dict is None:
@@ -147,9 +150,10 @@ class ToolShedMetadataGenerator(BaseMetadataGenerator):
                     .one()
                 )
             except Exception:
-                error_message = (
-                    "Ignoring repository dependency definition for tool shed %s, name %s, owner %s, "
-                    % (toolshed, name, owner)
+                error_message = "Ignoring repository dependency definition for tool shed %s, name %s, owner %s, " % (
+                    toolshed,
+                    name,
+                    owner,
                 )
                 error_message += f"changeset revision {changeset_revision} because the owner is invalid."
                 log.debug(error_message)
@@ -167,9 +171,10 @@ class ToolShedMetadataGenerator(BaseMetadataGenerator):
                     .one()
                 )
             except Exception:
-                error_message = (
-                    "Ignoring repository dependency definition for tool shed %s, name %s, owner %s, "
-                    % (toolshed, name, owner)
+                error_message = "Ignoring repository dependency definition for tool shed %s, name %s, owner %s, " % (
+                    toolshed,
+                    name,
+                    owner,
                 )
                 error_message += f"changeset revision {changeset_revision} because the name is invalid.  "
                 log.debug(error_message)
@@ -214,9 +219,7 @@ class ToolShedMetadataGenerator(BaseMetadataGenerator):
                     return repository_dependency_tup, is_valid, error_message
         else:
             # Repository dependencies are currently supported within a single tool shed.
-            error_message = (
-                "Repository dependencies are currently supported only within the same tool shed.  Ignoring "
-            )
+            error_message = "Repository dependencies are currently supported only within the same tool shed.  Ignoring "
             error_message += (
                 "repository dependency definition  for tool shed %s, name %s, owner %s, changeset revision %s.  "
                 % (toolshed, name, owner, changeset_revision)
