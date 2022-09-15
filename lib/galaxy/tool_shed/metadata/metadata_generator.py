@@ -967,9 +967,7 @@ class GalaxyMetadataGenerator(BaseMetadataGenerator):
             # Send a request to the tool shed to retrieve appropriate additional changeset
             # revisions with which the repository
             # may have been installed.
-            text = get_updated_changeset_revisions_from_tool_shed(
-                self.app, toolshed, name, owner, changeset_revision
-            )
+            text = get_updated_changeset_revisions_from_tool_shed(self.app, toolshed, name, owner, changeset_revision)
             if text:
                 updated_changeset_revisions = util.listify(text)
                 for updated_changeset_revision in updated_changeset_revisions:
