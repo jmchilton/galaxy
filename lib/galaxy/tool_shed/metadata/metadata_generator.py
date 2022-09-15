@@ -9,7 +9,6 @@ from typing import (
     Tuple,
 )
 
-from sqlalchemy import and_
 from typing_extensions import Protocol
 
 from galaxy import util
