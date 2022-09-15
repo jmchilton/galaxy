@@ -1003,7 +1003,6 @@ class GalaxyMetadataGenerator(BaseMetadataGenerator):
         return repository_dependency_tup, is_valid, error_message
 
 
-
 def _get_readme_file_names(repository_name: str) -> List[str]:
     """Return a list of file names that will be categorized as README files for the received repository_name."""
     readme_files = ["readme", "read_me", "install"]
