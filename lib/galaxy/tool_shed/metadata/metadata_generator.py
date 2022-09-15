@@ -837,6 +837,7 @@ class BaseMetadataGenerator:
 
 class GalaxyMetadataGenerator(BaseMetadataGenerator):
     """A MetadataGenerator building on Galaxy's app and repository constructs."""
+
     repository: Optional[ToolShedRepository]
 
     def __init__(
