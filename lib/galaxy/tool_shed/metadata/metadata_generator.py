@@ -8,13 +8,15 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
 from typing_extensions import Protocol
 
 from galaxy import util
 from galaxy.model.tool_shed_install import ToolShedRepository
-from galaxy.structured_app import MinimalManagerApp
+from galaxy.structured_app import BasicSharedApp
+from galaxy.tool_shed.galaxy_install.client import InstallationTarget
 from galaxy.tool_shed.repository_type import (
     REPOSITORY_DEPENDENCY_DEFINITION_FILENAME,
     TOOL_DEPENDENCY_DEFINITION_FILENAME,
@@ -66,7 +68,7 @@ class RepositoryProtocol(Protocol):
 
 
 class BaseMetadataGenerator:
-    app: MinimalManagerApp
+    app: Union[BasicSharedApp, InstallationTarget]
     repository: Optional[RepositoryProtocol]
     invalid_file_tups: List[InvalidFileT]
     changeset_revision: Optional[str]
@@ -699,7 +701,8 @@ class BaseMetadataGenerator:
             if original_valid_tool_dependencies_dict:
                 # We're generating metadata on an update pulled to a tool shed repository installed
                 # into a Galaxy instance, so handle changes to tool dependencies appropriately.
-                irm = self.app.installed_repository_manager
+                installation_target = cast(InstallationTarget, self.app)
+                irm = installation_target.installed_repository_manager
                 (
                     updated_tool_dependency_names,
                     deleted_tool_dependency_names,
@@ -851,7 +854,7 @@ class GalaxyMetadataGenerator(BaseMetadataGenerator):
 
     def __init__(
         self,
-        app: MinimalManagerApp,
+        app: InstallationTarget,
         repository=None,
         changeset_revision: Optional[str] = None,
         repository_clone_url: Optional[str] = None,
