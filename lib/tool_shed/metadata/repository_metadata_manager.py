@@ -14,18 +14,17 @@ from sqlalchemy import (
 )
 
 from galaxy import util
-from galaxy.util import inflector
 from galaxy.structured_app import MinimalManagerApp
-from galaxy.web import url_for
-from galaxy.web.form_builder import SelectField
-from galaxy.tool_shed.galaxy_install.metadata_generator import (
+from galaxy.tool_shed.metadata.metadata_generator import (
     BaseMetadataGenerator,
     HandleResultT,
     InvalidFileT,
 )
+from galaxy.util import inflector
+from galaxy.web import url_for
+from galaxy.web.form_builder import SelectField
 from tool_shed.repository_types import util as rt_util
 from tool_shed.repository_types.metadata import TipOnly
-from tool_shed.webapp.model import Repository
 from tool_shed.util import (
     basic_util,
     common_util,
@@ -35,6 +34,7 @@ from tool_shed.util import (
     shed_util_common as suc,
     tool_util,
 )
+from tool_shed.webapp.model import Repository
 
 log = logging.getLogger(__name__)
 
