@@ -39,7 +39,7 @@ def generate_repository_dependencies_key_for_repository(
     )
 
 
-def get_components_from_key(key):
+def get_components_from_key(key: str) -> tuple:
     """
     Assumes tool shed is current tool shed since repository dependencies across tool sheds is not
     yet supported.
