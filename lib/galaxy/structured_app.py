@@ -29,6 +29,7 @@ from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.vault import Vault
 from galaxy.tool_util.deps.views import DependencyResolversView
 from galaxy.tool_util.verify import test_data
+from galaxy.tools import ToolBox
 from galaxy.util.dbkeys import GenomeBuilds
 from galaxy.util.tool_shed.tool_shed_registry import Registry as ToolShedRegistry
 from galaxy.web_stack import ApplicationStack
@@ -42,10 +43,17 @@ if TYPE_CHECKING:
     from galaxy.managers.hdas import HDAManager
     from galaxy.managers.histories import HistoryManager
     from galaxy.managers.workflows import WorkflowsManager
-    from galaxy.tools import ToolBox
+
     from galaxy.tools.data import ToolDataTableManager
     from galaxy.tools.error_reports import ErrorReports
     from galaxy.visualization.genomes import Genomes
+
+from typing import Generic
+
+from galaxy.model.tool_shed_install import (
+    HasToolBox,
+    ToolBoxType,
+)
 
 
 class BasicSharedApp(Container):
@@ -62,7 +70,7 @@ class BasicSharedApp(Container):
     model: SharedModelMapping
     security: IdEncodingHelper
     auth_manager: AuthManager
-    toolbox: "ToolBox"
+    toolbox: ToolBox
     security_agent: Any
     quota_agent: QuotaAgent
 

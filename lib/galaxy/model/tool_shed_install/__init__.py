@@ -49,9 +49,24 @@ else:
     _HasTable = object
 
 
+from typing import (
+    Generic,
+    TypeVar,
+)
+
+ToolBoxType = TypeVar("ToolBoxType", bound="AbstractToolBox")
+#  toolbox: ToolBoxType
+#  Generic[ToolBoxType]
+
+
 class HasToolBox(common_util.HasToolShedRegistry):
-    tool_dependency_dir: Optional[str]
-    toolbox: AbstractToolBox
+    @property
+    def tool_dependency_dir(self) -> Optional[str]:
+        ...
+
+    @property
+    def toolbox(self) -> AbstractToolBox:
+        ...
 
 
 class Base(metaclass=DeclarativeMeta):

@@ -91,6 +91,7 @@ from galaxy.security.vault import (
     Vault,
     VaultFactory,
 )
+from galaxy.tool_shed.galaxy_install.client import InstallationTarget
 from galaxy.tool_shed.galaxy_install.installed_repository_manager import InstalledRepositoryManager
 from galaxy.tool_shed.galaxy_install.update_repository_manager import UpdateRepositoryManager
 from galaxy.tool_util.deps import containers
@@ -205,7 +206,10 @@ class SentryClientMixin:
             self.application_stack.register_postfork_function(postfork_sentry_client)
 
 
-class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMixin):
+from galaxy.model.tool_shed_install import HasToolBox
+
+
+class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMixin, HasToolBox):
     """Encapsulates the state of a minimal Galaxy application"""
 
     model: GalaxyModelMapping
@@ -482,7 +486,7 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
                 time.sleep(pause)
 
     @property
-    def tool_dependency_dir(self):
+    def tool_dependency_dir(self) -> Optional[str]:
         return self.toolbox.dependency_manager.default_base_path
 
     def _shutdown_object_store(self):
@@ -492,7 +496,7 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
         self.model.engine.dispose()
 
 
-class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication):
+class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication, InstallationTarget[tools.ToolBox]):
     """Extends the MinimalGalaxyApplication with most managers that are not tied to a web or job handling context."""
 
     model: GalaxyModelMapping
