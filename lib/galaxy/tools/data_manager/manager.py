@@ -11,7 +11,8 @@ from typing import (
 from typing_extensions import Protocol
 
 from galaxy import util
-from galaxy.structured_app import MinimalManagerApp
+from galaxy.structured_app import StructuredApp
+from galaxy.tool_shed.galaxy_install.client import DataManagersInterface
 from galaxy.tool_util.data import (
     BundleProcessingOptions,
     OutputDataset,
@@ -21,10 +22,6 @@ from galaxy.tool_util.data.bundles.models import (
     RepoInfo,
 )
 from galaxy.util import Element
-from galaxy.tool_shed.galaxy_install.client import (
-    DataManagerInterface,
-    DataManagersInterface,
-)
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +30,7 @@ class DataManagers(DataManagersInterface):
     data_managers: Dict[str, "DataManager"]
     managed_data_tables: Dict[str, "DataManager"]
 
-    def __init__(self, app: MinimalManagerApp, xml_filename=None):
+    def __init__(self, app: StructuredApp, xml_filename=None):
         self.app = app
         self.data_managers = {}
         self.managed_data_tables = {}
