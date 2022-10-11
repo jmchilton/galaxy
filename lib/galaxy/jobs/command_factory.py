@@ -82,7 +82,9 @@ def build_command(
 
     __handle_task_splitting(commands_builder, job_wrapper)
 
+    externalized = False
     if (container and modify_command_for_container) or job_wrapper.commands_in_new_shell:
+        externalized = True
         if container and modify_command_for_container:
             # Many Docker containers do not have /bin/bash.
             external_command_shell = container.shell
@@ -103,10 +105,13 @@ def build_command(
         else:
             commands_builder = CommandsBuilder(externalized_commands)
 
-    for_pulsar = "script_directory" in remote_command_params
-    if not for_pulsar:
+    if externalized:
+        for_pulsar = "pulsar_version" in remote_command_params
+        # Galaxy writes I/O files to outputs, Pulsar uses metadata. metadata seems like
+        # it should be perferred - at least if the directory exists.
+        io_directory = "../metadata" if for_pulsar else "../outputs"
         commands_builder.capture_stdout_stderr(
-            "../outputs/tool_stdout", "../outputs/tool_stderr", stream_stdout_stderr=stream_stdout_stderr
+            f"{io_directory}/tool_stdout", f"{io_directory}/tool_stderr", stream_stdout_stderr=stream_stdout_stderr
         )
 
     # Don't need to create a separate tool working directory for Pulsar
@@ -119,6 +124,7 @@ def build_command(
         # xref https://github.com/galaxyproject/galaxy/issues/3289
         commands_builder.prepend_command(PREPARE_DIRS)
 
+    for_pulsar = "script_directory" in remote_command_params
     __handle_remote_command_line_building(commands_builder, job_wrapper, for_pulsar=for_pulsar)
 
     container_monitor_command = job_wrapper.container_monitor_command(container)
@@ -201,7 +207,7 @@ def __externalize_commands(
     #   doesn't need to mount the job directory (rw) and then eliminate this hack
     #   (or restrict to older Pulsar versions).
     #   https://github.com/galaxyproject/galaxy/pull/8449
-    for_pulsar = "script_directory" in remote_command_params
+    for_pulsar = "pulsar_version" in remote_command_params
     if for_pulsar:
         commands = f"{shell} {join(remote_command_params['script_directory'], script_name)}"
     log.info(f"Built script [{local_container_script}] for tool command [{tool_commands}]")

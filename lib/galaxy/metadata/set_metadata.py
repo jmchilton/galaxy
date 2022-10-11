@@ -208,15 +208,16 @@ def set_metadata_portable(
         outputs_directory = os.path.join(tool_job_working_directory, "outputs")
         if not os.path.exists(outputs_directory):
             outputs_directory = tool_job_working_directory
+        metadata_directory = os.path.join(tool_job_working_directory, "metadata")
 
         # TODO: constants...
         locations = [
+            (metadata_directory, "tool_"),
             (outputs_directory, "tool_"),
             (tool_job_working_directory, ""),
-            (outputs_directory, ""),  # # Pulsar style output directory? Was this ever used - did this ever work?
         ]
         for directory, prefix in locations:
-            if os.path.exists(os.path.join(directory, f"{prefix}stdout")):
+            if directory and os.path.exists(os.path.join(directory, f"{prefix}stdout")):
                 with open(os.path.join(directory, f"{prefix}stdout"), "rb") as f:
                     tool_stdout = f.read(MAX_STDIO_READ_BYTES)
                 with open(os.path.join(directory, f"{prefix}stderr"), "rb") as f:
