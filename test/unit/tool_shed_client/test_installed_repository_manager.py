@@ -5,6 +5,10 @@ from typing import (
 )
 from unittest.mock import MagicMock
 
+from galaxy.app_unittest_utils.toolbox_support import (
+    BaseToolBoxTestCase,
+    DEFAULT_TEST_REPO,
+)
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
 from galaxy.tool_shed.galaxy_install.installed_repository_manager import InstalledRepositoryManager
 from galaxy.tool_shed.galaxy_install.update_repository_manager import UpdateRepositoryManager
@@ -13,10 +17,6 @@ from galaxy.tool_shed.util import (
     repository_util,
 )
 from galaxy.util.tool_shed import common_util
-from ..app.tools.test_toolbox import (
-    BaseToolBoxTestCase,
-    DEFAULT_TEST_REPO,
-)
 
 
 class ToolShedRepoBaseTestCase(BaseToolBoxTestCase):
