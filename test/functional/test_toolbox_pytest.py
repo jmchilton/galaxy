@@ -19,8 +19,8 @@ class DefaultGalaxyTestDriver(driver_util.GalaxyTestDriver):
     for tool tests, regular twill tests, and API testing.
     """
 
-    conda_auto_init = True
-    conda_auto_install = True
+    conda_auto_init = False
+    conda_auto_install = False
 
     def build_tests(self):
         """Build framework tool test methods."""
