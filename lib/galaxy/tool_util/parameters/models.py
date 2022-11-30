@@ -1,3 +1,5 @@
+# attempt to model requires_value...
+# conditional can descend...
 from abc import abstractmethod
 from typing import (
     Any,
@@ -31,6 +33,7 @@ from typing_extensions import (
 from galaxy.exceptions import RequestParameterInvalidException
 from ._types import (
     cast_as_type,
+    is_optional,
     list_type,
     optional_if_needed,
     union_type,
@@ -82,24 +85,37 @@ def allow_batching(job_template: DynamicModelInformation, batch_type: Optional[T
     )
 
 
-class HasPyType(Protocol):
+class Validators:
+    def validate_not_none(cls, v):
+        assert v is not None, "null is an invalid value for attribute"
+        return v
+
+
+class ParamModel(Protocol):
     @property
     def name(self) -> str:
         ...
 
     @property
-    def py_type(self) -> Type:
-        """Get Python Type for simple model type."""
+    def request_requires_value(self) -> bool:
+        # if this is a non-optional type and no default is defined - an
+        # input value MUST be specified.
         ...
 
 
-def dynamic_model_information_from_py_type(param_model: HasPyType, py_type: Optional[Type] = None):
-    is_optional = getattr(param_model, "optional", False)
-    py_type = py_type or param_model.py_type
+def dynamic_model_information_from_py_type(param_model: ParamModel, py_type: Type):
+    name = param_model.name
+    initialize = ... if param_model.request_requires_value else None
+    py_type_is_optional = is_optional(py_type)
+    if not py_type_is_optional and not param_model.request_requires_value:
+        validators = {"not_null": validator(name, allow_reuse=True)(Validators.validate_not_none)}
+    else:
+        validators = {}
+
     return DynamicModelInformation(
-        param_model.name,
-        (py_type, ... if not is_optional else None),
-        {},
+        name,
+        (py_type, initialize),
+        validators,
     )
 
 
@@ -128,6 +144,7 @@ class BaseGalaxyToolParameterModelDefinition(BaseToolParameterModelDefinition):
 class LabelValue(BaseModel):
     label: str
     value: str
+    selected: bool
 
 
 class TextParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -141,7 +158,11 @@ class TextParameterModel(BaseGalaxyToolParameterModelDefinition):
         return optional_if_needed(StrictStr, self.optional)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return False
 
 
 class IntegerParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -156,7 +177,11 @@ class IntegerParameterModel(BaseGalaxyToolParameterModelDefinition):
         return optional_if_needed(StrictInt, self.optional)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return False
 
 
 class FloatParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -170,7 +195,11 @@ class FloatParameterModel(BaseGalaxyToolParameterModelDefinition):
         return optional_if_needed(union_type([StrictInt, StrictFloat]), self.optional)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return False
 
 
 DataSrcT = Literal["hda", "ldda"]
@@ -261,7 +290,7 @@ class DataParameterModel(BaseGalaxyToolParameterModelDefinition):
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         if state_representation == "request":
-            return allow_batching(dynamic_model_information_from_py_type(self), BatchDataInstance)
+            return allow_batching(dynamic_model_information_from_py_type(self, self.py_type), BatchDataInstance)
         elif state_representation == "request_internal":
             return allow_batching(
                 dynamic_model_information_from_py_type(self, self.py_type_internal), BatchDataInstanceInternal
@@ -270,6 +299,10 @@ class DataParameterModel(BaseGalaxyToolParameterModelDefinition):
             return dynamic_model_information_from_py_type(self, self.py_type_internal)
         elif state_representation == "test_case":
             return dynamic_model_information_from_py_type(self, self.py_type_test_case)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return not self.optional
 
 
 class DataCollectionRequest(StrictModel):
@@ -297,11 +330,15 @@ class DataCollectionParameterModel(BaseGalaxyToolParameterModelDefinition):
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         if state_representation == "request":
-            return allow_batching(dynamic_model_information_from_py_type(self))
+            return allow_batching(dynamic_model_information_from_py_type(self, self.py_type))
         elif state_representation == "request_internal":
             return allow_batching(dynamic_model_information_from_py_type(self, self.py_type_internal))
         else:
             raise NotImplementedError("...")
+
+    @property
+    def request_requires_value(self) -> bool:
+        return not self.optional
 
 
 class HiddenParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -312,7 +349,11 @@ class HiddenParameterModel(BaseGalaxyToolParameterModelDefinition):
         return optional_if_needed(StrictStr, self.optional)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return not self.optional
 
 
 def ensure_color_valid(value: Optional[Any]):
@@ -333,6 +374,7 @@ def ensure_color_valid(value: Optional[Any]):
 
 class ColorParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["gx_color"] = "gx_color"
+    value: Optional[str]
 
     @property
     def py_type(self) -> Type:
@@ -351,6 +393,10 @@ class ColorParameterModel(BaseGalaxyToolParameterModelDefinition):
             validators,
         )
 
+    @property
+    def request_requires_value(self) -> bool:
+        return False
+
 
 class BooleanParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["gx_boolean"] = "gx_boolean"
@@ -363,12 +409,22 @@ class BooleanParameterModel(BaseGalaxyToolParameterModelDefinition):
         return optional_if_needed(StrictBool, self.optional)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        # these parameters always have an implicit default - either None if
+        # if it is optional or 'checked' if not (itself defaulting to False).
+        return False
 
 
 class DirectoryUriParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["gx_directory_uri"]
     value: Optional[str]
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
 
 
 class RulesMapping(StrictModel):
@@ -389,7 +445,11 @@ class RulesParameterModel(BaseGalaxyToolParameterModelDefinition):
         return RulesModel
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
 
 
 class SelectParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -409,7 +469,15 @@ class SelectParameterModel(BaseGalaxyToolParameterModelDefinition):
         return optional_if_needed(py_type, self.optional)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def has_selected_static_option(self):
+        return self.options is not None and any([o.selected for o in self.options])
+
+    @property
+    def request_requires_value(self) -> bool:
+        return not self.optional and not self.has_selected_static_option
 
 
 DiscriminatorType = Union[bool, str]
@@ -418,6 +486,7 @@ DiscriminatorType = Union[bool, str]
 class ConditionalWhen(StrictModel):
     discriminator: DiscriminatorType
     parameters: List["ToolParameterT"]
+    is_default_when: bool
 
 
 class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -429,11 +498,17 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
         test_param_name = self.test_parameter.name
         test_info = self.test_parameter.pydantic_template(state_representation)
         extra_validators = test_info.validators
+        test_parameter_requires_value = self.test_parameter.request_requires_value
         when_types: List[Type[BaseModel]] = []
+        default_type = None
         for when in self.whens:
             discriminator = when.discriminator
             parameters = when.parameters
-            extra_kwd = {test_param_name: (Literal[discriminator], ...)}
+            if test_parameter_requires_value:
+                initialize_test = ...
+            else:
+                initialize_test = None
+            extra_kwd = {test_param_name: (Literal[discriminator], initialize_test)}
             when_types.append(
                 create_field_model(
                     parameters,
@@ -443,17 +518,42 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
                     extra_validators=extra_validators,
                 )
             )
+            if when.is_default_when:
+                extra_kwd = {}
+                default_type = create_field_model(
+                    parameters,
+                    f"When_{test_param_name}___absent",
+                    state_representation,
+                    extra_kwd=extra_kwd,
+                    extra_validators={},
+                )
 
         cond_type = union_type(when_types)
 
         class ConditionalType(BaseModel):
             __root__: cond_type = Field(..., discriminator=test_param_name)  # type: ignore[valid-type]
 
+        if default_type is not None:
+            # Cannot find a way in Pydantic version 1.0 to have None/null or "parameter missing"
+            # as a discriminator value - so we build a whole second model for that type missing
+            # is is default_type.
+            py_type = union_type([ConditionalType, default_type])
+            # TODO: need to figure out how request_requires_value on default_type so we
+            # know how initial here.
+            initialize_cond = None
+        else:
+            py_type = ConditionalType
+            initialize_cond = ...
+
         return DynamicModelInformation(
             self.name,
-            (ConditionalType, ...),
+            (py_type, initialize_cond),
             {},
         )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return False  # TODO
 
 
 class RepeatParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -475,6 +575,10 @@ class RepeatParameterModel(BaseGalaxyToolParameterModelDefinition):
             {},
         )
 
+    @property
+    def request_requires_value(self) -> bool:
+        return True  # TODO:
+
 
 LiteralNone: Type = Literal[None]  # type: ignore[assignment]
 
@@ -493,6 +597,10 @@ class CwlNullParameterModel(BaseToolParameterModelDefinition):
             {},
         )
 
+    @property
+    def request_requires_value(self) -> bool:
+        return False
+
 
 class CwlStringParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_string"] = "cwl_string"
@@ -507,6 +615,10 @@ class CwlStringParameterModel(BaseToolParameterModelDefinition):
             (self.py_type, ...),
             {},
         )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
 
 
 class CwlIntegerParameterModel(BaseToolParameterModelDefinition):
@@ -523,6 +635,10 @@ class CwlIntegerParameterModel(BaseToolParameterModelDefinition):
             {},
         )
 
+    @property
+    def request_requires_value(self) -> bool:
+        return True
+
 
 class CwlFloatParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_float"] = "cwl_float"
@@ -538,6 +654,10 @@ class CwlFloatParameterModel(BaseToolParameterModelDefinition):
             {},
         )
 
+    @property
+    def request_requires_value(self) -> bool:
+        return True
+
 
 class CwlBooleanParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_boolean"] = "cwl_boolean"
@@ -552,6 +672,10 @@ class CwlBooleanParameterModel(BaseToolParameterModelDefinition):
             (self.py_type, ...),
             {},
         )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
 
 
 class CwlUnionParameterModel(BaseToolParameterModelDefinition):
@@ -573,6 +697,10 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
             {},
         )
 
+    @property
+    def request_requires_value(self) -> bool:
+        return False  # TODO:
+
 
 class CwlFileParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["cwl_file"] = "cwl_file"
@@ -582,7 +710,11 @@ class CwlFileParameterModel(BaseGalaxyToolParameterModelDefinition):
         return DataRequest
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
 
 
 class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -593,7 +725,11 @@ class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
         return DataRequest
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self)
+        return dynamic_model_information_from_py_type(self, self.py_type)
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
 
 
 CwlParameterT = Union[
@@ -675,6 +811,10 @@ def create_request_internal_model(tool: ToolParameterBundle, name: str = "Dynami
     return create_field_model(tool.input_models, name, "request_internal")
 
 
+def create_test_case_model(tool: ToolParameterBundle, name: str = "DynamicModelForTool") -> Type[BaseModel]:
+    return create_field_model(tool.input_models, name, "test_case")
+
+
 def create_field_model(
     tool_parameter_models: Union[List[ToolParameterModel], List[ToolParameterT]],
     name: str,
@@ -720,4 +860,9 @@ def validate_request(tool: ToolParameterBundle, request: Dict[str, Any]) -> None
 
 def validate_internal_request(tool: ToolParameterBundle, request: Dict[str, Any]) -> None:
     pydantic_model = create_request_internal_model(tool)
+    validate_against_model(pydantic_model, request)
+
+
+def validate_test_case(tool: ToolParameterBundle, request: Dict[str, Any]) -> None:
+    pydantic_model = create_test_case_model(tool)
     validate_against_model(pydantic_model, request)

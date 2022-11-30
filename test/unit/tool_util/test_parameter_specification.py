@@ -17,6 +17,7 @@ from galaxy.tool_util.parameters import (
     ToolParameterModel,
     validate_internal_request,
     validate_request,
+    validate_test_case,
 )
 from galaxy.tool_util.unittest_utils.parameters import (
     parameter_bundle,
@@ -43,7 +44,14 @@ def test_specification():
 
 
 def test_single():
-    _test_file("gx_data_optional")
+    # _test_file("gx_int")
+    # _test_file("gx_float")
+    # _test_file("gx_boolean")
+    # _test_file("gx_int_optional")
+    # _test_file("gx_float_optional")
+    # _test_file("gx_conditional_boolean")
+    # _test_file("gx_conditional_conditional_boolean")
+    _test_file("gx_conditional_boolean_checked")
 
 
 def _test_file(file: str, specification=None):
@@ -59,6 +67,10 @@ def _test_file(file: str, specification=None):
             _assert_internal_requests_validate(tool_parameter_model, tests)
         elif valid_or_invalid == "request_internal_invalid":
             _assert_internal_requests_invalid(tool_parameter_model, tests)
+        elif valid_or_invalid == "test_case_valid":
+            _assert_test_cases_validate(tool_parameter_model, tests)
+        elif valid_or_invalid == "test_case_invalid":
+            _assert_test_cases_invalid(tool_parameter_model, tests)
 
     # Assume request validation will work here.
     if "request_internal_valid" not in combos and "request_valid" in combos:
@@ -106,10 +118,30 @@ def _assert_internal_request_invalid(parameter, request) -> None:
     ), f"Parameter {parameter} didn't result in validation error on internal request {request} as expected."
 
 
+def _assert_test_case_validates(parameter, test_case) -> None:
+    try:
+        validate_test_case(parameter_bundle(parameter), test_case)
+    except RequestParameterInvalidException as e:
+        raise AssertionError(f"Parameter {parameter} failed to validate test_case {test_case}. {e}")
+
+
+def _assert_test_case_invalid(parameter, test_case) -> None:
+    exc = None
+    try:
+        validate_test_case(parameter_bundle(parameter), test_case)
+    except RequestParameterInvalidException as e:
+        exc = e
+    assert (
+        exc is not None
+    ), f"Parameter {parameter} didn't result in validation error on test_case {test_case} as expected."
+
+
 _assert_requests_validate = partial(_for_each, _assert_request_validates)
 _assert_requests_invalid = partial(_for_each, _assert_request_invalid)
 _assert_internal_requests_validate = partial(_for_each, _assert_internal_request_validates)
 _assert_internal_requests_invalid = partial(_for_each, _assert_internal_request_invalid)
+_assert_test_cases_validate = partial(_for_each, _assert_test_case_validates)
+_assert_test_cases_invalid = partial(_for_each, _assert_test_case_invalid)
 
 
 def decode_val(val: str) -> int:

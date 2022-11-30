@@ -1,32 +1,58 @@
+# Tools to create.
+# - gx_conditional_boolean_optional
+# - gx_conditional_boolean_discriminate_on_string_value
+# - gx_conditional_boolean_optional_discriminate_on_string_value
+# - gx_conditional_boolean_discriminate_on_mixed_value
+# - gx_conditional_boolean_empty_default
+# - gx_conditional_boolean_empty_else
+# - gx_conditional_select_*
+# - gx_repeat_select_required
+# - gx_repeat_repeat_select_required
+# - gx_repeat_conditional_boolean_optional
+
+# Things to verify:
+# - non optional, multi-selects require a selection (see TODO below...)
 gx_int:
   request_valid:
     - parameter: 5
     - parameter: 6
+    # galaxy parameters created with a value - so doesn't need to appear in request even though non-optional
+    - {}
   request_invalid:
     - parameter: null
     - parameter: "null"
     - parameter: "None"
-    - {}
     - parameter: { 5 }
+  test_case_valid:
+    - parameter: 5
+    - {}
+  test_case_invalid:
+    - parameter: null
+    - parameter: "5"
 
 gx_boolean:
   request_valid:
     - parameter: True
+    - parameter: False
+    - {}
   request_invalid:
     - parameter: {}
     - parameter: "true"
     # This is borderline... should we allow truevalue/falsevalue in the API.
     # Marius and John were on fence here.
     - parameter: "mytrue"
+    - parameter: null
 
 gx_int_optional:
   request_valid:
    - parameter: 5
    - parameter: null
+   - {}
   request_invalid:
    - parameter: "5"
    - parameter: "None"
    - parameter: "null"
+   - parameter: [5]
 
 gx_text:
   request_valid:
@@ -130,11 +156,12 @@ gx_float:
     - parameter: 5
     - parameter: 5.0
     - parameter: 5.0001
+    # galaxy parameters created with a value - so doesn't need to appear in request even though non-optional
+    - {}
   request_invalid:
     - parameter: null
     - parameter: "5"
     - parameter: "5.0"
-    - parameter: {}
     - parameter: { "moo": "cow" }
 
 gx_float_optional:
@@ -143,6 +170,7 @@ gx_float_optional:
     - parameter: 5.0
     - parameter: 5.0001
     - parameter: null
+    - {}
   request_invalid:
     - parameter: "5"
     - parameter: "5.0"
@@ -156,7 +184,6 @@ gx_color:
   request_invalid:
    - parameter: null
    - parameter: {}
-   # TOOD: figure out pydantic validators
    - parameter: '#abcd'
 
 gx_data:
@@ -341,22 +368,51 @@ gx_conditional_boolean:
     - conditional_parameter:
         test_parameter: false
         boolean_parameter: true
+    # Test parameter has default and so does it "case" - so this should be fine
+    - {}
+    # The boolean_parameter is optional so just setting a test_parameter is fine
+    - conditional_parameter:
+        test_parameter: true
+    - conditional_parameter:
+        test_parameter: false
+    # if test parameter is missing, it should be false in this case (TODO: test inverse)
+    # so boolean_parameter or either type or missing should be fine.
+    - conditional_parameter: 
+        boolean_parameter: true
+    - conditional_parameter: 
+        boolean_parameter: false
+    - conditional_parameter: {}
   request_invalid:
     - conditional_parameter:
         test_parameter: false
         integer_parameter: 1
     - conditional_parameter:
         test_parameter: null
-    - conditional_parameter: 
-        test_parameter: true
-    - conditional_parameter:
-        test_parameter: false
     - conditional_parameter:
         test_parameter: true
         integer_parameter: "1"
     - conditional_parameter: 
         test_parameter: true
         integer_parameter: null
+    # if test parameter is missing, it should be false in this case
+    # in that case having an integer_parameter is not acceptable.
+    - conditional_parameter: 
+        integer_parameter: 5
+
+gx_conditional_boolean_checked:
+  request_valid:
+    # if no test parameter is defined, the default is 'checked' so the test
+    # parameter is true.
+    - conditional_parameter:
+        integer_parameter: 5
+    - conditional_parameter:
+        integer_parameter: 0
+
+  request_invalid:
+    # if test parameter is missing, it should be true (it is 'checked') in this case
+    # in that case having a boolean_parameter is not acceptable.
+    - conditional_parameter: 
+        boolean_parameter: false
 
 gx_conditional_conditional_boolean:
   request_valid:
@@ -373,6 +429,8 @@ gx_conditional_conditional_boolean:
         inner_conditional_parameter:
           inner_test_parameter: false
           boolean_parameter: true
+    # Test parameter has default and so does it "case" - so this should be fine
+    - {}
   request_invalid:
     - outer_conditional_parameter:
         outer_test_parameter: true
@@ -396,6 +454,8 @@ gx_repeat_boolean:
     - parameter:
       - { boolean_parameter: true }
       - { boolean_parameter: false }
+    - parameter: [{}]
+    - parameter: [{}, {}]
   request_invalid:
     - parameter:
       - { boolean_parameter: 4 }

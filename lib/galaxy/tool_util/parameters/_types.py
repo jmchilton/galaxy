@@ -7,11 +7,24 @@ and build runtime models not to use mypy to type check static code.
 
 from typing import (
     cast,
+    Generic,
     List,
     Optional,
     Type,
     Union,
 )
+
+# https://stackoverflow.com/questions/56832881/check-if-a-field-is-typing-optional
+# Python >= 3.8
+try:
+    from typing import (
+        get_args,
+        get_origin,
+    )
+# Compatibility
+except ImportError:
+    get_args = lambda t: getattr(t, "__args__", ()) if t is not Generic else Generic  # type: ignore[return-value,assignment]
+    get_origin = lambda t: getattr(t, "__origin__", None)
 
 
 def optional_if_needed(type: Type, is_optional: bool) -> Type:
@@ -31,3 +44,7 @@ def list_type(arg: Type) -> Type:
 
 def cast_as_type(arg) -> Type:
     return cast(Type, arg)
+
+
+def is_optional(field) -> bool:
+    return get_origin(field) is Union and type(None) in get_args(field)

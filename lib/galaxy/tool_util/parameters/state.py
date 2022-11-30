@@ -69,7 +69,7 @@ class JobInternalToolState(ToolState):
         return create_request_internal_model(input_models)
 
 
-class TestCaseToolState(ToolState, BaseModel):
+class TestCaseToolState(ToolState):
     state_representation: Literal["test_case"] = "test_case"
 
     def _to_base_model(self, input_models: ToolParameterBundle) -> Type[BaseModel]:

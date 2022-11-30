@@ -5,6 +5,8 @@ from typing import (
     Optional,
 )
 
+from sqlalchemy import null
+
 from galaxy.tool_util.parser.cwl import CwlInputSource
 from galaxy.tool_util.parser.interface import (
     InputSource,
@@ -40,19 +42,36 @@ from .models import (
 )
 
 
+class ParameterDefinitionError(Exception):
+    pass
+
+
+def get_color_value(input_source: InputSource) -> str:
+    return input_source.get("value", "#000000")
+
+
 def _from_input_source_galaxy(input_source: InputSource) -> ToolParameterModel:
     input_type = input_source.parse_input_type()
     if input_type == "param":
         param_type = input_source.get("type")
         if param_type == "integer":
             optional = input_source.parse_optional()
-            return IntegerParameterModel(
-                name=input_source.parse_name(),
-                optional=optional,
-            )
+            value = input_source.get("value")
+            int_value: Optional[int]
+            if value:
+                int_value = int(value)
+            elif optional:
+                int_value = None
+            else:
+                raise ParameterDefinitionError()
+            return IntegerParameterModel(name=input_source.parse_name(), optional=optional, value=int_value)
         elif param_type == "boolean":
+            nullable = input_source.parse_optional()
+            checked = input_source.get_bool("checked", None if nullable else False)
             return BooleanParameterModel(
                 name=input_source.parse_name(),
+                optional=nullable,
+                value=checked,
             )
         elif param_type == "text":
             optional = input_source.parse_optional()
@@ -62,9 +81,18 @@ def _from_input_source_galaxy(input_source: InputSource) -> ToolParameterModel:
             )
         elif param_type == "float":
             optional = input_source.parse_optional()
+            value = input_source.get("value")
+            float_value: Optional[float]
+            if value:
+                float_value = float(value)
+            elif optional:
+                float_value = None
+            else:
+                raise ParameterDefinitionError()
             return FloatParameterModel(
                 name=input_source.parse_name(),
                 optional=optional,
+                value=float_value,
             )
         elif param_type == "hidden":
             optional = input_source.parse_optional()
@@ -77,6 +105,7 @@ def _from_input_source_galaxy(input_source: InputSource) -> ToolParameterModel:
             return ColorParameterModel(
                 name=input_source.parse_name(),
                 optional=optional,
+                value=get_color_value(input_source),
             )
         elif param_type == "rules":
             return RulesParameterModel(
@@ -106,8 +135,8 @@ def _from_input_source_galaxy(input_source: InputSource) -> ToolParameterModel:
             options: Optional[List[LabelValue]] = None
             if is_static:
                 options = []
-                for (option_label, option_value, _) in input_source.parse_static_options():
-                    options.append(LabelValue(label=option_label, value=option_value))
+                for (option_label, option_value, selected) in input_source.parse_static_options():
+                    options.append(LabelValue(label=option_label, value=option_value, selected=selected))
             return SelectParameterModel(
                 name=input_source.parse_name(),
                 optional=optional,
@@ -120,9 +149,26 @@ def _from_input_source_galaxy(input_source: InputSource) -> ToolParameterModel:
         test_param_input_source = input_source.parse_test_input_source()
         test_parameter = _from_input_source_galaxy(test_param_input_source)
         whens = []
+        default_value = object()
+        if isinstance(test_parameter, BooleanParameterModel):
+            default_value = test_parameter.value
+        # TODO: handle select parameter model...
         for (value, case_inputs_sources) in input_source.parse_when_input_sources():
+            if isinstance(test_parameter, BooleanParameterModel):
+                # TODO: investigate truevalue/falsevalue when...
+                from galaxy.util import string_as_bool
+
+                typed_value = string_as_bool(value)
+            else:
+                typed_value = value
+
             tool_parameter_models = input_models_for_page(case_inputs_sources)
-            whens.append(ConditionalWhen(discriminator=value, parameters=tool_parameter_models))
+            is_default_when = False
+            if typed_value == default_value:
+                is_default_when = True
+            whens.append(
+                ConditionalWhen(discriminator=value, parameters=tool_parameter_models, is_default_when=is_default_when)
+            )
         return ConditionalParameterModel(
             name=input_source.parse_name(),
             test_parameter=test_parameter,

@@ -39,6 +39,7 @@ from typing_extensions import (
 from galaxy import util
 from galaxy.tool_util.parameters import (
     input_models_from_json,
+    TestCaseToolState,
     ToolParameterBundle,
 )
 from galaxy.tool_util.parser.interface import (

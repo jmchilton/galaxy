@@ -36,11 +36,13 @@ from .models import (
     validate_against_model,
     validate_internal_request,
     validate_request,
+    validate_test_case,
 )
 from .state import (
     JobInternalToolState,
     RequestInternalToolState,
     RequestToolState,
+    TestCaseToolState,
     ToolState,
 )
 from .visitor import visit_input_values
@@ -78,7 +80,9 @@ __all__ = (
     "validate_against_model",
     "validate_internal_request",
     "validate_request",
+    "validate_test_case",
     "ToolState",
+    "TestCaseToolState",
     "RequestToolState",
     "RequestInternalToolState",
     "visit_input_values",
