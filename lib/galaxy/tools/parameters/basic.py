@@ -597,6 +597,7 @@ class BooleanToolParameter(ToolParameter):
         return [self.truevalue, self.falsevalue]
 
 
+# Used only by upload1, deprecated.
 class FileToolParameter(ToolParameter):
     """
     Parameter that takes an uploaded file as a value.

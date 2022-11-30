@@ -14,7 +14,8 @@
                         v-if="showSuccess"
                         :job-def="jobDef"
                         :job-response="jobResponse"
-                        :tool-name="toolName" />
+                        :tool-name="toolName"
+                        :used-tool-request="toolInputs != null" />
                     <Webhook v-if="showSuccess" type="tool" :tool-id="jobDef.tool_id" />
                     <b-modal v-model="showError" size="sm" :title="errorTitle | l" scrollable ok-only>
                         <b-alert v-if="errorMessage" show variant="danger">
@@ -83,7 +84,7 @@
                         </template>
                         <template v-slot:header-buttons>
                             <ButtonSpinner
-                                title="Run Tool"
+                                :title="runButtonTitle"
                                 class="btn-sm"
                                 :wait="showExecuting"
                                 :tooltip="tooltip"
@@ -92,7 +93,7 @@
                         <template v-slot:buttons>
                             <ButtonSpinner
                                 id="execute"
-                                title="Run Tool"
+                                :title="runButtonTitle"
                                 class="mt-3 mb-3"
                                 :wait="showExecuting"
                                 :tooltip="tooltip"
@@ -106,8 +107,10 @@
 </template>
 
 <script>
+import { getAppRoot } from "onload/loadConfig";
+import axios from "axios";
 import { getGalaxyInstance } from "app";
-import { getToolFormData, updateToolFormData, submitJob } from "./services";
+import { getToolFormData, getToolInputs, updateToolFormData, submitJob, submitToolRequest } from "./services";
 import { allowCachedJobs } from "./utilities";
 import { refreshContentsWrapper } from "utils/data";
 import ToolCard from "./ToolCard";
@@ -123,6 +126,7 @@ import ToolRecommendation from "../ToolRecommendation";
 import UserHistories from "components/providers/UserHistories";
 import Webhook from "components/Common/Webhook";
 import Heading from "components/Common/Heading";
+import { structuredInputs } from "./structured";
 
 export default {
     components: {
@@ -186,6 +190,8 @@ export default {
             validationInternal: null,
             validationScrollTo: null,
             currentVersion: this.version,
+            toolInputs: null,
+            submissionStateMessage: null,
         };
     },
     computed: {
@@ -216,6 +222,17 @@ export default {
                 return "The previous run of this tool failed. Use this option to replace the failed element(s) in the dataset collection that were produced during the previous tool run.";
             } else {
                 return "The previous run of this tool failed and other tools were waiting for it to finish successfully. Use this option to resume those tools using the new output(s) of this tool run.";
+            }
+        },
+        runButtonTitle() {
+            if (this.showExecuting) {
+                if (this.submissionStateMessage) {
+                    return this.submissionStateMessage;
+                } else {
+                    return "Run Tool";
+                }
+            } else {
+                return "Run Tool";
             }
         },
     },
@@ -269,10 +286,37 @@ export default {
         onChangeVersion(newVersion) {
             this.requestTool(newVersion);
         },
+        waitOnRequest(response, requestContent, config) {
+            const toolRequestId = response.tool_request_id;
+            const handleRequestState = (toolRequestStateResponse) => {
+                const state = toolRequestStateResponse.data;
+                console.log(`state is ${state}`);
+                if (["new"].indexOf(state) !== -1) {
+                    setTimeout(doRequestCheck, 1000);
+                } else if (state == "failed") {
+                    this.handleError(null, requestContent);
+                } else {
+                    refreshContentsWrapper();
+                    this.showForm = false;
+                    this.showSuccess = true;
+                    this.handleSubmissionComplete(config);
+                }
+            };
+            const doRequestCheck = () => {
+                axios
+                    .get(`${getAppRoot()}api/tool_requests/${toolRequestId}/state`)
+                    .then(handleRequestState)
+                    .catch((e) => this.handleError(e, requestContent));
+            };
+            setTimeout(doRequestCheck, 1000);
+        },
         requestTool(newVersion) {
             this.currentVersion = newVersion || this.currentVersion;
             this.disabled = true;
             console.debug("ToolForm - Requesting tool.", this.id);
+            getToolInputs(this.id, this.currentVersion).then((data) => {
+                this.toolInputs = data;
+            });
             return getToolFormData(this.id, this.currentVersion, this.job_id, this.history_id)
                 .then((data) => {
                     this.formConfig = data;
@@ -294,74 +338,114 @@ export default {
                     this.showLoading = false;
                 });
         },
+        handleSubmissionComplete(config) {
+            if ([true, "true"].includes(config.enable_tool_recommendations)) {
+                this.showRecommendation = true;
+            }
+            document.querySelector(".center-panel").scrollTop = 0;
+        },
+        handleError(e, errorContent) {
+            this.errorMessage = e?.response?.data?.err_msg;
+            this.showExecuting = false;
+            this.submissionStateMessage = null;
+            let genericError = true;
+            const errorData = e && e.response && e.response.data && e.response.data.err_data;
+            if (errorData) {
+                const errorEntries = Object.entries(errorData);
+                if (errorEntries.length > 0) {
+                    this.validationScrollTo = errorEntries[0];
+                    genericError = false;
+                }
+            }
+            if (genericError) {
+                this.showError = true;
+                this.errorTitle = "Job submission failed.";
+                this.errorContent = errorContent;
+            }
+        },
         onExecute(config, historyId) {
             if (this.validationInternal) {
                 this.validationScrollTo = this.validationInternal.slice();
                 return;
             }
             this.showExecuting = true;
-            const jobDef = {
-                history_id: historyId,
-                tool_id: this.formConfig.id,
-                tool_version: this.formConfig.version,
-                inputs: {
-                    ...this.formData,
-                },
+            this.submissionStateMessage = "Preparing Request";
+            const inputs = {
+                ...this.formData,
             };
-            if (this.useEmail) {
-                jobDef.inputs["send_email_notification"] = true;
+            const toolId = this.formConfig.id;
+            const toolVersion = this.formConfig.version;
+            let validatedInputs = null;
+            try {
+                validatedInputs = structuredInputs(inputs, this.toolInputs);
+            } catch {
+                // failed validation, just use legacy API
             }
-            if (this.useJobRemapping) {
-                jobDef.inputs["rerun_remap_job_id"] = this.job_id;
-            }
-            if (this.useCachedJobs) {
-                jobDef.inputs["use_cached_job"] = true;
-            }
-            console.debug("toolForm::onExecute()", jobDef);
-            submitJob(jobDef).then(
-                (jobResponse) => {
-                    this.showExecuting = false;
-                    refreshContentsWrapper();
-                    if (jobResponse.produces_entry_points) {
-                        this.showEntryPoints = true;
-                        this.entryPoints = jobResponse.jobs;
-                    }
-                    const nJobs = jobResponse && jobResponse.jobs ? jobResponse.jobs.length : 0;
-                    if (nJobs > 0) {
-                        this.showForm = false;
-                        this.showSuccess = true;
-                        this.jobDef = jobDef;
-                        this.jobResponse = jobResponse;
-                    } else {
-                        this.showError = true;
-                        this.showForm = true;
-                        this.errorTitle = "Job submission rejected.";
-                        this.errorContent = jobResponse;
-                    }
-                    if ([true, "true"].includes(config.enable_tool_recommendations)) {
-                        this.showRecommendation = true;
-                    }
-                    document.querySelector(".center-panel").scrollTop = 0;
-                },
-                (e) => {
-                    this.errorMessage = e?.response?.data?.err_msg;
-                    this.showExecuting = false;
-                    let genericError = true;
-                    const errorData = e && e.response && e.response.data && e.response.data.err_data;
-                    if (errorData) {
-                        const errorEntries = Object.entries(errorData);
-                        if (errorEntries.length > 0) {
-                            this.validationScrollTo = errorEntries[0];
-                            genericError = false;
-                        }
-                    }
-                    if (genericError) {
-                        this.showError = true;
-                        this.errorTitle = "Job submission failed.";
-                        this.errorContent = jobDef;
-                    }
+            if (validatedInputs) {
+                const toolRequest = {
+                    history_id: historyId,
+                    tool_id: toolId,
+                    tool_version: toolVersion,
+                    inputs: validatedInputs,
+                };
+                if (this.useCachedJobs) {
+                    toolRequest.use_cached_jobs = true;
                 }
-            );
+                this.submissionStateMessage = "Sending Request";
+                submitToolRequest(toolRequest).then(
+                    (jobResponse) => {
+                        this.submissionStateMessage = "Processing Request";
+                        console.log(jobResponse);
+                        this.waitOnRequest(jobResponse, toolRequest, config);
+                    },
+                    (e) => {
+                        this.handleError(e, toolRequest);
+                    }
+                );
+            } else {
+                const jobDef = {
+                    history_id: historyId,
+                    tool_id: toolId,
+                    tool_version: toolVersion,
+                    inputs: inputs,
+                };
+                if (this.useEmail) {
+                    jobDef.inputs["send_email_notification"] = true;
+                }
+                if (this.useJobRemapping) {
+                    jobDef.inputs["rerun_remap_job_id"] = this.job_id;
+                }
+                if (this.useCachedJobs) {
+                    jobDef.inputs["use_cached_job"] = true;
+                }
+                console.debug("toolForm::onExecute()", jobDef);
+                submitJob(jobDef).then(
+                    (jobResponse) => {
+                        this.showExecuting = false;
+                        refreshContentsWrapper();
+                        if (jobResponse.produces_entry_points) {
+                            this.showEntryPoints = true;
+                            this.entryPoints = jobResponse.jobs;
+                        }
+                        const nJobs = jobResponse && jobResponse.jobs ? jobResponse.jobs.length : 0;
+                        if (nJobs > 0) {
+                            this.showForm = false;
+                            this.showSuccess = true;
+                            this.jobDef = jobDef;
+                            this.jobResponse = jobResponse;
+                        } else {
+                            this.showError = true;
+                            this.showForm = true;
+                            this.errorTitle = "Job submission rejected.";
+                            this.errorContent = jobResponse;
+                        }
+                        this.handleSubmissionComplete(config);
+                    },
+                    (e) => {
+                        this.handleError(e, jobDef);
+                    }
+                );
+            }
         },
     },
 };

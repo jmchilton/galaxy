@@ -1,0 +1,528 @@
+gx_int:
+  request_valid:
+    - parameter: 5
+    - parameter: 6
+  request_invalid:
+    - parameter: null
+    - parameter: "null"
+    - parameter: "None"
+    - {}
+    - parameter: { 5 }
+
+gx_boolean:
+  request_valid:
+    - parameter: True
+  request_invalid:
+    - parameter: {}
+    - parameter: "true"
+    # This is borderline... should we allow truevalue/falsevalue in the API.
+    # Marius and John were on fence here.
+    - parameter: "mytrue"
+
+gx_int_optional:
+  request_valid:
+   - parameter: 5
+   - parameter: null
+  request_invalid:
+   - parameter: "5"
+   - parameter: "None"
+   - parameter: "null"
+
+gx_text:
+  request_valid:
+    - parameter: moocow
+    - parameter: 'some spaces'
+    - parameter: ''
+  request_invalid:
+    - parameter: 5
+    - parameter: null
+    - parameter: {}
+    - parameter: { "moo": "cow" }
+
+gx_text_optional:
+  request_valid:
+    - parameter: moocow
+    - parameter: 'some spaces'
+    - parameter: ''
+    - parameter: null
+  request_invalid:
+    - parameter: 5
+    - parameter: {}
+    - parameter: { "moo": "cow" }
+
+gx_select:
+  request_valid:
+  - parameter: "--ex1"
+  - parameter: "ex2"
+  request_invalid:
+  # Not allowing selecting booleans by truevalue/falsevalue - don't allow selecting
+  # selects by label.
+  - parameter: "Ex1"
+  # Do not allow lists for non-multi-selects
+  - parameter: ["ex2"]
+  - parameter: null
+  - parameter: {}
+  - parameter: 5
+  - {}
+
+gx_select_optional:
+  request_valid:
+  - parameter: "--ex1"
+  - parameter: "ex2"
+  - parameter: null
+  - {}
+  request_invalid:
+  # Not allowing selecting booleans by truevalue/falsevalue - don't allow selecting
+  # selects by label.
+  - parameter: "Ex1"
+  # Do not allow lists for non-multi-selects
+  - parameter: ["ex2"]
+  - parameter: {}
+  - parameter: 5
+
+# TODO: confirm null should vaguely not be allowed here
+gx_select_multiple:
+  request_valid:
+  - parameter: ["--ex1"]
+  - parameter: ["ex2"]
+  request_invalid:
+  - parameter: ["Ex1"]
+  - parameter: null
+  - parameter: {}
+  - parameter: 5
+  - {}
+
+gx_select_multiple_optional:
+  request_valid:
+  - parameter: ["--ex1"]
+  - parameter: ["ex2"]
+  - {}
+  - parameter: null
+  request_invalid:
+  - parameter: ["Ex1"]
+  - parameter: {}
+  - parameter: 5
+
+gx_hidden:
+  request_valid:
+    - parameter: moocow
+    - parameter: 'some spaces'
+    - parameter: ''
+  request_invalid:
+    - parameter: null
+    - parameter: 5
+    - parameter: {}
+    - parameter: { "moo": "cow" }
+
+gx_hidden_optional:
+  request_valid:
+    - parameter: moocow
+    - parameter: 'some spaces'
+    - parameter: ''
+    - parameter: null
+  request_invalid:
+    - parameter: 5
+    - parameter: {}
+    - parameter: { "moo": "cow" }
+    
+gx_float:
+  request_valid:
+    - parameter: 5
+    - parameter: 5.0
+    - parameter: 5.0001
+  request_invalid:
+    - parameter: null
+    - parameter: "5"
+    - parameter: "5.0"
+    - parameter: {}
+    - parameter: { "moo": "cow" }
+
+gx_float_optional:
+  request_valid:
+    - parameter: 5
+    - parameter: 5.0
+    - parameter: 5.0001
+    - parameter: null
+  request_invalid:
+    - parameter: "5"
+    - parameter: "5.0"
+    - parameter: {}
+    - parameter: { "moo": "cow" }
+
+gx_color:
+  request_valid:
+   - parameter: '#aabbcc'
+   - parameter: '#000000'
+  request_invalid:
+   - parameter: null
+   - parameter: {}
+   # TOOD: figure out pydantic validators
+   - parameter: '#abcd'
+
+gx_data:
+  request_valid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: {__class__: "Batch", values: [{src: hdca, id: abcdabcd}]}
+  request_invalid:
+   - parameter: {__class__: "Batch", values: [{src: hdca, id: 5}]}
+   - parameter: {src: hda, id: 7}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: null
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+  request_internal_valid:
+   - parameter: {__class__: "Batch", values: [{src: hdca, id: 5}]}
+   - parameter: {src: hda, id: 5}
+   - parameter: {src: hda, id: 0}
+  request_internal_invalid:
+   - parameter: {__class__: "Batch", values: [{src: hdca, id: abcdabcd}]}
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+
+gx_data_optional:
+  request_valid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: null
+   - {}
+  request_invalid:
+   - parameter: {src: hda, id: 5}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+  request_internal_valid:
+   - parameter: {src: hda, id: 5}
+   - parameter: null
+   - {}
+  request_internal_invalid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+
+gx_data_multiple:
+  request_valid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: [{src: hda, id: abcdabcd}]
+   - parameter: [{src: hdca, id: abcdabcd}]
+   - parameter: [{src: hdca, id: abcdabcd}, {src: hda, id: abcdabcd}]
+  request_invalid:
+   - parameter: {src: hda, id: 5}
+   - parameter: [{src: hdca, id: 5}, {src: hda, id: 5}]
+   - parameter: null
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+  request_internal_valid:
+   - parameter: {src: hda, id: 5}
+   - parameter: {src: hdca, id: 5}
+   - parameter: [{src: hda, id: 5}]
+   - parameter: [{src: hdca, id: 5}]
+   - parameter: [{src: hdca, id: 5}, {src: hda, id: 5}]
+  request_internal_invalid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: [{src: hdca, id: abcdabcd}, {src: hda, id: abcdabcd}]
+   - parameter: null
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+
+gx_data_multiple_optional:
+  request_valid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: [{src: hda, id: abcdabcd}]
+   - parameter: [{src: hdca, id: abcdabcd}]
+   - parameter: [{src: hdca, id: abcdabcd}, {src: hda, id: abcdabcd}]
+   - parameter: null
+   - {}
+  request_invalid:
+   - parameter: {src: hda, id: 5}
+   - parameter: {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+  request_internal_valid:
+   - parameter: {src: hda, id: 5}
+   - parameter: {src: hdca, id: 5}
+   - parameter: [{src: hda, id: 5}]
+   - parameter: [{src: hdca, id: 5}]
+   - parameter: [{src: hdca, id: 5}, {src: hda, id: 5}]
+   - parameter: null
+   - {}
+  request_internal_invalid:
+   - parameter: {src: hda, id: abcdabcd}
+   - parameter: {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+
+gx_data_collection:
+  request_valid:
+   - parameter: {src: hdca, id: abcdabcd}
+  request_invalid:
+   - parameter: {src: hdca, id: 7}
+   - parameter: null
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+  request_internal_valid:
+   - parameter: {src: hdca, id: 5}
+  request_internal_invalid:
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: null
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+
+gx_data_collection_optional:
+  request_valid:
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: null
+   - {}
+  request_invalid:
+   - parameter: {src: hdca, id: 7}
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+   - parameter: {}
+  request_internal_valid:
+   - parameter: {src: hdca, id: 5}
+   - parameter: null
+   - {}
+  request_internal_invalid:
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+   - parameter: {}
+
+gx_conditional_boolean:
+  request_valid:
+    - conditional_parameter:
+        test_parameter: true
+        integer_parameter: 1
+    - conditional_parameter:
+        test_parameter: true
+        integer_parameter: 2
+    - conditional_parameter:
+        test_parameter: false
+        boolean_parameter: true
+  request_invalid:
+    - conditional_parameter:
+        test_parameter: false
+        integer_parameter: 1
+    - conditional_parameter:
+        test_parameter: null
+    - conditional_parameter: 
+        test_parameter: true
+    - conditional_parameter:
+        test_parameter: false
+    - conditional_parameter:
+        test_parameter: true
+        integer_parameter: "1"
+    - conditional_parameter: 
+        test_parameter: true
+        integer_parameter: null
+
+gx_conditional_conditional_boolean:
+  request_valid:
+    - outer_conditional_parameter:
+        outer_test_parameter: false
+        boolean_parameter: true
+    - outer_conditional_parameter:
+        outer_test_parameter: true
+        inner_conditional_parameter: 
+          inner_test_parameter: true
+          integer_parameter: 5
+    - outer_conditional_parameter:
+        outer_test_parameter: true
+        inner_conditional_parameter:
+          inner_test_parameter: false
+          boolean_parameter: true
+  request_invalid:
+    - outer_conditional_parameter:
+        outer_test_parameter: true
+        boolean_parameter: true
+    - outer_conditional_parameter:
+        outer_test_parameter: true
+        inner_conditional_parameter:
+          inner_test_parameter: false
+          integer_parameter: 5
+    - outer_conditional_parameter:
+        outer_test_parameter: true
+        inner_conditional_parameter:
+          inner_test_parameter: true
+          integer_parameter: true
+
+gx_repeat_boolean:
+  request_valid:
+    - parameter:
+      - { boolean_parameter: true }
+    - parameter: []
+    - parameter:
+      - { boolean_parameter: true }
+      - { boolean_parameter: false }
+  request_invalid:
+    - parameter:
+      - { boolean_parameter: 4 }
+    - parameter:
+      - { foo: 4 }
+    - parameter:
+      - { boolean_parameter: true }
+      - { boolean_parameter: false }
+      - { boolean_parameter: 4 }
+    - parameter: 5
+
+cwl_int:
+  request_valid:
+    - parameter: 5
+  request_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: null
+    - parameter: "None"
+
+
+# TODO: Not a thing perhaps?
+# cwl_null:
+#   request_valid:
+#     - parameter: null
+#     - {}
+#   request_invalid:
+#     - parameter: "5"
+#     - parameter: 5
+#     - parameter: {}
+
+cwl_int_optional:
+  request_valid:
+    - parameter: 5
+    - parameter: null
+  request_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: "None"
+
+cwl_float:
+  request_valid:
+    - parameter: 5
+    - parameter: 5.0
+  request_invalid:
+    - parameter: null
+    - parameter: "5"
+    - {}
+    - parameter: "None"
+
+cwl_float_optional:
+  request_valid:
+    - parameter: 5
+    - parameter: 5.0
+    - parameter: null
+  request_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: "None"
+
+cwl_string:
+  request_valid:
+    - parameter: "moo"
+    - parameter: ""
+  request_invalid:
+    - parameter: null
+    - {}
+    - parameter: 5
+
+cwl_string_optional:
+  request_valid:
+    - parameter: "moo"
+    - parameter: ""
+    - parameter: null
+  request_invalid:
+    - {}
+    - parameter: 5
+
+cwl_boolean:
+  request_valid:
+    - parameter: true
+    - parameter: false
+  request_invalid:
+    - parameter: null
+    - {}
+    - parameter: 5
+    - parameter: "true"
+    - parameter: "True"
+
+cwl_boolean_optional:
+  request_valid:
+    - parameter: true
+    - parameter: false
+    - parameter: null
+  request_invalid:
+    - {}
+    - parameter: 5
+    - parameter: "true"
+    - parameter: "True"
+
+cwl_file:
+  request_valid:
+   - parameter: {src: hda, id: abcdabcd}
+  request_invalid:
+   - parameter: {src: hda, id: 7}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: null
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+
+cwl_directory:
+  request_valid:
+   - parameter: {src: hda, id: abcdabcd}
+  request_invalid:
+   - parameter: {src: hda, id: 7}
+   - parameter: {src: hdca, id: abcdabcd}
+   - parameter: null
+   - parameter: {src: fooda, id: abcdabcd}
+   - parameter: {id: abcdabcd}
+   - parameter: {}
+   - {}
+   - parameter: true
+   - parameter: 5
+   - parameter: "5"
+

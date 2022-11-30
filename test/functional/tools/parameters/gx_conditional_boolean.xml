@@ -1,0 +1,21 @@
+<tool id="gx_conditional_boolean" name="gx_conditional_boolean" version="1.0.0">
+    <command><![CDATA[
+echo '$conditional_parameter.test_parameter' >> '$output'
+    ]]></command>
+    <inputs>
+        <conditional name="conditional_parameter">
+            <param name="test_parameter" type="boolean" />
+            <when value="true">
+                <param name="integer_parameter" type="integer" value="1" />
+            </when>
+            <when value="false">
+                <param name="boolean_parameter" type="boolean" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt" />
+    </outputs>
+    <tests>
+    </tests>
+</tool>
