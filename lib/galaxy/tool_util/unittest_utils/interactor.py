@@ -1,3 +1,8 @@
+from galaxy.tool_util.verify.interactor import (
+    ToolTestCase,
+    ToolTestCaseList,
+)
+
 NEW_HISTORY = object()
 NEW_HISTORY_ID = "new"
 EXISTING_HISTORY = {"id": "existing"}
@@ -41,7 +46,7 @@ class MockGalaxyInteractor:
             },
         }
 
-    def get_tool_tests(self, tool_id, tool_version=None):
+    def get_tool_tests(self, tool_id, tool_version=None) -> ToolTestCaseList:
         tool_dict = self.get_tests_summary().get(tool_id)
         test_defs = []
         for this_tool_version, version_defs in tool_dict.items():
@@ -49,14 +54,16 @@ class MockGalaxyInteractor:
                 continue
 
             count = version_defs["count"]
-            for _ in range(count):
+            for index in range(count):
                 test_def = {
                     "tool_id": tool_id,
                     "tool_version": this_tool_version or "0.1.1-default",
+                    "name": tool_id,
+                    "test_index": index,
                 }
-                test_defs.append(test_def)
+                test_defs.append(ToolTestCase(**test_def))
 
             if tool_version is None or tool_version != "*":
                 break
 
-        return test_defs
+        return ToolTestCaseList(__root__=test_defs)
