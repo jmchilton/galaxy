@@ -1683,7 +1683,7 @@ class ToolTestCase(BaseModel):
     tool_id: str
     tool_version: str
     test_index: int
-    input_state: TestCaseToolState
+    # input_state: TestCaseToolState
 
 
 class ToolTestCaseList(BaseModel):

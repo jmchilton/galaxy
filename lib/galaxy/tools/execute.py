@@ -77,8 +77,8 @@ def execute_2(
     job_callback: Optional[Callable] = None,
     workflow_resource_parameters: Optional[Dict[str, Any]] = None,
     validate_outputs: bool = False,
-):
-    _execute(
+) -> "ExecutionTracker":
+    return _execute(
         trans,
         tool,
         mapping_params,
@@ -110,13 +110,13 @@ def execute(
     completed_jobs: Optional[Dict[int, Optional[model.Job]]] = None,
     workflow_resource_parameters: Optional[Dict[str, Any]] = None,
     validate_outputs: bool = False,
-):
+) -> "ExecutionTracker":
     """
     Execute a tool and return object containing summary (output data, number of
     failures, etc...).
     """
     completed_jobs = completed_jobs or {}
-    _execute(
+    return _execute(
         trans,
         tool,
         mapping_params,
@@ -149,7 +149,7 @@ def _execute(
     completed_jobs: Dict[int, Optional[model.Job]],
     workflow_resource_parameters: Optional[Dict[str, Any]],
     validate_outputs: bool,
-):
+) -> "ExecutionTracker":
     if max_num_jobs is not None:
         assert invocation_step is not None
     if rerun_remap_job_id:

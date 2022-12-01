@@ -1,6 +1,6 @@
 <tool id="gx_conditional_boolean" name="gx_conditional_boolean" version="1.0.0">
     <command><![CDATA[
-echo '$conditional_parameter.test_parameter' >> '$output'
+echo 'test: $conditional_parameter.test_parameter' >> '$output'
     ]]></command>
     <inputs>
         <conditional name="conditional_parameter">
@@ -17,5 +17,36 @@ echo '$conditional_parameter.test_parameter' >> '$output'
         <data name="output" format="txt" />
     </outputs>
     <tests>
+        <test>
+            <output name="output">
+                <assert_contents>
+                    <has_line line="test: false" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="test_parameter" value="true" />
+            <output name="output">
+                <assert_contents>
+                    <has_line line="test: true" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="test_parameter" value_json="false" />
+            <output name="output">
+                <assert_contents>
+                    <has_line line="test: false" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="test_parameter" value_json="true" />
+            <output name="output">
+                <assert_contents>
+                    <has_line line="test: true" />
+                </assert_contents>
+            </output>
+        </test>
     </tests>
 </tool>
