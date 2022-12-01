@@ -5,8 +5,6 @@ from typing import (
     Optional,
 )
 
-from sqlalchemy import null
-
 from galaxy.tool_util.parser.cwl import CwlInputSource
 from galaxy.tool_util.parser.interface import (
     InputSource,
