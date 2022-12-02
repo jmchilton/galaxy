@@ -3,17 +3,20 @@ from copy import deepcopy
 from typing import (
     Dict,
     List,
+    Optional,
+    Tuple,
 )
 
 from galaxy.util import (
     Element,
+    ElementTree,
     parse_xml,
 )
 
 REQUIRED_PARAMETER = object()
 
 
-def load_with_references(path):
+def load_with_references(path) -> Tuple[ElementTree, Optional[List[str]]]:
     """Load XML documentation from file system and preprocesses XML macros.
 
     Return the XML representation of the expanded tree and paths to
@@ -49,7 +52,7 @@ def load_with_references(path):
     return tree, macro_paths
 
 
-def load(path):
+def load(path) -> ElementTree:
     tree, _ = load_with_references(path)
     return tree
 
@@ -80,7 +83,7 @@ def imported_macro_paths(root):
     return _imported_macro_paths_from_el(macros_el)
 
 
-def _import_macros(macros_el, path, macros):
+def _import_macros(macros_el, path, macros) -> Optional[List[str]]:
     """
     root the parsed XML tree
     path the path to the main xml document
@@ -218,7 +221,7 @@ def _expand_yield_statements(macro_def, expand_el):
         _xml_replace(yield_el, expand_el_children)
 
 
-def _load_macros(macros_el, xml_base_dir, macros):
+def _load_macros(macros_el, xml_base_dir, macros) -> List[str]:
     # Import macros from external files.
     macro_paths = _load_imported_macros(macros_el, xml_base_dir, macros)
     # Load all directly defined macros.
@@ -250,7 +253,7 @@ def _load_embedded_macros(macros_el, xml_base_dir, macros):
                 macros[tag] = [macro_el]
 
 
-def _load_imported_macros(macros_el, xml_base_dir, macros):
+def _load_imported_macros(macros_el, xml_base_dir, macros) -> List[str]:
     macro_paths = []
 
     for tool_relative_import_path in _imported_macro_paths_from_el(macros_el):
@@ -272,7 +275,7 @@ def _imported_macro_paths_from_el(macros_el):
     return imported_macro_paths
 
 
-def _load_macro_file(path, xml_base_dir, macros):
+def _load_macro_file(path, xml_base_dir, macros) -> List[str]:
     tree = parse_xml(path, strip_whitespace=False)
     root = tree.getroot()
     return _load_macros(root, xml_base_dir, macros)
