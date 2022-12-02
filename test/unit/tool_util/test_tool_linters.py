@@ -23,7 +23,10 @@ from galaxy.tool_util.linters import (
 )
 from galaxy.tool_util.loader_directory import load_tool_sources_from_path
 from galaxy.tool_util.parser.xml import XmlToolSource
-from galaxy.util import parse_xml
+from galaxy.util import (
+    ElementTree,
+    parse_xml,
+)
 from galaxy.util.xml_macros import load_with_references
 
 # TODO tests tool xml for general linter
@@ -188,6 +191,22 @@ INPUTS_DATA_PARAM = """
 <tool>
     <inputs>
         <param name="valid_name" type="data"/>
+    </inputs>
+</tool>
+"""
+
+INPUTS_BOOLEAN_PARAM_SWAPPED_LABELS = """
+<tool>
+    <inputs>
+        <param name="valid_name" type="boolean" truevalue="false" falsevalue="true" />
+    </inputs>
+</tool>
+"""
+
+INPUTS_BOOLEAN_PARAM_DUPLICATE_LABELS = """
+<tool>
+    <inputs>
+        <param name="valid_name" type="boolean" truevalue="--foo" falsevalue="--foo" />
     </inputs>
 </tool>
 """
@@ -780,7 +799,7 @@ def lint_ctx_xpath():
     return LintContext("all", lint_message_class=XMLLintMessageXPath)
 
 
-def get_xml_tool_source(xml_string):
+def get_xml_tool_source(xml_string) -> ElementTree:
     with tempfile.NamedTemporaryFile(mode="w", suffix="tool.xml") as tmp:
         tmp.write(xml_string)
         tmp.flush()
@@ -1052,6 +1071,20 @@ def test_inputs_param_type(lint_ctx):
 
 def test_inputs_data_param(lint_ctx):
     tool_source = get_xml_tool_source(INPUTS_DATA_PARAM)
+    print(tool_source)
+    run_lint(lint_ctx, inputs.lint_inputs, tool_source)
+    assert "Found 1 input parameters." in lint_ctx.info_messages
+    assert (
+        "Param input [valid_name] with no format specified - 'data' format will be assumed." in lint_ctx.warn_messages
+    )
+    assert len(lint_ctx.info_messages) == 1
+    assert not lint_ctx.valid_messages
+    assert len(lint_ctx.warn_messages) == 1
+    assert not lint_ctx.error_messages
+
+
+def test_inputs_boolean_param(lint_ctx):
+    tool_source = get_xml_tool_source(INPUTS_BOOLEAN_PARAM_DUPLICATE_LABELS)
     run_lint(lint_ctx, inputs.lint_inputs, tool_source)
     assert "Found 1 input parameters." in lint_ctx.info_messages
     assert (
