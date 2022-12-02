@@ -1,5 +1,4 @@
 # Tools to create.
-# - gx_conditional_boolean_optional
 # - gx_conditional_boolean_optional_discriminate_on_string_value
 # - gx_conditional_boolean_discriminate_on_mixed_value
 # - gx_conditional_boolean_empty_default

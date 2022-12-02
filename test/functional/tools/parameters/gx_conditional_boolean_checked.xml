@@ -1,7 +1,8 @@
 <tool id="gx_conditional_boolean_checked" name="gx_conditional_boolean_checked" version="1.0.0">
-    <command><![CDATA[
-echo '$conditional_parameter.test_parameter' >> '$output'
-    ]]></command>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="common_conditional_tags" />
     <inputs>
         <conditional name="conditional_parameter">
             <param name="test_parameter" type="boolean" checked="true" />
@@ -13,9 +14,39 @@ echo '$conditional_parameter.test_parameter' >> '$output'
             </when>
         </conditional>
     </inputs>
-    <outputs>
-        <data name="output" format="txt" />
-    </outputs>
     <tests>
+        <test>
+            <expand macro="assert_output">
+                <has_line line="test: true" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="true" />
+                <has_json_property_with_value property="integer_parameter" value="1" />
+            </expand>
+        </test>
+        <test>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value="true" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: true" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="true" />
+                <has_json_property_with_value property="integer_parameter" value="1" />
+            </expand>
+        </test>
+        <test>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value="false" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: false" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="false" />
+                <has_json_property_with_value property="boolean_parameter" value="false" />
+            </expand>
+        </test>
     </tests>
 </tool>

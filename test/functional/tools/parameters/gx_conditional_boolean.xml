@@ -1,7 +1,8 @@
 <tool id="gx_conditional_boolean" name="gx_conditional_boolean" version="1.0.0">
-    <command><![CDATA[
-echo 'test: $conditional_parameter.test_parameter' >> '$output'
-    ]]></command>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="common_conditional_tags" />    
     <inputs>
         <conditional name="conditional_parameter">
             <param name="test_parameter" type="boolean" />
@@ -13,40 +14,87 @@ echo 'test: $conditional_parameter.test_parameter' >> '$output'
             </when>
         </conditional>
     </inputs>
-    <outputs>
-        <data name="output" format="txt" />
-    </outputs>
     <tests>
         <test>
-            <output name="output">
-                <assert_contents>
-                    <has_line line="test: false" />
-                </assert_contents>
-            </output>
+            <expand macro="assert_output">
+                <has_line line="test: false" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="false" />
+                <has_json_property_with_value property="boolean_parameter" value="false" />
+            </expand>
         </test>
         <test>
-            <param name="test_parameter" value="true" />
-            <output name="output">
-                <assert_contents>
-                    <has_line line="test: true" />
-                </assert_contents>
-            </output>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value="false" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: false" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="false" />
+                <has_json_property_with_value property="boolean_parameter" value="false" />
+            </expand>
         </test>
         <test>
-            <param name="test_parameter" value_json="false" />
-            <output name="output">
-                <assert_contents>
-                    <has_line line="test: false" />
-                </assert_contents>
-            </output>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value="True" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: true" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="true" />
+                <has_json_property_with_value property="integer_parameter" value="1" />
+            </expand>
         </test>
         <test>
-            <param name="test_parameter" value_json="true" />
-            <output name="output">
-                <assert_contents>
-                    <has_line line="test: true" />
-                </assert_contents>
-            </output>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value="False" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: false" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="false" />
+                <has_json_property_with_value property="boolean_parameter" value="false" />
+            </expand>
+        </test>
+        <test>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value="true" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: true" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="true" />
+                <has_json_property_with_value property="integer_parameter" value="1" />
+            </expand>
+        </test>
+        <test>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value_json="false" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: false" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="false" />
+                <has_json_property_with_value property="boolean_parameter" value="false" />
+            </expand>
+        </test>
+        <test>
+            <conditional name="conditional_parameter">
+                <param name="test_parameter" value_json="true" />
+            </conditional>
+            <expand macro="assert_output">
+                <has_line line="test: true" />
+            </expand>
+            <expand macro="assert_inputs_json">
+                <has_json_property_with_value property="test_parameter" value="true" />
+                <has_json_property_with_value property="integer_parameter" value="1" />
+            </expand>
         </test>
     </tests>
 </tool>
