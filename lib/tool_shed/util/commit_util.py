@@ -185,6 +185,18 @@ def handle_directory_changes(
     content_alert_str = ""
     files_to_remove = []
     filenames_in_archive = [os.path.normpath(os.path.join(full_path, name)) for name in filenames_in_archive]
+    if repository.is_new():
+        for root, dirs, files in os.walk(full_path):
+            for name in files:
+                full_name = os.path.join(root, name)
+                if full_name not in filenames_in_archive:
+                    files_to_remove.append(full_name)
+                else:
+                    log.info(f"About to read file in new repo... {full_name} is link {os.path.islink(full_name)}")
+                    try:
+                        log.info(open(full_name, "r").read(256))
+                    except Exception:
+                        log.exception("Ekkk...")
     if remove_repo_files_not_in_tar and not repository.is_new():
         # We have a repository that is not new (it contains files), so discover those files that are in the
         # repository, but not in the uploaded archive.
@@ -202,18 +214,27 @@ def handle_directory_changes(
                     full_name = os.path.join(root, name)
                     if full_name not in filenames_in_archive:
                         files_to_remove.append(full_name)
+                    else:
+                        log.info(f"About to read file... {full_name} is link {os.path.islink(full_name)}")
+                        try:
+                            log.info(open(full_name, "r").read(256))
+                        except Exception:
+                            log.exception("Ekkk...")
         for repo_file in files_to_remove:
             # Remove files in the repository (relative to the upload point) that are not in
             # the uploaded archive.
             try:
                 hg_util.remove_path(repo_path, repo_file)
+                log.info(f"removing are {repo_file}")
             except Exception as e:
                 error_message = f"Error removing file {repo_file} in mercurial repo:\n{e}"
-                log.debug(error_message)
+                log.info(error_message)
                 return "error", error_message, files_to_remove, content_alert_str, 0, 0
     # See if any admin users have chosen to receive email alerts when a repository is updated.
     # If so, check every uploaded file to ensure content is appropriate.
     check_contents = check_file_contents_for_email_alerts(app)
+    log.info(f"filenames_in_archive are {filenames_in_archive}")
+    log.info(f"hg diff is {hg_util.debug_hg_diff(repo_path)}")
     for filename_in_archive in filenames_in_archive:
         # Check file content to ensure it is appropriate.
         if check_contents and os.path.isfile(filename_in_archive):

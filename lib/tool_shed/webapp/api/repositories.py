@@ -1029,6 +1029,7 @@ class RepositoriesController(BaseAPIController):
         tip = repository.tip()
 
         file_data = payload.get("file")
+        log.info(f"\n\n\n\n\nHAVE A NEW UPLOAD {kwd}\n\n\n\n")
         # Code stolen from gx's upload_common.py
         if isinstance(file_data, cgi_FieldStorage):
             assert not isinstance(file_data.file, StringIO)

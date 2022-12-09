@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -6,6 +7,8 @@ from tool_shed.util import (
     commit_util,
     xml_util,
 )
+
+log = logging.getLogger(__name__)
 
 
 def upload_tar(
@@ -63,7 +66,8 @@ def upload_tar(
                 if altered:
                     tmp_filename = xml_util.create_and_write_tmp_file(root_elem)
                     shutil.move(tmp_filename, uploaded_file_name)
-        return commit_util.handle_directory_changes(
+        log.info("about to handle_directory_changes...")
+        rval = commit_util.handle_directory_changes(
             trans.app,
             trans.request.host,
             trans.user.username,
@@ -76,3 +80,5 @@ def upload_tar(
             undesirable_dirs_removed,
             undesirable_files_removed,
         )
+        log.info(f"rval is {rval}")
+        return rval

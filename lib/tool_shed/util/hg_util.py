@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from datetime import datetime
 from time import gmtime
+from typing import List
 
 from galaxy.tool_shed.util import basic_util
 from galaxy.tool_shed.util.hg_util import (
@@ -26,45 +27,81 @@ log = logging.getLogger(__name__)
 INITIAL_CHANGELOG_HASH = "000000000000"
 
 
-def add_changeset(repo_path, path_to_filename_in_archive):
+def debug_hg_diff(cwd: str) -> str:
+    return _hg_execute(["diff"], cwd)
+
+
+def _debug_hg_status(cwd: str) -> str:
     try:
-        subprocess.check_output(["hg", "add", path_to_filename_in_archive], stderr=subprocess.STDOUT, cwd=repo_path)
+        return _hg_execute_raw(["status"], cwd)
+    except subprocess.CalledProcessError as cpe:
+        return f"*Failed to execute hg status - output was {unicodify(cpe.output)}"
     except Exception as e:
-        error_message = f"Error adding '{path_to_filename_in_archive}' to repository: {unicodify(e)}"
-        if isinstance(e, subprocess.CalledProcessError):
-            error_message += f"\nOutput was:\n{unicodify(e.output)}"
-        raise Exception(error_message)
+        return f"*Failed to execute hg status - exception was ({e})"
+
+
+def _debug_hg_log(cwd: str) -> str:
+    try:
+        return _hg_execute_raw(["log"], cwd)
+    except subprocess.CalledProcessError as cpe:
+        return f"*Failed to execute hg log - output was {unicodify(cpe.output)}"
+    except Exception as e:
+        return f"*Failed to execute hg status - exception was ({e})"
+
+
+class HgExecutionException(Exception):
+    def __init__(self, command: List[str], return_code: int, output: str, status_output: str, log_output: str):
+        self.command = command
+        self.output = output
+        self.status_output = status_output
+        self.log_output = log_output
+        self.return_code = return_code
+        log.warning(f"Raising hg execution exception {self.message}")
+
+    @property
+    def nothing_changed_error(self) -> bool:
+        return self.return_code == 1 and "nothing changed" in self.output
+
+    @property
+    def message(self) -> str:
+        return f"mercurial command [{self.command}] failed with return code [{self.return_code}]. output was [{self.output}], hg status is [{self.status_output}], hg log is [{self.log_output}]"
+
+
+def _hg_execute_raw(args: List[str], cwd: str) -> str:
+    hg_cmd = ["hg", "--verbose", *args]
+    return unicodify(subprocess.check_output(hg_cmd, stderr=subprocess.STDOUT, cwd=cwd))
+
+
+def _hg_execute(args: List[str], cwd: str):
+    try:
+        return _hg_execute_raw(args, cwd)
+    except subprocess.CalledProcessError as e:
+        raise HgExecutionException(
+            ["hg", "--verbose", *args],
+            e.returncode,
+            unicodify(e.output),
+            status_output=_debug_hg_status(cwd),
+            log_output=_debug_hg_log(cwd),
+        )
+
+
+def add_changeset(repo_path, path_to_filename_in_archive):
+    _hg_execute(["add", path_to_filename_in_archive], repo_path)
 
 
 def archive_repository_revision(app, repository, archive_dir, changeset_revision):
     """Create an un-versioned archive of a repository."""
     repo_path = repository.repo_path(app)
-    try:
-        subprocess.check_output(
-            ["hg", "archive", "-r", changeset_revision, archive_dir], stderr=subprocess.STDOUT, cwd=repo_path
-        )
-    except Exception as e:
-        error_message = f"Error attempting to archive revision '{changeset_revision}' of repository '{repository.name}': {unicodify(e)}"
-        if isinstance(e, subprocess.CalledProcessError):
-            error_message += f"\nOutput was:\n{unicodify(e.output)}"
-        log.exception(error_message)
-        raise Exception(error_message)
+    _hg_execute(["archive", "-r", str(changeset_revision), archive_dir], repo_path)
 
 
 def commit_changeset(repo_path, full_path_to_changeset, username, message):
     try:
-        subprocess.check_output(
-            ["hg", "commit", "-u", username, "-m", message, full_path_to_changeset],
-            stderr=subprocess.STDOUT,
-            cwd=repo_path,
-        )
-    except Exception as e:
-        error_message = f"Error committing '{full_path_to_changeset}' to repository: {unicodify(e)}"
-        if isinstance(e, subprocess.CalledProcessError):
-            if e.returncode == 1 and "nothing changed" in unicodify(e.output):
-                return
-            error_message += f"\nOutput was:\n{unicodify(e.output)}"
-        raise Exception(error_message)
+        log.info(f"about to commit with hg status [{_debug_hg_status(repo_path)}]")
+        _hg_execute(["commit", "-u", username, "-m", message, full_path_to_changeset], repo_path)
+    except HgExecutionException as e:
+        if e.nothing_changed_error:
+            return
 
 
 def get_hgrc_path(repo_path):
@@ -240,28 +277,14 @@ def init_repository(repo_path):
     """
     Create a new Mercurial repository in the given directory.
     """
-    try:
-        subprocess.check_output(["hg", "init"], stderr=subprocess.STDOUT, cwd=repo_path)
-    except Exception as e:
-        error_message = f"Error initializing repository: {unicodify(e)}"
-        if isinstance(e, subprocess.CalledProcessError):
-            error_message += f"\nOutput was:\n{unicodify(e.output)}"
-        raise Exception(error_message)
+    _hg_execute(["init"], repo_path)
 
 
 def changeset2rev(repo_path, changeset_revision):
     """
     Return the revision number (as an int) corresponding to a specified changeset revision.
     """
-    try:
-        rev = subprocess.check_output(
-            ["hg", "id", "-r", changeset_revision, "-n"], stderr=subprocess.STDOUT, cwd=repo_path
-        )
-    except Exception as e:
-        error_message = f"Error looking for changeset '{changeset_revision}': {unicodify(e)}"
-        if isinstance(e, subprocess.CalledProcessError):
-            error_message += f"\nOutput was:\n{unicodify(e.output)}"
-        raise Exception(error_message)
+    rev = _hg_execute(["id", "-r", changeset_revision, "-n"], repo_path)
     return int(rev.strip())
 
 

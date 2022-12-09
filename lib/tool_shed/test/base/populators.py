@@ -47,17 +47,25 @@ TEST_DATA_REPO_FILES = files("tool_shed.test.test_data")
 def repo_files(test_data_path: str) -> List[Path]:
     repos = TEST_DATA_REPO_FILES.joinpath(f"repos/{test_data_path}")
     paths = sorted(Path(str(x)) for x in repos.iterdir())
+    print(paths)
     return paths
 
 
 def repo_tars(test_data_path: str) -> List[Path]:
     tar_paths = []
     for path in repo_files(test_data_path):
+        print(path)
         if path.is_dir():
             prefix = f"shedtest_{test_data_path}_{path.name}_"
             tf = NamedTemporaryFile(delete=False, prefix=prefix)
             with tarfile.open(tf.name, "w:gz") as tar:
-                tar.add(str(path.absolute()), arcname=test_data_path or path.name)
+                print(f"Adding {str(path)}")
+
+                def debug(tarinfo):
+                    print(tarinfo.name)
+                    return tarinfo
+
+                tar.add(str(path.absolute()), arcname="root", filter=debug)
             tar_path = tf.name
         else:
             tar_path = str(path)
