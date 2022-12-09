@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          path: 'galaxy root'
+          path: 'galaxy_root'
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
@@ -46,17 +46,17 @@ jobs:
         id: pip-cache
         with:
           path: ~/.cache/pip
-          key: pip-cache-${{ matrix.python-version }}-${{ hashFiles('galaxy root/requirements.txt') }}
+          key: pip-cache-${{ matrix.python-version }}-${{ hashFiles('galaxy_root/requirements.txt') }}
       - name: Cache galaxy venv
         uses: actions/cache@v3
         with:
-          path: 'galaxy root/.venv'
-          key: gxy-venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('galaxy root/requirements.txt') }}-toolshed
+          path: 'galaxy_root/.venv'
+          key: gxy-venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('galaxy_root/requirements.txt') }}-toolshed
       - name: Run tests
         run: './run_tests.sh -toolshed lib/tool_shed/test/functional/test_shed_repositories.py::TestShedRepositoriesApi::test_reset_on_simple_repository lib/tool_shed/test/functional/test_shed_repositories.py::TestShedRepositoriesApi::test_repo_tars'
-        working-directory: 'galaxy root'
+        working-directory: 'galaxy_root'
       - uses: actions/upload-artifact@v3
         if: failure()
         with:
           name: Toolshed test results (${{ matrix.python-version }})
-          path: 'galaxy root/run_toolshed_tests.html'
+          path: 'galaxy_root/run_toolshed_tests.html'
