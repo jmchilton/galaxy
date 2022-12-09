@@ -8,6 +8,9 @@ on:
     paths-ignore:
       - 'doc/**'
       - 'lib/galaxy_test/selenium/**'
+env:
+  GALAXY_TEST_DBURI: 'postgresql://postgres:postgres@localhost:5432/galaxy?client_encoding=utf8'
+  TOOL_SHED_TEST_DBURI: 'postgresql://postgres:postgres@localhost:5432/toolshed?client_encoding=utf8'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -18,6 +21,15 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.9']
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v3
         with:
