@@ -15,6 +15,7 @@ from requests import (
     put,
 )
 
+from galaxy.tool_util.verify.interactor import ToolTestCase
 from galaxy.util import galaxy_root_path
 from galaxy.util.unittest_utils import skip_if_github_down
 from galaxy_test.base import rules_test_data
@@ -1451,15 +1452,17 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
         def tool_test_case_list(inputs, required_files):
             return [
-                {
-                    "inputs": inputs,
-                    "outputs": {},
-                    "required_files": required_files,
-                    "name": "dbkey_output_action-0",
-                    "test_index": 0,
-                    "tool_version": "0.1.0",
-                    "tool_id": "dbkey_output_action",
-                }
+                ToolTestCase(
+                    **{
+                        "inputs": inputs,
+                        "outputs": {},
+                        "required_files": required_files,
+                        "name": "dbkey_output_action-0",
+                        "test_index": 0,
+                        "tool_version": "0.1.0",
+                        "tool_id": "dbkey_output_action",
+                    }
+                )
             ]
 
         tool_test_dicts = tool_test_case_list(

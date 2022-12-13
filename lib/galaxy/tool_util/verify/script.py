@@ -26,7 +26,7 @@ import yaml
 from galaxy.tool_util.verify.interactor import (
     DictClientTestConfig,
     GalaxyInteractorApi,
-    ToolTestDictsT,
+    ToolTestCase,
     verify_tool,
 )
 
@@ -340,9 +340,11 @@ def build_case_references(
                     test_references.append(test_reference)
     else:
         assert tool_id
-        tool_test_dicts: ToolTestDictsT = galaxy_interactor.get_tool_tests(tool_id, tool_version=tool_version)
+        tool_test_dicts: List[ToolTestCase] = galaxy_interactor.get_tool_tests_model(
+            tool_id, tool_version=tool_version
+        ).__root__
         for i, tool_test_dict in enumerate(tool_test_dicts):
-            this_tool_version = tool_test_dict.get("tool_version", tool_version)
+            this_tool_version = tool_test_dict.tool_version or tool_version
             this_test_index = i
             if test_index == ALL_TESTS or i == test_index:
                 test_reference = TestReference(tool_id, this_tool_version, this_test_index)
