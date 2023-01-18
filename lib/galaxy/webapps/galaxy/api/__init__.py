@@ -104,7 +104,7 @@ class GalaxyTypeDepends(Depends):
         self.galaxy_type_depends = dep_type
 
 
-def depends(dep_type: Type[T]) -> T:
+def depends(dep_type: Type[T], get_app=get_app) -> T:
     def _do_resolve(request: Request):
         return get_app().resolve(dep_type)
 
@@ -173,7 +173,10 @@ class UrlBuilder:
         query_params = path_params.pop("query_params", None)
         try:
             if qualified:
-                url = self.request.url_for(name, **path_params)
+                if name == "/":
+                    url = str(self.request.base_url)
+                else:
+                    url = self.request.url_for(name, **path_params)
             else:
                 url = self.request.app.url_path_for(name, **path_params)
             if query_params:
@@ -277,8 +280,10 @@ class RestVerb(str, Enum):
     options = "OPTIONS"
 
 
-class Router(InferringRouter):
+class FrameworkRouter(InferringRouter):
     """A FastAPI Inferring Router tailored to Galaxy."""
+
+    admin_user_dependency: Any
 
     def wrap_with_alias(self, verb: RestVerb, *args, alias: Optional[str] = None, **kwd):
         """
@@ -358,9 +363,9 @@ class Router(InferringRouter):
         require_admin = kwd.pop("require_admin", False)
         if require_admin:
             if "dependencies" in kwd:
-                kwd["dependencies"].append(AdminUserRequired)
+                kwd["dependencies"].append(self.admin_user_dependency)
             else:
-                kwd["dependencies"] = [AdminUserRequired]
+                kwd["dependencies"] = [self.admin_user_dependency]
 
         return kwd
 
@@ -372,6 +377,10 @@ class Router(InferringRouter):
         https://fastapi-utils.davidmontague.xyz/user-guide/class-based-views/
         """
         return cbv(self)
+
+
+class Router(FrameworkRouter):
+    admin_user_dependency = AdminUserRequired
 
 
 class APIContentTypeRoute(APIRoute):
