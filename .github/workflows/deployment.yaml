@@ -1,0 +1,42 @@
+name: Deployment Tests
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Galaxy Deployment to target'
+        required: true
+        default: 'usegalaxytest' 
+        type: choice
+        options:
+        - usegalaxytest
+        - usegalaxymain
+      branch:
+        description: 'Branch of code to run from'
+        default: 'dev'
+        type: string        
+jobs:
+  testdeployment:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.7']
+    steps:
+      - uses: actions/checkout@v3
+        ref: ${{ inputs.branch }} 
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+      - name: Cache pip dir
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: pip-cache-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+      - uses: nanasess/setup-chromedriver@v1
+      - name: Run tests
+        run: bash ./tests/deployment/usegalaxystar.bash
+        env:
+          GALAXY_TEST_DEPLOYMENT_TARGET: ${{ inputs.target }}
+          GALAXY_TEST_USEGALAXYMAIN_USER_LOGIN: ${{ secrets.USEGALAXYMAIN_USER_LOGIN }}
+          GALAXY_TEST_USEGALAXYMAIN_USER_PASSWORD: ${{ secrets.USEGALAXYMAIN_USER_PASSWORD }}
