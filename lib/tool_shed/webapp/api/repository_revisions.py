@@ -10,19 +10,17 @@ from galaxy import (
     util,
     web,
 )
-from galaxy.webapps.base.controller import (
-    BaseAPIController,
-    HTTPBadRequest,
-)
+from galaxy.webapps.base.controller import HTTPBadRequest
 from tool_shed.util import (
     metadata_util,
     repository_util,
 )
+from . import BaseShedAPIController
 
 log = logging.getLogger(__name__)
 
 
-class RepositoryRevisionsController(BaseAPIController):
+class RepositoryRevisionsController(BaseShedAPIController):
     """RESTful controller for interactions with tool shed repository revisions."""
 
     def __get_value_mapper(self, trans) -> Dict[str, Callable]:
