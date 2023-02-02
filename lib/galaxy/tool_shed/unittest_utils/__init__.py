@@ -25,7 +25,10 @@ from galaxy.tool_shed.galaxy_install.client import (
 from galaxy.tool_shed.util.repository_util import get_installed_repository
 from galaxy.tool_util.data import ToolDataTableManager
 from galaxy.tool_util.loader_directory import looks_like_a_tool
-from galaxy.tool_util.toolbox.base import AbstractToolBox
+from galaxy.tool_util.toolbox.base import (
+    AbstractToolBox,
+    NullToolTagManager,
+)
 from galaxy.tool_util.toolbox.watcher import (
     get_tool_conf_watcher,
     get_tool_watcher,
@@ -109,6 +112,9 @@ class TestToolBox(AbstractToolBox):
 
     def _looks_like_a_tool(self, path):
         return looks_like_a_tool(path, enable_beta_formats=False)
+
+    def tool_tag_manager(self):
+        return NullToolTagManager()
 
 
 class Watchers:
