@@ -564,9 +564,7 @@ class ShedTwillTestCase(ShedApiTestCase):
         strings_not_displayed: List[str] = []
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
-    def display_installed_jobs_list_page(
-        self, installed_repository, data_manager_names=None, strings_displayed=None
-    ):
+    def display_installed_jobs_list_page(self, installed_repository, data_manager_names=None, strings_displayed=None):
         data_managers = installed_repository.metadata_.get("data_manager", {}).get("data_managers", {})
         if data_manager_names:
             if not isinstance(data_manager_names, list):
