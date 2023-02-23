@@ -5,7 +5,6 @@ import configparser
 import logging
 import logging.config
 import os
-from datetime import timedelta
 
 from galaxy.config import (
     BaseAppConfiguration,
@@ -130,7 +129,6 @@ class ToolShedAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
         self.citation_cache_lock_dir = self._in_root_dir(
             kwargs.get("citation_cache_lock_dir", "database/tool_shed_citations/locks")
         )
-        self.password_expiration_period = timedelta(days=int(self.password_expiration_period))
 
         # Security/Policy Compliance
         self.redact_username_during_deletion = False

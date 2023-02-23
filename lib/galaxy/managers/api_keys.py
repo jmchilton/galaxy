@@ -3,18 +3,23 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from galaxy.model import User
+from typing_extensions import Protocol
+
 from galaxy.structured_app import BasicSharedApp
 
 if TYPE_CHECKING:
     from galaxy.model import APIKeys
 
 
+class IsUserModel(Protocol):
+    id: str
+
+
 class ApiKeyManager:
     def __init__(self, app: BasicSharedApp):
         self.app = app
 
-    def get_api_key(self, user: User) -> Optional["APIKeys"]:
+    def get_api_key(self, user: IsUserModel) -> Optional["APIKeys"]:
         sa_session = self.app.model.context
         api_key = (
             sa_session.query(self.app.model.APIKeys)
@@ -24,7 +29,7 @@ class ApiKeyManager:
         )
         return api_key
 
-    def create_api_key(self, user: User) -> "APIKeys":
+    def create_api_key(self, user: IsUserModel) -> "APIKeys":
         guid = self.app.security.get_new_guid()
         new_key = self.app.model.APIKeys()
         new_key.user_id = user.id
@@ -34,7 +39,7 @@ class ApiKeyManager:
         sa_session.flush()
         return new_key
 
-    def get_or_create_api_key(self, user: User) -> str:
+    def get_or_create_api_key(self, user: IsUserModel) -> str:
         # Logic Galaxy has always used - but it would appear to have a race
         # condition. Worth fixing? Would kind of need a message queue to fix
         # in multiple process mode.
@@ -42,7 +47,7 @@ class ApiKeyManager:
         key = api_key.key if api_key else self.create_api_key(user).key
         return key
 
-    def delete_api_key(self, user: User) -> None:
+    def delete_api_key(self, user: IsUserModel) -> None:
         """Marks the current user API key as deleted."""
         sa_session = self.app.model.context
         # Before it was possible to create multiple API keys for the same user although they were not considered valid

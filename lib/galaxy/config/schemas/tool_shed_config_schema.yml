@@ -588,16 +588,6 @@ mapping:
           are grid views, tool searches, and use of "recently" used tools menu.  The
           log_events and log_actions functionality will eventually be merged.
 
-      password_expiration_period:
-        type: int
-        default: 0
-        required: false
-        desc: |
-          Password expiration period (in days). Users are required to change their
-          password every x days. Users will be redirected to the change password
-          screen when they log in after their password expires. Enter 0 to disable
-          password expiration.
-
       sentry_dsn:
         type: str
         required: false

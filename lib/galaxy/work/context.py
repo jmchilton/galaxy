@@ -1,6 +1,8 @@
 import abc
 from typing import Optional
 
+from typing_extensions import Literal
+
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.model import History
 
@@ -68,6 +70,14 @@ class GalaxyAbstractRequest:
     def host(self) -> str:
         """The host address."""
 
+    @abc.abstractproperty
+    def is_secure(self) -> bool:
+        """Was this a secure (https) request."""
+
+    @abc.abstractmethod
+    def get_cookie(self, name):
+        """Return cookie."""
+
 
 class GalaxyAbstractResponse:
     """Abstract interface to provide access to some response utilities."""
@@ -84,6 +94,21 @@ class GalaxyAbstractResponse:
 
     def get_content_type(self):
         return self.headers.get("content-type", None)
+
+    @abc.abstractmethod
+    def set_cookie(
+        self,
+        key: str,
+        value: str = "",
+        max_age: Optional[int] = None,
+        expires: Optional[int] = None,
+        path: str = "/",
+        domain: Optional[str] = None,
+        secure: bool = False,
+        httponly: bool = False,
+        samesite: Optional[Literal["lax", "strict", "none"]] = "lax",
+    ) -> None:
+        """Set a cookie."""
 
 
 class SessionRequestContext(WorkRequestContext):
