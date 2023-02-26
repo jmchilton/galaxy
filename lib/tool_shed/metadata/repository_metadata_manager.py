@@ -176,11 +176,8 @@ class ToolShedMetadataGenerator(BaseMetadataGenerator):
                     .one()
                 )
             except Exception:
-                error_message = "Ignoring repository dependency definition for tool shed %s, name %s, owner %s, " % (
-                    toolshed,
-                    name,
-                    owner,
-                )
+                error_message = f"Ignoring repository dependency definition for tool shed {toolshed},"
+                error_message += f"name {name}, owner {owner}, "
                 error_message += f"changeset revision {changeset_revision} because the name is invalid.  "
                 log.debug(error_message)
                 is_valid = False
