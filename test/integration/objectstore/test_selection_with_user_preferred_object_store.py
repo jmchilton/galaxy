@@ -8,9 +8,10 @@ from typing import (
     Optional,
 )
 
-from galaxy.model import Dataset
 from galaxy_test.base.populators import WorkflowPopulator
 from galaxy_test.base.workflow_fixtures import (
+    WORKFLOW_NESTED_DUPLICATED,
+    WORKFLOW_NESTED_DUPLICATED_TEST_DATA,
     WORKFLOW_NESTED_OUTPUT,
     WORKFLOW_NESTED_SIMPLE,
     WORKFLOW_NESTED_TWICE_OUTPUT,
@@ -357,6 +358,26 @@ class TestObjectStoreSelectionWithPreferredObjectStoresIntegration(BaseObjectSto
             assert_storage_name_is(output_info, "Static Storage")
             assert_storage_name_is(intermediate_dict, "Dynamic EBS")
 
+    def test_workflow_duplicated_subworkflow(self):
+        with self.dataset_populator.test_history() as history_id:
+            extra_invocation_kwds = {
+                "preferred_outputs_object_store_id": "static",
+                "preferred_intermediate_object_store_id": "dynamic_ebs",
+            }
+            self.workflow_populator.run_workflow(
+                WORKFLOW_NESTED_DUPLICATED,
+                test_data=WORKFLOW_NESTED_DUPLICATED_TEST_DATA,
+                history_id=history_id,
+                extra_invocation_kwds=extra_invocation_kwds,
+            )
+            cat_jobs = self.dataset_populator.history_jobs_for_tool(history_id, "cat")
+            intermediate_info_0 = self._storage_info_for_job_id(cat_jobs[0]["id"])
+            intermediate_info_1 = self._storage_info_for_job_id(cat_jobs[1]["id"])
+            output_info = self._storage_info_for_job_id(cat_jobs[2]["id"])
+            assert_storage_name_is(output_info, "Static Storage")
+            assert_storage_name_is(intermediate_info_0, "Dynamic EBS")
+            assert_storage_name_is(intermediate_info_1, "Dynamic EBS")
+
     def _run_workflow_with_collections_1(self, history_id: str, extra_invocation_kwds: Optional[Dict[str, Any]] = None):
         wf_run = self.workflow_populator.run_workflow(
             WORKFLOW_WITH_COLLECTIONS_1,
@@ -479,8 +500,3 @@ class TestObjectStoreSelectionWithPreferredObjectStoresIntegration(BaseObjectSto
         hda1 = self.dataset_populator.new_dataset(history_id, content="1 2 3")
         self.dataset_populator.wait_for_history(history_id)
         return self._storage_info(hda1), hda1
-
-    @property
-    def _latest_dataset(self):
-        latest_dataset = self._app.model.session.query(Dataset).order_by(Dataset.table.c.id.desc()).first()
-        return latest_dataset

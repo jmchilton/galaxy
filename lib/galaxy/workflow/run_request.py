@@ -502,7 +502,6 @@ def workflow_run_config_to_request(
         workflow_invocation.step_states.append(step_state)
 
         if step.type == "subworkflow":
-            step.workflow_outputs
             assert step.subworkflow
             subworkflow: Workflow = step.subworkflow
             effective_outputs: Optional[List[EffectiveOutput]] = None
@@ -516,6 +515,8 @@ def workflow_run_config_to_request(
                             output_name=subworkflow_output.output_name, step_id=subworkflow_output.workflow_step_id
                         )
                         effective_outputs.append(output_dict)
+            if effective_outputs:
+                log.info(f"effective_outputs for {step.id} are {effective_outputs}")
             subworkflow_run_config = WorkflowRunConfig(
                 target_history=run_config.target_history,
                 replacement_dict=run_config.replacement_dict,

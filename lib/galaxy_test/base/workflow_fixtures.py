@@ -540,6 +540,53 @@ steps:
     label: compose_text_param
 """
 
+WORKFLOW_NESTED_DUPLICATED = """
+format-version: "v2.0"
+$graph:
+- id: nested
+  class: GalaxyWorkflow
+  inputs:
+    inner_input: data
+  outputs:
+    inner_output:
+      outputSource: inner_cat/out_file1
+  steps:
+    inner_cat:
+      tool_id: cat
+      in:
+        input1: inner_input
+        queries_0|input2: inner_input
+
+- id: main
+  class: GalaxyWorkflow
+  inputs:
+    outer_input: data
+  outputs:
+    output_output:
+      outputSource: nested_workflow_2/inner_output
+  steps:
+    outer_cat:
+      tool_id: cat
+      in:
+        input1: outer_input
+    nested_workflow_1:
+      run: '#nested'
+      in:
+        inner_input: outer_cat/out_file1
+    nested_workflow_2:
+      run: '#nested'
+      in:
+        inner_input: nested_workflow_1/inner_output
+"""
+
+WORKFLOW_NESTED_DUPLICATED_TEST_DATA = """
+outer_input:
+  value: 1.bed
+  file_type: bed
+  type: File
+"""
+
+
 WORKFLOW_WITH_OUTPUT_ACTIONS = """
 class: GalaxyWorkflow
 inputs:
