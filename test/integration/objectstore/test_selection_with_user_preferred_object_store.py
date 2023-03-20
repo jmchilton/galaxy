@@ -374,9 +374,9 @@ class TestObjectStoreSelectionWithPreferredObjectStoresIntegration(BaseObjectSto
             intermediate_info_0 = self._storage_info_for_job_id(cat_jobs[0]["id"])
             intermediate_info_1 = self._storage_info_for_job_id(cat_jobs[1]["id"])
             output_info = self._storage_info_for_job_id(cat_jobs[2]["id"])
-            assert_storage_name_is(output_info, "Static Storage")
             assert_storage_name_is(intermediate_info_0, "Dynamic EBS")
             assert_storage_name_is(intermediate_info_1, "Dynamic EBS")
+            assert_storage_name_is(output_info, "Static Storage")
 
     def _run_workflow_with_collections_1(self, history_id: str, extra_invocation_kwds: Optional[Dict[str, Any]] = None):
         wf_run = self.workflow_populator.run_workflow(
