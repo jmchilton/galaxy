@@ -1,5 +1,7 @@
 from galaxy.selenium.navigates_galaxy import edit_details
+from galaxy.selenium.axe_results import FORMS_VIOLATIONS
 from .framework import (
+    managed_history,
     retry_assertion_during_transitions,
     selenium_test,
     SeleniumTestCase,
@@ -168,6 +170,32 @@ class TestHistoryPanel(SeleniumTestCase):
         self.sleep_for(self.wait_types.UX_TRANSITION)
         self.wait_for_selector_clickable(self.history_panel_item_selector(hid=1))
         assert not self.history_panel_item_showing_details(hid=1)
+
+    @selenium_test
+    @managed_history
+    def test_history_dataset_rename(self):
+        hid = 1
+        original_name = "1.txt"
+        new_name = "newname.txt"
+
+        self.perform_upload(self.get_filename(original_name))
+        self.wait_for_history()
+        self.history_panel_wait_for_hid_ok(hid)
+        self.history_panel_item_edit(hid=hid)
+        edit_dataset_attributes = self.components.edit_dataset_attributes
+        name_component = edit_dataset_attributes.name_input
+        assert name_component.wait_for_value() == original_name
+        edit_dataset_attributes._.assert_no_axe_violations_with_impact_of_at_least(
+            "critical", excludes=FORMS_VIOLATIONS
+        )
+        name_component.wait_for_and_clear_and_send_keys(new_name)
+        edit_dataset_attributes.save_button.wait_for_and_click()
+        edit_dataset_attributes.alert.wait_for_visible()
+
+        # assert success message, name updated in form and in history panel
+        assert edit_dataset_attributes.alert.has_class("alert-success")
+        assert name_component.wait_for_value() == new_name
+        assert self.history_panel_item_component(hid=hid).name.wait_for_text() == new_name
 
     @retry_assertion_during_transitions
     def assert_name_changed(self):
