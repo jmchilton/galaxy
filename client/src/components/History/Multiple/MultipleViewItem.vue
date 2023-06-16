@@ -13,6 +13,8 @@
             @view-collection="onViewCollection" />
         <HistoryPanel
             v-else
+            data-description="multiple view history panel"
+            :data-history-id="source.id"
             :history="getHistory"
             :filter="filter"
             :show-controls="false"

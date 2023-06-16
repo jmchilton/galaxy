@@ -373,21 +373,12 @@ multi_history_panel:
     item: '.multi-history-panel #${history_content_type}-${id}'
     histories: '.multi-history-panel .history-layout'
     current_label: '.details .name'
-    switch_history: '.switch-to'
-    current_history_check: '#history-column-${history_id} .details .name'
-    empty_message_check: '.empty-message'
-    switch_button: '#history-column-${history_id} .switch-to'
-  history_dropdown_menu:
-    selectors:
-      _: '[history-dropdown-menu="${history_id}"]'
-      delete:  '[history-dropdown-menu="${history_id}"] > .delete-history'
-      purge:  '[history-dropdown-menu="${history_id}"] > .purge-history'
-  copy_history_modal:
-    selectors:
-      _: '.modal-dialog'
-      copy_btn:
-        type: xpath
-        selector: '//button[contains(text(), "Copy")]'
+    select_link: .history-picker
+    history_selector: .history-selector-modal
+    history_selector_search: '.history-selector-modal input[type="search"]'
+    history_selector_history: '.history-selector-modal button[data-pk="${history_id}"]'
+    history_selector_change: '.history-selector-modal .modal-footer .btn-primary'
+    history_panel: '[data-description="multiple view history panel"][data-history-id="${history_id}"]'
 
 published_histories:
   selectors:

@@ -395,9 +395,10 @@ class NavigatesGalaxy(HasDriver):
             assert final_state == "ok", final_state
         return final_state
 
-    def history_panel_create_new_with_name(self, name):
+    def history_panel_create_new_with_name(self, name) -> str:
         self.history_panel_create_new()
         self.history_panel_rename(name)
+        return self.current_history_id()
 
     def history_panel_create_new(self):
         """Click create new and pause a bit for the history to begin to refresh."""
