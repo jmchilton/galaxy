@@ -802,6 +802,10 @@ export interface paths {
         /** Prepare history for export-style download and write to supplied URI. */
         post: operations["write_store_api_histories__history_id__write_store_post"];
     };
+    "/api/histories/{id}/tool_requests": {
+        /** Return all the tool requests for the tools submitted to this history. */
+        get: operations["tool_requests_api_histories__id__tool_requests_get"];
+    };
     "/api/invocations/{invocation_id}/biocompute": {
         /**
          * Return a BioCompute Object for the workflow invocation.
@@ -871,6 +875,8 @@ export interface paths {
     "/api/jobs": {
         /** Index */
         get: operations["index_api_jobs_get"];
+        /** Create */
+        post: operations["create_api_jobs_post"];
     };
     "/api/jobs/{id}": {
         /**
@@ -1331,6 +1337,10 @@ export interface paths {
          */
         get: operations["reload_api_tool_data__table_name__reload_get"];
     };
+    "/api/tool_requests/{id}/state": {
+        /** Get tool request state. */
+        get: operations["tool_request_state_api_tool_requests__id__state_get"];
+    };
     "/api/tool_shed_repositories": {
         /** Lists installed tool shed repositories. */
         get: operations["index_api_tool_shed_repositories_get"];
@@ -1346,6 +1356,10 @@ export interface paths {
     "/api/tools/fetch": {
         /** Upload files to Galaxy */
         post: operations["fetch_json_api_tools_fetch_post+fetch_form_api_tools_fetch_post"];
+    };
+    "/api/tools/{tool_id}/inputs": {
+        /** Get tool inputs. */
+        get: operations["tool_inputs_api_tools__tool_id__inputs_get"];
     };
     "/api/tours": {
         /**
@@ -1986,6 +2000,52 @@ export interface components {
             /** Targets */
             targets: Record<string, never>;
         };
+        /** BooleanParameterModel */
+        BooleanParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Falsevalue */
+            falsevalue?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_boolean
+             * @enum {string}
+             */
+            parameter_type?: "gx_boolean";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Truevalue */
+            truevalue?: string;
+            /**
+             * Value
+             * @default false
+             */
+            value?: boolean;
+        };
         /**
          * BroadcastNotificationContent
          * @description Base model definition with common configuration used by all derived models.
@@ -2245,6 +2305,45 @@ export interface components {
          * @enum {string}
          */
         ColletionSourceType: "hda" | "ldda" | "hdca" | "new_collection";
+        /** ColorParameterModel */
+        ColorParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_color
+             * @enum {string}
+             */
+            parameter_type?: "gx_color";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Value */
+            value?: string;
+        };
         /**
          * CompositeDataElement
          * @description Base model definition with common configuration used by all derived models.
@@ -2379,6 +2478,80 @@ export interface components {
             /** Private */
             private: boolean;
             quota: components["schemas"]["QuotaModel"];
+        };
+        /** ConditionalParameterModel */
+        ConditionalParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_conditional
+             * @enum {string}
+             */
+            parameter_type?: "gx_conditional";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Test Parameter */
+            test_parameter:
+                | components["schemas"]["BooleanParameterModel"]
+                | components["schemas"]["SelectParameterModel"];
+            /** Whens */
+            whens: components["schemas"]["ConditionalWhen"][];
+        };
+        /** ConditionalWhen */
+        ConditionalWhen: {
+            /** Discriminator */
+            discriminator: boolean | string;
+            /** Is Default When */
+            is_default_when: boolean;
+            /** Parameters */
+            parameters: (
+                | components["schemas"]["CwlIntegerParameterModel"]
+                | components["schemas"]["CwlFloatParameterModel"]
+                | components["schemas"]["CwlStringParameterModel"]
+                | components["schemas"]["CwlBooleanParameterModel"]
+                | components["schemas"]["CwlNullParameterModel"]
+                | components["schemas"]["CwlFileParameterModel"]
+                | components["schemas"]["CwlDirectoryParameterModel"]
+                | components["schemas"]["CwlUnionParameterModel"]
+                | components["schemas"]["TextParameterModel"]
+                | components["schemas"]["IntegerParameterModel"]
+                | components["schemas"]["FloatParameterModel"]
+                | components["schemas"]["BooleanParameterModel"]
+                | components["schemas"]["HiddenParameterModel"]
+                | components["schemas"]["SelectParameterModel"]
+                | components["schemas"]["DataParameterModel"]
+                | components["schemas"]["DataCollectionParameterModel"]
+                | components["schemas"]["DirectoryUriParameterModel"]
+                | components["schemas"]["RulesParameterModel"]
+                | components["schemas"]["ColorParameterModel"]
+                | components["schemas"]["ConditionalParameterModel"]
+                | components["schemas"]["RepeatParameterModel"]
+            )[];
         };
         /** ContentsObject */
         ContentsObject: {
@@ -2811,6 +2984,157 @@ export interface components {
          * parameters without a particular view (predefined set of keys).
          */
         CustomHistoryItem: Record<string, never>;
+        /** CwlBooleanParameterModel */
+        CwlBooleanParameterModel: {
+            /** Name */
+            name: string;
+            /**
+             * Parameter Type
+             * @default cwl_boolean
+             * @enum {string}
+             */
+            parameter_type?: "cwl_boolean";
+        };
+        /** CwlDirectoryParameterModel */
+        CwlDirectoryParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default cwl_directory
+             * @enum {string}
+             */
+            parameter_type?: "cwl_directory";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+        };
+        /** CwlFileParameterModel */
+        CwlFileParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default cwl_file
+             * @enum {string}
+             */
+            parameter_type?: "cwl_file";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+        };
+        /** CwlFloatParameterModel */
+        CwlFloatParameterModel: {
+            /** Name */
+            name: string;
+            /**
+             * Parameter Type
+             * @default cwl_float
+             * @enum {string}
+             */
+            parameter_type?: "cwl_float";
+        };
+        /** CwlIntegerParameterModel */
+        CwlIntegerParameterModel: {
+            /** Name */
+            name: string;
+            /**
+             * Parameter Type
+             * @default cwl_integer
+             * @enum {string}
+             */
+            parameter_type?: "cwl_integer";
+        };
+        /** CwlNullParameterModel */
+        CwlNullParameterModel: {
+            /** Name */
+            name: string;
+            /**
+             * Parameter Type
+             * @default cwl_null
+             * @enum {string}
+             */
+            parameter_type?: "cwl_null";
+        };
+        /** CwlStringParameterModel */
+        CwlStringParameterModel: {
+            /** Name */
+            name: string;
+            /**
+             * Parameter Type
+             * @default cwl_string
+             * @enum {string}
+             */
+            parameter_type?: "cwl_string";
+        };
+        /** CwlUnionParameterModel */
+        CwlUnionParameterModel: {
+            /** Name */
+            name: string;
+            /**
+             * Parameter Type
+             * @default cwl_union
+             * @enum {string}
+             */
+            parameter_type?: "cwl_union";
+            /** Parameters */
+            parameters: (
+                | components["schemas"]["CwlIntegerParameterModel"]
+                | components["schemas"]["CwlFloatParameterModel"]
+                | components["schemas"]["CwlStringParameterModel"]
+                | components["schemas"]["CwlBooleanParameterModel"]
+                | components["schemas"]["CwlNullParameterModel"]
+                | components["schemas"]["CwlFileParameterModel"]
+                | components["schemas"]["CwlDirectoryParameterModel"]
+                | components["schemas"]["CwlUnionParameterModel"]
+            )[];
+        };
         /**
          * DCESummary
          * @description Dataset Collection Element summary information.
@@ -2904,6 +3228,52 @@ export interface components {
              */
             populated?: boolean;
         };
+        /** DataCollectionParameterModel */
+        DataCollectionParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Collection Type */
+            collection_type?: string;
+            /**
+             * Extensions
+             * @default [
+             *   "data"
+             * ]
+             */
+            extensions?: string[];
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_data_collection
+             * @enum {string}
+             */
+            parameter_type?: "gx_data_collection";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+        };
         /**
          * DataElementsFromTarget
          * @description Base model definition with common configuration used by all derived models.
@@ -2960,6 +3330,59 @@ export interface components {
                   )
                 | components["schemas"]["NestedElement"]
             )[];
+        };
+        /** DataParameterModel */
+        DataParameterModel: {
+            /** Argument */
+            argument?: string;
+            /**
+             * Extensions
+             * @default [
+             *   "data"
+             * ]
+             */
+            extensions?: string[];
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Max */
+            max?: number;
+            /** Min */
+            min?: number;
+            /**
+             * Multiple
+             * @default false
+             */
+            multiple?: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_data
+             * @enum {string}
+             */
+            parameter_type?: "gx_data";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
         };
         /**
          * DatasetAssociationRoles
@@ -3476,6 +3899,44 @@ export interface components {
              */
             purge?: boolean;
         };
+        /** DirectoryUriParameterModel */
+        DirectoryUriParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @enum {string}
+             */
+            parameter_type: "gx_directory_uri";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Value */
+            value?: string;
+        };
         /**
          * DisplayApp
          * @description Basic linked information about an application that can display certain datatypes.
@@ -3887,6 +4348,49 @@ export interface components {
          * ]
          */
         FilesSourcePluginList: components["schemas"]["FilesSourcePlugin"][];
+        /** FloatParameterModel */
+        FloatParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Max */
+            max?: number;
+            /** Min */
+            min?: number;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_float
+             * @enum {string}
+             */
+            parameter_type?: "gx_float";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Value */
+            value?: number;
+        };
         /**
          * FolderLibraryFolderItem
          * @description Base model definition with common configuration used by all derived models.
@@ -4956,6 +5460,43 @@ export interface components {
              */
             type: "hdca";
         };
+        /** HiddenParameterModel */
+        HiddenParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_hidden
+             * @enum {string}
+             */
+            parameter_type?: "gx_hidden";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+        };
         /**
          * HistoryContentBulkOperationPayload
          * @description Base model definition with common configuration used by all derived models.
@@ -5456,6 +5997,46 @@ export interface components {
             /** Uninstalled */
             uninstalled: boolean;
         };
+        /** IntegerParameterModel */
+        IntegerParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Max */
+            max?: number;
+            /** Min */
+            min?: number;
+            /** Name */
+            name: string;
+            /** Optional */
+            optional: boolean;
+            /**
+             * Parameter Type
+             * @default gx_integer
+             * @enum {string}
+             */
+            parameter_type?: "gx_integer";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Value */
+            value?: number;
+        };
         /**
          * ItemTagsPayload
          * @description Base model definition with common configuration used by all derived models.
@@ -5484,6 +6065,15 @@ export interface components {
          * @enum {string}
          */
         ItemsFromSrc: "url" | "files" | "path" | "ftp_import" | "server_dir";
+        /** JobCreateResponse */
+        JobCreateResponse: {
+            task_result: components["schemas"]["AsyncTaskResultSummary"];
+            /**
+             * Tool Request Id
+             * @example 0123456789ABCDEF
+             */
+            tool_request_id: string;
+        };
         /**
          * JobExportHistoryArchiveListResponse
          * @description Base model definition with common configuration used by all derived models.
@@ -5634,6 +6224,51 @@ export interface components {
              */
             active: boolean;
         };
+        /** JobRequest */
+        JobRequest: {
+            /**
+             * History Id
+             * @description TODO
+             * @default history_id
+             * @example 0123456789ABCDEF
+             */
+            history_id?: string;
+            /**
+             * Inputs
+             * @description TODO
+             */
+            inputs?: Record<string, never>;
+            /**
+             * Rerun Remap Job Id
+             * @description TODO
+             * @default rerun_remap_job_id
+             * @example 0123456789ABCDEF
+             */
+            rerun_remap_job_id?: string;
+            /**
+             * Send Email Notification
+             * @description TODO
+             * @default false
+             */
+            send_email_notification?: boolean;
+            /**
+             * tool_id
+             * @description TODO
+             */
+            tool_id?: string;
+            /**
+             * tool_uuid
+             * @description TODO
+             */
+            tool_uuid?: string;
+            /**
+             * tool_version
+             * @description TODO
+             */
+            tool_version?: string;
+            /** use_cached_jobs */
+            use_cached_jobs?: boolean;
+        };
         /**
          * JobSourceType
          * @description Available types of job sources (model classes) that produce dataset collections.
@@ -5692,6 +6327,15 @@ export interface components {
             states?: {
                 [key: string]: number | undefined;
             };
+        };
+        /** LabelValue */
+        LabelValue: {
+            /** Label */
+            label: string;
+            /** Selected */
+            selected: boolean;
+            /** Value */
+            value: string;
         };
         /**
          * LabelValuePair
@@ -7391,6 +8035,67 @@ export interface components {
          * @enum {string}
          */
         RemoteFilesFormat: "flat" | "jstree" | "uri";
+        /** RepeatParameterModel */
+        RepeatParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_repeat
+             * @enum {string}
+             */
+            parameter_type?: "gx_repeat";
+            /** Parameters */
+            parameters: (
+                | components["schemas"]["CwlIntegerParameterModel"]
+                | components["schemas"]["CwlFloatParameterModel"]
+                | components["schemas"]["CwlStringParameterModel"]
+                | components["schemas"]["CwlBooleanParameterModel"]
+                | components["schemas"]["CwlNullParameterModel"]
+                | components["schemas"]["CwlFileParameterModel"]
+                | components["schemas"]["CwlDirectoryParameterModel"]
+                | components["schemas"]["CwlUnionParameterModel"]
+                | components["schemas"]["TextParameterModel"]
+                | components["schemas"]["IntegerParameterModel"]
+                | components["schemas"]["FloatParameterModel"]
+                | components["schemas"]["BooleanParameterModel"]
+                | components["schemas"]["HiddenParameterModel"]
+                | components["schemas"]["SelectParameterModel"]
+                | components["schemas"]["DataParameterModel"]
+                | components["schemas"]["DataCollectionParameterModel"]
+                | components["schemas"]["DirectoryUriParameterModel"]
+                | components["schemas"]["RulesParameterModel"]
+                | components["schemas"]["ColorParameterModel"]
+                | components["schemas"]["ConditionalParameterModel"]
+                | components["schemas"]["RepeatParameterModel"]
+            )[];
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+        };
         /**
          * RequestDataType
          * @description Particular pieces of information that can be requested for a dataset.
@@ -7481,6 +8186,84 @@ export interface components {
              * @description The relative URL to access this item.
              */
             url: string;
+        };
+        /** RulesParameterModel */
+        RulesParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_rules
+             * @enum {string}
+             */
+            parameter_type?: "gx_rules";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+        };
+        /** SelectParameterModel */
+        SelectParameterModel: {
+            /** Argument */
+            argument?: string;
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Multiple */
+            multiple: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /** Options */
+            options?: components["schemas"]["LabelValue"][];
+            /**
+             * Parameter Type
+             * @default gx_select
+             * @enum {string}
+             */
+            parameter_type?: "gx_select";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
         };
         /**
          * ServerDirElement
@@ -7974,6 +8757,55 @@ export interface components {
             | "Page"
             | "StoredWorkflow"
             | "Visualization";
+        /** TextParameterModel */
+        TextParameterModel: {
+            /**
+             * Area
+             * @default false
+             */
+            area?: boolean;
+            /** Argument */
+            argument?: string;
+            /**
+             * Default Options
+             * @default []
+             */
+            default_options?: components["schemas"]["LabelValue"][];
+            /** Help */
+            help?: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /**
+             * Is Dynamic
+             * @default false
+             */
+            is_dynamic?: boolean;
+            /** Label */
+            label?: string;
+            /** Name */
+            name: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * Parameter Type
+             * @default gx_text
+             * @enum {string}
+             */
+            parameter_type?: "gx_text";
+            /**
+             * Refresh On Change
+             * @default false
+             */
+            refresh_on_change?: boolean;
+            /** Value */
+            value?: string;
+        };
         /** ToolDataDetails */
         ToolDataDetails: {
             /**
@@ -8069,6 +8901,24 @@ export interface components {
              * @example value	dbkey	name	path
              */
             values: string;
+        };
+        /**
+         * ToolRequestModel
+         * @description Base model definition with common configuration used by all derived models.
+         */
+        ToolRequestModel: {
+            /**
+             * ID
+             * @description Encoded ID of the role
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Request */
+            request: Record<string, never>;
+            /** State */
+            state: string;
+            /** State Message */
+            state_message?: string;
         };
         /** Tour */
         Tour: {
@@ -13444,6 +14294,33 @@ export interface operations {
             };
         };
     };
+    tool_requests_api_histories__id__tool_requests_get: {
+        /** Return all the tool requests for the tools submitted to this history. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string;
+            };
+            /** @description The encoded database identifier of the History. */
+            path: {
+                id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["ToolRequestModel"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_invocation_bco_api_invocations__invocation_id__biocompute_get: {
         /**
          * Return a BioCompute Object for the workflow invocation.
@@ -13670,6 +14547,7 @@ export interface operations {
             /** @description Limit listing of jobs to those that match the history_id. If none, jobs from any history may be returned. */
             /** @description Limit listing of jobs to those that match the specified workflow ID. If none, jobs from any workflow (or from no workflows) may be returned. */
             /** @description Limit listing of jobs to those that match the specified workflow invocation ID. If none, jobs from any workflow invocation (or from no workflows) may be returned. */
+            /** @description Limit listing of jobs to those that were created from the supplied tool request ID. If none, jobs from any tool request (or from no workflows) may be returned. */
             /** @description Sort results by specified field. */
             /**
              * @description A mix of free text and GitHub-style tags used to filter the index operation.
@@ -13721,6 +14599,7 @@ export interface operations {
                 history_id?: string;
                 workflow_id?: string;
                 invocation_id?: string;
+                tool_request_id?: string;
                 order_by?: components["schemas"]["JobIndexSortByEnum"];
                 search?: string;
                 limit?: number;
@@ -13739,6 +14618,34 @@ export interface operations {
             200: {
                 content: {
                     "application/json": Record<string, never>[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_jobs_post: {
+        /** Create */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["JobCreateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16054,6 +16961,32 @@ export interface operations {
             };
         };
     };
+    tool_request_state_api_tool_requests__id__state_get: {
+        /** Get tool request state. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string;
+            };
+            path: {
+                id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     index_api_tool_shed_repositories_get: {
         /** Lists installed tool shed repositories. */
         parameters?: {
@@ -16153,6 +17086,58 @@ export interface operations {
             200: {
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tool_inputs_api_tools__tool_id__inputs_get: {
+        /** Get tool inputs. */
+        parameters: {
+            query?: {
+                tool_version?: string;
+            };
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string;
+            };
+            /** @description The tool ID for the lineage stored in Galaxy's toolbox. */
+            path: {
+                tool_id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": (
+                        | components["schemas"]["CwlIntegerParameterModel"]
+                        | components["schemas"]["CwlFloatParameterModel"]
+                        | components["schemas"]["CwlStringParameterModel"]
+                        | components["schemas"]["CwlBooleanParameterModel"]
+                        | components["schemas"]["CwlNullParameterModel"]
+                        | components["schemas"]["CwlFileParameterModel"]
+                        | components["schemas"]["CwlDirectoryParameterModel"]
+                        | components["schemas"]["CwlUnionParameterModel"]
+                        | components["schemas"]["TextParameterModel"]
+                        | components["schemas"]["IntegerParameterModel"]
+                        | components["schemas"]["FloatParameterModel"]
+                        | components["schemas"]["BooleanParameterModel"]
+                        | components["schemas"]["HiddenParameterModel"]
+                        | components["schemas"]["SelectParameterModel"]
+                        | components["schemas"]["DataParameterModel"]
+                        | components["schemas"]["DataCollectionParameterModel"]
+                        | components["schemas"]["DirectoryUriParameterModel"]
+                        | components["schemas"]["RulesParameterModel"]
+                        | components["schemas"]["ColorParameterModel"]
+                        | components["schemas"]["ConditionalParameterModel"]
+                        | components["schemas"]["RepeatParameterModel"]
+                    )[];
                 };
             };
             /** @description Validation Error */
