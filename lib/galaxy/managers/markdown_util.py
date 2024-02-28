@@ -21,6 +21,7 @@ import shutil
 import tempfile
 from typing import (
     Any,
+    cast,
     Dict,
     List,
     Match,
@@ -60,7 +61,9 @@ from galaxy.util.markdown import literal_via_fence
 from galaxy.util.resources import resource_string
 from galaxy.util.sanitize_html import sanitize_html
 from .markdown_parse import (
+    EMBED_DIRECTIVE_REGEX,
     GALAXY_MARKDOWN_FUNCTION_CALL_LINE,
+    VALID_ARGUMENTS,
     validate_galaxy_markdown,
 )
 
@@ -233,7 +236,18 @@ class GalaxyInternalMarkdownDirectiveHandler(metaclass=abc.ABCMeta):
                 line, *_ = self._encode_line(trans, line)
                 return self.handle_error(container, line, str(e))
 
+        def _remap_embed_container(match):
+            container = match.group("container")
+            valid_args_raw = VALID_ARGUMENTS[container]
+            valid_args = cast(List[str], valid_args_raw)
+            first_arg_call = match.group("firstargcall")
+            matching_id = "unmatched id"
+            if id_match := re.search(UNENCODED_ID_PATTERN, match.group()):
+                matching_id = id_match.group(2)
+            return f"remap<{matching_id}>"
+
         export_markdown = _remap_galaxy_markdown_calls(_remap_container, internal_galaxy_markdown)
+        export_markdown = _remap_galaxy_markdown_embedded_containers(_remap_embed_container, export_markdown)
         return export_markdown
 
     def _encode_line(self, trans, line):
@@ -967,6 +981,29 @@ def _remap_galaxy_markdown_containers(func, markdown):
             else:
                 start_pos = match.start(1)
                 end_pos = match.end(1)
+            start_pos = start_pos + searching_from
+            end_pos = end_pos + searching_from
+            new_markdown = new_markdown[:start_pos] + replacement + new_markdown[end_pos:]
+            searching_from = start_pos + len(replacement)
+        else:
+            break
+
+    return new_markdown
+
+
+def _remap_galaxy_markdown_embedded_containers(func, markdown):
+    new_markdown = markdown
+
+    searching_from = 0
+    while True:
+        from_markdown = new_markdown[searching_from:]
+        match = re.search(EMBED_DIRECTIVE_REGEX, from_markdown)
+        if match is not None:
+            replace = match.group(1)
+            replacement = func(match)
+            start_pos = match.start()
+            end_pos = match.end()
+
             start_pos = start_pos + searching_from
             end_pos = end_pos + searching_from
             new_markdown = new_markdown[:start_pos] + replacement + new_markdown[end_pos:]

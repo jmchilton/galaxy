@@ -417,5 +417,23 @@ invocation_time(invocation_id=1)
             "%Y-%m-%d, %H:%M:%S"
         )
 
-    def _ready_export(self, example):
+    def test_export_replaces_all_embedded_content(self):
+        hda = self._new_hda()
+        hda.extension = "fasta"
+        hda2 = self._new_hda()
+        hda.extension = "fastqsanger"
+        hda2.id = 2
+        example = """
+I ran a cool analysis with two inputs of types ${galaxy history_dataset_type(history_dataset_id=1)} and ${galaxy history_dataset_type(history_dataset_id=2)}.
+"""
+        self.app.hda_manager.get_accessible.side_effect = [hda, hda2]  # type: ignore[attr-defined,union-attr]
+        export_markdown, extra_data = self._ready_export(example)
+        assert (
+            export_markdown
+            == """
+I ran a cool analysis with two inputs of types fasta and fastqsanger.
+"""
+        )
+
+    def _ready_export(self, example: str):
         return ready_galaxy_markdown_for_export(self.trans, example)
