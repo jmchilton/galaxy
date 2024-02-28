@@ -417,5 +417,88 @@ invocation_time(invocation_id=1)
             "%Y-%m-%d, %H:%M:%S"
         )
 
-    def _ready_export(self, example):
+    def test_export_replaces_embedded_history_dataset_type(self):
+        hda = self._new_hda()
+        hda.extension = "fasta"
+        hda2 = self._new_hda()
+        hda2.extension = "fastqsanger"
+        hda2.id = 2
+        example = """
+I ran a cool analysis with two inputs of types ${galaxy history_dataset_type(history_dataset_id=1)} and ${galaxy history_dataset_type(history_dataset_id=2)}.
+"""
+        self.app.hda_manager.get_accessible.side_effect = [hda, hda2]  # type: ignore[attr-defined,union-attr]
+        export_markdown, _ = self._ready_export(example)
+        assert (
+            export_markdown
+            == """
+I ran a cool analysis with two inputs of types fasta and fastqsanger.
+"""
+        )
+
+    def test_export_replaces_embedded_history_dataset_name(self):
+        hda = self._new_hda()
+        hda.name = "foo bar"
+        hda2 = self._new_hda()
+        hda2.name = "cow dog"
+        hda2.id = 2
+        example = """
+I ran a cool analysis with two inputs of types ${galaxy history_dataset_name(history_dataset_id=1)} and ${galaxy history_dataset_name(history_dataset_id=2)}.
+"""
+        self.app.hda_manager.get_accessible.side_effect = [hda, hda2]  # type: ignore[attr-defined,union-attr]
+        export_markdown, _ = self._ready_export(example)
+        assert (
+            export_markdown
+            == """
+I ran a cool analysis with two inputs of types foo bar and cow dog.
+"""
+        )
+
+    def test_export_replaces_embedded_generate_time(self):
+        example = """
+I ran a cool analysis at ${galaxy generate_time()}.
+"""
+        export_markdown, _ = self._ready_export(example)
+        assert export_markdown.startswith(
+            """
+I ran a cool analysis at 2"""
+        )
+
+    def test_export_replaces_embedded_invocation_time(self):
+        invocation = self._new_invocation()
+        self.app.workflow_manager.get_invocation.side_effect = [invocation]  # type: ignore[attr-defined,union-attr]
+        example = """
+I ran a cool analysis at ${galaxy invocation_time(invocation_id=1)}.
+"""
+        export_markdown, _ = self._ready_export(example)
+        assert export_markdown.startswith(
+            """
+I ran a cool analysis at 2"""
+        )
+
+    def test_export_replaces_embedded_galaxy_version(self):
+        example = """
+I ran a cool analysis with Galaxy ${galaxy generate_galaxy_version()}.
+"""
+        export_markdown, _ = self._ready_export(example)
+        assert (
+            export_markdown
+            == f"""
+I ran a cool analysis with Galaxy 19.09.
+"""
+        )
+
+    def test_export_replaces_embedded_access_link(self):
+        self.trans.app.config.instance_access_url = "http://mycoolgalaxy.org"
+        example = """
+I ran a cool analysis at ${galaxy instance_access_link()}.
+"""
+        export_markdown, _ = self._ready_export(example)
+        assert (
+            export_markdown
+            == f"""
+I ran a cool analysis at [http://mycoolgalaxy.org](http://mycoolgalaxy.org).
+"""
+        )
+
+    def _ready_export(self, example: str):
         return ready_galaxy_markdown_for_export(self.trans, example)
