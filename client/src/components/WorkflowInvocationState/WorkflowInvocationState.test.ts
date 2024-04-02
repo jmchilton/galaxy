@@ -5,10 +5,13 @@ import { setActivePinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
 
 import type { WorkflowInvocation } from "@/api/invocations";
+import { mockFetcher } from "@/api/schema/__mocks__";
 
 import invocationData from "../Workflow/test/json/invocation.json";
 
 import WorkflowInvocationState from "./WorkflowInvocationState.vue";
+
+jest.mock("@/api/schema");
 
 const localVue = getLocalVue();
 
@@ -26,14 +29,17 @@ const invocationJobsSummaryById = {
 async function mountWorkflowInvocationState(invocation: WorkflowInvocation | null) {
     const pinia = createTestingPinia();
     setActivePinia(pinia);
+    if (invocation) {
+        mockFetcher.path("/api/invocations/{invocation_id}").method("get").mock({ data: invocation });
+    }
+    mockFetcher
+        .path("/api/invocations/{invocation_id}/jobs_summary")
+        .method("get")
+        .mock({ data: invocationJobsSummaryById });
 
     const wrapper = shallowMount(WorkflowInvocationState, {
         propsData: {
             invocationId: invocationData.id,
-        },
-        computed: {
-            invocation: () => invocation,
-            jobStatesSummary: () => invocationJobsSummaryById,
         },
         pinia,
         localVue,
@@ -46,11 +52,13 @@ describe("WorkflowInvocationState.vue", () => {
     it("determines that invocation and job states are terminal with terminal invocation", async () => {
         const wrapper = await mountWorkflowInvocationState(invocationData as WorkflowInvocation);
         expect(isInvocationAndJobTerminal(wrapper)).toBe(true);
+        mockFetcher.clearMocks();
     });
 
     it("determines that invocation and job states are not terminal with no invocation", async () => {
         const wrapper = await mountWorkflowInvocationState(null);
         expect(isInvocationAndJobTerminal(wrapper)).toBe(false);
+        mockFetcher.clearMocks();
     });
 
     it("determines that invocation and job states are not terminal with non-terminal invocation", async () => {
@@ -60,6 +68,7 @@ describe("WorkflowInvocationState.vue", () => {
         } as WorkflowInvocation;
         const wrapper = await mountWorkflowInvocationState(invocation);
         expect(isInvocationAndJobTerminal(wrapper)).toBe(false);
+        mockFetcher.clearMocks();
     });
 });
 

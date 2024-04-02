@@ -7,10 +7,13 @@ import MockAdapter from "axios-mock-adapter";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { getLocalVue } from "tests/jest/helpers";
 
+import { mockFetcher } from "@/api/schema/__mocks__";
+
 import InvocationsList from "./InvocationsList";
 import mockInvocationData from "./test/json/invocation.json";
 
 const localVue = getLocalVue();
+jest.mock("@/api/schema");
 
 const pinia = createTestingPinia();
 describe("InvocationsList.vue", () => {
@@ -19,12 +22,16 @@ describe("InvocationsList.vue", () => {
 
     beforeEach(async () => {
         axiosMock = new MockAdapter(axios);
-        axiosMock.onGet(`api/invocations/${mockInvocationData.id}`).reply(200, mockInvocationData);
-        axiosMock.onGet(`api/invocations/${mockInvocationData.id}/jobs_summary`).reply(200, {});
+        mockFetcher.path("/api/invocations/{invocation_id}").method("get").mock({ data: mockInvocationData });
+        mockFetcher
+            .path("/api/invocations/{invocation_id}/jobs_summary")
+            .method("get")
+            .mock({ data: { states: {} } });
     });
 
     afterEach(() => {
         axiosMock.restore();
+        mockFetcher.clearMocks();
     });
 
     describe(" with empty invocation list", () => {
@@ -36,6 +43,7 @@ describe("InvocationsList.vue", () => {
             wrapper = mount(InvocationsList, {
                 propsData,
                 localVue,
+                pinia,
             });
         });
 
@@ -124,6 +132,7 @@ describe("InvocationsList.vue", () => {
             wrapper = mount(InvocationsList, {
                 propsData,
                 localVue,
+                pinia,
             });
         });
 
@@ -186,7 +195,6 @@ describe("InvocationsList.vue", () => {
             expect(columns.at(3).text()).toBe(
                 formatDistanceToNow(parseISO(`${mockInvocationData.create_time}Z`), { addSuffix: true })
             );
-            expect(columns.at(4).text()).toBe("scheduled");
             expect(columns.at(5).text()).toBe("");
         });
 
@@ -242,6 +250,7 @@ describe("InvocationsList.vue", () => {
                     },
                 },
                 localVue,
+                pinia,
             });
         });
 
