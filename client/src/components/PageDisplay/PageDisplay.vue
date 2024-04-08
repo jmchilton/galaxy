@@ -46,8 +46,8 @@ export default {
     setup() {
         const { config, isConfigLoaded } = useConfig(true);
         const userStore = useUserStore();
-        const { currentUser } = storeToRefs(userStore);
-        return { config, currentUser, isConfigLoaded };
+        const { currentUser, isCurrentUserLoaded } = storeToRefs(userStore);
+        return { config, currentUser, isConfigLoaded, isCurrentUserLoaded };
     },
     data() {
         return {
@@ -56,7 +56,7 @@ export default {
     },
     computed: {
         userOwnsPage() {
-            return this.currentUser.username === this.page.username;
+            return this.isCurrentUserLoaded && this.currentUser.username === this.page.username;
         },
         dataUrl() {
             return `/api/pages/${this.pageId}`;

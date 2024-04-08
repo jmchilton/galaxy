@@ -25,6 +25,7 @@ type ListViewMode = "grid" | "list";
 
 export const useUserStore = defineStore("userStore", () => {
     const currentUser = ref<AnyUser>(null);
+    const isCurrentUserLoaded = computed(() => !!currentUser.value);
     const currentPreferences = ref<Preferences | null>(null);
 
     // explicitly pass current User, because userStore might not exist yet
@@ -151,6 +152,7 @@ export const useUserStore = defineStore("userStore", () => {
         currentPreferences,
         isAdmin,
         isAnonymous,
+        isCurrentUserLoaded,
         currentTheme,
         currentFavorites,
         toggledSideBar,
