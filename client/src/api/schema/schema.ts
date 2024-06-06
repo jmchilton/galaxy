@@ -5188,7 +5188,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "ftp" | "posix" | "s3fs" | "azure" | "dropbox" | "googledrive";
+            type: "ftp" | "posix" | "s3fs" | "azure" | "dropbox" | "googledrive" | "onedrive";
             /** Variables */
             variables?:
                 | (
@@ -12790,7 +12790,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "ftp" | "posix" | "s3fs" | "azure" | "dropbox" | "googledrive";
+            type: "ftp" | "posix" | "s3fs" | "azure" | "dropbox" | "googledrive" | "onedrive";
             /** Uri Root */
             uri_root: string;
             /** Uuid */

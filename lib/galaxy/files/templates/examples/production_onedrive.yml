@@ -1,0 +1,15 @@
+- id: onedrive
+  name: Microsoft OneDrive
+  description: This file source type allows importing and exporting to your Microsoft OneDrive "personal cloud storage" account.
+  configuration:
+    type: onedrive
+    oauth2_client_id: "{{ environment.oauth2_client_id }}"
+    oauth2_client_secret: "{{ environment.oauth2_client_secret }}"
+    writable: true
+  environment:
+    oauth2_client_id:
+      type: variable
+      variable: GALAXY_ONEDRIVE_APP_CLIENT_ID
+    oauth2_client_secret:
+      type: variable
+      variable: GALAXY_ONEDRIVE_APP_CLIENT_SECRET

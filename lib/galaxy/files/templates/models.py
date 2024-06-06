@@ -29,7 +29,7 @@ from galaxy.util.config_templates import (
     UserDetailsDict,
 )
 
-FileSourceTemplateType = Literal["ftp", "posix", "s3fs", "azure", "dropbox", "googledrive"]
+FileSourceTemplateType = Literal["ftp", "posix", "s3fs", "azure", "dropbox", "googledrive", "onedrive"]
 
 
 class PosixFileSourceTemplateConfiguration(StrictModel):
@@ -90,6 +90,21 @@ class GoogleDriveFileSourceTemplateConfiguration(OAuth2TemplateConfiguration, St
 
 class GoogleDriveFileSourceConfiguration(OAuth2FileSourceConfiguration, StrictModel):
     type: Literal["googledrive"]
+    writable: bool = False
+    oauth2_access_token: str
+
+
+class OneDriveFileSourceTemplateConfiguration(OAuth2TemplateConfiguration, StrictModel):
+    type: Literal["onedrive"]
+    writable: Union[bool, TemplateExpansion] = False
+    oauth2_client_id: Union[str, TemplateExpansion]
+    oauth2_client_secret: Union[str, TemplateExpansion]
+    template_start: Optional[str] = None
+    template_end: Optional[str] = None
+
+
+class OneDriveFileSourceConfiguration(OAuth2FileSourceConfiguration, StrictModel):
+    type: Literal["onedrive"]
     writable: bool = False
     oauth2_access_token: str
 
@@ -163,6 +178,7 @@ FileSourceTemplateConfiguration = Union[
     AzureFileSourceTemplateConfiguration,
     DropboxFileSourceTemplateConfiguration,
     GoogleDriveFileSourceTemplateConfiguration,
+    OneDriveFileSourceTemplateConfiguration,
 ]
 FileSourceConfiguration = Union[
     PosixFileSourceConfiguration,
@@ -171,6 +187,7 @@ FileSourceConfiguration = Union[
     AzureFileSourceConfiguration,
     DropboxFileSourceConfiguration,
     GoogleDriveFileSourceConfiguration,
+    OneDriveFileSourceConfiguration,
 ]
 
 
@@ -235,6 +252,7 @@ TypesToConfigurationClasses: Dict[FileSourceTemplateType, Type[FileSourceConfigu
     "azure": AzureFileSourceConfiguration,
     "dropbox": DropboxFileSourceConfiguration,
     "googledrive": GoogleDriveFileSourceConfiguration,
+    "onedrive": OneDriveFileSourceConfiguration,
 }
 
 
@@ -250,6 +268,12 @@ OAUTH2_CONFIGURED_SOURCES: ConfiguredOAuth2Sources = {
         token_url="https://oauth2.googleapis.com/token",
         scope=["https://www.googleapis.com/auth/drive.file"],
     ),
+    "onedrive": OAuth2Configuration(
+        authorize_url="https://login.live.com/oauth20_authorize.srf",
+        authorize_params={},
+        token_url="https://login.live.com/oauth20_token.srf",
+        scope=["onedrive.readwrite offline_access"],
+    )
 }
 
 
