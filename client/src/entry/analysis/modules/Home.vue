@@ -3,6 +3,11 @@
         <ToolForm v-if="isTool && !isUpload" v-bind="toolParams" />
         <WorkflowRun v-else-if="isWorkflow" v-bind="workflowParams" />
         <div v-else-if="isController" :src="controllerParams" />
+        <div v-else-if="isWorkflowCentric">
+            <WorkflowLanding
+                :client-mode="config.client_mode"
+                :initial-filter-text="config.simplified_workflow_landing_initial_filter_text" />
+        </div>
         <CenterFrame v-else src="/welcome" />
     </div>
 </template>
@@ -20,6 +25,7 @@ export default {
         CenterFrame,
         ToolForm,
         WorkflowRun,
+        WorkflowLanding,
     },
     props: {
         config: {
@@ -32,6 +38,9 @@ export default {
         },
     },
     computed: {
+        isWorkflowCentric() {
+            return ["workflow_centric", "workflow_runner"].indexOf(this.config.client_mode) >= 0;
+        },
         isController() {
             return this.query.m_c && this.query.m_a;
         },

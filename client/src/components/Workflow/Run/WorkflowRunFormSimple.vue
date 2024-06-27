@@ -102,7 +102,7 @@ export default {
         requestState: {
             type: Object,
             required: false,
-        }
+        },
     },
     setup() {
         const { config, isConfigLoaded } = useConfig(true);
