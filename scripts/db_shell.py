@@ -41,7 +41,7 @@ for mod in WARNING_MODULES:
 registry = Registry()
 registry.load_datatypes()
 set_datatypes_registry(registry)
-config = get_config(sys.argv)
+config = get_config(sys.argv, use_argparse=False)
 db_url = config["db_url"]
 sa_session = init("/tmp/", db_url).context
 
