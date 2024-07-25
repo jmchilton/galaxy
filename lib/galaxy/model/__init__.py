@@ -4062,7 +4062,7 @@ class Dataset(Base, StorableObject, Serializable):
     created_from_basename: Mapped[Optional[str]] = mapped_column(TEXT)
     file_size: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 0))
     total_size: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 0))
-    uuid: Mapped[Optional[Union[UUID, str]]] = mapped_column(UUIDType())
+    uuid: Mapped[Optional[Union[UUID, str]]] = mapped_column(UUIDType(), unique=True)
 
     actions: Mapped[List["DatasetPermissions"]] = relationship(back_populates="dataset")
     job: Mapped[Optional["Job"]] = relationship(primaryjoin=(lambda: Dataset.job_id == Job.id))
