@@ -10,10 +10,12 @@ from typing import (
 
 from galaxy.tool_util.parser.interface import (
     InputSource,
+    JsonToolSourceTest,
     ToolSource,
     ToolSourceTest,
     ToolSourceTestInputs,
     ToolSourceTests,
+    XmlStyleToolSourceTest,
 )
 from galaxy.tool_util.parser.util import (
     boolean_is_checked,
@@ -59,6 +61,25 @@ def parse_tool_test_descriptions(
 
 def _description_from_tool_source(
     tool_source: ToolSource, raw_test_dict: ToolSourceTest, test_index: int, tool_guid: Optional[str]
+) -> ToolTestDescription:
+    if "job" in raw_test_dict:
+        test = cast(JsonToolSourceTest, raw_test_dict)
+        return _description_from_json_tool_source(tool_source, test, test_index, tool_guid)
+    else:
+        test = cast(XmlStyleToolSourceTest, raw_test_dict)
+        return _description_from_xml_style_tool_source(tool_source, test, test_index, tool_guid)
+
+
+def _description_from_json_tool_source(
+    tool_source: ToolSource, raw_test_dict: JsonToolSourceTest, test_index: int, tool_guid: Optional[str]
+) -> ToolTestDescription:
+    required_files: RequiredFilesT = []
+    required_data_tables: RequiredDataTablesT = []
+    required_loc_files: RequiredLocFileT = []
+
+
+def _description_from_xml_style_tool_source(
+    tool_source: ToolSource, raw_test_dict: XmlStyleToolSourceTest, test_index: int, tool_guid: Optional[str]
 ) -> ToolTestDescription:
     required_files: RequiredFilesT = []
     required_data_tables: RequiredDataTablesT = []

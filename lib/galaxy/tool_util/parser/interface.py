@@ -17,7 +17,10 @@ from typing import (
 )
 
 import packaging.version
-from pydantic import BaseModel
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+)
 from typing_extensions import (
     Literal,
     NotRequired,
@@ -92,7 +95,7 @@ ToolSourceTestOutputs = List[ToolSourceTestOutput]
 TestSourceTestOutputColllection = Any
 
 
-class ToolSourceTest(TypedDict):
+class XmlStyleToolSourceTest(TypedDict):
     inputs: ToolSourceTestInputs
     outputs: ToolSourceTestOutputs
     output_collections: List[TestSourceTestOutputColllection]
@@ -107,8 +110,49 @@ class ToolSourceTest(TypedDict):
     command_version: AssertionList
 
 
+JsonToolTestState = Dict[str, Any]
+JsonToolTestOutputs = Dict[str, Any]
+
+
+class JsonToolSourceTest(TypedDict):
+    doc: NotRequired[Optional[str]] = None
+    job: TypedToolTestState
+    outputs: NotRequired[Optional[TypedToolTestOutputs]] = None
+    stdout: NotRequired[Optional[AssertionList]] = None
+    stderr: NotRequired[Optional[AssertionList]] = None
+    expect_exit_code: NotRequired[Optional[int]] = None
+    expect_failure: NotRequired[bool] = False
+    expect_test_failure: NotRequired[bool] = False
+    maxseconds: NotRequired[Optional[int]] = None
+    # consider improving behavior before merge...
+    expect_num_outputs: NotRequired[Optional[int]]
+    command: NotRequired[Optional[AssertionList]] = None
+    command_version: NotRequired[Optional[AssertionList]] = None
+
+
+ToolSourceTest = Union[XmlStyleToolSourceTest, TypedToolSourceTest]
+
+
 class ToolSourceTests(TypedDict):
     tests: List[ToolSourceTest]
+
+
+class ToolSourceTestModel(BaseModel):
+    doc: Optional[str] = None
+    job: TypedToolTestState
+    outputs: Optional[TypedToolTestOutputs] = None
+    stdout: Optional[AssertionList] = None
+    stderr: Optional[AssertionList] = None
+    expect_exit_code: Optional[int] = None
+    expect_failure: bool = False
+    expect_test_failure: bool = False
+    maxseconds: Optional[int] = None
+    # consider improving behavior before merge...
+    expect_num_outputs: Optional[int]
+    command: Optional[AssertionList] = None
+    command_version: Optional[AssertionList]] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class XrefDict(TypedDict):
