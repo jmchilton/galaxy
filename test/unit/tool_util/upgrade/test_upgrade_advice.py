@@ -146,13 +146,23 @@ def test_24_0_request_cleaning():
     assert_not_has_advice(advice, "24_0_request_cleaning")
 
 
+def test_24_2_test_case_validation():
+    test_data_source = _tool_path("column_param.xml")
+    advice = advise_on_upgrade(test_data_source)
+    assert_has_advice(advice, "24_2_fix_test_case_validation")
+
+    int_param = _tool_path("parameters/gx_int.xml")
+    advice = advise_on_upgrade(int_param)
+    assert_not_has_advice(advice, "24_2_fix_test_case_validation")
+
+
 def _tool_path(tool_name: str):
     return os.path.join(functional_test_tool_path(tool_name))
 
 
 def assert_has_advice(advice_list: List[AdviceCode], advice_code: str):
     for advice in advice_list:
-        if advice["name"] == advice_code:
+        if advice.advice_code["name"] == advice_code:
             return
 
     raise AssertionError(f"Was expecting advice {advice_code} in list of upgrade advice {advice_list}")
@@ -160,5 +170,5 @@ def assert_has_advice(advice_list: List[AdviceCode], advice_code: str):
 
 def assert_not_has_advice(advice_list: List[AdviceCode], advice_code: str):
     for advice in advice_list:
-        if advice["name"] == advice_code:
+        if advice.advice_code["name"] == advice_code:
             raise AssertionError(f"Was not expecting advice {advice_code} in list of upgrade advice {advice_list}")
