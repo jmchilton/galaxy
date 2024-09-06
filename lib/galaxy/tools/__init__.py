@@ -2690,7 +2690,6 @@ class Tool(UsesDictVisibleKeys):
         Populates the tool model consumed by the client form builder.
         """
         populate_model(
-            self.app,
             request_context=request_context,
             inputs=inputs,
             state_inputs=state_inputs,
