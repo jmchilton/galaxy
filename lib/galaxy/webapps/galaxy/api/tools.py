@@ -8,6 +8,7 @@ from typing import (
     List,
     Optional,
 )
+from pydantic import UUID4
 
 from fastapi import (
     Body,
@@ -26,16 +27,25 @@ from galaxy import (
 )
 from galaxy.datatypes.data import get_params_and_input_name
 from galaxy.managers.collections import DatasetCollectionManager
-from galaxy.managers.context import ProvidesHistoryContext
+from galaxy.managers.context import (
+    ProvidesHistoryContext,
+    ProvidesUserContext,
+)
 from galaxy.managers.hdas import HDAManager
 from galaxy.managers.histories import HistoryManager
+from galaxy.managers.landing import LandingRequestManager
 from galaxy.model import ToolRequest
 from galaxy.schema.fetch_data import (
     FetchDataFormPayload,
     FetchDataPayload,
 )
 from galaxy.schema.fields import DecodedDatabaseIdField
-from galaxy.schema.schema import ToolRequestModel
+from galaxy.schema.schema import (
+    CreateToolLandingRequestPayload,
+    ClaimLandingPayload,
+    ToolLandingRequest,
+    ToolRequestModel,
+)
 from galaxy.tool_util.parameters import ToolParameterT
 from galaxy.tool_util.verify import ToolTestDescriptionDict
 from galaxy.tools.evaluation import global_tool_errors
@@ -91,10 +101,17 @@ ToolIDPathParam: str = Path(
 )
 ToolVersionQueryParam: Optional[str] = Query(default=None, title="Tool Version", description="")
 
+LandingUuidPathParam: UUID4 = Path(
+    ...,
+    title="Landing UUID",
+    description="The UUID used to identify a persisted landing request.",
+)
+
 
 @router.cbv
 class FetchTools:
     service: ToolsService = depends(ToolsService)
+    landing_manager: LandingRequestManager = depends(LandingRequestManager)
 
     @router.post("/api/tools/fetch", summary="Upload files to Galaxy", route_class_override=JsonApiRoute)
     async def fetch_json(self, payload: FetchDataPayload = Body(...), trans: ProvidesHistoryContext = DependsOnTrans):
@@ -159,6 +176,33 @@ class FetchTools:
             raise exceptions.ObjectNotFound()
         assert tool_request
         return tool_request
+
+    @router.post("/api/tool_landings", public=True)
+    def create_landing(
+        self, trans: ProvidesUserContext = DependsOnTrans, tool_landing_request: CreateToolLandingRequestPayload = Body(...)
+    ) -> ToolLandingRequest:
+        log.info("\n\n\n\n\n\n... in here....")
+        try:
+            return self.landing_manager.create_tool_landing_request(tool_landing_request)
+        except Exception:
+            log.exception("Problem...")
+            raise
+
+    @router.post("/api/tool_landings/{uuid}/claim")
+    def claim_landing(
+        self, trans: ProvidesUserContext = DependsOnTrans, uuid: UUID4 = LandingUuidPathParam, payload: Optional[ClaimLandingPayload] = Body(...)
+    ) -> ToolLandingRequest:
+        try:
+            return self.landing_manager.claim_tool_landing_request(trans, uuid, payload)
+        except Exception:
+            log.exception("claiim problem...")
+            raise
+
+    @router.get("/api/tool_landings/{uuid}")
+    def get_landing(
+        self, trans: ProvidesUserContext = DependsOnTrans, uuid: UUID4 = LandingUuidPathParam,
+    ) -> ToolLandingRequest:
+        return self.landing_manager.get_tool_landing_request(trans, tool_landing_request)
 
     @router.get(
         "/api/tools/{tool_id}/inputs",
