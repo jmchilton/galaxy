@@ -13,6 +13,8 @@ import WorkflowRun from "components/Workflow/Run/WorkflowRun";
 import decodeUriComponent from "decode-uri-component";
 import CenterFrame from "entry/analysis/modules/CenterFrame";
 
+import WorkflowLanding from "./WorkflowLanding";
+
 export default {
     components: {
         CenterFrame,
