@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from typing import (
+    List,
     Optional,
     Tuple,
     TYPE_CHECKING,
@@ -81,6 +82,18 @@ def boolean_true_and_false_values(input_source, profile: Optional[Union[float, s
                 f"Cannot set falsevalue to [{falsevalue}], Galaxy state may encounter issues distinguishing booleans and strings in this case."
             )
     return (truevalue, falsevalue)
+
+
+def strip_c(column: Union[str, int, List[int]]) -> Union[str, List[str]]:
+    if isinstance(column, str):
+        column = str(column).strip()
+        if column.startswith("c") and len(column) > 1 and all(c.isdigit() for c in column[1:]):
+            column = column.lower()[1:]
+        return column
+    elif isinstance(column, list):
+        return [str(c) for c in column]
+    else:
+        return str(column)
 
 
 class ParameterParseException(Exception):

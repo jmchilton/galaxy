@@ -30,6 +30,7 @@ from galaxy.util import (
     Element,
     ElementTree,
     string_as_bool,
+    string_as_bool_or_none,
     XML,
     xml_text,
     xml_to_string,
@@ -77,6 +78,7 @@ from .stdio import (
     ToolStdioExitCode,
     ToolStdioRegex,
 )
+from .util import strip_c
 
 log = logging.getLogger(__name__)
 
@@ -1324,8 +1326,23 @@ class XmlInputSource(InputSource):
     def get(self, key, value=None):
         return self.input_elem.get(key, value)
 
+    def parse_data_column_value(self):
+        default_value = self.get("default_value", None)
+        if default_value is None:
+            # Newer style... more in line with other parameters.
+            default_value = self.get("value", None)
+        if default_value is not None:
+            if "," in default_value:
+                default_value = [int(strip_c(col)) for col in default_value.split(",")]
+            else:
+                default_value = int(strip_c(default_value))
+        return default_value
+
     def get_bool(self, key, default):
         return string_as_bool(self.get(key, default))
+
+    def get_bool_or_none(self, key, default):
+        return string_as_bool_or_none(self.get(key, default))
 
     def parse_label(self):
         return xml_text(self.input_elem, "label")
