@@ -22,6 +22,8 @@ import PageEditor from "components/PageEditor/PageEditor";
 import ToolSuccess from "components/Tool/ToolSuccess";
 import ToolsList from "components/ToolsList/ToolsList";
 import ToolsJson from "components/ToolsView/ToolsSchemaJson/ToolsJson";
+import ToolLanding from "components/Landing/ToolLanding";
+import WorkflowLanding from "components/Landing/WorkflowLanding";
 import TourList from "components/Tour/TourList";
 import TourRunner from "components/Tour/TourRunner";
 import { APIKey } from "components/User/APIKey";
@@ -493,6 +495,16 @@ export function getRouter(Galaxy) {
                     {
                         path: "tools/json",
                         component: ToolsJson,
+                    },
+                    {
+                        path: "tool_landings/:uuid",
+                        component: ToolLanding,
+                        props: true,
+                    },
+                    {
+                        path: "workflow_landings/:uuid",
+                        component: WorkflowLanding,
+                        props: true,
                     },
                     {
                         path: "user",
