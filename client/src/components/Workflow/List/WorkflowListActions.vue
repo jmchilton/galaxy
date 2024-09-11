@@ -21,7 +21,9 @@ interface Props {
     advancedOptions: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+    advancedOptions: true,
+});
 
 const createButtonTitle = computed(() => {
     if (isAnonymous.value) {
