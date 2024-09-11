@@ -77,14 +77,16 @@ from gxformat2 import (
     ImporterGalaxyInterface,
 )
 from gxformat2.yaml import ordered_load
+from pydantic import UUID4
 from requests import Response
 from rocrate.rocrate import ROCrate
-from pydantic import UUID4
 from typing_extensions import Literal
 
 from galaxy.schema.schema import (
     CreateToolLandingRequestPayload,
+    CreateWorkflowLandingRequestPayload,
     ToolLandingRequest,
+    WorkflowLandingRequest,
 )
 from galaxy.tool_util.client.staging import InteractorStaging
 from galaxy.tool_util.cwl.util import (
@@ -771,11 +773,25 @@ class BaseDatasetPopulator(BasePopulator):
         create_response.raise_for_status()
         return ToolLandingRequest.model_validate(create_response.json())
 
-    def claim_tool_landing(self, uuid: UUID4):
+    def create_workflow_landing(self, payload: CreateWorkflowLandingRequestPayload) -> WorkflowLandingRequest:
+        create_url = "workflow_landings"
+        json = payload.model_dump(mode="json")
+        create_response = self._post(create_url, json, json=True, anon=True)
+        api_asserts.assert_status_code_is(create_response, 200)
+        create_response.raise_for_status()
+        return WorkflowLandingRequest.model_validate(create_response.json())
+
+    def claim_tool_landing(self, uuid: UUID4) -> ToolLandingRequest:
         url = f"tool_landings/{uuid}/claim"
         claim_response = self._post(url, {"client_secret": "foobar"}, json=True)
         api_asserts.assert_status_code_is(claim_response, 200)
         return ToolLandingRequest.model_validate(claim_response.json())
+
+    def claim_workflow_landing(self, uuid: UUID4) -> WorkflowLandingRequest:
+        url = f"workflow_landings/{uuid}/claim"
+        claim_response = self._post(url, {"client_secret": "foobar"}, json=True)
+        api_asserts.assert_status_code_is(claim_response, 200)
+        return WorkflowLandingRequest.model_validate(claim_response.json())
 
     def create_tool_from_path(self, tool_path: str) -> Dict[str, Any]:
         tool_directory = os.path.dirname(os.path.abspath(tool_path))

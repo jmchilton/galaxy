@@ -3774,7 +3774,7 @@ class CreateWorkflowLandingRequestPayload(Model):
 
 
 class ClaimLandingPayload(Model):
-    client_secret: Optional[str] =  None
+    client_secret: Optional[str] = None
 
 
 class ToolLandingRequest(Model):

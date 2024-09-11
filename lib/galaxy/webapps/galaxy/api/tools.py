@@ -64,6 +64,7 @@ from galaxy.webapps.galaxy.services.tools import (
     ToolsService,
 )
 from . import (
+    LandingUuidPathParam,
     APIContentTypeRoute,
     as_form,
     BaseGalaxyAPIController,
@@ -100,12 +101,6 @@ ToolIDPathParam: str = Path(
     description="The tool ID for the lineage stored in Galaxy's toolbox.",
 )
 ToolVersionQueryParam: Optional[str] = Query(default=None, title="Tool Version", description="")
-
-LandingUuidPathParam: UUID4 = Path(
-    ...,
-    title="Landing UUID",
-    description="The UUID used to identify a persisted landing request.",
-)
 
 
 @router.cbv
@@ -179,9 +174,10 @@ class FetchTools:
 
     @router.post("/api/tool_landings", public=True)
     def create_landing(
-        self, trans: ProvidesUserContext = DependsOnTrans, tool_landing_request: CreateToolLandingRequestPayload = Body(...)
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        tool_landing_request: CreateToolLandingRequestPayload = Body(...),
     ) -> ToolLandingRequest:
-        log.info("\n\n\n\n\n\n... in here....")
         try:
             return self.landing_manager.create_tool_landing_request(tool_landing_request)
         except Exception:
@@ -190,7 +186,10 @@ class FetchTools:
 
     @router.post("/api/tool_landings/{uuid}/claim")
     def claim_landing(
-        self, trans: ProvidesUserContext = DependsOnTrans, uuid: UUID4 = LandingUuidPathParam, payload: Optional[ClaimLandingPayload] = Body(...)
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        uuid: UUID4 = LandingUuidPathParam,
+        payload: Optional[ClaimLandingPayload] = Body(...),
     ) -> ToolLandingRequest:
         try:
             return self.landing_manager.claim_tool_landing_request(trans, uuid, payload)
@@ -200,7 +199,9 @@ class FetchTools:
 
     @router.get("/api/tool_landings/{uuid}")
     def get_landing(
-        self, trans: ProvidesUserContext = DependsOnTrans, uuid: UUID4 = LandingUuidPathParam,
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        uuid: UUID4 = LandingUuidPathParam,
     ) -> ToolLandingRequest:
         return self.landing_manager.get_tool_landing_request(trans, tool_landing_request)
 
