@@ -63,7 +63,18 @@ const $emit = defineEmits(["input", "alert"]);
 const currentLinked = ref(true);
 
 // Indicates which of the select field from the set of variants is currently shown
-const currentField = ref(0);
+let defaultCurrentField = 0;
+if(props.value) {
+    console.log("in here.... decf");
+    console.log(props.value);
+    props.value.values.forEach((entry) => {
+        console.log(entry);
+        if ("src" in entry && entry.src && entry.src == "url") {
+            defaultCurrentField = 2;
+        }
+    });
+}
+const currentField = ref(defaultCurrentField);
 
 // Field highlighting status
 const currentHighlighting: Ref<string | null> = ref(null);
@@ -182,9 +193,27 @@ const formattedOptions = computed(() => {
                 });
             }
         }
+        console.log("in here with props.value");
+        console.log(props.value);
+        if (props.value) {
+            props.value.values.forEach((entry) => {
+                if ("src" in entry && entry.src && entry.src == "url") {
+                    const newOption = {
+                        label: `URI OPTION`,
+                        value: entry,
+                    };
+                    const keepKey = "supplied_uri";
+                    keepOptions[keepKey] = newOption;
+                    currentField.value = 1;
+                }
+            });
+        }
         // Populate keep-options from cache
+        console.log("ummm....doing the keep options");
         Object.entries(keepOptions).forEach(([key, option]) => {
-            if (option.value && getSourceType(option.value) === currentSource.value) {
+            const unshift = option.value && getSourceType(option.value) === currentSource.value;
+            console.log("ummm.... unshift " + unshift);
+            if (unshift) {
                 result.unshift(option);
             }
         });
@@ -610,7 +639,8 @@ const noOptionsWarningMessage = computed(() => {
                 </BTooltip>
             </div>
         </div>
-
+        {{ currentVariant }}
+        {{ currentValue }}
         <FormSelect
             v-if="currentVariant && !currentVariant.multiple"
             v-model="currentValue"

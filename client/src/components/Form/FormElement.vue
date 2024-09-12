@@ -295,6 +295,7 @@ function onAlert(value: string | undefined) {
                 :multiple="attrs.multiple"
                 :optional="attrs.optional"
                 :options="attrs.options"
+                :value="attrs.value"
                 :tag="attrs.tag"
                 :type="props.type"
                 :collection-types="attrs.collection_types"

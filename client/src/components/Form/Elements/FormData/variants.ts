@@ -12,7 +12,7 @@ interface VariantInterface {
 export const BATCH = { DISABLED: "disabled", ENABLED: "enabled", LINKED: "linked" };
 
 /** Data source variations */
-export const SOURCE = { DATASET: "hda", COLLECTION: "hdca", COLLECTION_ELEMENT: "dce", LIBRARY_DATASET: "ldda" };
+export const SOURCE = { DATASET: "hda", COLLECTION: "hdca", COLLECTION_ELEMENT: "dce", LIBRARY_DATASET: "ldda", URI: "uri" };
 
 /** List of available data input variations */
 export const VARIANTS: Record<string, Array<VariantInterface>> = {
@@ -38,6 +38,13 @@ export const VARIANTS: Record<string, Array<VariantInterface>> = {
             tooltip: "Dataset collection",
             multiple: false,
             batch: BATCH.LINKED,
+        },
+        {
+            src: SOURCE.URI,
+            icon: "fa-file",
+            tooltip: "Single dataset",
+            multiple: false,
+            batch: BATCH.DISABLED,
         },
     ],
     data_multiple: [
@@ -107,6 +114,13 @@ export const VARIANTS: Record<string, Array<VariantInterface>> = {
             tooltip: "Multiple datasets",
             multiple: true,
             batch: BATCH.ENABLED,
+        },
+        {
+            src: SOURCE.URI,
+            icon: "fa-file",
+            tooltip: "URI...",
+            multiple: false,
+            batch: BATCH.DISABLED,
         },
     ],
     module_data_collection: [
