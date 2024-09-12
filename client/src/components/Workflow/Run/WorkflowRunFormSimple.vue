@@ -99,6 +99,10 @@ export default {
             type: Boolean,
             required: true,
         },
+        requestState: {
+            type: Object,
+            required: false,
+        }
     },
     setup() {
         const { config, isConfigLoaded } = useConfig(true);
@@ -135,6 +139,7 @@ export default {
                 if (isWorkflowInput(step.step_type)) {
                     const stepName = new String(step.step_index);
                     const stepLabel = step.step_label || new String(step.step_index + 1);
+                    const stepType = step.step_type;
                     const help = step.annotation;
                     const longFormInput = step.inputs[0];
                     const stepAsInput = Object.assign({}, longFormInput, {
@@ -142,10 +147,18 @@ export default {
                         help: help,
                         label: stepLabel,
                     });
+                    console.log(stepType);
+                    if (stepType == "data_input") {
+                        const value = this.requestState[stepLabel];
+                        stepAsInput.value = {values: [value]};
+                    } else if (this.requestState[stepLabel]) {
+                        const value = this.requestState[stepLabel];
+                        stepAsInput.value = value;
+                    }
                     // disable collection mapping...
                     stepAsInput.flavor = "module";
                     inputs.push(stepAsInput);
-                    this.inputTypes[stepName] = step.step_type;
+                    this.inputTypes[stepName] = stepType;
                 }
             });
             return inputs;

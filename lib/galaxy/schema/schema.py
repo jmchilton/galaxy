@@ -3787,7 +3787,7 @@ class ToolLandingRequest(Model):
 
 class WorkflowLandingRequest(Model):
     uuid: UuidField
-    workflow_id: EncodedDatabaseIdField
+    workflow_id: str
     workflow_target_type: Literal["stored_workflow", "workflow"]
     request_state: Dict[str, Any]
     state: LandingRequestState
