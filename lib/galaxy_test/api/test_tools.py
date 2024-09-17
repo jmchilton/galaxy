@@ -1002,6 +1002,48 @@ class TestToolsApi(ApiTestCase, TestsTools):
             assert "false" in output1_content
             assert "length: 2" in output1_content
 
+    def test_data_column_defaults(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            hda = dataset_to_param(
+                self.dataset_populator.new_dataset(history_id, content="1\t2\t3\t4", file_type="tabular")
+            )
+            inputs = {"ref_parameter": hda}
+            response = self._run("gx_data_column", history_id, inputs, assert_ok=False).json()
+            output = response["outputs"]
+            details = self.dataset_populator.get_history_dataset_details(history_id, dataset=output[0], assert_ok=False)
+            assert details["state"] == "error"
+
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            response = self._run("gx_data_column_multiple", history_id, inputs, assert_ok=False).json()
+            assert "err_msg" in response, str(response)
+            assert "parameter 'parameter': an invalid option" in response["err_msg"]
+
+        with self.dataset_populator.test_history(require_new=True) as history_id:
+            response = self._run("gx_data_column_optional", history_id, inputs, assert_ok=True)
+            output = response["outputs"]
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output[0])
+            assert "parameter: None" in content
+
+            response = self._run("gx_data_column_with_default", history_id, inputs, assert_ok=True)
+            output = response["outputs"]
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output[0])
+            assert "parameter: 2" in content
+
+            response = self._run("gx_data_column_with_default_legacy", history_id, inputs, assert_ok=True)
+            output = response["outputs"]
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output[0])
+            assert "parameter: 3" in content
+
+            response = self._run("gx_data_column_accept_default", history_id, inputs, assert_ok=True)
+            output = response["outputs"]
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output[0])
+            assert "parameter: 1" in content
+
+            response = self._run("gx_data_column_multiple_with_default", history_id, inputs, assert_ok=True)
+            output = response["outputs"]
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output[0])
+            assert "parameter: 1,2" in content
+
     @skip_without_tool("library_data")
     def test_library_data_param(self):
         with self.dataset_populator.test_history(require_new=False) as history_id:
