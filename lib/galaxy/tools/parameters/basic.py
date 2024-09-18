@@ -1082,7 +1082,7 @@ class SelectToolParameter(ToolParameter):
                         )
             if is_runtime_value(value):
                 return None
-            if value in legal_values:
+            if value in legal_values or str(value) in legal_values:
                 return value
             elif value in fallback_values:
                 return fallback_values[value]
