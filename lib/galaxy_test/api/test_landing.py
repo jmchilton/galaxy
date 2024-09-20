@@ -4,7 +4,10 @@ from typing import (
     Dict,
 )
 
-from galaxy.schema.schema import CreateWorkflowLandingRequestPayload
+from galaxy.schema.schema import (
+    CreateToolLandingRequestPayload,
+    CreateWorkflowLandingRequestPayload,
+)
 from galaxy_test.base.populators import (
     DatasetPopulator,
     skip_without_tool,
@@ -21,6 +24,20 @@ class TestLandingApi(ApiTestCase):
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
         self.workflow_populator = WorkflowPopulator(self.galaxy_interactor)
+
+    @skip_without_tool("cat")
+    def test_tool_landing(self):
+        request = CreateToolLandingRequestPayload(
+            tool_id="create_2",
+            tool_version=None,
+            request_state={"sleep_time": 0},
+        )
+        response = self.dataset_populator.create_tool_landing(request)
+        assert response.tool_id == "create_2"
+        assert response.state == "unclaimed"
+        response = self.dataset_populator.claim_tool_landing(response.uuid)
+        assert response.tool_id == "create_2"
+        assert response.state == "claimed"
 
     @skip_without_tool("cat1")
     def test_workflow_landing(self):
