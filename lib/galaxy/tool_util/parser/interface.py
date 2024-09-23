@@ -487,6 +487,9 @@ class InputSource(metaclass=ABCMeta):
     def parse_label(self):
         return self.get("label")
 
+    def parse_data_column_value(self):
+        return self.get("value")
+
     def parse_name(self):
         """Return name of an input source
         returns the name or if absent the argument property

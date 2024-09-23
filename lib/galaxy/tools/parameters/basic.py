@@ -13,6 +13,7 @@ import urllib.parse
 from collections.abc import MutableMapping
 from typing import (
     Any,
+    cast,
     Dict,
     List,
     Optional,
@@ -46,6 +47,7 @@ from galaxy.tool_util.parser.util import (
     boolean_is_checked,
     boolean_true_and_false_values,
     ParameterParseException,
+    strip_c,
 )
 from galaxy.tools.parameters.workflow_utils import workflow_building_modes
 from galaxy.util import (
@@ -649,6 +651,7 @@ class BooleanToolParameter(ToolParameter):
         return [self.truevalue, self.falsevalue]
 
 
+# Used only by upload1, deprecated.
 class FileToolParameter(ToolParameter):
     """
     Parameter that takes an uploaded file as a value.
@@ -1397,13 +1400,15 @@ class ColumnListParameter(SelectToolParameter):
             self.optional = True
         self.data_ref = input_source.get("data_ref", None)
         self.ref_input = None
-        # Legacy style default value specification...
-        self.default_value = input_source.get("default_value", None)
-        if self.default_value is None:
-            # Newer style... more in line with other parameters.
-            self.default_value = input_source.get("value", None)
-        if self.default_value is not None:
-            self.default_value = ColumnListParameter._strip_c(self.default_value)
+        default_value_int = input_source.parse_data_column_value()
+        default_value: Optional[Union[str, List[str]]]
+        if self.multiple and isinstance(default_value_int, list):
+            default_value = [str(c) for c in default_value_int] if default_value_int is not None else None
+        elif self.multiple:
+            default_value = [str(default_value_int)] if default_value_int is not None else None
+        else:
+            default_value = str(default_value_int) if default_value_int is not None else None
+        self.default_value = default_value
         self.is_dynamic = True
         self.usecolnames = input_source.get_bool("use_header_names", False)
 
@@ -1432,25 +1437,18 @@ class ColumnListParameter(SelectToolParameter):
                 if len(column_list) == 0:
                     value = None
                 else:
-                    value = list(map(ColumnListParameter._strip_c, column_list))
+                    value = list(map(strip_c, column_list))
             else:
                 value = None
         else:
             if value:
-                value = ColumnListParameter._strip_c(value)
+                value = strip_c(value)
             else:
                 value = None
         if not value and self.accept_default:
             value = self.default_value or "1"
             return [value] if self.multiple else value
         return super().from_json(value, trans, other_values)
-
-    @staticmethod
-    def _strip_c(column):
-        column = str(column).strip()
-        if column.startswith("c") and len(column) > 1 and all(c.isdigit() for c in column[1:]):
-            column = column.lower()[1:]
-        return column
 
     def get_column_list(self, trans, other_values):
         """
@@ -2484,7 +2482,10 @@ class DataCollectionToolParameter(BaseDataToolParameter):
             rval = value
         elif isinstance(value, MutableMapping) and "src" in value and "id" in value:
             if value["src"] == "hdca":
-                rval = session.get(HistoryDatasetCollectionAssociation, trans.security.decode_id(value["id"]))
+                rval = cast(
+                    HistoryDatasetCollectionAssociation,
+                    src_id_to_item(sa_session=trans.sa_session, value=value, security=trans.security),
+                )
         elif isinstance(value, list):
             if len(value) > 0:
                 value = value[0]
