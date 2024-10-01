@@ -688,6 +688,61 @@ def _populate_state_legacy(
             state[input.name] = value
 
 
+def fill_dynamic_defaults(
+    request_context,
+    inputs: ToolInputsT,
+    incoming: ToolStateJobInstanceT,
+    context=None,
+):
+    """
+    Expands incoming parameters with default values.
+    """
+    if context is None:
+        context = flat_to_nested_state(incoming)
+    for input in inputs.values():
+        if input.type == "repeat":
+            repeat_input = cast(Repeat, input)
+            for rep in incoming[repeat_input.name]:
+                fill_dynamic_defaults(
+                    request_context,
+                    repeat_input.inputs,
+                    rep,
+                    context=context,
+                )
+
+        elif input.type == "conditional":
+            conditional_input = cast(Conditional, input)
+            test_param = cast(ToolParameter, conditional_input.test_param)
+            test_param_value = incoming.get(conditional_input.name, {}).get(test_param.name)
+            try:
+                current_case = conditional_input.get_current_case(test_param_value)
+                fill_dynamic_defaults(
+                    request_context,
+                    conditional_input.cases[current_case].inputs,
+                    cast(ToolStateJobInstanceT, incoming.get(conditional_input.name)),
+                    context=context,
+                )
+            except Exception:
+                raise Exception("The selected case is unavailable/invalid.")
+
+        elif input.type == "section":
+            section_input = cast(Section, input)
+            fill_dynamic_defaults(
+                request_context,
+                section_input.inputs,
+                cast(ToolStateJobInstanceT, incoming.get(section_input.name)),
+                context=context,
+            )
+
+        elif input.type == "upload_dataset":
+            raise NotImplementedError
+
+        else:
+            if input.name not in incoming:
+                param_value = input.get_initial_value(request_context, context)
+                incoming[input.name] = param_value
+
+
 def _get_incoming_value(incoming, key, default):
     """
     Fetch value from incoming dict directly or check special nginx upload
