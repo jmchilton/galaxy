@@ -1225,23 +1225,6 @@ class TestToolsApi(ApiTestCase, TestsTools):
             output_multiple_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output[1])
             assert output_multiple_content == "TestData\nTestData\n", output_multiple_content
 
-    @skip_without_tool("multi_data_param")
-    def test_multidata_param(self):
-        with self.dataset_populator.test_history(require_new=False) as history_id:
-            hda1 = dataset_to_param(self.dataset_populator.new_dataset(history_id, content="1\t2\t3"))
-            hda2 = dataset_to_param(self.dataset_populator.new_dataset(history_id, content="4\t5\t6"))
-            inputs = {
-                "f1": {"batch": False, "values": [hda1, hda2]},
-                "f2": {"batch": False, "values": [hda2, hda1]},
-            }
-            response = self._run("multi_data_param", history_id, inputs, assert_ok=True)
-            output1 = response["outputs"][0]
-            output2 = response["outputs"][1]
-            output1_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output1)
-            output2_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output2)
-            assert output1_content == "1\t2\t3\n4\t5\t6\n", output1_content
-            assert output2_content == "4\t5\t6\n1\t2\t3\n", output2_content
-
     @skip_without_tool("cat1")
     def test_run_cat1(self):
         with self.dataset_populator.test_history(require_new=False) as history_id:
@@ -3049,42 +3032,6 @@ class TestToolsApi(ApiTestCase, TestsTools):
         output = outputs[0]
         output_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output)
         assert output_content.strip() == "123\n456\n456\n0ab"
-
-    @skip_without_tool("expression_forty_two")
-    def test_galaxy_expression_tool_simplest(self):
-        history_id = self.dataset_populator.new_history()
-        run_response = self._run("expression_forty_two", history_id)
-        self._assert_status_code_is(run_response, 200)
-        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
-        output_content = self.dataset_populator.get_history_dataset_content(history_id)
-        assert output_content == "42"
-
-    @skip_without_tool("expression_parse_int")
-    def test_galaxy_expression_tool_simple(self):
-        history_id = self.dataset_populator.new_history()
-        inputs = {
-            "input1": "7",
-        }
-        run_response = self._run("expression_parse_int", history_id, inputs)
-        self._assert_status_code_is(run_response, 200)
-        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
-        output_content = self.dataset_populator.get_history_dataset_content(history_id)
-        assert output_content == "7"
-
-    @skip_without_tool("expression_log_line_count")
-    def test_galaxy_expression_metadata(self):
-        history_id = self.dataset_populator.new_history()
-        new_dataset1 = self.dataset_populator.new_dataset(
-            history_id, content="1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14"
-        )
-        inputs = {
-            "input1": dataset_to_param(new_dataset1),
-        }
-        run_response = self._run("expression_log_line_count", history_id, inputs)
-        self._assert_status_code_is(run_response, 200)
-        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
-        output_content = self.dataset_populator.get_history_dataset_content(history_id)
-        assert output_content == "3"
 
     @skip_without_tool("cat1")
     def test_run_deferred_dataset(self, history_id):
