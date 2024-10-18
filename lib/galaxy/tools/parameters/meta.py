@@ -188,6 +188,7 @@ def expand_meta_parameters(trans, tool, incoming: ToolRequestT, input_format: In
     of expanded incoming parameters (one set of parameters per tool
     execution).
     """
+    log.info(f"in input_format={input_format} with: incoming {incoming} tool {tool.id}")
 
     for key in list(incoming.keys()):
         if key.endswith("|__identifier__"):
@@ -245,7 +246,9 @@ def expand_meta_parameters(trans, tool, incoming: ToolRequestT, input_format: In
             tool.inputs, incoming_template, classifier_from_value
         )
 
+    log.info(f"in nested={nested} with: single_inputs: {single_inputs}, matched_multi_inputs {matched_multi_inputs}, multiplied_multi_inputs: {multiplied_multi_inputs}")
     expanded_incomings = build_combos(single_inputs, matched_multi_inputs, multiplied_multi_inputs, nested=nested)
+    log.info(f"ei {expanded_incomings}")
     if collections_to_match.has_collections():
         collection_info = trans.app.dataset_collection_manager.match_collections(collections_to_match)
     else:
