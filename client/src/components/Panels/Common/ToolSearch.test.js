@@ -3,6 +3,7 @@ import "jest-location-mock";
 import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
+import { setupMockWorker } from "tests/jest/mockWorker";
 import VueRouter from "vue-router";
 
 import ToolSearch from "./ToolSearch";
@@ -10,6 +11,7 @@ import ToolSearch from "./ToolSearch";
 const localVue = getLocalVue();
 localVue.use(VueRouter);
 const router = new VueRouter();
+setupMockWorker();
 
 describe("ToolSearch", () => {
     it("test tools advanced filter panel navigation", async () => {

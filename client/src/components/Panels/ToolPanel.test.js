@@ -8,6 +8,7 @@ import toolsListInPanel from "components/ToolsView/testData/toolsListInPanel";
 import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
+import { setupMockWorker } from "tests/jest/mockWorker";
 
 import { useConfig } from "@/composables/config";
 
@@ -16,6 +17,7 @@ import ToolPanel from "./ToolPanel";
 import { types_to_icons } from "./utilities";
 
 const localVue = getLocalVue();
+setupMockWorker();
 
 const TEST_PANELS_URI = "/api/tool_panels";
 

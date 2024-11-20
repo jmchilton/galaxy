@@ -8,6 +8,7 @@ import { type Tool, type ToolSection, useToolStore } from "@/stores/toolStore";
 import { useUserStore } from "@/stores/userStore";
 import Filtering, { contains, type ValidFilter } from "@/utils/filtering";
 import _l from "@/utils/localization";
+import { newWorker } from "@/utils/utils";
 
 import { type ToolSearchKeys } from "../utilities";
 
@@ -122,7 +123,7 @@ const ontologyList = computed(() =>
 onMounted(() => {
     // initialize worker
     if (!searchWorker.value) {
-        searchWorker.value = new Worker(new URL("components/Panels/toolSearch.worker.js", import.meta.url));
+        searchWorker.value = newWorker(new URL("components/Panels/toolSearch.worker.js", import.meta.url));
     }
     searchWorker.value.onmessage = ({ data }) => {
         const { type, payload, sectioned, query, closestTerm } = data;

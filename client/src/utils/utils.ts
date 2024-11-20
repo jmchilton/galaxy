@@ -457,6 +457,13 @@ export function getFullAppUrl(path: string = ""): string {
     return `${protocol}//${hostname}${port}${appRoot}${path}`;
 }
 
+/*
+ * Provide an abstraction around creating web workers that can be easily mocked out for tests.
+ */
+export function newWorker(url: URL): Worker {
+    return new Worker(url);
+}
+
 export default {
     cssLoadFile,
     get,
@@ -476,4 +483,5 @@ export default {
     wait,
     mergeObjectListsById,
     getFullAppUrl,
+    newWorker,
 };
