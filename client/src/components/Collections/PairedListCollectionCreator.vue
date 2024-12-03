@@ -935,6 +935,7 @@ function _naiveStartingAndEndingLCS(s1: string, s2: string) {
                     :history-id="props.historyId"
                     :hide-source-items="hideSourceItems"
                     render-extensions-toggle
+                    collection-type="list:paired"
                     :extensions-toggle="removeExtensions"
                     :extensions="extensions"
                     @add-uploaded-files="addUploadedFiles"
@@ -1066,7 +1067,7 @@ function _naiveStartingAndEndingLCS(s1: string, s2: string) {
                             </i>
                             {{ localize("and click ") }}
                             <i data-target=".create-collection">
-                                {{ localize("Create list") }}
+                                {{ localize("Create list of pairs") }}
                             </i>
                             {{ localize(". (Note: you do not have to pair all unpaired datasets to finish.)") }}
                         </p>

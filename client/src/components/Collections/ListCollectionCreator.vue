@@ -442,6 +442,7 @@ function renameElement(element: any, name: string) {
                     :history-id="props.historyId"
                     :hide-source-items="hideSourceItems"
                     :extensions="extensions"
+                    collectionType="list"
                     @add-uploaded-files="addUploadedFiles"
                     @on-update-datatype-toggle="changeDatatypeFilter"
                     @onUpdateHideSourceItems="onUpdateHideSourceItems"
