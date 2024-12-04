@@ -456,7 +456,7 @@ function renameElement(element: any, name: string) {
                                         "Lists are a type of Galaxy dataset collection that are a permanent, ordered lists of datasets that can be passed to tools ",
                                         "and workflows in order to have analyses done on each member of the entire group. This interface allows ",
                                         "you to create and re-order a list of datasets. The datasets in a Galaxy collection have an identifier that is preserved accross ",
-                                        "tool executions and server as a form of sample tracking - setting the name in this form will pick the identifier for that element ",
+                                        "tool executions and serves as a form of sample tracking - setting the name in this form will pick the identifier for that element ",
                                         "of the list but will not change the dataset's actual name in Galaxy.",
                                     ].join("")
                                 )
