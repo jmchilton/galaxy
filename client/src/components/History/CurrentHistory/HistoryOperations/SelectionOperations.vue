@@ -65,8 +65,17 @@
                 <b-dropdown-item v-if="showBuildOptions" data-description="build list" @click="buildDatasetList">
                     <span v-localize>Build Dataset List</span>
                 </b-dropdown-item>
-                <b-dropdown-item v-if="showBuildOptions" data-description="build list of pairs" @click="buildListOfPairs">
+                <b-dropdown-item
+                    v-if="showBuildOptions"
+                    data-description="build list of pairs"
+                    @click="buildListOfPairs">
                     <span v-localize>Build List of Dataset Pairs</span>
+                </b-dropdown-item>
+                <b-dropdown-item
+                    v-if="showBuildOptions"
+                    data-description="build list of paired_or_unpaired"
+                    @click="buildListOfMixedPaired">
+                    <span v-localize>Build List with Optional Pairing</span>
                 </b-dropdown-item>
                 <b-dropdown-item
                     v-if="showBuildOptions"
@@ -401,6 +410,11 @@ export default {
         },
         buildListOfPairs() {
             this.collectionModalType = "list:paired";
+            this.collectionSelection = Array.from(this.contentSelection.values());
+            this.collectionModalShow = true;
+        },
+        buildListOfMixedPaired() {
+            this.collectionModalType = "list:paired_or_unpaired";
             this.collectionSelection = Array.from(this.contentSelection.values());
             this.collectionModalShow = true;
         },
