@@ -17,6 +17,7 @@ import ListCollectionCreator from "./ListCollectionCreator.vue";
 import PairCollectionCreator from "./PairCollectionCreator.vue";
 import PairedListCollectionCreator from "./PairedListCollectionCreator.vue";
 import PairedOrUnpairedListCollectionCreator from "./PairedOrUnpairedListCollectionCreator.vue";
+import SampleSheetCollectionCreator from "./SampleSheetCollectionCreator.vue";
 import Heading from "@/components/Common/Heading.vue";
 import GenericItem from "@/components/History/Content/GenericItem.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
@@ -316,6 +317,15 @@ function resetModal() {
             @on-cancel="hideModal" />
         <PairCollectionCreator
             v-else-if="props.collectionType === 'paired'"
+            :history-id="props.historyId"
+            :initial-elements="creatorItems || []"
+            :default-hide-source-items="props.defaultHideSourceItems"
+            :from-selection="fromSelection"
+            :extensions="props.extensions"
+            @clicked-create="createPairedCollection"
+            @on-cancel="hideModal" />
+        <SampleSheetCollectionCreator
+            v-else-if="props.collectionType === 'sample_sheet'"
             :history-id="props.historyId"
             :initial-elements="creatorItems || []"
             :default-hide-source-items="props.defaultHideSourceItems"
