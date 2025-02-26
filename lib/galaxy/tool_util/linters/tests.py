@@ -10,7 +10,7 @@ from typing import (
 
 from galaxy.tool_util.lint import Linter
 from galaxy.tool_util.parameters import validate_test_cases_for_tool_source
-from galaxy.tool_util.verify.assertion_models import assertion_list
+from galaxy.tool_util.verify.parse import raw_assertion_list_to_models
 from galaxy.util import asbool
 from ._util import is_datasource
 
@@ -147,14 +147,11 @@ class TestsAssertionValidation(Linter):
             return
         assert "tests" in raw_tests_dict
         for test_idx, test in enumerate(raw_tests_dict["tests"], start=1):
-            # TODO: validate command, command_version, element tests. What about children?
+            # TODO: validate command, command_version, element tests.
             for output in test["outputs"]:
                 asserts_raw = output.get("attributes", {}).get("assert_list") or []
-                to_yaml_assertions = []
-                for raw_assert in asserts_raw:
-                    to_yaml_assertions.append({"that": raw_assert["tag"], **raw_assert.get("attributes", {})})
                 try:
-                    assertion_list.model_validate(to_yaml_assertions)
+                    raw_assertion_list_to_models(asserts_raw)
                 except Exception as e:
                     error_str = _cleanup_pydantic_error(e)
                     lint_ctx.warn(

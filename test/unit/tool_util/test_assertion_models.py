@@ -2,12 +2,16 @@ import sys
 from string import Template
 
 import pytest
+import lxml.etree as ET
 from pydantic import ValidationError
 
 from galaxy.tool_util.verify.assertion_models import assertion_list
 from galaxy.tool_util.verify.codegen import galaxy_xsd_path
+from galaxy.tool_util.verify.parse import raw_assertion_list_to_models
 from galaxy.util.commands import shell
 from galaxy.util.unittest_utils import skip_unless_executable
+from galaxy.tool_util.parser.xml import __parse_assert_list_from_elem
+
 
 valid_assertions = [
     {"that": "has_size", "size": "5G"},
@@ -92,6 +96,8 @@ valid_xml_assertions = [
     """<has_n_columns n="30" />""",
     """<has_n_columns n="30" delta="4" />""",
     """<has_n_columns n="30" delta="4" sep=" " comment="###" />""",
+    """<has_image_width min="500" />""",
+    """<has_image_height min="500" />""",
 ]
 
 invalid_assertions = [
@@ -207,11 +213,11 @@ if sys.version_info < (3, 8):  # noqa: UP036
     pytest.skip(reason="Pydantic assertion models require python3.8 or higher", allow_module_level=True)
 
 
-def test_valid_models_validate():
+def test_valid_json_models_validate():
     assertion_list.model_validate(valid_assertions)
 
 
-def test_invalid_models_do_not_validate():
+def test_invalid_json_models_do_not_validate():
     for invalid_assertion in invalid_assertions:
         with pytest.raises(ValidationError):
             assertion_list.model_validate([invalid_assertion])
@@ -235,3 +241,13 @@ def test_invalid_xsd(tmp_path):
         tool_path.write_text(tool_xml)
         ret = shell(["xmllint", "--nowarning", "--noout", "--schema", galaxy_xsd_path, str(tool_path)])
         assert ret != 0, f"{assertion_xml} validated when error expected"
+
+
+def assertion_xml_el_to_models(xml_el: ET):
+    asserts_raw = __parse_assert_list_from_elem(xml_el)
+    return raw_assertion_list_to_models(asserts_raw)
+
+
+def test_valid_xml_models_validate_after_json_transform():
+    for assertion_xml in valid_xml_assertions:
+        assertion_xml_el_to_models(ET.fromstring(assertion_xml))
