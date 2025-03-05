@@ -12,7 +12,11 @@ class TestEdamToolPanelViewsSeleniumIntegration(SeleniumIntegrationTestCase):
     def test_basic_navigation(self):
         tool_panel = self.components.tool_panel
         tool_panel.views_button.wait_for_and_click()
-        tool_panel.views_menu_item(panel_id="ontology:edam_operations").wait_for_and_click()
+        edam_op_button = tool_panel.views_menu_item(panel_id="ontology:edam_operations")
+        edam_op_button.wait_for_visible()
+        self.screenshot("tool_panel_menu")
+        edam_op_button.wait_for_and_click()
+
         self._assert_displaying_edam_operations()
 
         # reload page and ensure the edam operations are still being displayed.
