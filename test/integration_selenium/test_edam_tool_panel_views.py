@@ -15,6 +15,7 @@ class TestEdamToolPanelViewsSeleniumIntegration(SeleniumIntegrationTestCase):
         edam_op_button = tool_panel.views_menu_item(panel_id="ontology:edam_operations")
         edam_op_button.wait_for_visible()
         self.screenshot("tool_panel_menu")
+        assert False
         edam_op_button.wait_for_and_click()
 
         self._assert_displaying_edam_operations()
