@@ -56,6 +56,8 @@ class ConditionalDependencies:
             for env in environments.values():
                 if "rules_module" in env:
                     self.job_rule_modules.append(env.get("rules_module"))
+                if env.get("runner") == "dynamic_tpv":
+                    self.job_rule_modules.append("tpv.rules")
 
         if "job_config" in self.config:
             load_job_config_dict(self.config.get("job_config"))

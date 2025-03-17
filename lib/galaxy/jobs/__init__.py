@@ -231,7 +231,15 @@ def job_config_xml_to_dict(config, root):
         # TODO: handle empty resubmits defaults in configure_from
 
         runner = destination.get("runner")
-        if runner:
+        if runner == "dynamic_tpv":
+            environment["runner"] = "dynamic"
+            environment["type"] = "python"
+            environment["function"] = "map_tool_to_destination"
+            environment["rules_module"] = "tpv.rules"
+            if "tpv_config_files" not in destination:
+                environment["tpv_config_files"] = ["https://gxy.io/tpv/db.yml"]
+
+        elif runner:
             environment["runner"] = runner
 
         tags = destination.get("tags")
