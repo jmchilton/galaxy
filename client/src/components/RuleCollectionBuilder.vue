@@ -1009,15 +1009,19 @@ export default {
                 for (const index in collectionTypeRanks) {
                     const collectionTypeRank = collectionTypeRanks[index];
                     if (collectionTypeRank == "list") {
-                        if(flatishList) {
+                        if (flatishList) {
                             metadataOptions["identifier" + index] = _l("List Identifier");
+                            metadataOptions["index" + index] = _l("List Index");
                         } else {
                             metadataOptions["identifier" + index] = _l("List Identifier ") + (parseInt(index) + 1);
+                            metadataOptions["index" + index] = _l("List Index ") + (parseInt(index) + 1);
                         }
                     } else if (collectionTypeRank == "record") {
                         metadataOptions["identifier" + index] = _l("Record Identifier");
+                        metadataOptions["index" + index] = _l("Record Index");
                     } else {
                         metadataOptions["identifier" + index] = _l("Paired Identifier");
+                        metadataOptions["index" + index] = _l("Paired Index (0 or 1)");
                     }
                 }
                 metadataOptions["tags"] = _l("Tags");
