@@ -355,7 +355,7 @@ WORKFLOW_SAFE_TOOL_VERSION_UPDATES = {
     "Filter1": safe_update(parse_version("1.1.0"), parse_version("1.1.1")),
     "__BUILD_LIST__": safe_update(parse_version("1.0.0"), parse_version("1.1.0")),
     "__APPLY_RULES__": safe_update(parse_version("1.0.0"), parse_version("1.1.0")),
-    "__EXTRACT_DATASET__": safe_update(parse_version("1.0.0"), parse_version("1.0.1")),
+    "__EXTRACT_DATASET__": safe_update(parse_version("1.0.0"), parse_version("1.0.2")),
     "__RELABEL_FROM_FILE__": safe_update(parse_version("1.0.0"), parse_version("1.1.0")),
     "Grep1": safe_update(parse_version("1.0.1"), parse_version("1.0.4")),
     "Show beginning1": safe_update(parse_version("1.0.0"), parse_version("1.0.2")),
