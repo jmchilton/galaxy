@@ -132,6 +132,10 @@
                                 {{ l("Replacement Expression") }}
                                 <input v-model="addColumnRegexReplacement" type="text" class="rule-replacement" />
                             </label>
+                            <label v-b-tooltip.hover>
+                                <input v-model="addColumnRegexAllowUnmatched" type="checkbox" />
+                                {{ l("Allow regular expression unmatched.") }}
+                            </label>
                         </RuleComponent>
                         <RuleComponent
                             rule-type="add_column_concatenate"
@@ -804,6 +808,7 @@ export default {
             addColumnRegexExpression: "",
             addColumnRegexReplacement: null,
             addColumnRegexGroupCount: null,
+            addColumnRegexAllowUnmatched: false,
             addColumnRegexType: "global",
             addColumnMetadataValue: 0,
             addColumnGroupTagValueValue: "",
