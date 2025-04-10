@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import yaml
 from selenium.webdriver.common.by import By
+from typing_extensions import Literal
 
 from galaxy_test.base import rules_test_data
 from galaxy_test.base.workflow_fixtures import (
@@ -389,15 +390,49 @@ steps: {}
         self.dataset_populator.tag_dataset(history_id, dataset["id"], tags=["genomescope_model"])
         # Add another possible input that should not be selected
         self.dataset_populator.new_dataset(history_id, wait=True)
-        wf = json.loads(WORKFLOW_WITH_DATA_TAG_FILTER)
-        wf["name"] = str(uuid4())
-        workflow_id = self.workflow_populator.create_workflow(wf)
-        self.workflow_run_with_name(wf["name"])
+        workflow_id, workflow_name = self._create_workflow_with_unique_name(WORKFLOW_WITH_DATA_TAG_FILTER, "ga")
+        self.workflow_run_with_name(workflow_name)
         self.workflow_run_submit()
         self.sleep_for(self.wait_types.HISTORY_POLL)
         invocations = self.workflow_populator.workflow_invocations(workflow_id=workflow_id)
         invocation = self.workflow_populator.get_invocation(invocations[-1]["id"])
         assert invocation["inputs"]["0"]["id"] == dataset["id"]
+
+    @selenium_test
+    @managed_history
+    def test_upload_dataset_from_workflow_simple(self):
+        history_id = self.current_history_id()
+        _, workflow_name = self._create_workflow_with_unique_name(WORKFLOW_SIMPLE_CAT_TWICE)
+        self.workflow_run_with_name(workflow_name)
+        workflow_run = self.components.workflow_run
+        button = workflow_run.upload_button(label="input1")
+        button.wait_for_and_click()
+        upload = self.components.upload
+        upload.create_button.wait_for_and_click()
+        url = self.dataset_populator.base64_url_for_string("hello world")
+        upload.paste_content(n=0).wait_for_and_send_keys(url)
+        upload.embedded_start_button.wait_for_and_click()
+        upload.status.wait_for_present()
+        self.history_panel_wait_for_hid_ok(1)
+        upload.use_button.wait_for_and_click()
+        self.workflow_run_submit()
+        self.history_panel_wait_for_hid_ok(2)
+        content = self.dataset_populator.get_history_dataset_content(history_id, hid=2)
+        assert content.strip() == "hello world\nhello world"
+
+    def _create_workflow_with_unique_name(
+        self, workflow_contents: str, format: Literal["ga", "gxformat2"] = "gxformat2"
+    ):
+        workflow_name = str(uuid4())
+        if format == "gxformat2":
+            wf = yaml.safe_load(workflow_contents)
+            wf["name"] = workflow_name
+            workflow_id = self.workflow_populator.upload_yaml_workflow(wf)
+        else:
+            wf = json.loads(workflow_contents)
+            wf["name"] = workflow_name
+            workflow_id = self.workflow_populator.create_workflow(wf)
+        return (workflow_id, workflow_name)
 
     def _assert_has_3_lines_after_run(self, hid):
         self.workflow_run_wait_for_ok(hid=hid)

@@ -703,6 +703,7 @@ workflow_run:
     input_select_field:
       type: xpath
       selector: '//div[@data-label="${label}"]//div[contains(@class, "multiselect")]'
+    upload_button: '[data-label="${label}"] [data-description="upload"]'
     primary_storage_indciator: '.workflow-storage-indicator-primary'
     intermediate_storage_indciator: '.workflow-storage-indicator-intermediate'
 
@@ -1151,6 +1152,7 @@ upload:
     paste_option: '#upload-row-${n} .upload-source .dropdown-menu .dropdown-item .fa-edit'
     paste_content: '#upload-row-${n} .upload-text-content'
     row: '#upload-row-${n}'
+    status: '[data-description="upload state alert"]'
     rule_dataset_dialog: '[data-description="rules dataset dialog"]'
     rule_dataset_selector:
       selector: '.selection-dialog-modal'
@@ -1167,6 +1169,8 @@ upload:
     source_button: '#upload-row-${n} .upload-source'
     start: '#activity-upload'
     start_button: '#regular #btn-start'
+    embedded_start_button: '#btn-start'
+    use_button: "#btn-emit"
     local_button: '#btn-local'
 
 new_user_welcome:
