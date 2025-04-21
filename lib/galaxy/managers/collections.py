@@ -773,9 +773,7 @@ class DatasetCollectionManager:
 
         return elements
 
-    def __init_rule_data(
-        self, elements, collection_type_description, parent_identifiers=None, parent_indices=None
-    ):
+    def __init_rule_data(self, elements, collection_type_description, parent_identifiers=None, parent_indices=None):
         parent_identifiers = parent_identifiers or []
         parent_indices = parent_indices or []
         data: List[List[str]] = []
