@@ -3816,7 +3816,8 @@ class ExtractDatasetCollectionTool(DatabaseOperationTool):
             collection = has_collection.collection
 
         collection_type = collection.collection_type
-        assert collection_type in ["list", "paired", "record"]
+        if collection_type not in ["list", "paired", "record", "paired_or_unpaired"]:
+            raise AssertionError(f"Unsupported collection type ({collection_type})")
         how = incoming["which"]["which_dataset"]
         if how == "first":
             extracted_element = collection.first_dataset_element
