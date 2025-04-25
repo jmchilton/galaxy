@@ -348,7 +348,7 @@ const selectedCount = computed(() => {
                     Unselected
                     <span class="font-weight-normal unselected-count"> ({{ unselectedCount }}) </span>
                 </span>
-                <BButton class="selection-button select" :title="selectText" variant="primary" @click="selectAll">
+                <BButton class="selection-button select" data-description="select many select all" :title="selectText" variant="primary" @click="selectAll">
                     {{ selectText }}
                     <FontAwesomeIcon :icon="faLongArrowAltRight" />
                 </BButton>

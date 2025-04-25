@@ -46,6 +46,7 @@ watch(
 <template>
     <div
         class="collection-element d-flex justify-content-between"
+        :data-hid="element.hid"
         :class="{ 'with-actions': hasActions }"
         role="button"
         tabindex="0"

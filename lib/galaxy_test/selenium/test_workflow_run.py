@@ -530,16 +530,17 @@ steps: {}
         workflow_run = self.components.workflow_run
         input = workflow_run.input._(label="input_list")
         input.upload.wait_for_and_click()
-        input.collection_tab_upload_link.wait_for_and_click()
         builder = workflow_run.input.collection_builder._(label="input_list")
-
+        builder.element_by_hid(hid=3).wait_for_present()
+        # self.sleep_for(self.wait_types.UX_TRANSITION)
+        builder.select_all.wait_for_and_click()
         input.collection_tab_build_link.wait_for_and_click()
         builder.create.wait_for_and_click()
         self.workflow_run_submit()
 
         self.history_panel_wait_for_hid_ok(8)
         content = self.dataset_populator.get_history_dataset_content(history_id, hid=8)
-        assert content.strip() == "forward content\nreverse content\nunpaired content"
+        assert content.strip() == "unpaired content\nreverse content\nforward content"
 
     def _upload_hello_world_for_input(self, workflow_input, count=1, from_hid=1):
         # assumes fresh history...
