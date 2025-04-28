@@ -1,4 +1,7 @@
-from typing import Union
+from typing import (
+    List,
+    Union,
+)
 
 from .registry import DATASET_COLLECTION_TYPES_REGISTRY
 
@@ -13,6 +16,31 @@ class CollectionTypeDescriptionFactory:
         assert collection_type is not None
         return CollectionTypeDescription(collection_type, self, fields=fields)
 
+    @classmethod
+    def sort_by_specificity(cls, collection_type_descriptions: List["CollectionTypeDescription"]):
+        """Sort types by decreasing specificity in the context of subcollection mapping.
+
+        Place higher dimension descriptions first so subcollection mapping
+        (until we expose it to the user) will default to providing tool as much
+        data as possible. So a list:list:paired mapped to a tool that takes
+        list,paired,list:paired - will map over list:paired and create a flat list.
+        list should appear before paired_or_unpaired so a tool that takes in a
+        list or paired_or_unpaired will get the list first and not map over.
+        """
+
+        def sort_key(collection_type_description):
+            # Sort by dimension first, then by a key that places "paired_or_unpaired"
+            # before "list".
+            sub_key_type = 0
+            if sub_key_type == "list":
+                sub_key_type = 1
+            return (collection_type_description.dimension, sub_key_type)
+
+        return sorted(
+            collection_type_descriptions,
+            key=sort_key,
+            reverse=True,
+        )
 
 class CollectionTypeDescription:
     """Abstraction over dataset collection type that ties together string
@@ -134,6 +162,9 @@ class CollectionTypeDescription:
         return self.collection_type_description_factory.for_collection_type(collection_type)
 
     def __str__(self):
+        return f"CollectionTypeDescription[{self.collection_type}]"
+
+    def __repr__(self):
         return f"CollectionTypeDescription[{self.collection_type}]"
 
 

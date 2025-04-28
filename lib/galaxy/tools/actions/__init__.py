@@ -278,11 +278,14 @@ class DefaultToolAction(ToolAction):
                     # we only require the child_collection
                     child_collection = True
                     collection = value.child_collection
+                    if not collection:
+                        raise AssertionError(f"Failed to resolve DCE child collection on {value} {value.child_collection} {value.element_identifier} for input {input} {input.name}.")
                 else:
                     # else the tool takes the collection as input so we need everything
                     collection = value.collection
 
-                assert collection
+                if not collection:
+                    raise AssertionError(f"Failed to resolve input into a collection {value}.")
                 action_tuples = collection.dataset_action_tuples
                 if not trans.user_is_admin and not trans.app.security_agent.can_access_datasets(
                     current_user_roles, action_tuples

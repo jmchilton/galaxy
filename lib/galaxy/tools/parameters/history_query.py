@@ -19,14 +19,14 @@ class HistoryQuery:
     @staticmethod
     def from_collection_types(collection_types, collection_type_descriptions):
         if collection_types:
+            sort = collection_type_descriptions.sort_by_specificity
             collection_type_descriptions = [
                 collection_type_descriptions.for_collection_type(t) for t in collection_types
             ]
-            # Place higher dimension descriptions first so subcollection mapping
-            # (until we expose it to the user) will default to providing tool as much
-            # data as possible. So a list:list:paired mapped to a tool that takes
-            # list,paired,list:paired - will map over list:paired and create a flat list.
-            collection_type_descriptions = sorted(collection_type_descriptions, key=lambda t: t.dimension, reverse=True)
+            # see comments on CollectionTypeDescriptionFactory.sort_by_specificity
+            # for why this is sorted correctly for subcollection mapping logic.
+            collection_type_descriptions = sort(collection_type_descriptions)
+            log.info("HistoryQuery: sorted collection types: %s", collection_type_descriptions)
         else:
             collection_type_descriptions = None
         kwargs = dict(collection_type_descriptions=collection_type_descriptions)
