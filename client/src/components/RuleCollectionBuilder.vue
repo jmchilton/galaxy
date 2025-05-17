@@ -1610,11 +1610,14 @@ export default {
                         let identifier = String(rowData[identifierColumns[identifierColumnIndex]]);
                         if (identifierColumnIndex + 1 == numIdentifierColumns) {
                             // At correct final position in nested structure for this dataset.
-                            if (collectionTypeAtDepth === "paired") {
+                            if (["paired", "paired_or_unpaired"].indexOf(collectionTypeAtDepth) > -1) {
                                 if (["f", "1", "r1", "forward"].indexOf(identifier.toLowerCase()) > -1) {
                                     identifier = "forward";
                                 } else if (["r", "2", "r2", "reverse"].indexOf(identifier.toLowerCase()) > -1) {
                                     identifier = "reverse";
+                                } else if (["unpaired"].indexOf(identifier.toLowerCase())) {
+                                    // assert collectionTypeAtDepth == paired_or_unpaired
+                                    identifier = "unpaired";
                                 } else {
                                     this.state = "error";
                                     this.errorMessage =
@@ -1655,6 +1658,29 @@ export default {
                             }
                         }
                     }
+                }
+
+                // Recursively descend elements to handle "paired_or_unpaired" collections
+                const updateUnpairedIdentifiers = (elements) => {
+                    for (const value of Object.values(elements)) {
+                        if (typeof value !== "object" || value === null) {
+                            continue;
+                        }
+                        if (value.src === "new_collection" && value.collection_type === "paired_or_unpaired") {
+                            const subElements = value.elements;
+                            if (subElements["forward"] && !subElements["reverse"]) {
+                                subElements["unpaired"] = subElements["forward"];
+                                delete subElements["forward"];
+                            }
+                        }
+                        if (value.elements) {
+                            updateUnpairedIdentifiers(value.elements);
+                        }
+                    }
+                };
+
+                if (collectionType.endsWith("paired_or_unpaired")) {
+                    updateUnpairedIdentifiers(elements);
                 }
 
                 elementsByName[collectionName] = elements;
