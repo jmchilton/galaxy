@@ -334,6 +334,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dataset_collections/{hdca_id}/sample_sheet_workbook/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Create an XLSX workbook for a sample sheet definition targeting an existing collection. */
+        get: operations["dataset_collections__workbook_download_for_collection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dataset_collections/{hdca_id}/sample_sheet_workbook/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Parse an XLSX workbook for a sample sheet definition and supplied file contents. */
+        post: operations["dataset_collections__workbook_parse_for_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dataset_collections/{hdca_id}/suitable_converters": {
         parameters: {
             query?: never;
@@ -4216,6 +4250,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sample_sheet_workbook/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Create an XLSX workbook for a sample sheet definition. */
+        get: operations["dataset_collections__workbook_download"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sample_sheet_workbook/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Parse an XLSX workbook for a sample sheet definition and supplied file contents. */
+        post: operations["dataset_collections__workbook_parse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/short_term_storage/{storage_request_id}": {
         parameters: {
             query?: never;
@@ -7283,6 +7351,8 @@ export interface components {
             } | null;
             /** Name */
             name?: string | number | boolean | null;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -7651,6 +7721,11 @@ export interface components {
              */
             collection_type?: string | null;
             /**
+             * Column Definitions
+             * @description Specify definitions for row data if collection_type if sample_sheet
+             */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
+            /**
              * Content
              * @description Depending on the `source` it can be:
              *     - The encoded id from the library dataset
@@ -7709,6 +7784,13 @@ export interface components {
              * @description The name of the new collection.
              */
             name?: string | null;
+            /**
+             * Row data
+             * @description Specify rows of metadata data corresponding to an identifier if collection_type is sample_sheet
+             */
+            rows?: {
+                [key: string]: (number | boolean | string | null)[];
+            } | null;
             /**
              * Source
              * @description The source of the content. Can be other history element to be copied or library elements.
@@ -7870,6 +7952,11 @@ export interface components {
              */
             collection_type?: string | null;
             /**
+             * Column Definitions
+             * @description Specify definitions for row data if collection_type if sample_sheet
+             */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
+            /**
              * Copy Elements
              * @description Whether to create a copy of the source HDAs for the new collection.
              * @default true
@@ -7913,6 +8000,13 @@ export interface components {
              * @description The name of the new collection.
              */
             name?: string | null;
+            /**
+             * Row data
+             * @description Specify rows of metadata data corresponding to an identifier if collection_type is sample_sheet
+             */
+            rows?: {
+                [key: string]: (number | boolean | string | null)[];
+            } | null;
         };
         /** CreatePagePayload */
         CreatePagePayload: {
@@ -8705,6 +8799,11 @@ export interface components {
          * @description Dataset Collection Element summary information.
          */
         DCESummary: {
+            /**
+             * Columns
+             * @description A row (or list of columns) of data associated with this element
+             */
+            columns?: (number | boolean | string | null)[] | null;
             /**
              * Element Identifier
              * @description The actual name of this element.
@@ -10562,6 +10661,8 @@ export interface components {
             info?: string | null;
             /** Name */
             name?: string | number | boolean | null;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -10980,6 +11081,8 @@ export interface components {
             info?: string | null;
             /** Name */
             name?: string | number | boolean | null;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -11008,6 +11111,8 @@ export interface components {
             auto_decompress: boolean;
             /** Collection Type */
             collection_type?: string | null;
+            /** Column Definitions */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
             destination: components["schemas"]["HdcaDestination"];
             elements_from?: components["schemas"]["ElementsFromType"] | null;
             /** Ftp Path */
@@ -12030,6 +12135,11 @@ export interface components {
              */
             collection_type?: string | null;
             /**
+             * Column Definitions
+             * @description Column data associated with each element of this collection.
+             */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
+            /**
              * Contents URL
              * @description The relative URL to access the contents of this History.
              */
@@ -12168,6 +12278,11 @@ export interface components {
              * @description The type of the collection, can be `list`, `paired`, or define subcollections using `:` as separator like `list:paired` or `list:list`.
              */
             collection_type: string;
+            /**
+             * Column Definitions
+             * @description Column data associated with each element of this collection.
+             */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
             /**
              * Contents URL
              * @description The relative URL to access the contents of this History.
@@ -12539,6 +12654,8 @@ export interface components {
             auto_decompress: boolean;
             /** Collection Type */
             collection_type?: string | null;
+            /** Column Definitions */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
             destination: components["schemas"]["HdcaDestination"];
             elements_from: components["schemas"]["ElementsFromType"];
             /** Ftp Path */
@@ -12565,6 +12682,8 @@ export interface components {
             auto_decompress: boolean;
             /** Collection Type */
             collection_type?: string | null;
+            /** Column Definitions */
+            column_definitions?: components["schemas"]["SampleSheetColumnDefinition"][] | null;
             destination: components["schemas"]["HdcaDestination"];
             /** Elements */
             elements: (
@@ -13348,9 +13467,8 @@ export interface components {
              */
             negate: boolean;
             /**
-             * Type
-             * @default in_range
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             type: "in_range";
         };
@@ -15186,9 +15304,8 @@ export interface components {
              */
             negate: boolean;
             /**
-             * Type
-             * @default length
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             type: "length";
         };
@@ -16304,6 +16421,8 @@ export interface components {
             info?: string | null;
             /** Name */
             name?: string | number | boolean | null;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -16951,6 +17070,47 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ParseWorkbook */
+        ParseWorkbook: {
+            /**
+             * Collection Type
+             * @enum {string}
+             */
+            collection_type:
+                | "sample_sheet"
+                | "sample_sheet:paired"
+                | "sample_sheet:paired_or_unpaired"
+                | "sample_sheet:record";
+            /**
+             * Column Descriptions
+             * @description A description of the columns expected in the workbook after the first columns described by 'prefix_columns_type'
+             */
+            column_definitions: components["schemas"]["SampleSheetColumnDefinitionModel"][];
+            /**
+             * Workbook Content (Base 64 encoded)
+             * @description The workbook content (the contents of the xlsx file) that have been base64 encoded.
+             */
+            content: string;
+            /**
+             * Prefix Columns Type
+             * @default URI
+             * @enum {string}
+             */
+            prefix_columns_type: "URI" | "ModelObjects";
+        };
+        /** ParseWorkbookForCollectionApi */
+        ParseWorkbookForCollectionApi: {
+            /**
+             * Column Descriptions
+             * @description A description of the columns expected in the workbook after the first columns described by 'prefix_columns_type'
+             */
+            column_definitions: components["schemas"]["SampleSheetColumnDefinitionModel"][];
+            /**
+             * Workbook Content (Base 64 encoded)
+             * @description The workbook content (the contents of the xlsx file) that have been base64 encoded.
+             */
+            content: string;
+        };
         /** ParsedColumn */
         ParsedColumn: {
             /** Title */
@@ -17020,6 +17180,62 @@ export interface components {
              */
             workbook_type: "datasets" | "collection" | "collections";
         };
+        /** ParsedWorkbook */
+        ParsedWorkbook: {
+            /** Extra Columns */
+            extra_columns: components["schemas"]["ParsedColumn"][];
+            /** Rows */
+            rows: {
+                [key: string]: number | boolean | string | null;
+            }[];
+        };
+        /** ParsedWorkbookCollection */
+        ParsedWorkbookCollection: {
+            /** Id */
+            id: string;
+            /**
+             * Model Class
+             * @default DatasetCollection
+             * @constant
+             */
+            model_class: "DatasetCollection";
+        };
+        /** ParsedWorkbookElement */
+        ParsedWorkbookElement: {
+            /** Element Identifier */
+            element_identifier: string;
+            /** Element Index */
+            element_index: number;
+            /**
+             * Element Type
+             * @enum {string}
+             */
+            element_type: "hda" | "child_collection";
+            /** Object */
+            object: components["schemas"]["ParsedWorkbookHda"] | components["schemas"]["ParsedWorkbookCollection"];
+        };
+        /** ParsedWorkbookForCollection */
+        ParsedWorkbookForCollection: {
+            /** Elements */
+            elements: components["schemas"]["ParsedWorkbookElement"][];
+            /** Extra Columns */
+            extra_columns: components["schemas"]["ParsedColumn"][];
+            /** Rows */
+            rows: {
+                [key: string]: number | boolean | string | null;
+            }[];
+        };
+        /** ParsedWorkbookHda */
+        ParsedWorkbookHda: {
+            /** Id */
+            id: string;
+            /**
+             * Model Class
+             * @default HistoryDatasetAssociation
+             * @constant
+             */
+            model_class: "HistoryDatasetAssociation";
+        };
         /** PastedDataElement */
         PastedDataElement: {
             /** Md5 */
@@ -17070,6 +17286,8 @@ export interface components {
              * @description Content to upload
              */
             paste_content: string | number | boolean;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -17153,6 +17371,8 @@ export interface components {
             name?: string | number | boolean | null;
             /** Path */
             path: string;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -17656,9 +17876,8 @@ export interface components {
              */
             negate: boolean;
             /**
-             * Type
-             * @default regex
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             type: "regex";
         };
@@ -18088,6 +18307,60 @@ export interface components {
              */
             type: "rules";
         };
+        /** SampleSheetColumnDefinition */
+        SampleSheetColumnDefinition: {
+            /** Default Value */
+            default_value?: number | boolean | string | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Optional */
+            optional: boolean;
+            /** Restrictions */
+            restrictions?: (number | boolean | string | null)[] | null;
+            /** Suggestions */
+            suggestions?: (number | boolean | string | null)[] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "int" | "float" | "boolean" | "element_identifier";
+            /** Validators */
+            validators?:
+                | {
+                      [key: string]: unknown;
+                  }[]
+                | null;
+        };
+        /** SampleSheetColumnDefinitionModel */
+        SampleSheetColumnDefinitionModel: {
+            /** Default Value */
+            default_value?: number | boolean | string | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Optional */
+            optional: boolean;
+            /** Restrictions */
+            restrictions?: (number | boolean | string | null)[] | null;
+            /** Suggestions */
+            suggestions?: (number | boolean | string | null)[] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "int" | "float" | "boolean" | "element_identifier";
+            /** Validators */
+            validators?:
+                | (
+                      | components["schemas"]["RegexParameterValidatorModel"]
+                      | components["schemas"]["InRangeParameterValidatorModel"]
+                      | components["schemas"]["LengthParameterValidatorModel"]
+                  )[]
+                | null;
+        };
         /** SearchJobsPayload */
         SearchJobsPayload: {
             /**
@@ -18352,6 +18625,8 @@ export interface components {
             link_data_only?: boolean | null;
             /** Name */
             name?: string | number | boolean | null;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /** Server Dir */
             server_dir: string;
             /**
@@ -20314,6 +20589,8 @@ export interface components {
             info?: string | null;
             /** Name */
             name?: string | number | boolean | null;
+            /** Row */
+            row?: (number | boolean | string | null)[] | null;
             /**
              * Space To Tab
              * @default false
@@ -22544,6 +22821,101 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    dataset_collections__workbook_download_for_collection: {
+        parameters: {
+            query: {
+                /** @description Base64 encoding of column definitions. */
+                column_definitions: string;
+                /** @description Filename of the workbook download to generate */
+                filename?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the `HDCA`. */
+                hdca_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    dataset_collections__workbook_parse_for_collection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the `HDCA`. */
+                hdca_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseWorkbookForCollectionApi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsedWorkbookForCollection"];
+                };
             };
             /** @description Request Error */
             "4XX": {
@@ -35479,6 +35851,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleModelResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    dataset_collections__workbook_download: {
+        parameters: {
+            query: {
+                collection_type?:
+                    | "sample_sheet"
+                    | "sample_sheet:paired"
+                    | "sample_sheet:paired_or_unpaired"
+                    | "sample_sheet:record";
+                /** @description Base64 encoding of column definitions. */
+                column_definitions: string;
+                /** @description Prefix values for the seeding the workbook, base64 encoded. */
+                prefix_values?: string | null;
+                /** @description Filename of the workbook download to generate */
+                filename?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    dataset_collections__workbook_parse: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseWorkbook"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsedWorkbook"];
                 };
             };
             /** @description Request Error */
