@@ -44,10 +44,14 @@ from galaxy.model.dataset_collections.workbook_util import (
     index_to_excel_column,
     load_workbook_from_base64,
     make_headers_bold,
-    read_column_header_titles,
+    ReadOnlyWorkbook,
     set_column_width,
 )
 from galaxy.schema.schema import SampleSheetColumnValueT
+from galaxy.util import (
+    string_as_bool,
+    string_as_bool_or_none,
+)
 from .sample_sheet_util import (
     SampleSheetColumnDefinitionModel,
     SampleSheetColumnDefinitionsModel,
@@ -197,20 +201,76 @@ EXTRA_COLUMN_INSTRUCTIONS = [
 
 
 def parse_workbook(payload: ParseWorkbook) -> ParsedWorkbook:
-    workbook = load_workbook_from_base64(payload.content)
+    workbook: ReadOnlyWorkbook = load_workbook_from_base64(payload.content)
     extra_columns = _read_extra_column_headers(workbook, payload)
     rows = _load_row_data(workbook, payload, extra_columns)
+    if not workbook.typed:
+        _normalize_rows(rows, payload)
     return ParsedWorkbook(
         rows=rows,
         extra_columns=[c.parsed_column for c in extra_columns],
     )
 
 
-def _read_extra_column_headers(worksheet: Worksheet, payload: AnyParseWorkbook) -> List[HeaderColumn]:
+def _normalize_rows(rows: ParsedRows, payload: AnyParseWorkbook) -> ParsedRows:
+    """Match column definition types to row values.
+
+    The excel reader does not require this, it reads in typed values for both integers,
+    floats, and booleans, but the csv reader does not do any of that and so we should
+    validate all that here and normalize the expectations.
+
+    This does not throw exceptions on validation errors it just fixes the types if they
+    fix cleanly. Validation errors need to be uniform across both types of workbooks and
+    this code does not apply to Excel.
+    """
+    column_definitions = payload.column_definitions
+    for row in rows:
+        for column_definition in column_definitions:
+            column_name = column_definition.name
+            if column_name not in row:
+                continue
+            value = row[column_name]
+            if value is None or value == "":
+                continue
+            if value is None and column_definition.optional:
+                continue
+            elif value is None:
+                value = ""
+            if column_definition.type == "int":
+                try:
+                    row[column_name] = int(value)
+                except ValueError:
+                    # TODO: capture this and log it.
+                    pass
+            elif column_definition.type == "float":
+                try:
+                    row[column_name] = float(value)
+                except ValueError:
+                    # TODO: capture this and log it.
+                    pass
+            elif column_definition.type == "boolean":
+                if isinstance(value, bool):
+                    continue
+                if value is None:
+                    if column_definition.optional:
+                        row[column_name] = None
+                    else:
+                        row[column_name] = False
+                if isinstance(value, str):
+                    if column_definition.optional:
+                        row[column_name] = string_as_bool_or_none(value)
+                    else:
+                        row[column_name] = string_as_bool(value)
+                else:
+                    # TODO: capture this and log it.
+                    pass
+
+
+def _read_extra_column_headers(workbook: ReadOnlyWorkbook, payload: AnyParseWorkbook) -> List[HeaderColumn]:
     required_prefix_columns = prefix_columns(payload)
     required_column_names = [c.name for c in required_prefix_columns] + [c.name for c in payload.column_definitions]
     num_required_columns = len(required_column_names)
-    column_titles = read_column_header_titles(worksheet.active)
+    column_titles = workbook.column_titles()
     extra_headers = column_titles[num_required_columns:]
     return column_titles_to_headers(extra_headers)
 
@@ -500,9 +560,9 @@ def _add_validation(column: str, data_validation: DataValidation, worksheet: Wor
     data_validation.add(f"{column}2:{column}1048576")
 
 
-def _load_row_data(workbook: Workbook, payload: AnyParseWorkbook, extra_columns: List[HeaderColumn]) -> ParsedRows:
-    sheet = workbook.active  # Get the first sheet
-
+def _load_row_data(
+    workbook: ReadOnlyWorkbook, payload: AnyParseWorkbook, extra_columns: List[HeaderColumn]
+) -> ParsedRows:
     rows: ParsedRows = []
 
     the_prefix_columns = prefix_columns(payload)
@@ -510,7 +570,7 @@ def _load_row_data(workbook: Workbook, payload: AnyParseWorkbook, extra_columns:
     if extra_columns:
         column_names += [c.name for c in extra_columns]
     columns_to_read = len(column_names)
-    for row_index, row in enumerate(sheet.iter_rows(max_col=columns_to_read, values_only=True)):
+    for row_index, row in enumerate(workbook.iter_rows(columns_to_read)):
         if row_index == 0:  # skip column headers
             continue
         if not row[0]:

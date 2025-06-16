@@ -86,6 +86,7 @@ def set_column_width(worksheet: Worksheet, column_index: int, width: int):
 
 
 class ReadOnlyWorkbook(Protocol):
+    typed: bool
 
     def column_titles(self) -> List[str]:
         """Return the column titles from the first (or only) worksheet."""
@@ -96,6 +97,8 @@ class ReadOnlyWorkbook(Protocol):
 
 class ExcelReadOnlyWorkbook(ReadOnlyWorkbook):
     """A protocol for a read-only workbook, used to ensure compatibility with load_workbook."""
+
+    typed: bool = True
 
     def __init__(self, workbook: Workbook):
         """Initialize the read-only workbook."""
@@ -111,6 +114,7 @@ class ExcelReadOnlyWorkbook(ReadOnlyWorkbook):
 
 
 class CsvReaderReadOnlyWorkbook(ReadOnlyWorkbook):
+    typed: bool = False
 
     def __init__(self, file_like: StringIO):
         """Initialize the read-only workbook."""

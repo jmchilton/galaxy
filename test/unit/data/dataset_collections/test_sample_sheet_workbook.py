@@ -185,6 +185,26 @@ def test_parse_base64_workbook():
     assert second_row["treatment"] == "treatment1"
 
 
+def test_parse_base64_workbook_tsv():
+    content_base64 = unittest_file_to_base64("filled_in_workbook_1.tsv")
+    parse_payload = ParseWorkbook(
+        collection_type="sample_sheet",
+        column_definitions=TEST_COLUMN_DEFINITIONS_1,
+        content=content_base64,
+    )
+    result = parse_workbook(parse_payload)
+    rows = result.rows
+    assert rows
+    first_row = result.rows[0]
+    assert first_row["url"] == "https://zenodo.org/records/3263975/files/DRR000770.fastqsanger.gz"
+    assert first_row["replicate number"] == 1
+    assert first_row["treatment"] == "treatment1"
+    assert first_row["is control?"] is False
+    second_row = result.rows[1]
+    assert second_row["replicate number"] == 2
+    assert second_row["treatment"] == "treatment1"
+
+
 def test_parse_base64_workbook_with_dbkey_column():
     content_base64 = unittest_file_to_base64("filled_in_workbook_1_with_dbkey.xlsx")
     parse_payload = ParseWorkbook(
