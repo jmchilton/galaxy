@@ -117,8 +117,6 @@ def _select_which_when(conditional: ConditionalParameterModel, state: dict) -> C
     explicit_test_value = state.get(test_parameter_name)
     test_value = validate_explicit_conditional_test_value(test_parameter_name, explicit_test_value)
     for when in conditional.whens:
-        print(when.discriminator)
-        print(type(when.discriminator))
         if test_value is None and when.is_default_when:
             return when
         elif test_value == when.discriminator:
@@ -175,5 +173,7 @@ def repeat_inputs_to_array(flat_state_path: str, inputs: Dict[str, KVT]) -> List
 
 def validate_explicit_conditional_test_value(test_parameter_name: str, value: Any) -> Optional[Union[str, bool]]:
     if value is not None and not isinstance(value, (str, bool)):
+        if isinstance(value, (int, float)):
+            return str(value)
         raise Exception(f"Invalid conditional test value ({value}) for parameter ({test_parameter_name})")
     return value
