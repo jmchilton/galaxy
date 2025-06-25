@@ -21,6 +21,7 @@ from galaxy import (
     exceptions,
     model,
 )
+from galaxy.managers.context import ProvidesUserContext
 from galaxy.model import (
     DynamicTool,
     UserDynamicToolAssociation,
