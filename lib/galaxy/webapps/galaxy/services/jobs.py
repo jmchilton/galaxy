@@ -31,6 +31,7 @@ from galaxy.managers.jobs import (
     JobSearch,
     view_show_job,
 )
+from galaxy.managers.tools import ToolRunReference
 from galaxy.model import (
     Job,
     ToolRequest,
@@ -61,10 +62,7 @@ from galaxy.webapps.galaxy.services.base import (
     async_task_summary,
     ServiceBase,
 )
-from .tools import (
-    ToolRunReference,
-    validate_tool_for_running,
-)
+from .tools import validate_tool_for_running
 
 if TYPE_CHECKING:
     from galaxy.model import (
