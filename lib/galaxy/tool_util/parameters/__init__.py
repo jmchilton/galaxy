@@ -33,6 +33,7 @@ from galaxy.tool_util_models.parameters import (
     ToolParameterModel,
     ToolParameterT,
 )
+from galaxy.tool_util_models._types import is_optional
 from .case import (
     test_case_state,
     validate_test_cases_for_tool_source,
@@ -131,6 +132,7 @@ __all__ = (
     "RepeatParameterModel",
     "RawStateDict",
     "ValidationFunctionT",
+    "is_optional",
     "validate_against_model",
     "validate_internal_job",
     "validate_internal_landing_request",
