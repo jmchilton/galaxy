@@ -632,6 +632,9 @@ class PageSource(metaclass=ABCMeta):
     def parse_input_sources(self) -> List[InputSource]:
         """Return a list of InputSource objects."""
 
+    def renders_form(self) -> bool:
+        return True
+
 
 AnyTestCollectionDefDict = Union["JsonTestCollectionDefDict", "XmlTestCollectionDefDict"]
 TestCollectionDefElementObject = Union[AnyTestCollectionDefDict, "ToolSourceTestInput"]
