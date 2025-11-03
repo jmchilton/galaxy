@@ -33,5 +33,10 @@ jobs:
         run: yarn run gulp client
         working-directory: client
       - name: Run Unit Tests
-        run: yarn jest
+        run: yarn jest --json --outputFile ../jest-report.json
         working-directory: client
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: Jest report
+          path: jest-report.json

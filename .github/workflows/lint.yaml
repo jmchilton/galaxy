@@ -43,12 +43,19 @@ jobs:
       - name: Install tox
         run: uv tool install tox --with tox-uv
       - name: Run linting
-        run: tox -e lint
+        run: tox -e lint-ci
       - name: Run docstring linting
         run: tox -e lint_docstring_include_list
       - name: Run mypy checks
-        run: tox -e mypy
+        run: tox -e mypy-ci
       - uses: psf/black@stable
         with:
           version: ">=25.1.0"
       - uses: isort/isort-action@v1
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: Python linter reports (${{ matrix.python-version }})
+          path: |
+            mypy-report.json
+            ruff-report.json

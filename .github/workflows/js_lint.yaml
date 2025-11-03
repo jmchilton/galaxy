@@ -29,12 +29,20 @@ jobs:
           cache-dependency-path: 'client/yarn.lock'
       - run: yarn install --frozen-lockfile
         working-directory: client
+      # Previously these were just yarn calls but we're wrapping them in wrapper
+      # scripts so we can capture direct output to publish richer artifacts during
+      # Github Actions.
       - name: Run ESLint
-        run: yarn run eslint
-        working-directory: client
+        run: bash .ci/eslint_yarn_wrapper.sh
       - name: Run prettier checks
-        run: yarn run format-check
-        working-directory: client
+        run: bash .ci/format_check_wrapper.sh
       - name: Run vue-tsc
-        working-directory: client
-        run: yarn type-check
+        run: bash .ci/vue_tsc_wrapper.sh
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: JS linter reports
+          path: |
+            eslint-report.json
+            tsc-report.txt
+            prettier-report.txt
