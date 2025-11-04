@@ -388,6 +388,11 @@ export default {
                 return;
             }
             this.showExecuting = true;
+
+
+            var x = "foo";
+
+   
             const jobDef = {
                 history_id: historyId,
                 tool_id: this.formConfig.id,

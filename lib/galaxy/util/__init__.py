@@ -50,6 +50,10 @@ from typing import (
     TypeVar,
     Union,
 )
+from boltons.iterutils import (
+    default_enter,
+    remap,
+)
 from urllib.parse import (
     quote,
     urlencode,
@@ -58,10 +62,6 @@ from urllib.parse import (
     urlunsplit,
 )
 
-from boltons.iterutils import (
-    default_enter,
-    remap,
-)
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry  # type: ignore[import-untyped, unused-ignore]
 from typing_extensions import (
