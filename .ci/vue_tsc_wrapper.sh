@@ -1,6 +1,4 @@
 #!/bin/bash
-set -e
-
 cd client
 
 # Run prettier --check with text output

@@ -1,6 +1,4 @@
 #!/bin/bash
-set -e
-
 cd client
 
 # Run vue-tsc with text output

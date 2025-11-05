@@ -55,7 +55,10 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
-          name: Python linter reports (${{ matrix.python-version }})
-          path: |
-            mypy-report.json
-            ruff-report.json
+          name: Mypy report (${{ matrix.python-version }})
+          path: mypy-report.json
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: Ruff report (${{ matrix.python-version }})
+          path: ruff-report.json

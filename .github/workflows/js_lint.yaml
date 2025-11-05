@@ -41,8 +41,15 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
-          name: JS linter reports
-          path: |
-            eslint-report.json
-            tsc-report.txt
-            prettier-report.txt
+          name: ES Lint report
+          path: eslint-report.json
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: TSC report
+          path: tsc-report.txt
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: Prettier output
+          path: prettier-report.txt
