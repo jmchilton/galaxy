@@ -48,11 +48,10 @@ jobs:
         run: tox -e lint_docstring_include_list
       - name: Run mypy checks
         run: tox -e mypy-ci
-      # Ideally we would have an artifact for these but I don't see a way
-      # to hack the actions to do that. -John
-      - uses: psf/black@stable
+      - uses: jmchilton/black@feat/output-file-support
         with:
           version: ">=25.1.0"
+          output-file: black-report.txt
       - uses: jmchilton/isort-action@feat/output-file-support
         with:
           output-file: isort-report.txt
@@ -66,6 +65,11 @@ jobs:
         with:
           name: Ruff report (${{ matrix.python-version }})
           path: ruff-report.json
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: Black report (${{ matrix.python-version }})
+          path: black-report.txt
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
