@@ -53,7 +53,9 @@ jobs:
       - uses: psf/black@stable
         with:
           version: ">=25.1.0"
-      - uses: isort/isort-action@v1
+      - uses: jmchilton/isort-action@feat/output-file-support
+        with:
+          output-file: isort-report.txt
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
@@ -64,3 +66,8 @@ jobs:
         with:
           name: Ruff report (${{ matrix.python-version }})
           path: ruff-report.json
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: isort report (${{ matrix.python-version }})
+          path: isort-report.txt
