@@ -188,6 +188,10 @@ UNKNOWN = "unknown"
 DOI_MAX_LENGTH = 200  # This is a reasonable limit. The DOI spec does not set a limit.
 
 
+
+
+
+
 def str_removeprefix(s: str, prefix: str):
     """
     str.removeprefix() equivalent for Python < 3.9
@@ -234,7 +238,7 @@ def is_binary(value):
     >>> is_binary( b'\\x00' )
     True
     """
-    value = smart_str(value)
+    value = smart_str( value )
     for binary_char in BINARY_CHARS:
         if binary_char in value:
             return True

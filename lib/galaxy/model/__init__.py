@@ -1844,7 +1844,7 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     def get_output_datasets(self):
         return self.output_datasets
 
-    def get_input_library_datasets(self):
+    def get_input_library_datasets( self ):
         return self.input_library_datasets
 
     def get_output_library_datasets(self):
