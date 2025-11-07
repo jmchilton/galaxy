@@ -48,6 +48,8 @@ jobs:
         run: tox -e lint_docstring_include_list
       - name: Run mypy checks
         run: tox -e mypy-ci
+      # Ideally we would have an artifact for these but I don't see a way
+      # to hack the actions to do that. -John
       - uses: psf/black@stable
         with:
           version: ">=25.1.0"

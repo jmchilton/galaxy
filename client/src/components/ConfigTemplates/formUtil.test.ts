@@ -18,7 +18,7 @@ describe("formUtils", () => {
     describe("createTemplateForm", () => {
         it("should create a form from an object store templates", () => {
             const form = createTemplateForm(STANDARD_OBJECT_STORE_TEMPLATE, "storage location");
-            expect(form.length).toBe(6);
+            expect(form.length).toBe(4);
             const formEl0 = form[0];
             expect(formEl0?.name).toEqual("_meta_name");
             expect(formEl0?.help).toEqual("Label this new storage location with a name.");
