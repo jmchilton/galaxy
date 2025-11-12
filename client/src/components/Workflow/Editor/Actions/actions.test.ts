@@ -4,6 +4,7 @@ import { LazyUndoRedoAction, type UndoRedoAction, useUndoRedoStore } from "@/sto
 import { useConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowCommentStore } from "@/stores/workflowEditorCommentStore";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { useWorkflowStepStore } from "@/stores/workflowStepStore";
 
 import { fromSimple, type Workflow } from "../modules/model";
@@ -269,7 +270,7 @@ describe("Workflow Undo Redo Actions", () => {
 
         it("RemoveStepAction", () => {
             const step = addStep();
-            const action = new RemoveStepAction(stepStore, stateStore, connectionStore, step);
+            const action = new RemoveStepAction(stepStore, stateStore, connectionStore, stores.graphStore, step);
             testUndoRedo(action);
         });
 
@@ -311,6 +312,7 @@ function resetStores(id = workflowId) {
     const connectionStore = useConnectionStore(id);
     const commentStore = useWorkflowCommentStore(id);
     const undoRedoStore = useUndoRedoStore(id);
+    const graphStore = useWorkflowGraphStore(id);
 
     stepStore.$reset();
     stateStore.$reset();
@@ -324,6 +326,7 @@ function resetStores(id = workflowId) {
         commentStore,
         connectionStore,
         undoRedoStore,
+        graphStore,
     };
 }
 

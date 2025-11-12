@@ -6,6 +6,7 @@ import {
     type WorkflowCommentStore,
 } from "@/stores/workflowEditorCommentStore";
 import { useWorkflowStateStore, type WorkflowStateStore } from "@/stores/workflowEditorStateStore";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { type Step, useWorkflowStepStore, type WorkflowStepStore } from "@/stores/workflowStepStore";
 import { ensureDefined } from "@/utils/assertions";
 
@@ -120,6 +121,7 @@ export class CopyIntoWorkflowAction extends UndoRedoAction {
     position;
     stepStore;
     commentStore;
+    graphStore;
     subAction;
     loadWorkflowOptions: Parameters<typeof fromSimple>[2];
 
@@ -136,6 +138,7 @@ export class CopyIntoWorkflowAction extends UndoRedoAction {
 
         this.stepStore = useWorkflowStepStore(this.workflowId);
         this.commentStore = useWorkflowCommentStore(this.workflowId);
+        this.graphStore = useWorkflowGraphStore(this.workflowId);
         const stateStore = useWorkflowStateStore(this.workflowId);
 
         this.subAction = new ClearSelectionAction(this.commentStore, stateStore);
@@ -173,7 +176,7 @@ export class CopyIntoWorkflowAction extends UndoRedoAction {
 
     undo() {
         this.newCommentIds.forEach((id) => this.commentStore.deleteComment(id));
-        this.newStepIds.forEach((id) => this.stepStore.removeStep(id));
+        this.newStepIds.forEach((id) => this.graphStore.removeStep(id));
 
         this.subAction.undo();
     }
@@ -391,13 +394,17 @@ export class DeleteSelectionAction extends UndoRedoAction {
     storedSelectionAction: DuplicateSelectionAction;
     stateStore;
     connectionStore;
+    graphStore;
     storedConnections;
+    workflowId;
 
     constructor(workflowId: string) {
         super();
 
+        this.workflowId = workflowId;
         this.stateStore = useWorkflowStateStore(workflowId);
         this.connectionStore = useConnectionStore(workflowId);
+        this.graphStore = useWorkflowGraphStore(workflowId);
 
         this.storedSelectionAction = new DuplicateSelectionAction(workflowId);
         this.storedSelectionAction.position = { top: 0, left: 0 };
@@ -439,7 +446,7 @@ export class DeleteSelectionAction extends UndoRedoAction {
         this.commentStore.clearMultiSelectedComments();
 
         this.stepIds.forEach((id) => {
-            this.stepStore.removeStep(id);
+            this.graphStore.removeStep(id);
         });
 
         this.stateStore.clearStepMultiSelection();
@@ -447,6 +454,6 @@ export class DeleteSelectionAction extends UndoRedoAction {
 
     undo() {
         this.storedSelectionAction.redo();
-        this.storedConnections.forEach((connection) => this.connectionStore.addConnection(structuredClone(connection)));
+        this.storedConnections.forEach((connection) => this.graphStore.addConnection(structuredClone(connection)));
     }
 }

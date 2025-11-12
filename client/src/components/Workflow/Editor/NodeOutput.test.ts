@@ -6,6 +6,7 @@ import { nextTick, ref } from "vue";
 import { testDatatypesMapper } from "@/components/Datatypes/test_fixtures";
 import { type UndoRedoStore, useUndoRedoStore } from "@/stores/undoRedoStore";
 import { useConnectionStore } from "@/stores/workflowConnectionStore";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { type Step, type Steps, useWorkflowStepStore } from "@/stores/workflowStepStore";
 
 import { terminalFactory } from "./modules/terminals";
@@ -57,6 +58,7 @@ describe("NodeOutput", () => {
     let pinia: ReturnType<typeof createPinia>;
     let stepStore: ReturnType<typeof useWorkflowStepStore>;
     let connectionStore: ReturnType<typeof useConnectionStore>;
+    let graphStore: ReturnType<typeof useWorkflowGraphStore>;
     let undoRedoStore: UndoRedoStore;
 
     beforeEach(() => {
@@ -64,8 +66,9 @@ describe("NodeOutput", () => {
         setActivePinia(pinia);
         stepStore = useWorkflowStepStore("mock-workflow");
         connectionStore = useConnectionStore("mock-workflow");
+        graphStore = useWorkflowGraphStore("mock-workflow");
         undoRedoStore = useUndoRedoStore("mock-workflow");
-        Object.values(advancedSteps).map((step) => stepStore.addStep(step));
+        Object.values(advancedSteps).map((step) => graphStore.addStep(step));
     });
 
     it("does not display multiple icon if not mapped over", async () => {
@@ -86,11 +89,13 @@ describe("NodeOutput", () => {
         const inputTerminal = terminalFactory(simpleDataStep.id, simpleDataStep.inputs[0]!, testDatatypesMapper, {
             connectionStore,
             stepStore,
+            graphStore,
             undoRedoStore,
         } as any);
         const outputTerminal = terminalFactory(listInputStep.id, listInputStep.outputs[0]!, testDatatypesMapper, {
             connectionStore,
             stepStore,
+            graphStore,
             undoRedoStore,
         } as any);
         const propsData = propsForStep(simpleDataStep);

@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { type NewStep, type StepInputConnection, useWorkflowStepStore } from "@/stores/workflowStepStore";
 
 import { useConnectionStore } from "./workflowConnectionStore";
@@ -45,19 +46,19 @@ describe("Connection Store", () => {
         expect(stepStore.getStep(0)).toBe(undefined);
     });
     it("creates connection if step has connection", () => {
-        const stepStore = useWorkflowStepStore("mock-workflow");
+        const graphStore = useWorkflowGraphStore("mock-workflow");
         const connectionStore = useConnectionStore("mock-workflow");
-        stepStore.addStep(workflowStepZero);
-        stepStore.addStep(workflowStepOne);
+        graphStore.addStep(workflowStepZero);
+        graphStore.addStep(workflowStepOne);
         expect(connectionStore.connections.length).toBe(1);
     });
     it("removes connection if step has connection", () => {
-        const stepStore = useWorkflowStepStore("mock-workflow");
+        const graphStore = useWorkflowGraphStore("mock-workflow");
         const connectionStore = useConnectionStore("mock-workflow");
-        stepStore.addStep(workflowStepZero);
-        const stepOne = stepStore.addStep(workflowStepOne);
+        graphStore.addStep(workflowStepZero);
+        const stepOne = graphStore.addStep(workflowStepOne);
         expect(connectionStore.connections.length).toBe(1);
-        stepStore.removeStep(stepOne.id);
+        graphStore.removeStep(stepOne.id);
         expect(connectionStore.connections.length).toBe(0);
     });
 });

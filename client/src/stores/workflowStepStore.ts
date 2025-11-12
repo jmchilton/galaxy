@@ -2,7 +2,6 @@ import { computed, del, ref, set } from "vue";
 
 import type { FieldDict, SampleSheetColumnDefinitions } from "@/api";
 import type { CollectionTypeDescriptor } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
-import { getConnectionId, useConnectionStore } from "@/stores/workflowConnectionStore";
 import { assertDefined } from "@/utils/assertions";
 
 import { defineScopedStore } from "./scopedStore";
@@ -216,19 +215,36 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
         return duplicateLabels;
     });
 
-    const connectionStore = useConnectionStore(workflowId);
-
     const stateStore = useWorkflowStateStore(workflowId);
 
-    function addStep(newStep: NewStep, select = false, createConnections = true): Step {
+    /**
+     * Internal: Add step without creating connections
+     * Used by workflowGraphStore coordinator
+     */
+    function addStepInternal(newStep: NewStep, select = false): Step {
         const stepId = newStep.id ?? getStepIndex.value + 1;
         const step = Object.freeze({ ...newStep, id: stepId } as Step);
 
         set(steps.value, stepId.toString(), step);
 
-        if (createConnections) {
-            stepToConnections(step).forEach((connection) => connectionStore.addConnection(connection));
+        stepExtraInputs.value[step.id] = findStepExtraInputs(step);
+
+        if (select) {
+            stateStore.setStepMultiSelected(step.id, true);
         }
+
+        return step;
+    }
+
+    /**
+     * Public: Add step (caller must sync with connection store if needed)
+     * @deprecated Use workflowGraphStore.addStep instead
+     */
+    function addStep(newStep: NewStep, select = false, _createConnections = true): Step {
+        const stepId = newStep.id ?? getStepIndex.value + 1;
+        const step = Object.freeze({ ...newStep, id: stepId } as Step);
+
+        set(steps.value, stepId.toString(), step);
 
         stepExtraInputs.value[step.id] = findStepExtraInputs(step);
 
@@ -295,6 +311,86 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
         }
     }
 
+    /**
+     * Internal: Add connection to step without updating connection store
+     * Used by workflowGraphStore coordinator
+     */
+    function addConnectionInternal(connection: Connection) {
+        const inputStep = getStep.value(connection.input.stepId);
+
+        assertDefined(
+            inputStep,
+            `Failed to add connection, because step with id ${connection.input.stepId} is undefined`,
+        );
+
+        const input = inputStep.inputs.find((input) => input.name === connection.input.name);
+        const connectionLink: ConnectionOutputLink = {
+            output_name: connection.output.name,
+            id: connection.output.stepId,
+        };
+
+        if (input && "input_subworkflow_step_id" in input && input.input_subworkflow_step_id !== undefined) {
+            connectionLink["input_subworkflow_step_id"] = input.input_subworkflow_step_id;
+        }
+
+        let connectionLinks: ConnectionOutputLink[] = [connectionLink];
+        let inputConnection = inputStep.input_connections[connection.input.name];
+
+        if (inputConnection) {
+            if (!Array.isArray(inputConnection)) {
+                inputConnection = [inputConnection];
+            }
+            inputConnection = inputConnection.filter(
+                (connection) =>
+                    !(connection.id === connectionLink.id && connection.output_name === connectionLink.output_name),
+            );
+            connectionLinks = [...connectionLinks, ...inputConnection];
+        }
+
+        const updatedStep = {
+            ...inputStep,
+            input_connections: {
+                ...inputStep.input_connections,
+                [connection.input.name]: connectionLinks.sort((a, b) =>
+                    a.id === b.id ? a.output_name.localeCompare(b.output_name) : a.id - b.id,
+                ),
+            },
+        };
+
+        updateStep(updatedStep);
+    }
+
+    /**
+     * Internal: Remove connection from step without updating connection store
+     * Used by workflowGraphStore coordinator
+     */
+    function removeConnectionInternal(connection: Connection) {
+        const inputStep = getStep.value(connection.input.stepId);
+
+        assertDefined(
+            inputStep,
+            `Failed to remove connection, because step with id ${connection.input.stepId} is undefined`,
+        );
+
+        const inputConnections = inputStep.input_connections[connection.input.name];
+
+        if (getStepExtraInputs.value(inputStep.id).find((input) => connection.input.name === input.name)) {
+            inputStep.input_connections[connection.input.name] = undefined;
+        } else {
+            if (Array.isArray(inputConnections)) {
+                inputStep.input_connections[connection.input.name] = inputConnections.filter(
+                    (outputLink) =>
+                        !(outputLink.id === connection.output.stepId &&
+                        outputLink.output_name === connection.output.name),
+                );
+            } else {
+                del(inputStep.input_connections, connection.input.name);
+            }
+        }
+
+        updateStep(inputStep);
+    }
+
     function addConnection(connection: Connection) {
         const inputStep = getStep.value(connection.input.stepId);
 
@@ -356,7 +452,7 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
             if (Array.isArray(inputConnections)) {
                 inputStep.input_connections[connection.input.name] = inputConnections.filter(
                     (outputLink) =>
-                        !(outputLink.id === connection.output.stepId,
+                        !(outputLink.id === connection.output.stepId &&
                         outputLink.output_name === connection.output.name),
                 );
             } else {
@@ -369,11 +465,25 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
 
     const { deleteStepPosition, deleteStepTerminals } = useWorkflowStateStore(workflowId);
 
-    function removeStep(stepId: number) {
-        connectionStore
-            .getConnectionsForStep(stepId)
-            .forEach((connection) => connectionStore.removeConnection(getConnectionId(connection)));
+    /**
+     * Internal: Remove step without updating connection store
+     * Used by workflowGraphStore coordinator
+     */
+    function removeStepInternal(stepId: number) {
+        del(steps.value, stepId.toString());
+        del(stepExtraInputs.value, stepId);
+        del(stateStore.multiSelectedSteps, stepId);
+        del(stepMapOver.value, stepId.toString());
 
+        deleteStepPosition(stepId);
+        deleteStepTerminals(stepId);
+    }
+
+    /**
+     * Public: Remove step (caller must sync with connection store)
+     * @deprecated Use workflowGraphStore.removeStep instead
+     */
+    function removeStep(stepId: number) {
         del(steps.value, stepId.toString());
         del(stepExtraInputs.value, stepId);
         del(stateStore.multiSelectedSteps, stepId);
@@ -406,6 +516,11 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
         addConnection,
         removeConnection,
         removeStep,
+        // Internal methods for coordinator
+        addStepInternal,
+        removeStepInternal,
+        addConnectionInternal,
+        removeConnectionInternal,
     };
 });
 
@@ -424,7 +539,7 @@ function makeConnection(inputId: number, inputName: string, outputId: number, ou
     };
 }
 
-function stepToConnections(step: Step): Connection[] {
+function _stepToConnections(step: Step): Connection[] {
     const connections: Connection[] = [];
 
     if (step.input_connections) {

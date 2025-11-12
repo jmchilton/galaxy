@@ -1,7 +1,9 @@
 import { createPinia, setActivePinia } from "pinia";
 
-import { getTerminalId, useConnectionStore } from "@/stores/workflowConnectionStore";
-import { type NewStep, useWorkflowStepStore } from "@/stores/workflowStepStore";
+import { useConnectionStore } from "@/stores/workflowConnectionStore";
+import { getTerminalId } from "@/stores/workflowConnectionUtils";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
+import type { NewStep } from "@/stores/workflowStepStore";
 import type { Connection, InputTerminal, OutputTerminal } from "@/stores/workflowStoreTypes";
 
 const workflowStepZero: NewStep = {
@@ -37,42 +39,46 @@ const connection: Connection = {
 describe("Connection Store", () => {
     beforeEach(() => {
         setActivePinia(createPinia());
-        const workflowStepStore = useWorkflowStepStore("mock-workflow");
-        workflowStepStore.addStep(workflowStepZero);
-        workflowStepStore.addStep(workflowStepOne);
+        const graphStore = useWorkflowGraphStore("mock-workflow");
+        graphStore.addStep(workflowStepZero);
+        graphStore.addStep(workflowStepOne);
     });
 
     it("adds connection", () => {
+        const graphStore = useWorkflowGraphStore("mock-workflow");
         const connectionStore = useConnectionStore("mock-workflow");
         expect(connectionStore.connections.length).toBe(0);
-        connectionStore.addConnection(connection);
+        graphStore.addConnection(connection);
         expect(connectionStore.connections.length).toBe(1);
     });
     it("removes connection", () => {
+        const graphStore = useWorkflowGraphStore("mock-workflow");
         const connectionStore = useConnectionStore("mock-workflow");
-        connectionStore.addConnection(connection);
-        connectionStore.removeConnection(inputTerminal);
+        graphStore.addConnection(connection);
+        graphStore.removeConnection(inputTerminal);
         expect(connectionStore.connections.length).toBe(0);
     });
     it("finds connections for steps", () => {
+        const graphStore = useWorkflowGraphStore("mock-workflow");
         const connectionStore = useConnectionStore("mock-workflow");
         expect(connectionStore.getConnectionsForStep(0)).toStrictEqual([]);
         expect(connectionStore.getConnectionsForStep(1)).toStrictEqual([]);
-        connectionStore.addConnection(connection);
+        graphStore.addConnection(connection);
         expect(connectionStore.getConnectionsForStep(0)).toStrictEqual([connection]);
         expect(connectionStore.getConnectionsForStep(1)).toStrictEqual([connection]);
-        connectionStore.removeConnection(connection.input);
+        graphStore.removeConnection(connection.input);
         expect(connectionStore.getConnectionsForStep(0)).toStrictEqual([]);
         expect(connectionStore.getConnectionsForStep(1)).toStrictEqual([]);
     });
     it("finds output terminals for input terminal", () => {
+        const graphStore = useWorkflowGraphStore("mock-workflow");
         const connectionStore = useConnectionStore("mock-workflow");
         expect(connectionStore.getOutputTerminalsForInputTerminal(getTerminalId(connection.input))).toStrictEqual([]);
-        connectionStore.addConnection(connection);
+        graphStore.addConnection(connection);
         expect(connectionStore.getOutputTerminalsForInputTerminal(getTerminalId(connection.input))).toStrictEqual([
             connection.output,
         ]);
-        connectionStore.removeConnection(connection.input);
+        graphStore.removeConnection(connection.input);
         expect(connectionStore.getOutputTerminalsForInputTerminal(getTerminalId(connection.input))).toStrictEqual([]);
     });
 });

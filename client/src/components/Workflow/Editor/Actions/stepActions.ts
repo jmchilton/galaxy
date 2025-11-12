@@ -5,6 +5,7 @@ import { LazyUndoRedoAction, UndoRedoAction, type UndoRedoStore } from "@/stores
 import type { WorkflowConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowCommentStore } from "@/stores/workflowEditorCommentStore";
 import type { WorkflowStateStore } from "@/stores/workflowEditorStateStore";
+import type { WorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { type NewStep, type Step, useWorkflowStepStore, type WorkflowStepStore } from "@/stores/workflowStepStore";
 import type { Connection } from "@/stores/workflowStoreTypes";
 import { assertDefined } from "@/utils/assertions";
@@ -311,6 +312,7 @@ export class RemoveStepAction extends UndoRedoAction {
     stepStore;
     stateStore;
     connectionStore;
+    graphStore;
     step: Step;
     connections: Connection[];
 
@@ -318,12 +320,14 @@ export class RemoveStepAction extends UndoRedoAction {
         stepStore: WorkflowStepStore,
         stateStore: WorkflowStateStore,
         connectionStore: WorkflowConnectionStore,
+        graphStore: WorkflowGraphStore,
         step: Step,
     ) {
         super();
         this.stepStore = stepStore;
         this.stateStore = stateStore;
         this.connectionStore = connectionStore;
+        this.graphStore = graphStore;
         this.step = structuredClone(step);
         this.connections = structuredClone(this.connectionStore.getConnectionsForStep(this.step.id));
     }
@@ -333,14 +337,13 @@ export class RemoveStepAction extends UndoRedoAction {
     }
 
     run() {
-        this.stepStore.removeStep(this.step.id);
+        this.graphStore.removeStep(this.step.id);
         this.stateStore.activeNodeId = null;
         this.stateStore.hasChanges = true;
     }
 
     undo() {
-        this.stepStore.addStep(structuredClone(this.step), false, false);
-        this.connections.forEach((connection) => this.connectionStore.addConnection(connection));
+        this.graphStore.addStep(structuredClone(this.step), false, false);
         this.stateStore.hasChanges = true;
     }
 }
@@ -527,6 +530,7 @@ export function useStepActions(
     undoRedoStore: UndoRedoStore,
     stateStore: WorkflowStateStore,
     connectionStore: WorkflowConnectionStore,
+    graphStore: WorkflowGraphStore,
 ) {
     /**
      * If the pending action is a `LazyMutateStepAction` and matches the step id and field key, returns it.
@@ -661,7 +665,7 @@ export function useStepActions(
     }
 
     function removeStep(step: Step) {
-        const action = new RemoveStepAction(stepStore, stateStore, connectionStore, step);
+        const action = new RemoveStepAction(stepStore, stateStore, connectionStore, graphStore, step);
         undoRedoStore.applyAction(action);
     }
 

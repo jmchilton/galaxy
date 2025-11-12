@@ -2,6 +2,7 @@ import { mount } from "@vue/test-utils";
 import { createPinia, PiniaVuePlugin, setActivePinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
 
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { useWorkflowStepStore } from "@/stores/workflowStepStore";
 
 import FormOutputLabel from "./FormOutputLabel.vue";
@@ -43,8 +44,9 @@ describe("FormOutputLabel", () => {
             provide: { workflowId: "mock-workflow" },
         });
         stepStore = useWorkflowStepStore("mock-workflow");
-        stepStore.addStep(stepOne);
-        stepStore.addStep(stepTwo);
+        const graphStore = useWorkflowGraphStore("mock-workflow");
+        graphStore.addStep(stepOne);
+        graphStore.addStep(stepTwo);
     });
 
     it("check initial value and value change", async () => {

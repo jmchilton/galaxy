@@ -24,7 +24,7 @@ import {
     terminalFactory,
 } from "@/components/Workflow/Editor/modules/terminals";
 import { useWorkflowStores } from "@/composables/workflowStores";
-import { getConnectionId } from "@/stores/workflowConnectionStore";
+import { getConnectionId } from "@/stores/workflowConnectionUtils";
 import type { InputTerminalSource } from "@/stores/workflowStepStore";
 
 import { useRelativePosition } from "./composables/relativePosition";

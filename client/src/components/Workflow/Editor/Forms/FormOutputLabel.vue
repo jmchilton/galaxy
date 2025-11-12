@@ -30,7 +30,7 @@ const props = withDefaults(
     },
 );
 
-const { stepStore, undoRedoStore, stateStore, connectionStore } = useWorkflowStores();
+const { stepStore, undoRedoStore, stateStore, connectionStore, graphStore } = useWorkflowStores();
 
 const error: Ref<string | undefined> = ref(undefined);
 const id = computed(() => `__label__${props.name}`);
@@ -47,7 +47,7 @@ const label = computed(() => {
     return null;
 });
 
-const { setOutputLabel } = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore);
+const { setOutputLabel } = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore, graphStore);
 
 function onInput(newLabel: string | undefined | null) {
     if (newLabel === undefined || newLabel === null) {

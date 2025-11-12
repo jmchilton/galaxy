@@ -4,6 +4,7 @@ import { PiniaVuePlugin, setActivePinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
 
 import { testDatatypesMapper } from "@/components/Datatypes/test_fixtures";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { useWorkflowStepStore } from "@/stores/workflowStepStore";
 
 import { getUntypedWorkflowParameters } from "./modules/parameters";
@@ -85,7 +86,7 @@ const steps = {
 
 describe("Lint", () => {
     let wrapper;
-    let stepStore;
+    let graphStore;
 
     beforeEach(() => {
         const pinia = createTestingPinia({ stubActions: false });
@@ -106,8 +107,8 @@ describe("Lint", () => {
             provide: { workflowId: "mock-workflow" },
         });
 
-        stepStore = useWorkflowStepStore("mock-workflow");
-        Object.values(steps).map((step) => stepStore.addStep(step));
+        graphStore = useWorkflowGraphStore("mock-workflow");
+        Object.values(steps).map((step) => graphStore.addStep(step));
     });
 
     it("test checked vs unchecked issues", async () => {
@@ -139,7 +140,7 @@ describe("Lint", () => {
     });
 
     it("should include connect input action when input disconnected", async () => {
-        stepStore.removeStep(0);
+        graphStore.removeStep(0);
         await wrapper.find(".refactor-button").trigger("click");
         expect(wrapper.emitted().onRefactor.length).toBe(1);
         const actions = wrapper.emitted().onRefactor[0][0];

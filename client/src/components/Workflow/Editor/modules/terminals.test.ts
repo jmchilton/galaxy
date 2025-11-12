@@ -6,6 +6,7 @@ import { useConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowCommentStore } from "@/stores/workflowEditorCommentStore";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
 import { useWorkflowEditorToolbarStore } from "@/stores/workflowEditorToolbarStore";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import { useWorkflowSearchStore } from "@/stores/workflowSearchStore";
 import {
     type DataOutput,
@@ -42,6 +43,7 @@ function useStores(id = "mock-workflow") {
     const toolbarStore = useWorkflowEditorToolbarStore(id);
     const undoRedoStore = useUndoRedoStore(id);
     const searchStore = useWorkflowSearchStore(id);
+    const graphStore = useWorkflowGraphStore(id);
 
     return {
         workflowId: id,
@@ -52,6 +54,7 @@ function useStores(id = "mock-workflow") {
         toolbarStore,
         undoRedoStore,
         searchStore,
+        graphStore,
     };
 }
 
@@ -148,13 +151,15 @@ describe("canAccept", () => {
     let terminals: { [index: string]: { [index: string]: ReturnType<typeof terminalFactory> } } = {};
     let stepStore: ReturnType<typeof useWorkflowStepStore>;
     let connectionStore: ReturnType<typeof useConnectionStore>;
+    let graphStore: ReturnType<typeof useWorkflowGraphStore>;
     beforeEach(() => {
         setActivePinia(createPinia());
         terminals = setupAdvanced();
         stepStore = useWorkflowStepStore("mock-workflow");
         connectionStore = useConnectionStore("mock-workflow");
+        graphStore = useWorkflowGraphStore("mock-workflow");
         Object.values(JSON.parse(JSON.stringify(advancedSteps)) as Steps).map((step) => {
-            stepStore.addStep(step);
+            graphStore.addStep(step);
         });
     });
 
@@ -438,7 +443,7 @@ describe("canAccept", () => {
             { id: dataOutOne.stepId, output_name: dataOutOne.name },
             { id: dataOutTwo.stepId, output_name: dataOutTwo.name },
         ]);
-        stepStore.removeStep(dataOutTwo.stepId);
+        graphStore.removeStep(dataOutTwo.stepId);
         step = stepStore.getStep(multiDataIn.stepId)!;
         expect(step.input_connections["f1"]).toStrictEqual([{ id: dataOutOne.stepId, output_name: dataOutOne.name }]);
     });
@@ -842,7 +847,7 @@ describe("Input terminal", () => {
         stores = useStores();
         terminals = {};
         Object.values(simpleSteps).map((step) => {
-            stores.stepStore.addStep(step);
+            stores.graphStore.addStep(step);
             terminals[step.id] = {};
             const stepTerminals = terminals[step.id]!;
             step.inputs?.map((input) => {
@@ -888,7 +893,7 @@ describe("Input terminal", () => {
         firstInputTerminal.disconnect(connection);
         expect(firstInputTerminal.canAccept(dataInputOutputTerminal).canAccept).toBe(true);
         expect(dataInputOutputTerminal.validInputTerminals().length).toBe(1);
-        stores.connectionStore.addConnection(connection);
+        stores.graphStore.addConnection(connection);
         expect(firstInputTerminal.canAccept(dataInputOutputTerminal).canAccept).toBe(false);
     });
     it("will maintain invalid connections", () => {

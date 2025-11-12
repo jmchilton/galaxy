@@ -2,6 +2,7 @@ import reportDefault from "@/components/Workflow/Editor/reportDefault";
 import { useWorkflowCommentStore, type WorkflowComment } from "@/stores/workflowEditorCommentStore";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
 import { useWorkflowEditorToolbarStore } from "@/stores/workflowEditorToolbarStore";
+import { useWorkflowGraphStore } from "@/stores/workflowGraphStore";
 import {
     type ConnectionOutputLink,
     type StepInputConnection,
@@ -52,6 +53,7 @@ export async function fromSimple(
     const commentStore = useWorkflowCommentStore(id);
     const stateStore = useWorkflowStateStore(id);
     const stepStore = useWorkflowStepStore(id);
+    const graphStore = useWorkflowGraphStore(id);
     const toolbarStore = useWorkflowEditorToolbarStore(id);
 
     // If workflow being copied into another, wipe UUID and let
@@ -120,7 +122,7 @@ export async function fromSimple(
     }
 
     Object.values(data.steps).map((step) => {
-        stepStore.addStep(step, appendData, options?.createConnections ?? true);
+        graphStore.addStep(step, appendData, options?.createConnections ?? true);
     });
 
     commentStore.addComments(data.comments, [defaultPosition.left, defaultPosition.top], appendData);

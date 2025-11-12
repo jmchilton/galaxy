@@ -2,7 +2,7 @@ import EventEmitter from "events";
 
 import type { DatatypesMapperModel } from "@/components/Datatypes/model";
 import type { useWorkflowStores } from "@/composables/workflowStores";
-import { getConnectionId } from "@/stores/workflowConnectionStore";
+import { getConnectionId } from "@/stores/workflowConnectionUtils";
 import type {
     CollectionOutput,
     DataCollectionStepInput,
@@ -102,7 +102,7 @@ class Terminal extends EventEmitter {
     }
     makeConnection(other: Terminal | Connection) {
         const connection = this.buildConnection(other);
-        this.stores.connectionStore.addConnection(connection);
+        this.stores.graphStore.addConnection(connection);
     }
     disconnect(other: Terminal | Connection) {
         this.stores.undoRedoStore
@@ -114,7 +114,7 @@ class Terminal extends EventEmitter {
     }
     dropConnection(other: Terminal | Connection) {
         const connection = this.buildConnection(other);
-        this.stores.connectionStore.removeConnection(getConnectionId(connection));
+        this.stores.graphStore.removeConnection(getConnectionId(connection));
         this.resetMappingIfNeeded(connection);
     }
     setMapOver(val: CollectionTypeDescriptor) {

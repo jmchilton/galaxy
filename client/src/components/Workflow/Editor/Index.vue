@@ -336,7 +336,7 @@ export default {
         const uid = unref(useUid("workflow-editor-"));
         const id = ref(props.workflowId || uid);
 
-        const { connectionStore, stepStore, stateStore, commentStore, undoRedoStore } = provideScopedWorkflowStores(id);
+        const { connectionStore, stepStore, stateStore, commentStore, undoRedoStore, graphStore } = provideScopedWorkflowStores(id);
 
         const { undo, redo } = undoRedoStore;
         const { ctrl_z, ctrl_shift_z, meta_z, meta_shift_z } = useMagicKeys();
@@ -577,7 +577,7 @@ export default {
             emit("update:confirmation", false);
         });
 
-        const stepActions = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore);
+        const stepActions = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore, graphStore);
 
         const markdownEditor = ref(null);
         function insertMarkdown(markdown) {
