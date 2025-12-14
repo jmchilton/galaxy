@@ -1,6 +1,8 @@
 import logging
 import os
 import shutil
+from dataclasses import dataclass
+from typing import Optional
 
 import markupsafe
 
@@ -10,6 +12,49 @@ from galaxy.util import (
 )
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class LogMessage:
+    """A captured log message with level and formatted text."""
+
+    level: str
+    message: str
+
+
+# Type alias for optional message collector
+LogCollector = Optional[list[LogMessage]]
+
+
+def _collect(collector: LogCollector, level: str, msg: str, *args):
+    """Append formatted message to collector if present."""
+    if collector is not None:
+        formatted = msg % args if args else msg
+        collector.append(LogMessage(level=level, message=formatted))
+
+
+def log_debug(logger: logging.Logger, collector: LogCollector, msg: str, *args):
+    """Log debug message to logger and optionally collect."""
+    logger.debug(msg, *args)
+    _collect(collector, "debug", msg, *args)
+
+
+def log_info(logger: logging.Logger, collector: LogCollector, msg: str, *args):
+    """Log info message to logger and optionally collect."""
+    logger.info(msg, *args)
+    _collect(collector, "info", msg, *args)
+
+
+def log_warning(logger: logging.Logger, collector: LogCollector, msg: str, *args):
+    """Log warning message to logger and optionally collect."""
+    logger.warning(msg, *args)
+    _collect(collector, "warning", msg, *args)
+
+
+def log_error(logger: logging.Logger, collector: LogCollector, msg: str, *args):
+    """Log error message to logger and optionally collect."""
+    logger.error(msg, *args)
+    _collect(collector, "error", msg, *args)
 
 CHUNK_SIZE = 2**20  # 1Mb
 INSTALLATION_LOG = "INSTALLATION.log"
@@ -128,6 +173,12 @@ __all__ = (
     "DOCKER_IMAGE_TEMPLATE",
     "get_file_type_str",
     "INSTALLATION_LOG",
+    "log_debug",
+    "log_error",
+    "log_info",
+    "log_warning",
+    "LogCollector",
+    "LogMessage",
     "MAX_DISPLAY_SIZE",
     "MAXDIFFSIZE",
     "NO_OUTPUT_TIMEOUT",

@@ -1,11 +1,14 @@
 import logging
 import os
 import subprocess
-from typing import (
-    Optional,
-)
+from typing import Optional
 
 from galaxy.tool_shed.util import basic_util
+from galaxy.tool_shed.util.basic_util import (
+    log_debug,
+    log_error,
+    LogCollector,
+)
 from galaxy.util import unicodify
 
 log = logging.getLogger(__name__)
@@ -13,7 +16,12 @@ log = logging.getLogger(__name__)
 INITIAL_CHANGELOG_HASH = "000000000000"
 
 
-def clone_repository(repository_clone_url: str, repository_file_dir: str, ctx_rev=None) -> tuple[bool, Optional[str]]:
+def clone_repository(
+    repository_clone_url: str,
+    repository_file_dir: str,
+    ctx_rev=None,
+    collector: LogCollector = None,
+) -> tuple[bool, Optional[str]]:
     """
     Clone the repository up to the specified changeset_revision.  No subsequent revisions will be
     present in the cloned repository.
@@ -22,17 +30,19 @@ def clone_repository(repository_clone_url: str, repository_file_dir: str, ctx_re
     if ctx_rev:
         cmd.extend(["-r", str(ctx_rev)])
     cmd.extend([repository_clone_url, repository_file_dir])
+    log_debug(log, collector, "Cloning repository from %s to %s (rev=%s)", repository_clone_url, repository_file_dir, ctx_rev)
     # Make sure the destination path actually exists before attempting to clone
     if not os.path.exists(repository_file_dir):
         os.makedirs(repository_file_dir)
     try:
         subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        log_debug(log, collector, "Clone successful")
         return True, None
     except Exception as e:
         error_message = f"Error cloning repository: {unicodify(e)}"
         if isinstance(e, subprocess.CalledProcessError):
             error_message += f"\nOutput was:\n{unicodify(e.output)}"
-        log.error(error_message)
+        log_error(log, collector, error_message)
         return False, error_message
 
 
@@ -110,16 +120,19 @@ def get_file_context_from_ctx(ctx, filename):
     return None
 
 
-def pull_repository(repo_path, repository_clone_url, ctx_rev):
+def pull_repository(repo_path, repository_clone_url, ctx_rev, collector: LogCollector = None):
     """Pull changes from a remote repository to a local one."""
+    log_debug(log, collector, "Pulling revision %s from %s to %s", ctx_rev, repository_clone_url, repo_path)
     try:
         subprocess.check_output(
             ["hg", "pull", "-r", ctx_rev, repository_clone_url], stderr=subprocess.STDOUT, cwd=repo_path
         )
+        log_debug(log, collector, "Pull successful")
     except Exception as e:
         error_message = f"Error pulling revision '{ctx_rev}': {unicodify(e)}"
         if isinstance(e, subprocess.CalledProcessError):
             error_message += f"\nOutput was:\n{unicodify(e.output)}"
+        log_error(log, collector, error_message)
         raise Exception(error_message)
 
 
@@ -161,7 +174,7 @@ def reversed_upper_bounded_changelog(repo, included_upper_bounds_changeset_revis
     )
 
 
-def update_repository(repo_path, ctx_rev=None):
+def update_repository(repo_path, ctx_rev=None, collector: LogCollector = None):
     """
     Update the cloned repository to changeset_revision.  It is critical that the installed repository is updated to the desired
     changeset_revision before metadata is set because the process for setting metadata uses the repository files on disk.
@@ -180,12 +193,15 @@ def update_repository(repo_path, ctx_rev=None):
     cmd = ["hg", "update"]
     if ctx_rev:
         cmd.extend(["-r", ctx_rev])
+    log_debug(log, collector, "Updating repository at %s to revision %s", repo_path, ctx_rev)
     try:
         subprocess.check_output(cmd, stderr=subprocess.STDOUT, cwd=repo_path)
+        log_debug(log, collector, "Update successful")
     except Exception as e:
         error_message = f"Error updating repository: {unicodify(e)}"
         if isinstance(e, subprocess.CalledProcessError):
             error_message += f"\nOutput was:\n{unicodify(e.output)}"
+        log_error(log, collector, error_message)
         raise Exception(error_message)
 
 

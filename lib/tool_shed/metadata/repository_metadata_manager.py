@@ -25,6 +25,12 @@ from galaxy.tool_shed.metadata.metadata_generator import (
     HandleResultT,
     InvalidFileT,
 )
+from galaxy.tool_shed.util.basic_util import (
+    log_debug,
+    log_info,
+    LogCollector,
+    LogMessage,
+)
 from galaxy.util import inflector
 from galaxy.web.form_builder import SelectField
 from tool_shed.context import ProvidesRepositoriesContext
@@ -59,6 +65,8 @@ class ResetMetadataResult:
     # Regenerated metadata objects keyed by "{numeric_rev}:{changeset_hash}"
     # These are the in-memory objects (possibly not persisted if dry_run=True)
     regenerated_metadata: dict[str, RepositoryMetadata] = field(default_factory=dict)
+    # Log messages captured during the operation (only when verbose=True)
+    log_messages: Optional[list[LogMessage]] = None
 
 
 class ToolShedMetadataGenerator(BaseMetadataGenerator):
@@ -836,7 +844,9 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
             ResetMetadataResult with optional changeset_details if verbose=True
         """
         assert self.repository
-        log.debug(f"Resetting all metadata on repository: {self.repository.name} (dry_run={dry_run})")
+        # Create collector list when verbose mode is enabled
+        collector: LogCollector = [] if verbose else None
+        log_debug(log, collector, "Resetting all metadata on repository: %s (dry_run=%s)", self.repository.name, dry_run)
         repo = self.repository.hg_repo
         # The list of changeset_revisions refers to repository_metadata records that have been created
         # or updated.  When the following loop completes, we'll delete all repository_metadata records
@@ -856,12 +866,14 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
             work_dir = tempfile.mkdtemp(prefix="tmp-toolshed-ramorits")
             ctx = repo[changeset]
             numeric_rev = ctx.rev()
-            log.debug("Cloning repository changeset revision: %s", str(numeric_rev))
+            log_debug(log, collector, "Cloning repository changeset revision: %s", str(numeric_rev))
             assert self.repository_clone_url
             repository_clone_url = repository_clone_url or self.repository_clone_url
-            cloned_ok, error_message = hg_util.clone_repository(repository_clone_url, work_dir, str(numeric_rev))
+            cloned_ok, error_message = hg_util.clone_repository(
+                repository_clone_url, work_dir, str(numeric_rev), collector=collector
+            )
             if cloned_ok:
-                log.debug("Generating metadata for changeset revision: %s", str(numeric_rev))
+                log_debug(log, collector, "Generating metadata for changeset revision: %s", str(numeric_rev))
                 self.set_changeset_revision(str(ctx))
                 self.set_repository_files_dir(work_dir)
                 self.generate_metadata_for_changeset_revision()
@@ -877,11 +889,11 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
                         # self.SUBSET - ancestor metadata is a subset of current metadata, so continue from current
                         # self.NOT_EQUAL_AND_NOT_SUBSET - ancestor metadata is neither equal to nor a subset of current
                         # metadata, so persist ancestor metadata.
-                        log.info(f"amd {ancestor_metadata_dict}")
+                        log_debug(log, collector, "Ancestor metadata dict: %s", ancestor_metadata_dict)
                         comparison = self.compare_changeset_revisions(
                             ancestor_changeset_revision, ancestor_metadata_dict
                         )
-                        log.info(f"comparison {comparison}")
+                        log_info(log, collector, "Metadata comparison result: %s", comparison)
                         if comparison in [self.NO_METADATA, self.EQUAL, self.SUBSET]:
                             if verbose:
                                 changeset_details.append(
@@ -1014,15 +1026,19 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
             basic_util.remove_dir(work_dir)
         # Delete all repository_metadata records for this repository that do not have a changeset_revision
         # value in changeset_revisions.
+        log_debug(log, collector, "Cleaning repository metadata, keeping %d revisions", len(changeset_revisions))
         self._clean_repository_metadata(changeset_revisions, dry_run=dry_run)
         # Set tool version information for all downloadable changeset revisions.  Get the list of changeset
         # revisions from the changelog.
         if not dry_run:
+            log_debug(log, collector, "Resetting tool versions")
             self._reset_all_tool_versions(repo, dry_run=dry_run)
 
+        log_info(log, collector, "Reset metadata complete for repository: %s", self.repository.name)
         return ResetMetadataResult(
             changeset_details=changeset_details if verbose else None,
             regenerated_metadata=regenerated_metadata,
+            log_messages=collector if collector else None,
         )
 
     def _reset_all_tool_versions(self, repo, dry_run: bool = False):

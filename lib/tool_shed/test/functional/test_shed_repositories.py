@@ -484,6 +484,46 @@ class TestShedRepositoriesApi(ShedApiTestCase):
         assert result.get("repository_metadata_before") is None
         assert result.get("repository_metadata_after") is None
 
+    @skip_if_api_v1
+    def test_reset_metadata_verbose_includes_log_messages(self):
+        """Verify verbose=True returns log_messages from the operation."""
+        populator = self.populator
+        repository = populator.setup_test_data_repo("column_maker")
+
+        response = self.api_interactor.post(
+            f"repositories/{repository.id}/reset_metadata",
+            params={"verbose": True},
+        )
+        api_asserts.assert_status_code_is_ok(response)
+        result = response.json()
+
+        # Verify log_messages are present when verbose
+        assert "log_messages" in result
+        assert result["log_messages"] is not None
+        assert isinstance(result["log_messages"], list)
+        assert len(result["log_messages"]) > 0
+
+        # Verify log message structure
+        for msg in result["log_messages"]:
+            assert "level" in msg
+            assert "message" in msg
+            assert msg["level"] in ["debug", "info", "warning", "error"]
+
+    @skip_if_api_v1
+    def test_reset_metadata_non_verbose_omits_log_messages(self):
+        """Verify verbose=False (default) omits log_messages."""
+        populator = self.populator
+        repository = populator.setup_test_data_repo("column_maker")
+
+        response = self.api_interactor.post(
+            f"repositories/{repository.id}/reset_metadata",
+        )
+        api_asserts.assert_status_code_is_ok(response)
+        result = response.json()
+
+        # log_messages should be None when not verbose
+        assert result.get("log_messages") is None
+
     def _get_only_revision(self, repository: HasRepositoryId) -> RepositoryRevisionMetadata:
         populator = self.populator
         repository_metadata = populator.get_metadata(repository)

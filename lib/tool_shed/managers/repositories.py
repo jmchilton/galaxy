@@ -79,6 +79,7 @@ from tool_shed_client.schema import (
     ExtraRepoInfo,
     IndexSortByType,
     LegacyInstallInfoTuple,
+    LogMessageResponse,
     PaginatedRepositoryIndexResults,
     Repository as SchemaRepository,
     RepositoryMetadata as SchemaRepositoryMetadata,
@@ -521,6 +522,7 @@ def reset_metadata_on_repository(
     ):
         results: dict = dict(start_time=start_time, repository_status=[], dry_run=dry_run)
         regenerated_metadata = {}
+        log_messages = None
         try:
             rmm = repository_metadata_manager.RepositoryMetadataManager(
                 trans,
@@ -534,6 +536,12 @@ def reset_metadata_on_repository(
             )
             if verbose:
                 results["changeset_details"] = reset_result.changeset_details
+                # Convert LogMessage dataclasses to LogMessageResponse pydantic models
+                if reset_result.log_messages:
+                    log_messages = [
+                        LogMessageResponse(level=msg.level, message=msg.message)
+                        for msg in reset_result.log_messages
+                    ]
             regenerated_metadata = reset_result.regenerated_metadata
             rmm_invalid_file_tups = rmm.get_invalid_file_tups()
             if rmm_invalid_file_tups:
@@ -554,7 +562,7 @@ def reset_metadata_on_repository(
             results["status"] = "error"
         status = f"{repository.name} : {message}"
         results["repository_status"].append(status)
-        return results, regenerated_metadata
+        return results, regenerated_metadata, log_messages
 
     if repository_id is not None:
         repository = get_repository_in_tool_shed(app, repository_id)
@@ -567,7 +575,7 @@ def reset_metadata_on_repository(
             as_dict = get_repository_metadata_dict_for_repository(app, repository, recursive=False, downloadable_only=False)
             metadata_before = SchemaRepositoryMetadata(root=as_dict)
 
-        results, regenerated_metadata = handle_repository(trans, start_time, repository, dry_run, verbose, repository_clone_url)
+        results, regenerated_metadata, log_messages = handle_repository(trans, start_time, repository, dry_run, verbose, repository_clone_url)
 
         # Capture after state if verbose - use regenerated metadata for accurate diff
         metadata_after = None
@@ -582,6 +590,7 @@ def reset_metadata_on_repository(
         results["stop_time"] = stop_time
         results["repository_metadata_before"] = metadata_before
         results["repository_metadata_after"] = metadata_after
+        results["log_messages"] = log_messages
     return ResetMetadataOnRepositoryResponse(**results)
 
 

@@ -223,6 +223,13 @@ class ResetMetadataOnRepositoryRequest(BaseModel):
 ResetMetadataActionT = Literal["created", "updated", "skipped", "unchanged", "pending"]
 
 
+class LogMessageResponse(BaseModel):
+    """A log message captured during an operation."""
+
+    level: str
+    message: str
+
+
 class ChangesetMetadataStatus(BaseModel):
     """Per-changeset detail during reset metadata operation."""
 
@@ -246,6 +253,8 @@ class ResetMetadataOnRepositoryResponse(BaseModel):
     # Full metadata snapshots for diffing (only when verbose=True)
     repository_metadata_before: Optional["RepositoryMetadata"] = None
     repository_metadata_after: Optional["RepositoryMetadata"] = None
+    # Log messages from the operation (only when verbose=True)
+    log_messages: Optional[list[LogMessageResponse]] = None
 
 
 # Ugh - use with care - param descriptions scraped from older version of the API.
