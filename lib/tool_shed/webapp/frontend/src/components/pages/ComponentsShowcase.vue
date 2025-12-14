@@ -14,6 +14,7 @@ import LandingInfoSections from "@/components/LandingInfoSections.vue"
 import ChangesetSummaryTable from "@/components/MetadataInspector/ChangesetSummaryTable.vue"
 import JsonDiffViewer from "@/components/MetadataInspector/JsonDiffViewer.vue"
 import MetadataJsonViewer from "@/components/MetadataInspector/MetadataJsonViewer.vue"
+import LogMessagesViewer from "@/components/MetadataInspector/LogMessagesViewer.vue"
 import RevisionsTab from "@/components/MetadataInspector/RevisionsTab.vue"
 import OverviewTab from "@/components/MetadataInspector/OverviewTab.vue"
 import ToolHistoryTab from "@/components/MetadataInspector/ToolHistoryTab.vue"
@@ -26,6 +27,7 @@ import {
     getChangesetDetails,
     getFirstRevision,
     makeChangeset,
+    makeLogMessage,
     type RepositoryMetadata,
 } from "@/components/MetadataInspector/__fixtures__"
 
@@ -58,6 +60,28 @@ const singleRevisionMetadata: RepositoryMetadata = (() => {
     const keys = Object.keys(repositoryMetadataColumnMaker)
     return { [keys[0]]: repositoryMetadataColumnMaker[keys[0]] }
 })()
+
+// Log messages for LogMessagesViewer demos
+const logMessagesTypical = [
+    makeLogMessage({ level: "debug", message: "Resetting all metadata on repository: test_repo (dry_run=true)" }),
+    makeLogMessage({ level: "debug", message: "Cloning repository changeset revision: 0" }),
+    makeLogMessage({ level: "debug", message: "Generating metadata for changeset revision: 0" }),
+    makeLogMessage({ level: "info", message: "Metadata comparison result: EQUAL" }),
+    makeLogMessage({ level: "debug", message: "Cleaning repository metadata, keeping 1 revisions" }),
+    makeLogMessage({ level: "info", message: "Reset metadata complete for repository: test_repo" }),
+]
+
+const logMessagesWithWarning = [
+    makeLogMessage({ level: "debug", message: "Resetting all metadata on repository: broken_repo" }),
+    makeLogMessage({ level: "warning", message: "Tool XML contains deprecated element: <inputs>" }),
+    makeLogMessage({ level: "info", message: "Reset completed with warnings" }),
+]
+
+const logMessagesWithError = [
+    makeLogMessage({ level: "debug", message: "Resetting all metadata on repository: corrupt_repo" }),
+    makeLogMessage({ level: "error", message: "Failed to clone repository: permission denied" }),
+    makeLogMessage({ level: "error", message: "Unable to parse tool_config: /path/to/missing/file.xml" }),
+]
 </script>
 
 <template>
@@ -172,6 +196,24 @@ const singleRevisionMetadata: RepositoryMetadata = (() => {
             <q-separator />
             <component-showcase-example title="expanded (deep=4)">
                 <MetadataJsonViewer v-if="sampleRevisionData" :data="sampleRevisionData" :deep="4" />
+            </component-showcase-example>
+        </component-showcase>
+
+        <component-showcase title="LogMessagesViewer">
+            <component-showcase-example title="typical reset operation">
+                <LogMessagesViewer :messages="logMessagesTypical" />
+            </component-showcase-example>
+            <q-separator />
+            <component-showcase-example title="with warning messages">
+                <LogMessagesViewer :messages="logMessagesWithWarning" />
+            </component-showcase-example>
+            <q-separator />
+            <component-showcase-example title="with error messages">
+                <LogMessagesViewer :messages="logMessagesWithError" />
+            </component-showcase-example>
+            <q-separator />
+            <component-showcase-example title="empty">
+                <LogMessagesViewer :messages="[]" />
             </component-showcase-example>
         </component-showcase>
 

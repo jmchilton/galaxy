@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, computed } from "vue"
 import { ToolShedApi } from "@/schema"
 import type { components } from "@/schema"
 import { notifyOnCatch } from "@/util"
 import ChangesetSummaryTable from "./ChangesetSummaryTable.vue"
 import JsonDiffViewer from "./JsonDiffViewer.vue"
+import LogMessagesViewer from "./LogMessagesViewer.vue"
 
 type ResetMetadataResponse = components["schemas"]["ResetMetadataOnRepositoryResponse"]
 
@@ -18,11 +19,36 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const previewResult = ref<ResetMetadataResponse | null>(null)
-const viewMode = ref<"table" | "diff">("table")
+const viewMode = ref<"table" | "diff" | "log">("table")
+
+const logMessages = computed(() => previewResult.value?.log_messages ?? [])
+const logMessageCount = computed(() => logMessages.value.length)
+
+type ViewMode = "table" | "diff" | "log"
+
+const viewModeOptions = computed(() => {
+    const options: Array<{ value: ViewMode; label: string }> = [
+        { value: "table", label: "Summary Table" },
+        { value: "diff", label: "JSON Diff" },
+    ]
+    if (logMessageCount.value > 0) {
+        options.push({ value: "log", label: `Log (${logMessageCount.value})` })
+    }
+    return options
+})
+
+function handleResult(data: ResetMetadataResponse | undefined) {
+    previewResult.value = data ?? null
+    // Auto-switch to log tab if there are errors or warnings
+    if (data?.log_messages?.some((m) => m.level === "error" || m.level === "warning")) {
+        viewMode.value = "log"
+    }
+}
 
 async function runPreview() {
     loading.value = true
     previewResult.value = null
+    viewMode.value = "table"
     try {
         const { data } = await ToolShedApi().POST("/api/repositories/{encoded_repository_id}/reset_metadata", {
             params: {
@@ -30,7 +56,7 @@ async function runPreview() {
                 query: { dry_run: true, verbose: true },
             },
         })
-        previewResult.value = data ?? null
+        handleResult(data)
     } catch (e) {
         notifyOnCatch(e)
     } finally {
@@ -47,7 +73,7 @@ async function applyReset() {
                 query: { dry_run: false, verbose: true },
             },
         })
-        previewResult.value = data ?? null
+        handleResult(data)
         // Don't auto-refresh - let user see results first, they can click "New Preview" to refresh
     } catch (e) {
         notifyOnCatch(e)
@@ -62,6 +88,7 @@ function clearPreview() {
         emit("resetComplete")
     }
     previewResult.value = null
+    viewMode.value = "table"
 }
 </script>
 
@@ -119,14 +146,7 @@ function clearPreview() {
             </q-card>
 
             <!-- View mode toggle -->
-            <q-btn-toggle
-                v-model="viewMode"
-                :options="[
-                    { value: 'table', label: 'Summary Table' },
-                    { value: 'diff', label: 'JSON Diff' },
-                ]"
-                class="q-mb-md"
-            />
+            <q-btn-toggle v-model="viewMode" :options="viewModeOptions" class="q-mb-md" />
 
             <!-- Summary Table View -->
             <ChangesetSummaryTable
@@ -144,6 +164,9 @@ function clearPreview() {
                 />
                 <div v-else class="text-grey">No diff data available</div>
             </div>
+
+            <!-- Log Messages View -->
+            <LogMessagesViewer v-if="viewMode === 'log'" :messages="logMessages" />
         </div>
     </div>
 </template>

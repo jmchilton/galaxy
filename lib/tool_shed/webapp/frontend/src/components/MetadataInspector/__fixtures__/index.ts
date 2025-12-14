@@ -37,6 +37,7 @@ export type RepositoryMetadata = components["schemas"]["RepositoryMetadata"]
 export type RepositoryRevisionMetadata = components["schemas"]["RepositoryRevisionMetadata"]
 export type ResetMetadataOnRepositoryResponse = components["schemas"]["ResetMetadataOnRepositoryResponse"]
 export type ChangesetMetadataStatus = components["schemas"]["ChangesetMetadataStatus"]
+export type LogMessageResponse = components["schemas"]["LogMessageResponse"]
 
 // ============================================================================
 // Real API Fixtures

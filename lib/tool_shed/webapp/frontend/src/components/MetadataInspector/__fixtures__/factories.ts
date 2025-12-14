@@ -9,6 +9,7 @@ import { repositoryMetadataColumnMaker } from "./"
 export type RepositoryRevisionMetadata = components["schemas"]["RepositoryRevisionMetadata"]
 export type ChangesetMetadataStatus = components["schemas"]["ChangesetMetadataStatus"]
 export type RepositoryTool = components["schemas"]["RepositoryTool"]
+export type LogMessageResponse = components["schemas"]["LogMessageResponse"]
 
 /**
  * Create a ChangesetMetadataStatus with sensible defaults.
@@ -49,6 +50,18 @@ export function makeTool(overrides: Partial<RepositoryTool> = {}): RepositoryToo
     if (!baseTool) throw new Error("No base tool in fixture")
     return {
         ...baseTool,
+        ...overrides,
+    }
+}
+
+/**
+ * Create a LogMessageResponse with sensible defaults.
+ * Override any fields as needed for specific test cases.
+ */
+export function makeLogMessage(overrides: Partial<LogMessageResponse> = {}): LogMessageResponse {
+    return {
+        level: "info",
+        message: "Log message",
         ...overrides,
     }
 }

@@ -960,7 +960,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "created" | "updated" | "skipped" | "unchanged"
+            action: "created" | "updated" | "skipped" | "unchanged" | "pending"
             /** Changeset Revision */
             changeset_revision: string
             /** Comparison Result */
@@ -2239,6 +2239,16 @@ export interface components {
              */
             type: "length"
         }
+        /**
+         * LogMessageResponse
+         * @description A log message captured during an operation.
+         */
+        LogMessageResponse: {
+            /** Level */
+            level: string
+            /** Message */
+            message: string
+        }
         /** MessageExceptionModel */
         MessageExceptionModel: {
             /** Err Code */
@@ -2674,6 +2684,8 @@ export interface components {
              * @default false
              */
             dry_run: boolean
+            /** Log Messages */
+            log_messages?: components["schemas"]["LogMessageResponse"][] | null
             repository_metadata_after?: components["schemas"]["RepositoryMetadata"] | null
             repository_metadata_before?: components["schemas"]["RepositoryMetadata"] | null
             /** Repository Status */

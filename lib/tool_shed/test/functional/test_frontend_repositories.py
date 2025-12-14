@@ -139,3 +139,32 @@ class TestFrontendRepositories(PlaywrightTestCase):
         expect(page.locator(".q-chip").filter(has_text="ok")).to_be_visible()
 
         self.screenshot("metadata_inspector_reset_complete")
+
+    @skip_if_api_v1
+    def test_metadata_inspector_log_tab(self):
+        """Verify Log tab displays operation messages after reset preview."""
+        self.login()
+        self._setup_repo_and_visit_inspector(multi_revision=True)
+        page = self._page
+
+        # Navigate to Reset Metadata tab
+        page.locator("[role=tab]").filter(has_text="Reset Metadata").click()
+        page.wait_for_load_state("networkidle")
+
+        # Preview changes (verbose=true sends log_messages)
+        page.get_by_role("button", name="Preview Changes").click()
+        page.wait_for_selector("text=Preview Results")
+
+        # View mode toggle should have Log option with message count
+        log_tab = page.locator("button").filter(has_text="Log")
+        expect(log_tab).to_be_visible()
+
+        # Click Log tab
+        log_tab.click()
+
+        # Should show log messages with level badges
+        expect(page.locator("[data-level]").first).to_be_visible()
+        # Should have at least some messages (debug/info from reset operation)
+        expect(page.locator(".log-message").first).to_be_visible()
+
+        self.screenshot("metadata_inspector_reset_log")
