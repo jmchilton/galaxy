@@ -268,6 +268,7 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
         self.user = user
         # Repository metadata comparisons for changeset revisions.
         self.EQUAL = "equal"
+        self.INITIAL = "initial"
         self.NO_METADATA = "no metadata"
         self.NOT_EQUAL_AND_NOT_SUBSET = "not equal and not subset"
         self.SUBSET = "subset"
@@ -925,6 +926,19 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
                         # We're at the beginning of the change log.
                         ancestor_changeset_revision = self.changeset_revision
                         ancestor_metadata_dict = self.metadata_dict
+                        if verbose:
+                            changeset_details.append(
+                                ChangesetMetadataStatus(
+                                    changeset_revision=str(ctx),
+                                    numeric_revision=numeric_rev,
+                                    action="pending",
+                                    comparison_result=self.INITIAL,
+                                    has_tools="tools" in (self.metadata_dict or {}),
+                                    has_repository_dependencies="repository_dependencies"
+                                    in (self.metadata_dict or {}),
+                                    has_tool_dependencies="tool_dependencies" in (self.metadata_dict or {}),
+                                )
+                            )
                     if not ctx.children():
                         metadata_changeset_revision = self.changeset_revision
                         metadata_dict = self.metadata_dict
@@ -936,6 +950,10 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
                         if repo_metadata and metadata_changeset_revision:
                             regenerated_metadata[metadata_changeset_revision] = repo_metadata
                         if verbose:
+                            # Replace any prior entry for this ctx (from INITIAL or NOT_EQUAL branches)
+                            # with final persisted state
+                            if changeset_details and changeset_details[-1].changeset_revision == str(ctx):
+                                changeset_details.pop()
                             changeset_details.append(
                                 ChangesetMetadataStatus(
                                     changeset_revision=str(ctx),

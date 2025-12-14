@@ -220,7 +220,7 @@ class ResetMetadataOnRepositoryRequest(BaseModel):
     verbose: bool = False
 
 
-ResetMetadataActionT = Literal["created", "updated", "skipped", "unchanged"]
+ResetMetadataActionT = Literal["created", "updated", "skipped", "unchanged", "pending"]
 
 
 class ChangesetMetadataStatus(BaseModel):
@@ -229,7 +229,7 @@ class ChangesetMetadataStatus(BaseModel):
     changeset_revision: str
     numeric_revision: int
     action: ResetMetadataActionT
-    comparison_result: Optional[str] = None  # "equal", "subset", "not_equal_and_not_subset", "no_metadata"
+    comparison_result: Optional[str] = None  # "initial", "equal", "subset", "not_equal_and_not_subset", "no_metadata"
     has_tools: bool = False
     has_repository_dependencies: bool = False
     has_tool_dependencies: bool = False
