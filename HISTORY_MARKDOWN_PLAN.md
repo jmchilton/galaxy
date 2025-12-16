@@ -14,15 +14,15 @@ This plan implements History Notebooks - markdown documents tied to Galaxy histo
 
 ## MVP Definition
 
-The MVP delivers a functional history notebook that users can create, edit, save, and view. It includes:
+The MVP delivers functional history notebooks that users can create, edit, save, and view (multiple notebooks per history). It includes:
 
-1. Database models (HistoryNotebook, HistoryNotebookRevision)
-2. API endpoints (CRUD operations)
+1. Database models (HistoryNotebook, HistoryNotebookRevision) - no unique constraint on history_id
+2. API endpoints (list, CRUD operations)
 3. HID parsing support in markdown_parse.py
 4. HID resolution in markdown_util.py
-5. Frontend view/editor component
+5. Frontend notebook list and editor views
 6. HID insertion toolbox (scoped to current history)
-7. Route and entry point from history panel
+7. Routes and entry point from history panel
 
 **Not MVP:** Window manager, revision UI, drag-and-drop, chat/agent, extraction to Pages/Workflows.
 
@@ -40,6 +40,8 @@ The MVP delivers a functional history notebook that users can create, edit, save
 
 **Reference Pattern:** Page model at `lib/galaxy/model/__init__.py:11108-11193`
 
+**Design Note:** A history can have **multiple notebooks**. Each notebook has revisions, with the title stored on the revision (following the Page pattern).
+
 **Tasks:**
 
 #### 1.1.1 Create HistoryNotebook model
@@ -52,8 +54,8 @@ class HistoryNotebook(Base, Dictifiable, RepresentById, UsesCreateAndUpdateTime)
     create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
     update_time: Mapped[datetime] = mapped_column(default=now, onupdate=now, nullable=True)
     history_id: Mapped[int] = mapped_column(
-        ForeignKey("history.id"), index=True, unique=True, nullable=False
-    )
+        ForeignKey("history.id"), index=True, nullable=False
+    )  # No unique constraint - multiple notebooks per history allowed
     latest_revision_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("history_notebook_revision.id", use_alter=True,
                    name="history_notebook_latest_revision_id_fk"),
@@ -63,7 +65,7 @@ class HistoryNotebook(Base, Dictifiable, RepresentById, UsesCreateAndUpdateTime)
     deleted: Mapped[Optional[bool]] = mapped_column(index=True, default=False)
     purged: Mapped[Optional[bool]] = mapped_column(index=True, default=False)
 
-    history: Mapped["History"] = relationship(back_populates="notebook")
+    history: Mapped["History"] = relationship(back_populates="notebooks")
     revisions: Mapped[list["HistoryNotebookRevision"]] = relationship(
         cascade="all, delete-orphan",
         primaryjoin=(lambda: HistoryNotebook.id == HistoryNotebookRevision.notebook_id),
@@ -133,8 +135,8 @@ Location: `lib/galaxy/model/__init__.py` in History class (around line 3200)
 
 ```python
 # In History class, add:
-notebook: Mapped[Optional["HistoryNotebook"]] = relationship(
-    "HistoryNotebook", uselist=False, back_populates="history"
+notebooks: Mapped[list["HistoryNotebook"]] = relationship(
+    "HistoryNotebook", back_populates="history"
 )
 ```
 
@@ -150,7 +152,7 @@ def upgrade():
         sa.Column('create_time', sa.DateTime()),
         sa.Column('update_time', sa.DateTime()),
         sa.Column('history_id', sa.Integer(), sa.ForeignKey('history.id'),
-                  nullable=False, unique=True, index=True),
+                  nullable=False, index=True),  # No unique - multiple notebooks per history
         sa.Column('latest_revision_id', sa.Integer(), index=True),
         sa.Column('deleted', sa.Boolean(), default=False, index=True),
         sa.Column('purged', sa.Boolean(), default=False, index=True),
@@ -246,11 +248,16 @@ class HistoryNotebookRevisionSummary(Model):
 
 class HistoryNotebookRevisionList(RootModel):
     root: list[HistoryNotebookRevisionSummary] = Field(default=[])
+
+
+class HistoryNotebookList(RootModel):
+    """List of notebooks for a history."""
+    root: list[HistoryNotebookSummary] = Field(default=[])
 ```
 
 **Tests:**
 - Unit tests for model creation in `test/unit/data/model/`
-- Test unique constraint (one notebook per history)
+- Test multiple notebooks per history allowed
 - Test revision creation and latest_revision update
 - Test cascade delete (delete notebook → delete revisions)
 
@@ -293,21 +300,27 @@ class HistoryNotebookManager:
     def __init__(self, app):
         self.app = app
 
-    def get_notebook(
+    def list_notebooks(
         self, trans: ProvidesUserContext, history_id: int, include_deleted: bool = False
-    ) -> Optional[model.HistoryNotebook]:
-        """Get notebook for history, or None if not exists."""
-        stmt = select(model.HistoryNotebook).filter_by(history_id=history_id)
+    ) -> list[model.HistoryNotebook]:
+        """List all notebooks for a history."""
+        stmt = (
+            select(model.HistoryNotebook)
+            .filter_by(history_id=history_id)
+            .order_by(model.HistoryNotebook.update_time.desc())
+        )
         if not include_deleted:
             stmt = stmt.filter(model.HistoryNotebook.deleted == false())
-        return trans.sa_session.scalars(stmt).first()
+        return list(trans.sa_session.scalars(stmt))
 
     def get_notebook_by_id(
-        self, trans: ProvidesUserContext, notebook_id: int
+        self, trans: ProvidesUserContext, notebook_id: int, include_deleted: bool = False
     ) -> model.HistoryNotebook:
         """Get notebook by ID, raises if not found."""
         notebook = trans.sa_session.get(model.HistoryNotebook, notebook_id)
         if not notebook:
+            raise base.ObjectNotFound(f"Notebook {notebook_id} not found")
+        if notebook.deleted and not include_deleted:
             raise base.ObjectNotFound(f"Notebook {notebook_id} not found")
         return notebook
 
@@ -317,12 +330,7 @@ class HistoryNotebookManager:
         history: model.History,
         payload: CreateHistoryNotebookPayload,
     ) -> model.HistoryNotebook:
-        """Create a new notebook for a history."""
-        # Check if notebook already exists
-        existing = self.get_notebook(trans, history.id)
-        if existing:
-            raise base.Conflict(f"History {history.id} already has a notebook")
-
+        """Create a new notebook for a history (multiple notebooks allowed)."""
         # Create notebook
         notebook = model.HistoryNotebook()
         notebook.history = history
@@ -434,7 +442,7 @@ class HistoryNotebookManager:
 
 ### 1.3 API Endpoints
 
-**Goal:** REST API for history notebooks.
+**Goal:** REST API for history notebooks (multiple notebooks per history).
 
 **Files to create:**
 - `lib/galaxy/webapps/galaxy/api/history_notebooks.py`
@@ -444,6 +452,15 @@ class HistoryNotebookManager:
 
 **Reference Pattern:** `lib/galaxy/webapps/galaxy/api/pages.py:98-339`
 
+**API Routes:**
+- `GET /api/histories/{history_id}/notebooks` - List all notebooks for history
+- `POST /api/histories/{history_id}/notebooks` - Create new notebook
+- `GET /api/histories/{history_id}/notebooks/{notebook_id}` - Get single notebook
+- `PUT /api/histories/{history_id}/notebooks/{notebook_id}` - Update notebook
+- `DELETE /api/histories/{history_id}/notebooks/{notebook_id}` - Soft-delete notebook
+- `PUT /api/histories/{history_id}/notebooks/{notebook_id}/undelete` - Restore notebook
+- `GET /api/histories/{history_id}/notebooks/{notebook_id}/revisions` - List revisions
+
 **Tasks:**
 
 #### 1.3.1 Create API controller
@@ -451,7 +468,7 @@ class HistoryNotebookManager:
 ```python
 # lib/galaxy/webapps/galaxy/api/history_notebooks.py
 
-from typing import Optional
+from typing import Annotated, Optional
 from fastapi import Body, Path, Response, status
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.histories import HistoryManager
@@ -461,6 +478,8 @@ from galaxy.schema.schema import (
     CreateHistoryNotebookPayload,
     UpdateHistoryNotebookPayload,
     HistoryNotebookDetails,
+    HistoryNotebookList,
+    HistoryNotebookSummary,
     HistoryNotebookRevisionList,
     HistoryNotebookRevisionSummary,
 )
@@ -478,6 +497,11 @@ HistoryIdPathParam = Annotated[
     Path(..., title="History ID", description="The ID of the History."),
 ]
 
+NotebookIdPathParam = Annotated[
+    DecodedDatabaseIdField,
+    Path(..., title="Notebook ID", description="The ID of the Notebook."),
+]
+
 
 def get_history_notebook_manager(trans: ProvidesUserContext = DependsOnTrans):
     return HistoryNotebookManager(trans.app)
@@ -493,23 +517,56 @@ class FastAPIHistoryNotebooks:
     history_manager: HistoryManager = depends(get_history_manager)
 
     @router.get(
-        "/api/histories/{history_id}/notebook",
-        summary="Get the notebook for a history.",
+        "/api/histories/{history_id}/notebooks",
+        summary="List all notebooks for a history.",
+        response_description="List of notebook summaries.",
+    )
+    def index(
+        self,
+        history_id: HistoryIdPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> HistoryNotebookList:
+        """List all notebooks for this history."""
+        history = get_object(
+            trans, history_id, "History",
+            check_ownership=False, check_accessible=True
+        )
+        notebooks = self.manager.list_notebooks(trans, history.id)
+        return HistoryNotebookList(
+            root=[
+                HistoryNotebookSummary(
+                    id=nb.id,
+                    history_id=nb.history_id,
+                    latest_revision_id=nb.latest_revision_id,
+                    revision_ids=[r.id for r in nb.revisions],
+                    deleted=nb.deleted or False,
+                    create_time=nb.create_time,
+                    update_time=nb.update_time,
+                )
+                for nb in notebooks
+            ]
+        )
+
+    @router.get(
+        "/api/histories/{history_id}/notebooks/{notebook_id}",
+        summary="Get a specific notebook.",
         response_description="The notebook details including content.",
     )
     def show(
         self,
         history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> HistoryNotebookDetails:
-        """Get notebook for history. Returns 404 if no notebook exists."""
+        """Get notebook by ID."""
         history = get_object(
             trans, history_id, "History",
             check_ownership=False, check_accessible=True
         )
-        notebook = self.manager.get_notebook(trans, history.id)
-        if not notebook:
-            raise ObjectNotFound(f"No notebook for history {history_id}")
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        # Verify notebook belongs to this history
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
         rval = notebook.to_dict()
         rval["title"] = notebook.latest_revision.title
@@ -520,8 +577,8 @@ class FastAPIHistoryNotebooks:
         return HistoryNotebookDetails(**rval)
 
     @router.post(
-        "/api/histories/{history_id}/notebook",
-        summary="Create a notebook for a history.",
+        "/api/histories/{history_id}/notebooks",
+        summary="Create a new notebook for a history.",
         response_description="The created notebook.",
     )
     def create(
@@ -530,7 +587,7 @@ class FastAPIHistoryNotebooks:
         trans: ProvidesUserContext = DependsOnTrans,
         payload: CreateHistoryNotebookPayload = Body(...),
     ) -> HistoryNotebookDetails:
-        """Create a new notebook for the history. Fails if notebook exists."""
+        """Create a new notebook for the history (multiple notebooks allowed)."""
         history = get_object(
             trans, history_id, "History",
             check_ownership=True, check_accessible=True
@@ -546,13 +603,14 @@ class FastAPIHistoryNotebooks:
         return HistoryNotebookDetails(**rval)
 
     @router.put(
-        "/api/histories/{history_id}/notebook",
-        summary="Update the notebook content (creates new revision).",
+        "/api/histories/{history_id}/notebooks/{notebook_id}",
+        summary="Update notebook content (creates new revision).",
         response_description="The updated notebook.",
     )
     def update(
         self,
         history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
         trans: ProvidesUserContext = DependsOnTrans,
         payload: UpdateHistoryNotebookPayload = Body(...),
     ) -> HistoryNotebookDetails:
@@ -561,9 +619,9 @@ class FastAPIHistoryNotebooks:
             trans, history_id, "History",
             check_ownership=True, check_accessible=True
         )
-        notebook = self.manager.get_notebook(trans, history.id)
-        if not notebook:
-            raise ObjectNotFound(f"No notebook for history {history_id}")
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
         self.manager.save_new_revision(trans, notebook, payload)
 
@@ -576,13 +634,14 @@ class FastAPIHistoryNotebooks:
         return HistoryNotebookDetails(**rval)
 
     @router.delete(
-        "/api/histories/{history_id}/notebook",
-        summary="Soft-delete the notebook for a history.",
+        "/api/histories/{history_id}/notebooks/{notebook_id}",
+        summary="Soft-delete a notebook.",
         status_code=status.HTTP_204_NO_CONTENT,
     )
     def delete(
         self,
         history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
         trans: ProvidesUserContext = DependsOnTrans,
     ):
         """Soft-delete notebook (sets deleted=True)."""
@@ -590,21 +649,22 @@ class FastAPIHistoryNotebooks:
             trans, history_id, "History",
             check_ownership=True, check_accessible=True
         )
-        notebook = self.manager.get_notebook(trans, history.id)
-        if not notebook:
-            raise ObjectNotFound(f"No notebook for history {history_id}")
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
         self.manager.delete_notebook(trans, notebook)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.put(
-        "/api/histories/{history_id}/notebook/undelete",
+        "/api/histories/{history_id}/notebooks/{notebook_id}/undelete",
         summary="Restore a soft-deleted notebook.",
         status_code=status.HTTP_204_NO_CONTENT,
     )
     def undelete(
         self,
         history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
         trans: ProvidesUserContext = DependsOnTrans,
     ):
         """Restore a soft-deleted notebook."""
@@ -612,9 +672,9 @@ class FastAPIHistoryNotebooks:
             trans, history_id, "History",
             check_ownership=True, check_accessible=True
         )
-        notebook = self.manager.get_notebook(trans, history.id, include_deleted=True)
-        if not notebook:
-            raise ObjectNotFound(f"No notebook for history {history_id}")
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id, include_deleted=True)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
         if not notebook.deleted:
             raise RequestParameterInvalidException("Notebook is not deleted")
 
@@ -622,23 +682,24 @@ class FastAPIHistoryNotebooks:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get(
-        "/api/histories/{history_id}/notebook/revisions",
-        summary="List all revisions for the notebook.",
+        "/api/histories/{history_id}/notebooks/{notebook_id}/revisions",
+        summary="List all revisions for a notebook.",
         response_description="List of revision summaries.",
     )
     def list_revisions(
         self,
         history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> HistoryNotebookRevisionList:
-        """List all revisions for the history's notebook."""
+        """List all revisions for a notebook."""
         history = get_object(
             trans, history_id, "History",
             check_ownership=False, check_accessible=True
         )
-        notebook = self.manager.get_notebook(trans, history.id)
-        if not notebook:
-            raise ObjectNotFound(f"No notebook for history {history_id}")
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
         revisions = self.manager.list_revisions(trans, notebook)
         return HistoryNotebookRevisionList(
@@ -840,7 +901,7 @@ Can start once API exists. Does not require HID resolution to be complete.
 
 ### 2.1 API Client
 
-**Goal:** TypeScript client for notebook API.
+**Goal:** TypeScript client for notebook API (multiple notebooks per history).
 
 **Files to create:**
 - `client/src/api/historyNotebooks.ts`
@@ -854,17 +915,21 @@ Can start once API exists. Does not require HID resolution to be complete.
 
 import { fetcher } from "@/api/schema";
 
-export interface HistoryNotebook {
+export interface HistoryNotebookSummary {
     id: string;
     history_id: string;
     latest_revision_id: string | null;
     revision_ids: string[];
+    deleted: boolean;
+    create_time: string;
+    update_time: string;
+}
+
+export interface HistoryNotebook extends HistoryNotebookSummary {
     title: string | null;
     content: string | null;
     content_format: "markdown";
     edit_source: "user" | "agent";
-    create_time: string;
-    update_time: string;
 }
 
 export interface HistoryNotebookRevision {
@@ -888,22 +953,26 @@ export interface UpdateNotebookPayload {
     content_format?: "markdown";
 }
 
-const getNotebook = fetcher.path("/api/histories/{history_id}/notebook").method("get").create();
-const createNotebook = fetcher.path("/api/histories/{history_id}/notebook").method("post").create();
-const updateNotebook = fetcher.path("/api/histories/{history_id}/notebook").method("put").create();
-const deleteNotebook = fetcher.path("/api/histories/{history_id}/notebook").method("delete").create();
-const listRevisions = fetcher.path("/api/histories/{history_id}/notebook/revisions").method("get").create();
+// API fetchers
+const listNotebooks = fetcher.path("/api/histories/{history_id}/notebooks").method("get").create();
+const getNotebook = fetcher.path("/api/histories/{history_id}/notebooks/{notebook_id}").method("get").create();
+const createNotebook = fetcher.path("/api/histories/{history_id}/notebooks").method("post").create();
+const updateNotebook = fetcher.path("/api/histories/{history_id}/notebooks/{notebook_id}").method("put").create();
+const deleteNotebook = fetcher.path("/api/histories/{history_id}/notebooks/{notebook_id}").method("delete").create();
+const undeleteNotebook = fetcher.path("/api/histories/{history_id}/notebooks/{notebook_id}/undelete").method("put").create();
+const listRevisions = fetcher.path("/api/histories/{history_id}/notebooks/{notebook_id}/revisions").method("get").create();
 
-export async function fetchHistoryNotebook(historyId: string): Promise<HistoryNotebook | null> {
-    try {
-        const { data } = await getNotebook({ history_id: historyId });
-        return data;
-    } catch (e: any) {
-        if (e.status === 404) {
-            return null;
-        }
-        throw e;
-    }
+export async function fetchHistoryNotebooks(historyId: string): Promise<HistoryNotebookSummary[]> {
+    const { data } = await listNotebooks({ history_id: historyId });
+    return data;
+}
+
+export async function fetchHistoryNotebook(
+    historyId: string,
+    notebookId: string
+): Promise<HistoryNotebook> {
+    const { data } = await getNotebook({ history_id: historyId, notebook_id: notebookId });
+    return data;
 }
 
 export async function createHistoryNotebook(
@@ -916,18 +985,26 @@ export async function createHistoryNotebook(
 
 export async function updateHistoryNotebook(
     historyId: string,
+    notebookId: string,
     payload: UpdateNotebookPayload
 ): Promise<HistoryNotebook> {
-    const { data } = await updateNotebook({ history_id: historyId }, payload);
+    const { data } = await updateNotebook({ history_id: historyId, notebook_id: notebookId }, payload);
     return data;
 }
 
-export async function deleteHistoryNotebook(historyId: string): Promise<void> {
-    await deleteNotebook({ history_id: historyId });
+export async function deleteHistoryNotebook(historyId: string, notebookId: string): Promise<void> {
+    await deleteNotebook({ history_id: historyId, notebook_id: notebookId });
 }
 
-export async function fetchNotebookRevisions(historyId: string): Promise<HistoryNotebookRevision[]> {
-    const { data } = await listRevisions({ history_id: historyId });
+export async function undeleteHistoryNotebook(historyId: string, notebookId: string): Promise<void> {
+    await undeleteNotebook({ history_id: historyId, notebook_id: notebookId });
+}
+
+export async function fetchNotebookRevisions(
+    historyId: string,
+    notebookId: string
+): Promise<HistoryNotebookRevision[]> {
+    const { data } = await listRevisions({ history_id: historyId, notebook_id: notebookId });
     return data;
 }
 ```
@@ -936,7 +1013,7 @@ export async function fetchNotebookRevisions(historyId: string): Promise<History
 
 ### 2.2 Pinia Store
 
-**Goal:** State management for notebook editing.
+**Goal:** State management for notebook list and editing (multiple notebooks per history).
 
 **Files to create:**
 - `client/src/stores/historyNotebookStore.ts`
@@ -951,77 +1028,95 @@ export async function fetchNotebookRevisions(historyId: string): Promise<History
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import {
+    fetchHistoryNotebooks,
     fetchHistoryNotebook,
     createHistoryNotebook,
     updateHistoryNotebook,
+    deleteHistoryNotebook,
     type HistoryNotebook,
+    type HistoryNotebookSummary,
     type CreateNotebookPayload,
     type UpdateNotebookPayload,
 } from "@/api/historyNotebooks";
 
 export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     // State
-    const notebook = ref<HistoryNotebook | null>(null);
+    const notebooks = ref<HistoryNotebookSummary[]>([]);
+    const currentNotebook = ref<HistoryNotebook | null>(null);
     const originalContent = ref<string>("");
     const currentContent = ref<string>("");
     const currentTitle = ref<string>("");
-    const isLoading = ref(false);
+    const isLoadingList = ref(false);
+    const isLoadingNotebook = ref(false);
     const isSaving = ref(false);
     const error = ref<string | null>(null);
     const historyId = ref<string | null>(null);
 
     // Getters
-    const hasNotebook = computed(() => notebook.value !== null);
+    const hasNotebooks = computed(() => notebooks.value.length > 0);
+    const hasCurrentNotebook = computed(() => currentNotebook.value !== null);
     const isDirty = computed(() => currentContent.value !== originalContent.value);
     const canSave = computed(() => isDirty.value && !isSaving.value);
 
     // Actions
-    async function loadNotebook(newHistoryId: string) {
+    async function loadNotebooks(newHistoryId: string) {
         historyId.value = newHistoryId;
-        isLoading.value = true;
+        isLoadingList.value = true;
         error.value = null;
 
         try {
-            const data = await fetchHistoryNotebook(newHistoryId);
-            notebook.value = data;
-            if (data) {
-                originalContent.value = data.content || "";
-                currentContent.value = data.content || "";
-                currentTitle.value = data.title || "";
-            } else {
-                originalContent.value = "";
-                currentContent.value = "";
-                currentTitle.value = "";
-            }
+            notebooks.value = await fetchHistoryNotebooks(newHistoryId);
         } catch (e: any) {
-            error.value = e.message || "Failed to load notebook";
+            error.value = e.message || "Failed to load notebooks";
         } finally {
-            isLoading.value = false;
+            isLoadingList.value = false;
         }
     }
 
-    async function createNotebook(payload?: CreateNotebookPayload) {
+    async function loadNotebook(notebookId: string) {
         if (!historyId.value) return;
 
-        isLoading.value = true;
+        isLoadingNotebook.value = true;
         error.value = null;
 
         try {
-            const data = await createHistoryNotebook(historyId.value, payload || {});
-            notebook.value = data;
+            const data = await fetchHistoryNotebook(historyId.value, notebookId);
+            currentNotebook.value = data;
             originalContent.value = data.content || "";
             currentContent.value = data.content || "";
             currentTitle.value = data.title || "";
         } catch (e: any) {
+            error.value = e.message || "Failed to load notebook";
+        } finally {
+            isLoadingNotebook.value = false;
+        }
+    }
+
+    async function createNotebook(payload?: CreateNotebookPayload): Promise<HistoryNotebook | null> {
+        if (!historyId.value) return null;
+
+        isLoadingNotebook.value = true;
+        error.value = null;
+
+        try {
+            const data = await createHistoryNotebook(historyId.value, payload || {});
+            currentNotebook.value = data;
+            originalContent.value = data.content || "";
+            currentContent.value = data.content || "";
+            currentTitle.value = data.title || "";
+            // Refresh list
+            await loadNotebooks(historyId.value);
+            return data;
+        } catch (e: any) {
             error.value = e.message || "Failed to create notebook";
             throw e;
         } finally {
-            isLoading.value = false;
+            isLoadingNotebook.value = false;
         }
     }
 
     async function saveNotebook() {
-        if (!historyId.value || !isDirty.value) return;
+        if (!historyId.value || !currentNotebook.value || !isDirty.value) return;
 
         isSaving.value = true;
         error.value = null;
@@ -1031,14 +1126,35 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
                 content: currentContent.value,
                 title: currentTitle.value || undefined,
             };
-            const data = await updateHistoryNotebook(historyId.value, payload);
-            notebook.value = data;
+            const data = await updateHistoryNotebook(
+                historyId.value,
+                currentNotebook.value.id,
+                payload
+            );
+            currentNotebook.value = data;
             originalContent.value = data.content || "";
         } catch (e: any) {
             error.value = e.message || "Failed to save notebook";
             throw e;
         } finally {
             isSaving.value = false;
+        }
+    }
+
+    async function deleteCurrentNotebook() {
+        if (!historyId.value || !currentNotebook.value) return;
+
+        try {
+            await deleteHistoryNotebook(historyId.value, currentNotebook.value.id);
+            currentNotebook.value = null;
+            originalContent.value = "";
+            currentContent.value = "";
+            currentTitle.value = "";
+            // Refresh list
+            await loadNotebooks(historyId.value);
+        } catch (e: any) {
+            error.value = e.message || "Failed to delete notebook";
+            throw e;
         }
     }
 
@@ -1054,12 +1170,21 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         currentContent.value = originalContent.value;
     }
 
-    function $reset() {
-        notebook.value = null;
+    function clearCurrentNotebook() {
+        currentNotebook.value = null;
         originalContent.value = "";
         currentContent.value = "";
         currentTitle.value = "";
-        isLoading.value = false;
+    }
+
+    function $reset() {
+        notebooks.value = [];
+        currentNotebook.value = null;
+        originalContent.value = "";
+        currentContent.value = "";
+        currentTitle.value = "";
+        isLoadingList.value = false;
+        isLoadingNotebook.value = false;
         isSaving.value = false;
         error.value = null;
         historyId.value = null;
@@ -1067,24 +1192,30 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 
     return {
         // State
-        notebook,
+        notebooks,
+        currentNotebook,
         currentContent,
         currentTitle,
-        isLoading,
+        isLoadingList,
+        isLoadingNotebook,
         isSaving,
         error,
         historyId,
         // Getters
-        hasNotebook,
+        hasNotebooks,
+        hasCurrentNotebook,
         isDirty,
         canSave,
         // Actions
+        loadNotebooks,
         loadNotebook,
         createNotebook,
         saveNotebook,
+        deleteCurrentNotebook,
         updateContent,
         updateTitle,
         discardChanges,
+        clearCurrentNotebook,
         $reset,
     };
 });
@@ -1092,16 +1223,103 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 
 ---
 
-### 2.3 View Component
+### 2.3 View Components
 
-**Goal:** Main notebook view container.
+**Goal:** Main notebook view with list and editor (multiple notebooks per history).
 
 **Files to create:**
-- `client/src/components/HistoryNotebook/HistoryNotebookView.vue`
+- `client/src/components/HistoryNotebook/HistoryNotebookView.vue` (main container)
+- `client/src/components/HistoryNotebook/HistoryNotebookList.vue` (notebook list)
 
 **Tasks:**
 
-#### 2.3.1 Create component
+#### 2.3.1 Create notebook list component
+
+```vue
+<!-- client/src/components/HistoryNotebook/HistoryNotebookList.vue -->
+
+<template>
+    <div class="history-notebook-list">
+        <div class="list-header d-flex justify-content-between align-items-center p-3 border-bottom">
+            <h4 class="mb-0">Notebooks</h4>
+            <BButton variant="primary" size="sm" @click="$emit('create')">
+                <FontAwesomeIcon :icon="faPlus" />
+                New Notebook
+            </BButton>
+        </div>
+
+        <div v-if="notebooks.length === 0" class="empty-state text-center p-4">
+            <p class="text-muted">No notebooks yet</p>
+            <p class="text-muted small">
+                Create a notebook to document your analysis with rich markdown,
+                embedded datasets, and visualizations.
+            </p>
+        </div>
+
+        <div v-else class="notebook-items">
+            <div
+                v-for="notebook in notebooks"
+                :key="notebook.id"
+                class="notebook-item p-3 border-bottom cursor-pointer"
+                @click="$emit('select', notebook.id)">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="notebook-title fw-bold">
+                            {{ getNotebookTitle(notebook) }}
+                        </div>
+                        <div class="notebook-meta text-muted small">
+                            Updated {{ formatDate(notebook.update_time) }}
+                        </div>
+                    </div>
+                    <FontAwesomeIcon :icon="faChevronRight" class="text-muted" />
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { BButton } from "bootstrap-vue-next";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { faPlus, faChevronRight } from "@fortawesome/free-solid-svg-icons";
+import type { HistoryNotebookSummary } from "@/api/historyNotebooks";
+
+defineProps<{
+    notebooks: HistoryNotebookSummary[];
+    historyName: string;
+}>();
+
+defineEmits<{
+    (e: "select", notebookId: string): void;
+    (e: "create"): void;
+}>();
+
+function getNotebookTitle(notebook: HistoryNotebookSummary): string {
+    // Title comes from revision, not available in summary - use create time as identifier
+    return `Notebook ${notebook.id.slice(-6)}`;
+}
+
+function formatDate(dateStr: string): string {
+    return new Date(dateStr).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+</script>
+
+<style scoped lang="scss">
+.notebook-item:hover {
+    background: var(--panel-header-bg);
+}
+.cursor-pointer {
+    cursor: pointer;
+}
+</style>
+```
+
+#### 2.3.2 Create main view component
 
 ```vue
 <!-- client/src/components/HistoryNotebook/HistoryNotebookView.vue -->
@@ -1109,9 +1327,9 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 <template>
     <div class="history-notebook-view d-flex flex-column h-100">
         <!-- Loading state -->
-        <BAlert v-if="store.isLoading" variant="info" show>
+        <BAlert v-if="store.isLoadingList" variant="info" show>
             <FontAwesomeIcon :icon="faSpinner" spin />
-            Loading notebook...
+            Loading notebooks...
         </BAlert>
 
         <!-- Error state -->
@@ -1119,23 +1337,27 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             {{ store.error }}
         </BAlert>
 
-        <!-- No notebook yet -->
-        <div v-else-if="!store.hasNotebook" class="notebook-empty-state text-center p-4">
-            <h3>No Notebook Yet</h3>
-            <p class="text-muted">
-                Create a notebook to document your analysis with rich markdown,
-                embedded datasets, and visualizations.
-            </p>
-            <BButton variant="primary" @click="handleCreate">
-                <FontAwesomeIcon :icon="faPlus" />
-                Create Notebook
-            </BButton>
-        </div>
+        <!-- No notebook selected - show list -->
+        <template v-else-if="!notebookId">
+            <HistoryNotebookList
+                :notebooks="store.notebooks"
+                :history-name="historyName"
+                @select="handleSelect"
+                @create="handleCreate"
+            />
+        </template>
 
-        <!-- Notebook exists - show editor -->
-        <template v-else>
+        <!-- Notebook selected - show editor -->
+        <template v-else-if="store.hasCurrentNotebook">
             <!-- Toolbar -->
             <div class="notebook-toolbar d-flex align-items-center p-2 border-bottom">
+                <BButton variant="link" size="sm" @click="handleBack">
+                    <FontAwesomeIcon :icon="faArrowLeft" />
+                    Back
+                </BButton>
+                <span class="flex-grow-1 text-center fw-bold">
+                    {{ store.currentTitle || "Untitled Notebook" }}
+                </span>
                 <BButton
                     variant="primary"
                     size="sm"
@@ -1145,10 +1367,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
                     Save
                 </BButton>
                 <span v-if="store.isDirty" class="ms-2 text-warning small">
-                    Unsaved changes
-                </span>
-                <span v-else class="ms-2 text-muted small">
-                    All changes saved
+                    Unsaved
                 </span>
             </div>
 
@@ -1161,38 +1380,81 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
                 />
             </div>
         </template>
+
+        <!-- Loading specific notebook -->
+        <BAlert v-else-if="store.isLoadingNotebook" variant="info" show>
+            <FontAwesomeIcon :icon="faSpinner" spin />
+            Loading notebook...
+        </BAlert>
     </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { onMounted, onUnmounted, watch, computed } from "vue";
+import { useRouter } from "vue-router";
 import { BAlert, BButton } from "bootstrap-vue-next";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { faSpinner, faPlus, faSave } from "@fortawesome/free-solid-svg-icons";
+import { faSpinner, faSave, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
+import { useHistoryStore } from "@/stores/historyStore";
+import HistoryNotebookList from "./HistoryNotebookList.vue";
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 
 const props = defineProps<{
     historyId: string;
+    notebookId?: string;
     displayOnly?: boolean;
 }>();
 
+const router = useRouter();
 const store = useHistoryNotebookStore();
+const historyStore = useHistoryStore();
 
-onMounted(() => {
-    store.loadNotebook(props.historyId);
+const historyName = computed(() => {
+    const history = historyStore.getHistoryById(props.historyId);
+    return history?.name || "History";
+});
+
+onMounted(async () => {
+    await store.loadNotebooks(props.historyId);
+    if (props.notebookId) {
+        await store.loadNotebook(props.notebookId);
+    }
 });
 
 onUnmounted(() => {
     store.$reset();
 });
 
-watch(() => props.historyId, (newId) => {
-    store.loadNotebook(newId);
+watch(() => props.historyId, async (newId) => {
+    await store.loadNotebooks(newId);
+    if (props.notebookId) {
+        await store.loadNotebook(props.notebookId);
+    }
 });
 
+watch(() => props.notebookId, async (newId) => {
+    if (newId) {
+        await store.loadNotebook(newId);
+    } else {
+        store.clearCurrentNotebook();
+    }
+});
+
+function handleSelect(notebookId: string) {
+    router.push(`/histories/${props.historyId}/notebooks/${notebookId}`);
+}
+
 async function handleCreate() {
-    await store.createNotebook();
+    const notebook = await store.createNotebook();
+    if (notebook) {
+        router.push(`/histories/${props.historyId}/notebooks/${notebook.id}`);
+    }
+}
+
+function handleBack() {
+    store.clearCurrentNotebook();
+    router.push(`/histories/${props.historyId}/notebooks`);
 }
 
 async function handleSave() {
@@ -1203,10 +1465,6 @@ async function handleSave() {
 <style scoped lang="scss">
 .history-notebook-view {
     background: var(--body-bg);
-}
-
-.notebook-empty-state {
-    margin-top: 20%;
 }
 
 .notebook-toolbar {
@@ -1281,25 +1539,39 @@ function handleUpdate(newContent: string) {
 
 ---
 
-### 2.5 Route
+### 2.5 Routes
 
-**Goal:** Add route for notebook view.
+**Goal:** Add routes for notebook list and editor views.
 
 **Files to modify:**
 - `client/src/entry/analysis/router.js` (after line 404, near history routes)
 
 **Tasks:**
 
-#### 2.5.1 Add route
+#### 2.5.1 Add routes
 
 ```javascript
 // In the Analysis children array, after histories/:historyId/invocations
 
+// Both routes use the same view component - HistoryNotebookView acts as a
+// smart container that conditionally renders HistoryNotebookList (when no
+// notebookId) or HistoryNotebookEditor (when notebookId present).
+
+// Notebook list route (no notebookId → shows list)
 {
-    path: "histories/:historyId/notebook",
+    path: "histories/:historyId/notebooks",
     component: () => import("@/components/HistoryNotebook/HistoryNotebookView.vue"),
     props: (route) => ({
         historyId: route.params.historyId,
+    }),
+},
+// Specific notebook route (notebookId present → shows editor)
+{
+    path: "histories/:historyId/notebooks/:notebookId",
+    component: () => import("@/components/HistoryNotebook/HistoryNotebookView.vue"),
+    props: (route) => ({
+        historyId: route.params.historyId,
+        notebookId: route.params.notebookId,
         displayOnly: route.query.displayOnly === "true",
     }),
 },
@@ -1309,7 +1581,7 @@ function handleUpdate(newContent: string) {
 
 ### 2.6 Entry Point
 
-**Goal:** Add "Notebook" button to history panel.
+**Goal:** Add "Notebooks" button to history panel (links to notebook list).
 
 **Files to modify:**
 - `client/src/components/History/HistoryOptions.vue` (after line 217, near Extract Workflow)
@@ -1323,12 +1595,12 @@ function handleUpdate(newContent: string) {
 
 <BDropdownItem
     v-if="historyStore.currentHistoryId === history.id"
-    data-description="history notebook"
+    data-description="history notebooks"
     :disabled="isAnonymous"
-    :title="userTitle('Create or Edit History Notebook')"
-    :to="`/histories/${history.id}/notebook`">
+    :title="userTitle('View and Create History Notebooks')"
+    :to="`/histories/${history.id}/notebooks`">
     <FontAwesomeIcon fixed-width :icon="faBook" />
-    <span v-localize>History Notebook</span>
+    <span v-localize>History Notebooks</span>
 </BDropdownItem>
 ```
 
@@ -1888,17 +2160,18 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 
 | File | Purpose |
 |------|---------|
-| `client/src/api/historyNotebooks.ts` | API client |
-| `client/src/stores/historyNotebookStore.ts` | State management |
-| `client/src/components/HistoryNotebook/HistoryNotebookView.vue` | Main view |
+| `client/src/api/historyNotebooks.ts` | API client (list + CRUD) |
+| `client/src/stores/historyNotebookStore.ts` | State management (list + current) |
+| `client/src/components/HistoryNotebook/HistoryNotebookView.vue` | Main view container |
+| `client/src/components/HistoryNotebook/HistoryNotebookList.vue` | Notebook list view |
 | `client/src/components/HistoryNotebook/HistoryNotebookEditor.vue` | Editor wrapper |
 
 ### Must Modify (Frontend)
 
 | File | Change |
 |------|--------|
-| `client/src/entry/analysis/router.js` | Add notebook route |
-| `client/src/components/History/HistoryOptions.vue` | Add entry point |
+| `client/src/entry/analysis/router.js` | Add notebook list + detail routes |
+| `client/src/components/History/HistoryOptions.vue` | Add entry point (links to list) |
 | `client/src/components/Markdown/MarkdownEditor.vue` | Add history_notebook mode |
 | `client/src/components/Markdown/MarkdownToolBox.vue` | Add mode detection, HID emission |
 | `client/src/components/Markdown/MarkdownDialog.vue` | Emit hid= format |
@@ -1910,6 +2183,7 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 
 | Question | Decision |
 |----------|----------|
+| Notebooks per history | **Multiple allowed** - no unique constraint on history_id, list view shows all notebooks |
 | Notebook title | Default to history name, allow user override via UI |
 | Notebook deletion | Soft-delete with deleted/purged flags (standard Galaxy pattern). Notebooks not cascade-deleted when history is deleted. |
 | HIDs outside history | Items from previous workflow steps outside history become workflow inputs on extraction |

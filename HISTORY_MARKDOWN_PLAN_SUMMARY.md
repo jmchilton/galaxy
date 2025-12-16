@@ -2,7 +2,7 @@
 
 ## What We're Building
 
-**History Notebooks** are markdown documents attached to Galaxy histories that capture the narrative and reasoning behind analyses—not just the data. Users document their work using Galaxy's rich markdown with embedded datasets, visualizations, and charts, all referenced by simple HID numbers (`hid=42`).
+**History Notebooks** are markdown documents attached to Galaxy histories that capture the narrative and reasoning behind analyses—not just the data. **Each history can have multiple notebooks**, allowing users to create separate documents for different aspects of their analysis. Users document their work using Galaxy's rich markdown with embedded datasets, visualizations, and charts, all referenced by simple HID numbers (`hid=42`).
 
 ## Why It Matters
 
@@ -20,9 +20,9 @@
 ## Scope
 
 ### MVP (Phases 1-4)
-- Database models and API
+- Database models and API (multiple notebooks per history)
 - HID-based markdown references (`hid=42` → dataset 42 in this history)
-- Full-page editor view with toolbox for inserting references
+- Notebook list view + editor view
 - Entry point from history panel
 - Revision tracking (each save creates version)
 
@@ -40,11 +40,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    History Notebook                      │
-│                                                         │
-│   hid=42 → "Here's the alignment results..."            │
-│   hid=38 → "Input reference genome"                     │
-│                                                         │
+│                       History                            │
+│                          │                              │
+│     ┌────────────────────┼────────────────────┐         │
+│     ▼                    ▼                    ▼         │
+│  ┌──────────┐      ┌──────────┐         ┌──────────┐   │
+│  │ Notebook │      │ Notebook │   ...   │ Notebook │   │
+│  │    #1    │      │    #2    │         │    #N    │   │
+│  │ hid=42   │      │ hid=38   │         │ hid=...  │   │
+│  └──────────┘      └──────────┘         └──────────┘   │
 └─────────────────────────────────────────────────────────┘
                           │
         ┌─────────────────┼─────────────────┐
@@ -57,6 +61,7 @@
 ```
 
 **Key design choices:**
+- **Multiple notebooks per history** - each history can have many notebooks
 - Store HIDs in notebook, resolve to internal IDs at render time (human-readable, portable)
 - Soft-delete pattern with deleted/purged flags (standard Galaxy pattern)
 - Default title to history name, allow user override
@@ -67,16 +72,16 @@
 ## Technical Approach
 
 ### Backend
-- New models: `HistoryNotebook`, `HistoryNotebookRevision` (mirrors Page pattern)
-- API endpoints under `/api/histories/{id}/notebook`
+- New models: `HistoryNotebook`, `HistoryNotebookRevision` (mirrors Page pattern, no unique constraint)
+- API endpoints under `/api/histories/{id}/notebooks` (plural) + `/notebooks/{notebook_id}`
 - Add `hid=` argument to existing markdown directives
 - New `resolve_history_markdown()` function for HID→ID resolution
 
 ### Frontend
-- New route: `/histories/:historyId/notebook`
+- New routes: `/histories/:historyId/notebooks` (list) and `/notebooks/:notebookId` (editor)
 - Reuse existing `MarkdownEditor` with new `mode="history_notebook"`
 - Modify toolbox to emit `hid=N` instead of `history_dataset_id=N`
-- Pinia store for state management
+- Pinia store for notebook list + current notebook state
 
 ---
 
@@ -128,7 +133,8 @@
 ## Success Criteria
 
 ### MVP
-- [ ] User can create notebook for any history they own
+- [ ] User can create **multiple notebooks** for any history they own
+- [ ] User can view notebook list and switch between notebooks
 - [ ] User can write markdown with `hid=` references
 - [ ] User can insert references via toolbox
 - [ ] Content persists across sessions
