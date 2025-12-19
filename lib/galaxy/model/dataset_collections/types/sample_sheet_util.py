@@ -165,3 +165,41 @@ def validate_column_value(
             validator.statically_validate(column_value)
         except ValueError as e:
             raise RequestParameterInvalidException(str(e))
+
+
+def column_definitions_compatible(
+    collection_columns: Optional[SampleSheetColumnDefinitions],
+    required_columns: Optional[SampleSheetColumnDefinitions],
+) -> bool:
+    """Check if collection's column definitions satisfy required column definitions.
+
+    A collection is compatible when:
+    - It has ALL columns defined in required_columns (by name)
+    - Column types match exactly
+    - Collection may have additional columns (superset allowed)
+    - Validators/restrictions are not compared (used for value validation only)
+
+    Args:
+        collection_columns: The column definitions from the collection
+        required_columns: The column definitions required by the parameter
+
+    Returns:
+        True if compatible, False otherwise
+    """
+    if not required_columns:
+        return True
+    if not collection_columns:
+        return False
+
+    # Build lookup by column name
+    collection_by_name = {col["name"]: col for col in collection_columns}
+
+    for required_col in required_columns:
+        name = required_col["name"]
+        if name not in collection_by_name:
+            return False
+        collection_col = collection_by_name[name]
+        if collection_col["type"] != required_col["type"]:
+            return False
+
+    return True
