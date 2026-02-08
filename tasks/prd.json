@@ -1,0 +1,502 @@
+{
+  "project": "Galaxy Playwright Test Migration",
+  "branchName": "ralph/playwright-test-migration",
+  "description": "Migrate all @selenium_only tests to work with Playwright backend, achieving 100% compatibility",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Migrate test_workflow_rerun.py",
+      "description": "As a developer, I want test_workflow_rerun to work with Playwright so workflow rerun functionality is tested in CI.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only decorator from test_rerun_workflow",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Playwright pass confirmed. Selenium blocked by local ChromeDriver version mismatch (env issue, not code)."
+    },
+    {
+      "id": "US-002",
+      "title": "Migrate test_invocation_grid.py",
+      "description": "As a developer, I want test_invocation_grid to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only decorator from test_invocations_grid",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Migrate test_tutorial_mode.py",
+      "description": "As a developer, I want tutorial mode tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only decorator from test_tutorial_mode",
+        "If iframe switching needed, add switch_to_frame abstraction to HasDriverProtocol",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Migrate test_archive_explorer.py (4 tests)",
+      "description": "As a developer, I want archive explorer tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_fasta_gz_dataset",
+        "Remove @selenium_only from test_paired_list_fasta_gz",
+        "Remove @selenium_only from test_paired_collection_fasta_gz",
+        "Remove @selenium_only from test_nested_collection_fasta_gz",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Migrate test_custom_tools.py (2 tests)",
+      "description": "As a developer, I want custom tools tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_composite_metadata",
+        "Remove @selenium_only from test_composite_output",
+        "If Monaco editor interaction needed, add abstraction or rewrite test",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Migrate test_history_storage.py (2 tests)",
+      "description": "As a developer, I want history storage tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_storage_dashboard_datasets",
+        "Remove @selenium_only from test_storage_dashboard_histories",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Migrate test_personal_information.py (2 tests)",
+      "description": "As a developer, I want personal information tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_preferences_sign_out_icon",
+        "Remove @selenium_only from test_user_manage_information",
+        "If get_property abstraction missing, add to HasDriverProtocol",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Migrate test_workflow_sharing.py (2 tests)",
+      "description": "As a developer, I want workflow sharing tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_cannot_unpublish_without_owner",
+        "Remove @selenium_only from test_import_published",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Migrate test_custom_builds.py (2 tests)",
+      "description": "As a developer, I want custom builds tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_build_search",
+        "Remove @selenium_only from test_build_add",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Both tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Migrate test_library_contents.py (3 tests)",
+      "description": "As a developer, I want library contents tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_import_dataset_from_history_file_browser_default_sort",
+        "Remove @selenium_only from test_import_dataset_from_history_table_default_sort",
+        "Remove @selenium_only from test_import_dataset_from_path",
+        "If move_to_element abstraction needed, add to protocol or rewrite test",
+        "All 3 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 3 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Add Shadow DOM abstractions for test_visualizations.py",
+      "description": "As a developer, I want shadow DOM support in the driver protocol so visualization tests can work with Playwright.",
+      "acceptanceCriteria": [
+        "Add get_shadow_root() method to HasDriverProtocol",
+        "Add find_in_shadow_dom() method to HasDriverProtocol",
+        "Implement both methods in HasDriver (Selenium)",
+        "Implement both methods in HasPlaywrightDriver",
+        "Add unit tests for both abstractions in test_has_driver.py",
+        "Remove @selenium_only from test_open_default_visualization",
+        "Remove @selenium_only from test_open_viz_with_custom_tool",
+        "Remove @selenium_only from test_bookmarks",
+        "All 3 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 3 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "This story adds new abstractions to the driver protocol"
+    },
+    {
+      "id": "US-012",
+      "title": "Migrate test_library_landing.py (4 tests)",
+      "description": "As a developer, I want library landing tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_create_new_library",
+        "Remove @selenium_only from test_create_new_folder",
+        "Remove @selenium_only from test_create_new_dataset",
+        "Remove @selenium_only from test_create_new_library_permissions",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Migrate test_library_to_collections.py (4 tests)",
+      "description": "As a developer, I want library to collections tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Analyze Select element usage and rewrite to click dropdown + click option pattern",
+        "Remove @selenium_only from test_build_list_and_show_items_0",
+        "Remove @selenium_only from test_build_list_and_show_items_1",
+        "Remove @selenium_only from test_build_list_and_show_items_2",
+        "Remove @selenium_only from test_build_list_and_show_items_3",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "May need to rewrite Select element usage"
+    },
+    {
+      "id": "US-014",
+      "title": "Migrate test_stock_tours.py (4 tests)",
+      "description": "As a developer, I want stock tour tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_core_galaxy_ui",
+        "Remove @selenium_only from test_history_options",
+        "Remove @selenium_only from test_scratchbook",
+        "Remove @selenium_only from test_history_datasets",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 4 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Migrate test_history_panel.py (6 tests)",
+      "description": "As a developer, I want history panel tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_history_panel_landing_state",
+        "Remove @selenium_only from test_dataset_operations_menu",
+        "Remove @selenium_only from test_history_options_button_contents",
+        "Remove @selenium_only from test_dataset_tag_display",
+        "Remove @selenium_only from test_dataset_hidden_and_deleted_display",
+        "Remove @selenium_only from test_dataset_collection_state_display",
+        "All 6 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 6 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Migrate test_admin_app.py (7 tests)",
+      "description": "As a developer, I want admin app tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_admin_server",
+        "Remove @selenium_only from test_admin_datatypes",
+        "Remove @selenium_only from test_admin_data_tables",
+        "Remove @selenium_only from test_admin_display_applications",
+        "Remove @selenium_only from test_admin_manage_dependencies",
+        "Remove @selenium_only from test_admin_reset_metadata",
+        "Remove @selenium_only from test_admin_toolbox_dependencies",
+        "All 7 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 7 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Migrate test_histories_published.py (7 tests)",
+      "description": "As a developer, I want published histories tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_import_simple",
+        "Remove @selenium_only from test_import_contains_deleted",
+        "Remove @selenium_only from test_import_contains_hidden",
+        "Remove @selenium_only from test_index_search",
+        "Remove @selenium_only from test_index_sort_by_name",
+        "Remove @selenium_only from test_index_sort_by_updated",
+        "Remove @selenium_only from test_index_advanced_filter",
+        "All 7 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 7 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Migrate test_collection_builders.py (8 tests)",
+      "description": "As a developer, I want collection builder tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_build_list_simple",
+        "Remove @selenium_only from test_build_list_and_show_items",
+        "Remove @selenium_only from test_build_paired_list_simple",
+        "Remove @selenium_only from test_build_paired_list_hide_source_items",
+        "Remove @selenium_only from test_build_simple_list_via_rules",
+        "Remove @selenium_only from test_build_list_list_via_rules",
+        "Remove @selenium_only from test_build_list_paired_via_rules",
+        "Remove @selenium_only from test_collection_builders_with_duplicate_names",
+        "All 8 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 8 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Migrate test_history_panel_collections.py (9 tests)",
+      "description": "As a developer, I want history panel collection tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_build_list_and_show_items",
+        "Remove @selenium_only from test_build_paired_list_and_show_items",
+        "Remove @selenium_only from test_collection_hide_originals",
+        "Remove @selenium_only from test_list_collection_mapping",
+        "Remove @selenium_only from test_list_paired_collection_mapping",
+        "Remove @selenium_only from test_list_list_collection_mapping",
+        "Remove @selenium_only from test_subcollection_mapping",
+        "Remove @selenium_only from test_collection_edit_attribute_hiding",
+        "Remove @selenium_only from test_paired_identifier_editing",
+        "All 9 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 9 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Migrate test_histories_list.py (14 tests)",
+      "description": "As a developer, I want histories list tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from all 14 tests in file",
+        "All 14 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 14 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Large file - test names: test_history_list, test_history_rename, test_history_delete, test_history_switch, test_history_pagination, test_history_options_display, test_tags_display, test_histories_published_grid, test_histories_shared_with_me_grid, test_history_import, test_history_multi_view, test_history_search, etc."
+    },
+    {
+      "id": "US-021",
+      "title": "Migrate test_workflow_management.py (13 tests)",
+      "description": "As a developer, I want workflow management tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from all 13 tests in file",
+        "All 13 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 13 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Test names: test_import_from_url, test_view_workflow, test_rename_workflow, test_workflow_index_search, test_workflow_index_click_tag_display, test_workflow_index_sort_by_name, test_workflow_delete, test_workflow_run_button, test_export_workflow, test_extract_workflows, test_copy_workflow, test_share_workflow, test_download_workflow"
+    },
+    {
+      "id": "US-022",
+      "title": "Migrate test_uploads.py (24 tests)",
+      "description": "As a developer, I want upload tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Analyze each test for blocking issues",
+        "Remove @selenium_only from all 24 tests in file",
+        "All 24 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 24 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Large file - may need file upload abstraction for Playwright"
+    },
+    {
+      "id": "US-023",
+      "title": "Migrate test_tool_form.py (18 tests)",
+      "description": "As a developer, I want tool form tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from all 18 tests in file",
+        "All 18 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 18 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Core functionality tests"
+    },
+    {
+      "id": "US-024",
+      "title": "Migrate test_workflow_run.py (25 tests)",
+      "description": "As a developer, I want workflow run tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from all 25 tests in file",
+        "All 25 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 25 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Large file - core workflow execution tests"
+    },
+    {
+      "id": "US-025A",
+      "title": "Migrate test_workflow_editor.py - Part 1 (first 16 tests)",
+      "description": "As a developer, I want the first batch of workflow editor tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from first 16 tests in file (up to ~line 400)",
+        "All 16 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 16 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "Largest file split into 3 parts"
+    },
+    {
+      "id": "US-025B",
+      "title": "Migrate test_workflow_editor.py - Part 2 (middle 16 tests)",
+      "description": "As a developer, I want the second batch of workflow editor tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from middle 16 tests in file (~line 400-800)",
+        "All 16 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 16 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "Largest file split into 3 parts"
+    },
+    {
+      "id": "US-025C",
+      "title": "Migrate test_workflow_editor.py - Part 3 (remaining 17 tests)",
+      "description": "As a developer, I want the final batch of workflow editor tests to work with Playwright.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from remaining 17 tests in file (~line 800+)",
+        "All 17 tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All 17 tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "No @selenium_only decorators remain in test_workflow_editor.py",
+        "Typecheck passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": "Largest file split into 3 parts"
+    },
+    {
+      "id": "US-026",
+      "title": "Add drag-and-drop abstraction for test_history_multi_view.py",
+      "description": "As a developer, I want drag-and-drop support in the driver protocol for multi-view history tests.",
+      "acceptanceCriteria": [
+        "Add drag_and_drop(source, target) method to HasDriverProtocol",
+        "Implement in HasDriver using ActionChains",
+        "Implement in HasPlaywrightDriver using Playwright drag API",
+        "Add unit tests for drag_and_drop abstraction",
+        "Remove @selenium_only from test_multi_history_drag_and_drop",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "Test passes with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": "Adds new abstraction to driver protocol"
+    },
+    {
+      "id": "US-027",
+      "title": "Migrate remaining mixed file tests",
+      "description": "As a developer, I want all remaining selenium_only tests from mixed files migrated.",
+      "acceptanceCriteria": [
+        "Remove @selenium_only from test_change_password.py::test_change_password_with_current",
+        "Remove @selenium_only from test_collection_edit.py (2 tests)",
+        "Remove @selenium_only from test_dataset_edit.py::test_edit_dataset_attributes",
+        "Remove @selenium_only from test_history_sharing.py::test_sharing_valid_with_user_email",
+        "Remove @selenium_only from test_dataset.py (2 tests)",
+        "All tests pass with GALAXY_TEST_DRIVER_BACKEND=playwright",
+        "All tests pass with GALAXY_TEST_DRIVER_BACKEND=selenium",
+        "Typecheck passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Final verification and cleanup",
+      "description": "As a developer, I want to verify all tests work and clean up any remaining issues.",
+      "acceptanceCriteria": [
+        "Run grep -r '@selenium_only' lib/galaxy_test/selenium/test_*.py returns zero matches",
+        "Run full test suite with GALAXY_TEST_DRIVER_BACKEND=playwright - all tests pass",
+        "Run full test suite with GALAXY_TEST_DRIVER_BACKEND=selenium - all tests pass",
+        "Update SELENIUM_ONLY_CATALOG.md to show 100% completion",
+        "Update TEST_MIGRATION_PLAN.md with final status",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "Final verification story"
+    }
+  ]
+}
