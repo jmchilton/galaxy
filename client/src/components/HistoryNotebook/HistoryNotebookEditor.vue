@@ -28,7 +28,7 @@ function handleUpdate(newContent: string) {
 
 <template>
     <div class="history-notebook-editor">
-        <MarkdownEditor :markdown-text="content" mode="page" :title="editorTitle" @update="handleUpdate" />
+        <MarkdownEditor :markdown-text="content" mode="history_notebook" :title="editorTitle" @update="handleUpdate" />
     </div>
 </template>
 
