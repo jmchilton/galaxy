@@ -2757,6 +2757,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/histories/{history_id}/notebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all notebooks for a history.
+         * @description List all notebooks for this history.
+         */
+        get: operations["index_api_histories__history_id__notebooks_get"];
+        put?: never;
+        /**
+         * Create a new notebook for a history.
+         * @description Create a new notebook for the history (multiple notebooks allowed).
+         */
+        post: operations["create_api_histories__history_id__notebooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/histories/{history_id}/notebooks/{notebook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a specific notebook.
+         * @description Get notebook by ID.
+         */
+        get: operations["show_api_histories__history_id__notebooks__notebook_id__get"];
+        /**
+         * Update notebook content (creates new revision).
+         * @description Update notebook content. Creates a new revision.
+         */
+        put: operations["update_api_histories__history_id__notebooks__notebook_id__put"];
+        post?: never;
+        /**
+         * Soft-delete a notebook.
+         * @description Soft-delete notebook (sets deleted=True).
+         */
+        delete: operations["delete_api_histories__history_id__notebooks__notebook_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/histories/{history_id}/notebooks/{notebook_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all revisions for a notebook.
+         * @description List all revisions for a notebook.
+         */
+        get: operations["list_revisions_api_histories__history_id__notebooks__notebook_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/histories/{history_id}/notebooks/{notebook_id}/undelete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Restore a soft-deleted notebook.
+         * @description Restore a soft-deleted notebook.
+         */
+        put: operations["undelete_api_histories__history_id__notebooks__notebook_id__undelete_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/histories/{history_id}/prepare_store_download": {
         parameters: {
             query?: never;
@@ -9178,6 +9270,25 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** CreateHistoryNotebookPayload */
+        CreateHistoryNotebookPayload: {
+            /**
+             * Content
+             * @description Initial markdown content.
+             * @default
+             */
+            content: string | null;
+            /**
+             * Content format
+             * @default markdown
+             */
+            content_format: components["schemas"]["NotebookContentFormat"];
+            /**
+             * Title
+             * @description Optional title for the notebook. Defaults to history name.
+             */
+            title?: string | null;
+        };
         /** CreateInstancePayload */
         CreateInstancePayload: {
             /** Description */
@@ -15493,6 +15604,125 @@ export interface components {
              */
             username_and_slug?: string | null;
         };
+        /** HistoryNotebookDetails */
+        HistoryNotebookDetails: {
+            /** Content */
+            content?: string | null;
+            /** @default markdown */
+            content_format: components["schemas"]["NotebookContentFormat"];
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * Edit Source
+             * @default user
+             */
+            edit_source: string | null;
+            /**
+             * History Id
+             * @example 0123456789ABCDEF
+             */
+            history_id: string;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Latest Revision Id */
+            latest_revision_id?: string | null;
+            /**
+             * Revision Ids
+             * @default []
+             */
+            revision_ids: string[];
+            /** Title */
+            title?: string | null;
+            /**
+             * Update Time
+             * Format: date-time
+             */
+            update_time: string;
+        };
+        /**
+         * HistoryNotebookList
+         * @description List of notebooks for a history.
+         * @default []
+         */
+        HistoryNotebookList: components["schemas"]["HistoryNotebookSummary"][];
+        /**
+         * HistoryNotebookRevisionList
+         * @default []
+         */
+        HistoryNotebookRevisionList: components["schemas"]["HistoryNotebookRevisionSummary"][];
+        /** HistoryNotebookRevisionSummary */
+        HistoryNotebookRevisionSummary: {
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            /** Edit Source */
+            edit_source?: string | null;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * Notebook Id
+             * @example 0123456789ABCDEF
+             */
+            notebook_id: string;
+            /**
+             * Update Time
+             * Format: date-time
+             */
+            update_time: string;
+        };
+        /** HistoryNotebookSummary */
+        HistoryNotebookSummary: {
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * History Id
+             * @example 0123456789ABCDEF
+             */
+            history_id: string;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Latest Revision Id */
+            latest_revision_id?: string | null;
+            /**
+             * Revision Ids
+             * @default []
+             */
+            revision_ids: string[];
+            /** Title */
+            title?: string | null;
+            /**
+             * Update Time
+             * Format: date-time
+             */
+            update_time: string;
+        };
         /**
          * HistorySummary
          * @description History summary information.
@@ -19035,6 +19265,11 @@ export interface components {
              */
             type: "no_options";
         };
+        /**
+         * NotebookContentFormat
+         * @enum {string}
+         */
+        NotebookContentFormat: "markdown";
         /**
          * NotificationBroadcastUpdateRequest
          * @description A notification update request specific for broadcasting.
@@ -23771,6 +24006,18 @@ export interface components {
             visible?: boolean | null;
         } & {
             [key: string]: unknown;
+        };
+        /** UpdateHistoryNotebookPayload */
+        UpdateHistoryNotebookPayload: {
+            /**
+             * Content
+             * @description New markdown content.
+             */
+            content: string;
+            /** @default markdown */
+            content_format: components["schemas"]["NotebookContentFormat"];
+            /** Title */
+            title?: string | null;
         };
         /** UpdateHistoryPayload */
         UpdateHistoryPayload: {
@@ -34662,6 +34909,328 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AsyncTaskResultSummary"];
                 };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    index_api_histories__history_id__notebooks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of notebook summaries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookList"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    create_api_histories__history_id__notebooks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateHistoryNotebookPayload"];
+            };
+        };
+        responses: {
+            /** @description The created notebook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookDetails"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    show_api_histories__history_id__notebooks__notebook_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook details including content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookDetails"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    update_api_histories__history_id__notebooks__notebook_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateHistoryNotebookPayload"];
+            };
+        };
+        responses: {
+            /** @description The updated notebook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookDetails"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    delete_api_histories__history_id__notebooks__notebook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    list_revisions_api_histories__history_id__notebooks__notebook_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of revision summaries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookRevisionList"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    undelete_api_histories__history_id__notebooks__notebook_id__undelete_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Request Error */
             "4XX": {
