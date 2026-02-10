@@ -29,9 +29,6 @@ class HistoryNotebookManager:
     HID resolution happens at render time via resolve_history_markdown().
     """
 
-    def __init__(self, app):
-        self.app = app
-
     def list_notebooks(
         self, trans: ProvidesUserContext, history_id: int, include_deleted: bool = False
     ) -> list[model.HistoryNotebook]:
@@ -70,7 +67,7 @@ class HistoryNotebookManager:
 
         # Create initial revision - content stored as-is with HIDs
         content = payload.content or ""
-        content_format = payload.content_format.value if payload.content_format else "markdown"
+        content_format = getattr(payload.content_format, "value", payload.content_format) or "markdown"
 
         revision = model.HistoryNotebookRevision()
         revision.notebook = notebook
@@ -99,7 +96,7 @@ class HistoryNotebookManager:
             raise RequestParameterMissingException("content required")
 
         content_format = (
-            payload.content_format.value
+            getattr(payload.content_format, "value", payload.content_format)
             if payload.content_format
             else notebook.latest_revision.content_format
         )
@@ -133,18 +130,14 @@ class HistoryNotebookManager:
         )
         return list(trans.sa_session.scalars(stmt))
 
-    def get_revision(
-        self, trans: ProvidesUserContext, revision_id: int
-    ) -> model.HistoryNotebookRevision:
+    def get_revision(self, trans: ProvidesUserContext, revision_id: int) -> model.HistoryNotebookRevision:
         """Get a specific revision by ID."""
         revision = trans.sa_session.get(model.HistoryNotebookRevision, revision_id)
         if not revision:
             raise ObjectNotFound(f"Revision {revision_id} not found")
         return revision
 
-    def rewrite_content_for_export(
-        self, trans: ProvidesUserContext, history: model.History, rval: dict
-    ) -> None:
+    def rewrite_content_for_export(self, trans: ProvidesUserContext, history: model.History, rval: dict) -> None:
         """Process notebook content for API response.
 
         Resolves HID references to internal IDs, then encodes for export.
@@ -157,16 +150,12 @@ class HistoryNotebookManager:
             export_content, _, _ = ready_galaxy_markdown_for_export(trans, resolved)
             rval["content"] = export_content
 
-    def delete_notebook(
-        self, trans: ProvidesUserContext, notebook: model.HistoryNotebook
-    ) -> None:
+    def delete_notebook(self, trans: ProvidesUserContext, notebook: model.HistoryNotebook) -> None:
         """Soft-delete a notebook (sets deleted=True)."""
         notebook.deleted = True
         trans.sa_session.commit()
 
-    def undelete_notebook(
-        self, trans: ProvidesUserContext, notebook: model.HistoryNotebook
-    ) -> None:
+    def undelete_notebook(self, trans: ProvidesUserContext, notebook: model.HistoryNotebook) -> None:
         """Restore a soft-deleted notebook."""
         notebook.deleted = False
         trans.sa_session.commit()
