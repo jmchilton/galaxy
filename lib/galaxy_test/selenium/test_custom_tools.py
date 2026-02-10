@@ -96,6 +96,13 @@ from_work_dir: output.txt
         editor_container.click()
         self.sleep_for(self.wait_types.UX_RENDER)
 
+        # Disable Monaco auto-complete to avoid interference during typing
+        self.execute_script(
+            "monaco.editor.getEditors()[0].updateOptions("
+            "{quickSuggestions:false,suggestOnTriggerCharacters:false,"
+            "acceptSuggestionOnEnter:'off',wordBasedSuggestions:'off'})"
+        )
+
         # Select all and delete existing content
         modifier = "Meta" if platform.system() == "Darwin" else "Control"
         self.keyboard_combo(modifier, "a")
