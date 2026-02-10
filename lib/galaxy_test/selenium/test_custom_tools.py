@@ -62,7 +62,10 @@ class TestCustomTools(SeleniumTestCase):
         return self.current_url.split("/tools/editor/")[1]
 
     def paste_tool(self):
-        tool_yaml = """class: GalaxyUserTool
+        # YAML is split in funky ways to accommodate Monaco's guided text
+        # input / auto-formatting.  Indentation that looks "wrong" here ends
+        # up correct after Monaco applies its own indentation during typing.
+        tool_yaml_one = """class: GalaxyUserTool
 id: test_cat_tool
 name: Test Cat Tool
 version: "0.1"
@@ -71,16 +74,21 @@ container: busybox
 shell_command: |
   cat $(inputs.datasets.map((input) => input.path).join(' ')) > output.txt
 
+"""
+
+        tool_yaml_two = """
 inputs:
 - name: datasets
   multiple: true
-  type: data
+type: data
 
+"""
+        tool_yaml_three = """
 outputs:
 - name: output1
   type: data
-  format_source: datasets
-  from_work_dir: output.txt
+format_source: datasets
+from_work_dir: output.txt
 """
         # Wait for Monaco editor to initialize
         self.sleep_for(self.wait_types.UX_RENDER)
@@ -93,5 +101,9 @@ outputs:
         self.keyboard_combo(modifier, "a")
         self.keyboard_press("Delete")
 
-        # Type new tool YAML
-        self.keyboard_type(tool_yaml)
+        # Type content in fragments with backspaces to correct Monaco auto-indent
+        self.keyboard_type(tool_yaml_one)
+        self.keyboard_press("Backspace")
+        self.keyboard_type(tool_yaml_two)
+        self.keyboard_press("Backspace")
+        self.keyboard_type(tool_yaml_three)
