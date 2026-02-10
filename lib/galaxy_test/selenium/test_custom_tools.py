@@ -1,12 +1,8 @@
-"""Selenium tests for custom tool creation and management."""
+"""Tests for custom tool creation and management."""
 
 import platform
 
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
-
 from .framework import (
-    selenium_only,
     selenium_test,
     SeleniumTestCase,
 )
@@ -19,7 +15,6 @@ class TestCustomTools(SeleniumTestCase):
         """Skip accessibility checks for custom tools tests due to Monaco editor issues."""
         pass
 
-    @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
     def test_create_custom_tool(self):
         """Test creating a new custom tool through the UI."""
@@ -28,7 +23,6 @@ class TestCustomTools(SeleniumTestCase):
             assert tool_uuid, "Tool UUID should be returned after saving."
             self.components.custom_tools.tool_link(tool_uuid=tool_uuid).wait_for_clickable()
 
-    @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
     def test_run_custom_tool(self):
         test_path = self.get_filename("1.fasta")
@@ -65,12 +59,10 @@ class TestCustomTools(SeleniumTestCase):
         # Wait for save operation to complete
         self.sleep_for(self.wait_types.UX_TRANSITION)
         # Verify save was successful
-        current_url = self.driver.current_url
-        return current_url.split("/tools/editor/")[1]
+        return self.current_url.split("/tools/editor/")[1]
 
     def paste_tool(self):
-        # Define a simple custom tool YAML
-        tool_yaml_one = """class: GalaxyUserTool
+        tool_yaml = """class: GalaxyUserTool
 id: test_cat_tool
 name: Test Cat Tool
 version: "0.1"
@@ -79,53 +71,27 @@ container: busybox
 shell_command: |
   cat $(inputs.datasets.map((input) => input.path).join(' ')) > output.txt
 
-"""
-
-        tool_yaml_two = """
 inputs:
 - name: datasets
   multiple: true
-type: data
+  type: data
 
-"""
-        tool_yaml_three = """
 outputs:
 - name: output1
   type: data
-format_source: datasets
-from_work_dir: output.txt
+  format_source: datasets
+  from_work_dir: output.txt
 """
-        # Try finding Monaco editor and replace skeleton content
-        self.sleep_for(self.wait_types.UX_RENDER)  # Allow editor to initialize
-        # Use the stable .monaco-editor container, not .view-line which gets re-rendered
+        # Wait for Monaco editor to initialize
+        self.sleep_for(self.wait_types.UX_RENDER)
         editor_container = self.wait_for_selector_visible(".monaco-editor")
-
-        # Focus the editor by clicking on the stable container
         editor_container.click()
-        self.sleep_for(self.wait_types.UX_RENDER)  # Allow editor to focus
+        self.sleep_for(self.wait_types.UX_RENDER)
 
-        is_mac = platform.system() == "Darwin"
-        modifier_key = Keys.COMMAND if is_mac else Keys.CONTROL
+        # Select all and delete existing content
+        modifier = "Meta" if platform.system() == "Darwin" else "Control"
+        self.keyboard_combo(modifier, "a")
+        self.keyboard_press("Delete")
 
-        action_chains = ActionChains(self.driver)
-
-        # Select all content
-        action_chains.key_down(modifier_key)
-        action_chains.send_keys("a")
-        action_chains.key_up(modifier_key)
-        action_chains.perform()
-
-        # Delete selected content
-        action_chains = ActionChains(self.driver)
-        action_chains.send_keys(Keys.DELETE)
-        action_chains.perform()
-
-        # Now insert the new content
-        # yaml is split in funky was to accomodate guided yaml text input in monaco
-        action_chains = ActionChains(self.driver)
-        action_chains.send_keys(tool_yaml_one)
-        action_chains.send_keys(Keys.BACKSPACE)
-        action_chains.send_keys(tool_yaml_two)
-        action_chains.send_keys(Keys.BACKSPACE)
-        action_chains.send_keys(tool_yaml_three)
-        action_chains.perform()
+        # Type new tool YAML
+        self.keyboard_type(tool_yaml)

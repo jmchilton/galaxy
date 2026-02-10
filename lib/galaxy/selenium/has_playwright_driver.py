@@ -184,12 +184,17 @@ class PlaywrightKeys:
     ENTER = "Enter"
     ESCAPE = "Escape"
     BACKSPACE = "Backspace"
+    DELETE = "Delete"
     TAB = "Tab"
     SPACE = " "
     ARROW_DOWN = "ArrowDown"
     ARROW_UP = "ArrowUp"
     ARROW_LEFT = "ArrowLeft"
     ARROW_RIGHT = "ArrowRight"
+    CONTROL = "Control"
+    SHIFT = "Shift"
+    META = "Meta"
+    ALT = "Alt"
 
 
 class PlaywrightBy:
@@ -724,6 +729,20 @@ class HasPlaywrightDriver(TimeoutMessageMixin, WaitMethodsMixin, Generic[WaitTyp
             self.page.keyboard.press(self.keys.BACKSPACE)
         else:
             self._send_key_to_element(self.keys.BACKSPACE, self._unwrap_element(element))
+
+    def keyboard_combo(self, modifier: str, key: str) -> None:
+        """Press a modifier+key combination (e.g. Ctrl+A)."""
+        self.page.keyboard.down(modifier)
+        self.page.keyboard.press(key)
+        self.page.keyboard.up(modifier)
+
+    def keyboard_press(self, key: str) -> None:
+        """Press a single key on the page (not on a specific element)."""
+        self.page.keyboard.press(key)
+
+    def keyboard_type(self, text: str) -> None:
+        """Type text string into the currently focused element."""
+        self.page.keyboard.type(text)
 
     def aggressive_clear(self, element: WebElementProtocol) -> None:
         """

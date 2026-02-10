@@ -375,6 +375,18 @@ class HasDriver(TimeoutMessageMixin, WaitMethodsMixin, Generic[WaitTypeT]):
     def send_backspace(self, element: Optional[WebElement] = None):
         self._send_key(Keys.BACKSPACE, element)
 
+    def keyboard_combo(self, modifier: str, key: str) -> None:
+        """Press a modifier+key combination (e.g. Ctrl+A)."""
+        ActionChains(self.driver).key_down(modifier).send_keys(key).key_up(modifier).perform()
+
+    def keyboard_press(self, key: str) -> None:
+        """Press a single key on the page (not on a specific element)."""
+        ActionChains(self.driver).send_keys(key).perform()
+
+    def keyboard_type(self, text: str) -> None:
+        """Type text string into the currently focused element."""
+        ActionChains(self.driver).send_keys(text).perform()
+
     def aggressive_clear(self, element: WebElement) -> None:
         # for when a simple .clear() doesn't work
         self.driver.execute_script("arguments[0].value = '';", element)

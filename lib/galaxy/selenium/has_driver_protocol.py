@@ -375,6 +375,21 @@ class HasDriverProtocol(Protocol, Generic[WaitTypeT]):
         ...
 
     @abstractmethod
+    def keyboard_combo(self, modifier: str, key: str) -> None:
+        """Press a modifier+key combination (e.g. Ctrl+A)."""
+        ...
+
+    @abstractmethod
+    def keyboard_press(self, key: str) -> None:
+        """Press a single key on the page (not on a specific element)."""
+        ...
+
+    @abstractmethod
+    def keyboard_type(self, text: str) -> None:
+        """Type text string into the currently focused element."""
+        ...
+
+    @abstractmethod
     def aggressive_clear(self, element: WebElementProtocol) -> None:
         """Clear input element value using JavaScript and backspaces (for when .clear() doesn't work)."""
         ...

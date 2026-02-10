@@ -330,6 +330,18 @@ class HasDriverProxy(ABC, Generic[WaitTypeT]):
         """Send BACKSPACE key to element or active element."""
         return self._driver_impl.send_backspace(element)
 
+    def keyboard_combo(self, modifier: str, key: str) -> None:
+        """Press a modifier+key combination (e.g. Ctrl+A)."""
+        self._driver_impl.keyboard_combo(modifier, key)
+
+    def keyboard_press(self, key: str) -> None:
+        """Press a single key on the page (not on a specific element)."""
+        self._driver_impl.keyboard_press(key)
+
+    def keyboard_type(self, text: str) -> None:
+        """Type text string into the currently focused element."""
+        self._driver_impl.keyboard_type(text)
+
     def aggressive_clear(self, element: WebElementProtocol) -> None:
         """Clear input element value using JavaScript and backspaces (for when .clear() doesn't work)."""
         self._driver_impl.aggressive_clear(element)
