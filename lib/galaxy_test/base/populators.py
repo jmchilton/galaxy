@@ -1971,6 +1971,120 @@ class BaseDatasetPopulator(BasePopulator):
         )
         return request
 
+    # History Notebook helpers - following new_page* pattern
+
+    def new_history_notebook_payload(
+        self,
+        history_id: str,
+        title: Optional[str] = None,
+        content: str = "",
+        content_format: str = "markdown",
+    ) -> dict[str, Any]:
+        """Create a history notebook request payload."""
+        payload: dict[str, Any] = {
+            "content": content,
+            "content_format": content_format,
+        }
+        if title:
+            payload["title"] = title
+        return payload
+
+    def new_history_notebook_raw(
+        self,
+        history_id: str,
+        title: Optional[str] = None,
+        content: str = "",
+        content_format: str = "markdown",
+    ) -> Response:
+        """Create a history notebook, return raw Response."""
+        payload = self.new_history_notebook_payload(
+            history_id, title=title, content=content, content_format=content_format
+        )
+        return self._post(f"histories/{history_id}/notebooks", payload, json=True)
+
+    def new_history_notebook(
+        self,
+        history_id: str,
+        title: Optional[str] = None,
+        content: str = "",
+        content_format: str = "markdown",
+    ) -> dict[str, Any]:
+        """Create a history notebook, assert success, return dict."""
+        response = self.new_history_notebook_raw(
+            history_id, title=title, content=content, content_format=content_format
+        )
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def get_history_notebook(self, history_id: str, notebook_id: str) -> dict[str, Any]:
+        """Get a history notebook by ID."""
+        response = self._get(f"histories/{history_id}/notebooks/{notebook_id}")
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def get_history_notebook_raw(self, history_id: str, notebook_id: str) -> Response:
+        """Get a history notebook by ID, return raw Response."""
+        return self._get(f"histories/{history_id}/notebooks/{notebook_id}")
+
+    def list_history_notebooks(self, history_id: str) -> list[dict[str, Any]]:
+        """List all notebooks for a history."""
+        response = self._get(f"histories/{history_id}/notebooks")
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def update_history_notebook_raw(
+        self,
+        history_id: str,
+        notebook_id: str,
+        content: str,
+        title: Optional[str] = None,
+    ) -> Response:
+        """Update a history notebook, return raw Response."""
+        payload: dict[str, Any] = {"content": content}
+        if title:
+            payload["title"] = title
+        return self._put(f"histories/{history_id}/notebooks/{notebook_id}", payload, json=True)
+
+    def update_history_notebook(
+        self,
+        history_id: str,
+        notebook_id: str,
+        content: str,
+        title: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Update a history notebook, assert success, return dict."""
+        response = self.update_history_notebook_raw(
+            history_id, notebook_id, content=content, title=title
+        )
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def delete_history_notebook_raw(self, history_id: str, notebook_id: str) -> Response:
+        """Soft-delete a history notebook, return raw Response."""
+        return self._delete(f"histories/{history_id}/notebooks/{notebook_id}")
+
+    def delete_history_notebook(self, history_id: str, notebook_id: str) -> None:
+        """Soft-delete a history notebook, assert success."""
+        response = self.delete_history_notebook_raw(history_id, notebook_id)
+        api_asserts.assert_status_code_is(response, 204)
+
+    def undelete_history_notebook_raw(self, history_id: str, notebook_id: str) -> Response:
+        """Restore a soft-deleted notebook, return raw Response."""
+        return self._put(f"histories/{history_id}/notebooks/{notebook_id}/undelete")
+
+    def undelete_history_notebook(self, history_id: str, notebook_id: str) -> None:
+        """Restore a soft-deleted notebook, assert success."""
+        response = self.undelete_history_notebook_raw(history_id, notebook_id)
+        api_asserts.assert_status_code_is(response, 204)
+
+    def list_history_notebook_revisions(
+        self, history_id: str, notebook_id: str
+    ) -> list[dict[str, Any]]:
+        """List all revisions for a notebook."""
+        response = self._get(f"histories/{history_id}/notebooks/{notebook_id}/revisions")
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
     def export_history_to_uri_async(
         self, history_id: str, target_uri: str, model_store_format: str = "tgz", include_files: bool = True
     ):

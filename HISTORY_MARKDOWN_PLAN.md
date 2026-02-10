@@ -12,6 +12,34 @@ This plan implements History Notebooks - markdown documents tied to Galaxy histo
 
 ---
 
+## Implementation Status
+
+### ✅ Phase 1: Backend Foundation - COMPLETE
+
+**Completed 2025-01-06:**
+
+| Task | Status | Files |
+|------|--------|-------|
+| 1.1 Database Models | ✅ | `lib/galaxy/model/__init__.py` |
+| 1.1.4 Alembic Migration | ✅ | `lib/galaxy/model/migrations/alembic/versions_gxy/b75f0f4dbcd4_add_history_notebook_tables.py` |
+| 1.1.5 Pydantic Schemas | ✅ | `lib/galaxy/schema/schema.py` |
+| 1.2 Manager Layer | ✅ | `lib/galaxy/managers/history_notebooks.py` |
+| 1.3 API Endpoints | ✅ | `lib/galaxy/webapps/galaxy/api/history_notebooks.py` |
+| 1.4 HID Parsing | ✅ | `lib/galaxy/managers/markdown_parse.py` |
+| 1.5 HID Resolution | ✅ | `lib/galaxy/managers/markdown_util.py` |
+| 1.6 API Tests | ✅ | `lib/galaxy_test/api/test_history_notebooks.py` |
+| 1.6 Populators | ✅ | `lib/galaxy_test/base/populators.py` |
+
+**Key Implementation Notes:**
+- Added `HistoryNotebook` and `HistoryNotebookRevision` models
+- Added `notebooks` relationship to `History` model
+- Created merge migration `b75f0f4dbcd4` (merges heads `1d1d7bf6ac02` and `23143e0bf1d8`)
+- Added `hid` argument to 11 directives in `VALID_ARGUMENTS`
+- Created `resolve_history_markdown()` for HID→internal ID resolution
+- API endpoints at `/api/histories/{history_id}/notebooks`
+
+---
+
 ## MVP Definition
 
 The MVP delivers functional history notebooks that users can create, edit, save, and view (multiple notebooks per history). It includes:
@@ -36,11 +64,11 @@ The MVP delivers functional history notebooks that users can create, edit, save,
 
 **Files to modify:**
 - `lib/galaxy/model/__init__.py` (after line 11217, near PageRevision)
-- `lib/galaxy/model/migrations/` (new Alembic migration)
+- `lib/galaxy/model/migrations/alembic/versions_gxy/` (new Alembic migration)
 
 **Reference Pattern:** Page model at `lib/galaxy/model/__init__.py:11108-11193`
 
-**Design Note:** A history can have **multiple notebooks**. Each notebook has revisions, with the title stored on the revision (following the Page pattern).
+**Design Note:** A history can have **multiple notebooks**. Each notebook has revisions. Title is stored on the notebook (following the Page pattern), while content is versioned on revisions.
 
 **Tasks:**
 
@@ -56,6 +84,7 @@ class HistoryNotebook(Base, Dictifiable, RepresentById, UsesCreateAndUpdateTime)
     history_id: Mapped[int] = mapped_column(
         ForeignKey("history.id"), index=True, nullable=False
     )  # No unique constraint - multiple notebooks per history allowed
+    title: Mapped[Optional[str]] = mapped_column(TEXT)  # Not versioned - notebook identity
     latest_revision_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("history_notebook_revision.id", use_alter=True,
                    name="history_notebook_latest_revision_id_fk"),
@@ -78,7 +107,7 @@ class HistoryNotebook(Base, Dictifiable, RepresentById, UsesCreateAndUpdateTime)
     )
 
     dict_element_visible_keys = [
-        "id", "history_id", "latest_revision_id", "deleted", "create_time", "update_time"
+        "id", "history_id", "title", "latest_revision_id", "deleted", "create_time", "update_time"
     ]
 
     def to_dict(self, view="element"):
@@ -100,7 +129,6 @@ class HistoryNotebookRevision(Base, Dictifiable, RepresentById):
     notebook_id: Mapped[int] = mapped_column(
         ForeignKey("history_notebook.id"), index=True
     )
-    title: Mapped[Optional[str]] = mapped_column(TEXT)
     content: Mapped[Optional[str]] = mapped_column(TEXT)
     content_format: Mapped[Optional[str]] = mapped_column(TrimmedString(32))
 
@@ -115,7 +143,7 @@ class HistoryNotebookRevision(Base, Dictifiable, RepresentById):
 
     DEFAULT_CONTENT_FORMAT = "markdown"
     dict_element_visible_keys = [
-        "id", "notebook_id", "title", "content", "content_format",
+        "id", "notebook_id", "content", "content_format",
         "edit_source", "create_time", "update_time"
     ]
 
@@ -142,46 +170,81 @@ notebooks: Mapped[list["HistoryNotebook"]] = relationship(
 
 #### 1.1.4 Create Alembic migration
 
+**Note:** The database migration should be in its own commit, separate from model/manager code.
+
 ```python
-# lib/galaxy/model/migrations/alembic/versions/XXXX_add_history_notebook.py
+# lib/galaxy/model/migrations/alembic/versions_gxy/XXXX_add_history_notebook.py
+
+"""add history_notebook tables
+
+Revision ID: XXXX
+Revises: <current_head>
+Create Date: <auto>
+"""
+
+import sqlalchemy as sa
+
+from galaxy.model.custom_types import TrimmedString
+from galaxy.model.migrations.util import (
+    create_foreign_key,
+    create_table,
+    drop_table,
+    transaction,
+)
+
+# revision identifiers, used by Alembic.
+revision = "XXXX"
+down_revision = "<current_head>"
+branch_labels = None
+depends_on = None
+
+NOTEBOOK_TABLE = "history_notebook"
+REVISION_TABLE = "history_notebook_revision"
+
 
 def upgrade():
-    op.create_table(
-        'history_notebook',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('create_time', sa.DateTime()),
-        sa.Column('update_time', sa.DateTime()),
-        sa.Column('history_id', sa.Integer(), sa.ForeignKey('history.id'),
-                  nullable=False, index=True),  # No unique - multiple notebooks per history
-        sa.Column('latest_revision_id', sa.Integer(), index=True),
-        sa.Column('deleted', sa.Boolean(), default=False, index=True),
-        sa.Column('purged', sa.Boolean(), default=False, index=True),
-    )
+    with transaction():
+        create_table(
+            NOTEBOOK_TABLE,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("create_time", sa.DateTime),
+            sa.Column("update_time", sa.DateTime),
+            sa.Column("history_id", sa.Integer, sa.ForeignKey("history.id"),
+                      nullable=False, index=True),  # No unique - multiple notebooks per history
+            sa.Column("title", sa.Text),  # Title on notebook, not revision (like Page)
+            sa.Column("latest_revision_id", sa.Integer, index=True),
+            sa.Column("deleted", sa.Boolean, default=False, index=True),
+            sa.Column("purged", sa.Boolean, default=False, index=True),
+        )
 
-    op.create_table(
-        'history_notebook_revision',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('create_time', sa.DateTime()),
-        sa.Column('update_time', sa.DateTime()),
-        sa.Column('notebook_id', sa.Integer(),
-                  sa.ForeignKey('history_notebook.id'), index=True),
-        sa.Column('title', sa.TEXT()),
-        sa.Column('content', sa.TEXT()),
-        sa.Column('content_format', sa.String(32)),
-        sa.Column('edit_source', sa.String(16), default='user'),
-    )
+        create_table(
+            REVISION_TABLE,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("create_time", sa.DateTime),
+            sa.Column("update_time", sa.DateTime),
+            sa.Column("notebook_id", sa.Integer,
+                      sa.ForeignKey("history_notebook.id"), index=True),
+            sa.Column("content", sa.Text),
+            sa.Column("content_format", TrimmedString(32)),
+            sa.Column("edit_source", TrimmedString(16), default="user"),
+        )
 
-    op.create_foreign_key(
-        'history_notebook_latest_revision_id_fk',
-        'history_notebook', 'history_notebook_revision',
-        ['latest_revision_id'], ['id']
-    )
+        create_foreign_key(
+            "history_notebook_latest_revision_id_fk",
+            NOTEBOOK_TABLE,
+            REVISION_TABLE,
+            ["latest_revision_id"],
+            ["id"],
+        )
+
 
 def downgrade():
-    op.drop_constraint('history_notebook_latest_revision_id_fk', 'history_notebook')
-    op.drop_table('history_notebook_revision')
-    op.drop_table('history_notebook')
+    with transaction():
+        drop_table(REVISION_TABLE)
+        drop_table(NOTEBOOK_TABLE)
 ```
+
+**Note:** The `drop_table` utility handles constraint cleanup automatically in repair mode. The order of drops matters - revision table must be dropped first since notebook table references it.
 
 #### 1.1.5 Add Pydantic schemas
 
@@ -223,6 +286,7 @@ class UpdateHistoryNotebookPayload(Model):
 class HistoryNotebookSummary(Model):
     id: EncodedDatabaseIdField
     history_id: EncodedDatabaseIdField
+    title: Optional[str]  # Directly on notebook - needed for list/picker display
     latest_revision_id: Optional[EncodedDatabaseIdField]
     revision_ids: list[EncodedDatabaseIdField]
     deleted: bool = Field(default=False)
@@ -231,7 +295,7 @@ class HistoryNotebookSummary(Model):
 
 
 class HistoryNotebookDetails(HistoryNotebookSummary):
-    title: Optional[str]
+    # title inherited from HistoryNotebookSummary
     content: Optional[str]
     content_format: NotebookContentFormat
     edit_source: Optional[str] = Field(default="user")
@@ -240,7 +304,6 @@ class HistoryNotebookDetails(HistoryNotebookSummary):
 class HistoryNotebookRevisionSummary(Model):
     id: EncodedDatabaseIdField
     notebook_id: EncodedDatabaseIdField
-    title: Optional[str]
     edit_source: Optional[str]
     create_time: datetime
     update_time: datetime
@@ -284,10 +347,12 @@ from galaxy import model
 from galaxy.managers import base
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.markdown_util import (
-    ready_galaxy_markdown_for_import,
     ready_galaxy_markdown_for_export,
     resolve_history_markdown,
 )
+# NOTE: We do NOT use ready_galaxy_markdown_for_import here.
+# Pages use it to decode encoded IDs → raw database IDs at storage time.
+# History Notebooks store HIDs as-is; resolution happens at render time.
 from galaxy.schema.schema import (
     CreateHistoryNotebookPayload,
     UpdateHistoryNotebookPayload,
@@ -331,22 +396,17 @@ class HistoryNotebookManager:
         payload: CreateHistoryNotebookPayload,
     ) -> model.HistoryNotebook:
         """Create a new notebook for a history (multiple notebooks allowed)."""
-        # Create notebook
+        # Create notebook with title (title on notebook, not revision)
         notebook = model.HistoryNotebook()
         notebook.history = history
+        notebook.title = payload.title or history.name
 
-        # Create initial revision
-        title = payload.title or history.name
+        # Create initial revision - content stored as-is with HIDs
         content = payload.content or ""
         content_format = payload.content_format or "markdown"
 
-        # Process content for storage
-        if content:
-            content = ready_galaxy_markdown_for_import(trans, content)
-
         revision = model.HistoryNotebookRevision()
         revision.notebook = notebook
-        revision.title = title
         revision.content = content
         revision.content_format = content_format
         revision.edit_source = "user"
@@ -371,15 +431,15 @@ class HistoryNotebookManager:
         if not content:
             raise base.RequestParameterMissingException("content required")
 
-        title = payload.title or notebook.latest_revision.title
         content_format = payload.content_format or notebook.latest_revision.content_format
 
-        # Process content for storage
-        content = ready_galaxy_markdown_for_import(trans, content)
+        # Update title on notebook if provided (title not versioned)
+        if payload.title:
+            notebook.title = payload.title
 
+        # Content stored as-is with HIDs - no transformation needed
         revision = model.HistoryNotebookRevision()
         revision.notebook = notebook
-        revision.title = title
         revision.content = content
         revision.content_format = content_format
         revision.edit_source = edit_source
@@ -418,7 +478,7 @@ class HistoryNotebookManager:
         content = rval.get("content")
         if content:
             # First resolve HID references to internal IDs
-            resolved = resolve_history_markdown(trans, history, content)
+            resolved = resolve_history_markdown(trans, history.id, content)
             # Then encode for export
             export_content, _, _ = ready_galaxy_markdown_for_export(trans, resolved)
             rval["content"] = export_content
@@ -447,8 +507,7 @@ class HistoryNotebookManager:
 **Files to create:**
 - `lib/galaxy/webapps/galaxy/api/history_notebooks.py`
 
-**Files to modify:**
-- `lib/galaxy/webapps/galaxy/api/__init__.py` (register router)
+**Note:** No router registration needed - Galaxy auto-detects API controllers.
 
 **Reference Pattern:** `lib/galaxy/webapps/galaxy/api/pages.py:98-339`
 
@@ -503,18 +562,11 @@ NotebookIdPathParam = Annotated[
 ]
 
 
-def get_history_notebook_manager(trans: ProvidesUserContext = DependsOnTrans):
-    return HistoryNotebookManager(trans.app)
-
-
-def get_history_manager(trans: ProvidesUserContext = DependsOnTrans):
-    return HistoryManager(trans.app)
-
-
 @router.cbv
 class FastAPIHistoryNotebooks:
-    manager: HistoryNotebookManager = depends(get_history_notebook_manager)
-    history_manager: HistoryManager = depends(get_history_manager)
+    # Type-based injection - Galaxy resolves these automatically
+    manager: HistoryNotebookManager = depends(HistoryNotebookManager)
+    history_manager: HistoryManager = depends(HistoryManager)
 
     @router.get(
         "/api/histories/{history_id}/notebooks",
@@ -537,6 +589,7 @@ class FastAPIHistoryNotebooks:
                 HistoryNotebookSummary(
                     id=nb.id,
                     history_id=nb.history_id,
+                    title=nb.title,  # Title on notebook directly
                     latest_revision_id=nb.latest_revision_id,
                     revision_ids=[r.id for r in nb.revisions],
                     deleted=nb.deleted or False,
@@ -569,7 +622,7 @@ class FastAPIHistoryNotebooks:
             raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
         rval = notebook.to_dict()
-        rval["title"] = notebook.latest_revision.title
+        # title already in to_dict() since it's on notebook
         rval["content"] = notebook.latest_revision.content
         rval["content_format"] = notebook.latest_revision.content_format
         rval["edit_source"] = notebook.latest_revision.edit_source
@@ -595,7 +648,7 @@ class FastAPIHistoryNotebooks:
         notebook = self.manager.create_notebook(trans, history, payload)
 
         rval = notebook.to_dict()
-        rval["title"] = notebook.latest_revision.title
+        # title already in to_dict() since it's on notebook
         rval["content"] = notebook.latest_revision.content
         rval["content_format"] = notebook.latest_revision.content_format
         rval["edit_source"] = notebook.latest_revision.edit_source
@@ -626,7 +679,7 @@ class FastAPIHistoryNotebooks:
         self.manager.save_new_revision(trans, notebook, payload)
 
         rval = notebook.to_dict()
-        rval["title"] = notebook.latest_revision.title
+        # title already in to_dict() since it's on notebook
         rval["content"] = notebook.latest_revision.content
         rval["content_format"] = notebook.latest_revision.content_format
         rval["edit_source"] = notebook.latest_revision.edit_source
@@ -707,7 +760,6 @@ class FastAPIHistoryNotebooks:
                 HistoryNotebookRevisionSummary(
                     id=r.id,
                     notebook_id=r.notebook_id,
-                    title=r.title,
                     edit_source=r.edit_source,
                     create_time=r.create_time,
                     update_time=r.update_time,
@@ -726,11 +778,7 @@ from galaxy.webapps.galaxy.api.history_notebooks import router as history_notebo
 include_router(history_notebooks_router)
 ```
 
-**Tests:**
-- API integration tests for all endpoints
-- Permission tests (can't access notebook for inaccessible history)
-- Test revision creation on update
-- Test 404 when notebook doesn't exist
+**Tests:** See Section 1.6 - API Tests
 
 ---
 
@@ -811,61 +859,142 @@ HID_PATTERN = re.compile(r"hid=(\d+)")
 Location: `lib/galaxy/managers/markdown_util.py` (after resolve_invocation_markdown, around line 1183)
 
 ```python
-def _resolve_hid(history: model.History, hid: int) -> tuple[str, int]:
-    """
-    Look up HID in history, return (arg_name, internal_id).
+# Directives that expect a dataset (HDA) - accept history_dataset_id
+HID_DATASET_DIRECTIVES = frozenset({
+    "history_dataset_as_image",
+    "history_dataset_as_table",
+    "history_dataset_display",
+    "history_dataset_embedded",
+    "history_dataset_index",
+    "history_dataset_info",
+    "history_dataset_link",
+    "history_dataset_name",
+    "history_dataset_peek",
+    "history_dataset_type",
+})
 
-    HIDs can reference either HDA or HDCA - they share namespace.
+# Directives that expect a collection (HDCA) - accept history_dataset_collection_id
+HID_COLLECTION_DIRECTIVES = frozenset({
+    "history_dataset_collection_display",
+})
+
+# All directives that support hid= argument
+HID_DIRECTIVES = HID_DATASET_DIRECTIVES | HID_COLLECTION_DIRECTIVES
+
+
+def _resolve_hid_to_dataset(session, history_id: int, hid: int, directive: str) -> int:
+    """Resolve HID to dataset ID, validating it's actually a dataset."""
+    stmt = (
+        select(model.HistoryDatasetAssociation.id, model.HistoryDatasetAssociation.deleted)
+        .where(model.HistoryDatasetAssociation.history_id == history_id)
+        .where(model.HistoryDatasetAssociation.hid == hid)
+    )
+    result = session.execute(stmt).first()
+    if result:
+        dataset_id, deleted = result
+        if deleted:
+            raise ValueError(f"HID {hid} references deleted dataset")
+        return dataset_id
+
+    # Check if it's actually a collection (wrong type)
+    hdca_stmt = (
+        select(model.HistoryDatasetCollectionAssociation.id)
+        .where(model.HistoryDatasetCollectionAssociation.history_id == history_id)
+        .where(model.HistoryDatasetCollectionAssociation.hid == hid)
+    )
+    if session.execute(hdca_stmt).first():
+        raise ValueError(
+            f"HID {hid} is a collection, but {directive} expects a dataset"
+        )
+
+    raise ValueError(f"HID {hid} not found in history")
+
+
+def _resolve_hid_to_collection(session, history_id: int, hid: int, directive: str) -> int:
+    """Resolve HID to collection ID, validating it's actually a collection."""
+    stmt = (
+        select(model.HistoryDatasetCollectionAssociation.id, model.HistoryDatasetCollectionAssociation.deleted)
+        .where(model.HistoryDatasetCollectionAssociation.history_id == history_id)
+        .where(model.HistoryDatasetCollectionAssociation.hid == hid)
+    )
+    result = session.execute(stmt).first()
+    if result:
+        collection_id, deleted = result
+        if deleted:
+            raise ValueError(f"HID {hid} references deleted collection")
+        return collection_id
+
+    # Check if it's actually a dataset (wrong type)
+    hda_stmt = (
+        select(model.HistoryDatasetAssociation.id)
+        .where(model.HistoryDatasetAssociation.history_id == history_id)
+        .where(model.HistoryDatasetAssociation.hid == hid)
+    )
+    if session.execute(hda_stmt).first():
+        raise ValueError(
+            f"HID {hid} is a dataset, but {directive} expects a collection"
+        )
+
+    raise ValueError(f"HID {hid} not found in history")
+
+
+def _resolve_hid(session, history_id: int, hid: int, directive: str) -> tuple[str, int]:
+    """
+    Resolve HID to internal ID based on directive type.
+
+    The directive name determines whether we expect a dataset or collection.
+    This provides strong typing and clear error messages when types mismatch.
+
+    Args:
+        session: Database session
+        history_id: History containing the item
+        hid: History ID number to resolve
+        directive: Markdown directive name (e.g. "history_dataset_display")
+
+    Returns:
+        Tuple of (argument_name, internal_id)
 
     Raises:
-        ValueError: If HID not found or references deleted item
+        ValueError: If HID not found, deleted, or wrong type for directive
     """
-    # Check active HDAs
-    for hda in history.active_datasets:
-        if hda.hid == hid:
-            return ("history_dataset_id", hda.id)
-
-    # Check active HDCAs
-    for hdca in history.active_dataset_collections:
-        if hdca.hid == hid:
-            return ("history_dataset_collection_id", hdca.id)
-
-    # Check if HID exists but is deleted
-    for hda in history.datasets:
-        if hda.hid == hid:
-            raise ValueError(f"HID {hid} references deleted dataset")
-    for hdca in history.dataset_collections:
-        if hdca.hid == hid:
-            raise ValueError(f"HID {hid} references deleted collection")
-
-    raise ValueError(f"HID {hid} not found in history {history.id}")
+    if directive in HID_DATASET_DIRECTIVES:
+        internal_id = _resolve_hid_to_dataset(session, history_id, hid, directive)
+        return ("history_dataset_id", internal_id)
+    elif directive in HID_COLLECTION_DIRECTIVES:
+        internal_id = _resolve_hid_to_collection(session, history_id, hid, directive)
+        return ("history_dataset_collection_id", internal_id)
+    else:
+        raise ValueError(f"Directive '{directive}' does not support hid= argument")
 
 
 def resolve_history_markdown(
     trans: ProvidesUserContext,
-    history: model.History,
+    history_id: int,
     markdown_content: str
 ) -> str:
     """
-    Resolve hid=N references to internal IDs.
+    Resolve hid=N references to internal IDs based on directive type.
 
     Args:
         trans: Transaction context
-        history: History containing the referenced items
+        history_id: ID of history containing the referenced items
         markdown_content: Raw markdown with hid references
 
     Returns:
         Markdown with hid=N replaced by history_dataset_id=X or
-        history_dataset_collection_id=X depending on item type.
+        history_dataset_collection_id=X depending on directive type.
 
     Raises:
-        ValueError: If HID doesn't exist in history or is deleted
+        ValueError: If HID doesn't exist, is deleted, or wrong type for directive
     """
+    session = trans.sa_session
+
     def _remap(container: str, line: str) -> tuple[str, bool]:
         hid_match = HID_PATTERN.search(line)
         if hid_match:
             hid = int(hid_match.group(1))
-            arg_name, internal_id = _resolve_hid(history, hid)
+            # container is the directive name - use it to determine expected type
+            arg_name, internal_id = _resolve_hid(session, history_id, hid, container)
             line = line.replace(hid_match.group(0), f"{arg_name}={internal_id}")
         return (line, False)
 
@@ -885,13 +1014,758 @@ UNENCODED_ID_PATTERN = re.compile(
 # and only resolve it at render time
 ```
 
-**Tests:**
-- Resolve HID that exists as HDA → returns history_dataset_id
-- Resolve HID that exists as HDCA → returns history_dataset_collection_id
-- Resolve HID that doesn't exist → raises ValueError
-- Resolve HID for deleted item → raises ValueError with clear message
-- Resolve multiple HIDs in one document
-- Resolve with no HID references → returns unchanged
+**Tests:** See Section 1.6 - API Tests (for resolution via API)
+
+---
+
+### 1.6 API Tests
+
+**Goal:** Comprehensive API integration tests following Galaxy's existing patterns.
+
+**Files to create:**
+- `lib/galaxy_test/api/test_history_notebooks.py`
+
+**Files to modify:**
+- `lib/galaxy_test/base/populators.py` (add notebook helper methods to `BaseDatasetPopulator`)
+
+**Reference Patterns:**
+- `lib/galaxy_test/api/test_pages.py`
+- `lib/galaxy_test/api/test_page_revisions.py`
+- `lib/galaxy_test/base/populators.py` (`new_page`, `new_page_raw`, `new_page_payload`)
+
+**Tasks:**
+
+#### 1.6.1 Add populator methods to BaseDatasetPopulator
+
+Location: `lib/galaxy_test/base/populators.py` (after `new_page_payload`, around line 1953)
+
+```python
+# History Notebook helpers - following new_page* pattern
+
+def new_history_notebook_payload(
+    self,
+    history_id: str,
+    title: Optional[str] = None,
+    content: str = "",
+    content_format: str = "markdown",
+) -> dict[str, Any]:
+    """Create a history notebook request payload."""
+    payload: dict[str, Any] = {
+        "content": content,
+        "content_format": content_format,
+    }
+    if title:
+        payload["title"] = title
+    return payload
+
+def new_history_notebook_raw(
+    self,
+    history_id: str,
+    title: Optional[str] = None,
+    content: str = "",
+    content_format: str = "markdown",
+) -> Response:
+    """Create a history notebook, return raw Response."""
+    payload = self.new_history_notebook_payload(
+        history_id, title=title, content=content, content_format=content_format
+    )
+    return self._post(f"histories/{history_id}/notebooks", payload, json=True)
+
+def new_history_notebook(
+    self,
+    history_id: str,
+    title: Optional[str] = None,
+    content: str = "",
+    content_format: str = "markdown",
+) -> dict[str, Any]:
+    """Create a history notebook, assert success, return dict."""
+    response = self.new_history_notebook_raw(
+        history_id, title=title, content=content, content_format=content_format
+    )
+    api_asserts.assert_status_code_is(response, 200)
+    return response.json()
+
+def get_history_notebook(self, history_id: str, notebook_id: str) -> dict[str, Any]:
+    """Get a history notebook by ID."""
+    response = self._get(f"histories/{history_id}/notebooks/{notebook_id}")
+    api_asserts.assert_status_code_is(response, 200)
+    return response.json()
+
+def get_history_notebook_raw(self, history_id: str, notebook_id: str) -> Response:
+    """Get a history notebook by ID, return raw Response."""
+    return self._get(f"histories/{history_id}/notebooks/{notebook_id}")
+
+def list_history_notebooks(self, history_id: str) -> list[dict[str, Any]]:
+    """List all notebooks for a history."""
+    response = self._get(f"histories/{history_id}/notebooks")
+    api_asserts.assert_status_code_is(response, 200)
+    return response.json()
+
+def update_history_notebook_raw(
+    self,
+    history_id: str,
+    notebook_id: str,
+    content: str,
+    title: Optional[str] = None,
+) -> Response:
+    """Update a history notebook, return raw Response."""
+    payload: dict[str, Any] = {"content": content}
+    if title:
+        payload["title"] = title
+    return self._put(f"histories/{history_id}/notebooks/{notebook_id}", payload, json=True)
+
+def update_history_notebook(
+    self,
+    history_id: str,
+    notebook_id: str,
+    content: str,
+    title: Optional[str] = None,
+) -> dict[str, Any]:
+    """Update a history notebook, assert success, return dict."""
+    response = self.update_history_notebook_raw(
+        history_id, notebook_id, content=content, title=title
+    )
+    api_asserts.assert_status_code_is(response, 200)
+    return response.json()
+
+def delete_history_notebook_raw(self, history_id: str, notebook_id: str) -> Response:
+    """Soft-delete a history notebook, return raw Response."""
+    return self._delete(f"histories/{history_id}/notebooks/{notebook_id}")
+
+def delete_history_notebook(self, history_id: str, notebook_id: str) -> None:
+    """Soft-delete a history notebook, assert success."""
+    response = self.delete_history_notebook_raw(history_id, notebook_id)
+    api_asserts.assert_status_code_is(response, 204)
+
+def undelete_history_notebook_raw(self, history_id: str, notebook_id: str) -> Response:
+    """Restore a soft-deleted notebook, return raw Response."""
+    return self._put(f"histories/{history_id}/notebooks/{notebook_id}/undelete")
+
+def undelete_history_notebook(self, history_id: str, notebook_id: str) -> None:
+    """Restore a soft-deleted notebook, assert success."""
+    response = self.undelete_history_notebook_raw(history_id, notebook_id)
+    api_asserts.assert_status_code_is(response, 204)
+
+def list_history_notebook_revisions(
+    self, history_id: str, notebook_id: str
+) -> list[dict[str, Any]]:
+    """List all revisions for a notebook."""
+    response = self._get(f"histories/{history_id}/notebooks/{notebook_id}/revisions")
+    api_asserts.assert_status_code_is(response, 200)
+    return response.json()
+```
+
+#### 1.6.2 Create test file
+
+```python
+# lib/galaxy_test/api/test_history_notebooks.py
+
+from galaxy.exceptions import error_codes
+from galaxy_test.api._framework import ApiTestCase
+from galaxy_test.base.populators import DatasetPopulator
+
+
+class TestHistoryNotebooksApi(ApiTestCase):
+    """Tests for history notebook CRUD operations."""
+
+    dataset_populator: DatasetPopulator
+
+    def setUp(self):
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
+
+    def test_create_notebook(self):
+        """Test creating a notebook for a history."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, title="Test Notebook"
+            )
+            self._assert_has_keys(notebook, "id", "history_id", "title", "content")
+            assert notebook["title"] == "Test Notebook"
+            assert notebook["history_id"] == history_id
+            assert notebook["content_format"] == "markdown"
+
+    def test_create_notebook_defaults_title_to_history_name(self):
+        """Test that notebook title defaults to history name when not provided."""
+        with self.dataset_populator.test_history(name="My Analysis") as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+            assert notebook["title"] == "My Analysis"
+
+    def test_create_multiple_notebooks_for_history(self):
+        """Test that multiple notebooks can be created for the same history."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook1 = self.dataset_populator.new_history_notebook(
+                history_id, title="First Notebook"
+            )
+            notebook2 = self.dataset_populator.new_history_notebook(
+                history_id, title="Second Notebook"
+            )
+            assert notebook1["id"] != notebook2["id"]
+            assert notebook1["history_id"] == notebook2["history_id"]
+
+    def test_index_notebooks(self):
+        """Test listing notebooks for a history."""
+        with self.dataset_populator.test_history() as history_id:
+            self.dataset_populator.new_history_notebook(history_id, title="Notebook A")
+            self.dataset_populator.new_history_notebook(history_id, title="Notebook B")
+            notebooks = self.dataset_populator.list_history_notebooks(history_id)
+            assert len(notebooks) == 2
+
+    def test_index_empty_history(self):
+        """Test listing notebooks for history with no notebooks."""
+        with self.dataset_populator.test_history() as history_id:
+            notebooks = self.dataset_populator.list_history_notebooks(history_id)
+            assert len(notebooks) == 0
+
+    def test_index_excludes_deleted(self):
+        """Test that deleted notebooks are excluded from index by default."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook1 = self.dataset_populator.new_history_notebook(
+                history_id, title="Active"
+            )
+            notebook2 = self.dataset_populator.new_history_notebook(
+                history_id, title="Deleted"
+            )
+            self.dataset_populator.delete_history_notebook(history_id, notebook2["id"])
+
+            notebooks = self.dataset_populator.list_history_notebooks(history_id)
+            assert len(notebooks) == 1
+            assert notebooks[0]["id"] == notebook1["id"]
+
+    def test_show_notebook(self):
+        """Test getting a specific notebook."""
+        with self.dataset_populator.test_history() as history_id:
+            created = self.dataset_populator.new_history_notebook(
+                history_id,
+                title="My Notebook",
+                content="# Analysis\n\nSome content here.",
+            )
+            notebook = self.dataset_populator.get_history_notebook(
+                history_id, created["id"]
+            )
+            self._assert_has_keys(notebook, "id", "title", "content", "content_format")
+            assert notebook["title"] == "My Notebook"
+            assert "# Analysis" in notebook["content"]
+
+    def test_update_notebook_creates_revision(self):
+        """Test that updating notebook creates a new revision."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, content="Initial content"
+            )
+            original_revision_id = notebook["latest_revision_id"]
+
+            updated = self.dataset_populator.update_history_notebook(
+                history_id,
+                notebook["id"],
+                content="Updated content",
+                title="New Title",
+            )
+
+            assert updated["content"] == "Updated content"
+            assert updated["title"] == "New Title"
+            assert updated["latest_revision_id"] != original_revision_id
+
+    def test_delete_notebook(self):
+        """Test soft-deleting a notebook."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+            self.dataset_populator.delete_history_notebook(history_id, notebook["id"])
+
+            # Notebook should not be accessible
+            response = self.dataset_populator.get_history_notebook_raw(
+                history_id, notebook["id"]
+            )
+            self._assert_status_code_is(response, 404)
+
+    def test_undelete_notebook(self):
+        """Test restoring a deleted notebook."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+            self.dataset_populator.delete_history_notebook(history_id, notebook["id"])
+            self.dataset_populator.undelete_history_notebook(history_id, notebook["id"])
+
+            # Should be accessible again
+            restored = self.dataset_populator.get_history_notebook(
+                history_id, notebook["id"]
+            )
+            assert restored["id"] == notebook["id"]
+
+
+class TestHistoryNotebookRevisionsApi(ApiTestCase):
+    """Tests for notebook revision operations."""
+
+    dataset_populator: DatasetPopulator
+
+    def setUp(self):
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
+
+    def test_list_revisions(self):
+        """Test listing revisions for a notebook."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, content="Version 1"
+            )
+
+            # Create additional revisions via updates
+            self.dataset_populator.update_history_notebook(
+                history_id, notebook["id"], content="Version 2"
+            )
+            self.dataset_populator.update_history_notebook(
+                history_id, notebook["id"], content="Version 3"
+            )
+
+            revisions = self.dataset_populator.list_history_notebook_revisions(
+                history_id, notebook["id"]
+            )
+            assert len(revisions) == 3
+
+    def test_revisions_ordered_by_date_descending(self):
+        """Test that revisions are ordered by create time descending."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+
+            for i in range(3):
+                self.dataset_populator.update_history_notebook(
+                    history_id, notebook["id"], content=f"Content {i}"
+                )
+
+            revisions = self.dataset_populator.list_history_notebook_revisions(
+                history_id, notebook["id"]
+            )
+
+            # Most recent first
+            for i in range(len(revisions) - 1):
+                assert revisions[i]["create_time"] >= revisions[i + 1]["create_time"]
+
+    def test_revision_has_edit_source(self):
+        """Test that revisions track edit_source."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+            revisions = self.dataset_populator.list_history_notebook_revisions(
+                history_id, notebook["id"]
+            )
+            assert revisions[0]["edit_source"] == "user"
+
+
+class TestHistoryNotebooksPermissions(ApiTestCase):
+    """Tests for notebook permission enforcement."""
+
+    dataset_populator: DatasetPopulator
+
+    def setUp(self):
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
+
+    def test_403_create_notebook_on_unowned_history(self):
+        """Test that users cannot create notebooks on histories they don't own."""
+        with self.dataset_populator.test_history() as history_id:
+            with self._different_user():
+                response = self.dataset_populator.new_history_notebook_raw(
+                    history_id, content="content"
+                )
+                self._assert_status_code_is(response, 403)
+                self._assert_error_code_is(
+                    response, error_codes.error_codes_by_name["USER_DOES_NOT_OWN_ITEM"]
+                )
+
+    def test_403_update_notebook_on_unowned_history(self):
+        """Test that users cannot update notebooks on histories they don't own."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+
+            with self._different_user():
+                response = self.dataset_populator.update_history_notebook_raw(
+                    history_id, notebook["id"], content="new content"
+                )
+                self._assert_status_code_is(response, 403)
+
+    def test_403_delete_notebook_on_unowned_history(self):
+        """Test that users cannot delete notebooks on histories they don't own."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+
+            with self._different_user():
+                response = self.dataset_populator.delete_history_notebook_raw(
+                    history_id, notebook["id"]
+                )
+                self._assert_status_code_is(response, 403)
+
+    def test_can_view_notebook_on_shared_history(self):
+        """Test that users can view notebooks on histories shared with them."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, content="shared content"
+            )
+
+            # Share history via link access
+            self._put(f"histories/{history_id}/enable_link_access")
+
+            with self._different_user():
+                response = self.dataset_populator.get_history_notebook_raw(
+                    history_id, notebook["id"]
+                )
+                self._assert_status_code_is(response, 200)
+                assert response.json()["content"] == "shared content"
+
+    def test_cannot_edit_notebook_on_shared_history(self):
+        """Test that users cannot edit notebooks on histories only shared for viewing."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+
+            # Share history (view only)
+            self._put(f"histories/{history_id}/enable_link_access")
+
+            with self._different_user():
+                response = self.dataset_populator.update_history_notebook_raw(
+                    history_id, notebook["id"], content="attempt edit"
+                )
+                self._assert_status_code_is(response, 403)
+
+    def test_400_on_malformed_notebook_id(self):
+        """Test 400 response for malformed notebook ID."""
+        with self.dataset_populator.test_history() as history_id:
+            response = self._get(f"histories/{history_id}/notebooks/not-a-valid-id")
+            self._assert_status_code_is(response, 400)
+            self._assert_error_code_is(
+                response, error_codes.error_codes_by_name["MALFORMED_ID"]
+            )
+
+    def test_404_notebook_wrong_history(self):
+        """Test 404 when accessing notebook via wrong history ID."""
+        with self.dataset_populator.test_history() as history_id1:
+            notebook = self.dataset_populator.new_history_notebook(history_id1)
+
+            with self.dataset_populator.test_history() as history_id2:
+                response = self.dataset_populator.get_history_notebook_raw(
+                    history_id2, notebook["id"]
+                )
+                self._assert_status_code_is(response, 404)
+
+    def test_400_update_requires_content(self):
+        """Test that update requires content field."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+
+            response = self._put(
+                f"histories/{history_id}/notebooks/{notebook['id']}",
+                data={"title": "Just a title"},  # Missing content
+                json=True,
+            )
+            self._assert_status_code_is(response, 400)
+
+    def test_400_undelete_non_deleted_notebook(self):
+        """Test 400 when trying to undelete a non-deleted notebook."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id)
+
+            response = self.dataset_populator.undelete_history_notebook_raw(
+                history_id, notebook["id"]
+            )
+            self._assert_status_code_is(response, 400)
+
+
+class TestHistoryNotebooksHidContent(ApiTestCase):
+    """Tests for HID reference handling in notebook content."""
+
+    dataset_populator: DatasetPopulator
+
+    def setUp(self):
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
+
+    def test_create_with_hid_content(self):
+        """Test creating notebook with HID references."""
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id)
+            self.dataset_populator.wait_for_history(history_id)
+
+            content = f"""# Analysis
+
+```galaxy
+history_dataset_display(hid={hda['hid']})
+```
+"""
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, content=content
+            )
+            assert f"hid={hda['hid']}" in notebook["content"]
+
+    def test_hid_preserved_across_save(self):
+        """Test that HID references are preserved when saving."""
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id)
+            self.dataset_populator.wait_for_history(history_id)
+
+            content = f"Dataset: `hid={hda['hid']}`"
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, content=content
+            )
+
+            new_content = f"Updated with dataset hid={hda['hid']}"
+            self.dataset_populator.update_history_notebook(
+                history_id, notebook["id"], content=new_content
+            )
+
+            reloaded = self.dataset_populator.get_history_notebook(
+                history_id, notebook["id"]
+            )
+            assert f"hid={hda['hid']}" in reloaded["content"]
+
+    def test_multiple_hids_in_content(self):
+        """Test notebook with multiple HID references."""
+        with self.dataset_populator.test_history() as history_id:
+            hda1 = self.dataset_populator.new_dataset(history_id)
+            hda2 = self.dataset_populator.new_dataset(history_id)
+            self.dataset_populator.wait_for_history(history_id)
+
+            content = f"""
+## Datasets
+
+First: hid={hda1['hid']}
+Second: hid={hda2['hid']}
+"""
+            notebook = self.dataset_populator.new_history_notebook(
+                history_id, content=content
+            )
+            assert f"hid={hda1['hid']}" in notebook["content"]
+            assert f"hid={hda2['hid']}" in notebook["content"]
+```
+
+---
+
+### 1.7 Unit Tests (TODO)
+
+**Goal:** Add unit tests for the new markdown parsing and HID resolution code.
+
+**Patterns to follow:**
+- `test/unit/app/test_markdown_validate.py` - Tests `validate_galaxy_markdown()`
+- `test/unit/app/managers/test_markdown_export.py` - Tests `ready_galaxy_markdown_for_export()` and `to_basic_markdown()` with mocks
+- `test/unit/app/managers/base.py` - `BaseTestCase` with mock trans/app setup
+
+#### 1.7.1 Add HID validation tests
+
+**File:** `test/unit/app/test_markdown_validate.py`
+
+Add tests to verify `hid=N` is accepted in relevant directives:
+
+```python
+def test_markdown_validation_hid_argument():
+    """Test that hid argument is valid for dataset directives."""
+    # Dataset directives should accept hid
+    assert_markdown_valid(
+        """
+```galaxy
+history_dataset_display(hid=42)
+```
+"""
+    )
+    assert_markdown_valid(
+        """
+```galaxy
+history_dataset_as_image(hid=1)
+```
+"""
+    )
+    assert_markdown_valid(
+        """
+```galaxy
+history_dataset_collection_display(hid=5)
+```
+"""
+    )
+
+    # hid should not be valid for non-dataset directives
+    assert_markdown_invalid(
+        """
+```galaxy
+job_metrics(hid=1)
+```
+""",
+        at_line=2,
+    )
+    assert_markdown_invalid(
+        """
+```galaxy
+workflow_display(hid=1)
+```
+""",
+        at_line=2,
+    )
+```
+
+#### 1.7.2 Add HID resolution unit tests
+
+**File:** `test/unit/app/managers/test_markdown_hid_resolution.py` (new)
+
+Test `resolve_history_markdown()` with mocked database:
+
+```python
+"""Unit tests for HID resolution in history notebooks."""
+
+from unittest import mock
+
+from galaxy import model
+from galaxy.managers.markdown_util import (
+    resolve_history_markdown,
+    _resolve_hid,
+    _resolve_hid_to_dataset,
+    _resolve_hid_to_collection,
+    HID_DATASET_DIRECTIVES,
+    HID_COLLECTION_DIRECTIVES,
+)
+from .base import BaseTestCase
+
+
+class TestHidResolution(BaseTestCase):
+    """Tests for resolve_history_markdown and helper functions."""
+
+    def setUp(self):
+        super().setUp()
+        self.history = model.History()
+        self.history.id = 1
+
+    def test_resolve_dataset_hid(self):
+        """Test resolving HID to dataset ID."""
+        hda = model.HistoryDatasetAssociation()
+        hda.id = 100
+        hda.hid = 5
+        hda.history_id = self.history.id
+        hda.deleted = False
+
+        # Mock the session query
+        mock_result = mock.MagicMock()
+        mock_result.first.return_value = (hda.id, False)
+        self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
+
+        arg_name, internal_id = _resolve_hid(
+            self.trans.sa_session, self.history.id, 5, "history_dataset_display"
+        )
+        assert arg_name == "history_dataset_id"
+        assert internal_id == 100
+
+    def test_resolve_collection_hid(self):
+        """Test resolving HID to collection ID."""
+        hdca = model.HistoryDatasetCollectionAssociation()
+        hdca.id = 200
+        hdca.hid = 10
+        hdca.history_id = self.history.id
+        hdca.deleted = False
+
+        mock_result = mock.MagicMock()
+        mock_result.first.return_value = (hdca.id, False)
+        self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
+
+        arg_name, internal_id = _resolve_hid(
+            self.trans.sa_session, self.history.id, 10, "history_dataset_collection_display"
+        )
+        assert arg_name == "history_dataset_collection_id"
+        assert internal_id == 200
+
+    def test_resolve_hid_not_found(self):
+        """Test error when HID not found."""
+        mock_result = mock.MagicMock()
+        mock_result.first.return_value = None
+        self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
+
+        with self.assertRaises(ValueError) as ctx:
+            _resolve_hid(self.trans.sa_session, self.history.id, 999, "history_dataset_display")
+        assert "not found" in str(ctx.exception)
+
+    def test_resolve_hid_deleted(self):
+        """Test error when HID references deleted item."""
+        mock_result = mock.MagicMock()
+        mock_result.first.return_value = (100, True)  # deleted=True
+        self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
+
+        with self.assertRaises(ValueError) as ctx:
+            _resolve_hid(self.trans.sa_session, self.history.id, 5, "history_dataset_display")
+        assert "deleted" in str(ctx.exception)
+
+    def test_resolve_hid_wrong_type_dataset_for_collection(self):
+        """Test error when dataset HID used with collection directive."""
+        # First query (for collection) returns None
+        # Second query (for dataset) returns a hit
+        mock_results = [
+            mock.MagicMock(first=mock.MagicMock(return_value=None)),
+            mock.MagicMock(first=mock.MagicMock(return_value=(100,))),
+        ]
+        self.trans.sa_session.execute = mock.MagicMock(side_effect=mock_results)
+
+        with self.assertRaises(ValueError) as ctx:
+            _resolve_hid(
+                self.trans.sa_session, self.history.id, 5, "history_dataset_collection_display"
+            )
+        assert "is a dataset" in str(ctx.exception)
+
+    def test_resolve_history_markdown_replaces_hid(self):
+        """Test full markdown HID resolution."""
+        example = """# Analysis
+```galaxy
+history_dataset_display(hid=42)
+```
+"""
+        # Mock to return dataset id 999 for hid 42
+        mock_result = mock.MagicMock()
+        mock_result.first.return_value = (999, False)
+        self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
+
+        result = resolve_history_markdown(self.trans, self.history.id, example)
+        assert "history_dataset_id=999" in result
+        assert "hid=42" not in result
+
+    def test_resolve_history_markdown_multiple_hids(self):
+        """Test resolving multiple HIDs in same document."""
+        example = """
+```galaxy
+history_dataset_display(hid=1)
+```
+
+```galaxy
+history_dataset_display(hid=2)
+```
+"""
+        # Return different IDs for different HIDs
+        mock_results = [
+            mock.MagicMock(first=mock.MagicMock(return_value=(100, False))),
+            mock.MagicMock(first=mock.MagicMock(return_value=(200, False))),
+        ]
+        self.trans.sa_session.execute = mock.MagicMock(side_effect=mock_results)
+
+        result = resolve_history_markdown(self.trans, self.history.id, example)
+        assert "history_dataset_id=100" in result
+        assert "history_dataset_id=200" in result
+
+    def test_dataset_directives_constant(self):
+        """Verify HID_DATASET_DIRECTIVES contains expected directives."""
+        expected = {
+            "history_dataset_as_image",
+            "history_dataset_as_table",
+            "history_dataset_display",
+            "history_dataset_embedded",
+            "history_dataset_index",
+            "history_dataset_info",
+            "history_dataset_link",
+            "history_dataset_name",
+            "history_dataset_peek",
+            "history_dataset_type",
+        }
+        assert HID_DATASET_DIRECTIVES == expected
+
+    def test_collection_directives_constant(self):
+        """Verify HID_COLLECTION_DIRECTIVES contains expected directives."""
+        expected = {"history_dataset_collection_display"}
+        assert HID_COLLECTION_DIRECTIVES == expected
+```
+
+#### 1.7.3 Test coverage goals
+
+| Component | Test File | Coverage Target |
+|-----------|-----------|-----------------|
+| HID validation | `test_markdown_validate.py` | `hid=` accepted/rejected for correct directives |
+| HID resolution | `test_markdown_hid_resolution.py` | Dataset, collection, not found, deleted, type mismatch |
+| Manager | Integration tests | CRUD operations via API tests |
 
 ---
 
@@ -918,6 +1792,7 @@ import { fetcher } from "@/api/schema";
 export interface HistoryNotebookSummary {
     id: string;
     history_id: string;
+    title: string | null;  // Directly on notebook - for list/picker display
     latest_revision_id: string | null;
     revision_ids: string[];
     deleted: boolean;
@@ -926,7 +1801,7 @@ export interface HistoryNotebookSummary {
 }
 
 export interface HistoryNotebook extends HistoryNotebookSummary {
-    title: string | null;
+    // title inherited from HistoryNotebookSummary
     content: string | null;
     content_format: "markdown";
     edit_source: "user" | "agent";
@@ -935,7 +1810,6 @@ export interface HistoryNotebook extends HistoryNotebookSummary {
 export interface HistoryNotebookRevision {
     id: string;
     notebook_id: string;
-    title: string | null;
     edit_source: "user" | "agent";
     create_time: string;
     update_time: string;
@@ -1295,8 +2169,7 @@ defineEmits<{
 }>();
 
 function getNotebookTitle(notebook: HistoryNotebookSummary): string {
-    // Title comes from revision, not available in summary - use create time as identifier
-    return `Notebook ${notebook.id.slice(-6)}`;
+    return notebook.title || "Untitled Notebook";
 }
 
 function formatDate(dateStr: string): string {
@@ -1988,11 +2861,10 @@ def extract_to_page(
     title: str,
 ) -> model.Page:
     """Create a Page from notebook, resolving all HIDs."""
-    history = notebook.history
     content = notebook.latest_revision.content
 
     # Resolve HIDs to internal IDs
-    resolved = resolve_history_markdown(trans, history, content)
+    resolved = resolve_history_markdown(trans, notebook.history_id, content)
 
     # Encode for Page storage
     encoded = ready_galaxy_markdown_for_export(trans, resolved)
@@ -2106,24 +2978,35 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 
 ## Testing Strategy
 
+### API Integration Tests
+
+| Test Class | Location | Coverage |
+|------------|----------|----------|
+| `TestHistoryNotebooksApi` | `lib/galaxy_test/api/test_history_notebooks.py` | CRUD operations, multiple notebooks |
+| `TestHistoryNotebookRevisionsApi` | `lib/galaxy_test/api/test_history_notebooks.py` | Revision listing, ordering, edit_source |
+| `TestHistoryNotebooksPermissions` | `lib/galaxy_test/api/test_history_notebooks.py` | 403/404 errors, shared history access |
+| `TestHistoryNotebooksHidContent` | `lib/galaxy_test/api/test_history_notebooks.py` | HID preservation, multiple HIDs |
+
+### Populator Methods
+
+| Method | Purpose |
+|--------|---------|
+| `new_history_notebook()` / `_raw()` / `_payload()` | Create notebook |
+| `get_history_notebook()` / `_raw()` | Get notebook by ID |
+| `list_history_notebooks()` | List notebooks for history |
+| `update_history_notebook()` / `_raw()` | Update notebook (creates revision) |
+| `delete_history_notebook()` / `_raw()` | Soft-delete notebook |
+| `undelete_history_notebook()` / `_raw()` | Restore deleted notebook |
+| `list_history_notebook_revisions()` | List revisions for notebook |
+
 ### Unit Tests
 
 | Component | Location | Coverage |
 |-----------|----------|----------|
-| HistoryNotebook model | `test/unit/data/model/` | CRUD, constraints |
-| HistoryNotebookRevision | `test/unit/data/model/` | Creation, linking |
-| resolve_history_markdown() | `test/unit/managers/` | All item types, errors |
-| API endpoints | `test/integration/` | All methods, permissions |
-| historyNotebookStore | `client/src/stores/__tests__/` | State transitions |
+| HistoryNotebook model | `test/unit/data/model/` | Model constraints, relationships |
+| resolve_history_markdown() | `test/unit/managers/` | HID→ID resolution, error cases |
+| historyNotebookStore | `client/src/stores/__tests__/` | State transitions, dirty tracking |
 | HID toolbox emission | `client/src/components/Markdown/__tests__/` | Format verification |
-
-### Integration Tests
-
-| Scenario | Test File |
-|----------|-----------|
-| Create and edit notebook | `test/integration/test_history_notebooks.py` |
-| HID resolution pipeline | `test/integration/test_history_markdown.py` |
-| Page extraction | `test/integration/test_notebook_extraction.py` |
 
 ### E2E Tests (Selenium/Playwright)
 
@@ -2144,7 +3027,8 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 |------|---------|
 | `lib/galaxy/managers/history_notebooks.py` | Manager layer |
 | `lib/galaxy/webapps/galaxy/api/history_notebooks.py` | API endpoints |
-| `lib/galaxy/model/migrations/alembic/versions/XXX_add_history_notebook.py` | DB migration |
+| `lib/galaxy/model/migrations/alembic/versions_gxy/XXX_add_history_notebook.py` | DB migration |
+| `lib/galaxy_test/api/test_history_notebooks.py` | API integration tests |
 
 ### Must Modify (Backend)
 
@@ -2155,6 +3039,7 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 | `lib/galaxy/managers/markdown_parse.py` | Add `hid` to VALID_ARGUMENTS |
 | `lib/galaxy/managers/markdown_util.py` | Add resolve_history_markdown() |
 | `lib/galaxy/webapps/galaxy/api/__init__.py` | Register router |
+| `lib/galaxy_test/base/populators.py` | Add history notebook helper methods to BaseDatasetPopulator |
 
 ### Must Create (Frontend)
 
