@@ -1,7 +1,7 @@
 <template>
     <div class="d-flex h-100 w-100">
         <FlexPanel side="left">
-            <MarkdownToolBox :steps="steps" @insert="insertMarkdown" />
+            <MarkdownToolBox :steps="steps" :notebook-mode="mode === 'history_notebook'" @insert="insertMarkdown" />
         </FlexPanel>
         <textarea
             id="workflow-report-editor"
@@ -17,12 +17,14 @@
 import { debounce } from "lodash";
 import { nextTick, ref, watch } from "vue";
 
+import type { DirectiveMode } from "@/components/Markdown/directives";
+
 import MarkdownToolBox from "@/components/Markdown/MarkdownToolBox.vue";
 import FlexPanel from "@/components/Panels/FlexPanel.vue";
 
 const props = defineProps<{
     markdownText: string;
-    mode: "report" | "page";
+    mode: DirectiveMode;
     steps?: Record<string, any>;
     title: string;
 }>();
