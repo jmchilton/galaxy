@@ -81,6 +81,9 @@ ENCODED_ID_PATTERN = re.compile(
     r"(history_id|workflow_id|history_dataset_id|history_dataset_collection_id|job_id|implicit_collection_jobs_id|invocation_id)=([a-z0-9]+)"
 )
 
+# Matches hid= argument for history notebook resolution
+HID_PATTERN = re.compile(r"hid=(\d+)")
+
 # Matches blocks of various types
 GALAXY_FENCED_BLOCK = re.compile(r"^```\s*galaxy\s*(.*?)^```", re.MULTILINE | re.DOTALL)
 VISUALIZATION_FENCED_BLOCK = re.compile(r"^```\s*visualization+\n\s*(.*?)^```", re.MULTILINE | re.DOTALL)
@@ -1242,6 +1245,150 @@ def resolve_job_markdown(trans, job, job_markdown):
 
     galaxy_markdown = _remap_galaxy_markdown_calls(_remap, job_markdown)
     return galaxy_markdown
+
+
+# Directives that expect a dataset (HDA) - accept history_dataset_id
+HID_DATASET_DIRECTIVES = frozenset(
+    {
+        "history_dataset_as_image",
+        "history_dataset_as_table",
+        "history_dataset_display",
+        "history_dataset_embedded",
+        "history_dataset_index",
+        "history_dataset_info",
+        "history_dataset_link",
+        "history_dataset_name",
+        "history_dataset_peek",
+        "history_dataset_type",
+    }
+)
+
+# Directives that expect a collection (HDCA) - accept history_dataset_collection_id
+HID_COLLECTION_DIRECTIVES = frozenset(
+    {
+        "history_dataset_collection_display",
+    }
+)
+
+# All directives that support hid= argument
+HID_DIRECTIVES = HID_DATASET_DIRECTIVES | HID_COLLECTION_DIRECTIVES
+
+
+def _resolve_hid_to_dataset(session, history_id: int, hid: int, directive: str) -> int:
+    """Resolve HID to dataset ID, validating it's actually a dataset."""
+    from galaxy.model import (
+        HistoryDatasetAssociation,
+        HistoryDatasetCollectionAssociation,
+    )
+    from sqlalchemy import select
+
+    stmt = select(HistoryDatasetAssociation.id, HistoryDatasetAssociation.deleted).where(
+        HistoryDatasetAssociation.history_id == history_id, HistoryDatasetAssociation.hid == hid
+    )
+    result = session.execute(stmt).first()
+    if result:
+        dataset_id, deleted = result
+        if deleted:
+            raise ValueError(f"HID {hid} references deleted dataset")
+        return dataset_id
+
+    # Check if it's actually a collection (wrong type)
+    hdca_stmt = select(HistoryDatasetCollectionAssociation.id).where(
+        HistoryDatasetCollectionAssociation.history_id == history_id,
+        HistoryDatasetCollectionAssociation.hid == hid,
+    )
+    if session.execute(hdca_stmt).first():
+        raise ValueError(f"HID {hid} is a collection, but {directive} expects a dataset")
+
+    raise ValueError(f"HID {hid} not found in history")
+
+
+def _resolve_hid_to_collection(session, history_id: int, hid: int, directive: str) -> int:
+    """Resolve HID to collection ID, validating it's actually a collection."""
+    from galaxy.model import (
+        HistoryDatasetAssociation,
+        HistoryDatasetCollectionAssociation,
+    )
+    from sqlalchemy import select
+
+    stmt = select(HistoryDatasetCollectionAssociation.id, HistoryDatasetCollectionAssociation.deleted).where(
+        HistoryDatasetCollectionAssociation.history_id == history_id,
+        HistoryDatasetCollectionAssociation.hid == hid,
+    )
+    result = session.execute(stmt).first()
+    if result:
+        collection_id, deleted = result
+        if deleted:
+            raise ValueError(f"HID {hid} references deleted collection")
+        return collection_id
+
+    # Check if it's actually a dataset (wrong type)
+    hda_stmt = select(HistoryDatasetAssociation.id).where(
+        HistoryDatasetAssociation.history_id == history_id, HistoryDatasetAssociation.hid == hid
+    )
+    if session.execute(hda_stmt).first():
+        raise ValueError(f"HID {hid} is a dataset, but {directive} expects a collection")
+
+    raise ValueError(f"HID {hid} not found in history")
+
+
+def _resolve_hid(session, history_id: int, hid: int, directive: str) -> tuple[str, int]:
+    """
+    Resolve HID to internal ID based on directive type.
+
+    The directive name determines whether we expect a dataset or collection.
+    This provides strong typing and clear error messages when types mismatch.
+
+    Args:
+        session: Database session
+        history_id: History containing the item
+        hid: History ID number to resolve
+        directive: Markdown directive name (e.g. "history_dataset_display")
+
+    Returns:
+        Tuple of (argument_name, internal_id)
+
+    Raises:
+        ValueError: If HID not found, deleted, or wrong type for directive
+    """
+    if directive in HID_DATASET_DIRECTIVES:
+        internal_id = _resolve_hid_to_dataset(session, history_id, hid, directive)
+        return ("history_dataset_id", internal_id)
+    elif directive in HID_COLLECTION_DIRECTIVES:
+        internal_id = _resolve_hid_to_collection(session, history_id, hid, directive)
+        return ("history_dataset_collection_id", internal_id)
+    else:
+        raise ValueError(f"Directive '{directive}' does not support hid= argument")
+
+
+def resolve_history_markdown(trans, history_id: int, markdown_content: str) -> str:
+    """
+    Resolve hid=N references to internal IDs based on directive type.
+
+    Args:
+        trans: Transaction context
+        history_id: ID of history containing the referenced items
+        markdown_content: Raw markdown with hid references
+
+    Returns:
+        Markdown with hid=N replaced by history_dataset_id=X or
+        history_dataset_collection_id=X depending on directive type.
+
+    Raises:
+        ValueError: If HID doesn't exist, is deleted, or wrong type for directive
+    """
+    session = trans.sa_session
+
+    def _remap(container: str, line: str) -> tuple[str, bool]:
+        hid_match = HID_PATTERN.search(line)
+        if hid_match:
+            hid = int(hid_match.group(1))
+            # container is the directive name - use it to determine expected type
+            arg_name, internal_id = _resolve_hid(session, history_id, hid, container)
+            line = line.replace(hid_match.group(0), f"{arg_name}={internal_id}")
+        return (line, False)
+
+    return _remap_galaxy_markdown_calls(_remap, markdown_content)
 
 
 def _workflow_license_as_simple_markdown(stored_workflow):

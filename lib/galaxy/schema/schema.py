@@ -4128,6 +4128,71 @@ class PageSummaryList(RootModel):
     )
 
 
+# History Notebook schemas
+
+
+class NotebookContentFormat(str, Enum):
+    markdown = "markdown"
+
+
+class CreateHistoryNotebookPayload(Model):
+    title: Optional[str] = Field(
+        default=None,
+        title="Title",
+        description="Optional title for the notebook. Defaults to history name.",
+    )
+    content: Optional[str] = Field(
+        default="",
+        title="Content",
+        description="Initial markdown content.",
+    )
+    content_format: NotebookContentFormat = Field(
+        default=NotebookContentFormat.markdown,
+        title="Content format",
+    )
+
+
+class UpdateHistoryNotebookPayload(Model):
+    title: Optional[str] = Field(default=None, title="Title")
+    content: str = Field(..., title="Content", description="New markdown content.")
+    content_format: NotebookContentFormat = Field(default=NotebookContentFormat.markdown)
+
+
+class HistoryNotebookSummary(Model):
+    id: EncodedDatabaseIdField
+    history_id: EncodedDatabaseIdField
+    title: Optional[str] = None
+    latest_revision_id: Optional[EncodedDatabaseIdField] = None
+    revision_ids: list[EncodedDatabaseIdField] = Field(default=[])
+    deleted: bool = Field(default=False)
+    create_time: datetime
+    update_time: datetime
+
+
+class HistoryNotebookDetails(HistoryNotebookSummary):
+    content: Optional[str] = None
+    content_format: NotebookContentFormat = NotebookContentFormat.markdown
+    edit_source: Optional[str] = Field(default="user")
+
+
+class HistoryNotebookRevisionSummary(Model):
+    id: EncodedDatabaseIdField
+    notebook_id: EncodedDatabaseIdField
+    edit_source: Optional[str] = None
+    create_time: datetime
+    update_time: datetime
+
+
+class HistoryNotebookRevisionList(RootModel):
+    root: list[HistoryNotebookRevisionSummary] = Field(default=[])
+
+
+class HistoryNotebookList(RootModel):
+    """List of notebooks for a history."""
+
+    root: list[HistoryNotebookSummary] = Field(default=[])
+
+
 class LandingRequestState(str, Enum):
     UNCLAIMED = "unclaimed"
     CLAIMED = "claimed"
