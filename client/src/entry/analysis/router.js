@@ -49,6 +49,7 @@ import HistoryList from "@/components/History/HistoryList.vue";
 import HistoryPublished from "@/components/History/HistoryPublished.vue";
 import HistoryView from "@/components/History/HistoryView.vue";
 import HistoryMultipleView from "@/components/History/Multiple/MultipleView.vue";
+import HistoryNotebookView from "@/components/HistoryNotebook/HistoryNotebookView.vue";
 import HistoryImport from "@/components/HistoryImport.vue";
 import ZipImportResults from "@/components/ImportData/zip/ZipImportResults.vue";
 import ZipImportWizard from "@/components/ImportData/zip/ZipImportWizard.vue";
@@ -418,6 +419,16 @@ export function getRouter(Galaxy) {
                     {
                         path: "histories/:historyId/invocations",
                         component: HistoryInvocations,
+                        props: true,
+                    },
+                    {
+                        path: "histories/:historyId/notebooks",
+                        component: HistoryNotebookView,
+                        props: true,
+                    },
+                    {
+                        path: "histories/:historyId/notebooks/:notebookId",
+                        component: HistoryNotebookView,
                         props: true,
                     },
                     {
