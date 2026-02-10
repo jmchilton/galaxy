@@ -2,6 +2,7 @@
 import {
     faArchive,
     faBars,
+    faBook,
     faBurn,
     faClone,
     faColumns,
@@ -222,6 +223,14 @@ function onDelete() {
                 :to="`/histories/${history.id}/invocations`">
                 <FontAwesomeIcon fixed-width :icon="faList" />
                 <span v-localize>Show Invocations</span>
+            </BDropdownItem>
+
+            <BDropdownItem
+                :disabled="isAnonymous"
+                :title="userTitle('View and Create History Notebooks')"
+                :to="`/histories/${history.id}/notebooks`">
+                <FontAwesomeIcon fixed-width :icon="faBook" />
+                <span v-localize>History Notebooks</span>
             </BDropdownItem>
 
             <BDropdownDivider />
