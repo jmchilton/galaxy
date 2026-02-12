@@ -4,6 +4,8 @@ import { rethrowSimple } from "@/utils/simple-error";
 
 export type HistoryNotebookSummary = components["schemas"]["HistoryNotebookSummary"];
 export type HistoryNotebookDetails = components["schemas"]["HistoryNotebookDetails"];
+export type HistoryNotebookRevisionSummary = components["schemas"]["HistoryNotebookRevisionSummary"];
+export type HistoryNotebookRevisionDetails = components["schemas"]["HistoryNotebookRevisionDetails"];
 export type CreateNotebookPayload = components["schemas"]["CreateHistoryNotebookPayload"];
 export type UpdateNotebookPayload = components["schemas"]["UpdateHistoryNotebookPayload"];
 
@@ -63,4 +65,51 @@ export async function deleteHistoryNotebook(historyId: string, notebookId: strin
     if (error) {
         rethrowSimple(error);
     }
+}
+
+export async function fetchNotebookRevisions(
+    historyId: string,
+    notebookId: string,
+): Promise<HistoryNotebookRevisionSummary[]> {
+    const { data, error } = await GalaxyApi().GET("/api/histories/{history_id}/notebooks/{notebook_id}/revisions", {
+        params: { path: { history_id: historyId, notebook_id: notebookId } },
+    });
+    if (error) {
+        rethrowSimple(error);
+    }
+    return data;
+}
+
+export async function fetchNotebookRevision(
+    historyId: string,
+    notebookId: string,
+    revisionId: string,
+): Promise<HistoryNotebookRevisionDetails> {
+    const { data, error } = await GalaxyApi().GET(
+        "/api/histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}",
+        {
+            params: { path: { history_id: historyId, notebook_id: notebookId, revision_id: revisionId } },
+        },
+    );
+    if (error) {
+        rethrowSimple(error);
+    }
+    return data;
+}
+
+export async function revertNotebookRevision(
+    historyId: string,
+    notebookId: string,
+    revisionId: string,
+): Promise<HistoryNotebookDetails> {
+    const { data, error } = await GalaxyApi().POST(
+        "/api/histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}/revert",
+        {
+            params: { path: { history_id: historyId, notebook_id: notebookId, revision_id: revisionId } },
+        },
+    );
+    if (error) {
+        rethrowSimple(error);
+    }
+    return data;
 }

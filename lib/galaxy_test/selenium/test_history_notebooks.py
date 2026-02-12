@@ -321,3 +321,80 @@ class TestHistoryNotebooks(SeleniumTestCase):
         titles = self.window_manager_get_titles()
         assert len(titles) == 2
         self.screenshot("history_notebook_multiple_windows")
+
+    # --- Phase 6: Revision UI Tests ---
+
+    @selenium_test
+    @managed_history
+    def test_revision_list_visible_after_save(self):
+        """After saving, revision button shows count; click opens revision list."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="Rev Test", content="V1")
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_assert_item_count(1)
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        self.history_notebook_open_revisions()
+        self.history_notebook_assert_revision_count(1)
+        self.screenshot("history_notebook_revision_list")
+
+    @selenium_test
+    @managed_history
+    def test_revision_restore(self):
+        """Restore to old revision updates editor content."""
+        history_id = self.current_history_id()
+        nb = self.dataset_populator.new_history_notebook(history_id, title="Restore Test", content="Original")
+        self.dataset_populator.update_history_notebook(history_id, nb["id"], content="Modified")
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        self.history_notebook_open_revisions()
+        # Click restore on the oldest revision (last in the list)
+        restore_buttons = self.components.history_notebooks.restore_revision_button.all()
+        restore_buttons[-1].click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+        editor = self.components.history_notebooks.markdown_editor
+        assert "Original" in editor.wait_for_value()
+        self.screenshot("history_notebook_revision_restored")
+
+    @selenium_test
+    @managed_history
+    def test_revision_count_increases_after_save(self):
+        """Saving creates a new revision, count increases."""
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_create()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        self.history_notebook_editor_set_content("First save")
+        self.history_notebook_save()
+
+        self.history_notebook_editor_set_content("Second save")
+        self.history_notebook_save()
+
+        self.history_notebook_open_revisions()
+        self.history_notebook_assert_revision_count(3)  # initial + 2 saves
+        self.screenshot("history_notebook_revision_count")
+
+    @selenium_test
+    @managed_history
+    def test_revision_preview(self):
+        """Clicking a revision shows its rendered content."""
+        history_id = self.current_history_id()
+        nb = self.dataset_populator.new_history_notebook(history_id, title="Preview", content="# Old Content")
+        self.dataset_populator.update_history_notebook(history_id, nb["id"], content="# New Content")
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        self.history_notebook_open_revisions()
+        # Click the oldest revision row to preview
+        items = self.components.history_notebooks.revision_item.all()
+        items[-1].click()
+        self.components.history_notebooks.revision_view.wait_for_visible()
+        self.screenshot("history_notebook_revision_preview")

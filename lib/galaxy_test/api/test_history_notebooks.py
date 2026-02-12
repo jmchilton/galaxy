@@ -129,3 +129,44 @@ class TestHistoryNotebooksApi(ApiTestCase):
                 # Try to access from history2
                 response = self.dataset_populator.get_history_notebook_raw(history2_id, notebook["id"])
                 assert response.status_code == 404
+
+    def test_show_revision(self):
+        """Test getting a single revision with content."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id, title="Rev Test", content="Version 1")
+            self.dataset_populator.update_history_notebook(history_id, notebook["id"], content="Version 2")
+            revisions = self.dataset_populator.list_history_notebook_revisions(history_id, notebook["id"])
+            # Revisions ordered desc by create_time: [V2, V1]
+            rev_v1 = revisions[-1]  # oldest
+            detail = self.dataset_populator.get_history_notebook_revision(history_id, notebook["id"], rev_v1["id"])
+            self._assert_has_keys(detail, "id", "content", "content_format", "edit_source")
+            assert "Version 1" in detail["content"]
+
+    def test_show_revision_wrong_notebook(self):
+        """Test that revision from another notebook returns 404."""
+        with self.dataset_populator.test_history() as history_id:
+            nb1 = self.dataset_populator.new_history_notebook(history_id, title="NB1", content="A")
+            nb2 = self.dataset_populator.new_history_notebook(history_id, title="NB2", content="B")
+            revisions_nb1 = self.dataset_populator.list_history_notebook_revisions(history_id, nb1["id"])
+            response = self.dataset_populator.get_history_notebook_revision_raw(
+                history_id, nb2["id"], revisions_nb1[0]["id"]
+            )
+            assert response.status_code == 404
+
+    def test_revert_to_revision(self):
+        """Test restoring notebook to a previous revision."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id, title="Revert Test", content="Original")
+            self.dataset_populator.update_history_notebook(history_id, notebook["id"], content="Modified")
+            revisions = self.dataset_populator.list_history_notebook_revisions(history_id, notebook["id"])
+            assert len(revisions) == 2
+            original_rev = revisions[-1]  # oldest
+
+            result = self.dataset_populator.revert_history_notebook_revision(
+                history_id, notebook["id"], original_rev["id"]
+            )
+            assert "Original" in result["content"]
+            assert result["edit_source"] == "restore"
+
+            revisions_after = self.dataset_populator.list_history_notebook_revisions(history_id, notebook["id"])
+            assert len(revisions_after) == 3

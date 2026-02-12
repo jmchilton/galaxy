@@ -23,6 +23,7 @@ from galaxy.schema.schema import (
     CreateHistoryNotebookPayload,
     HistoryNotebookDetails,
     HistoryNotebookList,
+    HistoryNotebookRevisionDetails,
     HistoryNotebookRevisionList,
     HistoryNotebookRevisionSummary,
     HistoryNotebookSummary,
@@ -44,6 +45,11 @@ HistoryIdPathParam = Annotated[
 NotebookIdPathParam = Annotated[
     DecodedDatabaseIdField,
     Path(..., title="Notebook ID", description="The ID of the Notebook."),
+]
+
+RevisionIdPathParam = Annotated[
+    DecodedDatabaseIdField,
+    Path(..., title="Revision ID", description="The ID of the Revision."),
 ]
 
 
@@ -227,3 +233,68 @@ class FastAPIHistoryNotebooks:
                 for r in revisions
             ]
         )
+
+    @router.get(
+        "/api/histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}",
+        summary="Get a specific revision with content.",
+        response_description="Revision details including content.",
+    )
+    def show_revision(
+        self,
+        history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
+        revision_id: RevisionIdPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> HistoryNotebookRevisionDetails:
+        """Get a specific revision by ID, including content."""
+        history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
+
+        revision = self.manager.get_revision(trans, revision_id)
+        if revision.notebook_id != notebook.id:
+            raise ObjectNotFound(f"Revision {revision_id} not found in notebook {notebook_id}")
+
+        rval = {
+            "id": revision.id,
+            "notebook_id": revision.notebook_id,
+            "content": revision.content,
+            "content_format": revision.content_format,
+            "edit_source": revision.edit_source,
+            "create_time": revision.create_time,
+            "update_time": revision.update_time,
+        }
+        self.manager.rewrite_content_for_export(trans, history, rval)
+        return HistoryNotebookRevisionDetails(**rval)
+
+    @router.post(
+        "/api/histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}/revert",
+        summary="Restore notebook to a previous revision.",
+        response_description="The newly created revision (copy of the restored content).",
+    )
+    def revert_to_revision(
+        self,
+        history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
+        revision_id: RevisionIdPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> HistoryNotebookDetails:
+        """Restore notebook to a previous revision. Creates a new revision with the old content."""
+        history = self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
+
+        revision = self.manager.get_revision(trans, revision_id)
+        if revision.notebook_id != notebook.id:
+            raise ObjectNotFound(f"Revision {revision_id} not found in notebook {notebook_id}")
+
+        self.manager.restore_revision(trans, notebook, revision)
+
+        rval = notebook.to_dict()
+        rval["content"] = notebook.latest_revision.content
+        rval["content_format"] = notebook.latest_revision.content_format
+        rval["edit_source"] = notebook.latest_revision.edit_source
+        self.manager.rewrite_content_for_export(trans, history, rval)
+        return HistoryNotebookDetails(**rval)

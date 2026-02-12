@@ -667,6 +667,27 @@ history_notebooks:
     rendered_view:
       type: data-description
       selector: 'notebook rendered view'
+    revisions_button:
+      type: data-description
+      selector: 'notebook revisions button'
+    revision_list:
+      type: data-description
+      selector: 'notebook revision list'
+    revision_item:
+      type: data-description
+      selector: 'revision item'
+    restore_revision_button:
+      type: data-description
+      selector: 'restore revision button'
+    revision_view:
+      type: data-description
+      selector: 'notebook revision view'
+    revision_back_button:
+      type: data-description
+      selector: 'revision back button'
+    revision_restore_button:
+      type: data-description
+      selector: 'revision restore button'
 
 login:
   selectors:

@@ -5,6 +5,7 @@
 This plan implements History Notebooks - markdown documents tied to Galaxy histories that use HID-relative references. The feature enables human-AI collaborative analysis documentation with paths to Pages and Workflow Reports.
 
 **Reference Documents:**
+
 - `THE_PROBLEM_AND_GOAL.md` - Vision and motivation
 - `RESEARCH_FOR_PLANNING.md` - Backend implementation research
 - `RESEARCH_FOR_PLANNING_UX.md` - Frontend/UX implementation research
@@ -18,25 +19,121 @@ This plan implements History Notebooks - markdown documents tied to Galaxy histo
 
 **Completed 2025-01-06:**
 
-| Task | Status | Files |
-|------|--------|-------|
-| 1.1 Database Models | ✅ | `lib/galaxy/model/__init__.py` |
-| 1.1.4 Alembic Migration | ✅ | `lib/galaxy/model/migrations/alembic/versions_gxy/b75f0f4dbcd4_add_history_notebook_tables.py` |
-| 1.1.5 Pydantic Schemas | ✅ | `lib/galaxy/schema/schema.py` |
-| 1.2 Manager Layer | ✅ | `lib/galaxy/managers/history_notebooks.py` |
-| 1.3 API Endpoints | ✅ | `lib/galaxy/webapps/galaxy/api/history_notebooks.py` |
-| 1.4 HID Parsing | ✅ | `lib/galaxy/managers/markdown_parse.py` |
-| 1.5 HID Resolution | ✅ | `lib/galaxy/managers/markdown_util.py` |
-| 1.6 API Tests | ✅ | `lib/galaxy_test/api/test_history_notebooks.py` |
-| 1.6 Populators | ✅ | `lib/galaxy_test/base/populators.py` |
+| Task                    | Status | Files                                                                                          |
+| ----------------------- | ------ | ---------------------------------------------------------------------------------------------- |
+| 1.1 Database Models     | ✅     | `lib/galaxy/model/__init__.py`                                                                 |
+| 1.1.4 Alembic Migration | ✅     | `lib/galaxy/model/migrations/alembic/versions_gxy/b75f0f4dbcd4_add_history_notebook_tables.py` |
+| 1.1.5 Pydantic Schemas  | ✅     | `lib/galaxy/schema/schema.py`                                                                  |
+| 1.2 Manager Layer       | ✅     | `lib/galaxy/managers/history_notebooks.py`                                                     |
+| 1.3 API Endpoints       | ✅     | `lib/galaxy/webapps/galaxy/api/history_notebooks.py`                                           |
+| 1.4 HID Parsing         | ✅     | `lib/galaxy/managers/markdown_parse.py`                                                        |
+| 1.5 HID Resolution      | ✅     | `lib/galaxy/managers/markdown_util.py`                                                         |
+| 1.6 API Tests           | ✅     | `lib/galaxy_test/api/test_history_notebooks.py`                                                |
+| 1.6 Populators          | ✅     | `lib/galaxy_test/base/populators.py`                                                           |
 
 **Key Implementation Notes:**
+
 - Added `HistoryNotebook` and `HistoryNotebookRevision` models
 - Added `notebooks` relationship to `History` model
 - Created merge migration `b75f0f4dbcd4` (merges heads `1d1d7bf6ac02` and `23143e0bf1d8`)
 - Added `hid` argument to 11 directives in `VALID_ARGUMENTS`
 - Created `resolve_history_markdown()` for HID→internal ID resolution
 - API endpoints at `/api/histories/{history_id}/notebooks`
+
+### ✅ Phase 2: Frontend MVP - COMPLETE
+
+**Completed 2025-01-07:**
+
+| Task                 | Status | Files                                                                                      |
+| -------------------- | ------ | ------------------------------------------------------------------------------------------ |
+| 2.1 API Client       | ✅     | `client/src/api/historyNotebooks.ts`                                                       |
+| 2.2 Pinia Store      | ✅     | `client/src/stores/historyNotebookStore.ts`                                                |
+| 2.3 View Components  | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookView.vue`, `HistoryNotebookList.vue` |
+| 2.4 Editor Component | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookEditor.vue`                          |
+| 2.5 Routes           | ✅     | `client/src/entry/analysis/router.js`                                                      |
+| 2.6 Entry Point      | ✅     | `client/src/components/History/HistoryOptions.vue`                                         |
+
+**Key Implementation Notes:**
+
+- API client with fetcher-based functions for all CRUD operations
+- Pinia store with dirty tracking, save/discard, notebook list management
+- List view with create button, editor view with back/save toolbar
+- Routes at `/histories/:historyId/notebooks[/:notebookId]`
+- "History Notebooks" dropdown entry in HistoryOptions
+
+### ✅ Phase 3: HID Toolbox Mode - COMPLETE
+
+**(Phase 3 details in body below.)**
+
+### ✅ Phase 4: E2E Integration Testing - COMPLETE
+
+**Completed 2025-02-11. Detailed plan: `HISTORY_MARKDOWN_PHASE_4_PLAN.md`**
+
+| Task                              | Status | Files                                                                                                   |
+| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| 4.0 data-description attrs        | ✅     | `HistoryNotebookList.vue`, `HistoryNotebookView.vue`, `HistoryNotebookEditor.vue`, `HistoryOptions.vue` |
+| 4.0 navigation.yml selectors      | ✅     | `client/src/utils/navigation/navigation.yml`                                                            |
+| 4.1 NavigatesGalaxy helpers       | ✅     | `lib/galaxy/selenium/navigates_galaxy.py`                                                               |
+| 4.2 Selenium test file (10 tests) | ✅     | `lib/galaxy_test/selenium/test_history_notebooks.py`                                                    |
+
+**Key Implementation Notes:**
+
+- 10/10 E2E tests passing (Playwright backend, non-headless)
+- Found & fixed store dirty-tracking bug (`saveNotebook` used API response content instead of user content as baseline — `rewrite_content_for_export` transforms content)
+- TextEditor 300ms debounce required waiting for unsaved indicator before save clicks
+- Direct URL navigation (`self.get()`) unreliable for SPA routes in Playwright; use menu-based navigation instead
+
+**Shortcuts taken (see Phase 4a TODOs):**
+
+- Toolbox test simplified to visibility check only (DataDialog row selection fragile)
+- Permissions test simplified to API-only verification (no cross-user UI test)
+- HID reference test navigates via menu instead of direct URL
+
+### ✅ Phase 5: Window Manager Integration - COMPLETE
+
+**Completed 2025-02-12.**
+
+| Task                          | Status | Files                                                               |
+| ----------------------------- | ------ | ------------------------------------------------------------------- |
+| 5.1 Router displayOnly prop   | ✅     | `client/src/entry/analysis/router.js`                               |
+| 5.2 DisplayOnly rendered view | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookView.vue`     |
+| 5.3 WM-aware handleSelect     | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookView.vue`     |
+| 5.4 E2E selenium tests (5)    | ✅     | `lib/galaxy_test/selenium/test_history_notebooks.py`                |
+| 5.5 Vitest unit tests (6)     | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookView.test.ts` |
+| 5.6 Navigation YAML selector  | ✅     | `client/src/utils/navigation/navigation.yml`                        |
+
+**Key Implementation Notes:**
+
+- `displayOnly=true` query param renders Markdown.vue (read-only) instead of editor
+- `handleSelect` checks `Galaxy.frame.active` — opens WinBox when WM active, navigates normally otherwise
+- WM intercept via `router.push(url, { title, preventWindowManager: false })` — list stays visible
+- `onUnmounted` skips `store.$reset()` in displayOnly mode (iframe independent)
+
+### ✅ Phase 6: Revision UI - COMPLETE
+
+**Completed 2026-02-12.** Detailed plan: [`HISTORY_MARKDOWN_PHASE_6.md`](HISTORY_MARKDOWN_PHASE_6.md)
+
+| Task                                     | Status | Files                                                                                            |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| 6.1 Schema + show_revision endpoint      | ✅     | `lib/galaxy/schema/schema.py`, `lib/galaxy/webapps/galaxy/api/history_notebooks.py`              |
+| 6.2 restore_revision manager + endpoint  | ✅     | `lib/galaxy/managers/history_notebooks.py`, `lib/galaxy/webapps/galaxy/api/history_notebooks.py` |
+| 6.3 Populator helpers + API tests (3)    | ✅     | `lib/galaxy_test/base/populators.py`, `lib/galaxy_test/api/test_history_notebooks.py`            |
+| 6.4 Frontend API client                  | ✅     | `client/src/api/historyNotebooks.ts`                                                             |
+| 6.5 Store revision state + actions       | ✅     | `client/src/stores/historyNotebookStore.ts`                                                      |
+| 6.6 NotebookRevisionList component       | ✅     | `client/src/components/HistoryNotebook/NotebookRevisionList.vue` (new)                           |
+| 6.7 NotebookRevisionView component       | ✅     | `client/src/components/HistoryNotebook/NotebookRevisionView.vue` (new)                           |
+| 6.8 HistoryNotebookView integration      | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookView.vue`                                  |
+| 6.9 Navigation YAML selectors (7)        | ✅     | `client/src/utils/navigation/navigation.yml`                                                     |
+| 6.10 Vitest unit tests (9 new, 35 total) | ✅     | `client/src/components/HistoryNotebook/HistoryNotebookView.test.ts`                              |
+| 6.11 Selenium E2E tests (4) + helpers    | ✅     | `lib/galaxy_test/selenium/test_history_notebooks.py`, `lib/galaxy/selenium/navigates_galaxy.py`  |
+
+**Key Implementation Notes:**
+
+- `show_revision` endpoint returns `HistoryNotebookRevisionDetails` (content + format) with HID rewrite
+- `revert_to_revision` creates new revision from old content (`edit_source="restore"`), returns full notebook
+- Revision panel is inline 300px side panel alongside editor (not a separate route)
+- State machine: Editor → Editor+RevisionPanel → RevisionView → back to panel or restore to editor
+- Used `axios`+`withPrefix` for new endpoints not yet in generated OpenAPI schema
 
 ---
 
@@ -52,7 +149,7 @@ The MVP delivers functional history notebooks that users can create, edit, save,
 6. HID insertion toolbox (scoped to current history)
 7. Routes and entry point from history panel
 
-**Not MVP:** Window manager, revision UI, drag-and-drop, chat/agent, extraction to Pages/Workflows.
+**Not MVP:** Revision UI, drag-and-drop, chat/agent, extraction to Pages/Workflows.
 
 ---
 
@@ -63,6 +160,7 @@ The MVP delivers functional history notebooks that users can create, edit, save,
 **Goal:** Create HistoryNotebook and HistoryNotebookRevision models mirroring Page/PageRevision.
 
 **Files to modify:**
+
 - `lib/galaxy/model/__init__.py` (after line 11217, near PageRevision)
 - `lib/galaxy/model/migrations/alembic/versions_gxy/` (new Alembic migration)
 
@@ -319,6 +417,7 @@ class HistoryNotebookList(RootModel):
 ```
 
 **Tests:**
+
 - Unit tests for model creation in `test/unit/data/model/`
 - Test multiple notebooks per history allowed
 - Test revision creation and latest_revision update
@@ -331,6 +430,7 @@ class HistoryNotebookList(RootModel):
 **Goal:** Business logic for notebook operations.
 
 **Files to create:**
+
 - `lib/galaxy/managers/history_notebooks.py`
 
 **Reference Pattern:** `lib/galaxy/managers/pages.py:128-386`
@@ -505,6 +605,7 @@ class HistoryNotebookManager:
 **Goal:** REST API for history notebooks (multiple notebooks per history).
 
 **Files to create:**
+
 - `lib/galaxy/webapps/galaxy/api/history_notebooks.py`
 
 **Note:** No router registration needed - Galaxy auto-detects API controllers.
@@ -512,6 +613,7 @@ class HistoryNotebookManager:
 **Reference Pattern:** `lib/galaxy/webapps/galaxy/api/pages.py:98-339`
 
 **API Routes:**
+
 - `GET /api/histories/{history_id}/notebooks` - List all notebooks for history
 - `POST /api/histories/{history_id}/notebooks` - Create new notebook
 - `GET /api/histories/{history_id}/notebooks/{notebook_id}` - Get single notebook
@@ -772,6 +874,7 @@ class FastAPIHistoryNotebooks:
 #### 1.3.2 Register router
 
 In `lib/galaxy/webapps/galaxy/api/__init__.py`, add:
+
 ```python
 from galaxy.webapps.galaxy.api.history_notebooks import router as history_notebooks_router
 # ... in router registration section:
@@ -787,6 +890,7 @@ include_router(history_notebooks_router)
 **Goal:** Allow `hid=N` argument in Galaxy markdown directives.
 
 **Files to modify:**
+
 - `lib/galaxy/managers/markdown_parse.py` (lines 26-69)
 
 **Tasks:**
@@ -829,6 +933,7 @@ VALID_ARGUMENTS: dict[str, Union[list[str], DynamicArguments]] = {
 No validation function changes needed - the existing `_validate_arg()` at line 181 works generically.
 
 **Tests:**
+
 - Parse markdown with `hid=42` - should pass validation
 - Parse markdown with both `hid` and `history_dataset_id` - should pass (validation is additive)
 - Parse markdown with invalid hid format - handled by regex
@@ -840,6 +945,7 @@ No validation function changes needed - the existing `_validate_arg()` at line 1
 **Goal:** Convert `hid=N` to `history_dataset_id=X` or `history_dataset_collection_id=X`.
 
 **Files to modify:**
+
 - `lib/galaxy/managers/markdown_util.py`
 
 **Reference Pattern:** `resolve_invocation_markdown()` at lines 1048-1182
@@ -1023,12 +1129,15 @@ UNENCODED_ID_PATTERN = re.compile(
 **Goal:** Comprehensive API integration tests following Galaxy's existing patterns.
 
 **Files to create:**
+
 - `lib/galaxy_test/api/test_history_notebooks.py`
 
 **Files to modify:**
+
 - `lib/galaxy_test/base/populators.py` (add notebook helper methods to `BaseDatasetPopulator`)
 
 **Reference Patterns:**
+
 - `lib/galaxy_test/api/test_pages.py`
 - `lib/galaxy_test/api/test_page_revisions.py`
 - `lib/galaxy_test/base/populators.py` (`new_page`, `new_page_raw`, `new_page_payload`)
@@ -1157,7 +1266,7 @@ def list_history_notebook_revisions(
 
 #### 1.6.2 Create test file
 
-```python
+````python
 # lib/galaxy_test/api/test_history_notebooks.py
 
 from galaxy.exceptions import error_codes
@@ -1485,12 +1594,13 @@ class TestHistoryNotebooksHidContent(ApiTestCase):
 
 ```galaxy
 history_dataset_display(hid={hda['hid']})
-```
+````
+
 """
-            notebook = self.dataset_populator.new_history_notebook(
-                history_id, content=content
-            )
-            assert f"hid={hda['hid']}" in notebook["content"]
+notebook = self.dataset_populator.new_history_notebook(
+history_id, content=content
+)
+assert f"hid={hda['hid']}" in notebook["content"]
 
     def test_hid_preserved_across_save(self):
         """Test that HID references are preserved when saving."""
@@ -1521,17 +1631,19 @@ history_dataset_display(hid={hda['hid']})
             self.dataset_populator.wait_for_history(history_id)
 
             content = f"""
+
 ## Datasets
 
 First: hid={hda1['hid']}
 Second: hid={hda2['hid']}
 """
-            notebook = self.dataset_populator.new_history_notebook(
-                history_id, content=content
-            )
-            assert f"hid={hda1['hid']}" in notebook["content"]
-            assert f"hid={hda2['hid']}" in notebook["content"]
-```
+notebook = self.dataset_populator.new_history_notebook(
+history_id, content=content
+)
+assert f"hid={hda1['hid']}" in notebook["content"]
+assert f"hid={hda2['hid']}" in notebook["content"]
+
+````
 
 ---
 
@@ -1558,42 +1670,52 @@ def test_markdown_validation_hid_argument():
         """
 ```galaxy
 history_dataset_display(hid=42)
-```
+````
+
 """
-    )
-    assert_markdown_valid(
-        """
+)
+assert_markdown_valid(
+"""
+
 ```galaxy
 history_dataset_as_image(hid=1)
 ```
+
 """
-    )
-    assert_markdown_valid(
-        """
+)
+assert_markdown_valid(
+"""
+
 ```galaxy
 history_dataset_collection_display(hid=5)
 ```
+
 """
-    )
+)
 
     # hid should not be valid for non-dataset directives
     assert_markdown_invalid(
         """
+
 ```galaxy
 job_metrics(hid=1)
 ```
+
 """,
-        at_line=2,
-    )
-    assert_markdown_invalid(
-        """
+at_line=2,
+)
+assert_markdown_invalid(
+"""
+
 ```galaxy
 workflow_display(hid=1)
 ```
+
 """,
-        at_line=2,
-    )
-```
+at_line=2,
+)
+
+````
 
 #### 1.7.2 Add HID resolution unit tests
 
@@ -1704,12 +1826,12 @@ class TestHidResolution(BaseTestCase):
         example = """# Analysis
 ```galaxy
 history_dataset_display(hid=42)
-```
-"""
-        # Mock to return dataset id 999 for hid 42
-        mock_result = mock.MagicMock()
-        mock_result.first.return_value = (999, False)
-        self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
+````
+
+""" # Mock to return dataset id 999 for hid 42
+mock_result = mock.MagicMock()
+mock_result.first.return_value = (999, False)
+self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
 
         result = resolve_history_markdown(self.trans, self.history.id, example)
         assert "history_dataset_id=999" in result
@@ -1718,6 +1840,7 @@ history_dataset_display(hid=42)
     def test_resolve_history_markdown_multiple_hids(self):
         """Test resolving multiple HIDs in same document."""
         example = """
+
 ```galaxy
 history_dataset_display(hid=1)
 ```
@@ -1725,13 +1848,13 @@ history_dataset_display(hid=1)
 ```galaxy
 history_dataset_display(hid=2)
 ```
-"""
-        # Return different IDs for different HIDs
-        mock_results = [
-            mock.MagicMock(first=mock.MagicMock(return_value=(100, False))),
-            mock.MagicMock(first=mock.MagicMock(return_value=(200, False))),
-        ]
-        self.trans.sa_session.execute = mock.MagicMock(side_effect=mock_results)
+
+""" # Return different IDs for different HIDs
+mock_results = [
+mock.MagicMock(first=mock.MagicMock(return_value=(100, False))),
+mock.MagicMock(first=mock.MagicMock(return_value=(200, False))),
+]
+self.trans.sa_session.execute = mock.MagicMock(side_effect=mock_results)
 
         result = resolve_history_markdown(self.trans, self.history.id, example)
         assert "history_dataset_id=100" in result
@@ -1757,7 +1880,8 @@ history_dataset_display(hid=2)
         """Verify HID_COLLECTION_DIRECTIVES contains expected directives."""
         expected = {"history_dataset_collection_display"}
         assert HID_COLLECTION_DIRECTIVES == expected
-```
+
+````
 
 #### 1.7.3 Test coverage goals
 
@@ -1881,7 +2005,7 @@ export async function fetchNotebookRevisions(
     const { data } = await listRevisions({ history_id: historyId, notebook_id: notebookId });
     return data;
 }
-```
+````
 
 ---
 
@@ -1890,6 +2014,7 @@ export async function fetchNotebookRevisions(
 **Goal:** State management for notebook list and editing (multiple notebooks per history).
 
 **Files to create:**
+
 - `client/src/stores/historyNotebookStore.ts`
 
 **Tasks:**
@@ -1902,196 +2027,200 @@ export async function fetchNotebookRevisions(
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import {
-    fetchHistoryNotebooks,
-    fetchHistoryNotebook,
-    createHistoryNotebook,
-    updateHistoryNotebook,
-    deleteHistoryNotebook,
-    type HistoryNotebook,
-    type HistoryNotebookSummary,
-    type CreateNotebookPayload,
-    type UpdateNotebookPayload,
+  fetchHistoryNotebooks,
+  fetchHistoryNotebook,
+  createHistoryNotebook,
+  updateHistoryNotebook,
+  deleteHistoryNotebook,
+  type HistoryNotebook,
+  type HistoryNotebookSummary,
+  type CreateNotebookPayload,
+  type UpdateNotebookPayload,
 } from "@/api/historyNotebooks";
 
 export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
+  // State
+  const notebooks = ref<HistoryNotebookSummary[]>([]);
+  const currentNotebook = ref<HistoryNotebook | null>(null);
+  const originalContent = ref<string>("");
+  const currentContent = ref<string>("");
+  const currentTitle = ref<string>("");
+  const isLoadingList = ref(false);
+  const isLoadingNotebook = ref(false);
+  const isSaving = ref(false);
+  const error = ref<string | null>(null);
+  const historyId = ref<string | null>(null);
+
+  // Getters
+  const hasNotebooks = computed(() => notebooks.value.length > 0);
+  const hasCurrentNotebook = computed(() => currentNotebook.value !== null);
+  const isDirty = computed(
+    () => currentContent.value !== originalContent.value,
+  );
+  const canSave = computed(() => isDirty.value && !isSaving.value);
+
+  // Actions
+  async function loadNotebooks(newHistoryId: string) {
+    historyId.value = newHistoryId;
+    isLoadingList.value = true;
+    error.value = null;
+
+    try {
+      notebooks.value = await fetchHistoryNotebooks(newHistoryId);
+    } catch (e: any) {
+      error.value = e.message || "Failed to load notebooks";
+    } finally {
+      isLoadingList.value = false;
+    }
+  }
+
+  async function loadNotebook(notebookId: string) {
+    if (!historyId.value) return;
+
+    isLoadingNotebook.value = true;
+    error.value = null;
+
+    try {
+      const data = await fetchHistoryNotebook(historyId.value, notebookId);
+      currentNotebook.value = data;
+      originalContent.value = data.content || "";
+      currentContent.value = data.content || "";
+      currentTitle.value = data.title || "";
+    } catch (e: any) {
+      error.value = e.message || "Failed to load notebook";
+    } finally {
+      isLoadingNotebook.value = false;
+    }
+  }
+
+  async function createNotebook(
+    payload?: CreateNotebookPayload,
+  ): Promise<HistoryNotebook | null> {
+    if (!historyId.value) return null;
+
+    isLoadingNotebook.value = true;
+    error.value = null;
+
+    try {
+      const data = await createHistoryNotebook(historyId.value, payload || {});
+      currentNotebook.value = data;
+      originalContent.value = data.content || "";
+      currentContent.value = data.content || "";
+      currentTitle.value = data.title || "";
+      // Refresh list
+      await loadNotebooks(historyId.value);
+      return data;
+    } catch (e: any) {
+      error.value = e.message || "Failed to create notebook";
+      throw e;
+    } finally {
+      isLoadingNotebook.value = false;
+    }
+  }
+
+  async function saveNotebook() {
+    if (!historyId.value || !currentNotebook.value || !isDirty.value) return;
+
+    isSaving.value = true;
+    error.value = null;
+
+    try {
+      const payload: UpdateNotebookPayload = {
+        content: currentContent.value,
+        title: currentTitle.value || undefined,
+      };
+      const data = await updateHistoryNotebook(
+        historyId.value,
+        currentNotebook.value.id,
+        payload,
+      );
+      currentNotebook.value = data;
+      originalContent.value = data.content || "";
+    } catch (e: any) {
+      error.value = e.message || "Failed to save notebook";
+      throw e;
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
+  async function deleteCurrentNotebook() {
+    if (!historyId.value || !currentNotebook.value) return;
+
+    try {
+      await deleteHistoryNotebook(historyId.value, currentNotebook.value.id);
+      currentNotebook.value = null;
+      originalContent.value = "";
+      currentContent.value = "";
+      currentTitle.value = "";
+      // Refresh list
+      await loadNotebooks(historyId.value);
+    } catch (e: any) {
+      error.value = e.message || "Failed to delete notebook";
+      throw e;
+    }
+  }
+
+  function updateContent(content: string) {
+    currentContent.value = content;
+  }
+
+  function updateTitle(title: string) {
+    currentTitle.value = title;
+  }
+
+  function discardChanges() {
+    currentContent.value = originalContent.value;
+  }
+
+  function clearCurrentNotebook() {
+    currentNotebook.value = null;
+    originalContent.value = "";
+    currentContent.value = "";
+    currentTitle.value = "";
+  }
+
+  function $reset() {
+    notebooks.value = [];
+    currentNotebook.value = null;
+    originalContent.value = "";
+    currentContent.value = "";
+    currentTitle.value = "";
+    isLoadingList.value = false;
+    isLoadingNotebook.value = false;
+    isSaving.value = false;
+    error.value = null;
+    historyId.value = null;
+  }
+
+  return {
     // State
-    const notebooks = ref<HistoryNotebookSummary[]>([]);
-    const currentNotebook = ref<HistoryNotebook | null>(null);
-    const originalContent = ref<string>("");
-    const currentContent = ref<string>("");
-    const currentTitle = ref<string>("");
-    const isLoadingList = ref(false);
-    const isLoadingNotebook = ref(false);
-    const isSaving = ref(false);
-    const error = ref<string | null>(null);
-    const historyId = ref<string | null>(null);
-
+    notebooks,
+    currentNotebook,
+    currentContent,
+    currentTitle,
+    isLoadingList,
+    isLoadingNotebook,
+    isSaving,
+    error,
+    historyId,
     // Getters
-    const hasNotebooks = computed(() => notebooks.value.length > 0);
-    const hasCurrentNotebook = computed(() => currentNotebook.value !== null);
-    const isDirty = computed(() => currentContent.value !== originalContent.value);
-    const canSave = computed(() => isDirty.value && !isSaving.value);
-
+    hasNotebooks,
+    hasCurrentNotebook,
+    isDirty,
+    canSave,
     // Actions
-    async function loadNotebooks(newHistoryId: string) {
-        historyId.value = newHistoryId;
-        isLoadingList.value = true;
-        error.value = null;
-
-        try {
-            notebooks.value = await fetchHistoryNotebooks(newHistoryId);
-        } catch (e: any) {
-            error.value = e.message || "Failed to load notebooks";
-        } finally {
-            isLoadingList.value = false;
-        }
-    }
-
-    async function loadNotebook(notebookId: string) {
-        if (!historyId.value) return;
-
-        isLoadingNotebook.value = true;
-        error.value = null;
-
-        try {
-            const data = await fetchHistoryNotebook(historyId.value, notebookId);
-            currentNotebook.value = data;
-            originalContent.value = data.content || "";
-            currentContent.value = data.content || "";
-            currentTitle.value = data.title || "";
-        } catch (e: any) {
-            error.value = e.message || "Failed to load notebook";
-        } finally {
-            isLoadingNotebook.value = false;
-        }
-    }
-
-    async function createNotebook(payload?: CreateNotebookPayload): Promise<HistoryNotebook | null> {
-        if (!historyId.value) return null;
-
-        isLoadingNotebook.value = true;
-        error.value = null;
-
-        try {
-            const data = await createHistoryNotebook(historyId.value, payload || {});
-            currentNotebook.value = data;
-            originalContent.value = data.content || "";
-            currentContent.value = data.content || "";
-            currentTitle.value = data.title || "";
-            // Refresh list
-            await loadNotebooks(historyId.value);
-            return data;
-        } catch (e: any) {
-            error.value = e.message || "Failed to create notebook";
-            throw e;
-        } finally {
-            isLoadingNotebook.value = false;
-        }
-    }
-
-    async function saveNotebook() {
-        if (!historyId.value || !currentNotebook.value || !isDirty.value) return;
-
-        isSaving.value = true;
-        error.value = null;
-
-        try {
-            const payload: UpdateNotebookPayload = {
-                content: currentContent.value,
-                title: currentTitle.value || undefined,
-            };
-            const data = await updateHistoryNotebook(
-                historyId.value,
-                currentNotebook.value.id,
-                payload
-            );
-            currentNotebook.value = data;
-            originalContent.value = data.content || "";
-        } catch (e: any) {
-            error.value = e.message || "Failed to save notebook";
-            throw e;
-        } finally {
-            isSaving.value = false;
-        }
-    }
-
-    async function deleteCurrentNotebook() {
-        if (!historyId.value || !currentNotebook.value) return;
-
-        try {
-            await deleteHistoryNotebook(historyId.value, currentNotebook.value.id);
-            currentNotebook.value = null;
-            originalContent.value = "";
-            currentContent.value = "";
-            currentTitle.value = "";
-            // Refresh list
-            await loadNotebooks(historyId.value);
-        } catch (e: any) {
-            error.value = e.message || "Failed to delete notebook";
-            throw e;
-        }
-    }
-
-    function updateContent(content: string) {
-        currentContent.value = content;
-    }
-
-    function updateTitle(title: string) {
-        currentTitle.value = title;
-    }
-
-    function discardChanges() {
-        currentContent.value = originalContent.value;
-    }
-
-    function clearCurrentNotebook() {
-        currentNotebook.value = null;
-        originalContent.value = "";
-        currentContent.value = "";
-        currentTitle.value = "";
-    }
-
-    function $reset() {
-        notebooks.value = [];
-        currentNotebook.value = null;
-        originalContent.value = "";
-        currentContent.value = "";
-        currentTitle.value = "";
-        isLoadingList.value = false;
-        isLoadingNotebook.value = false;
-        isSaving.value = false;
-        error.value = null;
-        historyId.value = null;
-    }
-
-    return {
-        // State
-        notebooks,
-        currentNotebook,
-        currentContent,
-        currentTitle,
-        isLoadingList,
-        isLoadingNotebook,
-        isSaving,
-        error,
-        historyId,
-        // Getters
-        hasNotebooks,
-        hasCurrentNotebook,
-        isDirty,
-        canSave,
-        // Actions
-        loadNotebooks,
-        loadNotebook,
-        createNotebook,
-        saveNotebook,
-        deleteCurrentNotebook,
-        updateContent,
-        updateTitle,
-        discardChanges,
-        clearCurrentNotebook,
-        $reset,
-    };
+    loadNotebooks,
+    loadNotebook,
+    createNotebook,
+    saveNotebook,
+    deleteCurrentNotebook,
+    updateContent,
+    updateTitle,
+    discardChanges,
+    clearCurrentNotebook,
+    $reset,
+  };
 });
 ```
 
@@ -2102,6 +2231,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 **Goal:** Main notebook view with list and editor (multiple notebooks per history).
 
 **Files to create:**
+
 - `client/src/components/HistoryNotebook/HistoryNotebookView.vue` (main container)
 - `client/src/components/HistoryNotebook/HistoryNotebookList.vue` (notebook list)
 
@@ -2113,43 +2243,46 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 <!-- client/src/components/HistoryNotebook/HistoryNotebookList.vue -->
 
 <template>
-    <div class="history-notebook-list">
-        <div class="list-header d-flex justify-content-between align-items-center p-3 border-bottom">
-            <h4 class="mb-0">Notebooks</h4>
-            <BButton variant="primary" size="sm" @click="$emit('create')">
-                <FontAwesomeIcon :icon="faPlus" />
-                New Notebook
-            </BButton>
-        </div>
-
-        <div v-if="notebooks.length === 0" class="empty-state text-center p-4">
-            <p class="text-muted">No notebooks yet</p>
-            <p class="text-muted small">
-                Create a notebook to document your analysis with rich markdown,
-                embedded datasets, and visualizations.
-            </p>
-        </div>
-
-        <div v-else class="notebook-items">
-            <div
-                v-for="notebook in notebooks"
-                :key="notebook.id"
-                class="notebook-item p-3 border-bottom cursor-pointer"
-                @click="$emit('select', notebook.id)">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="notebook-title fw-bold">
-                            {{ getNotebookTitle(notebook) }}
-                        </div>
-                        <div class="notebook-meta text-muted small">
-                            Updated {{ formatDate(notebook.update_time) }}
-                        </div>
-                    </div>
-                    <FontAwesomeIcon :icon="faChevronRight" class="text-muted" />
-                </div>
-            </div>
-        </div>
+  <div class="history-notebook-list">
+    <div
+      class="list-header d-flex justify-content-between align-items-center p-3 border-bottom"
+    >
+      <h4 class="mb-0">Notebooks</h4>
+      <BButton variant="primary" size="sm" @click="$emit('create')">
+        <FontAwesomeIcon :icon="faPlus" />
+        New Notebook
+      </BButton>
     </div>
+
+    <div v-if="notebooks.length === 0" class="empty-state text-center p-4">
+      <p class="text-muted">No notebooks yet</p>
+      <p class="text-muted small">
+        Create a notebook to document your analysis with rich markdown, embedded
+        datasets, and visualizations.
+      </p>
+    </div>
+
+    <div v-else class="notebook-items">
+      <div
+        v-for="notebook in notebooks"
+        :key="notebook.id"
+        class="notebook-item p-3 border-bottom cursor-pointer"
+        @click="$emit('select', notebook.id)"
+      >
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="notebook-title fw-bold">
+              {{ getNotebookTitle(notebook) }}
+            </div>
+            <div class="notebook-meta text-muted small">
+              Updated {{ formatDate(notebook.update_time) }}
+            </div>
+          </div>
+          <FontAwesomeIcon :icon="faChevronRight" class="text-muted" />
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -2159,35 +2292,35 @@ import { faPlus, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import type { HistoryNotebookSummary } from "@/api/historyNotebooks";
 
 defineProps<{
-    notebooks: HistoryNotebookSummary[];
-    historyName: string;
+  notebooks: HistoryNotebookSummary[];
+  historyName: string;
 }>();
 
 defineEmits<{
-    (e: "select", notebookId: string): void;
-    (e: "create"): void;
+  (e: "select", notebookId: string): void;
+  (e: "create"): void;
 }>();
 
 function getNotebookTitle(notebook: HistoryNotebookSummary): string {
-    return notebook.title || "Untitled Notebook";
+  return notebook.title || "Untitled Notebook";
 }
 
 function formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+  return new Date(dateStr).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 </script>
 
 <style scoped lang="scss">
 .notebook-item:hover {
-    background: var(--panel-header-bg);
+  background: var(--panel-header-bg);
 }
 .cursor-pointer {
-    cursor: pointer;
+  cursor: pointer;
 }
 </style>
 ```
@@ -2198,68 +2331,78 @@ function formatDate(dateStr: string): string {
 <!-- client/src/components/HistoryNotebook/HistoryNotebookView.vue -->
 
 <template>
-    <div class="history-notebook-view d-flex flex-column h-100">
-        <!-- Loading state -->
-        <BAlert v-if="store.isLoadingList" variant="info" show>
-            <FontAwesomeIcon :icon="faSpinner" spin />
-            Loading notebooks...
-        </BAlert>
+  <div class="history-notebook-view d-flex flex-column h-100">
+    <!-- Loading state -->
+    <BAlert v-if="store.isLoadingList" variant="info" show>
+      <FontAwesomeIcon :icon="faSpinner" spin />
+      Loading notebooks...
+    </BAlert>
 
-        <!-- Error state -->
-        <BAlert v-else-if="store.error" variant="danger" show dismissible @dismissed="store.error = null">
-            {{ store.error }}
-        </BAlert>
+    <!-- Error state -->
+    <BAlert
+      v-else-if="store.error"
+      variant="danger"
+      show
+      dismissible
+      @dismissed="store.error = null"
+    >
+      {{ store.error }}
+    </BAlert>
 
-        <!-- No notebook selected - show list -->
-        <template v-else-if="!notebookId">
-            <HistoryNotebookList
-                :notebooks="store.notebooks"
-                :history-name="historyName"
-                @select="handleSelect"
-                @create="handleCreate"
-            />
-        </template>
+    <!-- No notebook selected - show list -->
+    <template v-else-if="!notebookId">
+      <HistoryNotebookList
+        :notebooks="store.notebooks"
+        :history-name="historyName"
+        @select="handleSelect"
+        @create="handleCreate"
+      />
+    </template>
 
-        <!-- Notebook selected - show editor -->
-        <template v-else-if="store.hasCurrentNotebook">
-            <!-- Toolbar -->
-            <div class="notebook-toolbar d-flex align-items-center p-2 border-bottom">
-                <BButton variant="link" size="sm" @click="handleBack">
-                    <FontAwesomeIcon :icon="faArrowLeft" />
-                    Back
-                </BButton>
-                <span class="flex-grow-1 text-center fw-bold">
-                    {{ store.currentTitle || "Untitled Notebook" }}
-                </span>
-                <BButton
-                    variant="primary"
-                    size="sm"
-                    :disabled="!store.canSave"
-                    @click="handleSave">
-                    <FontAwesomeIcon :icon="store.isSaving ? faSpinner : faSave" :spin="store.isSaving" />
-                    Save
-                </BButton>
-                <span v-if="store.isDirty" class="ms-2 text-warning small">
-                    Unsaved
-                </span>
-            </div>
+    <!-- Notebook selected - show editor -->
+    <template v-else-if="store.hasCurrentNotebook">
+      <!-- Toolbar -->
+      <div class="notebook-toolbar d-flex align-items-center p-2 border-bottom">
+        <BButton variant="link" size="sm" @click="handleBack">
+          <FontAwesomeIcon :icon="faArrowLeft" />
+          Back
+        </BButton>
+        <span class="flex-grow-1 text-center fw-bold">
+          {{ store.currentTitle || "Untitled Notebook" }}
+        </span>
+        <BButton
+          variant="primary"
+          size="sm"
+          :disabled="!store.canSave"
+          @click="handleSave"
+        >
+          <FontAwesomeIcon
+            :icon="store.isSaving ? faSpinner : faSave"
+            :spin="store.isSaving"
+          />
+          Save
+        </BButton>
+        <span v-if="store.isDirty" class="ms-2 text-warning small">
+          Unsaved
+        </span>
+      </div>
 
-            <!-- Editor -->
-            <div class="notebook-content flex-grow-1 overflow-auto">
-                <HistoryNotebookEditor
-                    :history-id="historyId"
-                    :content="store.currentContent"
-                    @update:content="store.updateContent"
-                />
-            </div>
-        </template>
+      <!-- Editor -->
+      <div class="notebook-content flex-grow-1 overflow-auto">
+        <HistoryNotebookEditor
+          :history-id="historyId"
+          :content="store.currentContent"
+          @update:content="store.updateContent"
+        />
+      </div>
+    </template>
 
-        <!-- Loading specific notebook -->
-        <BAlert v-else-if="store.isLoadingNotebook" variant="info" show>
-            <FontAwesomeIcon :icon="faSpinner" spin />
-            Loading notebook...
-        </BAlert>
-    </div>
+    <!-- Loading specific notebook -->
+    <BAlert v-else-if="store.isLoadingNotebook" variant="info" show>
+      <FontAwesomeIcon :icon="faSpinner" spin />
+      Loading notebook...
+    </BAlert>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -2267,16 +2410,20 @@ import { onMounted, onUnmounted, watch, computed } from "vue";
 import { useRouter } from "vue-router";
 import { BAlert, BButton } from "bootstrap-vue-next";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { faSpinner, faSave, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
+import {
+  faSpinner,
+  faSave,
+  faArrowLeft,
+} from "@fortawesome/free-solid-svg-icons";
 import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 
 const props = defineProps<{
-    historyId: string;
-    notebookId?: string;
-    displayOnly?: boolean;
+  historyId: string;
+  notebookId?: string;
+  displayOnly?: boolean;
 }>();
 
 const router = useRouter();
@@ -2284,68 +2431,74 @@ const store = useHistoryNotebookStore();
 const historyStore = useHistoryStore();
 
 const historyName = computed(() => {
-    const history = historyStore.getHistoryById(props.historyId);
-    return history?.name || "History";
+  const history = historyStore.getHistoryById(props.historyId);
+  return history?.name || "History";
 });
 
 onMounted(async () => {
-    await store.loadNotebooks(props.historyId);
-    if (props.notebookId) {
-        await store.loadNotebook(props.notebookId);
-    }
+  await store.loadNotebooks(props.historyId);
+  if (props.notebookId) {
+    await store.loadNotebook(props.notebookId);
+  }
 });
 
 onUnmounted(() => {
-    store.$reset();
+  store.$reset();
 });
 
-watch(() => props.historyId, async (newId) => {
+watch(
+  () => props.historyId,
+  async (newId) => {
     await store.loadNotebooks(newId);
     if (props.notebookId) {
-        await store.loadNotebook(props.notebookId);
+      await store.loadNotebook(props.notebookId);
     }
-});
+  },
+);
 
-watch(() => props.notebookId, async (newId) => {
+watch(
+  () => props.notebookId,
+  async (newId) => {
     if (newId) {
-        await store.loadNotebook(newId);
+      await store.loadNotebook(newId);
     } else {
-        store.clearCurrentNotebook();
+      store.clearCurrentNotebook();
     }
-});
+  },
+);
 
 function handleSelect(notebookId: string) {
-    router.push(`/histories/${props.historyId}/notebooks/${notebookId}`);
+  router.push(`/histories/${props.historyId}/notebooks/${notebookId}`);
 }
 
 async function handleCreate() {
-    const notebook = await store.createNotebook();
-    if (notebook) {
-        router.push(`/histories/${props.historyId}/notebooks/${notebook.id}`);
-    }
+  const notebook = await store.createNotebook();
+  if (notebook) {
+    router.push(`/histories/${props.historyId}/notebooks/${notebook.id}`);
+  }
 }
 
 function handleBack() {
-    store.clearCurrentNotebook();
-    router.push(`/histories/${props.historyId}/notebooks`);
+  store.clearCurrentNotebook();
+  router.push(`/histories/${props.historyId}/notebooks`);
 }
 
 async function handleSave() {
-    await store.saveNotebook();
+  await store.saveNotebook();
 }
 </script>
 
 <style scoped lang="scss">
 .history-notebook-view {
-    background: var(--body-bg);
+  background: var(--body-bg);
 }
 
 .notebook-toolbar {
-    background: var(--panel-header-bg);
+  background: var(--panel-header-bg);
 }
 
 .notebook-content {
-    padding: 1rem;
+  padding: 1rem;
 }
 </style>
 ```
@@ -2357,6 +2510,7 @@ async function handleSave() {
 **Goal:** Wrap MarkdownEditor with history context.
 
 **Files to create:**
+
 - `client/src/components/HistoryNotebook/HistoryNotebookEditor.vue`
 
 **Tasks:**
@@ -2367,14 +2521,14 @@ async function handleSave() {
 <!-- client/src/components/HistoryNotebook/HistoryNotebookEditor.vue -->
 
 <template>
-    <div class="history-notebook-editor">
-        <MarkdownEditor
-            :markdown-text="content"
-            mode="history_notebook"
-            :title="editorTitle"
-            @update="handleUpdate"
-        />
-    </div>
+  <div class="history-notebook-editor">
+    <MarkdownEditor
+      :markdown-text="content"
+      mode="history_notebook"
+      :title="editorTitle"
+      @update="handleUpdate"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -2383,29 +2537,29 @@ import MarkdownEditor from "@/components/Markdown/MarkdownEditor.vue";
 import { useHistoryStore } from "@/stores/historyStore";
 
 const props = defineProps<{
-    historyId: string;
-    content: string;
+  historyId: string;
+  content: string;
 }>();
 
 const emit = defineEmits<{
-    (e: "update:content", content: string): void;
+  (e: "update:content", content: string): void;
 }>();
 
 const historyStore = useHistoryStore();
 
 const editorTitle = computed(() => {
-    const history = historyStore.getHistoryById(props.historyId);
-    return history?.name || "History Notebook";
+  const history = historyStore.getHistoryById(props.historyId);
+  return history?.name || "History Notebook";
 });
 
 function handleUpdate(newContent: string) {
-    emit("update:content", newContent);
+  emit("update:content", newContent);
 }
 </script>
 
 <style scoped lang="scss">
 .history-notebook-editor {
-    height: 100%;
+  height: 100%;
 }
 </style>
 ```
@@ -2417,6 +2571,7 @@ function handleUpdate(newContent: string) {
 **Goal:** Add routes for notebook list and editor views.
 
 **Files to modify:**
+
 - `client/src/entry/analysis/router.js` (after line 404, near history routes)
 
 **Tasks:**
@@ -2457,6 +2612,7 @@ function handleUpdate(newContent: string) {
 **Goal:** Add "Notebooks" button to history panel (links to notebook list).
 
 **Files to modify:**
+
 - `client/src/components/History/HistoryOptions.vue` (after line 217, near Extract Workflow)
 
 **Tasks:**
@@ -2467,11 +2623,12 @@ function handleUpdate(newContent: string) {
 <!-- Add after the "Extract Workflow" dropdown item -->
 
 <BDropdownItem
-    v-if="historyStore.currentHistoryId === history.id"
-    data-description="history notebooks"
-    :disabled="isAnonymous"
-    :title="userTitle('View and Create History Notebooks')"
-    :to="`/histories/${history.id}/notebooks`">
+  v-if="historyStore.currentHistoryId === history.id"
+  data-description="history notebooks"
+  :disabled="isAnonymous"
+  :title="userTitle('View and Create History Notebooks')"
+  :to="`/histories/${history.id}/notebooks`"
+>
     <FontAwesomeIcon fixed-width :icon="faBook" />
     <span v-localize>History Notebooks</span>
 </BDropdownItem>
@@ -2493,6 +2650,7 @@ Requires HID parsing support in backend.
 ### 3.1 Mode Support in MarkdownEditor
 
 **Files to modify:**
+
 - `client/src/components/Markdown/MarkdownEditor.vue` (line 58)
 
 **Tasks:**
@@ -2502,16 +2660,16 @@ Requires HID parsing support in backend.
 ```typescript
 // Change from:
 const props = defineProps<{
-    markdownText: string;
-    mode: "report" | "page";
-    // ...
+  markdownText: string;
+  mode: "report" | "page";
+  // ...
 }>();
 
 // To:
 const props = defineProps<{
-    markdownText: string;
-    mode: "report" | "page" | "history_notebook";
-    // ...
+  markdownText: string;
+  mode: "report" | "page" | "history_notebook";
+  // ...
 }>();
 ```
 
@@ -2519,7 +2677,10 @@ const props = defineProps<{
 
 ```vue
 <h2 v-if="mode === 'page'" class="mb-0">Markdown Help for Pages</h2>
-<h2 v-else-if="mode === 'history_notebook'" class="mb-0">Markdown Help for History Notebooks</h2>
+<h2
+  v-else-if="mode === 'history_notebook'"
+  class="mb-0"
+>Markdown Help for History Notebooks</h2>
 <h2 v-else class="mb-0">Markdown Help for Invocation Reports</h2>
 ```
 
@@ -2528,6 +2689,7 @@ const props = defineProps<{
 ### 3.2 Directive Type Updates
 
 **Files to modify:**
+
 - `client/src/components/Markdown/directives.ts` (line 10)
 
 **Tasks:**
@@ -2547,6 +2709,7 @@ type DirectiveMode = "page" | "report" | "history_notebook";
 ### 3.3 MarkdownToolBox Mode Detection
 
 **Files to modify:**
+
 - `client/src/components/Markdown/MarkdownToolBox.vue` (lines 92-96, 201-206)
 
 **Tasks:**
@@ -2604,9 +2767,24 @@ historyNotebookSection: {
 #### 3.3.4 Update template conditionals
 
 ```vue
-<ToolSection v-if="isWorkflow" :category="historyInEditorSection" :expanded="true" @onClick="onClick" />
-<ToolSection v-else-if="isHistoryNotebook" :category="historyNotebookSection" :expanded="true" @onClick="onClick" />
-<ToolSection v-else :category="historySection" :expanded="true" @onClick="onClick" />
+<ToolSection
+  v-if="isWorkflow"
+  :category="historyInEditorSection"
+  :expanded="true"
+  @onClick="onClick"
+/>
+<ToolSection
+  v-else-if="isHistoryNotebook"
+  :category="historyNotebookSection"
+  :expanded="true"
+  @onClick="onClick"
+/>
+<ToolSection
+  v-else
+  :category="historySection"
+  :expanded="true"
+  @onClick="onClick"
+/>
 ```
 
 ---
@@ -2614,6 +2792,7 @@ historyNotebookSection: {
 ### 3.4 HID Emission in MarkdownDialog
 
 **Files to modify:**
+
 - `client/src/components/Markdown/MarkdownDialog.vue`
 
 **Tasks:**
@@ -2640,13 +2819,13 @@ In the selection handler:
 
 ```javascript
 function handleSelection(item) {
-    if (props.mode === "history_notebook") {
-        // Emit HID reference for history notebooks
-        emit("onInsert", `${directiveName}(hid=${item.hid})`);
-    } else {
-        // Existing: emit encoded ID for pages
-        emit("onInsert", `${directiveName}(history_dataset_id=${item.id})`);
-    }
+  if (props.mode === "history_notebook") {
+    // Emit HID reference for history notebooks
+    emit("onInsert", `${directiveName}(hid=${item.hid})`);
+  } else {
+    // Existing: emit encoded ID for pages
+    emit("onInsert", `${directiveName}(history_dataset_id=${item.id})`);
+  }
 }
 ```
 
@@ -2664,44 +2843,82 @@ When opening DataDialog for history_notebook mode:
 ```
 
 **Tests:**
+
 - In history_notebook mode, insertion emits `hid=N`
 - In page mode, insertion emits `history_dataset_id=X` (unchanged)
 - DataDialog only shows items from current history when historyId provided
 
 ---
 
-## Phase 4: MVP Integration Testing
+## ✅ Phase 4: MVP Integration Testing - COMPLETE
 
-### 4.1 End-to-End Tests
+**Detailed plan & retrospective: `HISTORY_MARKDOWN_PHASE_4_PLAN.md`**
+
+### Implemented tests (all passing)
+
+| #   | Test                                            | Coverage                                          |
+| --- | ----------------------------------------------- | ------------------------------------------------- |
+| 1   | `test_navigate_to_notebooks_via_history_menu`   | Entry point, empty state                          |
+| 2   | `test_create_notebook`                          | Create flow, editor loads                         |
+| 3   | `test_notebook_empty_history`                   | Plain markdown save, no datasets                  |
+| 4   | `test_edit_and_save_notebook`                   | Edit/save/reload persistence                      |
+| 5   | `test_notebook_save_button_disabled_when_clean` | Dirty tracking, button state                      |
+| 6   | `test_multiple_notebooks_per_history`           | API-created notebooks in list                     |
+| 7   | `test_notebook_with_dataset_hid_reference`      | HID content via API, resolve on GET               |
+| 8   | `test_toolbox_visible_in_notebook_mode`         | Toolbox renders, DataDialog opens                 |
+| 9   | `test_delete_notebook`                          | API delete reflected in UI                        |
+| 10  | `test_notebook_permissions_shared_history`      | Publish history, verify notebook still accessible |
+
+### Bugs found & fixed
+
+1. **Store dirty tracking** — `saveNotebook()` set `originalContent = data.content` but API transforms content via `rewrite_content_for_export`, keeping `isDirty` permanently true. Fixed: use `currentContent` as baseline.
+2. **Debounce timing** — TextEditor 300ms debounce caused race between typing and save click. Fixed: wait for unsaved indicator before proceeding.
+
+---
+
+## Phase 4a: Selenium Test Polish (TODO)
+
+**Goal:** Complete the shortcuts taken during Phase 4 to get full E2E coverage.
+
+### 4a.1 Full toolbox insertion E2E test
+
+**Current state:** `test_toolbox_visible_in_notebook_mode` only verifies toolbox renders and DataDialog opens. Does not complete dataset selection or verify `hid=` format in editor.
+
+**Problem:** DataDialog row selection fragile in Playwright — rows may be folders vs leaves, modal overlay blocks clicks on elements matched outside modal, `[role='row']` selector too generic.
 
 **Tasks:**
 
-4.1.1 Test full workflow:
-- Create history with datasets
-- Create notebook for history via API
-- Open notebook view
-- Insert HID references via toolbox
-- Verify emitted format is `hid=N`
-- Save notebook
-- Reload - content persists with HIDs
-- Preview renders correctly (HID resolved to actual data)
+- Understand initial DataDialog view for `history_notebook` mode (does it show history as navigable folder or flat dataset list?)
+- Add `navigation.yml` entries for DataDialog leaf-dataset rows (or reuse pages test pattern: xpath `'//span[text() = "1: 1.fasta"]'` scoped inside modal)
+- Complete test: click toolbox entry → select dataset → verify `hid=N` format in editor textarea
+- Reference: `test_pages.py` uses `editor.dataset_selector` xpath pattern
 
-4.1.2 Test edge cases:
-- Create notebook for empty history
-- Reference deleted dataset (should show error on render)
-- Reference collection vs dataset
-- Large documents with many HID references
+### 4a.2 Cross-user permissions E2E test
 
-4.1.3 Permission testing:
-- Can't create notebook for history you don't own
-- Can view notebook for shared history
-- Can't edit notebook for history you can only view
+**Current state:** `test_notebook_permissions_shared_history` publishes history via UI and verifies notebook accessible via populator API. Does not actually switch users or test UI read-only enforcement.
+
+**Tasks:**
+
+- Share history + switch to second user in selenium (options: `setup_two_users_with_one_shared_history` helper, or logout/register flow)
+- Navigate to shared history's notebooks as non-owner
+- Verify: notebook content visible, save button hidden or disabled
+- May need `api_put` added to `NavigatesGalaxy` (like existing `api_get`/`api_post`/`api_delete`)
+
+### 4a.3 Direct URL navigation investigation
+
+**Current state:** `self.get("histories/{id}/notebooks/{id}")` times out with Playwright. Other Galaxy tests use `self.get()` for SPA routes successfully.
+
+**Tasks:**
+
+- Investigate: Vite HMR/load event issue? Nested route specific? Missing wait condition?
+- If fixable, update `test_notebook_with_dataset_hid_reference` and `test_delete_notebook` to use direct URL navigation (simpler, more direct)
 
 ---
 
 ## MVP COMPLETE
 
 At this point, users can:
+
 - Create a notebook for any history they own
 - Write Galaxy markdown with HID references (`hid=42`)
 - Insert references via toolbox (scoped to current history)
@@ -2717,85 +2934,475 @@ These phases can proceed independently after MVP is complete.
 
 ---
 
-## Phase 5: Window Manager Integration
+## ✅ Phase 5: Window Manager Integration - COMPLETE
 
-**Dependency:** MVP complete
+**Dependency:** MVP complete (Phases 1-4)
 
-### 5.1 DisplayOnly Support
+**Goal:** Open history notebooks in WinBox floating windows with rendered (read-only) markdown content. When the Window Manager is active and a user opens a notebook, it renders in a WinBox iframe showing the processed Galaxy markdown (directives resolved, datasets displayed inline) — matching how Pages render via `Markdown.vue`.
 
-**Files to modify:**
-- `client/src/components/HistoryNotebook/HistoryNotebookView.vue`
+**Key design decisions:**
 
-**Tasks:**
+- **Rendered view, not editor**: `displayOnly` mode shows rendered markdown via the `Markdown.vue` component (same as Page view), NOT a read-only textarea. This gives rich rendering of embedded datasets, images, etc.
+- **One trigger point**: Clicking a notebook in the list view when WM is active opens it in a window. The HistoryOptions menu navigates to the list as before (`:to=` unchanged); WM intercept happens at notebook selection, not at menu level.
+- **API already ready**: GET notebook returns content processed by `rewrite_content_for_export` (hid→encoded_id), which is exactly what `Markdown.vue` / `SectionWrapper` / `MarkdownGalaxy` expect for rendering.
 
-5.1.1 Conditionally hide toolbar in display mode:
+**Rendering flow when `displayOnly=true`:**
 
-```vue
-<div v-if="!displayOnly" class="notebook-toolbar ...">
-    <!-- full toolbar -->
-</div>
 ```
-
-5.1.2 Add minimal toolbar for windowed mode
+WinBox iframe loads: /histories/:id/notebooks/:nbId?displayOnly=true&hide_panels=true&hide_masthead=true
+  ↓
+SPA router matches notebook route, passes displayOnly=true as prop
+  ↓
+HistoryNotebookView mounts, calls store.loadNotebook(nbId)
+  ↓
+API returns content with history_dataset_id=<encoded_id> (already resolved from hid=)
+  ↓
+HistoryNotebookView sees displayOnly=true, renders Markdown.vue (not MarkdownEditor)
+  ↓
+Markdown.vue → parseMarkdown() → SectionWrapper → MarkdownGalaxy → HistoryDatasetDisplay.vue
+  ↓
+User sees rendered notebook with inline dataset previews in floating window
+```
 
 ---
 
-### 5.2 Window Manager Trigger
+### 5.1 Router: Pass `displayOnly` Prop
 
-**Files to modify:**
-- `client/src/components/History/HistoryOptions.vue`
+**File:** `client/src/entry/analysis/router.js` (lines 425-434)
 
-**Tasks:**
+**Current state:** Both notebook routes use `props: true`, which passes route params as props but does NOT extract query params like `displayOnly`.
 
-5.2.1 Add "Open Notebook in Window" option:
+**Reference:** DatasetView route at line 313-317 uses `props: (route) => ({ ... displayOnly: route.query.displayOnly === "true" })`.
 
-```vue
-<BDropdownItem
-    @click="openNotebookWindowed">
-    <FontAwesomeIcon :icon="faWindowRestore" />
-    Open Notebook in Window
-</BDropdownItem>
-```
+**Task 5.1.1:** Change both notebook routes from `props: true` to explicit props functions:
 
 ```javascript
-function openNotebookWindowed() {
-    router.push(`/histories/${history.id}/notebook`, {
-        title: `Notebook: ${history.name}`,
-    });
+{
+    path: "histories/:historyId/notebooks",
+    component: HistoryNotebookView,
+    props: (route) => ({
+        historyId: route.params.historyId,
+    }),
+},
+{
+    path: "histories/:historyId/notebooks/:notebookId",
+    component: HistoryNotebookView,
+    props: (route) => ({
+        historyId: route.params.historyId,
+        notebookId: route.params.notebookId,
+        displayOnly: route.query.displayOnly === "true",
+    }),
+},
+```
+
+**Note:** Only the single-notebook route gets `displayOnly` — the list route never needs it (you can't "display" a list in a window).
+
+---
+
+### 5.2 HistoryNotebookView: DisplayOnly Mode
+
+**File:** `client/src/components/HistoryNotebook/HistoryNotebookView.vue`
+
+**Current state:** Props are `{ historyId: string; notebookId?: string }`. Template shows either HistoryNotebookList (no notebookId) or toolbar+HistoryNotebookEditor (with notebookId).
+
+**Reference pattern:** DatasetView.vue hides header/nav with `v-if="!displayOnly"` (lines 107, 153). PageView.vue renders via `Markdown.vue` with `readOnly=true` (line 114).
+
+#### Task 5.2.1: Add `displayOnly` prop
+
+```typescript
+const props = defineProps<{
+  historyId: string;
+  notebookId?: string;
+  displayOnly?: boolean; // NEW
+}>();
+```
+
+#### Task 5.2.2: Import `Markdown.vue` component
+
+```typescript
+import Markdown from "@/components/Markdown/Markdown.vue";
+```
+
+#### Task 5.2.3: Add computed for markdownConfig
+
+The `Markdown.vue` component expects a `markdownConfig` object with `content` (or `markdown`), `title`, `id`, etc. Build this from the store's current notebook state:
+
+```typescript
+const markdownConfig = computed(() => {
+  if (!store.currentNotebook) return null;
+  return {
+    id: store.currentNotebook.id,
+    title: store.currentTitle || "Untitled Notebook",
+    content: store.currentContent,
+    model_class: "HistoryNotebook",
+    update_time: store.currentNotebook.update_time,
+  };
+});
+```
+
+#### Task 5.2.4: Conditional template rendering
+
+Replace the existing `v-else-if="store.hasCurrentNotebook"` block to branch on `displayOnly`:
+
+```vue
+<!-- Notebook loaded in displayOnly mode — rendered view -->
+<template v-else-if="store.hasCurrentNotebook && displayOnly">
+  <div class="notebook-display-content overflow-auto h-100">
+    <Markdown
+      v-if="markdownConfig"
+      :markdown-config="markdownConfig"
+      :read-only="true"
+      download-endpoint=""
+    />
+  </div>
+</template>
+
+<!-- Notebook loaded in edit mode — toolbar + editor (existing) -->
+<template v-else-if="store.hasCurrentNotebook">
+  <div class="notebook-toolbar ...">...</div>
+  <div class="notebook-content ...">
+    <HistoryNotebookEditor ... />
+  </div>
+</template>
+```
+
+**Key points:**
+
+- `readOnly=true` hides the "Edit" button in Markdown.vue
+- `download-endpoint=""` disables PDF export (not applicable for notebooks)
+- No `export-link` or `enable_beta_markdown_export` — no PDF for notebook windows
+- The `displayOnly` branch comes BEFORE the edit branch in the template
+
+#### Task 5.2.5: Skip store reset in displayOnly mode
+
+In `onUnmounted`, don't reset the store when in displayOnly mode (since the iframe is independent):
+
+```typescript
+onUnmounted(() => {
+  if (!props.displayOnly) {
+    store.$reset();
+  }
+});
+```
+
+#### Task 5.2.6: Skip dirty-check navigation in displayOnly mode
+
+The `handleSelect`, `handleCreate`, `handleBack`, `handleSave` functions don't need changes — they're unreachable in displayOnly mode since the toolbar/list aren't rendered.
+
+---
+
+### 5.3 Window Manager Trigger: Notebook List Selection
+
+**File:** `client/src/components/HistoryNotebook/HistoryNotebookView.vue`
+
+**Goal:** When WM is active and user clicks a notebook from the list, open it in a WinBox instead of navigating.
+
+**Reference:** ContentItem.vue `onDisplay()` (lines 220-257) — checks `Galaxy.frame.active`, appends `displayOnly=true`, passes `title` option.
+
+#### Task 5.3.1: Import getGalaxyInstance and RouterPushOptions
+
+```typescript
+import { getGalaxyInstance } from "@/app";
+import type { RouterPushOptions } from "@/components/History/Content/router-push-options";
+```
+
+#### Task 5.3.2: Update `handleSelect` to check WM state
+
+```typescript
+function handleSelect(notebookId: string) {
+  const Galaxy = getGalaxyInstance();
+  const isWmActive = Galaxy?.frame?.active;
+
+  if (isWmActive) {
+    // Find the notebook title for the window
+    const notebook = store.notebooks.find((n) => n.id === notebookId);
+    const title = notebook?.title || "Notebook";
+    const url = `/histories/${props.historyId}/notebooks/${notebookId}?displayOnly=true`;
+    const options: RouterPushOptions = {
+      title: `Notebook: ${title}`,
+      preventWindowManager: false,
+    };
+    router.push(url, options);
+  } else {
+    router.push(`/histories/${props.historyId}/notebooks/${notebookId}`);
+  }
 }
 ```
 
+**Flow when WM active:**
+
+1. `router.push(url, { title: "Notebook: ...", preventWindowManager: false })`
+2. `router-push.js` intercepts: `title` set + `!preventWindowManager` + `Galaxy.frame.active` → calls `Galaxy.frame.add()`
+3. `WindowManager.add()` appends `hide_panels=true&hide_masthead=true` to URL, creates WinBox iframe
+4. Iframe loads: `/histories/.../notebooks/...?displayOnly=true&hide_panels=true&hide_masthead=true`
+5. HistoryNotebookView mounts with `displayOnly=true`, renders `Markdown.vue`
+
 ---
 
-## Phase 6: Revision UI
+### 5.4 E2E Integration Tests
 
-**Dependency:** MVP complete
+**File:** `lib/galaxy_test/selenium/test_history_notebooks.py`
 
-### 6.1 Components
+**Dependency:** Window Manager E2E test infrastructure (already implemented in `test_window_manager.py`, helpers in `navigates_galaxy.py`).
 
-**Files to create:**
-- `client/src/components/HistoryNotebook/NotebookRevisionList.vue`
-- `client/src/components/HistoryNotebook/NotebookRevisionView.vue`
-- `client/src/components/Grid/configs/notebookRevisions.ts`
+**Test infrastructure available:**
 
-### 6.2 Grid Config
+- `self.window_manager_enable()` / `_disable()` / `_toggle()`
+- `self.window_manager_is_active()`
+- `self.window_manager_window_count()`
+- `self.window_manager_wait_for_window_count(n)`
+- `self.window_manager_get_titles()`
+- `self.winbox_frame(index)` context manager (switches into WinBox iframe)
 
-```typescript
-// client/src/components/Grid/configs/notebookRevisions.ts
+#### Test 5.4.1: `test_notebook_opens_in_window_when_wm_active`
 
-export const notebookRevisionFields = [
-    { key: "create_time", title: "Date", type: "date" },
-    { key: "title", title: "Title", type: "text" },
-    { key: "edit_source", title: "Source", type: "text" },
-    { key: "operations", title: "", type: "operations" },
-];
+```python
+@selenium_test
+@managed_history
+def test_notebook_opens_in_window_when_wm_active(self):
+    """With WM active, selecting notebook from list opens it in a WinBox."""
+    history_id = self.current_history_id()
+    self.dataset_populator.new_history_notebook(
+        history_id, title="Window Test", content="# Windowed Notebook"
+    )
+
+    # Enable window manager
+    self.window_manager_enable()
+    assert self.window_manager_window_count() == 0
+
+    # Navigate to notebook list
+    self.navigate_to_history_notebooks_via_menu()
+    self.history_notebook_assert_item_count(1)
+
+    # Click the notebook — should open in WinBox
+    self.components.history_notebooks.notebook_item.wait_for_and_click()
+
+    # Verify WinBox appeared
+    self.window_manager_wait_for_window_count(1)
+    titles = self.window_manager_get_titles()
+    assert any("Window Test" in t for t in titles)
+    self.screenshot("history_notebook_in_winbox")
 ```
 
-### 6.3 Integration
+#### Test 5.4.2: `test_notebook_window_shows_rendered_content`
 
-- Add "Revisions" tab or panel to notebook view
-- Show revision count badge
-- Add "Restore" action to revision list
+```python
+@selenium_test
+@managed_history
+def test_notebook_window_shows_rendered_content(self):
+    """Windowed notebook shows rendered markdown, not editor."""
+    history_id = self.current_history_id()
+    self.dataset_populator.new_history_notebook(
+        history_id, title="Render Test", content="# Hello World\n\nSome analysis notes."
+    )
+
+    self.window_manager_enable()
+    self.navigate_to_history_notebooks_via_menu()
+    self.components.history_notebooks.notebook_item.wait_for_and_click()
+    self.window_manager_wait_for_window_count(1)
+
+    # Switch into iframe
+    with self.winbox_frame(0):
+        # Should see rendered markdown (Markdown.vue), not editor textarea
+        self.wait_for_selector_visible(".markdown-wrapper")
+        # Should NOT see editor or toolbar
+        self.wait_for_selector_absent_or_hidden("[data-description='notebook toolbar']")
+        self.wait_for_selector_absent_or_hidden("[data-description='history notebook editor']")
+        self.screenshot("history_notebook_window_rendered")
+```
+
+#### Test 5.4.3: `test_notebook_normal_navigation_when_wm_disabled`
+
+```python
+@selenium_test
+@managed_history
+def test_notebook_normal_navigation_when_wm_disabled(self):
+    """With WM disabled, selecting notebook navigates to editor normally."""
+    history_id = self.current_history_id()
+    self.dataset_populator.new_history_notebook(
+        history_id, title="Normal Nav", content="# Editor Test"
+    )
+
+    # Ensure WM is off
+    self.window_manager_disable()
+
+    self.navigate_to_history_notebooks_via_menu()
+    self.history_notebook_assert_item_count(1)
+    self.components.history_notebooks.notebook_item.wait_for_and_click()
+
+    # Should navigate to editor, NOT open window
+    self.components.history_notebooks.editor.wait_for_visible()
+    assert self.window_manager_window_count() == 0
+    self.screenshot("history_notebook_normal_nav_wm_off")
+```
+
+#### Test 5.4.4: `test_notebook_window_with_embedded_dataset`
+
+````python
+@selenium_test
+@managed_history
+def test_notebook_window_with_embedded_dataset(self):
+    """Windowed notebook renders embedded dataset displays."""
+    history_id = self.current_history_id()
+    self.perform_upload(self.get_filename("1.fasta"))
+    self.history_panel_wait_for_hid_ok(1)
+
+    content = "# Analysis\n\n```galaxy\nhistory_dataset_display(hid=1)\n```\n"
+    self.dataset_populator.new_history_notebook(
+        history_id, title="Dataset Embed", content=content
+    )
+
+    self.window_manager_enable()
+    self.navigate_to_history_notebooks_via_menu()
+    self.components.history_notebooks.notebook_item.wait_for_and_click()
+    self.window_manager_wait_for_window_count(1)
+
+    with self.winbox_frame(0):
+        # Verify rendered markdown with dataset display
+        self.wait_for_selector_visible(".markdown-wrapper")
+        # The HistoryDatasetDisplay component should render
+        self.wait_for_selector_visible(".embedded-dataset")
+        self.screenshot("history_notebook_window_dataset_embedded")
+````
+
+**Note:** `.embedded-dataset` is rendered by `HistoryDatasetDisplay.vue` inside a `<pre>` tag for text/code content (collapsed: `embedded-dataset`, expanded: `embedded-dataset-expanded`). Tabular data uses `.tabular-dataset-table` on a `<GTable>` instead.
+
+#### Test 5.4.5: `test_multiple_notebook_windows`
+
+```python
+@selenium_test
+@managed_history
+def test_multiple_notebook_windows(self):
+    """Opening multiple notebooks creates multiple WinBox windows."""
+    history_id = self.current_history_id()
+    self.dataset_populator.new_history_notebook(history_id, title="First NB")
+    self.dataset_populator.new_history_notebook(history_id, title="Second NB")
+
+    self.window_manager_enable()
+    self.navigate_to_history_notebooks_via_menu()
+    self.history_notebook_assert_item_count(2)
+
+    # Open first notebook
+    items = self.components.history_notebooks.notebook_item.all()
+    items[0].click()
+    self.sleep_for(self.wait_types.UX_RENDER)
+    self.window_manager_wait_for_window_count(1)
+
+    # Open second notebook
+    items = self.components.history_notebooks.notebook_item.all()
+    items[1].click()
+    self.sleep_for(self.wait_types.UX_RENDER)
+    self.window_manager_wait_for_window_count(2)
+
+    titles = self.window_manager_get_titles()
+    assert len(titles) == 2
+    self.screenshot("history_notebook_multiple_windows")
+```
+
+---
+
+### 5.5 Vitest Unit Tests
+
+**File:** `client/src/components/HistoryNotebook/HistoryNotebookView.test.ts`
+
+#### Test 5.5.1: Renders editor when displayOnly is false/undefined
+
+```typescript
+test("renders editor when displayOnly is false", async () => {
+  // Mount with notebookId and displayOnly=false
+  // Assert: toolbar visible, HistoryNotebookEditor visible, Markdown.vue absent
+});
+```
+
+#### Test 5.5.2: Renders Markdown.vue when displayOnly is true
+
+```typescript
+test("renders rendered markdown when displayOnly is true", async () => {
+  // Mount with notebookId and displayOnly=true
+  // Assert: toolbar absent, HistoryNotebookEditor absent, Markdown.vue visible
+});
+```
+
+#### Test 5.5.3: List view unaffected by displayOnly
+
+```typescript
+test("list view renders normally regardless of displayOnly", async () => {
+  // Mount without notebookId, displayOnly=true
+  // Assert: HistoryNotebookList visible (list route doesn't use displayOnly)
+});
+```
+
+---
+
+### 5.6 Navigation YAML (if needed)
+
+**File:** `client/src/utils/navigation/navigation.yml`
+
+Add selectors for the rendered notebook view if E2E tests need them:
+
+```yaml
+history_notebooks:
+  # ... existing selectors ...
+  rendered_view:
+    type: xpath
+    selector: '//div[contains(@class, "markdown-wrapper")]'
+```
+
+---
+
+### Implementation Order
+
+1. **5.1** Router changes (simple, enables everything else)
+2. **5.2** HistoryNotebookView displayOnly mode (core feature)
+3. **5.3** Window Manager trigger in handleSelect (connects WM to notebooks)
+4. **5.4** E2E tests (verify integration end-to-end)
+5. **5.5** Vitest unit tests (verify component logic)
+6. **5.6** Navigation YAML (only if E2E tests need it)
+
+### Files Summary
+
+| File                                                                | Change                                                                                    |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `client/src/entry/analysis/router.js`                               | Change notebook routes from `props: true` to explicit props functions with `displayOnly`  |
+| `client/src/components/HistoryNotebook/HistoryNotebookView.vue`     | Add `displayOnly` prop, conditional `Markdown.vue` rendered view, WM-aware `handleSelect` |
+| `lib/galaxy_test/selenium/test_history_notebooks.py`                | Add 5 new E2E tests for WM integration                                                    |
+| `client/src/components/HistoryNotebook/HistoryNotebookView.test.ts` | Add 3 vitest tests for displayOnly rendering                                              |
+| `client/src/utils/navigation/navigation.yml`                        | Add rendered_view selector (if needed)                                                    |
+
+---
+
+### Unresolved Questions
+
+1. **HistoryDatasetDisplay selector** — what CSS class/selector does `HistoryDatasetDisplay.vue` render as? Need to verify for Test 5.4.4.
+2. **Multiple notebook windows from same list** — after clicking first notebook (opens in window), does the list view remain visible for clicking the second? Or does the router navigate away? If `router-push.js` intercepts and calls `Galaxy.frame.add()` without routing, the list should stay. Need to verify.
+3. **Markdown.vue `download-endpoint` required** — it's a required prop (no default). We pass `""` but need to confirm it doesn't error with empty string.
+4. **HistoryOptions `:to=` vs `@click`** — changing from `:to=` to `@click` loses the visual "active route" indicator on the dropdown item. Worth the tradeoff? Alternative: keep `:to=` for non-WM case and only intercept when WM is active.
+
+#### Research Answers
+
+**Q1 Answer: HistoryDatasetDisplay renders as a `<BCard>` with `.embedded-dataset` content.**
+
+`HistoryDatasetDisplay.vue` wraps content in a Bootstrap `<BCard>` (no custom class on the card itself, `body-class="p-0"`). Inside, dataset text/code content renders in `<pre class="embedded-dataset">` (collapsed, height 10rem) or `<pre class="embedded-dataset-expanded">` (expanded, height 30rem). Tabular data renders with class `.tabular-dataset-table` on a `<GTable>`. Related components follow the same pattern: `HistoryDatasetAsTable.vue` also uses `.embedded-dataset`, `HistoryDatasetDetails.vue` uses `.dataset-name`/`.dataset-peek`/etc., `HistoryDatasetIndex.vue` uses `.dataset-index`. **For Test 5.4.4, use `.embedded-dataset` as the primary selector** — it's the most reliable indicator that a dataset directive rendered successfully. The `.card` (Bootstrap) wrapper is too generic.
+
+**Q2 Answer: YES, the list stays visible — `router-push.js` returns early without routing.**
+
+When `handleSelect` calls `router.push(url, { title: "...", preventWindowManager: false })` and WM is active, `router-push.js` (line 39) evaluates `title && !preventWindowManager && Galaxy.frame && Galaxy.frame.active` as true, calls `Galaxy.frame.add({ title, url: location })`, and then `return;` on line 41 — `originalPush` is NEVER called. `WindowManager.add()` only creates a WinBox iframe; it does not trigger any route change. The Vue Router's current route stays unchanged, so the `HistoryNotebookView` component keeps its current props (`notebookId` remains undefined) and continues rendering the list. Test 5.4.5 (multiple notebook windows) is therefore valid — both items remain clickable. **Confirmed: the list view persists after WM intercept.**
+
+**Q3 Answer: NO error — download UI is guarded by `v-if="effectiveExportLink"` and never renders.**
+
+`Markdown.vue` declares `downloadEndpoint: string` (line 31) without a default, but an empty string is a valid string. The download UI (lines 102-124) only renders inside `<template v-if="effectiveExportLink">`, where `effectiveExportLink` (line 44) evaluates to `props.enable_beta_markdown_export ? props.exportLink : null`. If `enable_beta_markdown_export` is not passed (undefined/falsy), the computed returns `null`, the `v-if` is false, and neither `StsDownloadButton` nor `onDirectGeneratePDF` are ever used. The empty `downloadEndpoint` string is never accessed at runtime. **Confirmed safe: pass `download-endpoint=""` without `enable_beta_markdown_export` and no error occurs.**
+
+**Q4 Answer: Keep `:to=` — the active route indicator is invisible in a transient dropdown, so there's no real tradeoff.**
+
+Bootstrap-vue's `:to=` adds `.dropdown-item.active` styling (blue text, `font-weight: 600` per `overrides.scss`), but this only applies WHILE the dropdown is open and the route matches. The dropdown closes immediately after click, making the indicator invisible to the user. All other navigation items in HistoryOptions use `:to=` — switching one to `@click` breaks consistency for zero UX gain. The WM-aware `handleSelect` in `HistoryNotebookView.vue` (Task 5.3) already handles the WM intercept when a specific notebook is clicked from the list, so the menu entry just needs to navigate to the list view normally. **Recommendation: keep `:to=` on HistoryOptions. Drop Task 5.4 entirely — it adds complexity for no benefit. WM integration is fully handled by Task 5.3.**
+
+---
+
+## ✅ Phase 6: Revision UI - COMPLETE
+
+**Completed 2026-02-12.** See [`HISTORY_MARKDOWN_PHASE_6.md`](HISTORY_MARKDOWN_PHASE_6.md) for detailed plan.
+
+Backend: `HistoryNotebookRevisionDetails` schema, `show_revision` + `revert_to_revision` endpoints, `restore_revision()` manager method. Frontend: `NotebookRevisionList.vue`, `NotebookRevisionView.vue`, revision state/actions in store, inline 300px side panel with Revisions toolbar button + badge. Tests: 3 API tests, 9 vitest unit tests, 4 selenium E2E tests.
 
 ---
 
@@ -2806,37 +3413,43 @@ export const notebookRevisionFields = [
 ### 7.1 Drag Source
 
 **Files to modify:**
+
 - `client/src/components/History/Content/ContentItem.vue`
 
 Add notebook-specific drag data:
 
 ```javascript
 function handleDragStart(event, item) {
-    event.dataTransfer.setData("application/x-galaxy-hid", String(item.hid));
-    event.dataTransfer.setData("application/x-galaxy-item-type", item.history_content_type);
+  event.dataTransfer.setData("application/x-galaxy-hid", String(item.hid));
+  event.dataTransfer.setData(
+    "application/x-galaxy-item-type",
+    item.history_content_type,
+  );
 }
 ```
 
 ### 7.2 Drop Target
 
 **Files to modify:**
+
 - `client/src/components/Markdown/Editor/TextEditor.vue`
 
 Add drop handling for history_notebook mode:
 
 ```javascript
 function handleDrop(event) {
-    if (props.mode !== "history_notebook") return;
+  if (props.mode !== "history_notebook") return;
 
-    const hid = event.dataTransfer.getData("application/x-galaxy-hid");
-    const itemType = event.dataTransfer.getData("application/x-galaxy-item-type");
+  const hid = event.dataTransfer.getData("application/x-galaxy-hid");
+  const itemType = event.dataTransfer.getData("application/x-galaxy-item-type");
 
-    if (hid) {
-        const directive = itemType === "dataset_collection"
-            ? "history_dataset_collection_display"
-            : "history_dataset_display";
-        insertAtCursor(`\`\`\`galaxy\n${directive}(hid=${hid})\n\`\`\``);
-    }
+  if (hid) {
+    const directive =
+      itemType === "dataset_collection"
+        ? "history_dataset_collection_display"
+        : "history_dataset_display";
+    insertAtCursor(`\`\`\`galaxy\n${directive}(hid=${hid})\n\`\`\``);
+  }
 }
 ```
 
@@ -2849,6 +3462,7 @@ function handleDrop(event) {
 ### 8.1 Backend
 
 **Files to modify:**
+
 - `lib/galaxy/managers/history_notebooks.py`
 
 Add method:
@@ -2959,11 +3573,13 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 ### 10.1 Split View Layout
 
 **Files to create:**
+
 - `client/src/components/HistoryNotebook/HistoryNotebookSplit.vue`
 
 ### 10.2 Chat Panel
 
 **Files to create:**
+
 - `client/src/components/HistoryNotebook/ChatPanel.vue`
 - `client/src/components/HistoryNotebook/ChatMessage.vue`
 
@@ -2980,42 +3596,42 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 
 ### API Integration Tests
 
-| Test Class | Location | Coverage |
-|------------|----------|----------|
-| `TestHistoryNotebooksApi` | `lib/galaxy_test/api/test_history_notebooks.py` | CRUD operations, multiple notebooks |
+| Test Class                        | Location                                        | Coverage                                |
+| --------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| `TestHistoryNotebooksApi`         | `lib/galaxy_test/api/test_history_notebooks.py` | CRUD operations, multiple notebooks     |
 | `TestHistoryNotebookRevisionsApi` | `lib/galaxy_test/api/test_history_notebooks.py` | Revision listing, ordering, edit_source |
-| `TestHistoryNotebooksPermissions` | `lib/galaxy_test/api/test_history_notebooks.py` | 403/404 errors, shared history access |
-| `TestHistoryNotebooksHidContent` | `lib/galaxy_test/api/test_history_notebooks.py` | HID preservation, multiple HIDs |
+| `TestHistoryNotebooksPermissions` | `lib/galaxy_test/api/test_history_notebooks.py` | 403/404 errors, shared history access   |
+| `TestHistoryNotebooksHidContent`  | `lib/galaxy_test/api/test_history_notebooks.py` | HID preservation, multiple HIDs         |
 
 ### Populator Methods
 
-| Method | Purpose |
-|--------|---------|
-| `new_history_notebook()` / `_raw()` / `_payload()` | Create notebook |
-| `get_history_notebook()` / `_raw()` | Get notebook by ID |
-| `list_history_notebooks()` | List notebooks for history |
-| `update_history_notebook()` / `_raw()` | Update notebook (creates revision) |
-| `delete_history_notebook()` / `_raw()` | Soft-delete notebook |
-| `undelete_history_notebook()` / `_raw()` | Restore deleted notebook |
-| `list_history_notebook_revisions()` | List revisions for notebook |
+| Method                                             | Purpose                            |
+| -------------------------------------------------- | ---------------------------------- |
+| `new_history_notebook()` / `_raw()` / `_payload()` | Create notebook                    |
+| `get_history_notebook()` / `_raw()`                | Get notebook by ID                 |
+| `list_history_notebooks()`                         | List notebooks for history         |
+| `update_history_notebook()` / `_raw()`             | Update notebook (creates revision) |
+| `delete_history_notebook()` / `_raw()`             | Soft-delete notebook               |
+| `undelete_history_notebook()` / `_raw()`           | Restore deleted notebook           |
+| `list_history_notebook_revisions()`                | List revisions for notebook        |
 
 ### Unit Tests
 
-| Component | Location | Coverage |
-|-----------|----------|----------|
-| HistoryNotebook model | `test/unit/data/model/` | Model constraints, relationships |
-| resolve_history_markdown() | `test/unit/managers/` | HID→ID resolution, error cases |
-| historyNotebookStore | `client/src/stores/__tests__/` | State transitions, dirty tracking |
-| HID toolbox emission | `client/src/components/Markdown/__tests__/` | Format verification |
+| Component                  | Location                                    | Coverage                          |
+| -------------------------- | ------------------------------------------- | --------------------------------- |
+| HistoryNotebook model      | `test/unit/data/model/`                     | Model constraints, relationships  |
+| resolve_history_markdown() | `test/unit/managers/`                       | HID→ID resolution, error cases    |
+| historyNotebookStore       | `client/src/stores/__tests__/`              | State transitions, dirty tracking |
+| HID toolbox emission       | `client/src/components/Markdown/__tests__/` | Format verification               |
 
 ### E2E Tests (Selenium/Playwright)
 
-| Flow | Description |
-|------|-------------|
-| New notebook | Create history → Create notebook → Verify empty state |
-| Insert dataset | Open toolbox → Select dataset → Verify hid= format |
-| Save and reload | Edit → Save → Reload → Verify persistence |
-| Export to Page | Create notebook → Export → Verify Page created |
+| Flow            | Description                                           |
+| --------------- | ----------------------------------------------------- |
+| New notebook    | Create history → Create notebook → Verify empty state |
+| Insert dataset  | Open toolbox → Select dataset → Verify hid= format    |
+| Save and reload | Edit → Save → Reload → Verify persistence             |
+| Export to Page  | Create notebook → Export → Verify Page created        |
 
 ---
 
@@ -3023,58 +3639,58 @@ def transform_notebook_to_report(content: str, hid_map: dict) -> str:
 
 ### Must Create (Backend)
 
-| File | Purpose |
-|------|---------|
-| `lib/galaxy/managers/history_notebooks.py` | Manager layer |
-| `lib/galaxy/webapps/galaxy/api/history_notebooks.py` | API endpoints |
-| `lib/galaxy/model/migrations/alembic/versions_gxy/XXX_add_history_notebook.py` | DB migration |
-| `lib/galaxy_test/api/test_history_notebooks.py` | API integration tests |
+| File                                                                           | Purpose               |
+| ------------------------------------------------------------------------------ | --------------------- |
+| `lib/galaxy/managers/history_notebooks.py`                                     | Manager layer         |
+| `lib/galaxy/webapps/galaxy/api/history_notebooks.py`                           | API endpoints         |
+| `lib/galaxy/model/migrations/alembic/versions_gxy/XXX_add_history_notebook.py` | DB migration          |
+| `lib/galaxy_test/api/test_history_notebooks.py`                                | API integration tests |
 
 ### Must Modify (Backend)
 
-| File | Change |
-|------|--------|
-| `lib/galaxy/model/__init__.py` | Add HistoryNotebook, HistoryNotebookRevision models |
-| `lib/galaxy/schema/schema.py` | Add Pydantic schemas |
-| `lib/galaxy/managers/markdown_parse.py` | Add `hid` to VALID_ARGUMENTS |
-| `lib/galaxy/managers/markdown_util.py` | Add resolve_history_markdown() |
-| `lib/galaxy/webapps/galaxy/api/__init__.py` | Register router |
-| `lib/galaxy_test/base/populators.py` | Add history notebook helper methods to BaseDatasetPopulator |
+| File                                        | Change                                                      |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| `lib/galaxy/model/__init__.py`              | Add HistoryNotebook, HistoryNotebookRevision models         |
+| `lib/galaxy/schema/schema.py`               | Add Pydantic schemas                                        |
+| `lib/galaxy/managers/markdown_parse.py`     | Add `hid` to VALID_ARGUMENTS                                |
+| `lib/galaxy/managers/markdown_util.py`      | Add resolve_history_markdown()                              |
+| `lib/galaxy/webapps/galaxy/api/__init__.py` | Register router                                             |
+| `lib/galaxy_test/base/populators.py`        | Add history notebook helper methods to BaseDatasetPopulator |
 
 ### Must Create (Frontend)
 
-| File | Purpose |
-|------|---------|
-| `client/src/api/historyNotebooks.ts` | API client (list + CRUD) |
-| `client/src/stores/historyNotebookStore.ts` | State management (list + current) |
-| `client/src/components/HistoryNotebook/HistoryNotebookView.vue` | Main view container |
-| `client/src/components/HistoryNotebook/HistoryNotebookList.vue` | Notebook list view |
-| `client/src/components/HistoryNotebook/HistoryNotebookEditor.vue` | Editor wrapper |
+| File                                                              | Purpose                           |
+| ----------------------------------------------------------------- | --------------------------------- |
+| `client/src/api/historyNotebooks.ts`                              | API client (list + CRUD)          |
+| `client/src/stores/historyNotebookStore.ts`                       | State management (list + current) |
+| `client/src/components/HistoryNotebook/HistoryNotebookView.vue`   | Main view container               |
+| `client/src/components/HistoryNotebook/HistoryNotebookList.vue`   | Notebook list view                |
+| `client/src/components/HistoryNotebook/HistoryNotebookEditor.vue` | Editor wrapper                    |
 
 ### Must Modify (Frontend)
 
-| File | Change |
-|------|--------|
-| `client/src/entry/analysis/router.js` | Add notebook list + detail routes |
-| `client/src/components/History/HistoryOptions.vue` | Add entry point (links to list) |
-| `client/src/components/Markdown/MarkdownEditor.vue` | Add history_notebook mode |
-| `client/src/components/Markdown/MarkdownToolBox.vue` | Add mode detection, HID emission |
-| `client/src/components/Markdown/MarkdownDialog.vue` | Emit hid= format |
-| `client/src/components/Markdown/directives.ts` | Add history_notebook mode type |
+| File                                                 | Change                            |
+| ---------------------------------------------------- | --------------------------------- |
+| `client/src/entry/analysis/router.js`                | Add notebook list + detail routes |
+| `client/src/components/History/HistoryOptions.vue`   | Add entry point (links to list)   |
+| `client/src/components/Markdown/MarkdownEditor.vue`  | Add history_notebook mode         |
+| `client/src/components/Markdown/MarkdownToolBox.vue` | Add mode detection, HID emission  |
+| `client/src/components/Markdown/MarkdownDialog.vue`  | Emit hid= format                  |
+| `client/src/components/Markdown/directives.ts`       | Add history_notebook mode type    |
 
 ---
 
 ## Resolved Design Decisions
 
-| Question | Decision |
-|----------|----------|
-| Notebooks per history | **Multiple allowed** - no unique constraint on history_id, list view shows all notebooks |
-| Notebook title | Default to history name, allow user override via UI |
-| Notebook deletion | Soft-delete with deleted/purged flags (standard Galaxy pattern). Notebooks not cascade-deleted when history is deleted. |
-| HIDs outside history | Items from previous workflow steps outside history become workflow inputs on extraction |
-| Content size limit | None - Pages use TEXT with no limit, notebooks follow same pattern |
-| Concurrent editing | Not a concern - histories are user-scoped (same as Pages/Reports) |
-| Search/indexing | Out of scope for this plan |
+| Question              | Decision                                                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Notebooks per history | **Multiple allowed** - no unique constraint on history_id, list view shows all notebooks                                |
+| Notebook title        | Default to history name, allow user override via UI                                                                     |
+| Notebook deletion     | Soft-delete with deleted/purged flags (standard Galaxy pattern). Notebooks not cascade-deleted when history is deleted. |
+| HIDs outside history  | Items from previous workflow steps outside history become workflow inputs on extraction                                 |
+| Content size limit    | None - Pages use TEXT with no limit, notebooks follow same pattern                                                      |
+| Concurrent editing    | Not a concern - histories are user-scoped (same as Pages/Reports)                                                       |
+| Search/indexing       | Out of scope for this plan                                                                                              |
 
 ---
 

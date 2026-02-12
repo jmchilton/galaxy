@@ -7,8 +7,13 @@ import {
     deleteHistoryNotebook,
     fetchHistoryNotebook,
     fetchHistoryNotebooks,
+    fetchNotebookRevision,
+    fetchNotebookRevisions,
     type HistoryNotebookDetails,
+    type HistoryNotebookRevisionDetails,
+    type HistoryNotebookRevisionSummary,
     type HistoryNotebookSummary,
+    revertNotebookRevision,
     updateHistoryNotebook,
     type UpdateNotebookPayload,
 } from "@/api/historyNotebooks";
@@ -25,10 +30,20 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     const error = ref<string | null>(null);
     const historyId = ref<string | null>(null);
 
+    // Revision state
+    const revisions = ref<HistoryNotebookRevisionSummary[]>([]);
+    const selectedRevision = ref<HistoryNotebookRevisionDetails | null>(null);
+    const isLoadingRevisions = ref(false);
+    const isLoadingRevision = ref(false);
+    const isReverting = ref(false);
+    const showRevisions = ref(false);
+
     const hasNotebooks = computed(() => notebooks.value.length > 0);
     const hasCurrentNotebook = computed(() => currentNotebook.value !== null);
     const isDirty = computed(() => currentContent.value !== originalContent.value);
     const canSave = computed(() => isDirty.value && !isSaving.value);
+    const revisionCount = computed(() => revisions.value.length);
+    const hasRevisions = computed(() => revisions.value.length > 1);
 
     async function loadNotebooks(newHistoryId: string) {
         historyId.value = newHistoryId;
@@ -142,6 +157,79 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         originalContent.value = "";
         currentContent.value = "";
         currentTitle.value = "";
+        clearRevisionState();
+    }
+
+    // --- Revision actions ---
+
+    async function loadRevisions() {
+        if (!historyId.value || !currentNotebook.value) {
+            return;
+        }
+        isLoadingRevisions.value = true;
+        try {
+            revisions.value = await fetchNotebookRevisions(historyId.value, currentNotebook.value.id);
+        } catch (e: any) {
+            error.value = e.message || "Failed to load revisions";
+        } finally {
+            isLoadingRevisions.value = false;
+        }
+    }
+
+    async function loadRevision(revisionId: string) {
+        if (!historyId.value || !currentNotebook.value) {
+            return;
+        }
+        isLoadingRevision.value = true;
+        try {
+            selectedRevision.value = await fetchNotebookRevision(historyId.value, currentNotebook.value.id, revisionId);
+        } catch (e: any) {
+            error.value = e.message || "Failed to load revision";
+        } finally {
+            isLoadingRevision.value = false;
+        }
+    }
+
+    async function restoreRevision(revisionId: string) {
+        if (!historyId.value || !currentNotebook.value) {
+            return;
+        }
+        isReverting.value = true;
+        try {
+            const data = await revertNotebookRevision(historyId.value, currentNotebook.value.id, revisionId);
+            currentNotebook.value = data;
+            originalContent.value = data.content || "";
+            currentContent.value = data.content || "";
+            selectedRevision.value = null;
+            showRevisions.value = false;
+            await loadRevisions();
+        } catch (e: any) {
+            error.value = e.message || "Failed to restore revision";
+        } finally {
+            isReverting.value = false;
+        }
+    }
+
+    function toggleRevisions() {
+        showRevisions.value = !showRevisions.value;
+        if (showRevisions.value) {
+            loadRevisions();
+        } else {
+            selectedRevision.value = null;
+        }
+    }
+
+    function clearSelectedRevision() {
+        selectedRevision.value = null;
+    }
+
+    function clearRevisionState() {
+        revisions.value = [];
+        selectedRevision.value = null;
+        isLoadingRevisions.value = false;
+        isLoadingRevision.value = false;
+        isReverting.value = false;
+        showRevisions.value = false;
     }
 
     function $reset() {
@@ -155,6 +243,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         isSaving.value = false;
         error.value = null;
         historyId.value = null;
+        clearRevisionState();
     }
 
     return {
@@ -180,6 +269,21 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         updateTitle,
         discardChanges,
         clearCurrentNotebook,
+        // Revision state
+        revisions,
+        selectedRevision,
+        isLoadingRevisions,
+        isLoadingRevision,
+        isReverting,
+        showRevisions,
+        revisionCount,
+        hasRevisions,
+        // Revision actions
+        loadRevisions,
+        loadRevision,
+        restoreRevision,
+        toggleRevisions,
+        clearSelectedRevision,
         $reset,
     };
 });
