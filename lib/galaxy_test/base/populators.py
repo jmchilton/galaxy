@@ -2053,9 +2053,7 @@ class BaseDatasetPopulator(BasePopulator):
         title: Optional[str] = None,
     ) -> dict[str, Any]:
         """Update a history notebook, assert success, return dict."""
-        response = self.update_history_notebook_raw(
-            history_id, notebook_id, content=content, title=title
-        )
+        response = self.update_history_notebook_raw(history_id, notebook_id, content=content, title=title)
         api_asserts.assert_status_code_is(response, 200)
         return response.json()
 
@@ -2077,13 +2075,37 @@ class BaseDatasetPopulator(BasePopulator):
         response = self.undelete_history_notebook_raw(history_id, notebook_id)
         api_asserts.assert_status_code_is(response, 204)
 
-    def list_history_notebook_revisions(
-        self, history_id: str, notebook_id: str
-    ) -> list[dict[str, Any]]:
+    def list_history_notebook_revisions(self, history_id: str, notebook_id: str) -> list[dict[str, Any]]:
         """List all revisions for a notebook."""
         response = self._get(f"histories/{history_id}/notebooks/{notebook_id}/revisions")
         api_asserts.assert_status_code_is(response, 200)
         return response.json()
+
+    def get_history_notebook_revision(self, history_id: str, notebook_id: str, revision_id: str) -> dict[str, Any]:
+        """Get a specific revision by ID."""
+        response = self._get(f"histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}")
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def get_history_notebook_revision_raw(self, history_id: str, notebook_id: str, revision_id: str) -> Response:
+        """Get a specific revision by ID, return raw Response."""
+        return self._get(f"histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}")
+
+    def revert_history_notebook_revision(self, history_id: str, notebook_id: str, revision_id: str) -> dict[str, Any]:
+        """Restore notebook to a revision, return updated notebook."""
+        response = self._post(
+            f"histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}/revert",
+            json=True,
+        )
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
+    def revert_history_notebook_revision_raw(self, history_id: str, notebook_id: str, revision_id: str) -> Response:
+        """Restore notebook to a revision, return raw Response."""
+        return self._post(
+            f"histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}/revert",
+            json=True,
+        )
 
     def export_history_to_uri_async(
         self, history_id: str, target_uri: str, model_store_format: str = "tgz", include_files: bool = True

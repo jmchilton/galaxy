@@ -10,6 +10,8 @@ import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
 import HistoryNotebookView from "./HistoryNotebookView.vue";
+import NotebookRevisionList from "./NotebookRevisionList.vue";
+import NotebookRevisionView from "./NotebookRevisionView.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
 
 const mockPush = vi.fn();
@@ -51,6 +53,8 @@ const SELECTORS = {
     SAVE_BUTTON: ".notebook-toolbar bbutton-stub[variant='primary']",
     BACK_BUTTON: ".notebook-toolbar bbutton-stub[variant='link']",
     UNSAVED_INDICATOR: ".notebook-toolbar .text-warning",
+    REVISIONS_BUTTON: ".notebook-toolbar bbutton-stub[variant='outline-secondary']",
+    REVISION_PANEL: ".notebook-revision-panel",
 };
 
 let pinia: Pinia;
@@ -407,6 +411,156 @@ describe("HistoryNotebookView", () => {
 
             wrapper.destroy();
             expect(store.$reset).toHaveBeenCalled();
+        });
+    });
+
+    describe("Revision UI", () => {
+        function setupEditorView() {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = {
+                id: NOTEBOOK_ID,
+                history_id: HISTORY_ID,
+                title: "My Notebook",
+                content: "# Hello",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            store.currentContent = "# Hello";
+            store.currentTitle = "My Notebook";
+            return store;
+        }
+
+        it("shows Revisions button in toolbar", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const revBtn = wrapper.find(SELECTORS.REVISIONS_BUTTON);
+            expect(revBtn.exists()).toBe(true);
+            expect(revBtn.text()).toContain("Revisions");
+        });
+
+        it("clicking Revisions button calls store.toggleRevisions", async () => {
+            const store = setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const revBtn = wrapper.find(SELECTORS.REVISIONS_BUTTON);
+            await revBtn.trigger("click");
+
+            expect(store.toggleRevisions).toHaveBeenCalled();
+        });
+
+        it("shows revision panel when store.showRevisions is true", async () => {
+            const store = setupEditorView();
+            store.showRevisions = true;
+            store.revisions = [] as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.REVISION_PANEL).exists()).toBe(true);
+            expect(wrapper.findComponent(NotebookRevisionList).exists()).toBe(true);
+        });
+
+        it("hides revision panel when store.showRevisions is false", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.REVISION_PANEL).exists()).toBe(false);
+        });
+
+        it("shows NotebookRevisionView when selectedRevision is set", async () => {
+            const store = setupEditorView();
+            store.selectedRevision = {
+                id: "rev-1",
+                notebook_id: NOTEBOOK_ID,
+                content: "# Old content",
+                content_format: "markdown",
+                edit_source: "user",
+                create_time: "2024-01-01T00:00:00",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(wrapper.findComponent(NotebookRevisionView).exists()).toBe(true);
+            expect(wrapper.find(SELECTORS.TOOLBAR).exists()).toBe(false);
+            expect(wrapper.findComponent(HistoryNotebookEditor).exists()).toBe(false);
+        });
+
+        it("revision badge shows count when revisions loaded", async () => {
+            const store = setupEditorView();
+            store.revisions = [
+                { id: "rev-1", notebook_id: NOTEBOOK_ID, edit_source: "user", create_time: "", update_time: "" },
+                { id: "rev-2", notebook_id: NOTEBOOK_ID, edit_source: "user", create_time: "", update_time: "" },
+            ] as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const badge = wrapper.find(SELECTORS.REVISIONS_BUTTON + " bbadge-stub");
+            expect(badge.exists()).toBe(true);
+            expect(badge.text()).toBe("2");
+        });
+
+        it("NotebookRevisionView back emits clearSelectedRevision", async () => {
+            const store = setupEditorView();
+            store.selectedRevision = {
+                id: "rev-1",
+                notebook_id: NOTEBOOK_ID,
+                content: "# Old",
+                content_format: "markdown",
+                edit_source: "user",
+                create_time: "2024-01-01T00:00:00",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const revView = wrapper.findComponent(NotebookRevisionView);
+            revView.vm.$emit("back");
+            await wrapper.vm.$nextTick();
+
+            expect(store.clearSelectedRevision).toHaveBeenCalled();
+        });
+
+        it("NotebookRevisionView restore calls store.restoreRevision", async () => {
+            const store = setupEditorView();
+            store.selectedRevision = {
+                id: "rev-1",
+                notebook_id: NOTEBOOK_ID,
+                content: "# Old",
+                content_format: "markdown",
+                edit_source: "user",
+                create_time: "2024-01-01T00:00:00",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const revView = wrapper.findComponent(NotebookRevisionView);
+            revView.vm.$emit("restore", "rev-1");
+            await wrapper.vm.$nextTick();
+
+            expect(store.restoreRevision).toHaveBeenCalledWith("rev-1");
+        });
+
+        it("revision panel select calls store.loadRevision", async () => {
+            const store = setupEditorView();
+            store.showRevisions = true;
+            store.revisions = [
+                { id: "rev-1", notebook_id: NOTEBOOK_ID, edit_source: "user", create_time: "", update_time: "" },
+            ] as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const revList = wrapper.findComponent(NotebookRevisionList);
+            revList.vm.$emit("select", "rev-1");
+            await wrapper.vm.$nextTick();
+
+            expect(store.loadRevision).toHaveBeenCalledWith("rev-1");
         });
     });
 });

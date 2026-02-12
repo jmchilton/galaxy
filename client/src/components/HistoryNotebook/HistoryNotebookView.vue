@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { faArrowLeft, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faHistory, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BAlert, BButton } from "bootstrap-vue";
+import { BAlert, BBadge, BButton } from "bootstrap-vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router/composables";
 
@@ -12,6 +12,8 @@ import { useHistoryStore } from "@/stores/historyStore";
 
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
+import NotebookRevisionList from "./NotebookRevisionList.vue";
+import NotebookRevisionView from "./NotebookRevisionView.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
 
 const props = defineProps<{
@@ -110,6 +112,14 @@ function handleBack() {
 async function handleSave() {
     await store.saveNotebook();
 }
+
+function handleRevisionSelect(revisionId: string) {
+    store.loadRevision(revisionId);
+}
+
+function handleRevisionRestore(revisionId: string) {
+    store.restoreRevision(revisionId);
+}
 </script>
 
 <template>
@@ -138,7 +148,16 @@ async function handleSave() {
             </div>
         </template>
 
-        <!-- Notebook loaded in edit mode -- toolbar + editor -->
+        <!-- Notebook loaded: viewing a specific revision -->
+        <template v-else-if="store.hasCurrentNotebook && store.selectedRevision">
+            <NotebookRevisionView
+                :revision="store.selectedRevision"
+                :is-reverting="store.isReverting"
+                @back="store.clearSelectedRevision"
+                @restore="handleRevisionRestore" />
+        </template>
+
+        <!-- Notebook loaded in edit mode -- toolbar + editor + optional revision panel -->
         <template v-else-if="store.hasCurrentNotebook">
             <div
                 class="notebook-toolbar d-flex align-items-center p-2 border-bottom"
@@ -150,6 +169,18 @@ async function handleSave() {
                 <span class="flex-grow-1 text-center font-weight-bold" data-description="notebook toolbar title">
                     {{ store.currentTitle || "Untitled Notebook" }}
                 </span>
+                <BButton
+                    variant="outline-secondary"
+                    size="sm"
+                    class="mr-2"
+                    data-description="notebook revisions button"
+                    @click="store.toggleRevisions">
+                    <FontAwesomeIcon :icon="faHistory" />
+                    Revisions
+                    <BBadge v-if="store.revisionCount > 0" variant="light" class="ml-1">
+                        {{ store.revisionCount }}
+                    </BBadge>
+                </BButton>
                 <BButton
                     variant="primary"
                     size="sm"
@@ -167,11 +198,21 @@ async function handleSave() {
                 </span>
             </div>
 
-            <div class="notebook-content flex-grow-1 overflow-auto">
-                <HistoryNotebookEditor
-                    :history-id="historyId"
-                    :content="store.currentContent"
-                    @update:content="store.updateContent" />
+            <div class="notebook-body d-flex flex-grow-1 overflow-hidden">
+                <div class="notebook-content flex-grow-1 overflow-auto">
+                    <HistoryNotebookEditor
+                        :history-id="historyId"
+                        :content="store.currentContent"
+                        @update:content="store.updateContent" />
+                </div>
+                <div v-if="store.showRevisions" class="notebook-revision-panel border-left">
+                    <NotebookRevisionList
+                        :revisions="store.revisions"
+                        :is-loading="store.isLoadingRevisions"
+                        :is-reverting="store.isReverting"
+                        @select="handleRevisionSelect"
+                        @restore="handleRevisionRestore" />
+                </div>
             </div>
         </template>
 
@@ -191,5 +232,11 @@ async function handleSave() {
 }
 .notebook-content {
     padding: 1rem;
+}
+.notebook-revision-panel {
+    width: 300px;
+    min-width: 300px;
+    overflow-y: auto;
+    background: var(--body-bg);
 }
 </style>

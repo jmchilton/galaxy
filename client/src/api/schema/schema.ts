@@ -2829,6 +2829,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a specific revision with content.
+         * @description Get a specific revision by ID, including content.
+         */
+        get: operations["show_revision_api_histories__history_id__notebooks__notebook_id__revisions__revision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/histories/{history_id}/notebooks/{notebook_id}/revisions/{revision_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore notebook to a previous revision.
+         * @description Restore notebook to a previous revision. Creates a new revision with the old content.
+         */
+        post: operations["revert_to_revision_api_histories__history_id__notebooks__notebook_id__revisions__revision_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/histories/{history_id}/notebooks/{notebook_id}/undelete": {
         parameters: {
             query?: never;
@@ -15656,6 +15696,35 @@ export interface components {
          * @default []
          */
         HistoryNotebookList: components["schemas"]["HistoryNotebookSummary"][];
+        /** HistoryNotebookRevisionDetails */
+        HistoryNotebookRevisionDetails: {
+            /** Content */
+            content?: string | null;
+            /** @default markdown */
+            content_format: components["schemas"]["NotebookContentFormat"];
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            /** Edit Source */
+            edit_source?: string | null;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * Notebook Id
+             * @example 0123456789ABCDEF
+             */
+            notebook_id: string;
+            /**
+             * Update Time
+             * Format: date-time
+             */
+            update_time: string;
+        };
         /**
          * HistoryNotebookRevisionList
          * @default []
@@ -35186,6 +35255,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HistoryNotebookRevisionList"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    show_revision_api_histories__history_id__notebooks__notebook_id__revisions__revision_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+                /** @description The ID of the Revision. */
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revision details including content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookRevisionDetails"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    revert_to_revision_api_histories__history_id__notebooks__notebook_id__revisions__revision_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+                /** @description The ID of the Revision. */
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The newly created revision (copy of the restored content). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNotebookDetails"];
                 };
             };
             /** @description Request Error */

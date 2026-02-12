@@ -2220,6 +2220,18 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         items = self.components.history_notebooks.notebook_item.all()
         assert len(items) == n, f"Expected {n} notebook items, found {len(items)}"
 
+    def history_notebook_open_revisions(self):
+        """Click Revisions button in notebook toolbar."""
+        self.components.history_notebooks.revisions_button.wait_for_and_click()
+        self.components.history_notebooks.revision_list.wait_for_visible()
+        self.components.history_notebooks.revision_item.wait_for_visible()
+
+    @retry_during_transitions
+    def history_notebook_assert_revision_count(self, n):
+        """Assert the revision list shows exactly n items."""
+        items = self.components.history_notebooks.revision_item.all()
+        assert len(items) == n, f"Expected {n} revision items, found {len(items)}"
+
     def history_notebook_insert_dataset_via_toolbox(self, hid, screenshot_name=None):
         """Insert a dataset reference via the markdown toolbox."""
         toolbox_entry = self.wait_for_selector_clickable(

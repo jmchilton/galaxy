@@ -4183,6 +4183,11 @@ class HistoryNotebookRevisionSummary(Model):
     update_time: datetime
 
 
+class HistoryNotebookRevisionDetails(HistoryNotebookRevisionSummary):
+    content: Optional[str] = None
+    content_format: NotebookContentFormat = NotebookContentFormat.markdown
+
+
 class HistoryNotebookRevisionList(RootModel):
     root: list[HistoryNotebookRevisionSummary] = Field(default=[])
 

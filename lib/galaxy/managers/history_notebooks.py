@@ -137,6 +137,26 @@ class HistoryNotebookManager:
             raise ObjectNotFound(f"Revision {revision_id} not found")
         return revision
 
+    def restore_revision(
+        self,
+        trans: ProvidesUserContext,
+        notebook: model.HistoryNotebook,
+        revision: model.HistoryNotebookRevision,
+    ) -> model.HistoryNotebookRevision:
+        """Restore a notebook to an old revision by creating a new revision with its content."""
+        new_revision = model.HistoryNotebookRevision()
+        new_revision.notebook = notebook
+        new_revision.content = revision.content
+        new_revision.content_format = revision.content_format
+        new_revision.edit_source = "restore"
+
+        notebook.latest_revision = new_revision
+
+        session = trans.sa_session
+        session.commit()
+
+        return new_revision
+
     def rewrite_content_for_export(self, trans: ProvidesUserContext, history: model.History, rval: dict) -> None:
         """Process notebook content for API response.
 
