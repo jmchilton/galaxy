@@ -3,13 +3,13 @@ import { computed, ref } from "vue";
 
 import {
     createHistoryNotebook,
+    type CreateNotebookPayload,
     deleteHistoryNotebook,
     fetchHistoryNotebook,
     fetchHistoryNotebooks,
-    updateHistoryNotebook,
-    type CreateNotebookPayload,
     type HistoryNotebookDetails,
     type HistoryNotebookSummary,
+    updateHistoryNotebook,
     type UpdateNotebookPayload,
 } from "@/api/historyNotebooks";
 
@@ -97,7 +97,9 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             };
             const data = await updateHistoryNotebook(historyId.value, currentNotebook.value.id, payload);
             currentNotebook.value = data;
-            originalContent.value = data.content || "";
+            // Use currentContent (what the user typed) as the baseline, not data.content
+            // which may be transformed by rewrite_content_for_export for rendering.
+            originalContent.value = currentContent.value;
         } catch (e: any) {
             error.value = e.message || "Failed to save notebook";
             throw e;

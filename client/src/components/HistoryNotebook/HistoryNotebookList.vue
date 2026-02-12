@@ -29,16 +29,16 @@ function formatDate(dateStr: string): string {
 </script>
 
 <template>
-    <div class="history-notebook-list">
+    <div class="history-notebook-list" data-description="history notebook list">
         <div class="list-header d-flex justify-content-between align-items-center p-3 border-bottom">
             <h4 class="mb-0">Notebooks</h4>
-            <BButton variant="primary" size="sm" @click="$emit('create')">
+            <BButton variant="primary" size="sm" data-description="create notebook button" @click="$emit('create')">
                 <FontAwesomeIcon :icon="faPlus" />
                 New Notebook
             </BButton>
         </div>
 
-        <div v-if="notebooks.length === 0" class="empty-state text-center p-4">
+        <div v-if="notebooks.length === 0" class="empty-state text-center p-4" data-description="notebook empty state">
             <p class="text-muted">No notebooks yet</p>
             <p class="text-muted small">
                 Create a notebook to document your analysis with rich markdown, embedded datasets, and visualizations.
@@ -50,10 +50,11 @@ function formatDate(dateStr: string): string {
                 v-for="notebook in notebooks"
                 :key="notebook.id"
                 class="notebook-item p-3 border-bottom cursor-pointer"
+                data-description="notebook item"
                 @click="$emit('select', notebook.id)">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="notebook-title fw-bold">
+                        <div class="notebook-title fw-bold" data-description="notebook title">
                             {{ getNotebookTitle(notebook) }}
                         </div>
                         <div class="notebook-meta text-muted small">Updated {{ formatDate(notebook.update_time) }}</div>

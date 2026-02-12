@@ -1,0 +1,333 @@
+import { createTestingPinia } from "@pinia/testing";
+import { getLocalVue } from "@tests/vitest/helpers";
+import { shallowMount, type Wrapper } from "@vue/test-utils";
+import flushPromises from "flush-promises";
+import type { Pinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
+
+import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
+import HistoryNotebookList from "./HistoryNotebookList.vue";
+import HistoryNotebookView from "./HistoryNotebookView.vue";
+
+const mockPush = vi.fn();
+vi.mock("vue-router/composables", () => ({
+    useRouter: vi.fn(() => ({
+        push: mockPush,
+    })),
+    useRoute: vi.fn(() => ({
+        params: {},
+    })),
+}));
+
+vi.mock("@/stores/historyStore", () => ({
+    useHistoryStore: vi.fn(() => ({
+        getHistoryById: vi.fn((id: string) => {
+            if (id === "history-1") {
+                return { id: "history-1", name: "Test History" };
+            }
+            return undefined;
+        }),
+    })),
+}));
+
+const localVue = getLocalVue();
+
+const HISTORY_ID = "history-1";
+const NOTEBOOK_ID = "notebook-1";
+
+const SELECTORS = {
+    INFO_ALERT: "balert-stub[variant='info']",
+    ERROR_ALERT: "balert-stub[variant='danger']",
+    TOOLBAR: ".notebook-toolbar",
+    TOOLBAR_TITLE: ".notebook-toolbar .flex-grow-1",
+    SAVE_BUTTON: ".notebook-toolbar bbutton-stub[variant='primary']",
+    BACK_BUTTON: ".notebook-toolbar bbutton-stub[variant='link']",
+    UNSAVED_INDICATOR: ".notebook-toolbar .text-warning",
+};
+
+let pinia: Pinia;
+
+function mountComponent(propsData: { historyId: string; notebookId?: string }) {
+    return shallowMount(HistoryNotebookView as object, {
+        localVue,
+        propsData,
+        pinia,
+    });
+}
+
+describe("HistoryNotebookView", () => {
+    beforeEach(() => {
+        pinia = createTestingPinia({ createSpy: vi.fn });
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    describe("Loading state", () => {
+        it("shows loading alert when isLoadingList is true", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = true;
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const alerts = wrapper.findAll(SELECTORS.INFO_ALERT);
+            const loadingAlert = alerts.wrappers.find((w) => w.text().includes("Loading notebooks"));
+            expect(loadingAlert).toBeTruthy();
+        });
+
+        it("shows loading alert when isLoadingNotebook is true and notebookId provided", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = true;
+            // hasCurrentNotebook is a computed - set currentNotebook to null so
+            // hasCurrentNotebook evaluates to false, falling through to the loading check
+            store.currentNotebook = null;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const alerts = wrapper.findAll(SELECTORS.INFO_ALERT);
+            const loadingAlert = alerts.wrappers.find((w) => w.text().includes("Loading notebook"));
+            expect(loadingAlert).toBeTruthy();
+        });
+    });
+
+    describe("Error state", () => {
+        it("shows error alert when store.error is set", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.error = "Something went wrong";
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const errorAlert = wrapper.find(SELECTORS.ERROR_ALERT);
+            expect(errorAlert.exists()).toBe(true);
+            expect(errorAlert.text()).toContain("Something went wrong");
+        });
+
+        it("error alert is dismissible", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.error = "Something went wrong";
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const errorAlert = wrapper.find(SELECTORS.ERROR_ALERT);
+            expect(errorAlert.attributes("dismissible")).toBe("true");
+        });
+    });
+
+    describe("List view (no notebookId)", () => {
+        it("shows HistoryNotebookList when no notebookId and not loading/error", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.error = null;
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            expect(wrapper.findComponent(HistoryNotebookList).exists()).toBe(true);
+        });
+
+        it("passes store.notebooks to HistoryNotebookList", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.error = null;
+            const fakeNotebooks = [
+                { id: "nb-1", history_id: HISTORY_ID, title: "NB1", deleted: false, create_time: "", update_time: "" },
+            ];
+            store.notebooks = fakeNotebooks as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const list = wrapper.findComponent(HistoryNotebookList);
+            expect(list.props("notebooks")).toEqual(fakeNotebooks);
+        });
+    });
+
+    describe("Editor view (with notebookId and current notebook loaded)", () => {
+        let wrapper: Wrapper<Vue>;
+        let store: ReturnType<typeof useHistoryNotebookStore>;
+
+        beforeEach(async () => {
+            store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = {
+                id: NOTEBOOK_ID,
+                history_id: HISTORY_ID,
+                title: "My Notebook",
+                content: "# Hello",
+            } as any;
+            store.currentContent = "# Hello";
+            store.currentTitle = "My Notebook";
+            wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+        });
+
+        it("shows toolbar and HistoryNotebookEditor when notebook is loaded", () => {
+            expect(wrapper.find(SELECTORS.TOOLBAR).exists()).toBe(true);
+            expect(wrapper.findComponent(HistoryNotebookEditor).exists()).toBe(true);
+        });
+
+        it("shows notebook title in toolbar", () => {
+            const titleEl = wrapper.find(SELECTORS.TOOLBAR_TITLE);
+            expect(titleEl.text()).toBe("My Notebook");
+        });
+
+        it("shows 'Untitled Notebook' when currentTitle is empty", async () => {
+            store.currentTitle = "";
+            await wrapper.vm.$nextTick();
+
+            const titleEl = wrapper.find(SELECTORS.TOOLBAR_TITLE);
+            expect(titleEl.text()).toBe("Untitled Notebook");
+        });
+
+        it("shows 'Unsaved' indicator when store.isDirty is true", async () => {
+            // isDirty is computed: currentContent !== originalContent.
+            // In testing pinia, originalContent defaults to "" while beforeEach sets
+            // currentContent to "# Hello", so isDirty is already true.
+            await wrapper.vm.$nextTick();
+
+            expect(store.isDirty).toBe(true);
+            const unsaved = wrapper.find(SELECTORS.UNSAVED_INDICATOR);
+            expect(unsaved.exists()).toBe(true);
+            expect(unsaved.text()).toBe("Unsaved");
+        });
+
+        it("save button is disabled when store.canSave is false", async () => {
+            // originalContent defaults to "" in the store and is not exported.
+            // Setting currentContent to "" makes isDirty=false, canSave=false.
+            store.currentContent = "";
+            await wrapper.vm.$nextTick();
+
+            expect(store.canSave).toBe(false);
+            const saveBtn = wrapper.find(SELECTORS.SAVE_BUTTON);
+            expect(saveBtn.attributes("disabled")).toBe("true");
+        });
+
+        it("passes content to HistoryNotebookEditor", () => {
+            const editor = wrapper.findComponent(HistoryNotebookEditor);
+            expect(editor.props("content")).toBe("# Hello");
+        });
+
+        it("passes historyId to HistoryNotebookEditor", () => {
+            const editor = wrapper.findComponent(HistoryNotebookEditor);
+            expect(editor.props("historyId")).toBe(HISTORY_ID);
+        });
+    });
+
+    describe("Navigation/Events", () => {
+        it("handleSelect navigates to notebook URL via router.push", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.error = null;
+            store.notebooks = [{ id: "nb-1", history_id: HISTORY_ID, title: "NB1" }] as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const list = wrapper.findComponent(HistoryNotebookList);
+            list.vm.$emit("select", "nb-1");
+            await wrapper.vm.$nextTick();
+
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/nb-1`);
+        });
+
+        it("handleCreate calls store.createNotebook and navigates on success", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.error = null;
+            store.notebooks = [] as any;
+            vi.mocked(store.createNotebook).mockResolvedValue({
+                id: "new-notebook",
+                history_id: HISTORY_ID,
+                title: "Untitled Notebook",
+                content: "",
+            } as any);
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const list = wrapper.findComponent(HistoryNotebookList);
+            list.vm.$emit("create");
+            await flushPromises();
+
+            expect(store.createNotebook).toHaveBeenCalledWith({ title: "Untitled Notebook" });
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/new-notebook`);
+        });
+
+        it("handleBack calls clearCurrentNotebook and navigates to list", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = { id: NOTEBOOK_ID, history_id: HISTORY_ID, title: "NB", content: "" } as any;
+            store.currentTitle = "NB";
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const backBtn = wrapper.find(SELECTORS.BACK_BUTTON);
+            await backBtn.trigger("click");
+
+            expect(store.clearCurrentNotebook).toHaveBeenCalled();
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks`);
+        });
+
+        it("handleSave calls store.saveNotebook", async () => {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = { id: NOTEBOOK_ID, history_id: HISTORY_ID, title: "NB", content: "" } as any;
+            store.currentTitle = "NB";
+            // canSave is true because currentContent differs from originalContent (defaults to "")
+            store.currentContent = "# Modified";
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(store.canSave).toBe(true);
+            const saveBtn = wrapper.find(SELECTORS.SAVE_BUTTON);
+            await saveBtn.trigger("click");
+            await flushPromises();
+
+            expect(store.saveNotebook).toHaveBeenCalled();
+        });
+    });
+
+    describe("Lifecycle", () => {
+        it("calls store.loadNotebooks on mount", async () => {
+            const store = useHistoryNotebookStore();
+            mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            expect(store.loadNotebooks).toHaveBeenCalledWith(HISTORY_ID);
+        });
+
+        it("calls store.loadNotebook on mount if notebookId provided", async () => {
+            const store = useHistoryNotebookStore();
+            mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(store.loadNotebook).toHaveBeenCalledWith(NOTEBOOK_ID);
+        });
+
+        it("does not call store.loadNotebook on mount when no notebookId", async () => {
+            const store = useHistoryNotebookStore();
+            mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            expect(store.loadNotebook).not.toHaveBeenCalled();
+        });
+
+        it("calls store.$reset on unmount", async () => {
+            const store = useHistoryNotebookStore();
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            wrapper.destroy();
+            expect(store.$reset).toHaveBeenCalled();
+        });
+    });
+});

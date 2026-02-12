@@ -337,6 +337,7 @@ history_panel:
       type: sizzle
       selector: '.history-options-button-menu > a:contains("${option_label}")'
     options_show_export_history_to_file: 'a[data-description="export to file"]'
+    notebooks_menu_item: '[data-description="history notebooks"]'
 
     collection_menu_button: '.collection-menu'
     collection_menu_edit_attributes: '.edit-btn'
@@ -623,6 +624,46 @@ pages:
   view:
     selectors:
       history_link: '[data-description="history import link"][data-history-id="${history_id}"]'
+
+history_notebooks:
+  selectors:
+    _:
+      type: data-description
+      selector: 'history notebook view'
+    list:
+      type: data-description
+      selector: 'history notebook list'
+    create_button:
+      type: data-description
+      selector: 'create notebook button'
+    empty_state:
+      type: data-description
+      selector: 'notebook empty state'
+    toolbar:
+      type: data-description
+      selector: 'notebook toolbar'
+    toolbar_title:
+      type: data-description
+      selector: 'notebook toolbar title'
+    back_button:
+      type: data-description
+      selector: 'notebook back button'
+    save_button:
+      type: data-description
+      selector: 'notebook save button'
+    unsaved_indicator:
+      type: data-description
+      selector: 'notebook unsaved indicator'
+    editor:
+      type: data-description
+      selector: 'history notebook editor'
+    markdown_editor: '.markdown-textarea'
+    notebook_item:
+      type: data-description
+      selector: 'notebook item'
+    notebook_title:
+      type: data-description
+      selector: 'notebook title'
 
 login:
   selectors:

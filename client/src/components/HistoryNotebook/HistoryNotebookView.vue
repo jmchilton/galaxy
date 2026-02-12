@@ -20,7 +20,7 @@ const router = useRouter();
 const store = useHistoryNotebookStore();
 const historyStore = useHistoryStore();
 
-const historyName = computed(() => {
+const _historyName = computed(() => {
     const history = historyStore.getHistoryById(props.historyId);
     return history?.name || "History";
 });
@@ -79,7 +79,7 @@ async function handleSave() {
 </script>
 
 <template>
-    <div class="history-notebook-view d-flex flex-column h-100">
+    <div class="history-notebook-view d-flex flex-column h-100" data-description="history notebook view">
         <BAlert v-if="store.isLoadingList" variant="info" show>
             <FontAwesomeIcon :icon="faSpinner" spin />
             Loading notebooks...
@@ -94,19 +94,31 @@ async function handleSave() {
         </template>
 
         <template v-else-if="store.hasCurrentNotebook">
-            <div class="notebook-toolbar d-flex align-items-center p-2 border-bottom">
-                <BButton variant="link" size="sm" @click="handleBack">
+            <div
+                class="notebook-toolbar d-flex align-items-center p-2 border-bottom"
+                data-description="notebook toolbar">
+                <BButton variant="link" size="sm" data-description="notebook back button" @click="handleBack">
                     <FontAwesomeIcon :icon="faArrowLeft" />
                     Back
                 </BButton>
-                <span class="flex-grow-1 text-center font-weight-bold">
+                <span class="flex-grow-1 text-center font-weight-bold" data-description="notebook toolbar title">
                     {{ store.currentTitle || "Untitled Notebook" }}
                 </span>
-                <BButton variant="primary" size="sm" :disabled="!store.canSave" @click="handleSave">
+                <BButton
+                    variant="primary"
+                    size="sm"
+                    data-description="notebook save button"
+                    :disabled="!store.canSave"
+                    @click="handleSave">
                     <FontAwesomeIcon :icon="store.isSaving ? faSpinner : faSave" :spin="store.isSaving" />
                     Save
                 </BButton>
-                <span v-if="store.isDirty" class="ml-2 text-warning small"> Unsaved </span>
+                <span
+                    v-if="store.isDirty"
+                    class="ml-2 text-warning small"
+                    data-description="notebook unsaved indicator">
+                    Unsaved
+                </span>
             </div>
 
             <div class="notebook-content flex-grow-1 overflow-auto">
