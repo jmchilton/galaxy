@@ -664,6 +664,9 @@ history_notebooks:
     notebook_title:
       type: data-description
       selector: 'notebook title'
+    rendered_view:
+      type: data-description
+      selector: 'notebook rendered view'
 
 login:
   selectors:
