@@ -227,6 +227,7 @@ function onDelete() {
             </BDropdownItem>
 
             <BDropdownItem
+                data-description="history notebooks"
                 :disabled="isAnonymous"
                 :title="userTitle('View and Create History Notebooks')"
                 :to="`/histories/${history.id}/notebooks`">
