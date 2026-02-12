@@ -206,3 +206,118 @@ class TestHistoryNotebooks(SeleniumTestCase):
         fetched = self.dataset_populator.get_history_notebook(history_id, notebook["id"])
         assert fetched["title"] == "Shared Notebook"
         self.screenshot("history_notebook_shared_view")
+
+    # --- Phase 5: Window Manager Integration Tests ---
+
+    @selenium_test
+    @managed_history
+    def test_notebook_opens_in_window_when_wm_active(self):
+        """With WM active, selecting notebook from list opens it in a WinBox."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="Window Test", content="# Windowed Notebook")
+
+        self.window_manager_enable()
+        assert self.window_manager_window_count() == 0
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_assert_item_count(1)
+
+        # Click the notebook -- should open in WinBox, not navigate
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.window_manager_wait_for_window_count(1)
+
+        titles = self.window_manager_get_titles()
+        assert any("Window Test" in t for t in titles)
+
+        # List should still be visible (router.push intercepted by WM)
+        self.components.history_notebooks.list.wait_for_visible()
+        self.screenshot("history_notebook_in_winbox")
+
+    @selenium_test
+    @managed_history
+    def test_notebook_window_shows_rendered_content(self):
+        """Windowed notebook shows rendered markdown, not editor."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(
+            history_id, title="Render Test", content="# Hello World\n\nSome analysis notes."
+        )
+
+        self.window_manager_enable()
+        self.navigate_to_history_notebooks_via_menu()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.window_manager_wait_for_window_count(1)
+
+        with self.winbox_frame(0):
+            # Should see rendered markdown (Markdown.vue), not editor
+            self.wait_for_selector_visible(".markdown-wrapper")
+            # Should NOT see editor or toolbar
+            self.wait_for_selector_absent_or_hidden("[data-description='notebook toolbar']")
+            self.wait_for_selector_absent_or_hidden("[data-description='history notebook editor']")
+            self.screenshot("history_notebook_window_rendered")
+
+    @selenium_test
+    @managed_history
+    def test_notebook_normal_navigation_when_wm_disabled(self):
+        """With WM disabled, selecting notebook navigates to editor normally."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="Normal Nav", content="# Editor Test")
+
+        self.window_manager_disable()
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_assert_item_count(1)
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+
+        # Should navigate to editor, NOT open window
+        self.components.history_notebooks.editor.wait_for_visible()
+        assert self.window_manager_window_count() == 0
+        self.screenshot("history_notebook_normal_nav_wm_off")
+
+    @selenium_test
+    @managed_history
+    def test_notebook_window_with_embedded_dataset(self):
+        """Windowed notebook renders embedded dataset displays."""
+        history_id = self.current_history_id()
+        self.perform_upload(self.get_filename("1.fasta"))
+        self.history_panel_wait_for_hid_ok(1)
+
+        content = "# Analysis\n\n```galaxy\nhistory_dataset_display(hid=1)\n```\n"
+        self.dataset_populator.new_history_notebook(history_id, title="Dataset Embed", content=content)
+
+        self.window_manager_enable()
+        self.navigate_to_history_notebooks_via_menu()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.window_manager_wait_for_window_count(1)
+
+        with self.winbox_frame(0):
+            self.wait_for_selector_visible(".markdown-wrapper")
+            self.wait_for_selector_visible(".embedded-dataset")
+            self.screenshot("history_notebook_window_dataset_embedded")
+
+    @selenium_test
+    @managed_history
+    def test_multiple_notebook_windows(self):
+        """Opening multiple notebooks creates multiple WinBox windows."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="First NB")
+        self.dataset_populator.new_history_notebook(history_id, title="Second NB")
+
+        self.window_manager_enable()
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_assert_item_count(2)
+
+        # Open first notebook
+        items = self.components.history_notebooks.notebook_item.all()
+        items[0].click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.window_manager_wait_for_window_count(1)
+
+        # Open second notebook
+        items = self.components.history_notebooks.notebook_item.all()
+        items[1].click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.window_manager_wait_for_window_count(2)
+
+        titles = self.window_manager_get_titles()
+        assert len(titles) == 2
+        self.screenshot("history_notebook_multiple_windows")

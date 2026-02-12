@@ -5,15 +5,19 @@ import { BAlert, BButton } from "bootstrap-vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router/composables";
 
+import { getGalaxyInstance } from "@/app";
+import type { RouterPushOptions } from "@/components/History/Content/router-push-options";
 import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 import { useHistoryStore } from "@/stores/historyStore";
 
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
+import Markdown from "@/components/Markdown/Markdown.vue";
 
 const props = defineProps<{
     historyId: string;
     notebookId?: string;
+    displayOnly?: boolean;
 }>();
 
 const router = useRouter();
@@ -25,6 +29,19 @@ const _historyName = computed(() => {
     return history?.name || "History";
 });
 
+const markdownConfig = computed(() => {
+    if (!store.currentNotebook) {
+        return null;
+    }
+    return {
+        id: store.currentNotebook.id,
+        title: store.currentTitle || "Untitled Notebook",
+        content: store.currentContent,
+        model_class: "HistoryNotebook",
+        update_time: store.currentNotebook.update_time,
+    };
+});
+
 onMounted(async () => {
     await store.loadNotebooks(props.historyId);
     if (props.notebookId) {
@@ -33,7 +50,9 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-    store.$reset();
+    if (!props.displayOnly) {
+        store.$reset();
+    }
 });
 
 watch(
@@ -58,7 +77,22 @@ watch(
 );
 
 function handleSelect(notebookId: string) {
-    router.push(`/histories/${props.historyId}/notebooks/${notebookId}`);
+    const Galaxy = getGalaxyInstance();
+    const isWmActive = Galaxy?.frame?.active;
+
+    if (isWmActive) {
+        const notebook = store.notebooks.find((n) => n.id === notebookId);
+        const title = notebook?.title || "Notebook";
+        const url = `/histories/${props.historyId}/notebooks/${notebookId}?displayOnly=true`;
+        const options: RouterPushOptions = {
+            title: `Notebook: ${title}`,
+            preventWindowManager: false,
+        };
+        // @ts-ignore - monkeypatched router, drop with migration.
+        router.push(url, options);
+    } else {
+        router.push(`/histories/${props.historyId}/notebooks/${notebookId}`);
+    }
 }
 
 async function handleCreate() {
@@ -93,6 +127,18 @@ async function handleSave() {
             <HistoryNotebookList :notebooks="store.notebooks" @select="handleSelect" @create="handleCreate" />
         </template>
 
+        <!-- Notebook loaded in displayOnly mode -- rendered view -->
+        <template v-else-if="store.hasCurrentNotebook && displayOnly">
+            <div class="notebook-display-content overflow-auto h-100" data-description="notebook rendered view">
+                <Markdown
+                    v-if="markdownConfig"
+                    :markdown-config="markdownConfig"
+                    :read-only="true"
+                    download-endpoint="" />
+            </div>
+        </template>
+
+        <!-- Notebook loaded in edit mode -- toolbar + editor -->
         <template v-else-if="store.hasCurrentNotebook">
             <div
                 class="notebook-toolbar d-flex align-items-center p-2 border-bottom"

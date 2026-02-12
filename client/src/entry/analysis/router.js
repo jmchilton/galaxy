@@ -424,12 +424,18 @@ export function getRouter(Galaxy) {
                     {
                         path: "histories/:historyId/notebooks",
                         component: HistoryNotebookView,
-                        props: true,
+                        props: (route) => ({
+                            historyId: route.params.historyId,
+                        }),
                     },
                     {
                         path: "histories/:historyId/notebooks/:notebookId",
                         component: HistoryNotebookView,
-                        props: true,
+                        props: (route) => ({
+                            historyId: route.params.historyId,
+                            notebookId: route.params.notebookId,
+                            displayOnly: route.query.displayOnly === "true",
+                        }),
                     },
                     {
                         path: "interactivetool_entry_points/list",

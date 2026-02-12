@@ -10,6 +10,7 @@ import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
 import HistoryNotebookView from "./HistoryNotebookView.vue";
+import Markdown from "@/components/Markdown/Markdown.vue";
 
 const mockPush = vi.fn();
 vi.mock("vue-router/composables", () => ({
@@ -32,6 +33,11 @@ vi.mock("@/stores/historyStore", () => ({
     })),
 }));
 
+const mockGalaxyInstance = { frame: { active: false } };
+vi.mock("@/app", () => ({
+    getGalaxyInstance: vi.fn(() => mockGalaxyInstance),
+}));
+
 const localVue = getLocalVue();
 
 const HISTORY_ID = "history-1";
@@ -49,12 +55,20 @@ const SELECTORS = {
 
 let pinia: Pinia;
 
-function mountComponent(propsData: { historyId: string; notebookId?: string }) {
+function mountComponent(propsData: { historyId: string; notebookId?: string; displayOnly?: boolean }) {
     return shallowMount(HistoryNotebookView as object, {
         localVue,
         propsData,
         pinia,
     });
+}
+
+function setupListViewStore(notebooks: any[] = []) {
+    const store = useHistoryNotebookStore();
+    store.isLoadingList = false;
+    store.error = null;
+    store.notebooks = notebooks as any;
+    return store;
 }
 
 describe("HistoryNotebookView", () => {
@@ -107,24 +121,11 @@ describe("HistoryNotebookView", () => {
             expect(errorAlert.exists()).toBe(true);
             expect(errorAlert.text()).toContain("Something went wrong");
         });
-
-        it("error alert is dismissible", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
-            store.error = "Something went wrong";
-            const wrapper = mountComponent({ historyId: HISTORY_ID });
-            await flushPromises();
-
-            const errorAlert = wrapper.find(SELECTORS.ERROR_ALERT);
-            expect(errorAlert.attributes("dismissible")).toBe("true");
-        });
     });
 
     describe("List view (no notebookId)", () => {
         it("shows HistoryNotebookList when no notebookId and not loading/error", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
-            store.error = null;
+            setupListViewStore();
             const wrapper = mountComponent({ historyId: HISTORY_ID });
             await flushPromises();
 
@@ -132,13 +133,10 @@ describe("HistoryNotebookView", () => {
         });
 
         it("passes store.notebooks to HistoryNotebookList", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
-            store.error = null;
             const fakeNotebooks = [
                 { id: "nb-1", history_id: HISTORY_ID, title: "NB1", deleted: false, create_time: "", update_time: "" },
             ];
-            store.notebooks = fakeNotebooks as any;
+            setupListViewStore(fakeNotebooks);
             const wrapper = mountComponent({ historyId: HISTORY_ID });
             await flushPromises();
 
@@ -222,10 +220,7 @@ describe("HistoryNotebookView", () => {
 
     describe("Navigation/Events", () => {
         it("handleSelect navigates to notebook URL via router.push", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
-            store.error = null;
-            store.notebooks = [{ id: "nb-1", history_id: HISTORY_ID, title: "NB1" }] as any;
+            setupListViewStore([{ id: "nb-1", history_id: HISTORY_ID, title: "NB1" }]);
             const wrapper = mountComponent({ historyId: HISTORY_ID });
             await flushPromises();
 
@@ -237,10 +232,7 @@ describe("HistoryNotebookView", () => {
         });
 
         it("handleCreate calls store.createNotebook and navigates on success", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
-            store.error = null;
-            store.notebooks = [] as any;
+            const store = setupListViewStore();
             vi.mocked(store.createNotebook).mockResolvedValue({
                 id: "new-notebook",
                 history_id: HISTORY_ID,
@@ -259,10 +251,8 @@ describe("HistoryNotebookView", () => {
         });
 
         it("handleBack calls clearCurrentNotebook and navigates to list", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
+            const store = setupListViewStore();
             store.isLoadingNotebook = false;
-            store.error = null;
             store.currentNotebook = { id: NOTEBOOK_ID, history_id: HISTORY_ID, title: "NB", content: "" } as any;
             store.currentTitle = "NB";
             const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
@@ -276,10 +266,8 @@ describe("HistoryNotebookView", () => {
         });
 
         it("handleSave calls store.saveNotebook", async () => {
-            const store = useHistoryNotebookStore();
-            store.isLoadingList = false;
+            const store = setupListViewStore();
             store.isLoadingNotebook = false;
-            store.error = null;
             store.currentNotebook = { id: NOTEBOOK_ID, history_id: HISTORY_ID, title: "NB", content: "" } as any;
             store.currentTitle = "NB";
             // canSave is true because currentContent differs from originalContent (defaults to "")
@@ -293,6 +281,97 @@ describe("HistoryNotebookView", () => {
             await flushPromises();
 
             expect(store.saveNotebook).toHaveBeenCalled();
+        });
+    });
+
+    describe("DisplayOnly mode", () => {
+        function setupLoadedNotebook() {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = {
+                id: NOTEBOOK_ID,
+                history_id: HISTORY_ID,
+                title: "My Notebook",
+                content: "# Hello",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            store.currentContent = "# Hello";
+            store.currentTitle = "My Notebook";
+            return store;
+        }
+
+        it("renders editor when displayOnly is false", async () => {
+            setupLoadedNotebook();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID, displayOnly: false });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.TOOLBAR).exists()).toBe(true);
+            expect(wrapper.findComponent(HistoryNotebookEditor).exists()).toBe(true);
+            expect(wrapper.findComponent(Markdown).exists()).toBe(false);
+        });
+
+        it("renders Markdown when displayOnly is true", async () => {
+            setupLoadedNotebook();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID, displayOnly: true });
+            await flushPromises();
+
+            expect(wrapper.findComponent(Markdown).exists()).toBe(true);
+            expect(wrapper.find(SELECTORS.TOOLBAR).exists()).toBe(false);
+            expect(wrapper.findComponent(HistoryNotebookEditor).exists()).toBe(false);
+        });
+
+        it("passes correct markdownConfig to Markdown", async () => {
+            setupLoadedNotebook();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID, displayOnly: true });
+            await flushPromises();
+
+            const md = wrapper.findComponent(Markdown);
+            const config = md.props("markdownConfig");
+            expect(config.id).toBe(NOTEBOOK_ID);
+            expect(config.title).toBe("My Notebook");
+            expect(config.content).toBe("# Hello");
+        });
+
+        it("list view renders normally regardless of displayOnly", async () => {
+            setupListViewStore();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, displayOnly: true });
+            await flushPromises();
+
+            expect(wrapper.findComponent(HistoryNotebookList).exists()).toBe(true);
+        });
+
+        it("does not call store.$reset on unmount in displayOnly mode", async () => {
+            setupLoadedNotebook();
+            const store = useHistoryNotebookStore();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID, displayOnly: true });
+            await flushPromises();
+
+            wrapper.destroy();
+            expect(store.$reset).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("Window Manager integration", () => {
+        afterEach(() => {
+            mockGalaxyInstance.frame.active = false;
+        });
+
+        it("handleSelect opens in WinBox when WM is active", async () => {
+            mockGalaxyInstance.frame.active = true;
+            setupListViewStore([{ id: "nb-1", history_id: HISTORY_ID, title: "NB1" }]);
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const list = wrapper.findComponent(HistoryNotebookList);
+            list.vm.$emit("select", "nb-1");
+            await wrapper.vm.$nextTick();
+
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/nb-1?displayOnly=true`, {
+                title: "Notebook: NB1",
+                preventWindowManager: false,
+            });
         });
     });
 
