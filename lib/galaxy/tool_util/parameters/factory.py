@@ -38,6 +38,7 @@ from galaxy.tool_util_models.parameters import (
     CwlFloatParameterModel,
     CwlIntegerParameterModel,
     CwlNullParameterModel,
+    CwlRecordParameterModel,
     CwlStringParameterModel,
     CwlUnionParameterModel,
     DataCollectionParameterModel,
@@ -472,6 +473,36 @@ def _complex_cwl_type_to_model(type_dict: dict, input_source: "CwlInputSource"):
                 f"Cannot generate tool parameter model for this CWL artifact yet - array items type {type(items_type)}."
             )
         return CwlArrayParameterModel(name=input_source.parse_name(), item_type=item_model)
+    elif inner_type == "record":
+        fields = type_dict.get("fields", [])
+        field_models = []
+        for field_def in fields:
+            field_type = field_def["type"]
+            field_name = field_def["name"]
+            if isinstance(field_type, str):
+                field_model = _simple_cwl_type_to_model(field_type, input_source)
+                field_model = field_model.model_copy(update={"name": field_name})
+            elif isinstance(field_type, dict):
+                field_model = _complex_cwl_type_to_model(field_type, input_source)
+                field_model = field_model.model_copy(update={"name": field_name})
+            elif isinstance(field_type, list):
+                params = []
+                for t in field_type:
+                    if isinstance(t, str):
+                        params.append(_simple_cwl_type_to_model(t, input_source))
+                    elif isinstance(t, dict):
+                        params.append(_complex_cwl_type_to_model(t, input_source))
+                    else:
+                        raise NotImplementedError(
+                            f"Cannot generate tool parameter model for this CWL artifact yet - record field union element type {type(t)}."
+                        )
+                field_model = CwlUnionParameterModel(name=field_name, parameters=params)
+            else:
+                raise NotImplementedError(
+                    f"Cannot generate tool parameter model for this CWL artifact yet - record field type {type(field_type)}."
+                )
+            field_models.append(field_model)
+        return CwlRecordParameterModel(name=input_source.parse_name(), fields=field_models)
     raise NotImplementedError(
         f"Cannot generate tool parameter model for this CWL artifact yet - contains unknown complex type {inner_type}."
     )

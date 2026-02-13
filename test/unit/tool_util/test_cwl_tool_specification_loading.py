@@ -120,10 +120,7 @@ def test_custom_cwl_tool_loads(tool_path):
 
 # -- Galactic CWL tools --
 
-GALACTIC_EXPECTED_FAILURES = {
-    # record type not yet supported by _from_input_source_cwl
-    "galactic_record_input.cwl",
-}
+GALACTIC_EXPECTED_FAILURES: set = set()
 
 
 @pytest.mark.parametrize("tool_path", list(_galactic_cwl_tools()))
