@@ -2335,6 +2335,26 @@ class CwlEnumParameterModel(BaseToolParameterModelDefinition):
         return True
 
 
+class CwlArrayParameterModel(BaseToolParameterModelDefinition):
+    parameter_type: Literal["cwl_array"] = "cwl_array"
+    item_type: "CwlParameterT"
+
+    @property
+    def py_type(self) -> Type:
+        return list_type(self.item_type.py_type)
+
+    def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        return DynamicModelInformation(
+            self.name,
+            (self.py_type, ...),
+            {},
+        )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
+
+
 CwlParameterT = Union[
     CwlIntegerParameterModel,
     CwlFloatParameterModel,
@@ -2346,6 +2366,7 @@ CwlParameterT = Union[
     CwlUnionParameterModel,
     CwlAnyParameterModel,
     CwlEnumParameterModel,
+    CwlArrayParameterModel,
 ]
 
 GalaxyParameterT = Union[
@@ -2388,6 +2409,7 @@ ConditionalWhen.model_rebuild()
 ConditionalParameterModel.model_rebuild()
 RepeatParameterModel.model_rebuild()
 CwlUnionParameterModel.model_rebuild()
+CwlArrayParameterModel.model_rebuild()
 
 
 class MaybeToolParameterBundle(Protocol):
