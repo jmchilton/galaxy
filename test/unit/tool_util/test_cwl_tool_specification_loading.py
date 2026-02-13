@@ -26,13 +26,17 @@ PARAMETERS_DIR = os.path.join(TOOLS_DIR, "parameters")
 CWL_TOOLS_DIR = os.path.join(TOOLS_DIR, "cwl_tools")
 
 
-def _is_workflow(path):
-    """Check if a .cwl file is a Workflow (not a tool)."""
+def _is_workflow_or_graph(path):
+    """Check if a .cwl file is a Workflow or $graph document (not a standalone tool)."""
     try:
         with open(path) as f:
             doc = yaml.safe_load(f)
         if isinstance(doc, dict):
-            return doc.get("class") == "Workflow"
+            if doc.get("class") == "Workflow":
+                return True
+            # $graph documents bundle multiple objects — need #fragment resolution
+            if "$graph" in doc:
+                return True
     except Exception:
         pass
     return False
@@ -49,7 +53,7 @@ def _cwl_tools_from_dir(directory, relative_to=None):
             if not f.endswith(".cwl"):
                 continue
             full = os.path.join(root, f)
-            if _is_workflow(full):
+            if _is_workflow_or_graph(full):
                 continue
             rel = os.path.relpath(full, relative_to)
             yield rel, full
