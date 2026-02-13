@@ -1,0 +1,13 @@
+#!/usr/bin/env cwl-runner
+class: ExpressionTool
+requirements:
+  - class: InlineJavascriptRequirement
+cwlVersion: v1.2
+inputs:
+  parameter:
+    type:
+      type: enum
+      symbols: [red, green, blue]
+outputs:
+  output: string
+expression: "$({'output': inputs.parameter})"

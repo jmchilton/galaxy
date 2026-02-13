@@ -2295,6 +2295,46 @@ class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
         return True
 
 
+class CwlAnyParameterModel(BaseToolParameterModelDefinition):
+    parameter_type: Literal["cwl_any"] = "cwl_any"
+
+    @property
+    def py_type(self) -> Type:
+        return Any
+
+    def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        return DynamicModelInformation(
+            self.name,
+            (self.py_type, ...),
+            {},
+        )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
+
+
+class CwlEnumParameterModel(BaseToolParameterModelDefinition):
+    parameter_type: Literal["cwl_enum"] = "cwl_enum"
+    symbols: List[str]
+
+    @property
+    def py_type(self) -> Type:
+        literal_options = [cast_as_type(Literal[s]) for s in self.symbols]
+        return union_type(literal_options)
+
+    def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        return DynamicModelInformation(
+            self.name,
+            (self.py_type, ...),
+            {},
+        )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
+
+
 CwlParameterT = Union[
     CwlIntegerParameterModel,
     CwlFloatParameterModel,
@@ -2304,6 +2344,8 @@ CwlParameterT = Union[
     CwlFileParameterModel,
     CwlDirectoryParameterModel,
     CwlUnionParameterModel,
+    CwlAnyParameterModel,
+    CwlEnumParameterModel,
 ]
 
 GalaxyParameterT = Union[

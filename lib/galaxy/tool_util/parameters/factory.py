@@ -29,8 +29,10 @@ from galaxy.tool_util_models.parameters import (
     cond_test_parameter_default_value,
     ConditionalParameterModel,
     ConditionalWhen,
+    CwlAnyParameterModel,
     CwlBooleanParameterModel,
     CwlDirectoryParameterModel,
+    CwlEnumParameterModel,
     CwlFileParameterModel,
     CwlFloatParameterModel,
     CwlIntegerParameterModel,
@@ -436,8 +438,30 @@ def _simple_cwl_type_to_model(simple_type: str, input_source: "CwlInputSource"):
         return CwlDirectoryParameterModel(
             name=input_source.parse_name(),
         )
+    elif simple_type == "double":
+        return CwlFloatParameterModel(
+            name=input_source.parse_name(),
+        )
+    elif simple_type == "long":
+        return CwlIntegerParameterModel(
+            name=input_source.parse_name(),
+        )
+    elif simple_type == "org.w3id.cwl.salad.Any":
+        return CwlAnyParameterModel(
+            name=input_source.parse_name(),
+        )
     raise NotImplementedError(
         f"Cannot generate tool parameter model for this CWL artifact yet - contains unknown type {simple_type}."
+    )
+
+
+def _complex_cwl_type_to_model(type_dict: dict, input_source: "CwlInputSource"):
+    inner_type = type_dict.get("type")
+    if inner_type == "enum":
+        symbols = type_dict.get("symbols", [])
+        return CwlEnumParameterModel(name=input_source.parse_name(), symbols=symbols)
+    raise NotImplementedError(
+        f"Cannot generate tool parameter model for this CWL artifact yet - contains unknown complex type {inner_type}."
     )
 
 
@@ -470,6 +494,8 @@ def _from_input_source_cwl(input_source: "CwlInputSource") -> ToolParameterT:
             name=input_source.parse_name(),
             parameters=[_simple_cwl_type_to_model(t, input_source) for t in schema_salad_type],
         )
+    elif isinstance(schema_salad_type, dict):
+        return _complex_cwl_type_to_model(schema_salad_type, input_source)
     else:
         raise NotImplementedError("Cannot generate tool parameter model for this CWL artifact yet.")
 
