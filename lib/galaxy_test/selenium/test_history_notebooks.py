@@ -1,6 +1,7 @@
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
+    selenium_only,
     selenium_test,
     SeleniumTestCase,
 )
@@ -398,3 +399,65 @@ class TestHistoryNotebooks(SeleniumTestCase):
         items[-1].click()
         self.components.history_notebooks.revision_view.wait_for_visible()
         self.screenshot("history_notebook_revision_preview")
+
+    # --- Phase 7: Drag-and-Drop Tests ---
+
+    @selenium_only("seletools drag_and_drop requires Selenium webdriver")
+    @selenium_test
+    @managed_history
+    def test_drag_dataset_to_notebook_editor(self):
+        """Drag a dataset from history panel and drop on notebook editor."""
+        from seletools.actions import drag_and_drop
+
+        self.perform_upload(self.get_filename("1.fasta"))
+        self.history_panel_wait_for_hid_ok(1)
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_create()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        # Get handle on the dataset element in history panel
+        dataset_selector = self.history_panel_wait_for_hid_state(1, "ok")
+        dataset_element = dataset_selector.wait_for_visible()
+
+        # Get handle on the markdown textarea
+        editor = self.components.history_notebooks.markdown_editor.wait_for_visible()
+
+        # Perform drag and drop
+        drag_and_drop(self.driver, source=dataset_element, target=editor)
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+        # Verify the directive was inserted
+        value = self.components.history_notebooks.markdown_editor.wait_for_value()
+        assert "history_dataset_display" in value
+        assert "hid=1" in value
+        self.screenshot("history_notebook_drag_drop_dataset")
+
+    @selenium_only("seletools drag_and_drop requires Selenium webdriver")
+    @selenium_test
+    @managed_history
+    def test_drag_drop_visual_feedback(self):
+        """Verify visual feedback during drag over notebook editor."""
+        self.perform_upload(self.get_filename("1.fasta"))
+        self.history_panel_wait_for_hid_ok(1)
+
+        self.navigate_to_history_notebooks_via_menu()
+        self.history_notebook_create()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        dataset_selector = self.history_panel_wait_for_hid_state(1, "ok")
+        dataset_element = dataset_selector.wait_for_visible()
+        editor = self.components.history_notebooks.markdown_editor.wait_for_visible()
+
+        # Start drag (click and hold, move to editor)
+        ac = self.action_chains()
+        ac.click_and_hold(dataset_element).move_to_element(editor).perform()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+        # Check that the editor has the highlight class
+        classes = editor.get_attribute("class")
+        assert "notebook-dragover-success" in classes
+        self.screenshot("history_notebook_drag_over_highlight")
+
+        # Release to clean up
+        ac.release().perform()
