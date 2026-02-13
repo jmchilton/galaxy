@@ -10,8 +10,13 @@ import sqlalchemy as sa
 
 from galaxy.model.custom_types import TrimmedString
 from galaxy.model.migrations.util import (
+    add_column,
     create_foreign_key,
+    create_index,
     create_table,
+    drop_column,
+    drop_constraint,
+    drop_index,
     drop_table,
     transaction,
 )
@@ -73,8 +78,38 @@ def upgrade():
             ["id"],
         )
 
+        # Page source provenance columns (Phase 7.1)
+        add_column("page", sa.Column("source_invocation_id", sa.Integer, nullable=True))
+        add_column("page", sa.Column("source_history_notebook_id", sa.Integer, nullable=True))
+
+        create_index("ix_page_source_invocation_id", "page", ["source_invocation_id"])
+        create_index("ix_page_source_history_notebook_id", "page", ["source_history_notebook_id"])
+
+        create_foreign_key(
+            "page_source_invocation_id_fkey",
+            "page",
+            "workflow_invocation",
+            ["source_invocation_id"],
+            ["id"],
+        )
+        create_foreign_key(
+            "page_source_history_notebook_id_fkey",
+            "page",
+            "history_notebook",
+            ["source_history_notebook_id"],
+            ["id"],
+        )
+
 
 def downgrade():
     with transaction():
+        # Drop page source provenance columns first (they FK to history_notebook)
+        drop_constraint("page_source_history_notebook_id_fkey", "page")
+        drop_constraint("page_source_invocation_id_fkey", "page")
+        drop_index("ix_page_source_history_notebook_id", "page")
+        drop_index("ix_page_source_invocation_id", "page")
+        drop_column("page", "source_history_notebook_id")
+        drop_column("page", "source_invocation_id")
+
         drop_table(REVISION_TABLE)
         drop_table(NOTEBOOK_TABLE)
