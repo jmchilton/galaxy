@@ -4211,6 +4211,47 @@ gx_data_collection_any_y:
     - parameter:
         class: Collection
 
+cwl_any:
+  request_valid:
+    - parameter: 5
+    - parameter: "hello"
+    - parameter: true
+    - parameter: 5.5
+    - parameter: null
+    - parameter: [1, 2, 3]
+    - parameter: {key: value}
+  request_invalid:
+    - {}
+
+cwl_double:
+  request_valid:
+    - parameter: 5
+    - parameter: 5.0
+  request_invalid:
+    - parameter: null
+    - parameter: "5"
+    - {}
+
+cwl_enum:
+  request_valid:
+    - parameter: "red"
+    - parameter: "green"
+    - parameter: "blue"
+  request_invalid:
+    - parameter: "yellow"
+    - parameter: 5
+    - parameter: null
+    - {}
+
+cwl_long:
+  request_valid:
+    - parameter: 5
+  request_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: null
+    - parameter: 5.0
+
 cwl_directory:
   request_valid:
    - parameter: {src: hda, id: abcdabcd}
