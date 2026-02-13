@@ -523,6 +523,8 @@ export function getRouter(Galaxy) {
                         component: PageForm,
                         props: (route) => ({
                             invocationId: route.query.invocation_id,
+                            notebookId: route.query.notebook_id,
+                            historyId: route.query.history_id,
                             mode: "create",
                         }),
                     },

@@ -53,7 +53,8 @@ const SELECTORS = {
     SAVE_BUTTON: ".notebook-toolbar bbutton-stub[variant='primary']",
     BACK_BUTTON: ".notebook-toolbar bbutton-stub[variant='link']",
     UNSAVED_INDICATOR: ".notebook-toolbar .text-warning",
-    REVISIONS_BUTTON: ".notebook-toolbar bbutton-stub[variant='outline-secondary']",
+    REVISIONS_BUTTON: "[data-description='notebook revisions button']",
+    EXPORT_BUTTON: "[data-description='notebook export to page button']",
     REVISION_PANEL: ".notebook-revision-panel",
 };
 
@@ -561,6 +562,62 @@ describe("HistoryNotebookView", () => {
             await wrapper.vm.$nextTick();
 
             expect(store.loadRevision).toHaveBeenCalledWith("rev-1");
+        });
+    });
+
+    describe("Export to Page", () => {
+        function setupEditorView() {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = {
+                id: NOTEBOOK_ID,
+                history_id: HISTORY_ID,
+                title: "My Notebook",
+                content: "# Hello",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            store.currentContent = "# Hello";
+            store.currentTitle = "My Notebook";
+            return store;
+        }
+
+        it("shows Export to Page button in toolbar", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const exportBtn = wrapper.find(SELECTORS.EXPORT_BUTTON);
+            expect(exportBtn.exists()).toBe(true);
+            expect(exportBtn.text()).toContain("Export to Page");
+        });
+
+        it("clicking Export to Page navigates to page create with notebook params", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const exportBtn = wrapper.find(SELECTORS.EXPORT_BUTTON);
+            await exportBtn.trigger("click");
+            await flushPromises();
+
+            expect(mockPush).toHaveBeenCalledWith(`/pages/create?notebook_id=${NOTEBOOK_ID}&history_id=${HISTORY_ID}`);
+        });
+
+        it("saves unsaved changes before exporting", async () => {
+            const store = setupEditorView();
+            // isDirty = true because currentContent != originalContent (default "")
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(store.isDirty).toBe(true);
+            const exportBtn = wrapper.find(SELECTORS.EXPORT_BUTTON);
+            await exportBtn.trigger("click");
+            await flushPromises();
+
+            expect(store.saveNotebook).toHaveBeenCalled();
+            expect(mockPush).toHaveBeenCalled();
         });
     });
 });

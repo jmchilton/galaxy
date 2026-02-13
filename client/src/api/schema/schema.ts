@@ -2809,6 +2809,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/histories/{history_id}/notebooks/{notebook_id}/prepare-for-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prepare notebook content for Page creation.
+         * @description Resolve HID references and encode IDs for Page creation.
+         */
+        get: operations["prepare_for_page_api_histories__history_id__notebooks__notebook_id__prepare_for_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/histories/{history_id}/notebooks/{notebook_id}/revisions": {
         parameters: {
             query?: never;
@@ -9599,6 +9619,11 @@ export interface components {
              * @default html
              */
             content_format: components["schemas"]["PageContentFormat"];
+            /**
+             * History Notebook ID
+             * @description Encoded ID of the history notebook used to create this page.
+             */
+            history_notebook_id?: string | null;
             /**
              * Workflow invocation ID
              * @description Encoded ID used by workflow generated reports.
@@ -19845,6 +19870,16 @@ export interface components {
              */
             slug: string;
             /**
+             * Source History Notebook ID
+             * @description The history notebook this page was created from, if any.
+             */
+            source_history_notebook_id?: string | null;
+            /**
+             * Source Invocation ID
+             * @description The workflow invocation this page was created from, if any.
+             */
+            source_invocation_id?: string | null;
+            /**
              * Tags
              * @description The collection of tags associated with an item.
              * @example COVID-19
@@ -19932,6 +19967,16 @@ export interface components {
              * @description The identifying slug for the page URL, must be unique.
              */
             slug: string;
+            /**
+             * Source History Notebook ID
+             * @description The history notebook this page was created from, if any.
+             */
+            source_history_notebook_id?: string | null;
+            /**
+             * Source Invocation ID
+             * @description The workflow invocation this page was created from, if any.
+             */
+            source_invocation_id?: string | null;
             /**
              * Tags
              * @description The collection of tags associated with an item.
@@ -20557,6 +20602,19 @@ export interface components {
             left: number;
             /** Top */
             top: number;
+        };
+        /** PrepareNotebookForPageResponse */
+        PrepareNotebookForPageResponse: {
+            /**
+             * Content
+             * @description Notebook markdown with encoded IDs, ready for Page creation.
+             */
+            content: string;
+            /**
+             * Title
+             * @description Notebook title (suggested Page title).
+             */
+            title: string;
         };
         /** PrepareStoreDownloadPayload */
         PrepareStoreDownloadPayload: {
@@ -35210,6 +35268,52 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    prepare_for_page_api_histories__history_id__notebooks__notebook_id__prepare_for_page_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History. */
+                history_id: string;
+                /** @description The ID of the Notebook. */
+                notebook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Notebook content with encoded IDs, ready for POST /api/pages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrepareNotebookForPageResponse"];
+                };
             };
             /** @description Request Error */
             "4XX": {

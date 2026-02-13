@@ -4213,6 +4213,11 @@ class HistoryNotebookList(RootModel):
     root: list[HistoryNotebookSummary] = Field(default=[])
 
 
+class PrepareNotebookForPageResponse(Model):
+    content: str = Field(description="Notebook markdown with encoded IDs, ready for Page creation.")
+    title: str = Field(description="Notebook title (suggested Page title).")
+
+
 class LandingRequestState(str, Enum):
     UNCLAIMED = "unclaimed"
     CLAIMED = "claimed"

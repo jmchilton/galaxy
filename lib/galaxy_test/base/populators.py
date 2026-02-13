@@ -2101,6 +2101,16 @@ class BaseDatasetPopulator(BasePopulator):
             json=True,
         )
 
+    def prepare_notebook_for_page_raw(self, history_id: str, notebook_id: str) -> Response:
+        """Prepare notebook content for Page creation, return raw Response."""
+        return self._get(f"histories/{history_id}/notebooks/{notebook_id}/prepare-for-page")
+
+    def prepare_notebook_for_page(self, history_id: str, notebook_id: str) -> dict[str, Any]:
+        """Prepare notebook content for Page creation."""
+        response = self.prepare_notebook_for_page_raw(history_id, notebook_id)
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
     def export_history_to_uri_async(
         self, history_id: str, target_uri: str, model_store_format: str = "tgz", include_files: bool = True
     ):

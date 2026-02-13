@@ -157,6 +157,23 @@ class HistoryNotebookManager:
 
         return new_revision
 
+    def prepare_content_for_page(
+        self,
+        trans: ProvidesUserContext,
+        notebook: model.HistoryNotebook,
+    ) -> str:
+        """Resolve HID references and encode IDs for Page creation.
+
+        Returns markdown with encoded IDs, matching the format that
+        POST /api/pages expects (same as invocation report content).
+        """
+        content = notebook.latest_revision.content
+        if not content:
+            return ""
+        resolved = resolve_history_markdown(trans, notebook.history.id, content)
+        export_content, _, _ = ready_galaxy_markdown_for_export(trans, resolved)
+        return export_content
+
     def rewrite_content_for_export(self, trans: ProvidesUserContext, history: model.History, rval: dict) -> None:
         """Process notebook content for API response.
 

@@ -1,4 +1,4 @@
-"""Tests for history notebook CRUD operations."""
+"""Tests for history notebook CRUD and export operations."""
 
 from galaxy_test.api._framework import ApiTestCase
 from galaxy_test.base.populators import DatasetPopulator
@@ -170,3 +170,82 @@ class TestHistoryNotebooksApi(ApiTestCase):
 
             revisions_after = self.dataset_populator.list_history_notebook_revisions(history_id, notebook["id"])
             assert len(revisions_after) == 3
+
+    def test_prepare_for_page(self):
+        """Test preparing notebook content for Page creation resolves HIDs to encoded IDs."""
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="hello", wait=True)
+            hda_details = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda)
+            hid = hda_details["hid"]
+
+            content = f"# Analysis\n\n```galaxy\nhistory_dataset_display(hid={hid})\n```\n"
+            notebook = self.dataset_populator.new_history_notebook(history_id, title="Export Test", content=content)
+
+            prepared = self.dataset_populator.prepare_notebook_for_page(history_id, notebook["id"])
+            assert prepared["title"] == "Export Test"
+            # Should have resolved hid= to history_dataset_id= with encoded ID
+            assert "hid=" not in prepared["content"]
+            assert "history_dataset_id=" in prepared["content"]
+
+    def test_prepare_for_page_then_create_page(self):
+        """Full roundtrip: prepare content from notebook, create Page, verify content stored."""
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="roundtrip", wait=True)
+            hda_details = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda)
+            hid = hda_details["hid"]
+
+            content = f"# My Analysis\n\n```galaxy\nhistory_dataset_display(hid={hid})\n```\n"
+            notebook = self.dataset_populator.new_history_notebook(history_id, title="Roundtrip Test", content=content)
+
+            prepared = self.dataset_populator.prepare_notebook_for_page(history_id, notebook["id"])
+
+            # Create page using prepared content + notebook FK
+            page = self.dataset_populator.new_page(
+                slug="notebook-roundtrip",
+                title="Roundtrip Test",
+                content_format="markdown",
+                content=prepared["content"],
+            )
+            assert page["id"]
+            # Verify source FK fields
+            assert page.get("source_history_notebook_id") is None  # not passed in this call
+
+    def test_prepare_for_page_empty_notebook(self):
+        """Empty notebook produces empty content."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id, title="Empty", content="")
+            prepared = self.dataset_populator.prepare_notebook_for_page(history_id, notebook["id"])
+            assert prepared["content"] == ""
+            assert prepared["title"] == "Empty"
+
+    def test_prepare_for_page_wrong_history(self):
+        """Notebook from different history returns 404."""
+        with self.dataset_populator.test_history() as history1_id:
+            with self.dataset_populator.test_history() as history2_id:
+                notebook = self.dataset_populator.new_history_notebook(history1_id, title="Wrong History")
+                response = self.dataset_populator.prepare_notebook_for_page_raw(history2_id, notebook["id"])
+                assert response.status_code == 404
+
+    def test_page_source_notebook_fk(self):
+        """Creating a Page with history_notebook_id stores the FK."""
+        with self.dataset_populator.test_history() as history_id:
+            notebook = self.dataset_populator.new_history_notebook(history_id, title="Source Test", content="# Hello")
+            # Create page with notebook FK
+            page_payload = self.dataset_populator.new_page_payload(
+                slug="from-notebook",
+                title="From Notebook",
+                content_format="markdown",
+                content="# Hello",
+            )
+            page_payload["history_notebook_id"] = notebook["id"]
+            response = self._post("pages", page_payload, json=True)
+            page = response.json()
+            assert page["source_history_notebook_id"] == notebook["id"]
+
+    def test_page_source_fk_null_by_default(self):
+        """Pages created without source IDs have null source fields."""
+        page = self.dataset_populator.new_page(
+            slug="no-source", title="No Source", content_format="markdown", content="plain"
+        )
+        assert page.get("source_invocation_id") is None
+        assert page.get("source_history_notebook_id") is None

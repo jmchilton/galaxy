@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faArrowLeft, faHistory, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faFileExport, faHistory, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BBadge, BButton } from "bootstrap-vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
@@ -113,6 +113,16 @@ async function handleSave() {
     await store.saveNotebook();
 }
 
+async function handleExportToPage() {
+    if (store.isDirty) {
+        await store.saveNotebook();
+    }
+    const notebook = store.currentNotebook;
+    if (notebook) {
+        router.push(`/pages/create?notebook_id=${notebook.id}&history_id=${props.historyId}`);
+    }
+}
+
 function handleRevisionSelect(revisionId: string) {
     store.loadRevision(revisionId);
 }
@@ -180,6 +190,15 @@ function handleRevisionRestore(revisionId: string) {
                     <BBadge v-if="store.revisionCount > 0" variant="light" class="ml-1">
                         {{ store.revisionCount }}
                     </BBadge>
+                </BButton>
+                <BButton
+                    variant="outline-secondary"
+                    size="sm"
+                    class="mr-2"
+                    data-description="notebook export to page button"
+                    @click="handleExportToPage">
+                    <FontAwesomeIcon :icon="faFileExport" />
+                    Export to Page
                 </BButton>
                 <BButton
                     variant="primary"
