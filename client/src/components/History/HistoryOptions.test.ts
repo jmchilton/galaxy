@@ -22,6 +22,7 @@ const expectedOptions = [
     "Archive History",
     "Extract Workflow",
     "Show Invocations",
+    "History Notebooks",
     "Share & Manage Access",
 ];
 
