@@ -4,7 +4,6 @@ from unittest import mock
 
 import pytest
 
-from galaxy import model
 from galaxy.managers.markdown_util import (
     _resolve_hid,
     _resolve_hid_to_collection,
@@ -60,9 +59,7 @@ class TestResolveHidToDataset(BaseTestCase):
         mock_result.first.return_value = (100, False)
         self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
 
-        result = _resolve_hid_to_dataset(
-            self.trans.sa_session, self.history_id, 5, "history_dataset_display"
-        )
+        result = _resolve_hid_to_dataset(self.trans.sa_session, self.history_id, 5, "history_dataset_display")
         assert result == 100
 
     def test_resolve_deleted_dataset_raises(self):
@@ -72,9 +69,7 @@ class TestResolveHidToDataset(BaseTestCase):
         self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
 
         with pytest.raises(ValueError) as exc_info:
-            _resolve_hid_to_dataset(
-                self.trans.sa_session, self.history_id, 5, "history_dataset_display"
-            )
+            _resolve_hid_to_dataset(self.trans.sa_session, self.history_id, 5, "history_dataset_display")
         assert "deleted" in str(exc_info.value)
 
     def test_resolve_nonexistent_dataset_raises(self):
@@ -87,9 +82,7 @@ class TestResolveHidToDataset(BaseTestCase):
         self.trans.sa_session.execute = mock.MagicMock(side_effect=mock_results)
 
         with pytest.raises(ValueError) as exc_info:
-            _resolve_hid_to_dataset(
-                self.trans.sa_session, self.history_id, 999, "history_dataset_display"
-            )
+            _resolve_hid_to_dataset(self.trans.sa_session, self.history_id, 999, "history_dataset_display")
         assert "not found" in str(exc_info.value)
 
     def test_resolve_collection_as_dataset_raises(self):
@@ -103,9 +96,7 @@ class TestResolveHidToDataset(BaseTestCase):
         self.trans.sa_session.execute = mock.MagicMock(side_effect=mock_results)
 
         with pytest.raises(ValueError) as exc_info:
-            _resolve_hid_to_dataset(
-                self.trans.sa_session, self.history_id, 5, "history_dataset_display"
-            )
+            _resolve_hid_to_dataset(self.trans.sa_session, self.history_id, 5, "history_dataset_display")
         assert "is a collection" in str(exc_info.value)
         assert "expects a dataset" in str(exc_info.value)
 
@@ -197,9 +188,7 @@ class TestResolveHid(BaseTestCase):
         mock_result.first.return_value = (100, False)
         self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
 
-        arg_name, internal_id = _resolve_hid(
-            self.trans.sa_session, self.history_id, 5, "history_dataset_display"
-        )
+        arg_name, internal_id = _resolve_hid(self.trans.sa_session, self.history_id, 5, "history_dataset_display")
         assert arg_name == "history_dataset_id"
         assert internal_id == 100
 
@@ -221,9 +210,7 @@ class TestResolveHid(BaseTestCase):
     def test_unsupported_directive_raises(self):
         """Test that unsupported directive raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
-            _resolve_hid(
-                self.trans.sa_session, self.history_id, 5, "job_metrics"
-            )
+            _resolve_hid(self.trans.sa_session, self.history_id, 5, "job_metrics")
         assert "does not support hid" in str(exc_info.value)
 
     def test_all_dataset_directives_work(self):
@@ -233,9 +220,7 @@ class TestResolveHid(BaseTestCase):
         self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
 
         for directive in HID_DATASET_DIRECTIVES:
-            arg_name, _ = _resolve_hid(
-                self.trans.sa_session, self.history_id, 1, directive
-            )
+            arg_name, _ = _resolve_hid(self.trans.sa_session, self.history_id, 1, directive)
             assert arg_name == "history_dataset_id", f"Failed for {directive}"
 
     def test_all_collection_directives_work(self):
@@ -245,9 +230,7 @@ class TestResolveHid(BaseTestCase):
         self.trans.sa_session.execute = mock.MagicMock(return_value=mock_result)
 
         for directive in HID_COLLECTION_DIRECTIVES:
-            arg_name, _ = _resolve_hid(
-                self.trans.sa_session, self.history_id, 1, directive
-            )
+            arg_name, _ = _resolve_hid(self.trans.sa_session, self.history_id, 1, directive)
             assert arg_name == "history_dataset_collection_id", f"Failed for {directive}"
 
 
