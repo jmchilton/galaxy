@@ -3959,6 +3959,11 @@ class CreatePagePayload(PageSummaryBase):
         title="Workflow invocation ID",
         description="Encoded ID used by workflow generated reports.",
     )
+    history_notebook_id: Optional[DecodedDatabaseIdField] = Field(
+        None,
+        title="History Notebook ID",
+        description="Encoded ID of the history notebook used to create this page.",
+    )
     model_config = ConfigDict(use_enum_values=True, extra="allow")
 
 
@@ -4078,6 +4083,16 @@ class PageSummary(PageSummaryBase, WithModelClass):
     create_time: datetime = CreateTimeField
     update_time: datetime = UpdateTimeField
     tags: TagCollection
+    source_invocation_id: Optional[EncodedDatabaseIdField] = Field(
+        None,
+        title="Source Invocation ID",
+        description="The workflow invocation this page was created from, if any.",
+    )
+    source_history_notebook_id: Optional[EncodedDatabaseIdField] = Field(
+        None,
+        title="Source History Notebook ID",
+        description="The history notebook this page was created from, if any.",
+    )
 
 
 GenerateVersionField = Field(

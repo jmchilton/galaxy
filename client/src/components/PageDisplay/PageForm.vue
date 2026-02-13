@@ -110,6 +110,7 @@ async function onSubmit() {
                 content_format: "markdown",
                 slug: slug.value,
                 title: title.value,
+                ...(props.invocationId && { invocation_id: props.invocationId }),
             },
         });
         if (error) {
