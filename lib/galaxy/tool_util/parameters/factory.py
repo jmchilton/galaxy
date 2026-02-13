@@ -502,9 +502,19 @@ def _from_input_source_cwl(input_source: "CwlInputSource") -> ToolParameterT:
     if isinstance(schema_salad_type, str):
         return _simple_cwl_type_to_model(schema_salad_type, input_source)
     elif isinstance(schema_salad_type, list):
+        parameters = []
+        for t in schema_salad_type:
+            if isinstance(t, str):
+                parameters.append(_simple_cwl_type_to_model(t, input_source))
+            elif isinstance(t, dict):
+                parameters.append(_complex_cwl_type_to_model(t, input_source))
+            else:
+                raise NotImplementedError(
+                    f"Cannot generate tool parameter model for this CWL artifact yet - union element type {type(t)}."
+                )
         return CwlUnionParameterModel(
             name=input_source.parse_name(),
-            parameters=[_simple_cwl_type_to_model(t, input_source) for t in schema_salad_type],
+            parameters=parameters,
         )
     elif isinstance(schema_salad_type, dict):
         return _complex_cwl_type_to_model(schema_salad_type, input_source)

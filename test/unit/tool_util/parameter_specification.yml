@@ -3995,9 +3995,9 @@ cwl_int_optional:
   request_valid:
     - parameter: 5
     - parameter: null
+    - {}
   request_invalid:
     - parameter: "5"
-    - {}
     - parameter: "None"
 
 cwl_float:
@@ -4015,9 +4015,9 @@ cwl_float_optional:
     - parameter: 5
     - parameter: 5.0
     - parameter: null
+    - {}
   request_invalid:
     - parameter: "5"
-    - {}
     - parameter: "None"
 
 cwl_string:
@@ -4034,8 +4034,8 @@ cwl_string_optional:
     - parameter: "moo"
     - parameter: ""
     - parameter: null
-  request_invalid:
     - {}
+  request_invalid:
     - parameter: 5
 
 cwl_boolean:
@@ -4054,8 +4054,8 @@ cwl_boolean_optional:
     - parameter: true
     - parameter: false
     - parameter: null
-  request_invalid:
     - {}
+  request_invalid:
     - parameter: 5
     - parameter: "true"
     - parameter: "True"
@@ -4242,6 +4242,17 @@ cwl_enum:
     - parameter: 5
     - parameter: null
     - {}
+
+cwl_enum_optional:
+  request_valid:
+    - parameter: "red"
+    - parameter: "green"
+    - parameter: "blue"
+    - parameter: null
+    - {}
+  request_invalid:
+    - parameter: "yellow"
+    - parameter: 5
 
 cwl_file_array:
   request_valid:
