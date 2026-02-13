@@ -135,6 +135,25 @@ This plan implements History Notebooks - markdown documents tied to Galaxy histo
 - State machine: Editor → Editor+RevisionPanel → RevisionView → back to panel or restore to editor
 - Used `axios`+`withPrefix` for new endpoints not yet in generated OpenAPI schema
 
+### ✅ Phase 7: Drag-and-Drop - COMPLETE
+
+**Completed 2026-02-12.** Detailed plan: [`HISTORY_MARKDOWN_PHASE_7.md`](HISTORY_MARKDOWN_PHASE_7.md)
+
+| Task                                    | Status | Files                                                      |
+| --------------------------------------- | ------ | ---------------------------------------------------------- |
+| 7.1 Drop target + event handlers        | ✅     | `client/src/components/Markdown/Editor/TextEditor.vue`     |
+| 7.2 Directive insertion (dataset + col) | ✅     | `client/src/components/Markdown/Editor/TextEditor.vue`     |
+| 7.3 Visual feedback (highlight class)   | ✅     | `client/src/components/Markdown/Editor/TextEditor.vue`     |
+| 7.4 Vitest unit tests (9)               | ✅     | `client/src/components/Markdown/Editor/TextEditor.test.ts` |
+| 7.5 Selenium E2E tests (2)              | ✅     | `lib/galaxy_test/selenium/test_history_notebooks.py`       |
+
+**Key Implementation Notes:**
+
+- Uses `eventStore.getDragItems()` + `isHistoryItem()` guard (no custom dataTransfer — reuses Galaxy's existing drag infrastructure)
+- Mode-gated: only activates when `props.mode === "history_notebook"`
+- Calls existing `insertMarkdown()` to wrap directives in ` ```galaxy ` fences
+- Selenium tests use `seletools.actions.drag_and_drop` (`@selenium_only`)
+
 ---
 
 ## MVP Definition
@@ -149,7 +168,7 @@ The MVP delivers functional history notebooks that users can create, edit, save,
 6. HID insertion toolbox (scoped to current history)
 7. Routes and entry point from history panel
 
-**Not MVP:** Revision UI, drag-and-drop, chat/agent, extraction to Pages/Workflows.
+**Not MVP:** ~~Revision UI~~, ~~drag-and-drop~~, chat/agent, extraction to Pages/Workflows.
 
 ---
 
@@ -3406,7 +3425,7 @@ Backend: `HistoryNotebookRevisionDetails` schema, `show_revision` + `revert_to_r
 
 ---
 
-## Phase 7: Drag-and-Drop
+## ✅ Phase 7: Drag-and-Drop - COMPLETE
 
 **Dependency:** MVP complete, Phase 3 (HID Toolbox)
 
