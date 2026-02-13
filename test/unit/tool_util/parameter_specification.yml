@@ -4285,6 +4285,15 @@ cwl_long:
     - parameter: null
     - parameter: 5.0
 
+cwl_record:
+  request_valid:
+    - parameter: {name: "hello", count: 5}
+  request_invalid:
+    - parameter: {name: "hello"}
+    - parameter: {name: 5, count: 5}
+    - parameter: "hello"
+    - {}
+
 cwl_directory:
   request_valid:
    - parameter: {src: hda, id: abcdabcd}

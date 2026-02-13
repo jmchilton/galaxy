@@ -2348,6 +2348,31 @@ class CwlArrayParameterModel(BaseToolParameterModelDefinition):
         return True
 
 
+class CwlRecordParameterModel(BaseToolParameterModelDefinition):
+    parameter_type: Literal["cwl_record"] = "cwl_record"
+    fields: List["CwlParameterT"]
+
+    @property
+    def py_type(self) -> Type:
+        kwd = {}
+        for field_param in self.fields:
+            name = safe_field_name(field_param.name)
+            alias = field_param.name if field_param.name != name else None
+            kwd[name] = (field_param.py_type, Field(..., alias=alias))
+        return create_model_strict(f"CwlRecord_{self.name}", **kwd)
+
+    def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        return DynamicModelInformation(
+            self.name,
+            (self.py_type, ...),
+            {},
+        )
+
+    @property
+    def request_requires_value(self) -> bool:
+        return True
+
+
 CwlParameterT = Union[
     CwlIntegerParameterModel,
     CwlFloatParameterModel,
@@ -2360,6 +2385,7 @@ CwlParameterT = Union[
     CwlAnyParameterModel,
     CwlEnumParameterModel,
     CwlArrayParameterModel,
+    CwlRecordParameterModel,
 ]
 
 GalaxyParameterT = Union[
@@ -2403,6 +2429,7 @@ ConditionalParameterModel.model_rebuild()
 RepeatParameterModel.model_rebuild()
 CwlUnionParameterModel.model_rebuild()
 CwlArrayParameterModel.model_rebuild()
+CwlRecordParameterModel.model_rebuild()
 
 
 class MaybeToolParameterBundle(Protocol):
