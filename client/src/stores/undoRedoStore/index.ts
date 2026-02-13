@@ -237,6 +237,7 @@ class FactoryAction extends UndoRedoAction {
     private undoCallback?: () => void;
     private redoCallback?: () => void;
     private destroyCallback?: () => void;
+    private _dataAttributes: Record<string, string> = {};
 
     constructor(applyCallback: (action: FactoryAction) => void) {
         super();
@@ -266,6 +267,15 @@ class FactoryAction extends UndoRedoAction {
     setName(name: string) {
         this.name = name;
         return this;
+    }
+
+    setDataAttributes(attrs: Record<string, string>) {
+        this._dataAttributes = attrs;
+        return this;
+    }
+
+    get dataAttributes(): Record<string, string> {
+        return this._dataAttributes;
     }
 
     apply() {

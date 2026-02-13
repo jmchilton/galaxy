@@ -729,6 +729,13 @@ class UsesWorkflowAssertions(NavigatesGalaxyMixin):
             expected_annotation in actual_annotation
         ), f"'{expected_annotation}' unequal annotation '{actual_annotation}'"
 
+    @retry_assertion_during_transitions
+    def assert_wf_name_is(self, expected_name):
+        edit_name = self.components.workflow_editor.edit_name
+        edit_name_element = edit_name.wait_for_visible()
+        actual_name = edit_name_element.get_attribute("value")
+        assert expected_name == actual_name, f"'{expected_name}' != name '{actual_name}'"
+
 
 class TestsGalaxyPagers(GalaxyTestSeleniumContext):
     @retry_assertion_during_transitions

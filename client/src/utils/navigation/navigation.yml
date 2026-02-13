@@ -902,6 +902,15 @@ workflow_editor:
       action_insert_parameter: ".action[data-type='step-insert'][data-step-type='parameter_input']"
       action_set_license: ".action[data-type='set-license']"
       action_set_annotation: ".action[data-type='set-annotation']"
+      action_set_name: ".action[data-type='set-name']"
+      action_step_remove: ".action[data-type='step-remove']"
+      action_step_copy: ".action[data-type='step-copy']"
+      action_set_label: ".action[data-type='set-label']"
+      action_connect: ".action[data-type='connect']"
+      action_disconnect: ".action[data-type='disconnect']"
+      action_comment_add: ".action[data-type='comment-add']"
+      action_comment_delete: ".action[data-type='comment-delete']"
+      action_comment_color: ".action[data-type='comment-color']"
 
   tool_bar:
     selectors:
@@ -942,9 +951,18 @@ workflow_editor:
       markdown_rendered: ".markdown-workflow-comment .rendered-markdown"
       frame_comment: ".frame-workflow-comment"
       frame_title: ".frame-workflow-comment .frame-comment-header"
+      frame_title_span: ".frame-workflow-comment .frame-comment-header span"
       freehand_comment: ".freehand-workflow-comment"
       freehand_path: ".freehand-workflow-comment path"
       delete: "button[title='Delete comment']"
+      text_delete: ".text-workflow-comment button[title='Delete comment']"
+      markdown_delete: ".markdown-workflow-comment button[title='Delete comment']"
+      frame_delete: ".frame-workflow-comment button[title='Delete comment']"
+      color_toggle: "button[title='Color']"
+      text_color_toggle: ".text-workflow-comment button[title='Color']"
+      markdown_color_toggle: ".markdown-workflow-comment button[title='Color']"
+      frame_color_toggle: ".frame-workflow-comment button[title='Color']"
+      comment_color: ".comment-color-selector [data-color='${color}']"
   inputs:
     selectors:
       activity_button: "#activity-workflow-editor-inputs"
@@ -953,6 +971,8 @@ workflow_editor:
   selectors:
     node_inspector: '.tool-inspector'
     node_inspector_close: ".tool-inspector [title='close']"
+    undo_button: '#workflow-undo-button'
+    redo_button: '#workflow-redo-button'
     canvas_body: '#workflow-canvas'
     edit_annotation: '#workflow-annotation'
     edit_name: '#workflow-name'

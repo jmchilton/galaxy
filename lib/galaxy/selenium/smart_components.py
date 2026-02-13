@@ -144,8 +144,11 @@ class SmartTarget:
 
     def wait_for_and_clear_and_send_keys(self, *text):
         dom_element = self.wait_for_visible()
-        dom_element.clear()
-        dom_element.send_keys(*text)
+        if hasattr(dom_element, "fill"):
+            dom_element.fill("".join(str(v) for v in text))
+        else:
+            dom_element.clear()
+            dom_element.send_keys(*text)
 
     def wait_for_and_clear_aggressive_and_send_keys(self, *text):
         dom_element = self.wait_for_visible()

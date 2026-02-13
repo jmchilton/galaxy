@@ -1415,9 +1415,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
         source_element = self.find_element_by_selector(f"#{source_id}")
         sink_element = self.find_element_by_selector(f"#{sink_id}")
-        ac = self.action_chains()
-        ac = ac.move_to_element(source_element).click_and_hold()
         if screenshot_partial:
+            ac = self.action_chains()
+            ac = ac.move_to_element(source_element).click_and_hold()
             ac = ac.move_by_offset(10, 10)
             ac.perform()
             self.sleep_for(self.wait_types.UX_RENDER)
@@ -1489,6 +1489,122 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                 node_component = editor.node._(label=node)
             node_component.wait_for_and_click()
         editor.node_inspector.wait_for_visible()
+
+    def workflow_editor_undo(self):
+        self.components.workflow_editor.undo_button.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+    def workflow_editor_redo(self):
+        self.components.workflow_editor.redo_button.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+    def workflow_editor_destroy_node(self, label):
+        node = self.components.workflow_editor.node._(label=label)
+        node.wait_for_and_click()
+        node.destroy.wait_for_and_click()
+
+    def workflow_editor_duplicate_node(self, label):
+        node = self.components.workflow_editor.node._(label=label)
+        node.wait_for_and_click()
+        node.clone.wait_for_and_click()
+
+    def workflow_editor_destroy_connection(self, sink):
+        editor = self.components.workflow_editor
+        sink_node_label, sink_input_name = sink.split("#", 1)
+        sink_node = editor.node._(label=sink_node_label)
+        sink_input = sink_node.input_terminal(name=sink_input_name).wait_for_visible()
+        if self.backend_type == "playwright":
+            # In Playwright, hovering the terminal is intercepted by the
+            # delete-terminal-button that appears on hover. Use page.mouse.move()
+            # to trigger CSS :hover without Playwright's actionability checks.
+            box = sink_input._element.bounding_box()
+            self.page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        else:
+            self.hover_over(sink_input)
+        sink_node.connector_destroy_callout(name=sink_input_name).wait_for_and_click()
+
+    def assert_connected(self, source, sink):
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        # Use wait_for_present (not wait_for_visible) because SVG <g> elements
+        # may have zero bounding box in Playwright, making them "hidden" even
+        # when the connection exists. DOM presence is the reliable indicator.
+        self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id).wait_for_present()
+
+    def assert_connection_invalid(self, source, sink):
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_present()
+
+    def assert_not_connected(self, source, sink):
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id).wait_for_absent()
+
+    def workflow_editor_open_changes_panel(self):
+        self.components.workflow_editor.tool_bar.changes.wait_for_and_click()
+
+    def workflow_editor_place_comment(self, comment_type="text_comment", offset_x=0, offset_y=0, width=200, height=150):
+        """Select a comment tool and drag on the canvas to place a comment.
+
+        comment_type should match the data-tool attribute (snake_case):
+        text_comment, markdown_comment, frame_comment.
+        offset_x/offset_y shift the drag start position from canvas center (pixels).
+        width/height define the size of the comment created by dragging.
+        """
+        editor = self.components.workflow_editor
+        editor.tool_bar.tool(tool=comment_type).wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        canvas = editor.canvas_body.wait_for_visible()
+        if self.backend_type == "playwright":
+            box = canvas._element.bounding_box()
+            x = box["x"] + box["width"] / 2 + offset_x
+            y = box["y"] + box["height"] / 2 + offset_y
+            mouse = self.page.mouse
+            mouse.move(x, y)
+            mouse.down()
+            mouse.move(x + width, y + height, steps=5)
+            mouse.up()
+        else:
+            from selenium.webdriver.common.action_chains import ActionChains
+
+            ac = ActionChains(self.driver)
+            ac.move_to_element_with_offset(canvas, offset_x, offset_y)
+            ac.click_and_hold()
+            ac.move_by_offset(width, height)
+            ac.release()
+            ac.perform()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        # Revert to pointer tool — Selenium's ActionChains release() may not
+        # dispatch pointerup on the input-catcher, so the auto-revert in
+        # useToolLogic doesn't fire and the input-catcher stays at z-index 1500.
+        editor.tool_bar.tool(tool="pointer").wait_for_and_click()
+
+    def workflow_editor_click_comment(self, comment_type="text"):
+        """Click on a comment to focus it (show buttons)."""
+        comment = self.components.workflow_editor.comment
+        if comment_type == "text":
+            comment.text_inner.wait_for_and_click()
+        elif comment_type == "markdown":
+            comment.markdown_rendered.wait_for_and_click()
+        elif comment_type == "frame":
+            comment.frame_title_span.wait_for_and_click()
+
+    @retry_during_transitions
+    def workflow_editor_delete_comment(self, comment_type="text"):
+        """Focus comment and click its delete button."""
+        self.workflow_editor_click_comment(comment_type)
+        self.sleep_for(self.wait_types.UX_RENDER)
+        comment = self.components.workflow_editor.comment
+        delete_target = getattr(comment, f"{comment_type}_delete", comment.delete)
+        delete_target.wait_for_and_click()
+
+    def workflow_editor_change_comment_color(self, color, comment_type="text"):
+        """Focus comment, open color picker, click a color."""
+        self.workflow_editor_click_comment(comment_type)
+        self.sleep_for(self.wait_types.UX_RENDER)
+        comment = self.components.workflow_editor.comment
+        toggle_target = getattr(comment, f"{comment_type}_color_toggle", comment.color_toggle)
+        toggle_target.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        comment.comment_color(color=color).wait_for_and_click()
 
     def workflow_editor_click_option(self, option_label):
         self.workflow_editor_click_options()
@@ -2033,6 +2149,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             save_button.wait_for_and_click()
             self.sleep_for(self.wait_types.UX_RENDER)
         return name
+
+    def workflow_editor_set_name(self, name: str):
+        self.components.workflow_editor.edit_name.wait_for_and_clear_and_send_keys(name)
 
     def workflow_editor_set_annotation(self, annotation: str):
         self.components.workflow_editor.edit_annotation.wait_for_and_clear_and_send_keys(annotation)

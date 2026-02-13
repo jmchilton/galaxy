@@ -95,6 +95,22 @@ class PlaywrightElement:
         """
         self._element.fill("")
 
+    def fill(self, text: str) -> None:
+        """
+        Atomically clear and set input value using Playwright's fill().
+
+        More reliable than clear() + send_keys() for reactive framework
+        inputs (Vue, React) because fill() handles the clear-and-type
+        as a single operation, avoiding race conditions where the framework
+        re-renders between clear and type.
+
+        Dispatches a keyup event after fill since Playwright's fill() only
+        fires input/change events — Vue components using @keyup handlers
+        need the keyup event to emit updates to parent components.
+        """
+        self._element.fill(text)
+        self._element.dispatch_event("keyup")
+
     def get_attribute(self, name: str) -> Optional[str]:
         """
         Get the value of an element attribute.

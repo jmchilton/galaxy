@@ -29,6 +29,13 @@ export class LazyMutateStepAction<K extends keyof Step> extends LazyUndoRedoActi
         this.internalName = name;
     }
 
+    get dataAttributes(): Record<string, string> {
+        return {
+            type: "step-mutate",
+            what: String(this.key),
+        };
+    }
+
     constructor(stepStore: WorkflowStepStore, stepId: number, key: K, fromValue: Step[K], toValue: Step[K]) {
         super();
         this.stepStore = stepStore;
@@ -86,6 +93,10 @@ export class LazySetLabelAction extends LazyMutateStepAction<"label"> {
     labelTypeTitle: "Input" | "Step";
     stateStore: WorkflowStateStore;
     success;
+
+    get dataAttributes(): Record<string, string> {
+        return { type: "set-label" };
+    }
 
     constructor(
         stepStore: WorkflowStepStore,
@@ -333,6 +344,10 @@ export class RemoveStepAction extends UndoRedoAction {
         return `remove step "${this.step.id} ${this.step.label ?? this.step.name}"`;
     }
 
+    get dataAttributes(): Record<string, string> {
+        return { type: "step-remove" };
+    }
+
     run() {
         this.stepStore.removeStep(this.step.id);
         this.stateStore.activeNodeId = null;
@@ -367,6 +382,10 @@ export class CopyStepAction extends UndoRedoAction {
 
     get name() {
         return `duplicate step "${this.stepLabel}"`;
+    }
+
+    get dataAttributes(): Record<string, string> {
+        return { type: "step-copy" };
     }
 
     run() {

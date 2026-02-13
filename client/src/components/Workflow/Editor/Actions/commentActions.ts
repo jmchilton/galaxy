@@ -35,6 +35,10 @@ export class AddCommentAction extends CommentAction {
         return `add ${this.commentName}`;
     }
 
+    get dataAttributes(): Record<string, string> {
+        return { type: "comment-add", "comment-type": this.comment.type };
+    }
+
     undo() {
         this.store.deleteComment(this.comment.id);
     }
@@ -47,6 +51,10 @@ export class AddCommentAction extends CommentAction {
 export class DeleteCommentAction extends CommentAction {
     get name() {
         return `delete ${this.commentName}`;
+    }
+
+    get dataAttributes(): Record<string, string> {
+        return { type: "comment-delete" };
     }
 
     run() {
@@ -76,6 +84,10 @@ export class ChangeColorAction extends UndoRedoAction {
 
     get name() {
         return `change ${this.type} comment color to ${this.toColor}`;
+    }
+
+    get dataAttributes(): Record<string, string> {
+        return { type: "comment-color" };
     }
 
     run() {

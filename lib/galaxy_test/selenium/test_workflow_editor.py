@@ -1298,8 +1298,7 @@ steps:
         assert width == 400
         assert height == 110
 
-        editor.comment.text_comment.wait_for_and_click()
-        editor.comment.delete.wait_for_and_click()
+        self.workflow_editor_delete_comment("text")
         editor.comment.text_comment.wait_for_absent()
 
         # place and test markdown comment
@@ -1319,8 +1318,7 @@ steps:
         assert width == 200
         assert height == 220
 
-        editor.comment.markdown_rendered.wait_for_and_click()
-        editor.comment.delete.wait_for_and_click()
+        self.workflow_editor_delete_comment("markdown")
         editor.comment.markdown_comment.wait_for_absent()
 
         # place and test frame comment
@@ -1337,8 +1335,7 @@ steps:
         assert width == 400
         assert height == 300
 
-        editor.comment.frame_comment.wait_for_and_click()
-        editor.comment.delete.wait_for_and_click()
+        self.workflow_editor_delete_comment("frame")
         editor.comment.frame_comment.wait_for_absent()
 
         # test freehand and eraser
@@ -1579,18 +1576,6 @@ steps:
 
         self.sleep_for(self.wait_types.UX_RENDER)
 
-    def assert_connected(self, source, sink):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id).wait_for_visible()
-
-    def assert_connection_invalid(self, source, sink):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_present()
-
-    def assert_not_connected(self, source, sink):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id).wait_for_absent()
-
     def open_in_workflow_editor(self, yaml_content, auto_layout=True):
         name = self.workflow_upload_yaml_with_random_name(yaml_content)
         self.workflow_index_open()
@@ -1599,15 +1584,6 @@ steps:
             self.components.workflow_editor.tool_bar.auto_layout.wait_for_and_click()
             self.sleep_for(self.wait_types.UX_RENDER)
         return name
-
-    def workflow_editor_destroy_connection(self, sink):
-        editor = self.components.workflow_editor
-
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
-        sink_input = sink_node.input_terminal(name=sink_input_name).wait_for_visible()
-        self.hover_over(sink_input)
-        sink_node.connector_destroy_callout(name=sink_input_name).wait_for_and_click()
 
     def assert_input_mapped(self, sink):
         editor = self.components.workflow_editor

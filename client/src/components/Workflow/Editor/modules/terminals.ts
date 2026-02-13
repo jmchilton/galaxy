@@ -99,6 +99,7 @@ class Terminal extends EventEmitter {
             .onRun(() => this.makeConnection(other))
             .onUndo(() => this.dropConnection(other))
             .setName("connect steps")
+            .setDataAttributes({ type: "connect" })
             .apply();
     }
     makeConnection(other: Terminal | Connection) {
@@ -111,6 +112,7 @@ class Terminal extends EventEmitter {
             .onRun(() => this.dropConnection(other))
             .onUndo(() => this.makeConnection(other))
             .setName("disconnect steps")
+            .setDataAttributes({ type: "disconnect" })
             .apply();
     }
     dropConnection(other: Terminal | Connection) {

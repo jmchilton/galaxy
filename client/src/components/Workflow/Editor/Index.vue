@@ -173,6 +173,7 @@
                         </BDropdown>
 
                         <b-button
+                            id="workflow-undo-button"
                             :title="undoRedoStore.undoText + ' (Ctrl + Z)'"
                             variant="secondary"
                             :disabled="!undoRedoStore.hasUndo"
@@ -180,6 +181,7 @@
                             <FontAwesomeIcon :icon="faArrowLeft" />
                         </b-button>
                         <b-button
+                            id="workflow-redo-button"
                             :title="undoRedoStore.redoText + ' (Ctrl + Shift + Z)'"
                             variant="secondary"
                             :disabled="!undoRedoStore.hasRedo"
@@ -383,6 +385,7 @@ export default {
             (value) => (name.value = value),
             showAttributes,
             "set workflow name",
+            "name",
         );
         /** user set name. queues an undo/redo action */
         function setName(newName) {
