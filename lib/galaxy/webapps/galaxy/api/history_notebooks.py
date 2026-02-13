@@ -27,6 +27,7 @@ from galaxy.schema.schema import (
     HistoryNotebookRevisionList,
     HistoryNotebookRevisionSummary,
     HistoryNotebookSummary,
+    PrepareNotebookForPageResponse,
     UpdateHistoryNotebookPayload,
 )
 from galaxy.webapps.galaxy.api import (
@@ -111,6 +112,28 @@ class FastAPIHistoryNotebooks:
         rval["edit_source"] = notebook.latest_revision.edit_source
         self.manager.rewrite_content_for_export(trans, history, rval)
         return HistoryNotebookDetails(**rval)
+
+    @router.get(
+        "/api/histories/{history_id}/notebooks/{notebook_id}/prepare-for-page",
+        summary="Prepare notebook content for Page creation.",
+        response_description="Notebook content with encoded IDs, ready for POST /api/pages.",
+    )
+    def prepare_for_page(
+        self,
+        history_id: HistoryIdPathParam,
+        notebook_id: NotebookIdPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> PrepareNotebookForPageResponse:
+        """Resolve HID references and encode IDs for Page creation."""
+        history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
+        notebook = self.manager.get_notebook_by_id(trans, notebook_id)
+        if notebook.history_id != history.id:
+            raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
+        content = self.manager.prepare_content_for_page(trans, notebook)
+        return PrepareNotebookForPageResponse(
+            content=content,
+            title=notebook.title or "Untitled Notebook",
+        )
 
     @router.post(
         "/api/histories/{history_id}/notebooks",
