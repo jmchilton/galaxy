@@ -30,6 +30,7 @@ from galaxy.tool_util_models.parameters import (
     ConditionalParameterModel,
     ConditionalWhen,
     CwlAnyParameterModel,
+    CwlArrayParameterModel,
     CwlBooleanParameterModel,
     CwlDirectoryParameterModel,
     CwlEnumParameterModel,
@@ -460,6 +461,17 @@ def _complex_cwl_type_to_model(type_dict: dict, input_source: "CwlInputSource"):
     if inner_type == "enum":
         symbols = type_dict.get("symbols", [])
         return CwlEnumParameterModel(name=input_source.parse_name(), symbols=symbols)
+    elif inner_type == "array":
+        items_type = type_dict.get("items")
+        if isinstance(items_type, str):
+            item_model = _simple_cwl_type_to_model(items_type, input_source)
+        elif isinstance(items_type, dict):
+            item_model = _complex_cwl_type_to_model(items_type, input_source)
+        else:
+            raise NotImplementedError(
+                f"Cannot generate tool parameter model for this CWL artifact yet - array items type {type(items_type)}."
+            )
+        return CwlArrayParameterModel(name=input_source.parse_name(), item_type=item_model)
     raise NotImplementedError(
         f"Cannot generate tool parameter model for this CWL artifact yet - contains unknown complex type {inner_type}."
     )

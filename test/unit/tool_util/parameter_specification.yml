@@ -4243,6 +4243,28 @@ cwl_enum:
     - parameter: null
     - {}
 
+cwl_file_array:
+  request_valid:
+    - parameter:
+        - {src: hda, id: abcdabcd}
+        - {src: hda, id: abcdabcd}
+    - parameter:
+        - {src: hda, id: abcdabcd}
+    - parameter: []
+  request_invalid:
+    - parameter: {src: hda, id: abcdabcd}
+    - {}
+
+cwl_int_array:
+  request_valid:
+    - parameter: [1, 2, 3]
+    - parameter: [5]
+    - parameter: []
+  request_invalid:
+    - parameter: 5
+    - parameter: ["5", "6"]
+    - {}
+
 cwl_long:
   request_valid:
     - parameter: 5
