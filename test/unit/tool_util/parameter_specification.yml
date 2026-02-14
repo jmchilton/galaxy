@@ -4143,6 +4143,8 @@ cwl_file:
    - {}
   job_runtime_valid:
    - parameter: {class: File, basename: "f.txt", location: "step_input://0",
+       nameroot: "f", nameext: ".txt"}
+   - parameter: {class: File, basename: "f.txt", location: "step_input://0",
        path: "/tmp/f.txt", nameroot: "f", nameext: ".txt", format: "txt", size: 100}
   job_runtime_invalid:
    - parameter: {src: hda, id: 5}
@@ -4380,6 +4382,9 @@ cwl_file_array:
   job_runtime_valid:
     - parameter:
         - {class: File, basename: "f.txt", location: "step_input://0",
+            nameroot: "f", nameext: ".txt"}
+    - parameter:
+        - {class: File, basename: "f.txt", location: "step_input://0",
             path: "/tmp/f.txt", nameroot: "f", nameext: ".txt", format: "txt", size: 100}
     - parameter: []
   job_runtime_invalid:
@@ -4460,10 +4465,12 @@ cwl_directory:
    - parameter: {src: hda, id: "abcabc"}
    - {}
   job_runtime_valid:
-   - parameter: {class: File, basename: "d", location: "step_input://0",
-       path: "/tmp/d", nameroot: "d", nameext: "", format: "txt", size: 0}
+   - parameter: {class: Directory, basename: "d", location: "step_input://0"}
+   - parameter: {class: Directory, basename: "d", location: "step_input://0",
+       path: "/tmp/d"}
   job_runtime_invalid:
    - parameter: {src: hda, id: 5}
+   - parameter: {class: File, basename: "d", location: "step_input://0"}
    - {}
 
 cwl_record_with_file:
@@ -4481,6 +4488,8 @@ cwl_record_with_file:
   job_internal_invalid:
     - {}
   job_runtime_valid:
+    - parameter: {name: "hello", input_file: {class: File, basename: "f.txt",
+        location: "step_input://0", nameroot: "f", nameext: ".txt"}}
     - parameter: {name: "hello", input_file: {class: File, basename: "f.txt",
         location: "step_input://0", path: "/tmp/f.txt", nameroot: "f",
         nameext: ".txt", format: "txt", size: 100}}
@@ -4506,6 +4515,8 @@ cwl_file_optional:
   job_internal_invalid:
     - {}
   job_runtime_valid:
+    - parameter: {class: File, basename: "f.txt", location: "step_input://0",
+        nameroot: "f", nameext: ".txt"}
     - parameter: {class: File, basename: "f.txt", location: "step_input://0",
         path: "/tmp/f.txt", nameroot: "f", nameext: ".txt", format: "txt", size: 100}
     - parameter: null
