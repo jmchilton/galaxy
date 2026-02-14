@@ -19,6 +19,7 @@ import pytest
 
 from galaxy.tool_util.parameters import input_models_for_tool_source
 from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
 from galaxy.util import galaxy_directory
 
 TOOLS_DIR = os.path.join(galaxy_directory(), "test/functional/tools")
@@ -81,14 +82,45 @@ def _galactic_cwl_tools():
 
 
 def _conformance_cwl_tools():
-    """CWL tools from downloaded conformance suites (v1.0, v1.1, v1.2).
+    """CWL tools from conformance test YAML entries (v1.0, v1.1, v1.2).
 
+    Driven by conformance_tests.yaml rather than filesystem walk — this
+    naturally excludes json_schema_invalid tools and unreferenced files.
     Only yields if update_cwl_conformance_tests.sh has been run.
     """
-    for version_dir_name in ["v1.0", "v1.1", "v1.2"]:
-        version_dir = os.path.join(CWL_TOOLS_DIR, version_dir_name)
-        for rel, path in _cwl_tools_from_dir(version_dir, relative_to=CWL_TOOLS_DIR):
-            yield pytest.param(path, id=rel)
+    for version in ["v1.0", "v1.1", "v1.2"]:
+        version_dir = os.path.join(CWL_TOOLS_DIR, version)
+        conformance_path = os.path.join(version_dir, "conformance_tests.yaml")
+        if not os.path.exists(conformance_path):
+            continue
+
+        seen = set()
+        for entry in conformance_tests_gen(version_dir):
+            tags = set(entry.get("tags", []))
+
+            # skip intentionally invalid CWL
+            if "json_schema_invalid" in tags:
+                continue
+
+            tool_rel = entry.get("tool")
+            if not tool_rel:
+                continue
+
+            directory = entry.get("directory", version_dir)
+            tool_path = os.path.normpath(os.path.join(directory, tool_rel))
+
+            if tool_path in seen:
+                continue
+            seen.add(tool_path)
+
+            if not os.path.exists(tool_path):
+                continue
+
+            if _is_workflow_or_graph(tool_path):
+                continue
+
+            rel_id = os.path.relpath(tool_path, CWL_TOOLS_DIR)
+            yield pytest.param(tool_path, id=rel_id)
 
 
 # -- Parameter tools: must all pass --
