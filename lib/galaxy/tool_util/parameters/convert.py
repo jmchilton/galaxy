@@ -631,6 +631,93 @@ DatasetToRuntimeJson = Callable[[DataJobInternalT], DataInternalJson]
 CollectionToRuntimeJson = Callable[[DataCollectionRequestInternal, Optional[str]], Any]
 
 
+def _cwl_type_contains_files(param) -> bool:
+    if isinstance(param, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+        return True
+    if isinstance(param, CwlArrayParameterModel):
+        return _cwl_type_contains_files(param.item_type)
+    if isinstance(param, CwlRecordParameterModel):
+        return any(_cwl_type_contains_files(f) for f in param.fields)
+    if isinstance(param, CwlUnionParameterModel):
+        return any(_cwl_type_contains_files(p) for p in param.parameters)
+    if isinstance(param, CwlAnyParameterModel):
+        return True
+    return False
+
+
+def _runtimeify_cwl_value(param, value, adapt_fn):
+    if isinstance(param, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+        if value is None:
+            return None
+        return adapt_fn(value)
+    return value
+
+
+def _runtimeify_cwl_record(parameter, value, adapt_fn):
+    if value is None:
+        return VISITOR_NO_REPLACEMENT
+    changed = False
+    result = dict(value)
+    for field_param in parameter.fields:
+        field_name = field_param.name
+        if field_name not in value:
+            continue
+        if isinstance(field_param, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if value[field_name] is not None:
+                result[field_name] = adapt_fn(value[field_name])
+                changed = True
+        elif isinstance(field_param, CwlArrayParameterModel):
+            if _cwl_type_contains_files(field_param.item_type):
+                result[field_name] = [
+                    _runtimeify_cwl_value(field_param.item_type, v, adapt_fn) for v in value[field_name]
+                ]
+                changed = True
+        elif isinstance(field_param, CwlAnyParameterModel):
+            adapted = _runtimeify_cwl_any(value[field_name], adapt_fn)
+            if adapted is not VISITOR_NO_REPLACEMENT:
+                result[field_name] = adapted
+                changed = True
+    return result if changed else VISITOR_NO_REPLACEMENT
+
+
+def _runtimeify_cwl_union(parameter, value, adapt_fn):
+    if value is None:
+        return VISITOR_NO_REPLACEMENT
+    for member in parameter.parameters:
+        if isinstance(member, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if _is_dataset_ref(value):
+                return adapt_fn(value)
+    return VISITOR_NO_REPLACEMENT
+
+
+def _runtimeify_cwl_any(value, adapt_fn):
+    if _is_dataset_ref(value):
+        return adapt_fn(value)
+    if isinstance(value, list):
+        changed = False
+        adapted = []
+        for v in value:
+            a = _runtimeify_cwl_any(v, adapt_fn)
+            if a is not VISITOR_NO_REPLACEMENT:
+                adapted.append(a)
+                changed = True
+            else:
+                adapted.append(v)
+        return adapted if changed else VISITOR_NO_REPLACEMENT
+    if isinstance(value, dict):
+        changed = False
+        adapted = {}
+        for k, v in value.items():
+            a = _runtimeify_cwl_any(v, adapt_fn)
+            if a is not VISITOR_NO_REPLACEMENT:
+                adapted[k] = a
+                changed = True
+            else:
+                adapted[k] = v
+        return adapted if changed else VISITOR_NO_REPLACEMENT
+    return VISITOR_NO_REPLACEMENT
+
+
 def runtimeify(
     internal_state: JobInternalToolState,
     input_models: ToolParameterBundle,
@@ -662,6 +749,20 @@ def runtimeify(
             collection_request = DataCollectionRequestInternal(**value)
             result = adapt_collection(collection_request, parameter.collection_type)
             return result.model_dump(by_alias=True)
+        elif isinstance(parameter, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            return adapt_dict(value)
+        elif isinstance(parameter, CwlArrayParameterModel):
+            if _cwl_type_contains_files(parameter.item_type):
+                return [_runtimeify_cwl_value(parameter.item_type, v, adapt_dict) for v in value]
+            return VISITOR_NO_REPLACEMENT
+        elif isinstance(parameter, CwlRecordParameterModel):
+            return _runtimeify_cwl_record(parameter, value, adapt_dict)
+        elif isinstance(parameter, CwlUnionParameterModel):
+            return _runtimeify_cwl_union(parameter, value, adapt_dict)
+        elif isinstance(parameter, CwlAnyParameterModel):
+            return _runtimeify_cwl_any(value, adapt_dict)
         else:
             return VISITOR_NO_REPLACEMENT
 
