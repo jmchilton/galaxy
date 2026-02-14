@@ -2270,8 +2270,38 @@ class CwlFileParameterModel(BaseGalaxyToolParameterModelDefinition):
     def py_type(self) -> Type:
         return DataRequest
 
+    @property
+    def py_type_internal(self) -> Type:
+        return union_type([DataRequestInternalHda, DataRequestInternalLdda])
+
+    @property
+    def py_type_internal_json(self) -> Type:
+        return DataInternalJson
+
+    def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        if state_representation in ("request_internal", "request_internal_dereferenced", "job_internal"):
+            return self.py_type_internal
+        elif state_representation == "job_runtime":
+            return self.py_type_internal_json
+        return self.py_type
+
+    def _pydantic_template_for_data(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        if state_representation in ("request_internal", "request_internal_dereferenced"):
+            return dynamic_model_information_from_py_type(self, self.py_type_internal)
+        elif state_representation == "job_internal":
+            return dynamic_model_information_from_py_type(self, self.py_type_internal, requires_value=True)
+        elif state_representation == "job_runtime":
+            return dynamic_model_information_from_py_type(self, self.py_type_internal_json, requires_value=True)
+        elif state_representation in ("workflow_step", "workflow_step_linked"):
+            py_type: Type = type(None)
+            if state_representation == "workflow_step_linked":
+                py_type = allow_connected_value(py_type)
+            return dynamic_model_information_from_py_type(self, py_type, requires_value=False)
+        else:
+            return dynamic_model_information_from_py_type(self, self.py_type)
+
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self, self.py_type)
+        return self._pydantic_template_for_data(state_representation)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2285,8 +2315,38 @@ class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
     def py_type(self) -> Type:
         return DataRequest
 
+    @property
+    def py_type_internal(self) -> Type:
+        return union_type([DataRequestInternalHda, DataRequestInternalLdda])
+
+    @property
+    def py_type_internal_json(self) -> Type:
+        return DataInternalJson
+
+    def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        if state_representation in ("request_internal", "request_internal_dereferenced", "job_internal"):
+            return self.py_type_internal
+        elif state_representation == "job_runtime":
+            return self.py_type_internal_json
+        return self.py_type
+
+    def _pydantic_template_for_data(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        if state_representation in ("request_internal", "request_internal_dereferenced"):
+            return dynamic_model_information_from_py_type(self, self.py_type_internal)
+        elif state_representation == "job_internal":
+            return dynamic_model_information_from_py_type(self, self.py_type_internal, requires_value=True)
+        elif state_representation == "job_runtime":
+            return dynamic_model_information_from_py_type(self, self.py_type_internal_json, requires_value=True)
+        elif state_representation in ("workflow_step", "workflow_step_linked"):
+            py_type: Type = type(None)
+            if state_representation == "workflow_step_linked":
+                py_type = allow_connected_value(py_type)
+            return dynamic_model_information_from_py_type(self, py_type, requires_value=False)
+        else:
+            return dynamic_model_information_from_py_type(self, self.py_type)
+
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self, self.py_type)
+        return self._pydantic_template_for_data(state_representation)
 
     @property
     def request_requires_value(self) -> bool:
