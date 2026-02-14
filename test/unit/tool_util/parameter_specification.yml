@@ -4363,6 +4363,28 @@ cwl_file_array:
   request_invalid:
     - parameter: {src: hda, id: abcdabcd}
     - {}
+  request_internal_valid:
+    - parameter:
+        - {src: hda, id: 5}
+        - {src: hda, id: 6}
+    - parameter: []
+  request_internal_invalid:
+    - parameter:
+        - {src: hda, id: "abcabc"}
+  job_internal_valid:
+    - parameter:
+        - {src: hda, id: 5}
+    - parameter: []
+  job_internal_invalid:
+    - {}
+  job_runtime_valid:
+    - parameter:
+        - {class: File, basename: "f.txt", location: "step_input://0",
+            path: "/tmp/f.txt", nameroot: "f", nameext: ".txt", format: "txt", size: 100}
+    - parameter: []
+  job_runtime_invalid:
+    - parameter:
+        - {src: hda, id: 5}
 
 cwl_int_array:
   request_valid:
@@ -4443,3 +4465,50 @@ cwl_directory:
   job_runtime_invalid:
    - parameter: {src: hda, id: 5}
    - {}
+
+cwl_record_with_file:
+  request_valid:
+    - parameter: {name: "hello", input_file: {src: hda, id: abcdabcd}}
+  request_invalid:
+    - parameter: {name: "hello"}
+    - {}
+  request_internal_valid:
+    - parameter: {name: "hello", input_file: {src: hda, id: 5}}
+  request_internal_invalid:
+    - parameter: {name: "hello", input_file: {src: hda, id: "abcabc"}}
+  job_internal_valid:
+    - parameter: {name: "hello", input_file: {src: hda, id: 5}}
+  job_internal_invalid:
+    - {}
+  job_runtime_valid:
+    - parameter: {name: "hello", input_file: {class: File, basename: "f.txt",
+        location: "step_input://0", path: "/tmp/f.txt", nameroot: "f",
+        nameext: ".txt", format: "txt", size: 100}}
+  job_runtime_invalid:
+    - parameter: {name: "hello", input_file: {src: hda, id: 5}}
+
+cwl_file_optional:
+  request_valid:
+    - parameter: {src: hda, id: abcdabcd}
+    - parameter: null
+    - {}
+  request_invalid:
+    - parameter: {src: hda, id: 5}
+    - parameter: "hello"
+  request_internal_valid:
+    - parameter: {src: hda, id: 5}
+    - parameter: null
+  request_internal_invalid:
+    - parameter: {src: hda, id: "abcabc"}
+  job_internal_valid:
+    - parameter: {src: hda, id: 5}
+    - parameter: null
+  job_internal_invalid:
+    - {}
+  job_runtime_valid:
+    - parameter: {class: File, basename: "f.txt", location: "step_input://0",
+        path: "/tmp/f.txt", nameroot: "f", nameext: ".txt", format: "txt", size: 100}
+    - parameter: null
+  job_runtime_invalid:
+    - parameter: {src: hda, id: 5}
+    - {}

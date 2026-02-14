@@ -211,6 +211,14 @@ class BaseToolParameterModelDefinition(ToolSourceBaseModel):
         """Return kwargs for pydantic Field() including json_schema_extra metadata."""
         return {"json_schema_extra": {"gx_type": self.parameter_type}}
 
+    def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        """Return the Python type appropriate for the given state representation.
+
+        Default: same as py_type (works for primitives).
+        Override in CwlFile/CwlDirectory for state-specific types.
+        """
+        return self.py_type
+
 
 class BaseGalaxyToolParameterModelDefinition(BaseToolParameterModelDefinition):
     hidden: bool = False
@@ -2250,13 +2258,20 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
             union_of_cwl_types.append(parameter.py_type)
         return union_type(union_of_cwl_types)
 
+    def _py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        union_of_cwl_types: List[Type] = []
+        for parameter in self.parameters:
+            union_of_cwl_types.append(parameter.py_type_for_state(state_representation))
+        return union_type(union_of_cwl_types)
+
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         requires_value = self.request_requires_value
         if state_representation in ("job_internal", "job_runtime"):
             requires_value = True
         elif _is_landing_request(state_representation):
             requires_value = False
-        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
+        py_type = self._py_type_for_state(state_representation)
+        return dynamic_model_information_from_py_type(self, py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2402,9 +2417,14 @@ class CwlArrayParameterModel(BaseToolParameterModelDefinition):
         return list_type(self.item_type.py_type)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        item_py_type = self.item_type.py_type_for_state(state_representation)
+        arr_type = list_type(item_py_type)
+        requires_value = self.request_requires_value
+        if state_representation in ("job_internal", "job_runtime"):
+            requires_value = True
         return DynamicModelInformation(
             self.name,
-            (self.py_type, ...),
+            (arr_type, ... if requires_value else None),
             {},
         )
 
@@ -2426,10 +2446,23 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
             kwd[name] = (field_param.py_type, Field(..., alias=alias))
         return create_model_strict(f"CwlRecord_{self.name}", **kwd)
 
+    def _record_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        kwd = {}
+        for field_param in self.fields:
+            name = safe_field_name(field_param.name)
+            alias = field_param.name if field_param.name != name else None
+            field_type = field_param.py_type_for_state(state_representation)
+            kwd[name] = (field_type, Field(..., alias=alias))
+        return create_model_strict(f"CwlRecord_{self.name}_{state_representation}", **kwd)
+
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        record_type = self._record_type_for_state(state_representation)
+        requires_value = self.request_requires_value
+        if state_representation in ("job_internal", "job_runtime"):
+            requires_value = True
         return DynamicModelInformation(
             self.name,
-            (self.py_type, ...),
+            (record_type, ... if requires_value else None),
             {},
         )
 
