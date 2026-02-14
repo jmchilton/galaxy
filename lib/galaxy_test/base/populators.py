@@ -100,6 +100,7 @@ from galaxy.schema.schema import (
     WorkflowLandingRequest,
 )
 from galaxy.tool_util.client.staging import InteractorStaging
+from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
 from galaxy.tool_util.cwl.util import (
     GalaxyOutput,
     guess_artifact_type,
@@ -315,20 +316,6 @@ def check_missing_tool(check):
             raise unittest.SkipTest(
                 "Missing tool required to run test, skipping. If this is not intended, ensure GALAXY_TEST_TOOL_CONF if set contains the required tool_conf.xml target and the tool properly parses and loads in Galaxy's test configuration"
             )
-
-
-def conformance_tests_gen(directory, filename="conformance_tests.yaml"):
-    conformance_tests_path = os.path.join(directory, filename)
-    with open(conformance_tests_path) as f:
-        conformance_tests = yaml.safe_load(f)
-
-    for conformance_test in conformance_tests:
-        if "$import" in conformance_test:
-            import_dir, import_filename = os.path.split(conformance_test["$import"])
-            yield from conformance_tests_gen(os.path.join(directory, import_dir), import_filename)
-        else:
-            conformance_test["directory"] = directory
-            yield conformance_test
 
 
 def to_local_location(listing, location):

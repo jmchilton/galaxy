@@ -81,7 +81,9 @@ SUPPORTED_TOOL_REQUIREMENTS = [
     "EnvVarRequirement",
     "InitialWorkDirRequirement",
     "InlineJavascriptRequirement",
+    "InplaceUpdateRequirement",
     "LoadListingRequirement",
+    "NetworkAccess",
     "ResourceRequirement",
     "ShellCommandRequirement",
     "ScatterFeatureRequirement",
@@ -90,6 +92,8 @@ SUPPORTED_TOOL_REQUIREMENTS = [
     "StepInputExpressionRequirement",
     "MultipleInputFeatureRequirement",
     "CredentialsRequirement",
+    "ToolTimeLimit",
+    "WorkReuse",
 ]
 
 

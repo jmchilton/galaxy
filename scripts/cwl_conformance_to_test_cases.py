@@ -4,6 +4,9 @@ import sys
 
 import yaml
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, "lib"))
+from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
+
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 GALAXY_ROOT_DIR = os.path.abspath(os.path.join(THIS_DIRECTORY, os.pardir))
 CWL_API_TESTS_DIRECTORY = os.path.join(GALAXY_ROOT_DIR, "lib", "galaxy_test", "api", "cwl")
@@ -298,19 +301,6 @@ RED_TESTS = {
         "very_big_and_very_floats_nojs",
     ],
 }
-
-
-def conformance_tests_gen(directory, filename="conformance_tests.yaml"):
-    conformance_tests_path = os.path.join(directory, filename)
-    with open(conformance_tests_path) as f:
-        conformance_tests = yaml.safe_load(f)
-
-    for conformance_test in conformance_tests:
-        if "$import" in conformance_test:
-            import_path = conformance_test["$import"]
-            yield from conformance_tests_gen(directory, import_path)
-        else:
-            yield conformance_test
 
 
 def main():
