@@ -16,6 +16,12 @@ from galaxy.tool_util_models.parameters import (
     ConditionalParameterModel,
     ConditionalWhen,
     create_job_runtime_model,
+    CwlAnyParameterModel,
+    CwlArrayParameterModel,
+    CwlDirectoryParameterModel,
+    CwlFileParameterModel,
+    CwlRecordParameterModel,
+    CwlUnionParameterModel,
     DataCollectionParameterModel,
     DataCollectionRequest,
     DataCollectionRequestInternal,
@@ -488,10 +494,84 @@ def _encode_callback_for(encode_id: EncodeFunctionT) -> Callback:
         elif isinstance(parameter, DataCollectionParameterModel):
             assert isinstance(value, dict), str(value)
             return encode_element(value)
+        elif isinstance(parameter, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            return encode_src_dict(value)
+        elif isinstance(parameter, CwlArrayParameterModel):
+            if isinstance(parameter.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+                return [encode_src_dict(v) for v in value]
+            return VISITOR_NO_REPLACEMENT
+        elif isinstance(parameter, CwlRecordParameterModel):
+            return _decode_cwl_record(parameter, value, encode_src_dict)
+        elif isinstance(parameter, CwlUnionParameterModel):
+            return _decode_cwl_union(parameter, value, encode_src_dict)
+        elif isinstance(parameter, CwlAnyParameterModel):
+            return _decode_cwl_any(value, encode_src_dict)
         else:
             return VISITOR_NO_REPLACEMENT
 
     return encode_callback
+
+
+def _is_dataset_ref(value):
+    return isinstance(value, dict) and value.get("src") in ("hda", "hdca", "ldda")
+
+
+def _decode_cwl_any(value, decode_fn):
+    if _is_dataset_ref(value):
+        return decode_fn(value)
+    if isinstance(value, list):
+        decoded = [_decode_cwl_any(v, decode_fn) for v in value]
+        return decoded if any(d is not VISITOR_NO_REPLACEMENT for d in decoded) else VISITOR_NO_REPLACEMENT
+    if isinstance(value, dict):
+        decoded = {k: _decode_cwl_any(v, decode_fn) for k, v in value.items()}
+        return decoded if any(v is not VISITOR_NO_REPLACEMENT for v in decoded.values()) else VISITOR_NO_REPLACEMENT
+    return VISITOR_NO_REPLACEMENT
+
+
+def _decode_cwl_record(parameter, value, decode_fn):
+    if value is None:
+        return VISITOR_NO_REPLACEMENT
+    changed = False
+    result = {}
+    for field_param in parameter.fields:
+        field_name = field_param.name
+        if field_name not in value:
+            continue
+        field_value = value[field_name]
+        if isinstance(field_param, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if field_value is not None:
+                result[field_name] = decode_fn(field_value)
+                changed = True
+            else:
+                result[field_name] = field_value
+        elif isinstance(field_param, CwlArrayParameterModel):
+            if isinstance(field_param.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+                result[field_name] = [decode_fn(v) for v in field_value]
+                changed = True
+            else:
+                result[field_name] = field_value
+        elif isinstance(field_param, CwlAnyParameterModel):
+            decoded = _decode_cwl_any(field_value, decode_fn)
+            if decoded is not VISITOR_NO_REPLACEMENT:
+                result[field_name] = decoded
+                changed = True
+            else:
+                result[field_name] = field_value
+        else:
+            result[field_name] = field_value
+    return result if changed else VISITOR_NO_REPLACEMENT
+
+
+def _decode_cwl_union(parameter, value, decode_fn):
+    if value is None:
+        return VISITOR_NO_REPLACEMENT
+    for member in parameter.parameters:
+        if isinstance(member, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if _is_dataset_ref(value):
+                return decode_fn(value)
+    return VISITOR_NO_REPLACEMENT
 
 
 def _decode_callback_for(decode_id: DecodeFunctionT) -> Callback:
@@ -527,6 +607,20 @@ def _decode_callback_for(decode_id: DecodeFunctionT) -> Callback:
                 return VISITOR_NO_REPLACEMENT
             assert isinstance(value, dict), str(value)
             return decode_element(value)
+        elif isinstance(parameter, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            return decode_src_dict(value)
+        elif isinstance(parameter, CwlArrayParameterModel):
+            if isinstance(parameter.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+                return [decode_src_dict(v) for v in value]
+            return VISITOR_NO_REPLACEMENT
+        elif isinstance(parameter, CwlRecordParameterModel):
+            return _decode_cwl_record(parameter, value, decode_src_dict)
+        elif isinstance(parameter, CwlUnionParameterModel):
+            return _decode_cwl_union(parameter, value, decode_src_dict)
+        elif isinstance(parameter, CwlAnyParameterModel):
+            return _decode_cwl_any(value, decode_src_dict)
         else:
             return VISITOR_NO_REPLACEMENT
 
