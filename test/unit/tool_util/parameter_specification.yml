@@ -3997,6 +3997,18 @@ cwl_int:
 #     - parameter: 5
 #     - parameter: {}
 
+cwl_int_with_default:
+  request_valid:
+    - parameter: 5
+    - {}                # absent is valid - has default
+  request_invalid:
+    - parameter: "5"
+  job_internal_valid:
+    - parameter: 5
+  job_internal_invalid:
+    - parameter: "5"
+    - {}                # job_internal still requires value
+
 cwl_int_optional:
   request_valid:
     - parameter: 5

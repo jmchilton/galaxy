@@ -1,8 +1,8 @@
-"""Validate CWL conformance test job JSONs against CWL runtime models.
+"""Validate CWL conformance test job JSONs against CWL tool state models.
 
 For each (tool, job) pair from conformance tests, loads the tool's parameter
-models, normalizes the job JSON via cwltool's normalizeFilesDirs, then validates
-against the job_runtime pydantic model.
+models and validates the job dict against request, request_internal, and
+job_runtime pydantic models.
 """
 
 import json
@@ -12,10 +12,13 @@ import yaml
 
 import pytest
 
+from galaxy.tool_util.cwl.job_conversion import cwl_job_to_request
 from galaxy.tool_util.cwl.job_normalization import normalize_cwl_job
 from galaxy.tool_util.parameters import (
     input_models_for_tool_source,
+    validate_internal_request,
     validate_job_runtime,
+    validate_request,
 )
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
@@ -88,14 +91,16 @@ def _conformance_tool_job_pairs():
 
 _pairs_list = list(_conformance_tool_job_pairs())
 
-EXPECTED_FAILURES: set = set()
+RUNTIME_EXPECTED_FAILURES: set = set()
+REQUEST_EXPECTED_FAILURES: set = set()
+REQUEST_INTERNAL_EXPECTED_FAILURES: set = set()
 
 
 @pytest.mark.parametrize("tool_path,job_path", _pairs_list)
 @pytest.mark.skipif(not _pairs_list, reason="Conformance tests not downloaded")
 def test_conformance_cwl_job_runtime(tool_path, job_path):
     rel_id = os.path.relpath(tool_path, CWL_TOOLS_DIR)
-    if rel_id in EXPECTED_FAILURES:
+    if rel_id in RUNTIME_EXPECTED_FAILURES:
         pytest.xfail(f"Known: {rel_id}")
 
     tool_source = get_tool_source(tool_path, macro_paths=[])
@@ -104,3 +109,33 @@ def test_conformance_cwl_job_runtime(tool_path, job_path):
     job_json = _load_job(job_path)
     normalized = normalize_cwl_job(job_json, input_models=bundle)
     validate_job_runtime(bundle, normalized)
+
+
+@pytest.mark.parametrize("tool_path,job_path", _pairs_list)
+@pytest.mark.skipif(not _pairs_list, reason="Conformance tests not downloaded")
+def test_conformance_cwl_request(tool_path, job_path):
+    rel_id = os.path.relpath(tool_path, CWL_TOOLS_DIR)
+    if rel_id in REQUEST_EXPECTED_FAILURES:
+        pytest.xfail(f"Known: {rel_id}")
+
+    tool_source = get_tool_source(tool_path, macro_paths=[])
+    bundle = input_models_for_tool_source(tool_source)
+
+    job_json = _load_job(job_path)
+    request_dict = cwl_job_to_request(job_json, bundle, encode_id=True)
+    validate_request(bundle, request_dict)
+
+
+@pytest.mark.parametrize("tool_path,job_path", _pairs_list)
+@pytest.mark.skipif(not _pairs_list, reason="Conformance tests not downloaded")
+def test_conformance_cwl_request_internal(tool_path, job_path):
+    rel_id = os.path.relpath(tool_path, CWL_TOOLS_DIR)
+    if rel_id in REQUEST_INTERNAL_EXPECTED_FAILURES:
+        pytest.xfail(f"Known: {rel_id}")
+
+    tool_source = get_tool_source(tool_path, macro_paths=[])
+    bundle = input_models_for_tool_source(tool_source)
+
+    job_json = _load_job(job_path)
+    request_internal_dict = cwl_job_to_request(job_json, bundle, encode_id=False)
+    validate_internal_request(bundle, request_internal_dict)

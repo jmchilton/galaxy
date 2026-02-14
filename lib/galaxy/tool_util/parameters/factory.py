@@ -491,6 +491,7 @@ def _complex_cwl_type_to_model(type_dict: dict, input_source: "CwlInputSource"):
         for field_def in fields:
             field_type = field_def["type"]
             field_name = field_def["name"]
+            field_has_default = "default" in field_def
             if isinstance(field_type, str):
                 field_model = _simple_cwl_type_to_model(field_type, input_source)
                 field_model = field_model.model_copy(update={"name": field_name})
@@ -512,6 +513,10 @@ def _complex_cwl_type_to_model(type_dict: dict, input_source: "CwlInputSource"):
             else:
                 raise NotImplementedError(
                     f"Cannot generate tool parameter model for this CWL artifact yet - record field type {type(field_type)}."
+                )
+            if field_has_default and hasattr(field_model, "has_default"):
+                field_model = field_model.model_copy(
+                    update={"has_default": True, "default_value": field_def["default"]}
                 )
             field_models.append(field_model)
         return CwlRecordParameterModel(name=input_source.parse_name(), fields=field_models)
@@ -541,9 +546,10 @@ def _from_input_source_cwl(input_source: "CwlInputSource") -> ToolParameterT:
         raise NotImplementedError("Cannot generate tool parameter model for this CWL artifact yet.")
     if "type" not in schema_salad_field:
         raise NotImplementedError("Cannot generate tool parameter model for this CWL artifact yet.")
+    has_default = "default" in schema_salad_field
     schema_salad_type = schema_salad_field["type"]
     if isinstance(schema_salad_type, str):
-        return _simple_cwl_type_to_model(schema_salad_type, input_source)
+        model = _simple_cwl_type_to_model(schema_salad_type, input_source)
     elif isinstance(schema_salad_type, list):
         parameters = []
         for t in schema_salad_type:
@@ -555,14 +561,17 @@ def _from_input_source_cwl(input_source: "CwlInputSource") -> ToolParameterT:
                 raise NotImplementedError(
                     f"Cannot generate tool parameter model for this CWL artifact yet - union element type {type(t)}."
                 )
-        return CwlUnionParameterModel(
+        model = CwlUnionParameterModel(
             name=input_source.parse_name(),
             parameters=parameters,
         )
     elif isinstance(schema_salad_type, dict):
-        return _complex_cwl_type_to_model(schema_salad_type, input_source)
+        model = _complex_cwl_type_to_model(schema_salad_type, input_source)
     else:
         raise NotImplementedError("Cannot generate tool parameter model for this CWL artifact yet.")
+    if has_default and hasattr(model, "has_default"):
+        model = model.model_copy(update={"has_default": True, "default_value": schema_salad_field["default"]})
+    return model
 
 
 def input_models_from_json(json: List[Dict[str, Any]]) -> ToolParameterBundle:
