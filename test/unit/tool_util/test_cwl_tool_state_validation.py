@@ -88,14 +88,7 @@ def _conformance_tool_job_pairs():
 
 _pairs_list = list(_conformance_tool_job_pairs())
 
-EXPECTED_FAILURES: set = {
-    # Union of records with enum discriminator (map1/map2/map3/map4) — each variant
-    # has different optional fields, fill_defaults picks wrong variant fields.
-    # Needs discriminated union fill logic.
-    "v1.0/v1.0/tmap-tool.cwl",
-    "v1.1/tests/tmap-tool.cwl",
-    "v1.2/tests/tmap-tool.cwl",
-}
+EXPECTED_FAILURES: set = set()
 
 
 @pytest.mark.parametrize("tool_path,job_path", _pairs_list)

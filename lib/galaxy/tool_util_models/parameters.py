@@ -2285,10 +2285,59 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
         return union_type(union_of_cwl_types)
 
     def _py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        discriminated = self._try_discriminated_union(state_representation)
+        if discriminated is not None:
+            return discriminated
         union_of_cwl_types: List[Type] = []
         for parameter in self.parameters:
             union_of_cwl_types.append(parameter.py_type_for_state(state_representation))
         return union_type(union_of_cwl_types)
+
+    def _try_discriminated_union(self, state_representation: StateRepresentationT) -> Optional[Type]:
+        """Build a Pydantic discriminated union if records share a single-symbol enum field."""
+        record_params = [p for p in self.parameters if p.parameter_type == "cwl_record"]
+        if len(record_params) < 2:
+            return None
+        # Find common discriminator: a field name present in all records as a
+        # single-symbol cwl_enum
+        disc_field: Optional[str] = None
+        for field in record_params[0].fields:
+            if field.parameter_type == "cwl_enum" and len(field.symbols) == 1:
+                fname = field.name
+                if all(
+                    any(f.name == fname and f.parameter_type == "cwl_enum" and len(f.symbols) == 1 for f in rp.fields)
+                    for rp in record_params[1:]
+                ):
+                    disc_field = fname
+                    break
+        if disc_field is None:
+            return None
+
+        # Build tagged record types keyed by enum symbol
+        tagged: List[Type] = []
+        for rp in record_params:
+            rec_type = rp.py_type_for_state(state_representation)
+            symbol = next(f.symbols[0] for f in rp.fields if f.name == disc_field and f.parameter_type == "cwl_enum")
+            tagged.append(tag(rec_type, symbol))
+
+        safe_disc = safe_field_name(disc_field)
+
+        def _disc_fn(v: Any) -> str:
+            if isinstance(v, dict):
+                return v.get(disc_field, "")
+            return getattr(v, safe_disc, "") if hasattr(v, safe_disc) else ""
+
+        discriminated_records: Type = cast(
+            Type,
+            Annotated[union_type(tagged), Discriminator(_disc_fn)],
+        )
+        # Include non-record members (null, scalars, etc.) alongside
+        non_record = [
+            p.py_type_for_state(state_representation) for p in self.parameters if p.parameter_type != "cwl_record"
+        ]
+        if non_record:
+            return union_type([discriminated_records] + non_record)
+        return discriminated_records
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         requires_value = self.request_requires_value
