@@ -4130,6 +4130,23 @@ cwl_file:
    - parameter: true
    - parameter: 5
    - parameter: "5"
+  request_internal_valid:
+   - parameter: {src: hda, id: 5}
+   - parameter: {src: ldda, id: 5}
+  request_internal_invalid:
+   - parameter: {src: hda, id: "abcabc"}
+   - {}
+  job_internal_valid:
+   - parameter: {src: hda, id: 5}
+  job_internal_invalid:
+   - parameter: {src: hda, id: "abcabc"}
+   - {}
+  job_runtime_valid:
+   - parameter: {class: File, basename: "f.txt", location: "step_input://0",
+       path: "/tmp/f.txt", nameroot: "f", nameext: ".txt", format: "txt", size: 100}
+  job_runtime_invalid:
+   - parameter: {src: hda, id: 5}
+   - {}
 
 gx_data_collection_any_y:
   request_valid:
@@ -4409,3 +4426,20 @@ cwl_directory:
    - parameter: true
    - parameter: 5
    - parameter: "5"
+  request_internal_valid:
+   - parameter: {src: hda, id: 5}
+   - parameter: {src: ldda, id: 5}
+  request_internal_invalid:
+   - parameter: {src: hda, id: "abcabc"}
+   - {}
+  job_internal_valid:
+   - parameter: {src: hda, id: 5}
+  job_internal_invalid:
+   - parameter: {src: hda, id: "abcabc"}
+   - {}
+  job_runtime_valid:
+   - parameter: {class: File, basename: "d", location: "step_input://0",
+       path: "/tmp/d", nameroot: "d", nameext: "", format: "txt", size: 0}
+  job_runtime_invalid:
+   - parameter: {src: hda, id: 5}
+   - {}
