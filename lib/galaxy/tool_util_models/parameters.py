@@ -2251,7 +2251,12 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
         return union_type(union_of_cwl_types)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return dynamic_model_information_from_py_type(self, self.py_type)
+        requires_value = self.request_requires_value
+        if state_representation in ("job_internal", "job_runtime"):
+            requires_value = True
+        elif _is_landing_request(state_representation):
+            requires_value = False
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
