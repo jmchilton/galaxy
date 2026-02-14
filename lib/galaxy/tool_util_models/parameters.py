@@ -2199,6 +2199,8 @@ class CwlNullParameterModel(BaseToolParameterModelDefinition):
 
 class CwlStringParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_string"] = "cwl_string"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2213,11 +2215,13 @@ class CwlStringParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlIntegerParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_integer"] = "cwl_integer"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2232,11 +2236,13 @@ class CwlIntegerParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlFloatParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_float"] = "cwl_float"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2251,11 +2257,13 @@ class CwlFloatParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlBooleanParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_boolean"] = "cwl_boolean"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2270,12 +2278,14 @@ class CwlBooleanParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlUnionParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_union"] = "cwl_union"
     parameters: List["CwlParameterT"]
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2284,7 +2294,7 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
             union_of_cwl_types.append(parameter.py_type)
         return union_type(union_of_cwl_types)
 
-    def _py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+    def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
         discriminated = self._try_discriminated_union(state_representation)
         if discriminated is not None:
             return discriminated
@@ -2345,16 +2355,20 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
             requires_value = True
         elif _is_landing_request(state_representation):
             requires_value = False
-        py_type = self._py_type_for_state(state_representation)
+        py_type = self.py_type_for_state(state_representation)
         return dynamic_model_information_from_py_type(self, py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
+        if self.has_default:
+            return False
         return not any(p.parameter_type == "cwl_null" for p in self.parameters)
 
 
 class CwlFileParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["cwl_file"] = "cwl_file"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2395,11 +2409,13 @@ class CwlFileParameterModel(BaseGalaxyToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["cwl_directory"] = "cwl_directory"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2440,11 +2456,13 @@ class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlAnyParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_any"] = "cwl_any"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2459,12 +2477,14 @@ class CwlAnyParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlEnumParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_enum"] = "cwl_enum"
     symbols: List[str]
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2480,12 +2500,14 @@ class CwlEnumParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlArrayParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_array"] = "cwl_array"
     item_type: "CwlParameterT"
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2508,12 +2530,14 @@ class CwlArrayParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 class CwlRecordParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_record"] = "cwl_record"
     fields: List["CwlParameterT"]
+    has_default: bool = False
+    default_value: Optional[Any] = None
 
     @property
     def py_type(self) -> Type:
@@ -2533,7 +2557,13 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
             name = safe_field_name(field_param.name)
             alias = field_param.name if field_param.name != name else None
             field_type = field_param.py_type_for_state(state_representation)
-            kwd[name] = (field_type, Field(..., alias=alias))
+            field_required = True
+            if state_representation not in ("job_internal", "job_runtime"):
+                field_required = field_param.request_requires_value
+            if field_required:
+                kwd[name] = (field_type, Field(..., alias=alias))
+            else:
+                kwd[name] = (Optional[field_type], Field(None, alias=alias))
         return create_model_strict(f"CwlRecord_{self.name}_{state_representation}", **kwd)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
@@ -2549,7 +2579,7 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return True
+        return not self.has_default
 
 
 CwlParameterT = Union[

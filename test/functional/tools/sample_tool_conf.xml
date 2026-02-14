@@ -269,6 +269,7 @@
 
   <!-- CWL Testing -->
   <tool file="parameters/cwl_int.cwl" />
+  <tool file="parameters/cwl_int_with_default.cwl" />
   <tool file="cwl_tools/v1.0/v1.0/cat3-tool.cwl" />
   <tool file="cwl_tools/v1.0/v1.0/env-tool1.cwl" />
   <tool file="cwl_tools/v1.0/v1.0/null-expression1-tool.cwl" />
