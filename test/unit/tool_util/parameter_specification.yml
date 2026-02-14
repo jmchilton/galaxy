@@ -3979,6 +3979,12 @@ cwl_int:
     - {}
     - parameter: null
     - parameter: "None"
+  job_internal_valid:
+    - parameter: 5
+  job_internal_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: null
 
 
 # TODO: Not a thing perhaps?
@@ -3999,6 +4005,12 @@ cwl_int_optional:
   request_invalid:
     - parameter: "5"
     - parameter: "None"
+  job_internal_valid:
+    - parameter: 5
+    - parameter: null
+  job_internal_invalid:
+    - parameter: "5"
+    - {}
 
 cwl_float:
   request_valid:
@@ -4009,6 +4021,13 @@ cwl_float:
     - parameter: "5"
     - {}
     - parameter: "None"
+  job_internal_valid:
+    - parameter: 5
+    - parameter: 5.0
+  job_internal_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: null
 
 cwl_float_optional:
   request_valid:
@@ -4019,12 +4038,26 @@ cwl_float_optional:
   request_invalid:
     - parameter: "5"
     - parameter: "None"
+  job_internal_valid:
+    - parameter: 5
+    - parameter: 5.0
+    - parameter: null
+  job_internal_invalid:
+    - parameter: "5"
+    - {}
 
 cwl_string:
   request_valid:
     - parameter: "moo"
     - parameter: ""
   request_invalid:
+    - parameter: null
+    - {}
+    - parameter: 5
+  job_internal_valid:
+    - parameter: "moo"
+    - parameter: ""
+  job_internal_invalid:
     - parameter: null
     - {}
     - parameter: 5
@@ -4037,6 +4070,13 @@ cwl_string_optional:
     - {}
   request_invalid:
     - parameter: 5
+  job_internal_valid:
+    - parameter: "moo"
+    - parameter: ""
+    - parameter: null
+  job_internal_invalid:
+    - parameter: 5
+    - {}
 
 cwl_boolean:
   request_valid:
@@ -4048,6 +4088,14 @@ cwl_boolean:
     - parameter: 5
     - parameter: "true"
     - parameter: "True"
+  job_internal_valid:
+    - parameter: true
+    - parameter: false
+  job_internal_invalid:
+    - parameter: null
+    - {}
+    - parameter: 5
+    - parameter: "true"
 
 cwl_boolean_optional:
   request_valid:
@@ -4059,6 +4107,14 @@ cwl_boolean_optional:
     - parameter: 5
     - parameter: "true"
     - parameter: "True"
+  job_internal_valid:
+    - parameter: true
+    - parameter: false
+    - parameter: null
+  job_internal_invalid:
+    - parameter: 5
+    - parameter: "true"
+    - {}
 
 cwl_file:
   request_valid:
@@ -4222,6 +4278,12 @@ cwl_any:
     - parameter: {key: value}
   request_invalid:
     - {}
+  job_internal_valid:
+    - parameter: 5
+    - parameter: "hello"
+    - parameter: null
+  job_internal_invalid:
+    - {}
 
 cwl_double:
   request_valid:
@@ -4231,6 +4293,13 @@ cwl_double:
     - parameter: null
     - parameter: "5"
     - {}
+  job_internal_valid:
+    - parameter: 5
+    - parameter: 5.0
+  job_internal_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: null
 
 cwl_enum:
   request_valid:
@@ -4240,6 +4309,12 @@ cwl_enum:
   request_invalid:
     - parameter: "yellow"
     - parameter: 5
+    - parameter: null
+    - {}
+  job_internal_valid:
+    - parameter: "red"
+  job_internal_invalid:
+    - parameter: "yellow"
     - parameter: null
     - {}
 
@@ -4253,6 +4328,12 @@ cwl_enum_optional:
   request_invalid:
     - parameter: "yellow"
     - parameter: 5
+  job_internal_valid:
+    - parameter: "red"
+    - parameter: null
+  job_internal_invalid:
+    - parameter: "yellow"
+    - {}
 
 cwl_file_array:
   request_valid:
@@ -4275,11 +4356,25 @@ cwl_int_array:
     - parameter: 5
     - parameter: ["5", "6"]
     - {}
+  job_internal_valid:
+    - parameter: [1, 2, 3]
+    - parameter: []
+  job_internal_invalid:
+    - parameter: 5
+    - parameter: ["5", "6"]
+    - {}
 
 cwl_long:
   request_valid:
     - parameter: 5
   request_invalid:
+    - parameter: "5"
+    - {}
+    - parameter: null
+    - parameter: 5.0
+  job_internal_valid:
+    - parameter: 5
+  job_internal_invalid:
     - parameter: "5"
     - {}
     - parameter: null
@@ -4291,6 +4386,12 @@ cwl_record:
   request_invalid:
     - parameter: {name: "hello"}
     - parameter: {name: 5, count: 5}
+    - parameter: "hello"
+    - {}
+  job_internal_valid:
+    - parameter: {name: "hello", count: 5}
+  job_internal_invalid:
+    - parameter: {name: "hello"}
     - parameter: "hello"
     - {}
 
