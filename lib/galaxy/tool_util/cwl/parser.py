@@ -52,11 +52,7 @@ from .cwltool_deps import (
     yaml_no_ts,
 )
 from .representation import (
-    field_to_field_type,
-    FIELD_TYPE_REPRESENTATION,
     INPUT_TYPE,
-    type_descriptions_for_field_types,
-    USE_FIELD_TYPES,
     USE_STEP_PARAMETERS,
 )
 from .schema import (
@@ -255,6 +251,34 @@ class ToolProxy(metaclass=ABCMeta):
         return self.hints_or_requirements_of_class("CredentialsRequirement")
 
 
+def _resolve_schema_defs(type_val, schema_defs, _seen=None):
+    """Recursively resolve SchemaDefRequirement references in type structures.
+
+    Analogous to cwltool's realize_input_schema() but works with avro-ized
+    dotted names (direct key lookup in schema_defs, no fragment splitting).
+    """
+    if _seen is None:
+        _seen = set()
+    if isinstance(type_val, str):
+        if type_val in schema_defs and type_val not in _seen:
+            resolved = copy.deepcopy(schema_defs[type_val])
+            _seen = _seen | {type_val}
+            return _resolve_schema_defs(resolved, schema_defs, _seen)
+        return type_val
+    elif isinstance(type_val, dict):
+        result = copy.copy(type_val)
+        if "type" in result:
+            result["type"] = _resolve_schema_defs(result["type"], schema_defs, _seen)
+        if "items" in result:
+            result["items"] = _resolve_schema_defs(result["items"], schema_defs, _seen)
+        if "fields" in result:
+            result["fields"] = [_resolve_schema_defs(f, schema_defs, _seen) for f in result["fields"]]
+        return result
+    elif isinstance(type_val, list):
+        return [_resolve_schema_defs(t, schema_defs, _seen) for t in type_val]
+    return type_val
+
+
 class CommandLineToolProxy(ToolProxy):
     _class = "CommandLineTool"
 
@@ -280,19 +304,11 @@ class CommandLineToolProxy(ToolProxy):
         if input_records_schema["type"] != "record":
             raise Exception("Unhandled CWL tool input structure")
 
-        # TODO: handle this somewhere else?
-        # schemadef_req_tool_param
         rval = []
+        schema_defs = self._tool.schemaDefs
         for input in input_records_schema["fields"]:
             input_copy = copy.deepcopy(input)
-            input_type = input.get("type")
-            if isinstance(input_type, list) or isinstance(input_type, dict):
-                rval.append(input_copy)
-                continue
-
-            if input_type in self._tool.schemaDefs:
-                input_copy["type"] = self._tool.schemaDefs[input_type]
-
+            input_copy["type"] = _resolve_schema_defs(input_copy["type"], schema_defs)
             rval.append(input_copy)
         return rval
 

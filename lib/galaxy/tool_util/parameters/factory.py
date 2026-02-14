@@ -468,6 +468,18 @@ def _complex_cwl_type_to_model(type_dict: dict, input_source: "CwlInputSource"):
             item_model = _simple_cwl_type_to_model(items_type, input_source)
         elif isinstance(items_type, dict):
             item_model = _complex_cwl_type_to_model(items_type, input_source)
+        elif isinstance(items_type, list):
+            params = []
+            for t in items_type:
+                if isinstance(t, str):
+                    params.append(_simple_cwl_type_to_model(t, input_source))
+                elif isinstance(t, dict):
+                    params.append(_complex_cwl_type_to_model(t, input_source))
+                else:
+                    raise NotImplementedError(
+                        f"Cannot generate tool parameter model for this CWL artifact yet - array items union element type {type(t)}."
+                    )
+            item_model = CwlUnionParameterModel(name=input_source.parse_name(), parameters=params)
         else:
             raise NotImplementedError(
                 f"Cannot generate tool parameter model for this CWL artifact yet - array items type {type(items_type)}."
