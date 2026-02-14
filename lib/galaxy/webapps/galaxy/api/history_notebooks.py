@@ -15,7 +15,7 @@ from galaxy.exceptions import (
     ObjectNotFound,
     RequestParameterInvalidException,
 )
-from galaxy.managers.context import ProvidesUserContext
+from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.histories import HistoryManager
 from galaxy.managers.history_notebooks import HistoryNotebookManager
 from galaxy.schema.fields import DecodedDatabaseIdField
@@ -54,6 +54,17 @@ RevisionIdPathParam = Annotated[
 ]
 
 
+def _latest_revision_fields(notebook):
+    """Extract content fields from notebook's latest revision."""
+    rev = notebook.latest_revision
+    assert rev is not None, f"Notebook {notebook.id} has no revisions"
+    return {
+        "content": rev.content,
+        "content_format": rev.content_format,
+        "edit_source": rev.edit_source,
+    }
+
+
 @router.cbv
 class FastAPIHistoryNotebooks:
     manager: HistoryNotebookManager = depends(HistoryNotebookManager)
@@ -67,7 +78,7 @@ class FastAPIHistoryNotebooks:
     def index(
         self,
         history_id: HistoryIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> HistoryNotebookList:
         """List all notebooks for this history."""
         history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
@@ -97,7 +108,7 @@ class FastAPIHistoryNotebooks:
         self,
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> HistoryNotebookDetails:
         """Get notebook by ID."""
         history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
@@ -107,9 +118,7 @@ class FastAPIHistoryNotebooks:
             raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
         rval = notebook.to_dict()
-        rval["content"] = notebook.latest_revision.content
-        rval["content_format"] = notebook.latest_revision.content_format
-        rval["edit_source"] = notebook.latest_revision.edit_source
+        rval.update(_latest_revision_fields(notebook))
         self.manager.rewrite_content_for_export(trans, history, rval)
         return HistoryNotebookDetails(**rval)
 
@@ -122,7 +131,7 @@ class FastAPIHistoryNotebooks:
         self,
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> PrepareNotebookForPageResponse:
         """Resolve HID references and encode IDs for Page creation."""
         history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
@@ -143,7 +152,7 @@ class FastAPIHistoryNotebooks:
     def create(
         self,
         history_id: HistoryIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
         payload: CreateHistoryNotebookPayload = Body(...),
     ) -> HistoryNotebookDetails:
         """Create a new notebook for the history (multiple notebooks allowed)."""
@@ -151,9 +160,7 @@ class FastAPIHistoryNotebooks:
         notebook = self.manager.create_notebook(trans, history, payload)
 
         rval = notebook.to_dict()
-        rval["content"] = notebook.latest_revision.content
-        rval["content_format"] = notebook.latest_revision.content_format
-        rval["edit_source"] = notebook.latest_revision.edit_source
+        rval.update(_latest_revision_fields(notebook))
         self.manager.rewrite_content_for_export(trans, history, rval)
         return HistoryNotebookDetails(**rval)
 
@@ -166,7 +173,7 @@ class FastAPIHistoryNotebooks:
         self,
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
         payload: UpdateHistoryNotebookPayload = Body(...),
     ) -> HistoryNotebookDetails:
         """Update notebook content. Creates a new revision."""
@@ -178,9 +185,7 @@ class FastAPIHistoryNotebooks:
         self.manager.save_new_revision(trans, notebook, payload)
 
         rval = notebook.to_dict()
-        rval["content"] = notebook.latest_revision.content
-        rval["content_format"] = notebook.latest_revision.content_format
-        rval["edit_source"] = notebook.latest_revision.edit_source
+        rval.update(_latest_revision_fields(notebook))
         self.manager.rewrite_content_for_export(trans, history, rval)
         return HistoryNotebookDetails(**rval)
 
@@ -193,7 +198,7 @@ class FastAPIHistoryNotebooks:
         self,
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ):
         """Soft-delete notebook (sets deleted=True)."""
         history = self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
@@ -213,7 +218,7 @@ class FastAPIHistoryNotebooks:
         self,
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ):
         """Restore a soft-deleted notebook."""
         history = self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
@@ -235,7 +240,7 @@ class FastAPIHistoryNotebooks:
         self,
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> HistoryNotebookRevisionList:
         """List all revisions for a notebook."""
         history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
@@ -267,7 +272,7 @@ class FastAPIHistoryNotebooks:
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
         revision_id: RevisionIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> HistoryNotebookRevisionDetails:
         """Get a specific revision by ID, including content."""
         history = self.history_manager.get_accessible(history_id, trans.user, current_history=trans.history)
@@ -301,7 +306,7 @@ class FastAPIHistoryNotebooks:
         history_id: HistoryIdPathParam,
         notebook_id: NotebookIdPathParam,
         revision_id: RevisionIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> HistoryNotebookDetails:
         """Restore notebook to a previous revision. Creates a new revision with the old content."""
         history = self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
@@ -316,8 +321,6 @@ class FastAPIHistoryNotebooks:
         self.manager.restore_revision(trans, notebook, revision)
 
         rval = notebook.to_dict()
-        rval["content"] = notebook.latest_revision.content
-        rval["content_format"] = notebook.latest_revision.content_format
-        rval["edit_source"] = notebook.latest_revision.edit_source
+        rval.update(_latest_revision_fields(notebook))
         self.manager.rewrite_content_for_export(trans, history, rval)
         return HistoryNotebookDetails(**rval)

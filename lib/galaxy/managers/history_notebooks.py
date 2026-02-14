@@ -95,11 +95,11 @@ class HistoryNotebookManager:
         if not content:
             raise RequestParameterMissingException("content required")
 
-        content_format = (
-            getattr(payload.content_format, "value", payload.content_format)
-            if payload.content_format
-            else notebook.latest_revision.content_format
-        )
+        if payload.content_format:
+            content_format = getattr(payload.content_format, "value", payload.content_format)
+        else:
+            assert notebook.latest_revision is not None
+            content_format = notebook.latest_revision.content_format
 
         # Update title on notebook if provided (title not versioned)
         if payload.title:
@@ -167,6 +167,7 @@ class HistoryNotebookManager:
         Returns markdown with encoded IDs, matching the format that
         POST /api/pages expects (same as invocation report content).
         """
+        assert notebook.latest_revision is not None
         content = notebook.latest_revision.content
         if not content:
             return ""
