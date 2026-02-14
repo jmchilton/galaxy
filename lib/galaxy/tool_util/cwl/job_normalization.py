@@ -64,6 +64,23 @@ def _fill_defaults(container: dict, parameters: List) -> None:
             _fill_value(container[param.name], param)
 
 
+def _match_record_variant(value: dict, record_members: List) -> Optional[object]:
+    """Pick the record variant matching value via single-symbol enum discriminator.
+
+    Scans each record's fields for a cwl_enum field with exactly 1 symbol.
+    If that field exists in value and its value matches the symbol, return that record.
+    Falls back to first record if no discriminator found.
+    """
+    for record in record_members:
+        for field in record.fields:
+            if field.parameter_type == "cwl_enum" and len(field.symbols) == 1:
+                expected = field.symbols[0]
+                if field.name in value and value[field.name] == expected:
+                    return record
+    # No discriminator matched — fall back to first record
+    return record_members[0]
+
+
 def _fill_value(value, param) -> None:
     """Recursively fill defaults for a value based on its parameter type."""
     ptype = param.parameter_type
@@ -73,12 +90,14 @@ def _fill_value(value, param) -> None:
         for item in value:
             _fill_value(item, param.item_type)
     elif ptype == "cwl_union" and value is not None:
-        # Try to fill record/array members if value matches their shape
-        for member in param.parameters:
-            if member.parameter_type == "cwl_record" and isinstance(value, dict):
-                _fill_defaults(value, member.fields)
-                break
-            elif member.parameter_type == "cwl_array" and isinstance(value, list):
-                for item in value:
-                    _fill_value(item, member.item_type)
-                break
+        record_members = [m for m in param.parameters if m.parameter_type == "cwl_record"]
+        if isinstance(value, dict) and record_members:
+            matched = _match_record_variant(value, record_members)
+            if matched is not None:
+                _fill_defaults(value, matched.fields)
+        elif isinstance(value, list):
+            for member in param.parameters:
+                if member.parameter_type == "cwl_array":
+                    for item in value:
+                        _fill_value(item, member.item_type)
+                    break
