@@ -265,6 +265,72 @@ def test_encode_gx_data():
     assert request_tool_state.input_state["parameter"]["src"] == "hda"
 
 
+def test_decode_cwl_file():
+    input_bundle = parameter_bundle_for_file("cwl_file")
+    request_tool_state = RequestToolState({"parameter": {"src": "hda", "id": "abcdabcd"}})
+    internal = decode(request_tool_state, input_bundle, decode_val)
+    assert internal.input_state["parameter"]["id"] == 5
+    assert internal.input_state["parameter"]["src"] == "hda"
+
+
+def test_encode_cwl_file():
+    input_bundle = parameter_bundle_for_file("cwl_file")
+
+    def encode_val(val: int) -> str:
+        assert val == 5
+        return "abcdabcd"
+
+    internal = RequestInternalToolState({"parameter": {"src": "hda", "id": 5}})
+    external = encode(internal, input_bundle, encode_val)
+    assert external.input_state["parameter"]["id"] == "abcdabcd"
+    assert external.input_state["parameter"]["src"] == "hda"
+
+
+def test_decode_cwl_file_array():
+    input_bundle = parameter_bundle_for_file("cwl_file_array")
+    request_tool_state = RequestToolState(
+        {"parameter": [{"src": "hda", "id": "abcdabcd"}, {"src": "hda", "id": "abcdabcd"}]}
+    )
+    internal = decode(request_tool_state, input_bundle, decode_val)
+    assert internal.input_state["parameter"][0]["id"] == 5
+    assert internal.input_state["parameter"][1]["id"] == 5
+
+
+def test_decode_cwl_record_with_file():
+    input_bundle = parameter_bundle_for_file("cwl_record_with_file")
+    request_tool_state = RequestToolState(
+        {"parameter": {"name": "hello", "input_file": {"src": "hda", "id": "abcdabcd"}}}
+    )
+    internal = decode(request_tool_state, input_bundle, decode_val)
+    assert internal.input_state["parameter"]["input_file"]["id"] == 5
+    assert internal.input_state["parameter"]["name"] == "hello"
+
+
+def test_encode_cwl_record_with_file():
+    input_bundle = parameter_bundle_for_file("cwl_record_with_file")
+
+    def encode_val(val: int) -> str:
+        assert val == 5
+        return "abcdabcd"
+
+    internal = RequestInternalToolState({"parameter": {"name": "hello", "input_file": {"src": "hda", "id": 5}}})
+    external = encode(internal, input_bundle, encode_val)
+    assert external.input_state["parameter"]["input_file"]["id"] == "abcdabcd"
+    assert external.input_state["parameter"]["name"] == "hello"
+
+
+def test_decode_cwl_file_optional():
+    input_bundle = parameter_bundle_for_file("cwl_file_optional")
+    # With file
+    request_tool_state = RequestToolState({"parameter": {"src": "hda", "id": "abcdabcd"}})
+    internal = decode(request_tool_state, input_bundle, decode_val)
+    assert internal.input_state["parameter"]["id"] == 5
+    # With null
+    request_tool_state = RequestToolState({"parameter": None})
+    internal = decode(request_tool_state, input_bundle, decode_val)
+    assert internal.input_state["parameter"] is None
+
+
 if __name__ == "__main__":
     parameter_spec = specification_object()
     parameter_models_json = {}
