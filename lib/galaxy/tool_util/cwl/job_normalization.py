@@ -55,13 +55,19 @@ def normalize_cwl_job(job_dict: dict, input_models: Optional[ToolParameterBundle
     return job
 
 
-def _fill_defaults(container: dict, parameters: List) -> None:
-    """Fill null for missing nullable params, recursively into nested types."""
+def _fill_defaults(container: dict, parameters: List, only_nullable: bool = False) -> None:
+    """Fill null for missing nullable params, recursively into nested types.
+
+    If only_nullable, skip params that have defaults (for job_internal semantics
+    where Galaxy fills None only for nullable-no-default params).
+    """
     for param in parameters:
         if param.name not in container and not param.request_requires_value:
+            if only_nullable and param.has_default:
+                continue
             container[param.name] = None
         elif param.name in container:
-            _fill_value(container[param.name], param)
+            _fill_value(container[param.name], param, only_nullable=only_nullable)
 
 
 def _match_record_variant(value: dict, record_members: List) -> Optional[object]:
@@ -81,23 +87,36 @@ def _match_record_variant(value: dict, record_members: List) -> Optional[object]
     return record_members[0]
 
 
-def _fill_value(value, param) -> None:
+def _fill_value(value, param, only_nullable: bool = False) -> None:
     """Recursively fill defaults for a value based on its parameter type."""
     ptype = param.parameter_type
     if ptype == "cwl_record" and isinstance(value, dict):
-        _fill_defaults(value, param.fields)
+        _fill_defaults(value, param.fields, only_nullable=only_nullable)
     elif ptype == "cwl_array" and isinstance(value, list):
         for item in value:
-            _fill_value(item, param.item_type)
+            _fill_value(item, param.item_type, only_nullable=only_nullable)
     elif ptype == "cwl_union" and value is not None:
         record_members = [m for m in param.parameters if m.parameter_type == "cwl_record"]
         if isinstance(value, dict) and record_members:
             matched = _match_record_variant(value, record_members)
             if matched is not None:
-                _fill_defaults(value, matched.fields)
+                _fill_defaults(value, matched.fields, only_nullable=only_nullable)
         elif isinstance(value, list):
             for member in param.parameters:
                 if member.parameter_type == "cwl_array":
                     for item in value:
-                        _fill_value(item, member.item_type)
+                        _fill_value(item, member.item_type, only_nullable=only_nullable)
                     break
+
+
+def cwl_job_to_internal(job_dict: dict, input_models: ToolParameterBundle) -> dict:
+    """Convert CWL job dict for job_internal validation.
+
+    Like cwl_job_to_request(encode_id=False) but also fills None for
+    nullable-no-default params (Galaxy fills these before job_internal validation).
+    """
+    from galaxy.tool_util.cwl.job_conversion import cwl_job_to_request
+
+    result = cwl_job_to_request(job_dict, input_models, encode_id=False)
+    _fill_defaults(result, input_models.parameters, only_nullable=True)
+    return result
