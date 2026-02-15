@@ -2207,11 +2207,10 @@ class CwlStringParameterModel(BaseToolParameterModelDefinition):
         return StrictStr
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return DynamicModelInformation(
-            self.name,
-            (self.py_type, ...),
-            {},
-        )
+        requires_value = self.request_requires_value
+        if state_representation == "job_runtime":
+            requires_value = True
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2228,11 +2227,10 @@ class CwlIntegerParameterModel(BaseToolParameterModelDefinition):
         return StrictInt
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return DynamicModelInformation(
-            self.name,
-            (self.py_type, ...),
-            {},
-        )
+        requires_value = self.request_requires_value
+        if state_representation == "job_runtime":
+            requires_value = True
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2249,11 +2247,10 @@ class CwlFloatParameterModel(BaseToolParameterModelDefinition):
         return union_type([StrictFloat, StrictInt])
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return DynamicModelInformation(
-            self.name,
-            (self.py_type, ...),
-            {},
-        )
+        requires_value = self.request_requires_value
+        if state_representation == "job_runtime":
+            requires_value = True
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2270,11 +2267,10 @@ class CwlBooleanParameterModel(BaseToolParameterModelDefinition):
         return StrictBool
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return DynamicModelInformation(
-            self.name,
-            (self.py_type, ...),
-            {},
-        )
+        requires_value = self.request_requires_value
+        if state_representation == "job_runtime":
+            requires_value = True
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2351,7 +2347,10 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         requires_value = self.request_requires_value
-        if state_representation in ("job_internal", "job_runtime"):
+        if state_representation == "job_internal":
+            # job_internal: only has_default makes field optional, not nullability
+            requires_value = not self.has_default
+        elif state_representation == "job_runtime":
             requires_value = True
         elif _is_landing_request(state_representation):
             requires_value = False
@@ -2393,7 +2392,7 @@ class CwlFileParameterModel(BaseGalaxyToolParameterModelDefinition):
         if state_representation in ("request_internal", "request_internal_dereferenced"):
             return dynamic_model_information_from_py_type(self, self.py_type_internal)
         elif state_representation == "job_internal":
-            return dynamic_model_information_from_py_type(self, self.py_type_internal, requires_value=True)
+            return dynamic_model_information_from_py_type(self, self.py_type_internal)
         elif state_representation == "job_runtime":
             return dynamic_model_information_from_py_type(self, self.py_type_internal_json, requires_value=True)
         elif state_representation in ("workflow_step", "workflow_step_linked"):
@@ -2440,7 +2439,7 @@ class CwlDirectoryParameterModel(BaseGalaxyToolParameterModelDefinition):
         if state_representation in ("request_internal", "request_internal_dereferenced"):
             return dynamic_model_information_from_py_type(self, self.py_type_internal)
         elif state_representation == "job_internal":
-            return dynamic_model_information_from_py_type(self, self.py_type_internal, requires_value=True)
+            return dynamic_model_information_from_py_type(self, self.py_type_internal)
         elif state_representation == "job_runtime":
             return dynamic_model_information_from_py_type(self, self.py_type_internal_json, requires_value=True)
         elif state_representation in ("workflow_step", "workflow_step_linked"):
@@ -2469,11 +2468,10 @@ class CwlAnyParameterModel(BaseToolParameterModelDefinition):
         return Any
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return DynamicModelInformation(
-            self.name,
-            (self.py_type, ...),
-            {},
-        )
+        requires_value = self.request_requires_value
+        if state_representation == "job_runtime":
+            requires_value = True
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2492,11 +2490,10 @@ class CwlEnumParameterModel(BaseToolParameterModelDefinition):
         return union_type(literal_options)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        return DynamicModelInformation(
-            self.name,
-            (self.py_type, ...),
-            {},
-        )
+        requires_value = self.request_requires_value
+        if state_representation == "job_runtime":
+            requires_value = True
+        return dynamic_model_information_from_py_type(self, self.py_type, requires_value=requires_value)
 
     @property
     def request_requires_value(self) -> bool:
@@ -2520,7 +2517,7 @@ class CwlArrayParameterModel(BaseToolParameterModelDefinition):
         item_py_type = self.item_type.py_type_for_state(state_representation)
         arr_type = list_type(item_py_type)
         requires_value = self.request_requires_value
-        if state_representation in ("job_internal", "job_runtime"):
+        if state_representation == "job_runtime":
             requires_value = True
         return DynamicModelInformation(
             self.name,
@@ -2557,8 +2554,11 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
             name = safe_field_name(field_param.name)
             alias = field_param.name if field_param.name != name else None
             field_type = field_param.py_type_for_state(state_representation)
-            field_required = True
-            if state_representation not in ("job_internal", "job_runtime"):
+            if state_representation == "job_runtime":
+                field_required = True
+            elif state_representation == "job_internal":
+                field_required = not field_param.has_default
+            else:
                 field_required = field_param.request_requires_value
             if field_required:
                 kwd[name] = (field_type, Field(..., alias=alias))
@@ -2569,7 +2569,7 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         record_type = self._record_type_for_state(state_representation)
         requires_value = self.request_requires_value
-        if state_representation in ("job_internal", "job_runtime"):
+        if state_representation == "job_runtime":
             requires_value = True
         return DynamicModelInformation(
             self.name,
