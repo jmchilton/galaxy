@@ -4005,9 +4005,9 @@ cwl_int_with_default:
     - parameter: "5"
   job_internal_valid:
     - parameter: 5
+    - {}                # has_default → absent is valid
   job_internal_invalid:
     - parameter: "5"
-    - {}                # job_internal still requires value
 
 cwl_int_optional:
   request_valid:
