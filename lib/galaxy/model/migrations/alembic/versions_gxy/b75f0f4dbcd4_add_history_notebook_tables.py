@@ -1,7 +1,7 @@
 """add history_notebook tables
 
 Revision ID: b75f0f4dbcd4
-Revises: 9930b68c85af, b964490175fd
+Revises: 566b691307a5, b964490175fd
 Create Date: 2025-01-06
 
 """
@@ -23,7 +23,7 @@ from galaxy.model.migrations.util import (
 
 # revision identifiers, used by Alembic.
 revision = "b75f0f4dbcd4"
-down_revision = ("9930b68c85af", "b964490175fd")
+down_revision = ("566b691307a5", "b964490175fd")
 branch_labels = None
 depends_on = None
 
