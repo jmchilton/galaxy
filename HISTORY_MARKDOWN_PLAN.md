@@ -154,6 +154,43 @@ This plan implements History Notebooks - markdown documents tied to Galaxy histo
 - Calls existing `insertMarkdown()` to wrap directives in ` ```galaxy ` fences
 - Selenium tests use `seletools.actions.drag_and_drop` (`@selenium_only`)
 
+### Phase 7.1: Page Source Provenance (FK)
+
+Detailed plan: [`HISTORY_MARKDOWN_PHASE_7_1.md`](HISTORY_MARKDOWN_PHASE_7_1.md)
+
+**Dependency:** Phase 4 (HistoryNotebook model exists). Should land before Phase 8.
+
+Add optional FK columns to the `Page` model to track where a Page came from: `source_invocation_id` → `WorkflowInvocation`, `source_history_notebook_id` → `HistoryNotebook`. Touches model, migration, schema, manager, and frontend form. API payload fields use `invocation_id` / `history_notebook_id` (matching existing convention); DB columns use `source_*` prefix.
+
+| Task                                | Status | Files                                                     |
+| ----------------------------------- | ------ | --------------------------------------------------------- |
+| 7.1.1 Model columns + relationships |        | `lib/galaxy/model/__init__.py`                            |
+| 7.1.2 Alembic migration             |        | `lib/galaxy/model/migrations/alembic/versions_gxy/` (new) |
+| 7.1.3 Schema fields                 |        | `lib/galaxy/schema/schema.py`                             |
+| 7.1.4 Manager: store FK on create   |        | `lib/galaxy/managers/pages.py`                            |
+| 7.1.5 Frontend: pass source IDs     |        | `client/src/components/PageDisplay/PageForm.vue`          |
+| 7.1.6 API tests                     |        | `lib/galaxy_test/api/`                                    |
+
+### Phase 8: Extract Notebook to Page
+
+Detailed plan: [`HISTORY_MARKDOWN_PHASE_8.md`](HISTORY_MARKDOWN_PHASE_8.md)
+
+**Dependency:** Phase 7.1 (Page source FK), MVP complete.
+
+Add "Export to Page" button in notebook editor. Backend endpoint resolves HIDs and encodes IDs (matching invocation report pattern). Frontend navigates to the existing `PageForm.vue` at `/pages/create?notebook_id=...&history_id=...` — no new modal or component needed.
+
+| Task                                  | Status | Files                                                           |
+| ------------------------------------- | ------ | --------------------------------------------------------------- |
+| 8.1 Manager: prepare_content_for_page |        | `lib/galaxy/managers/history_notebooks.py`                      |
+| 8.2 Schema                            |        | `lib/galaxy/schema/schema.py`                                   |
+| 8.3 API endpoint (prepare-for-page)   |        | `lib/galaxy/webapps/galaxy/api/history_notebooks.py`            |
+| 8.4 API tests                         |        | `lib/galaxy_test/api/test_history_notebooks.py`                 |
+| 8.5 PageForm notebook support         |        | `client/src/components/PageDisplay/PageForm.vue`                |
+| 8.6 Router query params               |        | `client/src/entry/analysis/router.js`                           |
+| 8.7 Export button in notebook toolbar |        | `client/src/components/HistoryNotebook/HistoryNotebookView.vue` |
+| 8.8 Frontend unit tests               |        | `client/src/components/`                                        |
+| 8.9 Selenium E2E test                 |        | `lib/galaxy_test/selenium/test_history_notebooks.py`            |
+
 ---
 
 ## MVP Definition
@@ -3474,73 +3511,13 @@ function handleDrop(event) {
 
 ---
 
-## Phase 8: Extraction to Page
+## Phase 8: Extract Notebook to Page
 
-**Dependency:** MVP complete
+**Superseded by detailed plan:** [`HISTORY_MARKDOWN_PHASE_8.md`](HISTORY_MARKDOWN_PHASE_8.md)
 
-### 8.1 Backend
+**Dependency:** Phase 7.1 (Page source FK), MVP complete.
 
-**Files to modify:**
-
-- `lib/galaxy/managers/history_notebooks.py`
-
-Add method:
-
-```python
-def extract_to_page(
-    self,
-    trans: ProvidesUserContext,
-    notebook: model.HistoryNotebook,
-    title: str,
-) -> model.Page:
-    """Create a Page from notebook, resolving all HIDs."""
-    content = notebook.latest_revision.content
-
-    # Resolve HIDs to internal IDs
-    resolved = resolve_history_markdown(trans, notebook.history_id, content)
-
-    # Encode for Page storage
-    encoded = ready_galaxy_markdown_for_export(trans, resolved)
-
-    # Create Page
-    page = model.Page(user=trans.user, title=title, slug=slugify(title))
-    revision = model.PageRevision(
-        page=page,
-        content=encoded,
-        content_format="markdown",
-    )
-    page.latest_revision = revision
-
-    trans.sa_session.add(page)
-    trans.sa_session.commit()
-
-    return page
-```
-
-### 8.2 API Endpoint
-
-Add to `lib/galaxy/webapps/galaxy/api/history_notebooks.py`:
-
-```python
-@router.post(
-    "/api/histories/{history_id}/notebook/extract-to-page",
-    summary="Extract notebook to a Page.",
-)
-def extract_to_page(
-    self,
-    history_id: HistoryIdPathParam,
-    trans: ProvidesUserContext = DependsOnTrans,
-    payload: ExtractToPagePayload = Body(...),
-) -> PageSummary:
-    # ... implementation
-```
-
-### 8.3 Frontend
-
-- Add "Export to Page" button in notebook toolbar
-- Title input modal
-- Error handling for unresolved HIDs
-- Success: navigate to new Page
+Backend endpoint resolves HIDs and encodes IDs (matching invocation report → Page pattern). Frontend reuses existing `PageForm.vue` — navigates to `/pages/create?notebook_id=...&history_id=...`. No new modal or component needed.
 
 ---
 
