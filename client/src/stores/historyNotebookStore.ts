@@ -77,14 +77,18 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         }
     }
 
-    async function createNotebook(payload?: CreateNotebookPayload): Promise<HistoryNotebookDetails | null> {
+    async function createNotebook(payload?: Partial<CreateNotebookPayload>): Promise<HistoryNotebookDetails | null> {
         if (!historyId.value) {
             return null;
         }
         isLoadingNotebook.value = true;
         error.value = null;
         try {
-            const data = await createHistoryNotebook(historyId.value, payload || {});
+            const data = await createHistoryNotebook(historyId.value, {
+                content: null,
+                content_format: "markdown",
+                ...payload,
+            });
             currentNotebook.value = data;
             originalContent.value = data.content || "";
             currentContent.value = data.content || "";
@@ -108,6 +112,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         try {
             const payload: UpdateNotebookPayload = {
                 content: currentContent.value,
+                content_format: "markdown",
                 title: currentTitle.value || undefined,
             };
             const data = await updateHistoryNotebook(historyId.value, currentNotebook.value.id, payload);
