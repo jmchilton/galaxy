@@ -1762,7 +1762,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             self.parameters = parameters
         except Exception:
             pass
-        if pages.inputs_defined:
+        if pages.inputs_style == "cheetah":
             self.has_galaxy_inputs = True
             if hasattr(pages, "input_elem"):
                 input_elem = pages.input_elem
