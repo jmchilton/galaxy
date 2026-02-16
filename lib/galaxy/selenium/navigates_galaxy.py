@@ -2139,6 +2139,65 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def click_button_new_workflow(self):
         self.wait_for_and_click(self.navigation.workflows.selectors.new_button)
 
+    # History Notebook helpers
+
+    def navigate_to_history_notebooks(self):
+        """Navigate to the notebook list for the current history."""
+        history_id = self.current_history_id()
+        self.get(f"histories/{history_id}/notebooks")
+        self.components.history_notebooks.list.wait_for_visible()
+
+    def navigate_to_history_notebooks_via_menu(self):
+        """Open notebook list via history panel options dropdown."""
+        self.use_bootstrap_dropdown(option="history notebooks", menu="history options")
+        self.components.history_notebooks.list.wait_for_visible()
+
+    def history_notebook_create(self, screenshot_name=None):
+        """Click the create button on the notebook list. Returns to editor view."""
+        self.components.history_notebooks.create_button.wait_for_and_click()
+        self.components.history_notebooks.toolbar.wait_for_visible()
+        if screenshot_name:
+            self.screenshot(screenshot_name)
+
+    def history_notebook_editor_set_content(self, content):
+        """Type content into the markdown editor textarea.
+
+        Waits for the unsaved indicator to appear, confirming the debounced
+        update has propagated to the store.
+        """
+        editor = self.components.history_notebooks.markdown_editor
+        editor.wait_for_and_clear_and_send_keys(content)
+        self.components.history_notebooks.unsaved_indicator.wait_for_visible()
+
+    def history_notebook_save(self):
+        """Click the save button and wait for save to complete."""
+        save_btn = self.components.history_notebooks.save_button
+        save_btn.wait_for_and_click()
+        # Wait for dirty state to clear -- unsaved indicator disappears
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.components.history_notebooks.unsaved_indicator.assert_absent_or_hidden_after_transitions()
+
+    def history_notebook_go_back(self):
+        """Click back button to return to notebook list."""
+        self.components.history_notebooks.back_button.wait_for_and_click()
+        self.components.history_notebooks.list.wait_for_visible()
+
+    @retry_during_transitions
+    def history_notebook_assert_item_count(self, n):
+        """Assert the notebook list shows exactly n items."""
+        items = self.components.history_notebooks.notebook_item.all()
+        assert len(items) == n, f"Expected {n} notebook items, found {len(items)}"
+
+    def history_notebook_insert_dataset_via_toolbox(self, hid, screenshot_name=None):
+        """Insert a dataset reference via the markdown toolbox."""
+        toolbox_entry = self.wait_for_selector_clickable(
+            '.toolTitle .title-link[data-tool-id="history_dataset_display"]'
+        )
+        toolbox_entry.click()
+        if screenshot_name:
+            self.screenshot(screenshot_name)
+        self.sleep_for(self.wait_types.UX_RENDER)
+
     @retry_during_transitions
     def click_history_options(self):
         component = self.components.history_panel.options_button_icon
