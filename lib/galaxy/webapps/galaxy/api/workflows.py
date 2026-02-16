@@ -1001,7 +1001,16 @@ class FastAPIWorkflows:
 
     @router.put(
         "/api/workflows/{workflow_id}/refactor",
-        summary="Updates the workflow stored with the given ID.",
+        summary="Apply refactoring action(s) to the workflow stored with the given ID.",
+        description="Execute one or more refactoring actions on a workflow. "
+        "Supported action types include step operations (add_step, remove_step, update_step_label, "
+        "update_step_position with position_shift or position_absolute), connection operations "
+        "(connect, disconnect), comment operations (add_comment, delete_comment, "
+        "update_comment_position, update_comment_size, update_comment_color, update_comment_data, "
+        "remove_all_freehand_comments), workflow metadata (update_name, update_annotation, "
+        "update_license, update_creator, update_report), and tool upgrades. "
+        "Steps can be referenced by order_index, label, or id. "
+        "Set dry_run=true to preview changes without persisting.",
     )
     def refactor(
         self,

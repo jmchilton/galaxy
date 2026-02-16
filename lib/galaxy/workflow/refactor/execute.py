@@ -12,9 +12,12 @@ from galaxy.tools.parameters.workflow_utils import (
     runtime_to_json,
 )
 from .schema import (
+    AddCommentAction,
     AddInputAction,
     AddStepAction,
+    CommentReference,
     ConnectAction,
+    DeleteCommentAction,
     DisconnectAction,
     ExtractInputAction,
     ExtractUntypedParameter,
@@ -27,10 +30,17 @@ from .schema import (
     RefactorActionExecutionMessage,
     RefactorActionExecutionMessageTypeEnum,
     RefactorActions,
+    RemoveAllFreehandCommentsAction,
+    RemoveStepAction,
     RemoveUnlabeledWorkflowOutputs,
     step_reference_union,
     StepReferenceByLabel,
+    StepReferenceByOrderIndex,
     UpdateAnnotationAction,
+    UpdateCommentColorAction,
+    UpdateCommentDataAction,
+    UpdateCommentPositionAction,
+    UpdateCommentSizeAction,
     UpdateCreatorAction,
     UpdateLicenseAction,
     UpdateNameAction,
@@ -96,9 +106,14 @@ class WorkflowRefactorExecutor:
 
     def _apply_update_step_position(self, action: UpdateStepPositionAction, execution: RefactorActionExecution):
         step = self._find_step_for_action(action)
-        position_update = action.position_shift.to_dict()
-        step["position"]["left"] = step["position"].get("left", 0) + position_update["left"]
-        step["position"]["top"] = step["position"].get("top", 0) + position_update["top"]
+        if action.position_absolute is not None:
+            step["position"] = action.position_absolute.to_dict()
+        elif action.position_shift is not None:
+            current_position = step.get("position") or {"left": 0, "top": 0}
+            step["position"] = {
+                "left": current_position.get("left", 0) + action.position_shift.left,
+                "top": current_position.get("top", 0) + action.position_shift.top,
+            }
 
     def _apply_update_output_label(self, action: UpdateOutputLabelAction, execution: RefactorActionExecution):
         output_reference = action.output
@@ -183,7 +198,7 @@ class WorkflowRefactorExecutor:
 
     def _apply_add_step(self, action: AddStepAction, execution: RefactorActionExecution):
         steps = self._as_dict["steps"]
-        order_index = len(steps)
+        order_index = max(steps.keys(), default=-1) + 1
         step_dict = {
             "order_index": order_index,
             "id": f"new_{order_index}",
@@ -196,6 +211,78 @@ class WorkflowRefactorExecutor:
         if action.position:
             step_dict["position"] = action.position.to_dict()
         steps[order_index] = step_dict
+
+    def _apply_remove_step(self, action: RemoveStepAction, execution: RefactorActionExecution):
+        step = self._find_step_for_action(action)
+        removed_step_id = step["id"]
+        removed_order_index = step.get("order_index", removed_step_id)
+        removed_label = step.get("label")
+
+        # Emit messages for workflow outputs on this step
+        for workflow_output in step.get("workflow_outputs", []):
+            output_label = workflow_output.get("label")
+            if output_label:
+                execution.messages.append(
+                    RefactorActionExecutionMessage(
+                        message=f"Dropping workflow output '{output_label}' from removed step.",
+                        message_type=RefactorActionExecutionMessageTypeEnum.workflow_output_drop_forced,
+                        step_label=removed_label,
+                        order_index=removed_order_index,
+                        output_name=workflow_output.get("output_name"),
+                        output_label=output_label,
+                    )
+                )
+
+        # Remove connections where this step is the output (source) side
+        for other_order_index, other_step in self._as_dict["steps"].items():
+            if other_order_index == removed_order_index:
+                continue
+            all_input_connections = other_step.get("input_connections", {})
+            for input_name in list(all_input_connections.keys()):
+                connections = _listify_connections(all_input_connections[input_name])
+                dropped = [c for c in connections if c["id"] == removed_step_id]
+                kept = [c for c in connections if c["id"] != removed_step_id]
+                for conn in dropped:
+                    execution.messages.append(
+                        RefactorActionExecutionMessage(
+                            message="Dropping connection to removed step.",
+                            message_type=RefactorActionExecutionMessageTypeEnum.connection_drop_forced,
+                            input_name=input_name,
+                            step_label=other_step.get("label"),
+                            order_index=other_step.get("order_index", other_order_index),
+                            output_name=conn["output_name"],
+                            from_step_label=removed_label,
+                            from_order_index=removed_order_index,
+                        )
+                    )
+                all_input_connections[input_name] = kept
+
+        # Remove connections where this step is the input (sink) side
+        input_connections = step.get("input_connections", {})
+        for input_name, connections in input_connections.items():
+            for conn in _listify_connections(connections):
+                from_step = self._as_dict["steps"].get(conn["id"], {})
+                execution.messages.append(
+                    RefactorActionExecutionMessage(
+                        message="Dropping connection from removed step.",
+                        message_type=RefactorActionExecutionMessageTypeEnum.connection_drop_forced,
+                        input_name=input_name,
+                        step_label=removed_label,
+                        order_index=removed_order_index,
+                        output_name=conn["output_name"],
+                        from_step_label=from_step.get("label"),
+                        from_order_index=from_step.get("order_index", conn["id"]),
+                    )
+                )
+
+        # Clean up child_steps references in frame comments
+        for comment in self._as_dict.get("comments", []):
+            child_steps = comment.get("child_steps")
+            if child_steps and removed_order_index in child_steps:
+                child_steps.remove(removed_order_index)
+
+        # Remove the step — tolerate order_index gaps
+        del self._as_dict["steps"][removed_order_index]
 
     def _apply_add_input(self, action: AddInputAction, execution: RefactorActionExecution):
         input_type = action.type
@@ -487,6 +574,55 @@ class WorkflowRefactorExecutor:
                 step_action_t = UpgradeToolAction(action_type="upgrade_tool", step={"order_index": step_order_index})
                 self._apply_upgrade_tool(step_action_t, execution)
 
+    # Comment action executors
+
+    def _apply_add_comment(self, action: AddCommentAction, execution: RefactorActionExecution):
+        comments = self._as_dict.setdefault("comments", [])
+        new_id = max((c["id"] for c in comments), default=-1) + 1
+        comment_dict = {
+            "id": new_id,
+            "type": action.type,
+            "position": [action.position.left, action.position.top],
+            "size": [action.size.width, action.size.height],
+            "color": action.color,
+            "data": action.data,
+        }
+        comments.append(comment_dict)
+
+    def _apply_delete_comment(self, action: DeleteCommentAction, execution: RefactorActionExecution):
+        comment, index = self._find_comment(action.comment)
+        deleted_id = comment["id"]
+        self._as_dict["comments"].pop(index)
+        # Clean up child_comments references in frame comments
+        for other in self._as_dict.get("comments", []):
+            child_comments = other.get("child_comments")
+            if child_comments and deleted_id in child_comments:
+                child_comments.remove(deleted_id)
+
+    def _apply_update_comment_position(self, action: UpdateCommentPositionAction, execution: RefactorActionExecution):
+        comment, _ = self._find_comment(action.comment)
+        comment["position"] = [action.position.left, action.position.top]
+
+    def _apply_update_comment_size(self, action: UpdateCommentSizeAction, execution: RefactorActionExecution):
+        comment, _ = self._find_comment(action.comment)
+        comment["size"] = [action.size.width, action.size.height]
+
+    def _apply_update_comment_color(self, action: UpdateCommentColorAction, execution: RefactorActionExecution):
+        comment, _ = self._find_comment(action.comment)
+        comment["color"] = action.color
+
+    def _apply_update_comment_data(self, action: UpdateCommentDataAction, execution: RefactorActionExecution):
+        comment, _ = self._find_comment(action.comment)
+        comment["data"] = action.data
+
+    def _apply_remove_all_freehand_comments(
+        self, action: RemoveAllFreehandCommentsAction, execution: RefactorActionExecution
+    ):
+        comments = self._as_dict.get("comments", [])
+        self._as_dict["comments"] = [c for c in comments if c.get("type") != "freehand"]
+
+    # Step resolution
+
     def _find_step(self, step_reference: step_reference_union):
         order_index = None
         if isinstance(step_reference, StepReferenceByLabel):
@@ -494,16 +630,26 @@ class WorkflowRefactorExecutor:
             if not label:
                 raise RequestParameterInvalidException("Empty label provided.")
             for step_order_index, step in self._as_dict["steps"].items():
-                if step["label"] == label:
+                if step.get("label") == label:
                     order_index = step_order_index
                     break
-        else:
+        elif isinstance(step_reference, StepReferenceByOrderIndex):
             order_index = step_reference.order_index
+        else:
+            raise RequestParameterInvalidException(f"Unknown step reference type: {step_reference}")
         if order_index is None:
             raise RequestParameterInvalidException(f"Failed to resolve step_reference {step_reference}")
-        if len(self._as_dict["steps"]) <= order_index:
+        if order_index not in self._as_dict["steps"]:
             raise RequestParameterInvalidException(f"Failed to resolve step_reference {step_reference}")
         return self._as_dict["steps"][order_index]
+
+    def _find_comment(self, comment_ref: CommentReference):
+        """Find comment dict and its index by comment_id. Returns (comment_dict, index)."""
+        comments = self._as_dict.get("comments", [])
+        for index, comment in enumerate(comments):
+            if comment["id"] == comment_ref.comment_id:
+                return comment, index
+        raise RequestParameterInvalidException(f"Failed to find comment with id {comment_ref.comment_id}")
 
     def _find_step_for_action(self, action):
         step_reference = action.step

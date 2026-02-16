@@ -10,6 +10,7 @@ from typing import (
 from pydantic import (
     BaseModel,
     Field,
+    model_validator,
 )
 
 LABEL_DESCRIPTION = "The unique label of the step being referenced."
@@ -20,6 +21,7 @@ output_name_field = Field(
     default="output",
 )
 step_target_field = Field(description="The target step for this action.")
+comment_target_field = Field(description="The target comment for this action.")
 
 
 class StepReferenceByOrderIndex(BaseModel):
@@ -69,6 +71,20 @@ class Position(BaseModel):
         return position
 
 
+class Size(BaseModel):
+    width: float
+    height: float
+
+    def to_dict(self):
+        return {"width": self.width, "height": self.height}
+
+
+class CommentReference(BaseModel):
+    comment_id: int = Field(
+        description="The comment's id field (order_index in DB). Looked up by scanning the comments array for matching id."
+    )
+
+
 class BaseAction(BaseModel):
     """Refactoring actions."""
 
@@ -101,7 +117,16 @@ class UpdateStepLabelAction(BaseAction):
 class UpdateStepPositionAction(BaseAction):
     action_type: Literal["update_step_position"]
     step: step_reference_union = step_target_field
-    position_shift: Position
+    position_shift: Optional[Position] = None
+    position_absolute: Optional[Position] = None
+
+    @model_validator(mode="after")
+    def validate_position_exactly_one(self):
+        if self.position_shift is None and self.position_absolute is None:
+            raise ValueError("Must provide either position_shift or position_absolute")
+        if self.position_shift is not None and self.position_absolute is not None:
+            raise ValueError("Cannot provide both position_shift and position_absolute")
+        return self
 
 
 class AddStepAction(BaseAction):
@@ -120,6 +145,11 @@ class AddStepAction(BaseAction):
         description="A unique label for the step being added, must be distinct from the labels already present in the workflow.",
     )
     position: Optional[Position] = Field(None, description="The location of the step in the Galaxy workflow editor.")
+
+
+class RemoveStepAction(BaseAction):
+    action_type: Literal["remove_step"]
+    step: step_reference_union = step_target_field
 
 
 class ConnectAction(BaseAction):
@@ -227,16 +257,75 @@ class UpgradeAllStepsAction(BaseAction):
     action_type: Literal["upgrade_all_steps"]
 
 
+# Comment actions
+
+comment_type_literal = Literal["text", "markdown", "frame", "freehand"]
+comment_color_literal = Literal[
+    "none", "black", "blue", "turquoise", "green", "lime", "orange", "yellow", "red", "pink"
+]
+
+
+class AddCommentAction(BaseAction):
+    action_type: Literal["add_comment"]
+    type: comment_type_literal = Field(description="Comment type: text, markdown, frame, or freehand.")
+    position: Position
+    size: Size
+    color: comment_color_literal
+    data: dict[str, Any]
+
+
+class DeleteCommentAction(BaseAction):
+    action_type: Literal["delete_comment"]
+    comment: CommentReference = comment_target_field
+
+
+class UpdateCommentPositionAction(BaseAction):
+    action_type: Literal["update_comment_position"]
+    comment: CommentReference = comment_target_field
+    position: Position
+
+
+class UpdateCommentSizeAction(BaseAction):
+    action_type: Literal["update_comment_size"]
+    comment: CommentReference = comment_target_field
+    size: Size
+
+
+class UpdateCommentColorAction(BaseAction):
+    action_type: Literal["update_comment_color"]
+    comment: CommentReference = comment_target_field
+    color: comment_color_literal
+
+
+class UpdateCommentDataAction(BaseAction):
+    action_type: Literal["update_comment_data"]
+    comment: CommentReference = comment_target_field
+    data: dict[str, Any]
+
+
+class RemoveAllFreehandCommentsAction(BaseAction):
+    action_type: Literal["remove_all_freehand_comments"]
+
+
 union_action_classes = Union[
+    AddCommentAction,
     AddInputAction,
     AddStepAction,
     ConnectAction,
+    DeleteCommentAction,
     DisconnectAction,
     ExtractInputAction,
     ExtractUntypedParameter,
     FileDefaultsAction,
     FillStepDefaultsAction,
+    RemoveAllFreehandCommentsAction,
+    RemoveStepAction,
+    RemoveUnlabeledWorkflowOutputs,
     UpdateAnnotationAction,
+    UpdateCommentColorAction,
+    UpdateCommentDataAction,
+    UpdateCommentPositionAction,
+    UpdateCommentSizeAction,
     UpdateCreatorAction,
     UpdateNameAction,
     UpdateLicenseAction,
@@ -247,7 +336,6 @@ union_action_classes = Union[
     UpgradeSubworkflowAction,
     UpgradeToolAction,
     UpgradeAllStepsAction,
-    RemoveUnlabeledWorkflowOutputs,
 ]
 
 

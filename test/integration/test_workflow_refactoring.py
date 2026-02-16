@@ -912,6 +912,136 @@ steps:
         assert message.step_label == "tool_update_step"
         assert message.output_name == "output"
 
+    def test_remove_step(self):
+        self.workflow_populator.upload_yaml_workflow(REFACTORING_SIMPLE_TEST)
+        assert len(self._latest_workflow.steps) == 2
+        actions: ActionsJson = [
+            {"action_type": "remove_step", "step": {"label": "first_cat"}},
+        ]
+        response = self._refactor(actions)
+        assert len(self._latest_workflow.steps) == 1
+        assert self._latest_workflow.step_by_index(0).label == "test_input"
+        action_executions = response.action_executions
+        assert len(action_executions) == 1
+        messages = action_executions[0].messages
+        # Should have connection_drop and workflow_output_drop messages
+        conn_msgs = [
+            m for m in messages if m.message_type == RefactorActionExecutionMessageTypeEnum.connection_drop_forced
+        ]
+        wo_msgs = [
+            m for m in messages if m.message_type == RefactorActionExecutionMessageTypeEnum.workflow_output_drop_forced
+        ]
+        assert len(conn_msgs) >= 1
+        assert len(wo_msgs) == 1
+        assert wo_msgs[0].output_label == "wf_out"
+
+    def test_update_step_position_absolute(self):
+        self.workflow_populator.upload_yaml_workflow(REFACTORING_SIMPLE_TEST)
+        actions: ActionsJson = [
+            {
+                "action_type": "update_step_position",
+                "step": {"label": "test_input"},
+                "position_absolute": {"left": 500, "top": 600},
+            },
+        ]
+        self._refactor(actions)
+        assert self._latest_workflow.step_by_label("test_input").position["left"] == 500
+        assert self._latest_workflow.step_by_label("test_input").position["top"] == 600
+
+    def test_add_and_delete_comment(self):
+        self.workflow_populator.upload_yaml_workflow(REFACTORING_SIMPLE_TEST)
+        # Add a comment
+        actions: ActionsJson = [
+            {
+                "action_type": "add_comment",
+                "type": "text",
+                "position": {"left": 10, "top": 20},
+                "size": {"width": 100, "height": 50},
+                "color": "none",
+                "data": {"text": "test comment"},
+            },
+        ]
+        response = self._refactor(actions)
+        comments = response.workflow.get("comments", [])
+        assert len(comments) == 1
+        assert comments[0]["data"]["text"] == "test comment"
+
+        # Delete the comment
+        comment_id = comments[0]["id"]
+        actions = [
+            {"action_type": "delete_comment", "comment": {"comment_id": comment_id}},
+        ]
+        response = self._refactor(actions)
+        comments = response.workflow.get("comments", [])
+        assert len(comments) == 0
+
+    def test_comment_update_operations(self):
+        self.workflow_populator.upload_yaml_workflow(REFACTORING_SIMPLE_TEST)
+        # Add a comment first
+        actions: ActionsJson = [
+            {
+                "action_type": "add_comment",
+                "type": "text",
+                "position": {"left": 10, "top": 20},
+                "size": {"width": 100, "height": 50},
+                "color": "none",
+                "data": {"text": "original"},
+            },
+        ]
+        response = self._refactor(actions)
+        comment_id = response.workflow["comments"][0]["id"]
+
+        # Update position, size, color, data in batch
+        actions = [
+            {
+                "action_type": "update_comment_position",
+                "comment": {"comment_id": comment_id},
+                "position": {"left": 99, "top": 88},
+            },
+            {
+                "action_type": "update_comment_size",
+                "comment": {"comment_id": comment_id},
+                "size": {"width": 200, "height": 100},
+            },
+            {"action_type": "update_comment_color", "comment": {"comment_id": comment_id}, "color": "blue"},
+            {"action_type": "update_comment_data", "comment": {"comment_id": comment_id}, "data": {"text": "updated"}},
+        ]
+        response = self._refactor(actions)
+        comment = response.workflow["comments"][0]
+        assert comment["color"] == "blue"
+        assert comment["data"]["text"] == "updated"
+
+    def test_remove_all_freehand_comments(self):
+        self.workflow_populator.upload_yaml_workflow(REFACTORING_SIMPLE_TEST)
+        # Add text + freehand comments
+        actions: ActionsJson = [
+            {
+                "action_type": "add_comment",
+                "type": "text",
+                "position": {"left": 0, "top": 0},
+                "size": {"width": 100, "height": 50},
+                "color": "none",
+                "data": {"text": "keep me"},
+            },
+            {
+                "action_type": "add_comment",
+                "type": "freehand",
+                "position": {"left": 10, "top": 10},
+                "size": {"width": 200, "height": 100},
+                "color": "blue",
+                "data": {"line": [[0, 0], [10, 10]]},
+            },
+        ]
+        response = self._refactor(actions)
+        assert len(response.workflow.get("comments", [])) == 2
+
+        # Remove all freehand
+        actions = [{"action_type": "remove_all_freehand_comments"}]
+        response = self._refactor(actions)
+        comments = response.workflow.get("comments", [])
+        assert len(comments) == 1
+        assert comments[0]["type"] == "text"
+
     def _download_native(self, workflow=None):
         workflow = workflow or self._most_recent_stored_workflow
         workflow_id = self._app.security.encode_id(workflow.id)
