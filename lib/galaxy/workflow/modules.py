@@ -90,6 +90,7 @@ from galaxy.tools.parameters import (
     visit_input_values,
 )
 from galaxy.tools.cwl_runtime import raw_to_galaxy
+from galaxy.tools.evaluation import CWL_TOOL_TYPES
 from galaxy.tools.parameters.basic import (
     BaseDataToolParameter,
     BooleanToolParameter,
@@ -258,6 +259,90 @@ def from_cwl(value, hda_references, progress: "WorkflowProgress"):
         raise NotImplementedError()
     else:
         return value
+
+
+def build_cwl_input_dict(
+    step: WorkflowStep,
+    progress: "WorkflowProgress",
+    trans,
+) -> dict[str, Any]:
+    """Build a CWL-native input dict from step connections.
+
+    Bypasses the legacy Galaxy parameter system (visit_input_values,
+    FieldTypeToolParameter, etc.) entirely. Values are:
+    - HDA inputs:  {"src": "hda", "id": N}
+    - HDCA inputs: {"src": "hdca", "id": N}
+    - Scalars:     raw values (int, str, float, bool, None)
+    - expression.json HDAs: parsed JSON content (for non-data connections)
+    """
+    cwl_input_dict: dict[str, Any] = {}
+
+    for input_name, connections in step.input_connections_by_name.items():
+        if len(connections) == 1:
+            replacement = progress.replacement_for_connection(connections[0])
+        else:
+            # Multiple connections merged into one input — build input_dict
+            # compatible with replacement_for_input_connections.
+            input_dict: dict[str, Any] = {"name": input_name, "input_type": "dataset", "multiple": False}
+            step_input = step.inputs_by_name.get(input_name)
+            if step_input:
+                # Infer input type from connections
+                for c in connections:
+                    if c.non_data_connection:
+                        input_dict["input_type"] = "parameter"
+                        break
+            replacement = progress.replacement_for_input_connections(step, input_dict, connections)
+
+        if isinstance(replacement, NoReplacement):
+            continue
+
+        cwl_input_dict[input_name] = _galaxy_to_cwl_ref(replacement)
+
+    # Fill defaults from step inputs
+    for step_input in step.inputs:
+        name = step_input.name
+        if name not in cwl_input_dict and step_input.default_value is not None:
+            cwl_input_dict[name] = _resolve_cwl_default(step_input.default_value, trans, progress)
+
+    return cwl_input_dict
+
+
+def _galaxy_to_cwl_ref(value):
+    """Convert Galaxy model objects to CWL input dict references."""
+    if isinstance(value, model.HistoryDatasetAssociation):
+        if value.ext == "expression.json":
+            if not value.dataset.in_ready_state():
+                raise DelayedWorkflowEvaluation(
+                    why=f"dataset [{value.id}] is needed for non-data connection and is non-ready"
+                )
+            if not value.is_ok:
+                raise FailWorkflowEvaluation(
+                    why=InvocationFailureDatasetFailed(
+                        reason=FailureReason.dataset_failed,
+                        workflow_step_id=None,
+                        hda_id=value.id,
+                        dependent_workflow_step_id=None,
+                    )
+                )
+            with open(value.get_file_name()) as f:
+                parsed = json.load(f)
+            if parsed is None:
+                return None
+            return parsed
+        return {"src": "hda", "id": value.id}
+    elif isinstance(value, model.HistoryDatasetCollectionAssociation):
+        return {"src": "hdca", "id": value.id}
+    elif isinstance(value, model.DatasetCollectionElement):
+        return {"src": "dce", "id": value.id}
+    else:
+        return value
+
+
+def _resolve_cwl_default(default_value, trans, progress: "WorkflowProgress"):
+    """Resolve a CWL step input default value."""
+    if isinstance(default_value, dict) and "class" in default_value:
+        return _galaxy_to_cwl_ref(raw_to_galaxy(trans.app, trans.history, default_value))
+    return default_value
 
 
 def evaluate_value_from_expressions(progress, step, execution_state, extra_step_state):
@@ -2713,198 +2798,237 @@ class ToolModule(WorkflowModule):
         if RUNTIME_STEP_META_STATE_KEY in tool_state.inputs:
             del tool_state.inputs[RUNTIME_STEP_META_STATE_KEY]
 
-        all_inputs = self.get_all_inputs()
-
-        all_inputs_by_name = {}
-        for input_dict in all_inputs:
-            all_inputs_by_name[input_dict["name"]] = input_dict
-        collection_info = self.compute_collection_info(progress, step, all_inputs)
-
-        param_combinations = []
-        if collection_info:
-            iteration_elements_iter = collection_info.slice_collections()
-        else:
-            if progress.when_values:
-                assert len(progress.when_values) == 1, "Got more than 1 when value, this shouldn't be possible"
-            iteration_elements_iter = [(None, progress.when_values[0] if progress.when_values else None)]
-
         resource_parameters = invocation.resource_parameters
-        for iteration_elements, when_value in iteration_elements_iter:
-            execution_state = tool_state.copy()
-            # TODO: Move next step into copy()
-            execution_state.inputs = make_dict_copy(execution_state.inputs)
+        use_cwl_path = tool.tool_type in CWL_TOOL_TYPES and not tool.has_galaxy_inputs
 
-            expected_replacement_keys = set(step.input_connections_by_name.keys())
-            found_replacement_keys = set()
+        if use_cwl_path:
+            # CWL path: bypass legacy parameter system entirely.
+            # Build input dict directly from step connections.
+            cwl_input_dict = build_cwl_input_dict(step, progress, trans)
 
-            # Connect up
-            def callback(input, prefixed_name: str, **kwargs):
-                input_dict = all_inputs_by_name[prefixed_name]
+            # TODO: Step 4 — evaluate_cwl_value_from_expressions()
+            # TODO: Step 5 — find_cwl_scatter_collections()
 
-                replacement: Any = NO_REPLACEMENT
-                if iteration_elements and prefixed_name in iteration_elements:  # noqa: B023
-                    replacement = iteration_elements[prefixed_name]  # noqa: B023
-                    # When mapping flat collections over paired_or_unpaired via
-                    # single_datasets, wrap each element in an adapter so the
-                    # tool sees a paired_or_unpaired collection.
-                    if (
-                        collection_info  # noqa: B023
-                        and isinstance(replacement, model.DatasetCollectionElement)
-                        and not replacement.child_collection
-                    ):
-                        mapping_type = collection_info.subcollection_mapping_type(prefixed_name)  # noqa: B023
+            when_value = progress.when_values[0] if progress.when_values else None
+            if step.when_expression and when_value is not False:
+                # Convert {src, id} refs to model objects, then to CWL format
+                hda_references: list[model.HistoryDatasetAssociation] = []
+                resolved = {}
+                for k, v in cwl_input_dict.items():
+                    if isinstance(v, dict) and "src" in v:
+                        if v["src"] == "hda":
+                            resolved[k] = trans.sa_session.get(model.HistoryDatasetAssociation, v["id"])
+                        elif v["src"] == "hdca":
+                            resolved[k] = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, v["id"])
+                        else:
+                            resolved[k] = v
+                    else:
+                        resolved[k] = v
+                step_state = {k: to_cwl(v, hda_references=hda_references, step=step) for k, v in resolved.items()}
+                when_value = do_eval(step.when_expression, step_state)
+                when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
+            if when_value is not None:
+                cwl_input_dict["__when_value__"] = when_value
+
+            param_combinations = [cwl_input_dict]
+            param_template = cwl_input_dict
+            collection_info = None
+
+        else:
+            # Legacy Galaxy parameter path
+            all_inputs = self.get_all_inputs()
+
+            all_inputs_by_name = {}
+            for input_dict in all_inputs:
+                all_inputs_by_name[input_dict["name"]] = input_dict
+            collection_info = self.compute_collection_info(progress, step, all_inputs)
+
+            param_combinations = []
+            if collection_info:
+                iteration_elements_iter = collection_info.slice_collections()
+            else:
+                if progress.when_values:
+                    assert len(progress.when_values) == 1, "Got more than 1 when value, this shouldn't be possible"
+                iteration_elements_iter = [(None, progress.when_values[0] if progress.when_values else None)]
+
+            for iteration_elements, when_value in iteration_elements_iter:
+                execution_state = tool_state.copy()
+                # TODO: Move next step into copy()
+                execution_state.inputs = make_dict_copy(execution_state.inputs)
+
+                expected_replacement_keys = set(step.input_connections_by_name.keys())
+                found_replacement_keys = set()
+
+                # Connect up
+                def callback(input, prefixed_name: str, **kwargs):
+                    input_dict = all_inputs_by_name[prefixed_name]
+
+                    replacement: Any = NO_REPLACEMENT
+                    if iteration_elements and prefixed_name in iteration_elements:  # noqa: B023
+                        replacement = iteration_elements[prefixed_name]  # noqa: B023
+                        # When mapping flat collections over paired_or_unpaired via
+                        # single_datasets, wrap each element in an adapter so the
+                        # tool sees a paired_or_unpaired collection.
                         if (
-                            hasattr(mapping_type, "collection_type")
-                            and mapping_type.collection_type == "single_datasets"
+                            collection_info  # noqa: B023
+                            and isinstance(replacement, model.DatasetCollectionElement)
+                            and not replacement.child_collection
                         ):
-                            replacement = PromoteCollectionElementToCollectionAdapter(replacement)
-                else:
-                    replacement = progress.replacement_for_input(trans, step, input_dict)
+                            mapping_type = collection_info.subcollection_mapping_type(prefixed_name)  # noqa: B023
+                            if (
+                                hasattr(mapping_type, "collection_type")
+                                and mapping_type.collection_type == "single_datasets"
+                            ):
+                                replacement = PromoteCollectionElementToCollectionAdapter(replacement)
+                    else:
+                        replacement = progress.replacement_for_input(trans, step, input_dict)
 
-                if replacement is not NO_REPLACEMENT:
-                    # We need to check if the replacement is an expression tool null,
-                    # since that would mean that we have to pick a possible default value
-                    dataset_instance: Optional[model.DatasetInstance] = None
-                    if isinstance(replacement, model.DatasetCollectionElement):
-                        dataset_instance = replacement.hda
-                    elif isinstance(replacement, model.DatasetInstance):
-                        dataset_instance = replacement
+                    if replacement is not NO_REPLACEMENT:
+                        # We need to check if the replacement is an expression tool null,
+                        # since that would mean that we have to pick a possible default value
+                        dataset_instance: Optional[model.DatasetInstance] = None
+                        if isinstance(replacement, model.DatasetCollectionElement):
+                            dataset_instance = replacement.hda
+                        elif isinstance(replacement, model.DatasetInstance):
+                            dataset_instance = replacement
 
-                    if dataset_instance and dataset_instance.extension == "expression.json":
-                        # We could do this only if there is a default value on a step
-                        if not dataset_instance.dataset.in_ready_state():
-                            why = f"dataset [{dataset_instance.id}] is needed for non-data connection and is non-ready"
+                        if dataset_instance and dataset_instance.extension == "expression.json":
+                            # We could do this only if there is a default value on a step
+                            if not dataset_instance.dataset.in_ready_state():
+                                why = f"dataset [{dataset_instance.id}] is needed for non-data connection and is non-ready"
+                                raise DelayedWorkflowEvaluation(why=why)
+
+                            if not dataset_instance.is_ok:
+                                raise CancelWorkflowEvaluation(
+                                    why=InvocationFailureDatasetFailed(
+                                        reason=FailureReason.dataset_failed,
+                                        workflow_step_id=step.id,
+                                        hda_id=dataset_instance.id,
+                                        dependent_workflow_step_id=None,
+                                    )
+                                )
+
+                            with open(dataset_instance.get_file_name()) as f:
+                                replacement = json.loads(dataset_instance.peek)
+                                if replacement is None:
+                                    return None
+
+                        if not isinstance(input, BaseDataToolParameter):
+                            # Probably a parameter that can be replaced
+                            if dataset_instance and dataset_instance.extension == "expression.json":
+                                with open(dataset_instance.get_file_name()) as f:
+                                    replacement = json.load(f)
+                        found_replacement_keys.add(prefixed_name)  # noqa: B023
+
+                        # bool cast should be fine, can only have true/false on ConditionalStepWhen
+                        # also terrible of course and it's not needed for API requests
+                        if isinstance(input, ConditionalStepWhen) and bool(replacement) is False:
+                            raise SkipWorkflowStepEvaluation
+
+                    is_data = (
+                        isinstance(input, DataToolParameter)
+                        or isinstance(input, DataCollectionToolParameter)
+                        or isinstance(input, FieldTypeToolParameter)
+                    )
+                    if (
+                        not is_data
+                        and isinstance(replacement, model.HistoryDatasetAssociation)
+                        and replacement.ext == "expression.json"
+                    ):
+                        if not replacement.dataset.in_ready_state():
+                            why = f"dataset [{replacement.id}] is needed for non-data connection and is non-ready"
                             raise DelayedWorkflowEvaluation(why=why)
 
-                        if not dataset_instance.is_ok:
+                        if not replacement.is_ok:
                             raise CancelWorkflowEvaluation(
                                 why=InvocationFailureDatasetFailed(
                                     reason=FailureReason.dataset_failed,
                                     workflow_step_id=step.id,
-                                    hda_id=dataset_instance.id,
+                                    hda_id=replacement.id,
                                     dependent_workflow_step_id=None,
                                 )
                             )
 
-                        with open(dataset_instance.get_file_name()) as f:
-                            replacement = json.loads(dataset_instance.peek)
-                            if replacement is None:
-                                return None
+                        with open(replacement.get_file_name()) as f:
+                            replacement = safe_loads(f.read())
 
-                    if not isinstance(input, BaseDataToolParameter):
-                        # Probably a parameter that can be replaced
-                        if dataset_instance and dataset_instance.extension == "expression.json":
-                            with open(dataset_instance.get_file_name()) as f:
-                                replacement = json.load(f)
-                    found_replacement_keys.add(prefixed_name)  # noqa: B023
-
-                    # bool cast should be fine, can only have true/false on ConditionalStepWhen
-                    # also terrible of course and it's not needed for API requests
-                    if isinstance(input, ConditionalStepWhen) and bool(replacement) is False:
-                        raise SkipWorkflowStepEvaluation
-
-                is_data = (
-                    isinstance(input, DataToolParameter)
-                    or isinstance(input, DataCollectionToolParameter)
-                    or isinstance(input, FieldTypeToolParameter)
-                )
-                if (
-                    not is_data
-                    and isinstance(replacement, model.HistoryDatasetAssociation)
-                    and replacement.ext == "expression.json"
-                ):
-                    if not replacement.dataset.in_ready_state():
-                        why = f"dataset [{replacement.id}] is needed for non-data connection and is non-ready"
-                        raise DelayedWorkflowEvaluation(why=why)
-
-                    if not replacement.is_ok:
-                        raise CancelWorkflowEvaluation(
-                            why=InvocationFailureDatasetFailed(
-                                reason=FailureReason.dataset_failed,
-                                workflow_step_id=step.id,
-                                hda_id=replacement.id,
-                                dependent_workflow_step_id=None,
-                            )
-                        )
-
-                    with open(replacement.get_file_name()) as f:
-                        replacement = safe_loads(f.read())
-
-                if isinstance(input, FieldTypeToolParameter):
-                    if isinstance(replacement, model.HistoryDatasetAssociation):
-                        return {"src": "hda", "value": replacement}
-                    elif isinstance(replacement, model.HistoryDatasetCollectionAssociation):
-                        return {"src": "hdca", "value": replacement}
-                    elif replacement is not NO_REPLACEMENT:
-                        return {"src": "json", "value": replacement}
-
-                return replacement
-
-            try:
-                # Replace DummyDatasets with historydatasetassociations
-                visit_input_values(
-                    tool_inputs,
-                    execution_state.inputs,
-                    callback,
-                    no_replacement_value=NO_REPLACEMENT,
-                    replace_optional_connections=True,
-                )
-            except KeyError as k:
-                message = f"Error due to input mapping of '{unicodify(k)}' in tool '{tool.id}'.  A common cause of this is conditional outputs that cannot be determined until runtime, please review workflow step {step.order_index + 1}."
-                raise exceptions.MessageException(message)
-
-            extra_step_state = build_extra_step_state(
-                trans,
-                step,
-                progress=progress,
-                iteration_elements=iteration_elements,
-                execution_state=execution_state,
-                all_inputs_by_name=all_inputs_by_name,
-            )
-
-            if step.when_expression and when_value is not False:
-                when_value = evaluate_value_from_expressions(
-                    progress, step, execution_state=execution_state, extra_step_state=extra_step_state
-                )
-            if when_value is not None:
-                # Track this more formally ?
-                execution_state.inputs["__when_value__"] = when_value
-
-            unmatched_input_connections = expected_replacement_keys - found_replacement_keys
-            if unmatched_input_connections:
-                log.warning(f"Failed to use input connections for inputs [{unmatched_input_connections}]")
-
-            expression_replacements = self.evaluate_value_from_expressions(
-                progress,
-                step,
-                execution_state,
-                extra_step_state,
-            )
-
-            def expression_callback(input, prefixed_name, **kwargs):
-                history = trans.history
-                app = trans.app
-                if prefixed_name in expression_replacements:  # noqa: B023
-                    expression_replacement = expression_replacements[prefixed_name]  # noqa: B023
                     if isinstance(input, FieldTypeToolParameter):
-                        return {"src": "json", "value": expression_replacement}
-                    else:
-                        return expression_replacement
-                # This is not the right spot to fill in a tool default,
-                # but at this point we know there was no replacement via step defaults or value_from
-                value = kwargs["value"]
-                if isinstance(value, dict) and value.get("class") == "File":
-                    value = raw_to_galaxy(app, history, kwargs["value"])
-                    return {"src": "hda", "value": value}
+                        if isinstance(replacement, model.HistoryDatasetAssociation):
+                            return {"src": "hda", "value": replacement}
+                        elif isinstance(replacement, model.HistoryDatasetCollectionAssociation):
+                            return {"src": "hdca", "value": replacement}
+                        elif replacement is not NO_REPLACEMENT:
+                            return {"src": "json", "value": replacement}
 
-                return NO_REPLACEMENT
+                    return replacement
 
-            # Replace expression values with those calculated...
-            visit_input_values(
-                tool.inputs, execution_state.inputs, expression_callback, no_replacement_value=NO_REPLACEMENT
-            )
+                try:
+                    # Replace DummyDatasets with historydatasetassociations
+                    visit_input_values(
+                        tool_inputs,
+                        execution_state.inputs,
+                        callback,
+                        no_replacement_value=NO_REPLACEMENT,
+                        replace_optional_connections=True,
+                    )
+                except KeyError as k:
+                    message = f"Error due to input mapping of '{unicodify(k)}' in tool '{tool.id}'.  A common cause of this is conditional outputs that cannot be determined until runtime, please review workflow step {step.order_index + 1}."
+                    raise exceptions.MessageException(message)
 
-            param_combinations.append(execution_state.inputs)
+                extra_step_state = build_extra_step_state(
+                    trans,
+                    step,
+                    progress=progress,
+                    iteration_elements=iteration_elements,
+                    execution_state=execution_state,
+                    all_inputs_by_name=all_inputs_by_name,
+                )
+
+                if step.when_expression and when_value is not False:
+                    when_value = evaluate_value_from_expressions(
+                        progress, step, execution_state=execution_state, extra_step_state=extra_step_state
+                    )
+                if when_value is not None:
+                    # Track this more formally ?
+                    execution_state.inputs["__when_value__"] = when_value
+
+                unmatched_input_connections = expected_replacement_keys - found_replacement_keys
+                if unmatched_input_connections:
+                    log.warning(f"Failed to use input connections for inputs [{unmatched_input_connections}]")
+
+                expression_replacements = self.evaluate_value_from_expressions(
+                    progress,
+                    step,
+                    execution_state,
+                    extra_step_state,
+                )
+
+                def expression_callback(input, prefixed_name, **kwargs):
+                    history = trans.history
+                    app = trans.app
+                    if prefixed_name in expression_replacements:  # noqa: B023
+                        expression_replacement = expression_replacements[prefixed_name]  # noqa: B023
+                        if isinstance(input, FieldTypeToolParameter):
+                            return {"src": "json", "value": expression_replacement}
+                        else:
+                            return expression_replacement
+                    # This is not the right spot to fill in a tool default,
+                    # but at this point we know there was no replacement via step defaults or value_from
+                    value = kwargs["value"]
+                    if isinstance(value, dict) and value.get("class") == "File":
+                        value = raw_to_galaxy(app, history, kwargs["value"])
+                        return {"src": "hda", "value": value}
+
+                    return NO_REPLACEMENT
+
+                # Replace expression values with those calculated...
+                visit_input_values(
+                    tool.inputs, execution_state.inputs, expression_callback, no_replacement_value=NO_REPLACEMENT
+                )
+
+                param_combinations.append(execution_state.inputs)
+
+            param_template = tool_state.inputs
 
         complete = False
         completed_jobs: dict[int, Optional[Job]] = tool.completed_jobs(
@@ -2913,7 +3037,7 @@ class ToolModule(WorkflowModule):
             param_combinations,
         )
         try:
-            mapping_params = MappingParameters(tool_state.inputs, param_combinations)
+            mapping_params = MappingParameters(param_template, param_combinations)
             if use_cached_job:
                 mapping_params.param_template["__use_cached_job__"] = use_cached_job
             max_num_jobs = progress.maximum_jobs_to_schedule_or_none
