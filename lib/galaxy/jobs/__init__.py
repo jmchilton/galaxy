@@ -100,6 +100,8 @@ from galaxy.tool_util.output_checker import (
 )
 from galaxy.tool_util.parser.stdio import StdioErrorLevel
 from galaxy.tools.evaluation import (
+    CWL_TOOL_TYPES,
+    CwlToolEvaluator,
     PartialToolEvaluator,
     ToolEvaluator,
     UserToolEvaluator,
@@ -1404,6 +1406,8 @@ class MinimalJobWrapper(HasResourceParameters):
             klass = PartialToolEvaluator
         elif self.tool.base_command or self.tool.shell_command:
             klass = UserToolEvaluator
+        elif self.tool.tool_type in CWL_TOOL_TYPES:
+            klass = CwlToolEvaluator
         else:
             klass = ToolEvaluator
         tool_evaluator = klass(
