@@ -89,6 +89,7 @@ from galaxy.tools.parameters import (
     params_to_incoming,
     visit_input_values,
 )
+from galaxy.tools.cwl_runtime import raw_to_galaxy
 from galaxy.tools.parameters.basic import (
     BaseDataToolParameter,
     BooleanToolParameter,
@@ -100,7 +101,6 @@ from galaxy.tools.parameters.basic import (
     IntegerToolParameter,
     parameter_types,
     ParameterValueError,
-    raw_to_galaxy,
     SelectToolParameter,
     TextToolParameter,
 )

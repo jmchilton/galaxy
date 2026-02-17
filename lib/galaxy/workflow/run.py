@@ -31,7 +31,7 @@ from galaxy.schema.invocation import (
     InvocationWarningWorkflowOutputNotFound,
     WarningReason,
 )
-from galaxy.tools.parameters.basic import raw_to_galaxy
+from galaxy.tools.cwl_runtime import raw_to_galaxy
 from galaxy.tools.parameters.workflow_utils import (
     is_runtime_value,
     NO_REPLACEMENT,
