@@ -6475,7 +6475,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Updates the workflow stored with the given ID. */
+        /**
+         * Apply refactoring action(s) to the workflow stored with the given ID.
+         * @description Execute one or more refactoring actions on a workflow. Supported action types include step operations (add_step, remove_step, update_step_label, update_step_position with position_shift or position_absolute), connection operations (connect, disconnect), comment operations (add_comment, delete_comment, update_comment_position, update_comment_size, update_comment_color, update_comment_data, remove_all_freehand_comments), workflow metadata (update_name, update_annotation, update_license, update_creator, update_report), and tool upgrades. Steps can be referenced by order_index, label, or id. Set dry_run=true to preview changes without persisting.
+         */
         put: operations["refactor_api_workflows__workflow_id__refactor_put"];
         post?: never;
         delete?: never;
@@ -7140,6 +7143,31 @@ export interface components {
          * @enum {string}
          */
         ActionType: "tool_run" | "save_tool" | "contact_support" | "view_external" | "documentation";
+        /** AddCommentAction */
+        AddCommentAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "add_comment";
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "none" | "black" | "blue" | "turquoise" | "green" | "lime" | "orange" | "yellow" | "red" | "pink";
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            position: components["schemas"]["Position"];
+            size: components["schemas"]["Size"];
+            /**
+             * Type
+             * @description Comment type: text, markdown, frame, or freehand.
+             * @enum {string}
+             */
+            type: "text" | "markdown" | "frame" | "freehand";
+        };
         /** AddInputAction */
         AddInputAction: {
             /**
@@ -8576,6 +8604,14 @@ export interface components {
             type: "color";
             /** value */
             value?: string | null;
+        };
+        /** CommentReference */
+        CommentReference: {
+            /**
+             * Comment Id
+             * @description The comment's id field (order_index in DB). Looked up by scanning the comments array for matching id.
+             */
+            comment_id: number;
         };
         /** CompositeDataElement */
         CompositeDataElement: {
@@ -11413,6 +11449,16 @@ export interface components {
              * @description Describes the type of the parameter, e.g. float.
              */
             type?: string | null;
+        };
+        /** DeleteCommentAction */
+        DeleteCommentAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "delete_comment";
+            /** @description The target comment for this action. */
+            comment: components["schemas"]["CommentReference"];
         };
         /** DeleteDatasetBatchPayload */
         DeleteDatasetBatchPayload: {
@@ -20534,15 +20580,24 @@ export interface components {
         RefactorActionExecution: {
             /** Action */
             action:
+                | components["schemas"]["AddCommentAction"]
                 | components["schemas"]["AddInputAction"]
                 | components["schemas"]["AddStepAction"]
                 | components["schemas"]["ConnectAction"]
+                | components["schemas"]["DeleteCommentAction"]
                 | components["schemas"]["DisconnectAction"]
                 | components["schemas"]["ExtractInputAction"]
                 | components["schemas"]["ExtractUntypedParameter"]
                 | components["schemas"]["FileDefaultsAction"]
                 | components["schemas"]["FillStepDefaultsAction"]
+                | components["schemas"]["RemoveAllFreehandCommentsAction"]
+                | components["schemas"]["RemoveStepAction"]
+                | components["schemas"]["RemoveUnlabeledWorkflowOutputs"]
                 | components["schemas"]["UpdateAnnotationAction"]
+                | components["schemas"]["UpdateCommentColorAction"]
+                | components["schemas"]["UpdateCommentDataAction"]
+                | components["schemas"]["UpdateCommentPositionAction"]
+                | components["schemas"]["UpdateCommentSizeAction"]
                 | components["schemas"]["UpdateCreatorAction"]
                 | components["schemas"]["UpdateNameAction"]
                 | components["schemas"]["UpdateLicenseAction"]
@@ -20552,8 +20607,7 @@ export interface components {
                 | components["schemas"]["UpdateStepPositionAction"]
                 | components["schemas"]["UpgradeSubworkflowAction"]
                 | components["schemas"]["UpgradeToolAction"]
-                | components["schemas"]["UpgradeAllStepsAction"]
-                | components["schemas"]["RemoveUnlabeledWorkflowOutputs"];
+                | components["schemas"]["UpgradeAllStepsAction"];
             /** Messages */
             messages: components["schemas"]["RefactorActionExecutionMessage"][];
         };
@@ -20629,15 +20683,24 @@ export interface components {
         RefactorRequest: {
             /** Actions */
             actions: (
+                | components["schemas"]["AddCommentAction"]
                 | components["schemas"]["AddInputAction"]
                 | components["schemas"]["AddStepAction"]
                 | components["schemas"]["ConnectAction"]
+                | components["schemas"]["DeleteCommentAction"]
                 | components["schemas"]["DisconnectAction"]
                 | components["schemas"]["ExtractInputAction"]
                 | components["schemas"]["ExtractUntypedParameter"]
                 | components["schemas"]["FileDefaultsAction"]
                 | components["schemas"]["FillStepDefaultsAction"]
+                | components["schemas"]["RemoveAllFreehandCommentsAction"]
+                | components["schemas"]["RemoveStepAction"]
+                | components["schemas"]["RemoveUnlabeledWorkflowOutputs"]
                 | components["schemas"]["UpdateAnnotationAction"]
+                | components["schemas"]["UpdateCommentColorAction"]
+                | components["schemas"]["UpdateCommentDataAction"]
+                | components["schemas"]["UpdateCommentPositionAction"]
+                | components["schemas"]["UpdateCommentSizeAction"]
                 | components["schemas"]["UpdateCreatorAction"]
                 | components["schemas"]["UpdateNameAction"]
                 | components["schemas"]["UpdateLicenseAction"]
@@ -20648,7 +20711,6 @@ export interface components {
                 | components["schemas"]["UpgradeSubworkflowAction"]
                 | components["schemas"]["UpgradeToolAction"]
                 | components["schemas"]["UpgradeAllStepsAction"]
-                | components["schemas"]["RemoveUnlabeledWorkflowOutputs"]
             )[];
             /**
              * Dry Run
@@ -20816,6 +20878,27 @@ export interface components {
              * @description Email of the user
              */
             remote_user_email: string;
+        };
+        /** RemoveAllFreehandCommentsAction */
+        RemoveAllFreehandCommentsAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "remove_all_freehand_comments";
+        };
+        /** RemoveStepAction */
+        RemoveStepAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "remove_step";
+            /**
+             * Step
+             * @description The target step for this action.
+             */
+            step: components["schemas"]["StepReferenceByOrderIndex"] | components["schemas"]["StepReferenceByLabel"];
         };
         /** RemoveUnlabeledWorkflowOutputs */
         RemoveUnlabeledWorkflowOutputs: {
@@ -22485,6 +22568,13 @@ export interface components {
              */
             user_id?: string | null;
         };
+        /** Size */
+        Size: {
+            /** Height */
+            height: number;
+            /** Width */
+            width: number;
+        };
         /** SplitUpPairedDataLogEntry */
         SplitUpPairedDataLogEntry: {
             /** Message */
@@ -23730,6 +23820,57 @@ export interface components {
              */
             dbkey: string;
         };
+        /** UpdateCommentColorAction */
+        UpdateCommentColorAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_comment_color";
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "none" | "black" | "blue" | "turquoise" | "green" | "lime" | "orange" | "yellow" | "red" | "pink";
+            /** @description The target comment for this action. */
+            comment: components["schemas"]["CommentReference"];
+        };
+        /** UpdateCommentDataAction */
+        UpdateCommentDataAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_comment_data";
+            /** @description The target comment for this action. */
+            comment: components["schemas"]["CommentReference"];
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /** UpdateCommentPositionAction */
+        UpdateCommentPositionAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_comment_position";
+            /** @description The target comment for this action. */
+            comment: components["schemas"]["CommentReference"];
+            position: components["schemas"]["Position"];
+        };
+        /** UpdateCommentSizeAction */
+        UpdateCommentSizeAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_comment_size";
+            /** @description The target comment for this action. */
+            comment: components["schemas"]["CommentReference"];
+            size: components["schemas"]["Size"];
+        };
         /**
          * UpdateContentItem
          * @description Used for updating a particular history item. All fields are optional.
@@ -24087,7 +24228,8 @@ export interface components {
              * @enum {string}
              */
             action_type: "update_step_position";
-            position_shift: components["schemas"]["Position"];
+            position_absolute?: components["schemas"]["Position"] | null;
+            position_shift?: components["schemas"]["Position"] | null;
             /**
              * Step
              * @description The target step for this action.
