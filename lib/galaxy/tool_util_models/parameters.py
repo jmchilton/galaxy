@@ -688,7 +688,9 @@ class DataInternalJson(StrictModel):
         Optional[str], Field(description="The basename extension such that nameroot + nameext == basename")
     ]
     format: Annotated[str, Field(description="The datatype extension of the file, e.g. 'txt', 'bam', 'fastq.gz'.")]
-    # "secondaryFiles": List[Any],
+    # If CWL-specific enrichment grows beyond secondaryFiles, consider a
+    # CwlDataInternalJson(DataInternalJson) subclass instead of widening this model.
+    secondaryFiles: Optional[List[Any]] = None
     checksum: Optional[str] = None
     size: int
     # When a gx_data param receives a DCE (subcollection mapping), preserve element_identifier

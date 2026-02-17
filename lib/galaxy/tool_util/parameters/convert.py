@@ -647,7 +647,7 @@ def _cwl_type_contains_files(param) -> bool:
 
 def _to_cwl_file_runtime(data_json: DataInternalJson) -> dict:
     """Build CwlFileRuntimeJson-compatible dict from DataInternalJson."""
-    return {
+    result = {
         "class": "File",
         "location": data_json.location,
         "basename": data_json.basename,
@@ -658,6 +658,9 @@ def _to_cwl_file_runtime(data_json: DataInternalJson) -> dict:
         "checksum": data_json.checksum,
         "format": data_json.format,
     }
+    if data_json.secondaryFiles:
+        result["secondaryFiles"] = data_json.secondaryFiles
+    return result
 
 
 def _to_cwl_directory_runtime(data_json: DataInternalJson) -> dict:
