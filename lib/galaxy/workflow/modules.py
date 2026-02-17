@@ -345,6 +345,62 @@ def _resolve_cwl_default(default_value, trans, progress: "WorkflowProgress"):
     return default_value
 
 
+def _ref_to_cwl(value, hda_references, trans, step):
+    """Convert ``{src, id}`` ref to CWL format for JS expression evaluation."""
+    if isinstance(value, dict) and "src" in value:
+        if value["src"] == "hda":
+            hda = trans.sa_session.get(model.HistoryDatasetAssociation, value["id"])
+            return to_cwl(hda, hda_references=hda_references, step=step)
+        elif value["src"] == "hdca":
+            hdca = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, value["id"])
+            return to_cwl(hdca, hda_references=hda_references, step=step)
+    return value
+
+
+def _cwl_result_to_ref(value, hda_references, progress):
+    """Convert CWL expression result back to ``{src, id}`` ref."""
+    result = from_cwl(value, hda_references=hda_references, progress=progress)
+    if isinstance(result, model.HistoryDatasetAssociation):
+        return {"src": "hda", "id": result.id}
+    elif isinstance(result, model.HistoryDatasetCollectionAssociation):
+        return {"src": "hdca", "id": result.id}
+    return result
+
+
+def evaluate_cwl_value_from_expressions(
+    step: WorkflowStep,
+    cwl_input_dict: dict,
+    progress: "WorkflowProgress",
+    trans,
+) -> dict[str, Any]:
+    """Evaluate CWL valueFrom expressions against the input dict.
+
+    Converts ``{src, id}`` refs to CWL File format for JS evaluation,
+    runs each valueFrom expression, and converts results back to refs.
+    """
+    value_from_map = {}
+    for step_input in step.inputs:
+        if step_input.value_from:
+            value_from_map[step_input.name] = step_input.value_from
+
+    if not value_from_map:
+        return cwl_input_dict
+
+    # Convert refs to CWL format for JS evaluation
+    hda_references: list[model.HistoryDatasetAssociation] = []
+    step_state = {}
+    for key, value in cwl_input_dict.items():
+        step_state[key] = _ref_to_cwl(value, hda_references, trans, step)
+
+    # Evaluate each valueFrom expression
+    for key, value_from in value_from_map.items():
+        context = step_state.get(key)
+        result = do_eval(value_from, step_state, context=context)
+        cwl_input_dict[key] = _cwl_result_to_ref(result, hda_references, progress)
+
+    return cwl_input_dict
+
+
 def evaluate_value_from_expressions(progress, step, execution_state, extra_step_state):
     when_expression = step.when_expression
     value_from_expressions = {}
@@ -2806,25 +2862,15 @@ class ToolModule(WorkflowModule):
             # Build input dict directly from step connections.
             cwl_input_dict = build_cwl_input_dict(step, progress, trans)
 
-            # TODO: Step 4 — evaluate_cwl_value_from_expressions()
+            # Evaluate valueFrom expressions (modifies cwl_input_dict in place)
+            cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
+
             # TODO: Step 5 — find_cwl_scatter_collections()
 
             when_value = progress.when_values[0] if progress.when_values else None
             if step.when_expression and when_value is not False:
-                # Convert {src, id} refs to model objects, then to CWL format
                 hda_references: list[model.HistoryDatasetAssociation] = []
-                resolved = {}
-                for k, v in cwl_input_dict.items():
-                    if isinstance(v, dict) and "src" in v:
-                        if v["src"] == "hda":
-                            resolved[k] = trans.sa_session.get(model.HistoryDatasetAssociation, v["id"])
-                        elif v["src"] == "hdca":
-                            resolved[k] = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, v["id"])
-                        else:
-                            resolved[k] = v
-                    else:
-                        resolved[k] = v
-                step_state = {k: to_cwl(v, hda_references=hda_references, step=step) for k, v in resolved.items()}
+                step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in cwl_input_dict.items()}
                 when_value = do_eval(step.when_expression, step_state)
                 when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
             if when_value is not None:
