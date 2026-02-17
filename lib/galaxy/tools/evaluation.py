@@ -42,7 +42,9 @@ from galaxy.structured_app import (
     StructuredApp,
 )
 from galaxy.tool_util.data import TabularToolDataTable
-from galaxy.tool_util.parameters import JobInternalToolState
+from galaxy.tool_util.parameters import (
+    JobInternalToolState,
+)
 from galaxy.tool_util.parser.output_objects import ToolOutput
 from galaxy.tool_util_models.parameters import ToolParameterBundleModel
 from galaxy.tool_util_models.tool_source import (
@@ -221,7 +223,9 @@ class ToolEvaluator:
                 internal_tool_state = JobInternalToolState(job.tool_state)
                 internal_tool_state.validate(self.tool, f"{self.tool.id} (job internal model)")
 
-            self.execute_tool_hooks(inp_data=inp_data, out_data=out_data, incoming=incoming, validated_tool_state=internal_tool_state)
+            self.execute_tool_hooks(
+                inp_data=inp_data, out_data=out_data, incoming=incoming, validated_tool_state=internal_tool_state
+            )
 
         else:
             tool_state: Optional[JobInternalToolState] = None
@@ -235,13 +239,27 @@ class ToolEvaluator:
                 validated_tool_state=tool_state,
             )
 
-    def execute_tool_hooks(self, inp_data: InpDataDictT, out_data: OutDataDictT, incoming, validated_tool_state: Optional[JobInternalToolState] = None):
+    def execute_tool_hooks(
+        self,
+        inp_data: InpDataDictT,
+        out_data: OutDataDictT,
+        incoming,
+        validated_tool_state: Optional[JobInternalToolState] = None,
+    ):
         # Certain tools require tasks to be completed prior to job execution
         # ( this used to be performed in the "exec_before_job" hook, but hooks are deprecated ).
-        self.tool.exec_before_job(self.app, inp_data, out_data, self.param_dict, validated_tool_state=validated_tool_state)
+        self.tool.exec_before_job(
+            self.app, inp_data, out_data, self.param_dict, validated_tool_state=validated_tool_state
+        )
         # Run the before queue ("exec_before_job") hook
         self.tool.call_hook(
-            "exec_before_job", self.app, inp_data=inp_data, out_data=out_data, tool=self.tool, param_dict=incoming, validated_tool_state=validated_tool_state
+            "exec_before_job",
+            self.app,
+            inp_data=inp_data,
+            out_data=out_data,
+            tool=self.tool,
+            param_dict=incoming,
+            validated_tool_state=validated_tool_state,
         )
 
     def build_param_dict(
@@ -805,27 +823,22 @@ class ToolEvaluator:
         if not command:
             return
 
-        # TODO: this approach replaces specifies a command block as $__cwl_command_state
-        #  and that other approach needs to be unraveled.
-        if self.tool.tool_type in CWL_TOOL_TYPES and "__cwl_command" in param_dict:
-            command_line = param_dict["__cwl_command"]
-        else:
-            try:
-                # Substituting parameters into the command
-                command_line = fill_template(
-                    command, context=param_dict, python_template_version=self.tool.python_template_version
-                )
-                cleaned_command_line = []
-                # Remove leading and trailing whitespace from each line for readability.
-                for line in command_line.split("\n"):
-                    cleaned_command_line.append(line.strip())
-                command_line = "\n".join(cleaned_command_line)
-                # Remove newlines from command line, and any leading/trailing white space
-                command_line = command_line.replace("\n", " ").replace("\r", " ").strip()
-            except Exception:
-                # Modify exception message to be more clear
-                # e.args = ( 'Error substituting into command line. Params: %r, Command: %s' % ( param_dict, self.command ), )
-                raise
+        try:
+            # Substituting parameters into the command
+            command_line = fill_template(
+                command, context=param_dict, python_template_version=self.tool.python_template_version
+            )
+            cleaned_command_line = []
+            # Remove leading and trailing whitespace from each line for readability.
+            for line in command_line.split("\n"):
+                cleaned_command_line.append(line.strip())
+            command_line = "\n".join(cleaned_command_line)
+            # Remove newlines from command line, and any leading/trailing white space
+            command_line = command_line.replace("\n", " ").replace("\r", " ").strip()
+        except Exception:
+            # Modify exception message to be more clear
+            # e.args = ( 'Error substituting into command line. Params: %r, Command: %s' % ( param_dict, self.command ), )
+            raise
         if interpreter:
             # TODO: path munging for cluster/dataset server relocatability
             executable = command_line.split()[0]
@@ -1200,6 +1213,71 @@ class UserToolEvaluator(ToolEvaluator):
             )
         else:
             raise Exception("Tool must define shell_command or base_command")
+        self.command_line = command_line
+
+
+class CwlToolEvaluator(UserToolEvaluator):
+    """ToolEvaluator for CWL tools that use cwltool to build command lines."""
+
+    def _build_command_line(self):
+        from galaxy.tool_util.cwl import needs_shell_quoting
+
+        input_json = dict(self.param_dict["inputs"])
+        local_working_directory = self.local_working_directory
+
+        # Build output dict from job's output datasets
+        _, out_data, _ = self.job.io_dicts()
+        output_dict = {}
+        for name, dataset in out_data.items():
+            output_dict[name] = {
+                "id": str(getattr(dataset.dataset, dataset.dataset.store_by)),
+                "path": dataset.get_file_name(),
+            }
+
+        # Filter unset optional Files and empty strings
+        input_json = {
+            k: v
+            for k, v in input_json.items()
+            if not (isinstance(v, dict) and v.get("class") == "File" and v.get("location") == "None")
+        }
+        input_json = {k: v for k, v in input_json.items() if v != ""}
+
+        # Create CWL job proxy and extract command
+        cwl_job_proxy = self.tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
+        cwl_command_line = cwl_job_proxy.command_line
+        cwl_stdin = cwl_job_proxy.stdin
+        cwl_stdout = cwl_job_proxy.stdout
+        cwl_stderr = cwl_job_proxy.stderr
+        env = cwl_job_proxy.environment
+
+        # Build shell command string
+        command_line = " ".join(
+            shlex.quote(arg) if (arg != "$GALAXY_SLOTS" and needs_shell_quoting(arg)) else arg
+            for arg in cwl_command_line
+        )
+        if cwl_stdin:
+            command_line += f' < "{cwl_stdin}"'
+        if cwl_stdout:
+            command_line += f' > "{cwl_stdout}"'
+        if cwl_stderr:
+            command_line += f' 2> "{cwl_stderr}"'
+
+        # Store state for env var extraction by _build_environment_variables()
+        self.param_dict["__cwl_command_state"] = {
+            "args": cwl_command_line,
+            "stdin": cwl_stdin,
+            "stdout": cwl_stdout,
+            "stderr": cwl_stderr,
+            "env": env,
+        }
+
+        # Stage files and persist job representation
+        tool_working_directory = os.path.join(local_working_directory, "working")
+        safe_makedirs(tool_working_directory)
+        cwl_job_proxy.stage_files()
+        cwl_job_proxy.rewrite_inputs_for_staging()
+        cwl_job_proxy.save_job()
+
         self.command_line = command_line
 
 
