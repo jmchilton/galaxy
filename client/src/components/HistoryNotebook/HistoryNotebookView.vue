@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { faArrowLeft, faComments, faFileExport, faHistory, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import {
+    faArrowLeft,
+    faComments,
+    faEdit,
+    faEye,
+    faFileExport,
+    faHistory,
+    faSave,
+    faSpinner,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BBadge, BButton } from "bootstrap-vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
@@ -16,6 +25,7 @@ import HistoryNotebookSplit from "./HistoryNotebookSplit.vue";
 import NotebookChatPanel from "./NotebookChatPanel.vue";
 import NotebookRevisionList from "./NotebookRevisionList.vue";
 import NotebookRevisionView from "./NotebookRevisionView.vue";
+import ClickToEdit from "@/components/ClickToEdit.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
 
 const props = defineProps<{
@@ -106,6 +116,22 @@ async function handleCreate() {
     }
 }
 
+function handleView(notebookId: string) {
+    router.push(`/histories/${props.historyId}/notebooks/${notebookId}?displayOnly=true`);
+}
+
+function handlePreview() {
+    if (props.notebookId) {
+        router.push(`/histories/${props.historyId}/notebooks/${props.notebookId}?displayOnly=true`);
+    }
+}
+
+function handleEdit() {
+    if (props.notebookId) {
+        router.push(`/histories/${props.historyId}/notebooks/${props.notebookId}`);
+    }
+}
+
 function handleBack() {
     store.clearCurrentNotebook();
     router.push(`/histories/${props.historyId}/notebooks`);
@@ -113,6 +139,10 @@ function handleBack() {
 
 async function handleSave() {
     await store.saveNotebook();
+}
+
+function handleTitleChange(newTitle: string) {
+    store.updateTitle(newTitle);
 }
 
 async function handleExportToPage() {
@@ -155,12 +185,35 @@ function toggleChatPanel() {
         </BAlert>
 
         <template v-else-if="!notebookId">
-            <HistoryNotebookList :notebooks="store.notebooks" @select="handleSelect" @create="handleCreate" />
+            <HistoryNotebookList
+                :notebooks="store.notebooks"
+                @select="handleSelect"
+                @view="handleView"
+                @create="handleCreate" />
         </template>
 
         <!-- Notebook loaded in displayOnly mode -- rendered view -->
         <template v-else-if="store.hasCurrentNotebook && displayOnly">
-            <div class="notebook-display-content overflow-auto h-100" data-description="notebook rendered view">
+            <div
+                class="notebook-display-toolbar d-flex align-items-center p-2 border-bottom"
+                data-description="notebook display toolbar">
+                <BButton variant="link" size="sm" data-description="notebook manage button" @click="handleBack">
+                    <FontAwesomeIcon :icon="faArrowLeft" />
+                    Manage History Notebooks
+                </BButton>
+                <span class="flex-grow-1 text-center font-weight-bold">
+                    {{ store.currentTitle || "Untitled Notebook" }}
+                </span>
+                <BButton
+                    variant="outline-primary"
+                    size="sm"
+                    data-description="notebook edit button"
+                    @click="handleEdit">
+                    <FontAwesomeIcon :icon="faEdit" />
+                    Edit
+                </BButton>
+            </div>
+            <div class="notebook-display-content overflow-auto flex-grow-1" data-description="notebook rendered view">
                 <Markdown
                     v-if="markdownConfig"
                     :markdown-config="markdownConfig"
@@ -187,11 +240,15 @@ function toggleChatPanel() {
                     <FontAwesomeIcon :icon="faArrowLeft" />
                     Manage History Notebooks
                 </BButton>
-                <span class="flex-grow-1 text-center font-weight-bold" data-description="notebook toolbar title">
-                    {{ store.currentTitle || "Untitled Notebook" }}
-                </span>
+                <ClickToEdit
+                    :value="store.currentTitle || 'Untitled Notebook'"
+                    tag-name="span"
+                    placeholder="Untitled Notebook"
+                    class="flex-grow-1 text-center font-weight-bold"
+                    data-description="notebook toolbar title"
+                    @input="handleTitleChange" />
                 <BButton
-                    variant="outline-secondary"
+                    variant="outline-primary"
                     size="sm"
                     class="mr-2"
                     data-description="notebook revisions button"
@@ -203,7 +260,7 @@ function toggleChatPanel() {
                     </BBadge>
                 </BButton>
                 <BButton
-                    variant="outline-secondary"
+                    variant="outline-primary"
                     size="sm"
                     class="mr-2"
                     data-description="notebook export to page button"
@@ -212,7 +269,16 @@ function toggleChatPanel() {
                     Export to Page
                 </BButton>
                 <BButton
-                    :variant="showChatPanel ? 'secondary' : 'outline-secondary'"
+                    variant="outline-primary"
+                    size="sm"
+                    class="mr-2"
+                    data-description="notebook preview button"
+                    @click="handlePreview">
+                    <FontAwesomeIcon :icon="faEye" />
+                    Preview
+                </BButton>
+                <BButton
+                    :variant="showChatPanel ? 'primary' : 'outline-primary'"
                     size="sm"
                     class="mr-2"
                     data-description="notebook chat button"
@@ -282,7 +348,8 @@ function toggleChatPanel() {
 .history-notebook-view {
     background: var(--body-bg);
 }
-.notebook-toolbar {
+.notebook-toolbar,
+.notebook-display-toolbar {
     background: var(--panel-header-bg);
 }
 .notebook-content {

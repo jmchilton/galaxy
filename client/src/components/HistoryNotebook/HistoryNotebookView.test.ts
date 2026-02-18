@@ -14,6 +14,7 @@ import HistoryNotebookView from "./HistoryNotebookView.vue";
 import NotebookChatPanel from "./NotebookChatPanel.vue";
 import NotebookRevisionList from "./NotebookRevisionList.vue";
 import NotebookRevisionView from "./NotebookRevisionView.vue";
+import ClickToEdit from "@/components/ClickToEdit.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
 
 const mockPush = vi.fn();
@@ -59,6 +60,9 @@ const SELECTORS = {
     EXPORT_BUTTON: "[data-description='notebook export to page button']",
     REVISION_PANEL: ".notebook-revision-panel",
     CHAT_BUTTON: "[data-description='notebook chat button']",
+    PREVIEW_BUTTON: "[data-description='notebook preview button']",
+    EDIT_BUTTON: "[data-description='notebook edit button']",
+    DISPLAY_TOOLBAR: "[data-description='notebook display toolbar']",
 };
 
 let pinia: Pinia;
@@ -179,17 +183,18 @@ describe("HistoryNotebookView", () => {
             expect(wrapper.findComponent(HistoryNotebookEditor).exists()).toBe(true);
         });
 
-        it("shows notebook title in toolbar", () => {
-            const titleEl = wrapper.find(SELECTORS.TOOLBAR_TITLE);
-            expect(titleEl.text()).toBe("My Notebook");
+        it("shows ClickToEdit with notebook title in toolbar", () => {
+            const clickToEdit = wrapper.findComponent(ClickToEdit);
+            expect(clickToEdit.exists()).toBe(true);
+            expect(clickToEdit.props("value")).toBe("My Notebook");
         });
 
-        it("shows 'Untitled Notebook' when currentTitle is empty", async () => {
+        it("shows 'Untitled Notebook' in ClickToEdit when currentTitle is empty", async () => {
             store.currentTitle = "";
             await wrapper.vm.$nextTick();
 
-            const titleEl = wrapper.find(SELECTORS.TOOLBAR_TITLE);
-            expect(titleEl.text()).toBe("Untitled Notebook");
+            const clickToEdit = wrapper.findComponent(ClickToEdit);
+            expect(clickToEdit.props("value")).toBe("Untitled Notebook");
         });
 
         it("shows 'Unsaved' indicator when store.isDirty is true", async () => {
@@ -205,9 +210,10 @@ describe("HistoryNotebookView", () => {
         });
 
         it("save button is disabled when store.canSave is false", async () => {
-            // originalContent defaults to "" in the store and is not exported.
-            // Setting currentContent to "" makes isDirty=false, canSave=false.
+            // isDirty checks both content and title against originals.
+            // Set both to match so isDirty=false, canSave=false.
             store.currentContent = "";
+            store.currentTitle = "";
             await wrapper.vm.$nextTick();
 
             expect(store.canSave).toBe(false);
@@ -223,6 +229,27 @@ describe("HistoryNotebookView", () => {
         it("passes historyId to HistoryNotebookEditor", () => {
             const editor = wrapper.findComponent(HistoryNotebookEditor);
             expect(editor.props("historyId")).toBe(HISTORY_ID);
+        });
+
+        it("shows Preview button in toolbar", () => {
+            const previewBtn = wrapper.find(SELECTORS.PREVIEW_BUTTON);
+            expect(previewBtn.exists()).toBe(true);
+            expect(previewBtn.text()).toContain("Preview");
+        });
+
+        it("Preview button navigates to displayOnly mode", async () => {
+            const previewBtn = wrapper.find(SELECTORS.PREVIEW_BUTTON);
+            await previewBtn.trigger("click");
+
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/${NOTEBOOK_ID}?displayOnly=true`);
+        });
+
+        it("ClickToEdit input updates store title", async () => {
+            const clickToEdit = wrapper.findComponent(ClickToEdit);
+            clickToEdit.vm.$emit("input", "Renamed Notebook");
+            await wrapper.vm.$nextTick();
+
+            expect(store.updateTitle).toHaveBeenCalledWith("Renamed Notebook");
         });
     });
 
@@ -271,6 +298,18 @@ describe("HistoryNotebookView", () => {
 
             expect(store.clearCurrentNotebook).toHaveBeenCalled();
             expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks`);
+        });
+
+        it("view emit from list navigates to displayOnly URL", async () => {
+            setupListViewStore([{ id: "nb-1", history_id: HISTORY_ID, title: "NB1" }]);
+            const wrapper = mountComponent({ historyId: HISTORY_ID });
+            await flushPromises();
+
+            const list = wrapper.findComponent(HistoryNotebookList);
+            list.vm.$emit("view", "nb-1");
+            await wrapper.vm.$nextTick();
+
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/nb-1?displayOnly=true`);
         });
 
         it("handleSave calls store.saveNotebook", async () => {
@@ -340,6 +379,28 @@ describe("HistoryNotebookView", () => {
             expect(config.id).toBe(NOTEBOOK_ID);
             expect(config.title).toBe("My Notebook");
             expect(config.content).toBe("# Hello");
+        });
+
+        it("shows display toolbar with Edit button", async () => {
+            setupLoadedNotebook();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID, displayOnly: true });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.DISPLAY_TOOLBAR).exists()).toBe(true);
+            const editBtn = wrapper.find(SELECTORS.EDIT_BUTTON);
+            expect(editBtn.exists()).toBe(true);
+            expect(editBtn.text()).toContain("Edit");
+        });
+
+        it("Edit button navigates to edit mode (no displayOnly)", async () => {
+            setupLoadedNotebook();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID, displayOnly: true });
+            await flushPromises();
+
+            const editBtn = wrapper.find(SELECTORS.EDIT_BUTTON);
+            await editBtn.trigger("click");
+
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/${NOTEBOOK_ID}`);
         });
 
         it("list view renders normally regardless of displayOnly", async () => {
