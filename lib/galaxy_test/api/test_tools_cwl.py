@@ -360,10 +360,15 @@ class TestCwlTools(ApiTestCase):
         assert_ok: bool = False,
     ) -> CwlToolRun:
         """Run a CWL tool via the tool request API (POST /api/jobs)."""
+        from galaxy_test.base.populators import FailedCwlToolRun
+
         response = self.dataset_populator.tool_request_raw(tool_id, inputs, history_id)
         if assert_ok:
             self._assert_status_code_is(response, 200)
-        tool_request_id = response.json()["tool_request_id"]
+        response_json = response.json()
+        if "tool_request_id" not in response_json:
+            return FailedCwlToolRun(self.dataset_populator, history_id, response)
+        tool_request_id = response_json["tool_request_id"]
         return CwlToolRun(self.dataset_populator, history_id, tool_request_id)
 
 

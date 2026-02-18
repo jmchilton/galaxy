@@ -450,6 +450,20 @@ class CwlRun:
         """
 
 
+class FailedCwlToolRun(CwlRun):
+    """A CwlRun representing a tool request that failed at submission (e.g. 400)."""
+
+    def __init__(self, dataset_populator, history_id: str, response):
+        super().__init__(dataset_populator, history_id)
+        self.response = response
+
+    def _output_name_to_object(self, output_name):
+        raise AssertionError(f"Tool request failed: {self.response.status_code} {self.response.text}")
+
+    def wait(self):
+        raise AssertionError(f"Tool request failed: {self.response.status_code} {self.response.text}")
+
+
 class CwlToolRun(CwlRun):
     def __init__(self, dataset_populator, history_id: str, tool_request_id: str):
         super().__init__(dataset_populator, history_id)
@@ -3302,7 +3316,10 @@ class CwlPopulator:
         )
         if assert_ok:
             api_asserts.assert_status_code_is(tool_request_response, 200)
-        tool_request_id = tool_request_response.json()["tool_request_id"]
+        response_json = tool_request_response.json()
+        if "tool_request_id" not in response_json:
+            return FailedCwlToolRun(self.dataset_populator, history_id, tool_request_response)
+        tool_request_id = response_json["tool_request_id"]
         return CwlToolRun(self.dataset_populator, history_id, tool_request_id)
 
     def _run_cwl_workflow_job(
