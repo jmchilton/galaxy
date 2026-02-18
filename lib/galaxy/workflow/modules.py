@@ -401,6 +401,32 @@ def evaluate_cwl_value_from_expressions(
     return cwl_input_dict
 
 
+def find_cwl_scatter_collections(
+    step: WorkflowStep,
+    cwl_input_dict: dict,
+    trans,
+) -> matching.CollectionsToMatch:
+    """Identify scatter inputs and build a ``CollectionsToMatch``.
+
+    CWL scatter is simpler than the legacy Galaxy path — no subcollection
+    type matching or ``multiple=True`` handling.  Each scatter input maps
+    its HDCA directly.
+    """
+    collections_to_match = matching.CollectionsToMatch()
+    for step_input in step.inputs:
+        name = step_input.name
+        scatter_type = step_input.scatter_type or "dotproduct"
+        if scatter_type == "disabled" or name not in cwl_input_dict:
+            continue
+        ref = cwl_input_dict[name]
+        if not isinstance(ref, dict) or ref.get("src") != "hdca":
+            continue
+        hdca = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, ref["id"])
+        if hdca and hdca.collection.allow_implicit_mapping:
+            collections_to_match.add(name, hdca)
+    return collections_to_match
+
+
 def evaluate_value_from_expressions(progress, step, execution_state, extra_step_state):
     when_expression = step.when_expression
     value_from_expressions = {}
@@ -2865,20 +2891,39 @@ class ToolModule(WorkflowModule):
             # Evaluate valueFrom expressions (modifies cwl_input_dict in place)
             cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
 
-            # TODO: Step 5 — find_cwl_scatter_collections()
+            # Scatter: identify collection inputs and match
+            collections_to_match = find_cwl_scatter_collections(step, cwl_input_dict, trans)
+            collection_info = self.trans.app.dataset_collection_manager.match_collections(collections_to_match)
+            if collection_info:
+                if progress.subworkflow_collection_info:
+                    collection_info.when_values = progress.subworkflow_collection_info.when_values
+                else:
+                    collection_info.when_values = progress.when_values
 
-            when_value = progress.when_values[0] if progress.when_values else None
-            if step.when_expression and when_value is not False:
-                hda_references: list[model.HistoryDatasetAssociation] = []
-                step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in cwl_input_dict.items()}
-                when_value = do_eval(step.when_expression, step_state)
-                when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
-            if when_value is not None:
-                cwl_input_dict["__when_value__"] = when_value
+            if collection_info:
+                iteration_elements_iter = collection_info.slice_collections()
+            else:
+                when_value = progress.when_values[0] if progress.when_values else None
+                iteration_elements_iter = [(None, when_value)]
 
-            param_combinations = [cwl_input_dict]
+            param_combinations = []
+            for iteration_elements, when_value in iteration_elements_iter:
+                slice_dict = dict(cwl_input_dict)
+                if iteration_elements:
+                    for name, element in iteration_elements.items():
+                        slice_dict[name] = _galaxy_to_cwl_ref(element.element_object)
+                if step.when_expression and when_value is not False:
+                    hda_references: list[model.HistoryDatasetAssociation] = []
+                    step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in slice_dict.items()}
+                    when_value = do_eval(step.when_expression, step_state)
+                    when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
+                if when_value is not None:
+                    slice_dict["__when_value__"] = when_value
+                param_combinations.append(slice_dict)
+
             param_template = cwl_input_dict
-            collection_info = None
+            if not collection_info:
+                collection_info = progress.subworkflow_collection_info
 
         else:
             # Legacy Galaxy parameter path
