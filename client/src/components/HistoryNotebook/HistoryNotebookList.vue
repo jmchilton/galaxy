@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faChevronRight, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faChevronRight, faEye, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BButton } from "bootstrap-vue";
 
@@ -11,6 +11,7 @@ defineProps<{
 
 defineEmits<{
     (e: "select", notebookId: string): void;
+    (e: "view", notebookId: string): void;
     (e: "create"): void;
 }>();
 
@@ -59,7 +60,18 @@ function formatDate(dateStr: string): string {
                         </div>
                         <div class="notebook-meta text-muted small">Updated {{ formatDate(notebook.update_time) }}</div>
                     </div>
-                    <FontAwesomeIcon :icon="faChevronRight" class="text-muted" />
+                    <span class="notebook-actions d-flex align-items-center">
+                        <BButton
+                            variant="link"
+                            size="sm"
+                            class="p-1"
+                            title="View notebook"
+                            data-description="notebook view button"
+                            @click.stop="$emit('view', notebook.id)">
+                            <FontAwesomeIcon :icon="faEye" />
+                        </BButton>
+                        <FontAwesomeIcon :icon="faChevronRight" class="text-muted" />
+                    </span>
                 </div>
             </div>
         </div>

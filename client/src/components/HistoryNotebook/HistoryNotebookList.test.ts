@@ -34,6 +34,7 @@ const SELECTORS = {
     NOTEBOOK_ITEM: ".notebook-item",
     NOTEBOOK_TITLE: ".notebook-title",
     NOTEBOOK_META: ".notebook-meta",
+    VIEW_BUTTON: "[data-description='notebook view button']",
 };
 
 async function mountComponent(propsData: { notebooks: HistoryNotebookSummary[] }) {
@@ -142,6 +143,35 @@ describe("HistoryNotebookList", () => {
             await item.trigger("click");
             expect(wrapper.emitted().select).toBeTruthy();
             expect(wrapper.emitted().select![0]![0]).toBe("notebook-1");
+        });
+    });
+
+    describe("View button", () => {
+        it("shows view button on each notebook item", async () => {
+            const wrapper = await mountComponent({
+                notebooks: [FAKE_NOTEBOOK_SUMMARY],
+            });
+            const viewButton = wrapper.find(SELECTORS.VIEW_BUTTON);
+            expect(viewButton.exists()).toBe(true);
+        });
+
+        it("emits 'view' with notebook.id when view button clicked", async () => {
+            const wrapper = await mountComponent({
+                notebooks: [FAKE_NOTEBOOK_SUMMARY],
+            });
+            const viewButton = wrapper.find(SELECTORS.VIEW_BUTTON);
+            await viewButton.trigger("click");
+            expect(wrapper.emitted().view).toBeTruthy();
+            expect(wrapper.emitted().view![0]![0]).toBe("notebook-1");
+        });
+
+        it("does not emit 'select' when view button clicked", async () => {
+            const wrapper = await mountComponent({
+                notebooks: [FAKE_NOTEBOOK_SUMMARY],
+            });
+            const viewButton = wrapper.find(SELECTORS.VIEW_BUTTON);
+            await viewButton.trigger("click");
+            expect(wrapper.emitted().select).toBeFalsy();
         });
     });
 });

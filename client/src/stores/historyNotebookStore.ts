@@ -24,6 +24,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     const currentNotebook = ref<HistoryNotebookDetails | null>(null);
     const originalContent = ref("");
     const currentContent = ref("");
+    const originalTitle = ref("");
     const currentTitle = ref("");
     const isLoadingList = ref(false);
     const isLoadingNotebook = ref(false);
@@ -44,7 +45,9 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 
     const hasNotebooks = computed(() => notebooks.value.length > 0);
     const hasCurrentNotebook = computed(() => currentNotebook.value !== null);
-    const isDirty = computed(() => currentContent.value !== originalContent.value);
+    const isDirty = computed(
+        () => currentContent.value !== originalContent.value || currentTitle.value !== originalTitle.value,
+    );
     const canSave = computed(() => isDirty.value && !isSaving.value);
     const revisionCount = computed(() => revisions.value.length);
     const hasRevisions = computed(() => revisions.value.length > 1);
@@ -73,6 +76,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             currentNotebook.value = data;
             originalContent.value = data.content || "";
             currentContent.value = data.content || "";
+            originalTitle.value = data.title || "";
             currentTitle.value = data.title || "";
             setCurrentNotebookId(historyId.value, notebookId);
         } catch (e: any) {
@@ -97,6 +101,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             currentNotebook.value = data;
             originalContent.value = data.content || "";
             currentContent.value = data.content || "";
+            originalTitle.value = data.title || "";
             currentTitle.value = data.title || "";
             await loadNotebooks(historyId.value);
             return data;
@@ -122,9 +127,10 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             };
             const data = await updateHistoryNotebook(historyId.value, currentNotebook.value.id, payload);
             currentNotebook.value = data;
-            // Use currentContent (what the user typed) as the baseline, not data.content
+            // Use current values (what the user typed) as the baseline, not data values
             // which may be transformed by rewrite_content_for_export for rendering.
             originalContent.value = currentContent.value;
+            originalTitle.value = currentTitle.value;
         } catch (e: any) {
             error.value = e.message || "Failed to save notebook";
             throw e;
@@ -143,6 +149,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             currentNotebook.value = null;
             originalContent.value = "";
             currentContent.value = "";
+            originalTitle.value = "";
             currentTitle.value = "";
             await loadNotebooks(historyId.value);
         } catch (e: any) {
@@ -161,12 +168,14 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
 
     function discardChanges() {
         currentContent.value = originalContent.value;
+        currentTitle.value = originalTitle.value;
     }
 
     function clearCurrentNotebook() {
         currentNotebook.value = null;
         originalContent.value = "";
         currentContent.value = "";
+        originalTitle.value = "";
         currentTitle.value = "";
         clearRevisionState();
     }
@@ -295,6 +304,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         currentNotebook.value = null;
         originalContent.value = "";
         currentContent.value = "";
+        originalTitle.value = "";
         currentTitle.value = "";
         isLoadingList.value = false;
         isLoadingNotebook.value = false;
