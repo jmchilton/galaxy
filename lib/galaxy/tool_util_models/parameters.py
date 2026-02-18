@@ -2350,10 +2350,10 @@ class CwlUnionParameterModel(BaseToolParameterModelDefinition):
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         requires_value = self.request_requires_value
         if state_representation == "job_internal":
-            # job_internal: only has_default makes field optional, not nullability
-            requires_value = not self.has_default
+            # job_internal: nullable unions (containing cwl_null) or defaults make field optional
+            requires_value = self.request_requires_value and not self.has_default
         elif state_representation == "job_runtime":
-            requires_value = True
+            requires_value = self.request_requires_value
         elif _is_landing_request(state_representation):
             requires_value = False
         py_type = self.py_type_for_state(state_representation)
