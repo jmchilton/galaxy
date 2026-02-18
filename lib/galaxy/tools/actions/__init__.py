@@ -404,18 +404,24 @@ class DefaultToolAction(ToolAction):
         if not history:
             history = tool.get_default_history_by_trans(trans, create=True)
 
-        # Track input dataset collections - but replace with simply lists so collect
-        # input datasets can process these normally.
-        inp_dataset_collections = self.collect_input_dataset_collections(tool, incoming)
-        # Collect any input datasets from the incoming parameters
-        inp_data, all_permissions = self._collect_input_datasets(
-            tool,
-            incoming,
-            trans,
-            history=history,
-            current_user_roles=current_user_roles,
-            collection_info=collection_info,
-        )
+        if not tool.has_galaxy_inputs:
+            # CWL tools: incoming has {src: "hda", id: N} refs, not model objects.
+            # Walk directly instead of using tool.visit_inputs (which needs ToolParameter instances).
+            inp_data, inp_dataset_collections = self._collect_cwl_inputs(trans, incoming)
+            all_permissions: dict[str, set[str]] = {}
+        else:
+            # Track input dataset collections - but replace with simply lists so collect
+            # input datasets can process these normally.
+            inp_dataset_collections = self.collect_input_dataset_collections(tool, incoming)
+            # Collect any input datasets from the incoming parameters
+            inp_data, all_permissions = self._collect_input_datasets(
+                tool,
+                incoming,
+                trans,
+                history=history,
+                current_user_roles=current_user_roles,
+                collection_info=collection_info,
+            )
 
         preserved_tags = {}
         preserved_hdca_tags = {}
@@ -435,6 +441,31 @@ class DefaultToolAction(ToolAction):
                         preserved_hdca_tags[tag.value] = tag
         preserved_tags.update(preserved_hdca_tags)
         return history, inp_data, inp_dataset_collections, preserved_tags, preserved_hdca_tags, all_permissions
+
+    @staticmethod
+    def _collect_cwl_inputs(trans, incoming):
+        """Collect input datasets from CWL-style ``{src, id}`` refs in *incoming*.
+
+        Returns ``(inp_data, inp_dataset_collections)`` matching the shape
+        produced by the legacy ``_collect_input_datasets`` /
+        ``collect_input_dataset_collections`` pair.
+        """
+        inp_data = LegacyUnprefixedDict()
+        inp_dataset_collections = LegacyUnprefixedDict()
+        for name, value in incoming.items():
+            if not isinstance(value, dict) or "src" not in value:
+                continue
+            src = value["src"]
+            ref_id = value["id"]
+            if src == "hda":
+                hda = trans.sa_session.get(HistoryDatasetAssociation, ref_id)
+                if hda:
+                    inp_data[name] = hda
+            elif src == "hdca":
+                hdca = trans.sa_session.get(HistoryDatasetCollectionAssociation, ref_id)
+                if hdca:
+                    inp_dataset_collections[name] = [(hdca, False)]
+        return inp_data, inp_dataset_collections
 
     def execute(
         self,
