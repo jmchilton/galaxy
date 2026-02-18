@@ -3888,6 +3888,11 @@ class ChatPayload(Model):
         title="Exchange ID",
         description="The ID of an existing chat exchange to continue.",
     )
+    notebook_id: Optional[int] = Field(
+        default=None,
+        title="Notebook ID",
+        description="Scope this chat exchange to a history notebook.",
+    )
     regenerate: Optional[bool] = Field(
         default=None,
         title="Regenerate",
