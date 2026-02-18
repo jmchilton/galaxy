@@ -1,13 +1,7 @@
 """Test CWL Tool Execution via the API."""
 
-from typing import (
-    Any,
-    Optional,
-)
+from typing import Any
 
-from typing_extensions import Literal
-
-from galaxy.tool_util.cwl.representation import USE_FIELD_TYPES
 from galaxy_test.api._framework import ApiTestCase
 from galaxy_test.base.populators import (
     CwlPopulator,
@@ -34,34 +28,25 @@ class TestCwlTools(ApiTestCase):
 
     @skip_without_tool("cat1-tool.cwl")
     def test_cat1_number(self, history_id: str) -> None:
-        """Test execution of cat1 using the "normal" Galaxy job API representation."""
+        """Test execution of cat1 with numbering via tool request API."""
         hda1 = _dataset_to_param(self.dataset_populator.new_dataset(history_id, content="1\n2\n3", name="test1"))
-        if not USE_FIELD_TYPES:
-            inputs = {
-                "file1": hda1,
-                "numbering|_cwl__type_": "boolean",
-                "numbering|_cwl__value_": True,
-            }
-        else:
-            inputs = {
-                "file1": hda1,
-                "numbering": {"src": "json", "value": True},
-            }
+        inputs = {
+            "file1": hda1,
+            "numbering": True,
+        }
         stdout = self._run_and_get_stdout("cat1-tool.cwl", history_id, inputs, assert_ok=True)
         assert stdout == "     1\t1\n     2\t2\n     3\t3\n"
 
     @skip_without_tool("cat1-tool.cwl")
     def test_cat1_number_cwl_json(self, history_id: str) -> None:
-        """Test execution of cat1 using the "CWL" Galaxy job API representation."""
+        """Test execution of cat1 with numbering=False via tool request API."""
         hda1 = _dataset_to_param(self.dataset_populator.new_dataset(history_id, content="1\n2\n3"))
         inputs = {
             "file1": hda1,
-            "numbering": True,
+            "numbering": False,
         }
-        stdout = self._run_and_get_stdout(
-            "cat1-tool.cwl", history_id, inputs, assert_ok=True, inputs_representation="cwl"
-        )
-        assert stdout == "     1\t1\n     2\t2\n     3\t3\n"
+        stdout = self._run_and_get_stdout("cat1-tool.cwl", history_id, inputs, assert_ok=True)
+        assert stdout == "1\n2\n3\n"
 
     @skip_without_tool("cat1-tool.cwl")
     def test_cat1_number_cwl_json_file(self) -> None:
@@ -120,10 +105,8 @@ class TestCwlTools(ApiTestCase):
         assert content.strip() == "cow dog foo", content
 
     def _run_and_get_stdout(self, tool_id: str, history_id: str, inputs: dict[str, Any], **kwds) -> str:
-        response = self._run(tool_id, history_id, inputs, **kwds)
-        assert "jobs" in response
-        job = response["jobs"][0]
-        job_id = job["id"]
+        tool_request = self._run(tool_id, history_id, inputs, **kwds)
+        job_id = tool_request["jobs"][0]["id"]
         final_state = self.dataset_populator.wait_for_job(job_id)
         assert final_state == "ok"
         return self._get_job_stdout(job_id)
@@ -370,32 +353,23 @@ class TestCwlTools(ApiTestCase):
     #     create_response = self._post("dynamic_tools", data=create_payload, admin=True)
     #     self._assert_status_code_is(create_response, 200)
 
-    # TODO: Use mixin so this can be shared with tools test case.
     def _run(
         self,
         tool_id: str,
         history_id: str,
         inputs: dict[str, Any],
         assert_ok: bool = False,
-        tool_version: Optional[str] = None,
-        inputs_representation: Optional[Literal["cwl", "galaxy"]] = None,
     ):
-        payload = self.dataset_populator.run_tool_payload(
-            tool_id=tool_id,
-            inputs=inputs,
-            history_id=history_id,
-            inputs_representation=inputs_representation,
-        )
-        if tool_version is not None:
-            payload["tool_version"] = tool_version
-        create_response = self._post("tools", data=payload)
+        """Run a CWL tool via the tool request API (POST /api/jobs)."""
+        response = self.dataset_populator.tool_request_raw(tool_id, inputs, history_id)
         if assert_ok:
-            self._assert_status_code_is(create_response, 200)
-            create = create_response.json()
-            self._assert_has_keys(create, "outputs")
-            return create
+            self._assert_status_code_is(response, 200)
+            tool_request_id = response.json()["tool_request_id"]
+            self.dataset_populator.wait_on_tool_request(tool_request_id)
+            tool_request = self.dataset_populator.get_tool_request(tool_request_id)
+            return tool_request
         else:
-            return create_response
+            return response
 
 
 def whale_text() -> str:
