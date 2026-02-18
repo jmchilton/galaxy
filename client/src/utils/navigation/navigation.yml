@@ -338,7 +338,7 @@ history_panel:
       selector: '.history-options-button-menu > a:contains("${option_label}")'
     options_show_export_history_to_file: 'a[data-description="export to file"]'
     options_extract_workflow: '[data-description="extract workflow"]'
-    notebooks_menu_item: '[data-description="history notebooks"]'
+    notebook_button: '[data-description="history notebook button"]'
 
     collection_menu_button: '.collection-menu'
     collection_menu_edit_attributes: '.edit-btn'
@@ -646,9 +646,9 @@ history_notebooks:
     toolbar_title:
       type: data-description
       selector: 'notebook toolbar title'
-    back_button:
+    manage_button:
       type: data-description
-      selector: 'notebook back button'
+      selector: 'notebook manage button'
     save_button:
       type: data-description
       selector: 'notebook save button'

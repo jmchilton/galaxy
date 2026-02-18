@@ -12,17 +12,41 @@ class TestHistoryNotebooks(SeleniumTestCase):
 
     @selenium_test
     @managed_history
-    def test_navigate_to_notebooks_via_history_menu(self):
-        """Navigate to notebooks via history panel options menu."""
-        self.navigate_to_history_notebooks_via_menu()
+    def test_navigate_to_notebooks(self):
+        """Navigate to notebooks via direct URL."""
+        self.navigate_to_history_notebooks()
         self.screenshot("history_notebooks_list_empty")
         self.components.history_notebooks.empty_state.wait_for_visible()
 
     @selenium_test
     @managed_history
+    def test_navigate_via_notebook_icon(self):
+        """Click notebook icon in history counter bar opens notebook editor.
+
+        When no notebooks exist, resolveCurrentNotebook auto-creates one.
+        """
+        self.navigate_to_current_notebook()
+        self.components.history_notebooks.editor.wait_for_visible()
+        self.screenshot("history_notebook_icon_auto_create")
+
+    @selenium_test
+    @managed_history
+    def test_notebook_icon_opens_existing(self):
+        """Click notebook icon navigates to existing notebook."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="Existing", content="# Hello")
+
+        self.navigate_to_current_notebook()
+        self.components.history_notebooks.editor.wait_for_visible()
+        editor = self.components.history_notebooks.markdown_editor
+        assert "Hello" in editor.wait_for_value()
+        self.screenshot("history_notebook_icon_existing")
+
+    @selenium_test
+    @managed_history
     def test_create_notebook(self):
         """Create a new notebook and verify editor appears."""
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create(screenshot_name="history_notebook_create")
         self.components.history_notebooks.editor.wait_for_visible()
         title_text = self.components.history_notebooks.toolbar_title.wait_for_text()
@@ -33,14 +57,14 @@ class TestHistoryNotebooks(SeleniumTestCase):
     @managed_history
     def test_notebook_empty_history(self):
         """Create notebook for an empty history."""
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
         self.components.history_notebooks.editor.wait_for_visible()
 
         self.history_notebook_editor_set_content("# Empty History Notes\n\nNo datasets yet.")
         self.history_notebook_save()
 
-        self.history_notebook_go_back()
+        self.history_notebook_manage()
         self.history_notebook_assert_item_count(1)
         self.screenshot("history_notebook_empty_history")
 
@@ -48,7 +72,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
     @managed_history
     def test_edit_and_save_notebook(self):
         """Edit notebook content, save, reload, verify persistence."""
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
 
         test_content = "# My Analysis\n\nThis is a test notebook."
@@ -60,7 +84,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.history_notebook_save()
         self.screenshot("history_notebook_saved")
 
-        self.history_notebook_go_back()
+        self.history_notebook_manage()
         self.history_notebook_assert_item_count(1)
 
         self.components.history_notebooks.notebook_item.wait_for_and_click()
@@ -75,7 +99,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
     @managed_history
     def test_notebook_save_button_disabled_when_clean(self):
         """Verify save button is disabled when no changes exist."""
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
         self.components.history_notebooks.editor.wait_for_visible()
 
@@ -109,7 +133,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="First Notebook", content="# First")
         self.dataset_populator.new_history_notebook(history_id, title="Second Notebook", content="# Second")
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.screenshot("history_notebooks_list_multiple")
 
         self.history_notebook_assert_item_count(2)
@@ -126,7 +150,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="HID Test", content=content)
 
         # Navigate via menu and click the notebook item
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_assert_item_count(1)
         self.components.history_notebooks.notebook_item.wait_for_and_click()
         self.components.history_notebooks.editor.wait_for_visible()
@@ -146,7 +170,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.perform_upload(self.get_filename("1.fasta"))
         self.history_panel_wait_for_hid_ok(1)
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
         self.components.history_notebooks.editor.wait_for_visible()
 
@@ -174,13 +198,13 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="Keep This")
         nb2 = self.dataset_populator.new_history_notebook(history_id, title="Delete This")
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_assert_item_count(2)
 
         # Delete via API, then go home and navigate back via menu
         self.dataset_populator.delete_history_notebook(history_id, nb2["id"])
         self.home()
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
 
         @retry_assertion_during_transitions
         def assert_one_notebook():
@@ -220,7 +244,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.window_manager_enable()
         assert self.window_manager_window_count() == 0
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_assert_item_count(1)
 
         # Click the notebook -- should open in WinBox, not navigate
@@ -244,7 +268,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         )
 
         self.window_manager_enable()
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.components.history_notebooks.notebook_item.wait_for_and_click()
         self.window_manager_wait_for_window_count(1)
 
@@ -265,7 +289,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
 
         self.window_manager_disable()
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_assert_item_count(1)
         self.components.history_notebooks.notebook_item.wait_for_and_click()
 
@@ -286,7 +310,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="Dataset Embed", content=content)
 
         self.window_manager_enable()
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.components.history_notebooks.notebook_item.wait_for_and_click()
         self.window_manager_wait_for_window_count(1)
 
@@ -304,7 +328,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="Second NB")
 
         self.window_manager_enable()
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_assert_item_count(2)
 
         # Open first notebook
@@ -332,7 +356,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         history_id = self.current_history_id()
         self.dataset_populator.new_history_notebook(history_id, title="Rev Test", content="V1")
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_assert_item_count(1)
         self.components.history_notebooks.notebook_item.wait_for_and_click()
         self.components.history_notebooks.editor.wait_for_visible()
@@ -349,7 +373,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         nb = self.dataset_populator.new_history_notebook(history_id, title="Restore Test", content="Original")
         self.dataset_populator.update_history_notebook(history_id, nb["id"], content="Modified")
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.components.history_notebooks.notebook_item.wait_for_and_click()
         self.components.history_notebooks.editor.wait_for_visible()
 
@@ -367,7 +391,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
     @managed_history
     def test_revision_count_increases_after_save(self):
         """Saving creates a new revision, count increases."""
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
         self.components.history_notebooks.editor.wait_for_visible()
 
@@ -389,7 +413,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         nb = self.dataset_populator.new_history_notebook(history_id, title="Preview", content="# Old Content")
         self.dataset_populator.update_history_notebook(history_id, nb["id"], content="# New Content")
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.components.history_notebooks.notebook_item.wait_for_and_click()
         self.components.history_notebooks.editor.wait_for_visible()
 
@@ -412,7 +436,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.perform_upload(self.get_filename("1.fasta"))
         self.history_panel_wait_for_hid_ok(1)
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
         self.components.history_notebooks.editor.wait_for_visible()
 
@@ -441,7 +465,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.perform_upload(self.get_filename("1.fasta"))
         self.history_panel_wait_for_hid_ok(1)
 
-        self.navigate_to_history_notebooks_via_menu()
+        self.navigate_to_history_notebooks()
         self.history_notebook_create()
         self.components.history_notebooks.editor.wait_for_visible()
 
