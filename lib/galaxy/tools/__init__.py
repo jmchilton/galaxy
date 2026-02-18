@@ -8,7 +8,6 @@ import logging
 import math
 import os
 import re
-import shlex
 import tarfile
 import tempfile
 from collections.abc import (
@@ -69,10 +68,7 @@ from galaxy.model.dataset_collections.types.sample_sheet_workbook import _sample
 from galaxy.schema.credentials import CredentialsContext
 from galaxy.tool_shed.util.repository_util import get_installed_repository
 from galaxy.tool_shed.util.shed_util_common import set_image_paths
-from galaxy.tool_util.cwl import (
-    needs_shell_quoting,
-    to_galaxy_parameters,
-)
+from galaxy.tool_util.cwl import to_galaxy_parameters
 from galaxy.tool_util.deps import (
     build_dependency_manager,
     CachedDependencyManager,
@@ -205,7 +201,6 @@ from galaxy.util import (
     Params,
     parse_xml_string,
     rst_to_html,
-    safe_makedirs,
     string_as_bool,
     unicodify,
     UNKNOWN,
@@ -3817,83 +3812,11 @@ class InteractiveTool(Tool):
 
 
 class CwlCommandBindingTool(Tool):
-    """Tools that use CWL to bind parameters to command-line descriptions."""
+    """Tools that use CWL to bind parameters to command-line descriptions.
 
-    def exec_before_job(
-        self, app, inp_data, out_data, param_dict=None, validated_tool_state: Optional[JobInternalToolState] = None
-    ):
-        super().exec_before_job(app, inp_data, out_data, param_dict=param_dict)
-        # Working directory on Galaxy server (instead of remote compute).
-        local_working_directory = param_dict["__local_working_directory__"]
-        log.info("exec_before_job for CWL tool")
-        if param_dict is None:
-            raise Exception("Internal error - param_dict is empty.")
-
-        input_json = validated_tool_state.input_state
-
-        output_dict = {}
-        for name, dataset in out_data.items():
-            output_dict[name] = {
-                "id": str(getattr(dataset.dataset, dataset.dataset.store_by)),
-                "path": dataset.get_file_name(),
-            }
-
-        # prevent unset optional file to trigger 'ValidationException' exception
-        input_json = {
-            k: v
-            for k, v in input_json.items()
-            if not (isinstance(v, dict) and v.get("class") == "File" and v.get("location") == "None")
-        }
-
-        # prevent empty string
-        # this really seems wrong -John
-        input_json = {k: v for k, v in input_json.items() if v != ""}
-
-        cwl_job_proxy = self._cwl_tool_proxy.job_proxy(
-            input_json,
-            output_dict,
-            local_working_directory,
-        )
-        cwl_command_line = cwl_job_proxy.command_line
-        cwl_stdin = cwl_job_proxy.stdin
-        cwl_stdout = cwl_job_proxy.stdout
-        cwl_stderr = cwl_job_proxy.stderr
-        env = cwl_job_proxy.environment
-
-        def needs_shell_quoting_hack(arg):
-            if arg == "$GALAXY_SLOTS":
-                return False
-            else:
-                return needs_shell_quoting(arg)
-
-        command_line = " ".join(shlex.quote(arg) if needs_shell_quoting_hack(arg) else arg for arg in cwl_command_line)
-        if cwl_stdin:
-            command_line += ' < "' + cwl_stdin + '"'
-        if cwl_stdout:
-            command_line += ' > "' + cwl_stdout + '"'
-        if cwl_stderr:
-            command_line += ' 2> "' + cwl_stderr + '"'
-        cwl_job_state = {
-            "args": cwl_command_line,
-            "stdin": cwl_stdin,
-            "stdout": cwl_stdout,
-            "stderr": cwl_stderr,
-            "env": env,
-        }
-        tool_working_directory = os.path.join(local_working_directory, "working")
-        # Move to prepare...
-        safe_makedirs(tool_working_directory)
-        cwl_job_proxy.stage_files()
-
-        cwl_job_proxy.rewrite_inputs_for_staging()
-        # Write representation to disk that can be reloaded at runtime
-        # and outputs collected before Galaxy metadata is gathered.
-        cwl_job_proxy.save_job()
-
-        param_dict["__cwl_command"] = command_line
-        param_dict["__cwl_command_state"] = cwl_job_state
-        param_dict["__cwl_command_version"] = 1
-        log.info("CwlTool.exec_before_job() generated command_line %s", command_line)
+    Command-line construction is handled by ``CwlToolEvaluator._build_command_line()``
+    which calls the cwltool proxy directly.
+    """
 
     def parse(self, tool_source, guid=None, dynamic=False):
         super().parse(tool_source, guid=guid, dynamic=dynamic)
@@ -3902,33 +3825,16 @@ class CwlCommandBindingTool(Tool):
             raise Exception("parse() called on tool source not defining a proxy object to underlying CWL tool.")
         self._cwl_tool_proxy = cwl_tool_proxy
 
-    def param_dict_to_cwl_inputs(self, param_dict, local_working_directory):
-        """Map Galaxy API inputs description to a CWL job json."""
-        raise NotImplementedError()
-
 
 class GalacticCwlTool(CwlCommandBindingTool):
     """A CWL tool with a gx:Interface defined so Galaxy tool state can be used."""
 
     tool_type = "galactic_cwl"
 
-    def param_dict_to_cwl_inputs(self, param_dict, local_working_directory):
-        from galaxy.tool_util.cwl.representation import galactic_flavored_to_cwl_job
-
-        input_json = galactic_flavored_to_cwl_job(self, param_dict, local_working_directory)
-        return input_json
-
 
 class CwlTool(CwlCommandBindingTool):
     tool_type = "cwl"
     may_use_container_entry_point = True
-
-    def param_dict_to_cwl_inputs(self, param_dict, local_working_directory):
-        """Map Galaxy API inputs description to a CWL job json."""
-        from galaxy.tool_util.cwl import to_cwl_job
-
-        input_json = to_cwl_job(self, param_dict, local_working_directory)
-        return input_json
 
     def inputs_from_dict(self, as_dict):
         """Extra inputs from input dictionary (e.g. API payload).
