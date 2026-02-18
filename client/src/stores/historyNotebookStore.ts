@@ -17,6 +17,7 @@ import {
     updateHistoryNotebook,
     type UpdateNotebookPayload,
 } from "@/api/historyNotebooks";
+import { useUserLocalStorage } from "@/composables/userLocalStorage";
 
 export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     const notebooks = ref<HistoryNotebookSummary[]>([]);
@@ -29,6 +30,9 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     const isSaving = ref(false);
     const error = ref<string | null>(null);
     const historyId = ref<string | null>(null);
+
+    // Per-history "current notebook" ID persisted across sessions
+    const currentNotebookIds = useUserLocalStorage<Record<string, string>>("history-notebook-current", {});
 
     // Revision state
     const revisions = ref<HistoryNotebookRevisionSummary[]>([]);
@@ -70,6 +74,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             originalContent.value = data.content || "";
             currentContent.value = data.content || "";
             currentTitle.value = data.title || "";
+            setCurrentNotebookId(historyId.value, notebookId);
         } catch (e: any) {
             error.value = e.message || "Failed to load notebook";
         } finally {
@@ -134,6 +139,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         }
         try {
             await deleteHistoryNotebook(historyId.value, currentNotebook.value.id);
+            clearCurrentNotebookId(historyId.value);
             currentNotebook.value = null;
             originalContent.value = "";
             currentContent.value = "";
@@ -163,6 +169,52 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         currentContent.value = "";
         currentTitle.value = "";
         clearRevisionState();
+    }
+
+    // --- Current notebook resolution ---
+
+    function getCurrentNotebookId(forHistoryId: string): string | null {
+        return currentNotebookIds.value[forHistoryId] || null;
+    }
+
+    function setCurrentNotebookId(forHistoryId: string, notebookId: string) {
+        currentNotebookIds.value = { ...currentNotebookIds.value, [forHistoryId]: notebookId };
+    }
+
+    function clearCurrentNotebookId(forHistoryId: string) {
+        const { [forHistoryId]: _removed, ...rest } = currentNotebookIds.value;
+        currentNotebookIds.value = rest;
+    }
+
+    async function resolveCurrentNotebook(forHistoryId: string): Promise<string> {
+        const storedId = getCurrentNotebookId(forHistoryId);
+        if (storedId) {
+            try {
+                await fetchHistoryNotebook(forHistoryId, storedId);
+                return storedId;
+            } catch {
+                // 404 or other error — clear stale mapping and re-resolve
+                clearCurrentNotebookId(forHistoryId);
+            }
+        }
+
+        const notebookList = await fetchHistoryNotebooks(forHistoryId);
+        if (notebookList.length > 0) {
+            const sorted = [...notebookList].sort(
+                (a, b) => new Date(b.update_time).getTime() - new Date(a.update_time).getTime(),
+            );
+            const id = sorted[0]!.id;
+            setCurrentNotebookId(forHistoryId, id);
+            return id;
+        }
+
+        // No notebooks exist — create one
+        const created = await createHistoryNotebook(forHistoryId, {
+            content: null,
+            content_format: "markdown",
+        });
+        setCurrentNotebookId(forHistoryId, created.id);
+        return created.id;
     }
 
     // --- Revision actions ---
@@ -237,6 +289,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         showRevisions.value = false;
     }
 
+    /** Reset ephemeral state. Does NOT clear currentNotebookIds (persisted cross-session). */
     function $reset() {
         notebooks.value = [];
         currentNotebook.value = null;
@@ -274,6 +327,12 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         updateTitle,
         discardChanges,
         clearCurrentNotebook,
+        // Current notebook resolution
+        currentNotebookIds,
+        getCurrentNotebookId,
+        setCurrentNotebookId,
+        clearCurrentNotebookId,
+        resolveCurrentNotebook,
         // Revision state
         revisions,
         selectedRevision,

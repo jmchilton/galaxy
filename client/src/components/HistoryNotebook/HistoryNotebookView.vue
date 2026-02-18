@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { faArrowLeft, faFileExport, faHistory, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faComments, faFileExport, faHistory, faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BBadge, BButton } from "bootstrap-vue";
-import { computed, onMounted, onUnmounted, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router/composables";
 
 import { getGalaxyInstance } from "@/app";
@@ -12,6 +12,8 @@ import { useHistoryStore } from "@/stores/historyStore";
 
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
+import HistoryNotebookSplit from "./HistoryNotebookSplit.vue";
+import NotebookChatPanel from "./NotebookChatPanel.vue";
 import NotebookRevisionList from "./NotebookRevisionList.vue";
 import NotebookRevisionView from "./NotebookRevisionView.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
@@ -130,6 +132,15 @@ function handleRevisionSelect(revisionId: string) {
 function handleRevisionRestore(revisionId: string) {
     store.restoreRevision(revisionId);
 }
+
+const showChatPanel = ref(false);
+
+function toggleChatPanel() {
+    showChatPanel.value = !showChatPanel.value;
+    if (showChatPanel.value && store.showRevisions) {
+        store.toggleRevisions();
+    }
+}
 </script>
 
 <template>
@@ -172,9 +183,9 @@ function handleRevisionRestore(revisionId: string) {
             <div
                 class="notebook-toolbar d-flex align-items-center p-2 border-bottom"
                 data-description="notebook toolbar">
-                <BButton variant="link" size="sm" data-description="notebook back button" @click="handleBack">
+                <BButton variant="link" size="sm" data-description="notebook manage button" @click="handleBack">
                     <FontAwesomeIcon :icon="faArrowLeft" />
-                    Back
+                    Manage History Notebooks
                 </BButton>
                 <span class="flex-grow-1 text-center font-weight-bold" data-description="notebook toolbar title">
                     {{ store.currentTitle || "Untitled Notebook" }}
@@ -201,6 +212,15 @@ function handleRevisionRestore(revisionId: string) {
                     Export to Page
                 </BButton>
                 <BButton
+                    :variant="showChatPanel ? 'secondary' : 'outline-secondary'"
+                    size="sm"
+                    class="mr-2"
+                    data-description="notebook chat button"
+                    @click="toggleChatPanel">
+                    <FontAwesomeIcon :icon="faComments" />
+                    Chat
+                </BButton>
+                <BButton
                     variant="primary"
                     size="sm"
                     data-description="notebook save button"
@@ -218,20 +238,36 @@ function handleRevisionRestore(revisionId: string) {
             </div>
 
             <div class="notebook-body d-flex flex-grow-1 overflow-hidden">
-                <div class="notebook-content flex-grow-1 overflow-auto">
-                    <HistoryNotebookEditor
-                        :history-id="historyId"
-                        :content="store.currentContent"
-                        @update:content="store.updateContent" />
-                </div>
-                <div v-if="store.showRevisions" class="notebook-revision-panel border-left">
-                    <NotebookRevisionList
-                        :revisions="store.revisions"
-                        :is-loading="store.isLoadingRevisions"
-                        :is-reverting="store.isReverting"
-                        @select="handleRevisionSelect"
-                        @restore="handleRevisionRestore" />
-                </div>
+                <HistoryNotebookSplit v-if="showChatPanel && notebookId">
+                    <template v-slot:editor>
+                        <HistoryNotebookEditor
+                            :history-id="historyId"
+                            :content="store.currentContent"
+                            @update:content="store.updateContent" />
+                    </template>
+                    <template v-slot:chat>
+                        <NotebookChatPanel
+                            :history-id="historyId"
+                            :notebook-id="notebookId"
+                            :notebook-content="store.currentContent" />
+                    </template>
+                </HistoryNotebookSplit>
+                <template v-else>
+                    <div class="notebook-content flex-grow-1 overflow-auto">
+                        <HistoryNotebookEditor
+                            :history-id="historyId"
+                            :content="store.currentContent"
+                            @update:content="store.updateContent" />
+                    </div>
+                    <div v-if="store.showRevisions" class="notebook-revision-panel border-left">
+                        <NotebookRevisionList
+                            :revisions="store.revisions"
+                            :is-loading="store.isLoadingRevisions"
+                            :is-reverting="store.isReverting"
+                            @select="handleRevisionSelect"
+                            @restore="handleRevisionRestore" />
+                    </div>
+                </template>
             </div>
         </template>
 

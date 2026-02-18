@@ -9,7 +9,9 @@ import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 
 import HistoryNotebookEditor from "./HistoryNotebookEditor.vue";
 import HistoryNotebookList from "./HistoryNotebookList.vue";
+import HistoryNotebookSplit from "./HistoryNotebookSplit.vue";
 import HistoryNotebookView from "./HistoryNotebookView.vue";
+import NotebookChatPanel from "./NotebookChatPanel.vue";
 import NotebookRevisionList from "./NotebookRevisionList.vue";
 import NotebookRevisionView from "./NotebookRevisionView.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
@@ -51,11 +53,12 @@ const SELECTORS = {
     TOOLBAR: ".notebook-toolbar",
     TOOLBAR_TITLE: ".notebook-toolbar .flex-grow-1",
     SAVE_BUTTON: ".notebook-toolbar bbutton-stub[variant='primary']",
-    BACK_BUTTON: ".notebook-toolbar bbutton-stub[variant='link']",
+    MANAGE_BUTTON: ".notebook-toolbar bbutton-stub[variant='link']",
     UNSAVED_INDICATOR: ".notebook-toolbar .text-warning",
     REVISIONS_BUTTON: "[data-description='notebook revisions button']",
     EXPORT_BUTTON: "[data-description='notebook export to page button']",
     REVISION_PANEL: ".notebook-revision-panel",
+    CHAT_BUTTON: "[data-description='notebook chat button']",
 };
 
 let pinia: Pinia;
@@ -255,7 +258,7 @@ describe("HistoryNotebookView", () => {
             expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks/new-notebook`);
         });
 
-        it("handleBack calls clearCurrentNotebook and navigates to list", async () => {
+        it("Manage History Notebooks calls clearCurrentNotebook and navigates to list", async () => {
             const store = setupListViewStore();
             store.isLoadingNotebook = false;
             store.currentNotebook = { id: NOTEBOOK_ID, history_id: HISTORY_ID, title: "NB", content: "" } as any;
@@ -263,8 +266,8 @@ describe("HistoryNotebookView", () => {
             const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
             await flushPromises();
 
-            const backBtn = wrapper.find(SELECTORS.BACK_BUTTON);
-            await backBtn.trigger("click");
+            const manageBtn = wrapper.find(SELECTORS.MANAGE_BUTTON);
+            await manageBtn.trigger("click");
 
             expect(store.clearCurrentNotebook).toHaveBeenCalled();
             expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/notebooks`);
@@ -618,6 +621,97 @@ describe("HistoryNotebookView", () => {
 
             expect(store.saveNotebook).toHaveBeenCalled();
             expect(mockPush).toHaveBeenCalled();
+        });
+    });
+
+    describe("Chat Panel", () => {
+        function setupEditorView() {
+            const store = useHistoryNotebookStore();
+            store.isLoadingList = false;
+            store.isLoadingNotebook = false;
+            store.error = null;
+            store.currentNotebook = {
+                id: NOTEBOOK_ID,
+                history_id: HISTORY_ID,
+                title: "My Notebook",
+                content: "# Hello",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+            store.currentContent = "# Hello";
+            store.currentTitle = "My Notebook";
+            return store;
+        }
+
+        it("shows Chat button in toolbar", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
+            expect(chatBtn.exists()).toBe(true);
+            expect(chatBtn.text()).toContain("Chat");
+        });
+
+        it("clicking Chat button shows HistoryNotebookSplit with chat panel", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            // Initially no split view
+            expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(false);
+            expect(wrapper.findComponent(NotebookChatPanel).exists()).toBe(false);
+
+            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
+            await chatBtn.trigger("click");
+            await flushPromises();
+
+            expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(true);
+            expect(wrapper.findComponent(NotebookChatPanel).exists()).toBe(true);
+        });
+
+        it("toggling chat off hides split view", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
+            await chatBtn.trigger("click");
+            await flushPromises();
+            expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(true);
+
+            // Toggle off
+            await chatBtn.trigger("click");
+            await flushPromises();
+            expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(false);
+        });
+
+        it("opening chat closes revisions panel", async () => {
+            const store = setupEditorView();
+            store.showRevisions = true;
+            store.revisions = [] as any;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
+            await chatBtn.trigger("click");
+            await flushPromises();
+
+            expect(store.toggleRevisions).toHaveBeenCalled();
+        });
+
+        it("passes notebook props to NotebookChatPanel", async () => {
+            setupEditorView();
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
+            await chatBtn.trigger("click");
+            await flushPromises();
+
+            const panel = wrapper.findComponent(NotebookChatPanel);
+            expect(panel.props("historyId")).toBe(HISTORY_ID);
+            expect(panel.props("notebookId")).toBe(NOTEBOOK_ID);
+            expect(panel.props("notebookContent")).toBe("# Hello");
         });
     });
 });

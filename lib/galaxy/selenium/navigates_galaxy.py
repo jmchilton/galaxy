@@ -2147,10 +2147,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.get(f"histories/{history_id}/notebooks")
         self.components.history_notebooks.list.wait_for_visible()
 
-    def navigate_to_history_notebooks_via_menu(self):
-        """Open notebook list via history panel options dropdown."""
-        self.use_bootstrap_dropdown(option="history notebooks", menu="history options")
-        self.components.history_notebooks.list.wait_for_visible()
+    def navigate_to_current_notebook(self):
+        """Click the notebook icon in the HistoryCounter bar to open the current notebook."""
+        self.components.history_panel.notebook_button.wait_for_and_click()
+        self.components.history_notebooks.toolbar.wait_for_visible()
 
     def history_notebook_create(self, screenshot_name=None):
         """Click the create button on the notebook list. Returns to editor view."""
@@ -2177,9 +2177,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.UX_RENDER)
         self.components.history_notebooks.unsaved_indicator.assert_absent_or_hidden_after_transitions()
 
-    def history_notebook_go_back(self):
-        """Click back button to return to notebook list."""
-        self.components.history_notebooks.back_button.wait_for_and_click()
+    def history_notebook_manage(self):
+        """Click 'Manage History Notebooks' button to return to notebook list."""
+        self.components.history_notebooks.manage_button.wait_for_and_click()
         self.components.history_notebooks.list.wait_for_visible()
 
     @retry_during_transitions

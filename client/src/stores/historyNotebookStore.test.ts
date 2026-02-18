@@ -484,6 +484,134 @@ describe("useHistoryNotebookStore", () => {
         });
     });
 
+    describe("resolveCurrentNotebook", () => {
+        it("returns stored ID when notebook still exists", async () => {
+            useDefaultHandlers();
+            const store = useHistoryNotebookStore();
+            store.setCurrentNotebookId(TEST_HISTORY_ID, TEST_NOTEBOOK_ID);
+
+            const result = await store.resolveCurrentNotebook(TEST_HISTORY_ID);
+            expect(result).toBe(TEST_NOTEBOOK_ID);
+        });
+
+        it("picks most recent notebook when no stored ID", async () => {
+            const older: HistoryNotebookSummary = {
+                ...TEST_NOTEBOOK_SUMMARY,
+                id: "older-nb",
+                update_time: "2025-01-01T00:00:00Z",
+            };
+            const newer: HistoryNotebookSummary = {
+                ...TEST_NOTEBOOK_SUMMARY,
+                id: "newer-nb",
+                update_time: "2025-06-15T12:45:00Z",
+            };
+            server.use(
+                http.get("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    return response(200).json([older, newer]);
+                }),
+            );
+            const store = useHistoryNotebookStore();
+
+            const result = await store.resolveCurrentNotebook(TEST_HISTORY_ID);
+            expect(result).toBe("newer-nb");
+            expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBe("newer-nb");
+        });
+
+        it("creates notebook when history has none", async () => {
+            const createdNotebook: HistoryNotebookDetails = {
+                ...TEST_NOTEBOOK_DETAILS,
+                id: "created-nb",
+            };
+            server.use(
+                http.get("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    return response(200).json([]);
+                }),
+                http.post("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    return response(200).json(createdNotebook);
+                }),
+            );
+            const store = useHistoryNotebookStore();
+
+            const result = await store.resolveCurrentNotebook(TEST_HISTORY_ID);
+            expect(result).toBe("created-nb");
+            expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBe("created-nb");
+        });
+
+        it("re-resolves on 404 (deleted notebook)", async () => {
+            const freshNotebook: HistoryNotebookSummary = {
+                ...TEST_NOTEBOOK_SUMMARY,
+                id: "fresh-nb",
+            };
+            let fetchCount = 0;
+            server.use(
+                http.get("/api/histories/{history_id}/notebooks/{notebook_id}", ({ response }) => {
+                    fetchCount++;
+                    // First call (verify stored ID) returns 404
+                    return response("4XX").json({ err_msg: "Not found", err_code: 404 }, { status: 404 });
+                }),
+                http.get("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    return response(200).json([freshNotebook]);
+                }),
+            );
+            const store = useHistoryNotebookStore();
+            store.setCurrentNotebookId(TEST_HISTORY_ID, "deleted-nb");
+
+            const result = await store.resolveCurrentNotebook(TEST_HISTORY_ID);
+            expect(fetchCount).toBe(1);
+            expect(result).toBe("fresh-nb");
+            expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBe("fresh-nb");
+        });
+    });
+
+    describe("currentNotebookId tracking", () => {
+        it("loadNotebook updates stored current ID", async () => {
+            useDefaultHandlers();
+            const store = useHistoryNotebookStore();
+            store.$patch({ historyId: TEST_HISTORY_ID });
+
+            await store.loadNotebook(TEST_NOTEBOOK_ID);
+
+            expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBe(TEST_NOTEBOOK_ID);
+        });
+
+        it("deleteCurrentNotebook clears stored ID", async () => {
+            server.use(
+                http.get("/api/histories/{history_id}/notebooks/{notebook_id}", ({ response }) => {
+                    return response(200).json(TEST_NOTEBOOK_DETAILS);
+                }),
+                http.get("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    return response(200).json([]);
+                }),
+                http.delete("/api/histories/{history_id}/notebooks/{notebook_id}", ({ response }) => {
+                    return response(204).empty();
+                }),
+            );
+            const store = useHistoryNotebookStore();
+            store.$patch({ historyId: TEST_HISTORY_ID });
+            await store.loadNotebook(TEST_NOTEBOOK_ID);
+            expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBe(TEST_NOTEBOOK_ID);
+
+            await store.deleteCurrentNotebook();
+
+            expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBeNull();
+        });
+
+        it("setCurrentNotebookId and clearCurrentNotebookId work correctly", () => {
+            const store = useHistoryNotebookStore();
+
+            store.setCurrentNotebookId("h1", "nb1");
+            store.setCurrentNotebookId("h2", "nb2");
+
+            expect(store.getCurrentNotebookId("h1")).toBe("nb1");
+            expect(store.getCurrentNotebookId("h2")).toBe("nb2");
+            expect(store.getCurrentNotebookId("h3")).toBeNull();
+
+            store.clearCurrentNotebookId("h1");
+            expect(store.getCurrentNotebookId("h1")).toBeNull();
+            expect(store.getCurrentNotebookId("h2")).toBe("nb2");
+        });
+    });
+
     describe("synchronous actions", () => {
         it("updateContent updates currentContent", () => {
             const store = useHistoryNotebookStore();

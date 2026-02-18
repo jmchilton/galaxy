@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { faDatabase, faEyeSlash, faMapMarker, faSync, faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+    faBook,
+    faDatabase,
+    faEyeSlash,
+    faMapMarker,
+    faSpinner,
+    faSync,
+    faTrash,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { watchImmediate } from "@vueuse/core";
 import { BButton, BButtonGroup } from "bootstrap-vue";
@@ -12,6 +20,8 @@ import { useRouter } from "vue-router/composables";
 import { type HistorySummaryExtended, userOwnsHistory } from "@/api";
 import { HistoryFilters } from "@/components/History/HistoryFilters.js";
 import { useHistoryContentStats } from "@/composables/historyContentStats";
+import { useToast } from "@/composables/toast";
+import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 import { useUserStore } from "@/stores/userStore";
 import localize from "@/utils/localization";
 
@@ -104,6 +114,22 @@ async function reloadContents() {
     }, 1000);
 }
 
+const isResolvingNotebook = ref(false);
+
+async function navigateToCurrentNotebook() {
+    const notebookStore = useHistoryNotebookStore();
+    const toast = useToast();
+    isResolvingNotebook.value = true;
+    try {
+        const notebookId = await notebookStore.resolveCurrentNotebook(props.history.id);
+        router.push(`/histories/${props.history.id}/notebooks/${notebookId}`);
+    } catch (e: any) {
+        toast.error(e.message || "Failed to open notebook");
+    } finally {
+        isResolvingNotebook.value = false;
+    }
+}
+
 onMounted(() => {
     updateTime();
     // update every second
@@ -125,6 +151,19 @@ onMounted(() => {
             @click="onDashboard">
             <FontAwesomeIcon :icon="faDatabase" />
             <span>{{ niceHistorySize }}</span>
+        </GButton>
+
+        <GButton
+            tooltip
+            :title="localize('History Notebook')"
+            transparent
+            size="small"
+            color="blue"
+            class="rounded-0"
+            :disabled="isAnonymous || isResolvingNotebook"
+            data-description="history notebook button"
+            @click="navigateToCurrentNotebook">
+            <FontAwesomeIcon :icon="isResolvingNotebook ? faSpinner : faBook" :spin="isResolvingNotebook" />
         </GButton>
 
         <BButtonGroup v-if="currentUser">
