@@ -1142,6 +1142,11 @@ class UserToolEvaluator(ToolEvaluator):
     def __sanitize_param_dict(self, param_dict):
         pass
 
+    def _setup_for_runtimeify(self, compute_environment, input_datasets, input_dataset_collections):
+        from galaxy.tools.runtime import setup_for_runtimeify
+
+        return setup_for_runtimeify(self.app, compute_environment, input_datasets, input_dataset_collections)
+
     def build_param_dict(
         self,
         incoming,
@@ -1159,7 +1164,6 @@ class UserToolEvaluator(ToolEvaluator):
         hda_references: list[model.HistoryDatasetAssociation]
         if validated_tool_state is not None:
             from galaxy.tool_util.parameters.convert import runtimeify
-            from galaxy.tools.runtime import setup_for_runtimeify
 
             # Get input collections from job for collection parameter support
             input_dataset_collections: dict[
@@ -1169,8 +1173,8 @@ class UserToolEvaluator(ToolEvaluator):
             for assoc in self.job.input_dataset_collection_elements:
                 input_dataset_collections[assoc.name] = assoc.dataset_collection_element
 
-            hda_references, adapt_datasets, adapt_collections = setup_for_runtimeify(
-                self.app, compute_environment, input_datasets, input_dataset_collections
+            hda_references, adapt_datasets, adapt_collections = self._setup_for_runtimeify(
+                compute_environment, input_datasets, input_dataset_collections
             )
             if self.tool.parameters is None:
                 raise RequestParameterInvalidException(f"Tool {self.tool.id} has no parameters defined")
@@ -1218,6 +1222,11 @@ class UserToolEvaluator(ToolEvaluator):
 
 class CwlToolEvaluator(UserToolEvaluator):
     """ToolEvaluator for CWL tools that use cwltool to build command lines."""
+
+    def _setup_for_runtimeify(self, compute_environment, input_datasets, input_dataset_collections):
+        from galaxy.tools.cwl_runtime import setup_for_cwl_runtimeify
+
+        return setup_for_cwl_runtimeify(self.app, compute_environment, input_datasets, input_dataset_collections)
 
     def _build_command_line(self):
         from cwltool.utils import visit_class
