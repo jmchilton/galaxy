@@ -20,8 +20,8 @@ import {
 
 describe("agentTypes", () => {
     describe("agentTypes array", () => {
-        it("contains all 6 agent types", () => {
-            expect(agentTypes).toHaveLength(6);
+        it("contains all 7 agent types", () => {
+            expect(agentTypes).toHaveLength(7);
         });
 
         it("has expected agent values", () => {
@@ -33,6 +33,7 @@ describe("agentTypes", () => {
                 "custom_tool",
                 "dataset_analyzer",
                 "gtn_training",
+                "notebook_assistant",
             ]);
         });
 
