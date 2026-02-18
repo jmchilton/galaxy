@@ -106,7 +106,6 @@ from galaxy.tool_util.cwl.util import (
     guess_artifact_type,
     invocation_to_output,
     output_to_cwl_json,
-    tool_response_to_output,
 )
 from galaxy.tool_util.verify.test_data import TestDataResolver
 from galaxy.tool_util.verify.wait import (
@@ -466,14 +465,27 @@ class CwlToolRun(CwlRun):
     def job_id(self):
         return self.tool_request["jobs"][0]["id"]
 
+    @property
+    def _job_details(self):
+        return self.dataset_populator.get_job_details(self.job_id, full=True).json()
+
     def output(self, output_index):
-        return self.tool_request["outputs"][output_index]
+        outputs = list(self._job_details["outputs"].values())
+        return outputs[output_index]
 
     def output_collection(self, output_index):
-        return self.tool_request["output_collections"][output_index]
+        collections = list(self._job_details["output_collections"].values())
+        return collections[output_index]
 
     def _output_name_to_object(self, output_name):
-        return tool_response_to_output(self.tool_request, self.history_id, output_name)
+        job = self._job_details
+        if output_name in job.get("outputs", {}):
+            output = job["outputs"][output_name]
+            return GalaxyOutput(self.history_id, "dataset", output["id"], None)
+        if output_name in job.get("output_collections", {}):
+            collection = job["output_collections"][output_name]
+            return GalaxyOutput(self.history_id, "dataset_collection", collection["id"], None)
+        raise Exception(f"Failed to find output with label [{output_name}] in job {self.job_id}")
 
     def wait(self):
         self.dataset_populator.wait_for_job(self.job_id, assert_ok=True)

@@ -1220,10 +1220,21 @@ class CwlToolEvaluator(UserToolEvaluator):
     """ToolEvaluator for CWL tools that use cwltool to build command lines."""
 
     def _build_command_line(self):
+        from cwltool.utils import visit_class
+
         from galaxy.tool_util.cwl import needs_shell_quoting
 
         input_json = dict(self.param_dict["inputs"])
         local_working_directory = self.local_working_directory
+
+        # Runtimeify produces location=step_input://N (virtual) + path=/real/fs/path.
+        # cwltool needs location to be a real path — rewrite location from path.
+        def _use_path_as_location(entry):
+            if "path" in entry:
+                entry["location"] = entry["path"]
+                del entry["path"]
+
+        visit_class(input_json, ("File", "Directory"), _use_path_as_location)
 
         # Build output dict from job's output datasets
         _, out_data, _ = self.job.io_dicts()
