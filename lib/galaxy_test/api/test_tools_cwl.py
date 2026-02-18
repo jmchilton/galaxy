@@ -81,9 +81,9 @@ class TestCwlTools(ApiTestCase):
         hda_id = self.dataset_populator.new_dataset(history_id, name="test_dataset.txt")["id"]
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         inputs = {"input1": {"src": "hda", "id": hda_id}}
-        run_response = self._run("galactic_cat.cwl#galactic_cat", history_id, inputs, assert_ok=True)
-        dataset = run_response["outputs"][0]
-        content = self.dataset_populator.get_history_dataset_content(history_id, dataset=dataset)
+        run_object = self._run("galactic_cat.cwl#galactic_cat", history_id, inputs, assert_ok=True)
+        run_object.wait()
+        content = self.dataset_populator.get_history_dataset_content(history_id)
         assert content.strip() == "TestData123", content
 
     @skip_without_tool("galactic_record_input.cwl#galactic_record_input")
@@ -92,24 +92,23 @@ class TestCwlTools(ApiTestCase):
         hda2_id = self.dataset_populator.new_dataset(history_id, content="cow dog foo", name="test_dataset.txt")["id"]
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         inputs = {
-            "input1": {"src": "hda", "id": hda1_id},
-            "input2": {"src": "hda", "id": hda2_id},
+            "irec": {
+                "ifoo": {"src": "hda", "id": hda1_id},
+                "ibar": {"src": "hda", "id": hda2_id},
+            },
         }
-        run_response = self._run("galactic_record_input.cwl#galactic_record_input", history_id, inputs, assert_ok=True)
-        dataset = run_response["outputs"][0]
-        content = self.dataset_populator.get_history_dataset_content(history_id, dataset=dataset)
+        run_object = self._run("galactic_record_input.cwl#galactic_record_input", history_id, inputs, assert_ok=True)
+        run_object.wait()
+        # uploads are hid 1,2; outputs are hid 3,4
+        content = self.dataset_populator.get_history_dataset_content(history_id, hid=3)
         assert content.strip() == "moo", content
-
-        dataset = run_response["outputs"][1]
-        content = self.dataset_populator.get_history_dataset_content(history_id, dataset=dataset)
+        content = self.dataset_populator.get_history_dataset_content(history_id, hid=4)
         assert content.strip() == "cow dog foo", content
 
     def _run_and_get_stdout(self, tool_id: str, history_id: str, inputs: dict[str, Any], **kwds) -> str:
-        tool_request = self._run(tool_id, history_id, inputs, **kwds)
-        job_id = tool_request["jobs"][0]["id"]
-        final_state = self.dataset_populator.wait_for_job(job_id)
-        assert final_state == "ok"
-        return self._get_job_stdout(job_id)
+        run_object = self._run(tool_id, history_id, inputs, **kwds)
+        run_object.wait()
+        return self._get_job_stdout(run_object.job_id)
 
     def _get_job_stdout(self, job_id: str) -> str:
         job_details = self.dataset_populator.get_job_details(job_id, full=True)
@@ -120,32 +119,32 @@ class TestCwlTools(ApiTestCase):
     def test_cat3(self, history_id: str) -> None:
         hda1 = _dataset_to_param(self.dataset_populator.new_dataset(history_id, content="1\t2\t3"))
         inputs = {
-            "f1": hda1,
+            "file1": hda1,
         }
-        response = self._run("cat3-tool.cwl", history_id, inputs, assert_ok=True)
-        output1 = response["outputs"][0]
-        output1_details = self.dataset_populator.get_history_dataset_details(history_id, dataset=output1)
+        run_object = self._run("cat3-tool.cwl", history_id, inputs, assert_ok=True)
+        run_object.wait()
+        output1_details = self.dataset_populator.get_history_dataset_details(history_id)
         assert "created_from_basename" in output1_details, output1_details.keys()
         assert output1_details["created_from_basename"] == "output.txt", output1_details["created_from_basename"]
-        output1_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output1)
+        output1_content = self.dataset_populator.get_history_dataset_content(history_id)
         assert output1_content == "1\t2\t3\n", output1_content
 
     @skip_without_tool("sorttool.cwl")
     def test_sorttool(self, history_id: str) -> None:
         hda1 = _dataset_to_param(self.dataset_populator.new_dataset(history_id, content="1\n2\n3"))
         inputs = {"reverse": False, "input": hda1}
-        response = self._run("sorttool.cwl", history_id, inputs, assert_ok=True)
-        output1 = response["outputs"][0]
-        output1_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output1)
+        run_object = self._run("sorttool.cwl", history_id, inputs, assert_ok=True)
+        run_object.wait()
+        output1_content = self.dataset_populator.get_history_dataset_content(history_id)
         assert output1_content == "1\n2\n3\n", output1_content
 
     @skip_without_tool("sorttool.cwl")
     def test_sorttool_reverse(self, history_id: str) -> None:
         hda1 = _dataset_to_param(self.dataset_populator.new_dataset(history_id, content="1\n2\n3"))
         inputs = {"reverse": True, "input": hda1}
-        response = self._run("sorttool.cwl", history_id, inputs, assert_ok=True)
-        output1 = response["outputs"][0]
-        output1_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output1)
+        run_object = self._run("sorttool.cwl", history_id, inputs, assert_ok=True)
+        run_object.wait()
+        output1_content = self.dataset_populator.get_history_dataset_content(history_id)
         assert output1_content == "3\n2\n1\n", output1_content
 
     @skip_without_tool("env-tool1.cwl")
@@ -153,9 +152,9 @@ class TestCwlTools(ApiTestCase):
         inputs = {
             "in": "Hello World",
         }
-        response = self._run("env-tool1.cwl", history_id, inputs, assert_ok=True)
-        output1 = response["outputs"][0]
-        output1_content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output1)
+        run_object = self._run("env-tool1.cwl", history_id, inputs, assert_ok=True)
+        run_object.wait()
+        output1_content = self.dataset_populator.get_history_dataset_content(history_id)
         assert output1_content == "Hello World\n"
 
     @skip_without_tool("optional-output.cwl")
@@ -359,17 +358,13 @@ class TestCwlTools(ApiTestCase):
         history_id: str,
         inputs: dict[str, Any],
         assert_ok: bool = False,
-    ):
+    ) -> CwlToolRun:
         """Run a CWL tool via the tool request API (POST /api/jobs)."""
         response = self.dataset_populator.tool_request_raw(tool_id, inputs, history_id)
         if assert_ok:
             self._assert_status_code_is(response, 200)
-            tool_request_id = response.json()["tool_request_id"]
-            self.dataset_populator.wait_on_tool_request(tool_request_id)
-            tool_request = self.dataset_populator.get_tool_request(tool_request_id)
-            return tool_request
-        else:
-            return response
+        tool_request_id = response.json()["tool_request_id"]
+        return CwlToolRun(self.dataset_populator, history_id, tool_request_id)
 
 
 def whale_text() -> str:
