@@ -3255,13 +3255,16 @@ class ChatExchange(Base, RepresentById):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id"), index=True, nullable=False)
     job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job.id"), index=True, nullable=True)
+    notebook_id: Mapped[Optional[int]] = mapped_column(ForeignKey("history_notebook.id"), index=True, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="chat_exchanges")
     messages: Mapped[list["ChatExchangeMessage"]] = relationship(back_populates="chat_exchange")
+    notebook: Mapped[Optional["HistoryNotebook"]] = relationship()
 
-    def __init__(self, user, job_id=None, message=None, **kwargs):
+    def __init__(self, user, job_id=None, notebook_id=None, message=None, **kwargs):
         self.user = user
         self.job_id = job_id
+        self.notebook_id = notebook_id
         self.messages = []
         if message:
             self.add_message(message)
