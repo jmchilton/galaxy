@@ -40,7 +40,6 @@ from .stdio import (
 )
 from .yaml import (
     YamlInputSource,
-    YamlPageSource,
 )
 
 if TYPE_CHECKING:
@@ -320,7 +319,7 @@ class CwlToolSource(ToolSource):
         )
 
     def parse_profile(self):
-        return "17.09"
+        return "26.0"
 
     def parse_xrefs(self):
         return []
