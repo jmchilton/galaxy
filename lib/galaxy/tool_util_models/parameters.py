@@ -2512,18 +2512,26 @@ class CwlArrayParameterModel(BaseToolParameterModelDefinition):
     def py_type(self) -> Type:
         return list_type(self.item_type.py_type)
 
-    def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
-        return list_type(self.item_type.py_type_for_state(state_representation))
-
-    def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+    def _hdca_or_list(self, state_representation: StateRepresentationT) -> Type:
         item_py_type = self.item_type.py_type_for_state(state_representation)
         arr_type = list_type(item_py_type)
+        if state_representation in ("request", "relaxed_request"):
+            return union_type([arr_type, DataRequestHdca])
+        elif state_representation in ("request_internal", "request_internal_dereferenced", "job_internal"):
+            return union_type([arr_type, DataCollectionRequestInternal])
+        return arr_type
+
+    def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
+        return self._hdca_or_list(state_representation)
+
+    def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
+        combined_type = self._hdca_or_list(state_representation)
         requires_value = self.request_requires_value
         if state_representation == "job_runtime":
             requires_value = True
         return DynamicModelInformation(
             self.name,
-            (arr_type, ... if requires_value else None),
+            (combined_type, ... if requires_value else None),
             {},
         )
 
@@ -2547,8 +2555,16 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
             kwd[name] = (field_param.py_type, Field(..., alias=alias))
         return create_model_strict(f"CwlRecord_{self.name}", **kwd)
 
+    def _hdca_or_record(self, state_representation: StateRepresentationT) -> Type:
+        record_type = self._record_type_for_state(state_representation)
+        if state_representation in ("request", "relaxed_request"):
+            return union_type([record_type, DataRequestHdca])
+        elif state_representation in ("request_internal", "request_internal_dereferenced", "job_internal"):
+            return union_type([record_type, DataCollectionRequestInternal])
+        return record_type
+
     def py_type_for_state(self, state_representation: StateRepresentationT) -> Type:
-        return self._record_type_for_state(state_representation)
+        return self._hdca_or_record(state_representation)
 
     def _record_type_for_state(self, state_representation: StateRepresentationT) -> Type:
         kwd = {}
@@ -2569,13 +2585,13 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
         return create_model_strict(f"CwlRecord_{self.name}_{state_representation}", **kwd)
 
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
-        record_type = self._record_type_for_state(state_representation)
+        combined_type = self._hdca_or_record(state_representation)
         requires_value = self.request_requires_value
         if state_representation == "job_runtime":
             requires_value = True
         return DynamicModelInformation(
             self.name,
-            (record_type, ... if requires_value else None),
+            (combined_type, ... if requires_value else None),
             {},
         )
 

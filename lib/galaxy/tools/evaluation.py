@@ -63,7 +63,6 @@ from galaxy.tools.parameters import (
 from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
     DataToolParameter,
-    FieldTypeToolParameter,
     SelectToolParameter,
 )
 from galaxy.tools.parameters.grouping import (
@@ -559,34 +558,6 @@ class ToolEvaluator:
                     tool_evaluator=self,
                 )
                 input_values[input.name] = wrapper
-            elif isinstance(input, FieldTypeToolParameter):
-                field_wrapper: Optional[Union[InputValueWrapper, DatasetFilenameWrapper, DatasetCollectionWrapper]] = (
-                    None
-                )
-                if value:
-                    assert "value" in value, value
-                    assert "src" in value, value
-                    src = value["src"]
-                    if src == "json":
-                        field_wrapper = InputValueWrapper(input, value, param_dict)
-                    elif src == "hda":
-                        field_wrapper = DatasetFilenameWrapper(
-                            value["value"],
-                            datatypes_registry=self.app.datatypes_registry,
-                            tool=self.tool,
-                            name=input.name,
-                        )
-                    elif src == "hdca":
-                        field_wrapper = DatasetCollectionWrapper(
-                            job_working_directory=job_working_directory,
-                            has_collection=value["value"],
-                            datatypes_registry=self.app.datatypes_registry,
-                            tool=self.tool,
-                            name=input.name,
-                        )
-                    else:
-                        raise ValueError(f"src should be 'json' or 'hda' or 'hdca' but is '{src}'")
-                input_values[input.name] = field_wrapper
             elif isinstance(input, SelectToolParameter):
                 if input.multiple:
                     value = listify(value)
@@ -1145,7 +1116,10 @@ class UserToolEvaluator(ToolEvaluator):
     def _setup_for_runtimeify(self, compute_environment, input_datasets, input_dataset_collections):
         from galaxy.tools.runtime import setup_for_runtimeify
 
-        return setup_for_runtimeify(self.app, compute_environment, input_datasets, input_dataset_collections)
+        hda_references, adapt_dataset, adapt_collection = setup_for_runtimeify(
+            self.app, compute_environment, input_datasets, input_dataset_collections
+        )
+        return hda_references, adapt_dataset, adapt_collection, None
 
     def build_param_dict(
         self,
@@ -1173,13 +1147,15 @@ class UserToolEvaluator(ToolEvaluator):
             for assoc in self.job.input_dataset_collection_elements:
                 input_dataset_collections[assoc.name] = assoc.dataset_collection_element
 
-            hda_references, adapt_datasets, adapt_collections = self._setup_for_runtimeify(
+            hda_references, adapt_datasets, adapt_collections, adapt_cwl_collections = self._setup_for_runtimeify(
                 compute_environment, input_datasets, input_dataset_collections
             )
             if self.tool.parameters is None:
                 raise RequestParameterInvalidException(f"Tool {self.tool.id} has no parameters defined")
             parameter_bundle = ToolParameterBundleModel(parameters=self.tool.parameters)
-            job_runtime_state = runtimeify(validated_tool_state, parameter_bundle, adapt_datasets, adapt_collections)
+            job_runtime_state = runtimeify(
+                validated_tool_state, parameter_bundle, adapt_datasets, adapt_collections, adapt_cwl_collections
+            )
             cwl_style_inputs = job_runtime_state.input_state
         else:
             from galaxy.workflow.modules import to_cwl
