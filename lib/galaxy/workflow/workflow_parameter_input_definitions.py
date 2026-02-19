@@ -7,9 +7,9 @@ from galaxy.tools.parameters.basic import (
     BooleanToolParameter,
     ColorToolParameter,
     DirectoryUriToolParameter,
-    FieldTypeToolParameter,
     FloatToolParameter,
     IntegerToolParameter,
+    JsonFieldToolParameter,
     TextToolParameter,
 )
 
@@ -22,7 +22,7 @@ tool_param_type = Union[
     BooleanToolParameter,
     ColorToolParameter,
     DirectoryUriToolParameter,
-    FieldTypeToolParameter,
+    JsonFieldToolParameter,
 ]
 
 
@@ -45,5 +45,5 @@ def get_default_parameter(param_type: INPUT_PARAMETER_TYPES) -> tool_param_type:
     elif param_type == "directory_uri":
         input_default_value = DirectoryUriToolParameter(None, default_source)
     elif param_type == "field":
-        input_default_value = FieldTypeToolParameter(None, default_source)
+        input_default_value = JsonFieldToolParameter(None, default_source)
     return input_default_value
