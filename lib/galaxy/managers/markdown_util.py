@@ -1276,11 +1276,12 @@ HID_DIRECTIVES = HID_DATASET_DIRECTIVES | HID_COLLECTION_DIRECTIVES
 
 def _resolve_hid_to_dataset(session, history_id: int, hid: int, directive: str) -> int:
     """Resolve HID to dataset ID, validating it's actually a dataset."""
+    from sqlalchemy import select
+
     from galaxy.model import (
         HistoryDatasetAssociation,
         HistoryDatasetCollectionAssociation,
     )
-    from sqlalchemy import select
 
     stmt = select(HistoryDatasetAssociation.id, HistoryDatasetAssociation.deleted).where(
         HistoryDatasetAssociation.history_id == history_id, HistoryDatasetAssociation.hid == hid
@@ -1305,11 +1306,12 @@ def _resolve_hid_to_dataset(session, history_id: int, hid: int, directive: str) 
 
 def _resolve_hid_to_collection(session, history_id: int, hid: int, directive: str) -> int:
     """Resolve HID to collection ID, validating it's actually a collection."""
+    from sqlalchemy import select
+
     from galaxy.model import (
         HistoryDatasetAssociation,
         HistoryDatasetCollectionAssociation,
     )
-    from sqlalchemy import select
 
     stmt = select(HistoryDatasetCollectionAssociation.id, HistoryDatasetCollectionAssociation.deleted).where(
         HistoryDatasetCollectionAssociation.history_id == history_id,
