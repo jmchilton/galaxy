@@ -77,6 +77,7 @@ from galaxy.tools import (
     get_safe_version,
     Tool,
 )
+from galaxy.tool_util.parameters.state import JobInternalToolState
 from galaxy.tools.execute import (
     execute,
     MappingParameters,
@@ -3111,7 +3112,22 @@ class ToolModule(WorkflowModule):
             param_combinations,
         )
         try:
-            mapping_params = MappingParameters(param_template, param_combinations)
+            # For CWL tools, wrap param_combinations in validated JobInternalToolState
+            validated_param_combinations = None
+            if use_cwl_path:
+                validated_param_combinations = []
+                for slice_dict in param_combinations:
+                    # Strip __when_value__ before validation (not a tool parameter)
+                    validation_dict = {k: v for k, v in slice_dict.items() if k != "__when_value__"}
+                    internal_state = JobInternalToolState(validation_dict)
+                    internal_state.validate(tool, f"{tool.id} (workflow step)")
+                    validated_param_combinations.append(internal_state)
+
+            mapping_params = MappingParameters(
+                param_template,
+                param_combinations,
+                validated_param_combinations=validated_param_combinations,
+            )
             if use_cached_job:
                 mapping_params.param_template["__use_cached_job__"] = use_cached_job
             max_num_jobs = progress.maximum_jobs_to_schedule_or_none
