@@ -18,6 +18,8 @@ import { computed, onMounted, ref, toRef } from "vue";
 import { useRouter } from "vue-router/composables";
 
 import { type HistorySummaryExtended, userOwnsHistory } from "@/api";
+import { getGalaxyInstance } from "@/app";
+import type { RouterPushOptions } from "@/components/History/Content/router-push-options";
 import { HistoryFilters } from "@/components/History/HistoryFilters.js";
 import { useHistoryContentStats } from "@/composables/historyContentStats";
 import { useToast } from "@/composables/toast";
@@ -122,7 +124,22 @@ async function navigateToCurrentNotebook() {
     isResolvingNotebook.value = true;
     try {
         const notebookId = await notebookStore.resolveCurrentNotebook(props.history.id);
-        router.push(`/histories/${props.history.id}/notebooks/${notebookId}`);
+        const Galaxy = getGalaxyInstance();
+        const isWmActive = Galaxy?.frame?.active;
+
+        if (isWmActive) {
+            const notebook = notebookStore.notebooks.find((n) => n.id === notebookId);
+            const title = notebook?.title || "Notebook";
+            const url = `/histories/${props.history.id}/notebooks/${notebookId}?displayOnly=true`;
+            const options: RouterPushOptions = {
+                title: `Notebook: ${title}`,
+                preventWindowManager: false,
+            };
+            // @ts-ignore - monkeypatched router, drop with migration.
+            router.push(url, options);
+        } else {
+            router.push(`/histories/${props.history.id}/notebooks/${notebookId}`);
+        }
     } catch (e: any) {
         toast.error(e.message || "Failed to open notebook");
     } finally {

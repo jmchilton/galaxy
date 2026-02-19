@@ -111,5 +111,7 @@ def downgrade():
         drop_column("page", "source_history_notebook_id")
         drop_column("page", "source_invocation_id")
 
-        drop_table(REVISION_TABLE)
+        # Drop notebook table first (it has FK to revision), then revision
+        drop_constraint("history_notebook_latest_revision_id_fk", NOTEBOOK_TABLE)
         drop_table(NOTEBOOK_TABLE)
+        drop_table(REVISION_TABLE)
