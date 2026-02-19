@@ -518,6 +518,10 @@ def _is_dataset_ref(value):
     return isinstance(value, dict) and value.get("src") in ("hda", "hdca", "ldda")
 
 
+def _is_collection_ref(value):
+    return isinstance(value, dict) and value.get("src") in ("hdca", "dce")
+
+
 def _decode_cwl_any(value, decode_fn):
     if _is_dataset_ref(value):
         return decode_fn(value)
@@ -612,10 +616,14 @@ def _decode_callback_for(decode_id: DecodeFunctionT) -> Callback:
                 return VISITOR_NO_REPLACEMENT
             return decode_src_dict(value)
         elif isinstance(parameter, CwlArrayParameterModel):
+            if _is_collection_ref(value):
+                return decode_src_dict(value)
             if isinstance(parameter.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
                 return [decode_src_dict(v) for v in value]
             return VISITOR_NO_REPLACEMENT
         elif isinstance(parameter, CwlRecordParameterModel):
+            if _is_collection_ref(value):
+                return decode_src_dict(value)
             return _decode_cwl_record(parameter, value, decode_src_dict)
         elif isinstance(parameter, CwlUnionParameterModel):
             return _decode_cwl_union(parameter, value, decode_src_dict)
@@ -629,6 +637,7 @@ def _decode_callback_for(decode_id: DecodeFunctionT) -> Callback:
 
 DatasetToRuntimeJson = Callable[[DataJobInternalT], DataInternalJson]
 CollectionToRuntimeJson = Callable[[DataCollectionRequestInternal, Optional[str]], Any]
+CwlCollectionToNativeJson = Callable[[DataCollectionRequestInternal, "ToolParameterT"], Any]
 
 
 def _cwl_type_contains_files(param) -> bool:
@@ -766,6 +775,7 @@ def runtimeify(
     input_models: ToolParameterBundle,
     adapt_dataset: DatasetToRuntimeJson,
     adapt_collection: CollectionToRuntimeJson,
+    adapt_cwl_collection: Optional[CwlCollectionToNativeJson] = None,
 ) -> JobRuntimeToolState:
 
     def adapt_dict(value: dict):
@@ -800,10 +810,14 @@ def runtimeify(
                 return VISITOR_NO_REPLACEMENT
             return _cwl_adapt_value(parameter, value, adapt_dataset)
         elif isinstance(parameter, CwlArrayParameterModel):
+            if _is_collection_ref(value) and adapt_cwl_collection is not None:
+                return adapt_cwl_collection(DataCollectionRequestInternal(**value), parameter)
             if _cwl_type_contains_files(parameter.item_type):
                 return [_runtimeify_cwl_value(parameter.item_type, v, cwl_adapt) for v in value]
             return VISITOR_NO_REPLACEMENT
         elif isinstance(parameter, CwlRecordParameterModel):
+            if _is_collection_ref(value) and adapt_cwl_collection is not None:
+                return adapt_cwl_collection(DataCollectionRequestInternal(**value), parameter)
             return _runtimeify_cwl_record(parameter, value, cwl_adapt)
         elif isinstance(parameter, CwlUnionParameterModel):
             return _runtimeify_cwl_union(parameter, value, cwl_adapt)

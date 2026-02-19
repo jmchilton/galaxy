@@ -7,6 +7,7 @@
   dicts (used by workflow runner and CWL parameter defaults).
 """
 
+import json
 import os
 import urllib.parse
 from typing import (
@@ -25,6 +26,16 @@ from galaxy.model import (
 )
 from galaxy.model.dataset_collections import builder
 from galaxy.tool_util.cwl.util import SECONDARY_FILES_EXTRA_PREFIX
+from galaxy.tool_util_models.parameters import (
+    CwlArrayParameterModel,
+    CwlBooleanParameterModel,
+    CwlDirectoryParameterModel,
+    CwlFileParameterModel,
+    CwlFloatParameterModel,
+    CwlIntegerParameterModel,
+    CwlRecordParameterModel,
+    CwlStringParameterModel,
+)
 from galaxy.tools.runtime import setup_for_runtimeify
 from galaxy.util.hash_util import HASH_NAMES
 
@@ -42,6 +53,24 @@ if TYPE_CHECKING:
     )
 
 
+def _parse_scalar(content: str, item_type_param) -> Any:
+    """Parse a string value from an HDA file into the appropriate CWL scalar type."""
+    if isinstance(item_type_param, CwlIntegerParameterModel):
+        return int(content)
+    elif isinstance(item_type_param, CwlFloatParameterModel):
+        return float(content)
+    elif isinstance(item_type_param, CwlBooleanParameterModel):
+        return content.lower() in ("true", "1")
+    elif isinstance(item_type_param, CwlStringParameterModel):
+        return content
+    else:
+        # For other types (Any, Union, etc.), try JSON parse, fall back to string
+        try:
+            return json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            return content
+
+
 def setup_for_cwl_runtimeify(
     app: "MinimalToolApp",
     compute_environment: Optional["ComputeEnvironment"],
@@ -53,14 +82,18 @@ def setup_for_cwl_runtimeify(
     Wraps the base ``adapt_dataset`` callback to enrich ``DataInternalJson``
     with secondary files and CWL format URIs before returning.
 
-    Returns the same ``(hda_references, adapt_dataset, adapt_collection)``
-    tuple as the base function.
+    Returns ``(hda_references, adapt_dataset, adapt_collection, adapt_cwl_collection)``.
     """
     hda_references, base_adapt_dataset, adapt_collection = setup_for_runtimeify(
         app, compute_environment, input_datasets, input_dataset_collections
     )
 
     hdas_by_id = {d.id: d for d in input_datasets.values() if d is not None}
+    hdcas_by_id: dict[int, HistoryDatasetCollectionAssociation] = {}
+    if input_dataset_collections:
+        for value in input_dataset_collections.values():
+            if isinstance(value, HistoryDatasetCollectionAssociation):
+                hdcas_by_id[value.id] = value
 
     def adapt_dataset(value):
         base_result = base_adapt_dataset(value)
@@ -79,7 +112,65 @@ def setup_for_cwl_runtimeify(
 
         return base_result
 
-    return hda_references, adapt_dataset, adapt_collection
+    def _hda_to_cwl_file(hda):
+        """Build CWL File/Directory dict directly from an HDA."""
+        from galaxy.tool_util.cwl.util import set_basename_and_derived_properties as set_props
+
+        size = hda.dataset.get_size() if hda.dataset else 0
+        path = compute_environment.input_path_rewrite(hda) if compute_environment else hda.get_file_name()
+        properties: dict[str, Any] = {
+            "class": "File",
+            "location": f"step_input://collection_element_{hda.id}",
+            "format": hda.extension,
+            "path": path,
+            "size": int(size),
+        }
+        set_props(properties, hda.dataset.created_from_basename or hda.name)
+        # Enrich with secondary files
+        secondary_files = discover_secondary_files(hda, compute_environment)
+        if secondary_files:
+            properties["secondaryFiles"] = secondary_files
+        # Enrich with CWL format URI
+        if hasattr(hda, "cwl_formats") and hda.cwl_formats:
+            properties["format"] = str(hda.cwl_formats[0])
+        return properties
+
+    def _adapt_element_hda(hda, item_type_param):
+        """Adapt an HDA from a collection element to CWL native value."""
+        if isinstance(item_type_param, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            result = _hda_to_cwl_file(hda)
+            if isinstance(item_type_param, CwlDirectoryParameterModel):
+                result["class"] = "Directory"
+            return result
+        else:
+            # Scalar value — read from HDA file content
+            file_name = hda.get_file_name()
+            with open(file_name) as f:
+                content = f.read().strip()
+            return _parse_scalar(content, item_type_param)
+
+    def adapt_cwl_collection(ref, parameter):
+        """Expand an HDCA reference to native CWL list or dict."""
+        hdca = hdcas_by_id.get(ref.id)
+        if hdca is None:
+            raise ValueError(f"HDCA {ref.id} not found for CWL collection expansion")
+        collection = hdca.collection
+        elements = sorted(collection.elements, key=lambda e: e.element_index or 0)
+
+        if isinstance(parameter, CwlArrayParameterModel):
+            return [_adapt_element_hda(e.element_object, parameter.item_type) for e in elements]
+        elif isinstance(parameter, CwlRecordParameterModel):
+            fields_by_name = {f.name: f for f in parameter.fields}
+            result = {}
+            for e in elements:
+                field_param = fields_by_name.get(e.element_identifier)
+                if field_param is not None:
+                    result[e.element_identifier] = _adapt_element_hda(e.element_object, field_param)
+            return result
+        else:
+            raise ValueError(f"Unexpected parameter type for CWL collection expansion: {type(parameter)}")
+
+    return hda_references, adapt_dataset, adapt_collection, adapt_cwl_collection
 
 
 def discover_secondary_files(

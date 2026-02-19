@@ -176,7 +176,7 @@ TOOL_SOURCE_CLASS = Literal["XmlToolSource", "YamlToolSource", "CwlToolSource"]
 
 class ToolSource(Model):
     raw_tool_source: str
-    tool_dir: str
+    tool_dir: Optional[str] = None
     tool_source_class: TOOL_SOURCE_CLASS = "XmlToolSource"
 
 
