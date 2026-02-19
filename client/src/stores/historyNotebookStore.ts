@@ -74,8 +74,10 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         try {
             const data = await fetchHistoryNotebook(historyId.value, notebookId);
             currentNotebook.value = data;
-            originalContent.value = data.content || "";
-            currentContent.value = data.content || "";
+            // Use content_editor (raw HIDs) for the editor, not content (expanded for rendering)
+            const editorContent = data.content_editor ?? data.content ?? "";
+            originalContent.value = editorContent;
+            currentContent.value = editorContent;
             originalTitle.value = data.title || "";
             currentTitle.value = data.title || "";
             setCurrentNotebookId(historyId.value, notebookId);
@@ -99,8 +101,9 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
                 ...payload,
             });
             currentNotebook.value = data;
-            originalContent.value = data.content || "";
-            currentContent.value = data.content || "";
+            const editorContent = data.content_editor ?? data.content ?? "";
+            originalContent.value = editorContent;
+            currentContent.value = editorContent;
             originalTitle.value = data.title || "";
             currentTitle.value = data.title || "";
             await loadNotebooks(historyId.value);
@@ -264,8 +267,9 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         try {
             const data = await revertNotebookRevision(historyId.value, currentNotebook.value.id, revisionId);
             currentNotebook.value = data;
-            originalContent.value = data.content || "";
-            currentContent.value = data.content || "";
+            const editorContent = data.content_editor ?? data.content ?? "";
+            originalContent.value = editorContent;
+            currentContent.value = editorContent;
             selectedRevision.value = null;
             showRevisions.value = false;
             await loadRevisions();

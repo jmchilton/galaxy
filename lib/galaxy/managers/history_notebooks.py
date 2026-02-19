@@ -178,15 +178,20 @@ class HistoryNotebookManager:
     def rewrite_content_for_export(self, trans: ProvidesUserContext, history: model.History, rval: dict) -> None:
         """Process notebook content for API response.
 
-        Resolves HID references to internal IDs, then encodes for export.
+        Produces two content fields (mirroring the Page pattern):
+        - content: directives expanded + IDs encoded (for Markdown renderer)
+        - content_editor: raw DB content with HID references preserved (for text editor)
         """
         content = rval.get("content")
         if content:
-            # First resolve HID references to internal IDs
+            # content_editor = raw content as-is (HIDs preserved for editor)
+            rval["content_editor"] = content
+            # content = fully resolved + expanded (for rendering)
             resolved = resolve_history_markdown(trans, history.id, content)
-            # Then encode for export
-            export_content, _, _ = ready_galaxy_markdown_for_export(trans, resolved)
-            rval["content"] = export_content
+            export_content, export_content_expanded, _ = ready_galaxy_markdown_for_export(trans, resolved)
+            rval["content"] = export_content_expanded
+        else:
+            rval["content_editor"] = content
 
     def delete_notebook(self, trans: ProvidesUserContext, notebook: model.HistoryNotebook) -> None:
         """Soft-delete a notebook (sets deleted=True)."""
