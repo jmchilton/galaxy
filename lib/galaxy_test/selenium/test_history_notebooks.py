@@ -156,12 +156,11 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.components.history_notebooks.editor.wait_for_visible()
         self.screenshot("history_notebook_hid_content")
 
-        # Content is resolved by rewrite_content_for_export: hid=1 becomes
-        # history_dataset_id=<encoded_id> for rendering.
+        # Editor uses content_editor field which preserves raw HIDs.
         editor = self.components.history_notebooks.markdown_editor
         value = editor.wait_for_value()
         assert "history_dataset_display" in value
-        assert "history_dataset_id=" in value
+        assert "hid=1" in value
 
     @selenium_test
     @managed_history
@@ -485,3 +484,150 @@ class TestHistoryNotebooks(SeleniumTestCase):
 
         # Release to clean up
         ac.release().perform()
+
+    # --- View / Preview / Rename / HID Tests ---
+
+    @selenium_test
+    @managed_history
+    def test_view_button_opens_display_mode(self):
+        """Click view icon on notebook list item opens displayOnly mode."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="View Test", content="# Hello Display")
+
+        self.navigate_to_history_notebooks()
+        self.history_notebook_assert_item_count(1)
+
+        # Click eye/view button (not the item itself)
+        self.components.history_notebooks.view_button.wait_for_and_click()
+
+        # Verify displayOnly mode
+        self.components.history_notebooks.display_toolbar.wait_for_visible()
+        self.components.history_notebooks.rendered_view.wait_for_visible()
+        self.components.history_notebooks.editor.assert_absent_or_hidden()
+        self.screenshot("history_notebook_view_button_display")
+
+    @selenium_test
+    @managed_history
+    def test_preview_and_edit_toggle(self):
+        """Toggle between editor and preview mode."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="Toggle Test", content="# Preview Me")
+
+        self.navigate_to_history_notebooks()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        # Click Preview
+        self.components.history_notebooks.preview_button.wait_for_and_click()
+
+        # Verify displayOnly view
+        self.components.history_notebooks.display_toolbar.wait_for_visible()
+        self.components.history_notebooks.rendered_view.wait_for_visible()
+        self.components.history_notebooks.editor.assert_absent_or_hidden()
+        self.screenshot("history_notebook_preview_mode")
+
+        # Click Edit to go back
+        self.components.history_notebooks.edit_button.wait_for_and_click()
+
+        # Verify editor mode
+        self.components.history_notebooks.toolbar.wait_for_visible()
+        self.components.history_notebooks.editor.wait_for_visible()
+        self.components.history_notebooks.display_toolbar.assert_absent_or_hidden()
+        self.screenshot("history_notebook_edit_mode_after_preview")
+
+    @selenium_test
+    @managed_history
+    def test_inline_rename_notebook(self):
+        """Rename notebook title via ClickToEdit, save, verify persistence."""
+        history_id = self.current_history_id()
+        self.dataset_populator.new_history_notebook(history_id, title="Original Name", content="# Content")
+
+        self.navigate_to_history_notebooks()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        # Rename
+        self.history_notebook_rename("Renamed Notebook")
+
+        # Verify dirty state from title change
+        self.components.history_notebooks.unsaved_indicator.wait_for_visible()
+        self.screenshot("history_notebook_renamed_unsaved")
+
+        # Save
+        self.history_notebook_save()
+
+        # Navigate away and back
+        self.history_notebook_manage()
+        self.history_notebook_assert_item_count(1)
+
+        # Verify title persisted in list
+        title_text = self.components.history_notebooks.notebook_title.wait_for_text()
+        assert "Renamed Notebook" in title_text
+
+        # Re-open and verify title in toolbar
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+        toolbar_title = self.components.history_notebooks.toolbar_title.wait_for_text()
+        assert "Renamed Notebook" in toolbar_title
+        self.screenshot("history_notebook_renamed_persisted")
+
+    @selenium_test
+    @managed_history
+    def test_hid_preserved_in_editor_after_reload(self):
+        """HID references stay as hid=N in editor after navigate-away-and-back."""
+        history_id = self.current_history_id()
+        self.perform_upload(self.get_filename("1.fasta"))
+        self.history_panel_wait_for_hid_ok(1)
+
+        content = "# Analysis\n\n```galaxy\nhistory_dataset_display(hid=1)\n```\n"
+        self.dataset_populator.new_history_notebook(history_id, title="HID Persist", content=content)
+
+        # First load
+        self.navigate_to_history_notebooks()
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        editor = self.components.history_notebooks.markdown_editor
+        value = editor.wait_for_value()
+        assert "history_dataset_display" in value
+        assert "hid=1" in value
+        assert "history_dataset_id=" not in value
+
+        # Navigate away
+        self.history_notebook_manage()
+        self.history_notebook_assert_item_count(1)
+
+        # Navigate back
+        self.components.history_notebooks.notebook_item.wait_for_and_click()
+        self.components.history_notebooks.editor.wait_for_visible()
+
+        value2 = editor.wait_for_value()
+        assert "hid=1" in value2
+        assert "history_dataset_id=" not in value2
+        self.screenshot("history_notebook_hid_preserved_reload")
+
+    @selenium_test
+    @managed_history
+    def test_display_only_shows_expanded_content(self):
+        """DisplayOnly mode renders embedded dataset from HID directive."""
+        history_id = self.current_history_id()
+        self.perform_upload(self.get_filename("1.fasta"))
+        self.history_panel_wait_for_hid_ok(1)
+
+        content = "# Analysis\n\n```galaxy\nhistory_dataset_display(hid=1)\n```\n"
+        self.dataset_populator.new_history_notebook(history_id, title="Display Embed", content=content)
+
+        self.navigate_to_history_notebooks()
+        self.history_notebook_assert_item_count(1)
+
+        # Click view button (displayOnly mode, not editor)
+        self.components.history_notebooks.view_button.wait_for_and_click()
+
+        # Verify displayOnly chrome
+        self.components.history_notebooks.display_toolbar.wait_for_visible()
+        self.components.history_notebooks.rendered_view.wait_for_visible()
+
+        # Verify rendered Markdown with embedded dataset
+        self.wait_for_selector_visible(".markdown-wrapper")
+        self.wait_for_selector_visible(".embedded-dataset")
+        self.screenshot("history_notebook_display_embedded_dataset")

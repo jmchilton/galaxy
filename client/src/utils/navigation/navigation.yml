@@ -688,6 +688,19 @@ history_notebooks:
     revision_restore_button:
       type: data-description
       selector: 'revision restore button'
+    view_button:
+      type: data-description
+      selector: 'notebook view button'
+    display_toolbar:
+      type: data-description
+      selector: 'notebook display toolbar'
+    preview_button:
+      type: data-description
+      selector: 'notebook preview button'
+    edit_button:
+      type: data-description
+      selector: 'notebook edit button'
+    toolbar_title_input: '[data-description="notebook toolbar title"] input'
 
 login:
   selectors:
