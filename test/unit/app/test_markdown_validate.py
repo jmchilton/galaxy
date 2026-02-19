@@ -293,99 +293,73 @@ def test_markdown_validation_embed():
 def test_markdown_validation_hid_argument():
     """Test that hid argument is valid for dataset/collection directives."""
     # Dataset directives should accept hid
-    assert_markdown_valid(
-        """
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_display(hid=42)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_as_image(hid=1)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_as_table(hid=5)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_embedded(hid=10)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_index(hid=3)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_info(hid=7)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_link(hid=2)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_name(hid=8)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_peek(hid=4)
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_type(hid=6)
 ```
-"""
-    )
+""")
     # Collection directive should accept hid
-    assert_markdown_valid(
-        """
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_collection_display(hid=5)
 ```
-"""
-    )
+""")
     # hid with other arguments
-    assert_markdown_valid(
-        """
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_as_image(hid=1, path="image.png")
 ```
-"""
-    )
-    assert_markdown_valid(
-        """
+""")
+    assert_markdown_valid("""
 ```galaxy
 history_dataset_link(hid=2, label="my link")
 ```
-"""
-    )
+""")
 
 
 def test_markdown_validation_hid_invalid_for_non_dataset_directives():

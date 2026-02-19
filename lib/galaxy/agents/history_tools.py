@@ -30,13 +30,10 @@ async def list_history_items(
     Returns a compact one-line-per-item format suitable for LLM consumption.
     """
     from galaxy.model import (
-        HistoryDatasetAssociation as HDA,
-        HistoryDatasetCollectionAssociation as HDCA,
-    )
-
-    from galaxy.model import (
         Dataset,
         DatasetCollection as DC,
+        HistoryDatasetAssociation as HDA,
+        HistoryDatasetCollectionAssociation as HDCA,
     )
 
     limit = min(limit, 200)
