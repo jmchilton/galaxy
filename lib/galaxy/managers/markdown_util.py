@@ -26,6 +26,7 @@ from typing import (
 )
 
 import markdown
+from sqlalchemy import select
 
 try:
     import weasyprint
@@ -45,7 +46,11 @@ from galaxy.managers.jobs import (
     summarize_job_parameters,
 )
 from galaxy.managers.licenses import LicensesManager
-from galaxy.model import Job
+from galaxy.model import (
+    HistoryDatasetAssociation,
+    HistoryDatasetCollectionAssociation,
+    Job,
+)
 from galaxy.model.item_attrs import get_item_annotation_str
 from galaxy.model.orm.now import now
 from galaxy.schema import PdfDocumentType
@@ -1342,13 +1347,6 @@ HID_DIRECTIVES = HID_DATASET_DIRECTIVES | HID_COLLECTION_DIRECTIVES
 
 def _resolve_hid_to_dataset(session, history_id: int, hid: int, directive: str) -> int:
     """Resolve HID to dataset ID, validating it's actually a dataset."""
-    from sqlalchemy import select
-
-    from galaxy.model import (
-        HistoryDatasetAssociation,
-        HistoryDatasetCollectionAssociation,
-    )
-
     stmt = select(HistoryDatasetAssociation.id, HistoryDatasetAssociation.deleted).where(
         HistoryDatasetAssociation.history_id == history_id, HistoryDatasetAssociation.hid == hid
     )
@@ -1372,13 +1370,6 @@ def _resolve_hid_to_dataset(session, history_id: int, hid: int, directive: str) 
 
 def _resolve_hid_to_collection(session, history_id: int, hid: int, directive: str) -> int:
     """Resolve HID to collection ID, validating it's actually a collection."""
-    from sqlalchemy import select
-
-    from galaxy.model import (
-        HistoryDatasetAssociation,
-        HistoryDatasetCollectionAssociation,
-    )
-
     stmt = select(HistoryDatasetCollectionAssociation.id, HistoryDatasetCollectionAssociation.deleted).where(
         HistoryDatasetCollectionAssociation.history_id == history_id,
         HistoryDatasetCollectionAssociation.hid == hid,
