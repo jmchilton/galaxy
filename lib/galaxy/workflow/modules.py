@@ -96,7 +96,6 @@ from galaxy.tools.parameters.basic import (
     BooleanToolParameter,
     DataCollectionToolParameter,
     DataToolParameter,
-    FieldTypeToolParameter,
     FloatToolParameter,
     HiddenToolParameter,
     IntegerToolParameter,
@@ -268,8 +267,8 @@ def build_cwl_input_dict(
 ) -> dict[str, Any]:
     """Build a CWL-native input dict from step connections.
 
-    Bypasses the legacy Galaxy parameter system (visit_input_values,
-    FieldTypeToolParameter, etc.) entirely. Values are:
+    Bypasses the legacy Galaxy parameter system (visit_input_values, etc.)
+    entirely. Values are:
     - HDA inputs:  {"src": "hda", "id": N}
     - HDCA inputs: {"src": "hdca", "id": N}
     - Scalars:     raw values (int, str, float, bool, None)
@@ -3016,11 +3015,7 @@ class ToolModule(WorkflowModule):
                         if isinstance(input, ConditionalStepWhen) and bool(replacement) is False:
                             raise SkipWorkflowStepEvaluation
 
-                    is_data = (
-                        isinstance(input, DataToolParameter)
-                        or isinstance(input, DataCollectionToolParameter)
-                        or isinstance(input, FieldTypeToolParameter)
-                    )
+                    is_data = isinstance(input, DataToolParameter) or isinstance(input, DataCollectionToolParameter)
                     if (
                         not is_data
                         and isinstance(replacement, model.HistoryDatasetAssociation)
@@ -3042,14 +3037,6 @@ class ToolModule(WorkflowModule):
 
                         with open(replacement.get_file_name()) as f:
                             replacement = safe_loads(f.read())
-
-                    if isinstance(input, FieldTypeToolParameter):
-                        if isinstance(replacement, model.HistoryDatasetAssociation):
-                            return {"src": "hda", "value": replacement}
-                        elif isinstance(replacement, model.HistoryDatasetCollectionAssociation):
-                            return {"src": "hdca", "value": replacement}
-                        elif replacement is not NO_REPLACEMENT:
-                            return {"src": "json", "value": replacement}
 
                     return replacement
 
@@ -3098,11 +3085,7 @@ class ToolModule(WorkflowModule):
                     history = trans.history
                     app = trans.app
                     if prefixed_name in expression_replacements:  # noqa: B023
-                        expression_replacement = expression_replacements[prefixed_name]  # noqa: B023
-                        if isinstance(input, FieldTypeToolParameter):
-                            return {"src": "json", "value": expression_replacement}
-                        else:
-                            return expression_replacement
+                        return expression_replacements[prefixed_name]  # noqa: B023
                     # This is not the right spot to fill in a tool default,
                     # but at this point we know there was no replacement via step defaults or value_from
                     value = kwargs["value"]
