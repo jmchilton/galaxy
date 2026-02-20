@@ -25,7 +25,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
 
         When no notebooks exist, resolveCurrentNotebook auto-creates one.
         """
-        self.navigate_to_current_notebook()
+        self.history_panel_click_edit_current_notebook()
         self.components.history_notebooks.editor.wait_for_visible()
         self.screenshot("history_notebook_icon_auto_create")
 
@@ -36,7 +36,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         history_id = self.current_history_id()
         self.dataset_populator.new_history_notebook(history_id, title="Existing", content="# Hello")
 
-        self.navigate_to_current_notebook()
+        self.history_panel_click_edit_current_notebook()
         self.components.history_notebooks.editor.wait_for_visible()
         editor = self.components.history_notebooks.markdown_editor
         assert "Hello" in editor.wait_for_value()
@@ -240,22 +240,22 @@ class TestHistoryNotebooks(SeleniumTestCase):
         history_id = self.current_history_id()
         self.dataset_populator.new_history_notebook(history_id, title="Window Test", content="# Windowed Notebook")
 
-        self.window_manager_enable()
-        assert self.window_manager_window_count() == 0
+        with self.window_manager_active():
+            assert self.window_manager_window_count() == 0
 
-        self.navigate_to_history_notebooks()
-        self.history_notebook_assert_item_count(1)
+            self.history_panel_click_view_current_notebook()
+            self.history_notebook_assert_item_count(1)
 
-        # Click the notebook -- should open in WinBox, not navigate
-        self.components.history_notebooks.notebook_item.wait_for_and_click()
-        self.window_manager_wait_for_window_count(1)
+            # Click the notebook -- should open in WinBox, not navigate
+            self.components.history_notebooks.notebook_item.wait_for_and_click()
+            self.window_manager_wait_for_window_count(1)
 
-        titles = self.window_manager_get_titles()
-        assert any("Window Test" in t for t in titles)
+            titles = self.window_manager_get_titles()
+            assert any("Window Test" in t for t in titles)
 
-        # List should still be visible (router.push intercepted by WM)
-        self.components.history_notebooks.list.wait_for_visible()
-        self.screenshot("history_notebook_in_winbox")
+            # List should still be visible (router.push intercepted by WM)
+            self.components.history_notebooks.list.wait_for_visible()
+            self.screenshot("history_notebook_in_winbox")
 
     @selenium_test
     @managed_history
@@ -266,18 +266,18 @@ class TestHistoryNotebooks(SeleniumTestCase):
             history_id, title="Render Test", content="# Hello World\n\nSome analysis notes."
         )
 
-        self.window_manager_enable()
-        self.navigate_to_history_notebooks()
-        self.components.history_notebooks.notebook_item.wait_for_and_click()
-        self.window_manager_wait_for_window_count(1)
+        with self.window_manager_active():
+            self.navigate_to_history_notebooks()
+            self.components.history_notebooks.notebook_item.wait_for_and_click()
+            self.window_manager_wait_for_window_count(1)
 
-        with self.winbox_frame(0):
-            # Should see rendered markdown (Markdown.vue), not editor
-            self.wait_for_selector_visible(".markdown-wrapper")
-            # Should NOT see editor or toolbar
-            self.wait_for_selector_absent_or_hidden("[data-description='notebook toolbar']")
-            self.wait_for_selector_absent_or_hidden("[data-description='history notebook editor']")
-            self.screenshot("history_notebook_window_rendered")
+            with self.winbox_frame(0):
+                # Should see rendered markdown (Markdown.vue), not editor
+                self.wait_for_selector_visible(".markdown-wrapper")
+                # Should NOT see editor or toolbar
+                self.wait_for_selector_absent_or_hidden("[data-description='notebook toolbar']")
+                self.wait_for_selector_absent_or_hidden("[data-description='history notebook editor']")
+                self.screenshot("history_notebook_window_rendered")
 
     @selenium_test
     @managed_history
@@ -286,6 +286,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
         history_id = self.current_history_id()
         self.dataset_populator.new_history_notebook(history_id, title="Normal Nav", content="# Editor Test")
 
+        # Explicitly disable in case previous test leaked WM state
         self.window_manager_disable()
 
         self.navigate_to_history_notebooks()
@@ -308,15 +309,15 @@ class TestHistoryNotebooks(SeleniumTestCase):
         content = "# Analysis\n\n```galaxy\nhistory_dataset_display(hid=1)\n```\n"
         self.dataset_populator.new_history_notebook(history_id, title="Dataset Embed", content=content)
 
-        self.window_manager_enable()
-        self.navigate_to_history_notebooks()
-        self.components.history_notebooks.notebook_item.wait_for_and_click()
-        self.window_manager_wait_for_window_count(1)
+        with self.window_manager_active():
+            self.navigate_to_history_notebooks()
+            self.components.history_notebooks.notebook_item.wait_for_and_click()
+            self.window_manager_wait_for_window_count(1)
 
-        with self.winbox_frame(0):
-            self.wait_for_selector_visible(".markdown-wrapper")
-            self.wait_for_selector_visible(".embedded-dataset")
-            self.screenshot("history_notebook_window_dataset_embedded")
+            with self.winbox_frame(0):
+                self.wait_for_selector_visible(".markdown-wrapper")
+                self.wait_for_selector_visible(".embedded-dataset")
+                self.screenshot("history_notebook_window_dataset_embedded")
 
     @selenium_test
     @managed_history
@@ -326,25 +327,25 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="First NB")
         self.dataset_populator.new_history_notebook(history_id, title="Second NB")
 
-        self.window_manager_enable()
-        self.navigate_to_history_notebooks()
-        self.history_notebook_assert_item_count(2)
+        with self.window_manager_active():
+            self.navigate_to_history_notebooks()
+            self.history_notebook_assert_item_count(2)
 
-        # Open first notebook
-        items = self.components.history_notebooks.notebook_item.all()
-        items[0].click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.window_manager_wait_for_window_count(1)
+            # Open first notebook
+            items = self.components.history_notebooks.notebook_item.all()
+            items[0].click()
+            self.sleep_for(self.wait_types.UX_RENDER)
+            self.window_manager_wait_for_window_count(1)
 
-        # Open second notebook
-        items = self.components.history_notebooks.notebook_item.all()
-        items[1].click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.window_manager_wait_for_window_count(2)
+            # Open second notebook
+            items = self.components.history_notebooks.notebook_item.all()
+            items[1].click()
+            self.sleep_for(self.wait_types.UX_RENDER)
+            self.window_manager_wait_for_window_count(2)
 
-        titles = self.window_manager_get_titles()
-        assert len(titles) == 2
-        self.screenshot("history_notebook_multiple_windows")
+            titles = self.window_manager_get_titles()
+            assert len(titles) == 2
+            self.screenshot("history_notebook_multiple_windows")
 
     # --- Phase 6: Revision UI Tests ---
 
