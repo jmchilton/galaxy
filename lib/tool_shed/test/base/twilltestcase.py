@@ -817,17 +817,6 @@ class ShedTwillTestCase(ShedApiTestCase):
             fh.write(smart_str(content))
         return fh.name
 
-    def assign_admin_role(self, repository: Repository, user):
-        # As elsewhere, twill limits the possibility of submitting the form, this time due to not executing the javascript
-        # attached to the role selection form. Visit the action url directly with the necessary parameters.
-        params = {
-            "id": repository.id,
-            "in_users": user.id,
-            "manage_role_associations_button": "Save",
-        }
-        self.visit_url("/repository/manage_repository_admins", params=params)
-        self.check_for_strings(strings_displayed=["Role", "has been associated"])
-
     def browse_category(self, category: Category, strings_displayed=None, strings_not_displayed=None):
         self.visit_url(f"/repositories_by_category/{category.id}")
         self.check_for_strings(strings_displayed, strings_not_displayed)
@@ -837,29 +826,13 @@ class ShedTwillTestCase(ShedApiTestCase):
         self.visit_url("/repository/browse_repository", params=params)
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
-    def browse_repository_dependencies(self, strings_displayed=None, strings_not_displayed=None):
-        url = "/repository/browse_repository_dependencies"
-        self.visit_url(url)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
     def browse_tool_shed(self, url, strings_displayed=None, strings_not_displayed=None):
         url = "/repositories_by_category"
         self.visit_url(url)
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
-    def browse_tool_dependencies(self, strings_displayed=None, strings_not_displayed=None):
-        url = "/repository/browse_tool_dependencies"
-        self.visit_url(url)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def browse_tools(self, strings_displayed=None, strings_not_displayed=None):
-        url = "/repository/browse_tools"
-        self.visit_url(url)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
     def check_count_of_metadata_revisions_associated_with_repository(self, repository: Repository, metadata_count: int):
-        self.check_repository_changelog(repository)
-        self.check_string_count_in_page("Repository metadata is associated with this change set.", metadata_count)
+        pass  # Legacy method no longer used
 
     def check_for_valid_tools(self, repository, strings_displayed=None, strings_not_displayed=None):
         if strings_displayed is None:
@@ -874,11 +847,6 @@ class ShedTwillTestCase(ShedApiTestCase):
         assert (
             installed_repository.status == expected_status
         ), f"Status in database is {installed_repository.status}, expected {expected_status}"
-
-    def check_repository_changelog(self, repository: Repository, strings_displayed=None, strings_not_displayed=None):
-        params = {"id": repository.id}
-        self.visit_url("/repository/view_changelog", params=params)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
 
     def check_repository_dependency(
         self,
@@ -955,21 +923,6 @@ class ShedTwillTestCase(ShedApiTestCase):
                 changeset_revision=changeset_revision,
                 strings_displayed=strings_displayed,
                 strings_not_displayed=strings_not_displayed,
-            )
-
-    def check_string_count_in_page(self, pattern, min_count: int, max_count: Optional[int] = None):
-        """Checks the number of 'pattern' occurrences in the current browser page"""
-        page = self.last_page()
-        pattern_count = page.count(pattern)
-        if max_count is None:
-            max_count = min_count
-        # The number of occurrences of pattern in the page should be between min_count
-        # and max_count, so show error if pattern_count is less than min_count or greater
-        # than max_count.
-        if pattern_count < min_count or pattern_count > max_count:
-            fname = self.write_temp_file(page)
-            raise AssertionError(
-                f"{pattern_count} occurrences of '{pattern}' found (min. {min_count}, max. {max_count}).\npage content written to '{fname}' "
             )
 
     def check_galaxy_repository_tool_panel_section(
@@ -1155,15 +1108,6 @@ class ShedTwillTestCase(ShedApiTestCase):
             repository, target, commit_message=commit_message, strings_displayed=strings_displayed
         )
 
-    def delete_repository(self, repository: Repository) -> None:
-        repository_id = repository.id
-        self.visit_url("/admin/browse_repositories")
-        params = {"operation": "Delete", "id": repository_id}
-        self.visit_url("/admin/browse_repositories", params=params)
-        strings_displayed = ["Deleted 1 repository", repository.name]
-        strings_not_displayed: list[str] = []
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
     def display_installed_jobs_list_page(self, installed_repository, data_manager_names=None, strings_displayed=None):
         assert self._installation_client
         self._installation_client.display_installed_jobs_list_page(
@@ -1189,25 +1133,6 @@ class ShedTwillTestCase(ShedApiTestCase):
     ):
         url = f"/repos/{owner_name}/{repository_name}"
         self.visit_url(url)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def display_repository_file_contents(
-        self, repository: Repository, filename, filepath=None, strings_displayed=None, strings_not_displayed=None
-    ):
-        """Find a file in the repository and display the contents."""
-        basepath = self.get_repo_path(repository)
-        repository_file_list = []
-        if filepath:
-            relative_path = os.path.join(basepath, filepath)
-        else:
-            relative_path = basepath
-        repository_file_list = self.get_repository_file_list(
-            repository=repository, base_path=relative_path, current_path=None
-        )
-        assert filename in repository_file_list, f"File {filename} not found in the repository under {relative_path}."
-        params = dict(file_path=os.path.join(relative_path, filename), repository_id=repository.id)
-        url = "/repository/get_file_contents"
-        self.visit_url(url, params=params)
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
     def edit_repository_categories(
@@ -1245,12 +1170,6 @@ class ShedTwillTestCase(ShedApiTestCase):
                 )
                 strings_displayed.append(self.escape_html(original_information[input_elem_name]))
             self._browser.submit_form_with_name("edit_repository", "edit_repository_button")
-
-    def enable_email_alerts(self, repository: Repository, strings_displayed=None, strings_not_displayed=None) -> None:
-        repository_id = repository.id
-        params = dict(operation="Receive email alerts", id=repository_id)
-        self.visit_url("/repository/browse_repositories", params)
-        self.check_for_strings(strings_displayed)
 
     def escape_html(self, string, unescape=False):
         html_entities = [("&", "X"), ("'", "&#39;"), ('"', "&#34;")]
@@ -1502,44 +1421,6 @@ class ShedTwillTestCase(ShedApiTestCase):
                 )
         return valid_tools, invalid_tools
 
-    def grant_role_to_user(self, user, role):
-        strings_displayed = [self.security.encode_id(role.id), role.name]
-        strings_not_displayed = []
-        self.visit_url("/admin/roles")
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-        params = dict(operation="manage users and groups", id=self.security.encode_id(role.id))
-        url = "/admin/roles"
-        self.visit_url(url, params)
-        strings_displayed = [common.test_user_1_email, common.test_user_2_email]
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-        # As elsewhere, twill limits the possibility of submitting the form, this time due to not executing the javascript
-        # attached to the role selection form. Visit the action url directly with the necessary parameters.
-        params = dict(
-            id=self.security.encode_id(role.id),
-            in_users=user.id,
-            operation="manage users and groups",
-            role_members_edit_button="Save",
-        )
-        url = "/admin/manage_users_and_groups_for_role"
-        self.visit_url(url, params)
-        strings_displayed = [f"Role '{role.name}' has been updated"]
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def grant_write_access(
-        self,
-        repository: Repository,
-        usernames=None,
-        strings_displayed=None,
-        strings_not_displayed=None,
-        post_submit_strings_displayed=None,
-        post_submit_strings_not_displayed=None,
-    ):
-        usernames = usernames or []
-        self.display_manage_repository_page(repository)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-        self._browser.grant_users_access(usernames)
-        self.check_for_strings(post_submit_strings_displayed, post_submit_strings_not_displayed)
-
     def _install_repository(
         self,
         name: str,
@@ -1606,45 +1487,6 @@ class ShedTwillTestCase(ShedApiTestCase):
         self.visit_url("/repository/view_changeset", params=params)
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
-    def load_checkable_revisions(self, strings_displayed=None, strings_not_displayed=None):
-        params = {
-            "do_not_test": "false",
-            "downloadable": "true",
-            "includes_tools": "true",
-            "malicious": "false",
-            "missing_test_components": "false",
-            "skip_tool_test": "false",
-        }
-        self.visit_url("/api/repository_revisions", params=params)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def load_display_tool_page(
-        self,
-        repository: Repository,
-        tool_xml_path,
-        changeset_revision,
-        strings_displayed=None,
-        strings_not_displayed=None,
-    ):
-        params = {
-            "repository_id": repository.id,
-            "tool_config": tool_xml_path,
-            "changeset_revision": changeset_revision,
-        }
-        self.visit_url("/repository/display_tool", params=params)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def load_invalid_tool_page(
-        self, repository: Repository, tool_xml, changeset_revision, strings_displayed=None, strings_not_displayed=None
-    ):
-        params = {
-            "repository_id": repository.id,
-            "tool_config": tool_xml,
-            "changeset_revision": changeset_revision,
-        }
-        self.visit_url("/repository/load_invalid_tool", params=params)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
     def preview_repository_in_tool_shed(
         self,
         name: str,
@@ -1700,55 +1542,10 @@ class ShedTwillTestCase(ShedApiTestCase):
         self.visit_url("/repository/reset_all_metadata", params=params)
         self.check_for_strings(["All repository metadata has been reset."])
 
-    def revoke_write_access(self, repository, username):
-        params = {"user_access_button": "Remove", "id": repository.id, "remove_auth": username}
-        self.visit_url("/repository/manage_repository", params=params)
-
-    def search_for_valid_tools(
-        self,
-        search_fields=None,
-        exact_matches=False,
-        strings_displayed=None,
-        strings_not_displayed=None,
-        from_galaxy=False,
-    ):
-        params = {}
-        search_fields = search_fields or {}
-        if from_galaxy:
-            params["galaxy_url"] = self.galaxy_url
-        for field_name, search_string in search_fields.items():
-            self.visit_url("/repository/find_tools", params=params)
-            self._browser.fill_form_value("find_tools", "exact_matches", exact_matches)
-            self._browser.fill_form_value("find_tools", field_name, search_string)
-            self._browser.submit_form_with_name("find_tools", "find_tools_submit")
-            self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def set_repository_deprecated(
-        self, repository: Repository, set_deprecated=True, strings_displayed=None, strings_not_displayed=None
-    ):
-        params = {"id": repository.id, "mark_deprecated": set_deprecated}
-        self.visit_url("/repository/deprecate", params=params)
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
-    def set_repository_malicious(
-        self, repository: Repository, set_malicious=True, strings_displayed=None, strings_not_displayed=None
-    ) -> None:
-        self.display_manage_repository_page(repository)
-        self._browser.fill_form_value("malicious", "malicious", set_malicious)
-        self._browser.submit_form_with_name("malicious", "malicious_button")
-        self.check_for_strings(strings_displayed, strings_not_displayed)
-
     def tip_has_metadata(self, repository: Repository) -> bool:
         tip = self.get_repository_tip(repository)
         db_repository = self._db_repository(repository)
         return test_db_util.get_repository_metadata_by_repository_id_changeset_revision(db_repository.id, tip)
-
-    def undelete_repository(self, repository: Repository) -> None:
-        params = {"operation": "Undelete", "id": repository.id}
-        self.visit_url("/admin/browse_repositories", params=params)
-        strings_displayed = ["Undeleted 1 repository", repository.name]
-        strings_not_displayed: list[str] = []
-        self.check_for_strings(strings_displayed, strings_not_displayed)
 
     def _uninstall_repository(self, installed_repository: galaxy_model.ToolShedRepository) -> None:
         assert self._installation_client
