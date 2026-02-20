@@ -2722,6 +2722,8 @@ class BaseJsonToolParameter(ToolParameter):
     def value_to_basic(self, value, app, use_security=False):
         if is_runtime_value(value):
             return runtime_to_json(value)
+        elif value == NO_REPLACEMENT:
+            return {"__class__": "NoReplacement"}
         return value
 
     def to_json(self, value, app, use_security):
