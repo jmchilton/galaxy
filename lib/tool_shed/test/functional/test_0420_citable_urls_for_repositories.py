@@ -86,7 +86,7 @@ class TestRepositoryCitableURLs(ShedTestCase):
         # Since twill does not load the contents of an iframe, we need to check that the iframe has been generated correctly,
         # then directly load the url that the iframe should be loading and check for the expected strings.
         # The iframe should point to /repository/browse_repositories?user_id=<encoded user ID>&operation=repositories_by_user
-        strings_displayed = []
+        strings_displayed: list[str] = []
         strings_displayed_in_iframe = ["user1", "filtering_0420", repository_description]
         self.load_citable_url(
             username="user1",
@@ -112,7 +112,7 @@ class TestRepositoryCitableURLs(ShedTestCase):
         # Since twill does not load the contents of an iframe, we need to check that the iframe has been generated correctly,
         # then directly load the url that the iframe should be loading and check for the expected strings.
         # The iframe should point to /repository/bview_repository?id=<encoded repository ID>
-        strings_displayed = []
+        strings_displayed: list[str] = []
         strings_displayed_in_iframe = [
             "user1",
             "filtering_0420",
@@ -143,7 +143,7 @@ class TestRepositoryCitableURLs(ShedTestCase):
         # Since twill does not load the contents of an iframe, we need to check that the iframe has been generated correctly,
         # then directly load the url that the iframe should be loading and check for the expected strings.
         # The iframe should point to /repository/view_repository?id=<encoded repository ID>
-        strings_displayed = []
+        strings_displayed: list[str] = []
         strings_displayed_in_iframe = [
             "user1",
             "filtering_0420",
@@ -189,7 +189,7 @@ class TestRepositoryCitableURLs(ShedTestCase):
         # then directly load the url that the iframe should be loading and check for the expected strings.
         # The iframe should point to /repository/browse_repositories?user_id=<encoded user ID>&operation=repositories_by_user
         strings_displayed = ["Repository user1/!!invalid!! is not found"]
-        strings_displayed_in_iframe = []
+        strings_displayed_in_iframe: list[str] = []
         self.load_citable_url(
             username="user1",
             repository_name="!!invalid!!",

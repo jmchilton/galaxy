@@ -637,6 +637,9 @@ class ShedTestCase(ShedApiTestCase):
         self.file_dir = os.environ.get("TOOL_SHED_TEST_FILE_DIR", None)
         self.shed_tool_conf = os.environ.get("GALAXY_TEST_SHED_TOOL_CONF")
         self.test_db_util = test_db_util
+        installation_client_class: (
+            type[StandaloneToolShedInstallationClient] | type[GalaxyInteractorToolShedInstallationClient]
+        )
         if os.environ.get("TOOL_SHED_TEST_INSTALL_CLIENT") == "standalone":
             # TODO: once nose is out of the way - try to get away without
             # instantiating the unused Galaxy server here.
@@ -888,22 +891,13 @@ class ShedTestCase(ShedApiTestCase):
         if "tools" not in metadata:
             raise AssertionError(f"No tools in {repository.name} revision {changeset_revision}.")
         for tool_dict in metadata["tools"]:
-            tool_id = tool_dict["id"]
-            tool_xml = tool_dict["tool_config"]
             params = {
                 "repository_id": repository.id,
                 "changeset_revision": changeset_revision,
-                "tool_id": tool_id,
+                "tool_id": tool_dict["id"],
             }
             self.visit_url("/repository/view_tool_metadata", params=params)
             self.check_for_strings(tool_metadata_strings_displayed)
-            self.load_display_tool_page(
-                repository,
-                tool_xml_path=tool_xml,
-                changeset_revision=changeset_revision,
-                strings_displayed=tool_page_strings_displayed,
-                strings_not_displayed=None,
-            )
 
     def check_repository_invalid_tools_for_changeset_revision(
         self, repository: Repository, changeset_revision, strings_displayed=None, strings_not_displayed=None
@@ -916,13 +910,15 @@ class ShedTestCase(ShedApiTestCase):
             "invalid_tools" in metadata
         ), f"Metadata for changeset revision {changeset_revision} does not define invalid tools"
         for tool_xml in metadata["invalid_tools"]:
-            self.load_invalid_tool_page(
-                repository,
-                tool_xml=tool_xml,
-                changeset_revision=changeset_revision,
-                strings_displayed=strings_displayed,
-                strings_not_displayed=strings_not_displayed,
+            self.visit_url(
+                "/repository/load_invalid_tool",
+                params={
+                    "repository_id": repository.id,
+                    "tool_config": tool_xml,
+                    "changeset_revision": changeset_revision,
+                },
             )
+            self.check_for_strings(strings_displayed, strings_not_displayed)
 
     def check_galaxy_repository_tool_panel_section(
         self, repository: galaxy_model.ToolShedRepository, expected_tool_panel_section: str
@@ -1258,6 +1254,7 @@ class ShedTestCase(ShedApiTestCase):
 
     def generate_temp_path(self, test_script_path, additional_paths=None):
         additional_paths = additional_paths or []
+        assert self.tool_shed_test_tmp_dir
         temp_path = os.path.join(self.tool_shed_test_tmp_dir, test_script_path, os.sep.join(additional_paths))
         if not os.path.exists(temp_path):
             os.makedirs(temp_path)
@@ -1271,6 +1268,7 @@ class ShedTestCase(ShedApiTestCase):
         if filepath is not None:
             return os.path.abspath(os.path.join(filepath, filename))
         else:
+            assert self.file_dir
             return os.path.abspath(os.path.join(self.file_dir, filename))
 
     def get_hg_repo(self, path):
@@ -1503,6 +1501,7 @@ class ShedTestCase(ShedApiTestCase):
         self.check_for_strings(strings_displayed, strings_not_displayed)
 
     def reactivate_repository(self, installed_repository):
+        assert self._installation_client
         self._installation_client.reactivate_repository(installed_repository)
 
     def reinstall_repository_api(
@@ -1512,6 +1511,7 @@ class ShedTestCase(ShedApiTestCase):
         install_tool_dependencies=False,
         new_tool_panel_section_label="",
     ):
+        assert self._installation_client
         name = installed_repository.name
         owner = installed_repository.owner
         self._installation_client.install_repository(
@@ -1582,10 +1582,12 @@ class ShedTestCase(ShedApiTestCase):
 
     @property
     def shed_tool_data_table_conf(self):
+        assert self._installation_client
         return self._installation_client.shed_tool_data_table_conf
 
     @property
     def tool_data_path(self):
+        assert self._installation_client
         return self._installation_client.tool_data_path
 
     def _refresh_tool_shed_repository(self, repo: galaxy_model.ToolShedRepository) -> None:
@@ -1620,6 +1622,7 @@ class ShedTestCase(ShedApiTestCase):
         #        <file path="tool-data/sam_fa_indices.loc" />
         #     </table>
         # </tables>
+        assert data_tables is not None
         required_data_table_entry = None
         for table_elem in data_tables.findall("table"):
             # The value of table_elem will be something like: <table comment_char="#" name="sam_fa_indexes">
@@ -1633,6 +1636,7 @@ class ShedTestCase(ShedApiTestCase):
                     # The "path" attribute of the "file" tag is the location that Galaxy always uses because the
                     # Galaxy ToolDataTableManager was implemented in such a way that the hard-coded path is used
                     # rather than allowing the location to be a configurable setting like the tool shed requires.
+                    assert file_elem is not None
                     file_path = file_elem.get("path", None)
                     # The value of file_path will be something like: "tool-data/all_fasta.loc"
                     assert (

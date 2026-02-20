@@ -125,7 +125,7 @@ class TestBasicRepositoryFeatures(ShedTestCase):
         repository = self._get_repository_by_name_and_owner(repository_name, common.test_user_1_name)
         tip = self.get_repository_tip(repository)
         self.check_for_valid_tools(repository)
-        strings_displayed = []
+        strings_displayed: list[str] = []
         self.display_manage_repository_page(repository, strings_displayed=strings_displayed)
         self.check_count_of_metadata_revisions_associated_with_repository(repository, metadata_count=2)
         tool_guid = f"{self.url.replace('http://', '').rstrip('/')}/repos/user1/filtering_0000/Filter1/2.2.0"
