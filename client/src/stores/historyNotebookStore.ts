@@ -134,6 +134,15 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             // which may be transformed by rewrite_content_for_export for rendering.
             originalContent.value = currentContent.value;
             originalTitle.value = currentTitle.value;
+            // Sync the notebooks list so handleSelect reads the updated title (e.g. for WM window titles)
+            const idx = notebooks.value.findIndex((n) => n.id === data.id);
+            if (idx !== -1) {
+                notebooks.value[idx] = {
+                    ...notebooks.value[idx]!,
+                    title: currentTitle.value,
+                    update_time: data.update_time,
+                };
+            }
         } catch (e: any) {
             error.value = e.message || "Failed to save notebook";
             throw e;
