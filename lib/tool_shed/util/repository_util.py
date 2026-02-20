@@ -376,57 +376,6 @@ def get_repositories_by_category(
     return repositories
 
 
-def handle_role_associations(app: "ToolShedApp", role, repository, **kwd):
-    sa_session = app.model.session
-    message = escape(kwd.get("message", ""))
-    status = kwd.get("status", "done")
-    repository_owner = repository.user
-    if kwd.get("manage_role_associations_button", False):
-        in_users_list = util.listify(kwd.get("in_users", []))
-        users = [y for y in (sa_session.get(model.User, x) for x in in_users_list) if y is not None]
-        # Make sure the repository owner is always associated with the repostory's admin role.
-        owner_associated = False
-        for user in users:
-            if user.id == repository_owner.id:
-                owner_associated = True
-                break
-        if not owner_associated:
-            users.append(repository_owner)
-            message += "The repository owner must always be associated with the repository's administrator role.  "
-            status = "error"
-        in_groups_list = util.listify(kwd.get("in_groups", []))
-        groups = [sa_session.get(model.Group, x) for x in in_groups_list]
-        in_repositories = [repository]
-        app.security_agent.set_entity_role_associations(
-            roles=[role], users=users, groups=groups, repositories=in_repositories
-        )
-        sa_session.refresh(role)
-        message += f"Role <b>{escape(str(role.name))}</b> has been associated with {len(users)} users, {len(groups)} groups and {len(in_repositories)} repositories.  "
-    in_users = []
-    out_users = []
-    in_groups = []
-    out_groups = []
-    for user in get_current_users(sa_session):
-        if user in [x.user for x in role.users]:
-            in_users.append((user.id, user.email))
-        else:
-            out_users.append((user.id, user.email))
-    for group in get_current_groups(sa_session):
-        if group in [x.group for x in role.groups]:
-            in_groups.append((group.id, group.name))
-        else:
-            out_groups.append((group.id, group.name))
-    associations_dict = dict(
-        in_users=in_users,
-        out_users=out_users,
-        in_groups=in_groups,
-        out_groups=out_groups,
-        message=message,
-        status=status,
-    )
-    return associations_dict
-
-
 def change_repository_name_in_hgrc_file(hgrc_file: str, new_name: str) -> None:
     config = configparser.ConfigParser()
     config.read(hgrc_file)
@@ -471,7 +420,7 @@ def update_validated_repository(
     if "category_ids" in kwds and isinstance(kwds["category_ids"], list):
 
         # Remove existing category associations
-        delete_repository_category_associations(sa_session, model.RepositoryCategoryAssociation, repository.id)
+        _delete_repository_category_associations(sa_session, model.RepositoryCategoryAssociation, repository.id)
 
         # Then (re)create category associations
         for category_id in kwds["category_ids"]:
@@ -591,7 +540,7 @@ def get_current_groups(session: "scoped_session"):
     return session.scalars(stmt)
 
 
-def delete_repository_category_associations(session, repository_category_assoc_model, repository_id):
+def _delete_repository_category_associations(session, repository_category_assoc_model, repository_id):
     stmt = delete(repository_category_assoc_model).where(repository_category_assoc_model.repository_id == repository_id)
     return session.execute(stmt)
 
@@ -625,7 +574,6 @@ __all__ = (
     "get_tool_shed_from_clone_url",
     "get_tool_shed_repository_by_id",
     "get_tool_shed_status_for_installed_repository",
-    "handle_role_associations",
     "is_tool_shed_client",
     "repository_was_previously_installed",
     "set_repository_attributes",
