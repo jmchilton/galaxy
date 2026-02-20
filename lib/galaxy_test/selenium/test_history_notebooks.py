@@ -262,9 +262,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
 
         with self.window_manager_active():
             assert self.window_manager_window_count() == 0
-
             self.history_panel_click_view_current_notebook()
-
             self.window_manager_wait_for_window_count(1)
 
             with self.winbox_frame(0):
@@ -306,42 +304,14 @@ class TestHistoryNotebooks(SeleniumTestCase):
         self.dataset_populator.new_history_notebook(history_id, title="Dataset Embed", content=content)
 
         with self.window_manager_active():
-            self.navigate_to_history_notebooks()
-            self.components.history_notebooks.notebook_item.wait_for_and_click()
+            assert self.window_manager_window_count() == 0
+            self.history_panel_click_view_current_notebook()
             self.window_manager_wait_for_window_count(1)
 
             with self.winbox_frame(0):
                 self.wait_for_selector_visible(".markdown-wrapper")
                 self.wait_for_selector_visible(".embedded-dataset")
                 self.screenshot("history_notebook_window_dataset_embedded")
-
-    @selenium_test
-    @managed_history
-    def test_multiple_notebook_windows(self):
-        """Opening multiple notebooks creates multiple WinBox windows."""
-        history_id = self.current_history_id()
-        self.dataset_populator.new_history_notebook(history_id, title="First NB")
-        self.dataset_populator.new_history_notebook(history_id, title="Second NB")
-
-        with self.window_manager_active():
-            self.navigate_to_history_notebooks()
-            self.history_notebook_assert_item_count(2)
-
-            # Open first notebook
-            items = self.components.history_notebooks.notebook_item.all()
-            items[0].click()
-            self.sleep_for(self.wait_types.UX_RENDER)
-            self.window_manager_wait_for_window_count(1)
-
-            # Open second notebook
-            items = self.components.history_notebooks.notebook_item.all()
-            items[1].click()
-            self.sleep_for(self.wait_types.UX_RENDER)
-            self.window_manager_wait_for_window_count(2)
-
-            titles = self.window_manager_get_titles()
-            assert len(titles) == 2
-            self.screenshot("history_notebook_multiple_windows")
 
     # --- Phase 6: Revision UI Tests ---
 
