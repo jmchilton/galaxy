@@ -236,7 +236,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
     @selenium_test
     @managed_history
     def test_notebook_opens_in_window_when_wm_active(self):
-        """With WM active, selecting notebook from list opens it in a WinBox."""
+        """With WM active, clicking notebook icon opens it in a WinBox."""
         history_id = self.current_history_id()
         self.dataset_populator.new_history_notebook(history_id, title="Window Test", content="# Windowed Notebook")
 
@@ -244,17 +244,13 @@ class TestHistoryNotebooks(SeleniumTestCase):
             assert self.window_manager_window_count() == 0
 
             self.history_panel_click_view_current_notebook()
-            self.history_notebook_assert_item_count(1)
-
-            # Click the notebook -- should open in WinBox, not navigate
-            self.components.history_notebooks.notebook_item.wait_for_and_click()
-            self.window_manager_wait_for_window_count(1)
 
             titles = self.window_manager_get_titles()
             assert any("Window Test" in t for t in titles)
 
-            # List should still be visible (router.push intercepted by WM)
-            self.components.history_notebooks.list.wait_for_visible()
+            with self.winbox_frame(0):
+                self.wait_for_selector_visible(".markdown-wrapper")
+
             self.screenshot("history_notebook_in_winbox")
 
     @selenium_test
