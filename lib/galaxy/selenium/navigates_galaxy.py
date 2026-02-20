@@ -2179,10 +2179,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.get(f"histories/{history_id}/notebooks")
         self.components.history_notebooks.list.wait_for_visible()
 
-    def navigate_to_current_notebook(self):
-        """Click the notebook icon in the HistoryCounter bar to open the current notebook."""
+    def history_panel_click_edit_current_notebook(self):
+        """Click notebook icon — waits for editor toolbar (non-WM path)."""
         self.components.history_panel.notebook_button.wait_for_and_click()
         self.components.history_notebooks.toolbar.wait_for_visible()
+
+    def history_panel_click_view_current_notebook(self):
+        """Click notebook icon — waits for WinBox window (WM-active path)."""
+        self.components.history_panel.notebook_button.wait_for_and_click()
+        self.window_manager_wait_for_window_count_at_least(1)
 
     def history_notebook_create(self, screenshot_name=None):
         """Click the create button on the notebook list. Returns to editor view."""
@@ -2303,6 +2308,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         if self.window_manager_is_active():
             self.window_manager_toggle()
 
+    @contextlib.contextmanager
+    def window_manager_active(self):
+        """Context manager: enable WM on entry, disable on exit."""
+        self.window_manager_enable()
+        try:
+            yield
+        finally:
+            self.window_manager_disable()
+
     def window_manager_is_active(self) -> bool:
         """Check if the window manager is currently enabled via the masthead toggle class."""
         return self.components.masthead.window_manager.has_class("toggle")
@@ -2319,6 +2333,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             return count == expected_count
 
         self._wait_on(check_count, f"window count to be {expected_count}")
+
+    def window_manager_wait_for_window_count_at_least(self, minimum: int):
+        """Wait until at least minimum .winbox elements exist."""
+
+        def check_count(driver=None):
+            return len(self.find_elements_by_selector(".winbox")) >= minimum
+
+        self._wait_on(check_count, f"window count to be at least {minimum}")
 
     @contextlib.contextmanager
     def winbox_frame(self, index=0):
