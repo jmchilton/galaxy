@@ -208,20 +208,21 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     }
 
     async function resolveCurrentNotebook(forHistoryId: string): Promise<string> {
+        // Always populate the notebooks list so callers can look up titles
+        await loadNotebooks(forHistoryId);
+
         const storedId = getCurrentNotebookId(forHistoryId);
         if (storedId) {
-            try {
-                await fetchHistoryNotebook(forHistoryId, storedId);
+            const exists = notebooks.value.some((n) => n.id === storedId);
+            if (exists) {
                 return storedId;
-            } catch {
-                // 404 or other error — clear stale mapping and re-resolve
-                clearCurrentNotebookId(forHistoryId);
             }
+            // stale mapping — clear and re-resolve below
+            clearCurrentNotebookId(forHistoryId);
         }
 
-        const notebookList = await fetchHistoryNotebooks(forHistoryId);
-        if (notebookList.length > 0) {
-            const sorted = [...notebookList].sort(
+        if (notebooks.value.length > 0) {
+            const sorted = [...notebooks.value].sort(
                 (a, b) => new Date(b.update_time).getTime() - new Date(a.update_time).getTime(),
             );
             const id = sorted[0]!.id;
