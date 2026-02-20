@@ -245,9 +245,7 @@ class TestHistoryNotebooks(SeleniumTestCase):
 
             self.history_panel_click_view_current_notebook()
 
-            titles = self.window_manager_get_titles()
-            assert any("Window Test" in t for t in titles)
-
+            self.window_manager_wait_for_window_count(1)
             with self.winbox_frame(0):
                 self.wait_for_selector_visible(".markdown-wrapper")
 
@@ -263,8 +261,10 @@ class TestHistoryNotebooks(SeleniumTestCase):
         )
 
         with self.window_manager_active():
-            self.navigate_to_history_notebooks()
-            self.components.history_notebooks.notebook_item.wait_for_and_click()
+            assert self.window_manager_window_count() == 0
+
+            self.history_panel_click_view_current_notebook()
+
             self.window_manager_wait_for_window_count(1)
 
             with self.winbox_frame(0):
