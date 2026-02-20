@@ -542,14 +542,9 @@ describe("useHistoryNotebookStore", () => {
                 ...TEST_NOTEBOOK_SUMMARY,
                 id: "fresh-nb",
             };
-            let fetchCount = 0;
             server.use(
-                http.get("/api/histories/{history_id}/notebooks/{notebook_id}", ({ response }) => {
-                    fetchCount++;
-                    // First call (verify stored ID) returns 404
-                    return response("4XX").json({ err_msg: "Not found", err_code: 404 }, { status: 404 });
-                }),
                 http.get("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    // List no longer contains "deleted-nb"
                     return response(200).json([freshNotebook]);
                 }),
             );
@@ -557,7 +552,6 @@ describe("useHistoryNotebookStore", () => {
             store.setCurrentNotebookId(TEST_HISTORY_ID, "deleted-nb");
 
             const result = await store.resolveCurrentNotebook(TEST_HISTORY_ID);
-            expect(fetchCount).toBe(1);
             expect(result).toBe("fresh-nb");
             expect(store.getCurrentNotebookId(TEST_HISTORY_ID)).toBe("fresh-nb");
         });
