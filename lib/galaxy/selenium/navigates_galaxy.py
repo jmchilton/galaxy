@@ -2350,8 +2350,12 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             with self.winbox_frame(0):
                 self.wait_for_selector_visible(".dataset-view")
         """
+
+        def has_enough_iframes(driver=None):
+            return len(self.find_elements_by_selector(".winbox iframe")) > index
+
+        self._wait_on(has_enough_iframes, f"at least {index + 1} WinBox iframes")
         iframes = self.find_elements_by_selector(".winbox iframe")
-        assert len(iframes) > index, f"Expected at least {index + 1} WinBox iframes, found {len(iframes)}"
         try:
             self.switch_to_frame(iframes[index])
             yield
