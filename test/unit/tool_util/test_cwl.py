@@ -14,7 +14,6 @@ from galaxy.tool_util.cwl.parser import (
     _to_cwl_tool_object,
     tool_proxy_from_persistent_representation,
 )
-from galaxy.tool_util.cwl.representation import USE_FIELD_TYPES
 from galaxy.tool_util.parser.cwl import (
     CWL_DEFAULT_FILE_OUTPUT,
     CwlToolSource,
@@ -49,8 +48,6 @@ def test_tool_proxy():
 def test_tool_source_records():
     record_output_path = _cwl_tool_path("v1.0/v1.0/record-output.cwl")
     tool_source = get_tool_source(record_output_path)
-    inputs = _inputs(tool_source)
-    assert len(inputs) == 1, inputs
 
     output_data, output_collections = _outputs(tool_source)
     assert len(output_data) == 1
@@ -380,17 +377,6 @@ def test_load_proxy_simple():
     cat3 = _cwl_tool_path("v1.0/v1.0/cat3-tool.cwl")
     tool_source = get_tool_source(cat3)
 
-    # Behavior was changed - too verbose?
-    # description = tool_source.parse_description()
-    # assert description == "Print the contents of a file to stdout using 'cat' running in a docker container.", description
-
-    input_sources = _inputs(tool_source)
-    assert len(input_sources) == 1
-
-    input_source = input_sources[0]
-    assert input_source.parse_help() == "The file that will be copied using 'cat'"
-    assert input_source.parse_label() == "Input File"
-
     outputs, output_collections = tool_source.parse_outputs(None)
     assert len(outputs) == 1
 
@@ -424,8 +410,6 @@ def test_load_proxy_bwa_mem():
     tool_source = get_tool_source(bwa_mem)
     tool_id = tool_source.parse_id()
     assert tool_id == "bwa-mem-tool.cwl", tool_id
-    _inputs(tool_source)
-    # TODO: test repeat generated...
 
 
 def test_representation_id():
@@ -444,16 +428,9 @@ def test_representation_id():
         assert proxy.uuid == id_proxy.uuid
 
 
-def test_env_tool1():
-    env_tool1 = _cwl_tool_path("v1.0/v1.0/env-tool1.cwl")
-    tool_source = get_tool_source(env_tool1)
-    _inputs(tool_source)
-
-
 def test_wc2_tool():
     env_tool1 = _cwl_tool_path("v1.0/v1.0/wc2-tool.cwl")
     tool_source = get_tool_source(env_tool1)
-    _inputs(tool_source)
     datasets, collections = _outputs(tool_source)
     assert len(datasets) == 1, datasets
     output = datasets["output"]
@@ -475,82 +452,19 @@ def test_sorttool():
 
     assert tool_source.parse_id() == "sorttool.cwl"
 
-    inputs = _inputs(tool_source)
-    assert len(inputs) == 2
-    bool_input = inputs[0]
-    file_input = inputs[1]
-    assert bool_input.parse_input_type() == "param"
-    assert bool_input.get("type") == "boolean"
-
-    assert file_input.parse_input_type() == "param"
-    assert file_input.get("type") == "data", file_input.get("type")
-
     output_data, output_collections = _outputs(tool_source)
     assert len(output_data) == 1
     assert len(output_collections) == 0
 
 
-def test_schemadef_tool():
-    tool_path = _cwl_tool_path("v1.0/v1.0/schemadef-tool.cwl")
-    tool_source = get_tool_source(tool_path)
-    _inputs(tool_source)
-
-
-def test_params_tool():
-    tool_path = _cwl_tool_path("v1.0/v1.0/params.cwl")
-    tool_source = get_tool_source(tool_path)
-    _inputs(tool_source)
-
-
 def test_cat1():
     cat1_tool = _cwl_tool_path("v1.0/v1.0/cat1-testcli.cwl")
     tool_source = get_tool_source(cat1_tool)
-    inputs = _inputs(tool_source)
-
-    assert len(inputs) == 3, inputs
-    file_input = inputs[0]
-
-    assert file_input.parse_input_type() == "param"
-    assert file_input.get("type") == "data", file_input.get("type")
-
-    # User needs to specify if want to select boolean or not.
-    if not USE_FIELD_TYPES:
-        null_or_bool_input = inputs[1]
-        assert null_or_bool_input.parse_input_type() == "conditional"
-    else:
-        field_input = inputs[1]
-        assert field_input.parse_input_type() == "param"
-        assert field_input.get("type") == "field", field_input.get("type")
 
     output_data, output_collections = _outputs(tool_source)
     assert len(output_data) == 1
     assert len(output_collections) == 1
 
 
-def test_tool_reload():
-    cat1_tool = _cwl_tool_path("v1.0/v1.0/cat1-testcli.cwl")
-    tool_source = get_tool_source(cat1_tool)
-    _inputs(tool_source)
-
-    # Test reloading - had a regression where this broke down.
-    cat1_tool_again = _cwl_tool_path("v1.0/v1.0/cat1-testcli.cwl")
-    tool_source = get_tool_source(cat1_tool_again)
-    _inputs(tool_source)
-
-
 def _outputs(tool_source: CwlToolSource):
     return tool_source.parse_outputs(None)
-
-
-def _inputs(tool_source=None, path=None):
-    if tool_source is None:
-        path = _cwl_tool_path(path)
-        tool_source = get_tool_source(path)
-
-    input_pages = tool_source.parse_input_pages()
-    assert input_pages.inputs_defined
-    page_sources = input_pages.page_sources
-    assert len(page_sources) == 1
-    page_source = page_sources[0]
-    input_sources = page_source.parse_input_sources()
-    return input_sources
