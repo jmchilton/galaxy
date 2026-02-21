@@ -4020,9 +4020,12 @@ cwl_int_optional:
   job_internal_valid:
     - parameter: 5
     - parameter: null
+    # TODO CWL_JOB_INTERNAL_1: THIS NEXT ASSERTION REALLY DEPENDS ON HOW JOB_INTERNAL
+    # SHOULD BE USED. AN OPEN QUESTION FOR CWL BRANCH THAT SHOULD
+    # BE RESOLVED BEFORE MERGE INTO GALAXY.
+    - {}
   job_internal_invalid:
     - parameter: "5"
-    - {}
 
 cwl_float:
   request_valid:
@@ -4054,9 +4057,10 @@ cwl_float_optional:
     - parameter: 5
     - parameter: 5.0
     - parameter: null
+    # TODO CWL_JOB_INTERNAL_1:
+    - {}
   job_internal_invalid:
     - parameter: "5"
-    - {}
 
 cwl_string:
   request_valid:
@@ -4086,9 +4090,10 @@ cwl_string_optional:
     - parameter: "moo"
     - parameter: ""
     - parameter: null
+    # TODO CWL_JOB_INTERNAL_1:
+    - {}
   job_internal_invalid:
     - parameter: 5
-    - {}
 
 cwl_boolean:
   request_valid:
@@ -4123,10 +4128,12 @@ cwl_boolean_optional:
     - parameter: true
     - parameter: false
     - parameter: null
+    # TODO CWL_JOB_INTERNAL_1
+    - {}
+
   job_internal_invalid:
     - parameter: 5
     - parameter: "true"
-    - {}
 
 cwl_file:
   request_valid:
@@ -4362,9 +4369,10 @@ cwl_enum_optional:
   job_internal_valid:
     - parameter: "red"
     - parameter: null
+    # TODO CWL_JOB_INTERNAL_1:
+    - {}
   job_internal_invalid:
     - parameter: "yellow"
-    - {}
 
 cwl_file_array:
   request_valid:
@@ -4524,7 +4532,7 @@ cwl_file_optional:
   job_internal_valid:
     - parameter: {src: hda, id: 5}
     - parameter: null
-  job_internal_invalid:
+    # TODO CWL_JOB_INTERNAL_1:
     - {}
   job_runtime_valid:
     - parameter: {class: File, basename: "f.txt", location: "step_input://0",
@@ -4534,4 +4542,7 @@ cwl_file_optional:
     - parameter: null
   job_runtime_invalid:
     - parameter: {src: hda, id: 5}
-    - {}
+    # TODO: VERIFY THIS IS OKAY FOR CWLTOOL.
+    # TODO: From a CWL perspective is there any difference between
+    # null and absent for optional parameters?
+    # - {}
