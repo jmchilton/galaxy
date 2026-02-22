@@ -354,6 +354,8 @@ def _ref_to_cwl(value, hda_references, trans, step):
         elif value["src"] == "hdca":
             hdca = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, value["id"])
             return to_cwl(hdca, hda_references=hda_references, step=step)
+        elif value["src"] == "json":
+            return value["value"]
     return value
 
 
@@ -3113,15 +3115,23 @@ class ToolModule(WorkflowModule):
         )
         try:
             # For CWL tools, wrap param_combinations in validated JobInternalToolState
+            # and filter param_combinations to only tool inputs (step-level inputs
+            # used only in when/valueFrom expressions must not reach tool execution).
             validated_param_combinations = None
             if use_cwl_path:
                 validated_param_combinations = []
+                tool_input_names = {p.name for p in tool.parameters}
+                allowed_keys = tool_input_names | {"__when_value__"}
+                filtered_param_combinations = []
                 for slice_dict in param_combinations:
-                    # Strip __when_value__ before validation (not a tool parameter)
-                    validation_dict = {k: v for k, v in slice_dict.items() if k != "__when_value__"}
+                    filtered = {k: v for k, v in slice_dict.items() if k in allowed_keys}
+                    filtered_param_combinations.append(filtered)
+                    validation_dict = {k: v for k, v in filtered.items() if k in tool_input_names}
                     internal_state = JobInternalToolState(validation_dict)
                     internal_state.validate(tool, f"{tool.id} (workflow step)")
                     validated_param_combinations.append(internal_state)
+                param_combinations = filtered_param_combinations
+                param_template = {k: v for k, v in param_template.items() if k in allowed_keys}
 
             mapping_params = MappingParameters(
                 param_template,
