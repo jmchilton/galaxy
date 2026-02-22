@@ -46,11 +46,9 @@ if TYPE_CHECKING:
         HistoryItem,
     )
     from galaxy.structured_app import MinimalApp
-    from galaxy.tools.runtime import (
-        InpDataCollectionsDictT,
-        InpDataDictT,
-        MinimalToolApp,
-    )
+    from galaxy.model import InpDataDictT
+    from galaxy.structured_app import MinimalToolApp
+    from galaxy.tools.runtime import InpDataCollectionsDictT
 
 
 def _parse_scalar(content: str, item_type_param) -> Any:
@@ -88,7 +86,9 @@ def setup_for_cwl_runtimeify(
         app, compute_environment, input_datasets, input_dataset_collections
     )
 
-    hdas_by_id = {d.id: d for d in input_datasets.values() if d is not None}
+    hdas_by_id = {
+        d.id: d for d in input_datasets.values() if d is not None and isinstance(d, HistoryDatasetAssociation)
+    }
     hdcas_by_id: dict[int, HistoryDatasetCollectionAssociation] = {}
     if input_dataset_collections:
         for value in input_dataset_collections.values():
@@ -163,9 +163,12 @@ def setup_for_cwl_runtimeify(
             fields_by_name = {f.name: f for f in parameter.fields}
             result = {}
             for e in elements:
-                field_param = fields_by_name.get(e.element_identifier)
+                identifier = e.element_identifier
+                if identifier is None:
+                    continue
+                field_param = fields_by_name.get(identifier)
                 if field_param is not None:
-                    result[e.element_identifier] = _adapt_element_hda(e.element_object, field_param)
+                    result[identifier] = _adapt_element_hda(e.element_object, field_param)
             return result
         else:
             raise ValueError(f"Unexpected parameter type for CWL collection expansion: {type(parameter)}")

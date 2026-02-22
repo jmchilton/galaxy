@@ -301,7 +301,7 @@ def build_cwl_input_dict(
     # Fill defaults from step inputs
     for step_input in step.inputs:
         name = step_input.name
-        if name not in cwl_input_dict and step_input.default_value is not None:
+        if name is not None and name not in cwl_input_dict and step_input.default_value is not None:
             cwl_input_dict[name] = _resolve_cwl_default(step_input.default_value, trans, progress)
 
     return cwl_input_dict
@@ -392,10 +392,10 @@ def evaluate_cwl_value_from_expressions(
     for key, value in cwl_input_dict.items():
         step_state[key] = _ref_to_cwl(value, hda_references, trans, step)
 
-    # Evaluate each valueFrom expression
+    # Evaluate each valueFrom expression (value_from is str at runtime via JSONType)
     for key, value_from in value_from_map.items():
         context = step_state.get(key)
-        result = do_eval(value_from, step_state, context=context)
+        result = do_eval(str(value_from), step_state, context=context)
         cwl_input_dict[key] = _cwl_result_to_ref(result, hda_references, progress)
 
     return cwl_input_dict
@@ -2915,7 +2915,7 @@ class ToolModule(WorkflowModule):
                 if step.when_expression and when_value is not False:
                     hda_references: list[model.HistoryDatasetAssociation] = []
                     step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in slice_dict.items()}
-                    when_value = do_eval(step.when_expression, step_state)
+                    when_value = do_eval(str(step.when_expression), step_state)
                     when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
                 if when_value is not None:
                     slice_dict["__when_value__"] = when_value

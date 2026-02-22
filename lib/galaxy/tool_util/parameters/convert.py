@@ -526,11 +526,15 @@ def _decode_cwl_any(value, decode_fn):
     if _is_dataset_ref(value):
         return decode_fn(value)
     if isinstance(value, list):
-        decoded = [_decode_cwl_any(v, decode_fn) for v in value]
-        return decoded if any(d is not VISITOR_NO_REPLACEMENT for d in decoded) else VISITOR_NO_REPLACEMENT
+        decoded_list = [_decode_cwl_any(v, decode_fn) for v in value]
+        return decoded_list if any(d is not VISITOR_NO_REPLACEMENT for d in decoded_list) else VISITOR_NO_REPLACEMENT
     if isinstance(value, dict):
-        decoded = {k: _decode_cwl_any(v, decode_fn) for k, v in value.items()}
-        return decoded if any(v is not VISITOR_NO_REPLACEMENT for v in decoded.values()) else VISITOR_NO_REPLACEMENT
+        decoded_dict = {k: _decode_cwl_any(v, decode_fn) for k, v in value.items()}
+        return (
+            decoded_dict
+            if any(v is not VISITOR_NO_REPLACEMENT for v in decoded_dict.values())
+            else VISITOR_NO_REPLACEMENT
+        )
     return VISITOR_NO_REPLACEMENT
 
 
@@ -747,26 +751,26 @@ def _runtimeify_cwl_any(value, cwl_adapt):
         return cwl_adapt(CwlFileParameterModel(name="_any"), value)
     if isinstance(value, list):
         changed = False
-        adapted = []
+        adapted_list: list[Any] = []
         for v in value:
             a = _runtimeify_cwl_any(v, cwl_adapt)
             if a is not VISITOR_NO_REPLACEMENT:
-                adapted.append(a)
+                adapted_list.append(a)
                 changed = True
             else:
-                adapted.append(v)
-        return adapted if changed else VISITOR_NO_REPLACEMENT
+                adapted_list.append(v)
+        return adapted_list if changed else VISITOR_NO_REPLACEMENT
     if isinstance(value, dict):
         changed = False
-        adapted = {}
+        adapted_dict: dict[str, Any] = {}
         for k, v in value.items():
             a = _runtimeify_cwl_any(v, cwl_adapt)
             if a is not VISITOR_NO_REPLACEMENT:
-                adapted[k] = a
+                adapted_dict[k] = a
                 changed = True
             else:
-                adapted[k] = v
-        return adapted if changed else VISITOR_NO_REPLACEMENT
+                adapted_dict[k] = v
+        return adapted_dict if changed else VISITOR_NO_REPLACEMENT
     return VISITOR_NO_REPLACEMENT
 
 
