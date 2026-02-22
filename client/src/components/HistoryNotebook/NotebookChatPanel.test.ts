@@ -260,4 +260,69 @@ describe("NotebookChatPanel", () => {
             expect(store.saveNotebook).not.toHaveBeenCalled();
         });
     });
+
+    describe("Chat persistence", () => {
+        it("stores exchange ID in store after first submit", async () => {
+            mockPOST.mockResolvedValue({
+                data: { response: "Done.", exchange_id: 77, agent_response: null },
+                error: null,
+            });
+            const wrapper = mountComponent();
+            await flushPromises();
+            const store = useHistoryNotebookStore();
+
+            const textarea = wrapper.find("textarea");
+            await textarea.setValue("hello");
+            await wrapper.find(".send-button").trigger("click");
+            await flushPromises();
+
+            expect(store.setCurrentChatExchangeId).toHaveBeenCalledWith(NOTEBOOK_ID, 77);
+        });
+
+        it("clears stored exchange ID on new conversation", async () => {
+            const wrapper = mountComponent();
+            await flushPromises();
+            const store = useHistoryNotebookStore();
+
+            await wrapper.find('[data-description="new conversation button"]').trigger("click");
+            await flushPromises();
+
+            expect(store.setCurrentChatExchangeId).toHaveBeenCalledWith(NOTEBOOK_ID, null);
+        });
+
+        it("checks store for cached exchange ID on mount", async () => {
+            const store = useHistoryNotebookStore();
+            vi.mocked(store.getCurrentChatExchangeId).mockReturnValue(55);
+            // Mock the exchange messages load
+            mockGET.mockResolvedValue({
+                data: [
+                    { role: "user", content: "hello", timestamp: null },
+                    { role: "assistant", content: "hi", agent_type: "notebook_assistant", timestamp: null },
+                ],
+                error: null,
+            });
+
+            const wrapper = mountComponent();
+            await flushPromises();
+
+            expect(store.getCurrentChatExchangeId).toHaveBeenCalledWith(NOTEBOOK_ID);
+            // Should have loaded 2 messages from the cached conversation
+            const cells = wrapper.findAllComponents(ChatMessageCell);
+            expect(cells.length).toBe(2);
+        });
+
+        it("falls back to API when stored exchange ID returns empty messages", async () => {
+            const store = useHistoryNotebookStore();
+            vi.mocked(store.getCurrentChatExchangeId).mockReturnValue(999);
+            // All GET calls return empty — stored exchange has no messages, no notebook history
+            mockGET.mockResolvedValue({ data: [], error: null });
+
+            const wrapper = mountComponent();
+            await flushPromises();
+
+            // Stored ID yielded nothing, API fallback yielded nothing — welcome message shown
+            const cells = wrapper.findAllComponents(ChatMessageCell);
+            expect(cells.length).toBe(1);
+        });
+    });
 });
