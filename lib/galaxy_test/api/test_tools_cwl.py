@@ -5,6 +5,7 @@ from typing import Any
 from galaxy_test.api._framework import ApiTestCase
 from galaxy_test.base.populators import (
     CwlPopulator,
+    CwlRun,
     CwlToolRun,
     DatasetPopulator,
     skip_without_tool,
@@ -358,7 +359,7 @@ class TestCwlTools(ApiTestCase):
         history_id: str,
         inputs: dict[str, Any],
         assert_ok: bool = False,
-    ) -> CwlToolRun:
+    ) -> CwlRun:
         """Run a CWL tool via the tool request API (POST /api/jobs)."""
         from galaxy_test.base.populators import FailedCwlToolRun
 

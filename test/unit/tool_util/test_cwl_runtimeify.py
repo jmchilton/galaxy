@@ -12,12 +12,12 @@ from galaxy.tool_util.parameters import (
 from galaxy.tool_util.parameters.convert import runtimeify
 from galaxy.tool_util_models.parameters import (
     DataInternalJson,
-    DataRequestInternalHda,
+    DataRequestInternalDereferencedT,
 )
 from galaxy.tool_util.unittest_utils.parameters import parameter_bundle_for_file
 
 
-def _mock_adapt_dataset(value: DataRequestInternalHda) -> DataInternalJson:
+def _mock_adapt_dataset(value: DataRequestInternalDereferencedT) -> DataInternalJson:
     """Mock adapt_dataset returning valid DataInternalJson for any HDA ref."""
     return DataInternalJson(
         **{

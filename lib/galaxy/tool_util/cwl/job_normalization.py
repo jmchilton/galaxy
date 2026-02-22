@@ -15,7 +15,10 @@ from cwltool.utils import (
     visit_class,
 )
 
-from galaxy.tool_util_models.parameters import ToolParameterBundle
+from galaxy.tool_util_models.parameters import (
+    CwlRecordParameterModel,
+    ToolParameterBundle,
+)
 
 # CWL meta-fields in job dicts that are not tool parameters
 CWL_JOB_META_FIELDS = {"cwl:requirements", "cwl:defaults"}
@@ -70,7 +73,7 @@ def _fill_defaults(container: dict, parameters: List, only_nullable: bool = Fals
             _fill_value(container[param.name], param, only_nullable=only_nullable)
 
 
-def _match_record_variant(value: dict, record_members: List) -> Optional[object]:
+def _match_record_variant(value: dict, record_members: List) -> Optional[CwlRecordParameterModel]:
     """Pick the record variant matching value via single-symbol enum discriminator.
 
     Scans each record's fields for a cwl_enum field with exactly 1 symbol.

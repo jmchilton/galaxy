@@ -203,6 +203,10 @@ class BaseToolParameterModelDefinition(ToolSourceBaseModel):
     ]
     parameter_type: str
 
+    @property
+    @abstractmethod
+    def py_type(self) -> Type: ...
+
     @abstractmethod
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         """Return info needed to build Pydantic model at runtime for validation."""
@@ -2182,6 +2186,8 @@ class SectionParameterModel(BaseGalaxyToolParameterModelDefinition):
 
 class CwlNullParameterModel(BaseToolParameterModelDefinition):
     parameter_type: Literal["cwl_null"] = "cwl_null"
+    # these parameters seem to default to null so maybe this should be True
+    has_default: bool = False
 
     @property
     def py_type(self) -> Type:
@@ -2567,7 +2573,7 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
         return self._hdca_or_record(state_representation)
 
     def _record_type_for_state(self, state_representation: StateRepresentationT) -> Type:
-        kwd = {}
+        kwd: dict[str, Any] = {}
         for field_param in self.fields:
             name = safe_field_name(field_param.name)
             alias = field_param.name if field_param.name != name else None

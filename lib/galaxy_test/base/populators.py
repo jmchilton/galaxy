@@ -3295,7 +3295,7 @@ class CwlPopulator:
         job: dict,
         history_id: str,
         assert_ok: bool = True,
-    ) -> CwlToolRun:
+    ) -> CwlRun:
         galaxy_tool_id: Optional[str] = tool_id
         tool_uuid = None
 
@@ -3311,8 +3311,9 @@ class CwlPopulator:
                 galaxy_tool_id = None
                 tool_uuid = dynamic_tool["uuid"]
 
+        assert galaxy_tool_id is not None or tool_uuid is not None
         tool_request_response = self.dataset_populator.tool_request_raw(
-            galaxy_tool_id, job, history_id, tool_uuid=tool_uuid
+            galaxy_tool_id or "", job, history_id, tool_uuid=tool_uuid
         )
         if assert_ok:
             api_asserts.assert_status_code_is(tool_request_response, 200)

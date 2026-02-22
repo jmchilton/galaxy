@@ -13,6 +13,7 @@ from typing import (
     Optional,
     TYPE_CHECKING,
     Union,
+    cast,
 )
 
 from packaging.version import Version
@@ -96,7 +97,10 @@ from galaxy.util.tree_dict import TreeDict
 from galaxy.work.context import WorkRequestContext
 
 if TYPE_CHECKING:
-    from galaxy.tools import Tool
+    from galaxy.tools import (
+        CwlCommandBindingTool,
+        Tool,
+    )
 
 log = logging.getLogger(__name__)
 CWL_TOOL_TYPES = ("galactic_cwl", "cwl")
@@ -1239,7 +1243,8 @@ class CwlToolEvaluator(UserToolEvaluator):
         input_json = {k: v for k, v in input_json.items() if v != ""}
 
         # Create CWL job proxy and extract command
-        cwl_job_proxy = self.tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
+        cwl_tool = cast("CwlCommandBindingTool", self.tool)
+        cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
         cwl_command_line = cwl_job_proxy.command_line
         cwl_stdin = cwl_job_proxy.stdin
         cwl_stdout = cwl_job_proxy.stdout
@@ -1282,7 +1287,7 @@ class RemoteToolEvaluator(ToolEvaluator):
 
     materialize_datasets = True
 
-    def execute_tool_hooks(self, inp_data, out_data, incoming):
+    def execute_tool_hooks(self, inp_data, out_data, incoming, validated_tool_state=None):
         # These have already run while preparing the job
         pass
 
