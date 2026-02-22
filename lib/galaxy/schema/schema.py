@@ -3888,7 +3888,7 @@ class ChatPayload(Model):
         title="Exchange ID",
         description="The ID of an existing chat exchange to continue.",
     )
-    notebook_id: Optional[int] = Field(
+    notebook_id: Optional[DecodedDatabaseIdField] = Field(
         default=None,
         title="Notebook ID",
         description="Scope this chat exchange to a history notebook.",
