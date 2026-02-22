@@ -60,6 +60,14 @@ def _parse_scalar(content: str, item_type_param) -> Any:
     elif isinstance(item_type_param, CwlBooleanParameterModel):
         return content.lower() in ("true", "1")
     elif isinstance(item_type_param, CwlStringParameterModel):
+        # Content stored via ObjectUploadTarget is JSON-encoded (expression.json),
+        # so strings are wrapped in quotes with escape sequences. Unwrap if valid.
+        try:
+            decoded = json.loads(content)
+            if isinstance(decoded, str):
+                return decoded
+        except (json.JSONDecodeError, ValueError):
+            pass
         return content
     else:
         # For other types (Any, Union, etc.), try JSON parse, fall back to string
