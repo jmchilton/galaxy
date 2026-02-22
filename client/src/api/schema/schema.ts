@@ -8402,7 +8402,7 @@ export interface components {
              * Notebook ID
              * @description Scope this chat exchange to a history notebook.
              */
-            notebook_id?: number | null;
+            notebook_id?: string | null;
             /**
              * Query
              * @description The query to be sent to the chatbot.
@@ -26686,7 +26686,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
-                notebook_id: number;
+                notebook_id: string;
             };
             cookie?: never;
         };
