@@ -24176,6 +24176,11 @@ export interface components {
             content: string;
             /** @default markdown */
             content_format: components["schemas"]["NotebookContentFormat"];
+            /**
+             * Edit source
+             * @description Source of edit: 'user' or 'agent'.
+             */
+            edit_source?: string | null;
             /** Title */
             title?: string | null;
         };
