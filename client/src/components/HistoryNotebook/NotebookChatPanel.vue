@@ -236,11 +236,17 @@ async function sendFeedback(messageId: string, value: "up" | "down") {
 }
 
 function getEditProposal(msg: ChatMessage): EditProposal | null {
-    const proposal = msg.agentResponse?.metadata?.edit_proposal as EditProposal | undefined;
-    if (!proposal || !proposal.mode) {
+    const meta = msg.agentResponse?.metadata;
+    const editMode = meta?.edit_mode as EditProposal["mode"] | undefined;
+    if (!editMode) {
         return null;
     }
-    return proposal;
+    return {
+        mode: editMode,
+        content: (meta?.content as string) || (meta?.new_section_content as string) || "",
+        target_section_heading: meta?.target_section_heading as string | undefined,
+        new_section_content: meta?.new_section_content as string | undefined,
+    };
 }
 
 function isProposalVisible(msg: ChatMessage): boolean {
@@ -273,13 +279,13 @@ async function applyFullReplacement(msg: ChatMessage) {
         return;
     }
     store.updateContent(proposal.content);
-    await store.saveNotebook();
+    await store.saveNotebook("agent");
     dismissedProposals.value.add(msg.id);
 }
 
 async function applySectionPatched(patchedContent: string, msg: ChatMessage) {
     store.updateContent(patchedContent);
-    await store.saveNotebook();
+    await store.saveNotebook("agent");
     dismissedProposals.value.add(msg.id);
 }
 

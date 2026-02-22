@@ -74,13 +74,14 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
 
     agent_type = AgentType.NOTEBOOK_ASSISTANT
 
-    def __init__(self, deps: GalaxyAgentDependencies, history_id: int = 0, notebook_content: str = ""):
-        self.history_id = history_id
-        self.notebook_content = notebook_content
+    def __init__(self, deps: GalaxyAgentDependencies):
+        self.history_id: int = 0
+        self.notebook_content: str = ""
         super().__init__(deps)
 
     def _create_agent(self) -> Agent[GalaxyAgentDependencies, Any]:
         """Create agent with history tools and edit output types."""
+        agent_self = self
         if self._supports_structured_output():
             agent = Agent(
                 self._get_model(),
@@ -98,18 +99,21 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
                     ),
                     str,  # Conversational response (no edit)
                 ],
-                system_prompt=self.get_system_prompt(),
             )
         else:
             agent = Agent(
                 self._get_model(),
                 deps_type=GalaxyAgentDependencies,
-                system_prompt=self._get_simple_system_prompt(),
             )
 
-        # Pre-bind history_id for tool closures
-        history_id = self.history_id
+        # Dynamic system prompt — reads self.notebook_content at call time
+        @agent.system_prompt
+        def _system_prompt() -> str:
+            if agent_self._supports_structured_output():
+                return agent_self.get_system_prompt()
+            return agent_self._get_simple_system_prompt()
 
+        # Tools reference agent_self.history_id — set in process() from context before each run
         @agent.tool
         async def list_history_datasets(
             ctx: RunContext[GalaxyAgentDependencies],
@@ -126,7 +130,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
             """
             return await _list_history_items(
                 ctx.deps.trans.sa_session,
-                history_id,
+                agent_self.history_id,
                 offset=offset,
                 limit=limit,
                 include_deleted=include_deleted,
@@ -143,7 +147,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
             Returns name, format, state, size, metadata, creation time, and the
             tool that created it. Works for both datasets and collections.
             """
-            return await _get_dataset_info(ctx.deps.trans.sa_session, history_id, hid)
+            return await _get_dataset_info(ctx.deps.trans.sa_session, agent_self.history_id, hid)
 
         @agent.tool
         async def get_dataset_peek(
@@ -155,7 +159,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
             For tabular data shows column headers and sample rows. For text data
             shows the first lines. Not available for binary formats.
             """
-            return await _get_dataset_peek(ctx.deps.trans.sa_session, history_id, hid)
+            return await _get_dataset_peek(ctx.deps.trans.sa_session, agent_self.history_id, hid)
 
         @agent.tool
         async def get_collection_structure(
@@ -170,7 +174,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
             """
             return await _get_collection_structure(
                 ctx.deps.trans.sa_session,
-                history_id,
+                agent_self.history_id,
                 hid,
                 max_elements=max_elements,
             )
@@ -186,8 +190,11 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
 
     async def process(self, query: str, context: Optional[dict[str, Any]] = None) -> AgentResponse:
         """Process a notebook editing or history question."""
+        ctx = context or {}
+        self.history_id = ctx.get("history_id", 0)
+        self.notebook_content = ctx.get("notebook_content", "")
         try:
-            enhanced_query = self._prepare_prompt(query, context or {})
+            enhanced_query = self._prepare_prompt(query, ctx)
             result = await self._run_with_retry(enhanced_query)
 
             # Extract the result data

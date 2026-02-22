@@ -164,7 +164,7 @@ class ChatAPI:
         if payload is not None and hasattr(payload, "exchange_id") and payload.exchange_id:
             exchange_id = payload.exchange_id
 
-        # Check for notebook scope
+        # Check for notebook scope and populate agent context
         notebook_id = None
         if payload is not None and hasattr(payload, "notebook_id") and payload.notebook_id:
             notebook_id = payload.notebook_id
@@ -174,6 +174,21 @@ class ChatAPI:
             if HAS_AGENTS:
                 # Build context with conversation history
                 full_context: dict[str, Any] = query_context.copy() if query_context else {}
+
+                # If notebook-scoped, look up history_id + content for agent
+                if notebook_id:
+                    from galaxy.model import HistoryNotebook
+
+                    notebook = trans.sa_session.get(HistoryNotebook, notebook_id)
+                    if notebook:
+                        full_context["history_id"] = notebook.history_id
+                        if notebook.latest_revision_id:
+                            from galaxy.model import HistoryNotebookRevision
+
+                            rev = trans.sa_session.get(HistoryNotebookRevision, notebook.latest_revision_id)
+                            full_context["notebook_content"] = rev.content if rev else ""
+                        else:
+                            full_context["notebook_content"] = ""
 
                 # If we have an exchange_id, ALWAYS load conversation history from database (source of truth)
                 if exchange_id:

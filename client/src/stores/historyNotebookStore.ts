@@ -123,7 +123,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         }
     }
 
-    async function saveNotebook() {
+    async function saveNotebook(editSource?: string) {
         if (!historyId.value || !currentNotebook.value || !isDirty.value) {
             return;
         }
@@ -134,6 +134,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
                 content: currentContent.value,
                 content_format: "markdown",
                 title: currentTitle.value || undefined,
+                edit_source: editSource,
             };
             const data = await updateHistoryNotebook(historyId.value, currentNotebook.value.id, payload);
             currentNotebook.value = data;

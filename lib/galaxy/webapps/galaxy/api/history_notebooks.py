@@ -182,7 +182,7 @@ class FastAPIHistoryNotebooks:
         if notebook.history_id != history.id:
             raise ObjectNotFound(f"Notebook {notebook_id} not found in history {history_id}")
 
-        self.manager.save_new_revision(trans, notebook, payload)
+        self.manager.save_new_revision(trans, notebook, payload, edit_source=payload.edit_source or "user")
 
         rval = notebook.to_dict()
         rval.update(_latest_revision_fields(notebook))
