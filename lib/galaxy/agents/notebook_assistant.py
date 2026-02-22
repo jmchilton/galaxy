@@ -41,6 +41,91 @@ from .history_tools import (
 log = logging.getLogger(__name__)
 
 
+def _build_directive_reference() -> str:
+    """Generate directive reference from the authoritative source in markdown_parse.py.
+
+    Keeps the prompt in sync with the actual set of valid directives automatically.
+    """
+    from galaxy.managers.markdown_parse import (
+        DynamicArguments,
+        EMBED_CAPABLE_DIRECTIVES,
+        VALID_ARGUMENTS,
+    )
+
+    # Addressing args hidden from display — they're the primary key shown in the signature
+    DATASET_ADDRESSING = {
+        "hid",
+        "history_dataset_id",
+        "history_dataset_collection_id",
+        "input",
+        "output",
+        "invocation_id",
+    }
+
+    def _primary_and_hidden(name):
+        if name.startswith("history_dataset_"):
+            return "hid", DATASET_ADDRESSING
+        if name.startswith("workflow_"):
+            return "workflow_id", {"workflow_id"}
+        if name.startswith("invocation_"):
+            return "invocation_id", {"invocation_id"}
+        if name == "history_link":
+            return "history_id", {"history_id"}
+        if name.startswith(("job_", "tool_")):
+            return "job_id", {"job_id"}
+        return None, set()
+
+    def _format(name, args, show_collapse=True):
+        primary, hidden = _primary_and_hidden(name)
+        sig = f"{name}({primary}=N)" if primary else f"{name}()"
+        visible = sorted(a for a in args if a not in hidden)
+        if show_collapse:
+            visible.append("collapse")
+        tag = "  [inline-capable]" if name in EMBED_CAPABLE_DIRECTIVES else ""
+        if visible:
+            return f"- {sig} — args: {', '.join(visible)}{tag}"
+        return f"- {sig}{tag}"
+
+    def _matching(pred):
+        return [n for n in sorted(VALID_ARGUMENTS) if pred(n) and not isinstance(VALID_ARGUMENTS[n], DynamicArguments)]
+
+    categories = [
+        (
+            "Dataset Directives (use hid=N to reference history items)",
+            lambda n: n.startswith("history_dataset_"),
+            True,
+            False,
+        ),
+        (
+            "Workflow & Invocation Directives",
+            lambda n: n.startswith(("workflow_", "invocation_")) or n == "history_link",
+            True,
+            False,
+        ),
+        ("Job Directives", lambda n: n.startswith(("job_", "tool_")), True, False),
+        ("Utility Directives (no arguments)", lambda n: n.startswith("generate_"), False, False),
+        (
+            "Instance Link Directives (no arguments, all inline-capable)",
+            lambda n: n.startswith("instance_"),
+            False,
+            True,
+        ),
+    ]
+
+    sections = []
+    for title, pred, show_collapse, grouped in categories:
+        names = _matching(pred)
+        if not names:
+            continue
+        if grouped:
+            sections.append(f"### {title}\n- " + ", ".join(f"{n}()" for n in names))
+        else:
+            lines = [_format(n, VALID_ARGUMENTS[n], show_collapse) for n in names]
+            sections.append(f"### {title}\n" + "\n".join(lines))
+
+    return "\n\n".join(sections)
+
+
 # --- Structured output types ---
 # Using Literal discriminators (not Enum) to avoid $defs in JSON schema (vLLM compat).
 
@@ -182,11 +267,12 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
         return agent
 
     def get_system_prompt(self) -> str:
-        """Load system prompt and inject notebook content."""
+        """Load system prompt and inject notebook content and directive reference."""
         prompt_path = Path(__file__).parent / "prompts" / "notebook_assistant.md"
         template = prompt_path.read_text()
         content = self.notebook_content or "(empty document)"
-        return template.replace("{notebook_content}", content)
+        directive_ref = _build_directive_reference()
+        return template.replace("{notebook_content}", content).replace("{directive_reference}", directive_ref)
 
     async def process(self, query: str, context: Optional[dict[str, Any]] = None) -> AgentResponse:
         """Process a notebook editing or history question."""
@@ -251,6 +337,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
     def _get_simple_system_prompt(self) -> str:
         """Fallback prompt for models without structured output."""
         content = self.notebook_content or "(empty document)"
+        directive_ref = _build_directive_reference()
         return f"""You are a Galaxy History Notebook editing assistant. Help users edit their
 markdown notebooks that document scientific analysis workflows.
 
@@ -264,6 +351,11 @@ TARGET_SECTION: ## Section Name
 Then provide the new content after a blank line.
 
 For questions about the history data, use the available tools to look up datasets.
+
+Galaxy markdown uses block directives (```galaxy fenced blocks with one directive each)
+and inline directives (${{galaxy directive_name(args)}}) for embed-capable directives.
+
+{directive_ref}
 
 Current notebook content:
 {content}"""

@@ -38,6 +38,104 @@ If the user is asking a question (not requesting an edit), respond conversationa
 - Maintain the document's existing heading structure unless reorganization is requested
 - Do not fabricate dataset references or analysis results — verify with tools
 - Keep scientific content accurate and appropriately hedged
+- The `collapse` argument is accepted by all block directives to make the content collapsible
+
+## Galaxy Markdown Directive Syntax
+
+Galaxy notebooks embed live content using special directives. Two syntax forms:
+
+**Block syntax** — one directive per fenced block:
+
+    ```galaxy
+    history_dataset_as_table(hid=3, compact=true)
+    ```
+
+**Inline syntax** — for embed-capable directives only, within prose:
+
+    The alignment produced ${galaxy history_dataset_name(hid=5)}.
+
+Use block syntax for visual embeds (images, tables, dataset cards). Use inline syntax for text-level references (names, types, timestamps) woven into sentences.
+
+## Directive Descriptions
+
+### Dataset Directives (reference history items by hid=N)
+
+| Directive                            | Renders                            | When to use                                                                   |
+| ------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------- |
+| `history_dataset_display`            | Interactive dataset card           | Default way to show a dataset                                                 |
+| `history_dataset_as_image`           | Embedded image [inline-capable]    | Plots, charts, visual outputs                                                 |
+| `history_dataset_as_table`           | Formatted table                    | Tabular results; supports `compact`, `title`, `footer`, `show_column_headers` |
+| `history_dataset_embedded`           | Raw content (datatype-dependent)   | Small text/HTML outputs                                                       |
+| `history_dataset_collection_display` | Collection browser                 | Paired/list collections                                                       |
+| `history_dataset_index`              | Composite file listing             | Multi-file composite datasets                                                 |
+| `history_dataset_info`               | Dataset "info" metadata            | Tool output metadata                                                          |
+| `history_dataset_link`               | Download link                      | Inline reference with custom `label`                                          |
+| `history_dataset_name`               | Dataset name text [inline-capable] | Inline references in prose                                                    |
+| `history_dataset_peek`               | First rows/lines preview           | Showing data snippets                                                         |
+| `history_dataset_type`               | Datatype string [inline-capable]   | Inline references in prose                                                    |
+
+### Workflow & Invocation Directives
+
+| Directive            | Renders                              | When to use                  |
+| -------------------- | ------------------------------------ | ---------------------------- |
+| `workflow_display`   | Workflow step description            | Documenting the pipeline     |
+| `workflow_image`     | SVG workflow diagram                 | Visual workflow summary      |
+| `workflow_license`   | License info [inline-capable]        | Attribution sections         |
+| `invocation_inputs`  | Workflow run input summary           | Documenting analysis inputs  |
+| `invocation_outputs` | Workflow run output summary          | Documenting analysis outputs |
+| `invocation_time`    | Execution timestamp [inline-capable] | Recording when analysis ran  |
+| `history_link`       | History import link                  | Sharing/reproducibility      |
+
+### Job Directives
+
+| Directive        | Renders               | When to use                     |
+| ---------------- | --------------------- | ------------------------------- |
+| `job_metrics`    | Runtime metrics table | Performance documentation       |
+| `job_parameters` | Tool parameters table | Documenting exact tool settings |
+| `tool_stdout`    | Tool standard output  | Capturing tool logs             |
+| `tool_stderr`    | Tool standard error   | Capturing warnings/errors       |
+
+### Utility & Instance Directives (no arguments)
+
+| Directive                      | Renders                                                 |
+| ------------------------------ | ------------------------------------------------------- |
+| `generate_time`                | Current timestamp [inline-capable]                      |
+| `generate_galaxy_version`      | Galaxy version [inline-capable]                         |
+| `instance_*_link` (7 variants) | Links to Galaxy instance resources [all inline-capable] |
+
+## Directive Examples
+
+Referencing datasets in prose:
+
+    The alignment produced ${galaxy history_dataset_name(hid=5)}, a ${galaxy history_dataset_type(hid=5)} file.
+
+Embedding a plot:
+
+    ```galaxy
+    history_dataset_as_image(hid=7)
+    ```
+
+Embedding a results table:
+
+    ```galaxy
+    history_dataset_as_table(hid=3, compact=true, show_column_headers=true, title="Top Variants")
+    ```
+
+Showing the workflow diagram:
+
+    ```galaxy
+    workflow_image(workflow_id=42)
+    ```
+
+Documenting tool parameters:
+
+    ```galaxy
+    job_parameters(job_id=15)
+    ```
+
+## Full Directive Reference (auto-generated)
+
+{directive_reference}
 
 ## Current Notebook Content
 
