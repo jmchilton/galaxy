@@ -66,8 +66,8 @@ onMounted(async () => {
 async function loadNotebookChat() {
     try {
         // notebook-scoped chat history — schema not yet regenerated, use raw fetch
-        const { data, error } = await GalaxyApi().GET("/api/chat/history" as any, {
-            params: { query: { limit: 1, notebook_id: props.notebookId } as any },
+        const { data, error } = await GalaxyApi().GET("/api/chat/notebook/{notebook_id}/history" as any, {
+            params: { path: { notebook_id: props.notebookId }, query: { limit: 1 } } as any,
         });
 
         if (data && !error && (data as any[]).length > 0) {

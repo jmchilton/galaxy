@@ -301,7 +301,7 @@ class ChatAPI:
     @router.get("/api/chat/notebook/{notebook_id}/history", unstable=True)
     def get_notebook_chat_history(
         self,
-        notebook_id: int,
+        notebook_id: DecodedDatabaseIdField,
         limit: int = Query(default=50, description="Maximum number of chats to return"),
         trans: ProvidesUserContext = DependsOnTrans,
         user: User = DependsOnUser,
