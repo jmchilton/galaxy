@@ -16,6 +16,7 @@ import { useRouter } from "vue-router/composables";
 
 import { getGalaxyInstance } from "@/app";
 import type { RouterPushOptions } from "@/components/History/Content/router-push-options";
+import { useConfig } from "@/composables/config";
 import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 import { useHistoryStore } from "@/stores/historyStore";
 
@@ -37,6 +38,9 @@ const props = defineProps<{
 const router = useRouter();
 const store = useHistoryNotebookStore();
 const historyStore = useHistoryStore();
+const { config } = useConfig();
+
+const agentsAvailable = computed(() => !!config.value?.llm_api_configured);
 
 const _historyName = computed(() => {
     const history = historyStore.getHistoryById(props.historyId);
@@ -273,6 +277,7 @@ function handleRevisionRestore(revisionId: string) {
                     Preview
                 </BButton>
                 <BButton
+                    v-if="agentsAvailable"
                     :variant="store.showChatPanel ? 'primary' : 'outline-primary'"
                     size="sm"
                     class="mr-2"

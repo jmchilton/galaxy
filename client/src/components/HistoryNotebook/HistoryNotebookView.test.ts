@@ -4,6 +4,7 @@ import { shallowMount, type Wrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import type { Pinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ref } from "vue";
 
 import { useHistoryNotebookStore } from "@/stores/historyNotebookStore";
 
@@ -16,6 +17,15 @@ import NotebookRevisionList from "./NotebookRevisionList.vue";
 import NotebookRevisionView from "./NotebookRevisionView.vue";
 import ClickToEdit from "@/components/ClickToEdit.vue";
 import Markdown from "@/components/Markdown/Markdown.vue";
+
+const mockConfig = ref<any>({ llm_api_configured: true });
+
+vi.mock("@/composables/config", () => ({
+    useConfig: vi.fn(() => ({
+        config: mockConfig,
+        isConfigLoaded: ref(true),
+    })),
+}));
 
 const mockPush = vi.fn();
 vi.mock("vue-router/composables", () => ({
@@ -86,6 +96,7 @@ function setupListViewStore(notebooks: any[] = []) {
 describe("HistoryNotebookView", () => {
     beforeEach(() => {
         pinia = createTestingPinia({ createSpy: vi.fn });
+        mockConfig.value = { llm_api_configured: true };
         vi.clearAllMocks();
     });
 
@@ -742,6 +753,33 @@ describe("HistoryNotebookView", () => {
             await flushPromises();
 
             expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(false);
+        });
+
+        it("hides Chat button when llm_api_configured is false", async () => {
+            setupEditorView();
+            mockConfig.value = { llm_api_configured: false };
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.CHAT_BUTTON).exists()).toBe(false);
+        });
+
+        it("shows Chat button when llm_api_configured is true", async () => {
+            setupEditorView();
+            mockConfig.value = { llm_api_configured: true };
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.CHAT_BUTTON).exists()).toBe(true);
+        });
+
+        it("hides Chat button when config is null (not yet loaded)", async () => {
+            setupEditorView();
+            mockConfig.value = null;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.CHAT_BUTTON).exists()).toBe(false);
         });
 
         it("passes notebook props to NotebookChatPanel", async () => {
