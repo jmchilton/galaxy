@@ -42,6 +42,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     const isLoadingRevision = ref(false);
     const isReverting = ref(false);
     const showRevisions = ref(false);
+    const showChatPanel = ref(false);
 
     const hasNotebooks = computed(() => notebooks.value.length > 0);
     const hasCurrentNotebook = computed(() => currentNotebook.value !== null);
@@ -189,6 +190,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         currentContent.value = "";
         originalTitle.value = "";
         currentTitle.value = "";
+        showChatPanel.value = false;
         clearRevisionState();
     }
 
@@ -293,8 +295,17 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     function toggleRevisions() {
         showRevisions.value = !showRevisions.value;
         if (showRevisions.value) {
+            showChatPanel.value = false;
             loadRevisions();
         } else {
+            selectedRevision.value = null;
+        }
+    }
+
+    function toggleChatPanel() {
+        showChatPanel.value = !showChatPanel.value;
+        if (showChatPanel.value && showRevisions.value) {
+            showRevisions.value = false;
             selectedRevision.value = null;
         }
     }
@@ -325,6 +336,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         isSaving.value = false;
         error.value = null;
         historyId.value = null;
+        showChatPanel.value = false;
         clearRevisionState();
     }
 
@@ -364,6 +376,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         isLoadingRevision,
         isReverting,
         showRevisions,
+        showChatPanel,
         revisionCount,
         hasRevisions,
         // Revision actions
@@ -371,6 +384,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         loadRevision,
         restoreRevision,
         toggleRevisions,
+        toggleChatPanel,
         clearSelectedRevision,
         $reset,
     };

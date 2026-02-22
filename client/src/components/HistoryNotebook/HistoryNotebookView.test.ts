@@ -713,60 +713,41 @@ describe("HistoryNotebookView", () => {
             expect(chatBtn.text()).toContain("Chat");
         });
 
-        it("clicking Chat button shows HistoryNotebookSplit with chat panel", async () => {
-            setupEditorView();
+        it("clicking Chat button calls store.toggleChatPanel", async () => {
+            const store = setupEditorView();
             const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
             await flushPromises();
 
-            // Initially no split view
-            expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(false);
-            expect(wrapper.findComponent(NotebookChatPanel).exists()).toBe(false);
-
             const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
             await chatBtn.trigger("click");
+            await flushPromises();
+
+            expect(store.toggleChatPanel).toHaveBeenCalled();
+        });
+
+        it("renders split view when store.showChatPanel is true", async () => {
+            const store = setupEditorView();
+            store.showChatPanel = true;
+            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
             await flushPromises();
 
             expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(true);
             expect(wrapper.findComponent(NotebookChatPanel).exists()).toBe(true);
         });
 
-        it("toggling chat off hides split view", async () => {
-            setupEditorView();
+        it("hides split view when store.showChatPanel is false", async () => {
+            const store = setupEditorView();
+            store.showChatPanel = false;
             const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
             await flushPromises();
 
-            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
-            await chatBtn.trigger("click");
-            await flushPromises();
-            expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(true);
-
-            // Toggle off
-            await chatBtn.trigger("click");
-            await flushPromises();
             expect(wrapper.findComponent(HistoryNotebookSplit).exists()).toBe(false);
         });
 
-        it("opening chat closes revisions panel", async () => {
-            const store = setupEditorView();
-            store.showRevisions = true;
-            store.revisions = [] as any;
-            const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
-            await flushPromises();
-
-            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
-            await chatBtn.trigger("click");
-            await flushPromises();
-
-            expect(store.toggleRevisions).toHaveBeenCalled();
-        });
-
         it("passes notebook props to NotebookChatPanel", async () => {
-            setupEditorView();
+            const store = setupEditorView();
+            store.showChatPanel = true;
             const wrapper = mountComponent({ historyId: HISTORY_ID, notebookId: NOTEBOOK_ID });
-            await flushPromises();
-
-            const chatBtn = wrapper.find(SELECTORS.CHAT_BUTTON);
-            await chatBtn.trigger("click");
             await flushPromises();
 
             const panel = wrapper.findComponent(NotebookChatPanel);
