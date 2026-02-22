@@ -4176,6 +4176,9 @@ class UpdateHistoryNotebookPayload(Model):
     title: Optional[str] = Field(default=None, title="Title")
     content: str = Field(..., title="Content", description="New markdown content.")
     content_format: NotebookContentFormat = Field(default=NotebookContentFormat.markdown)
+    edit_source: Optional[str] = Field(
+        default=None, title="Edit source", description="Source of edit: 'user' or 'agent'."
+    )
 
 
 class HistoryNotebookSummary(Model):
