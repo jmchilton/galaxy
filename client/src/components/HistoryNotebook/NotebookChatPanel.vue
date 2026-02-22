@@ -6,7 +6,7 @@
  */
 import { faBook } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BSkeleton } from "bootstrap-vue";
+import { BButton, BSkeleton } from "bootstrap-vue";
 import { nextTick, onMounted, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
@@ -298,12 +298,13 @@ function startNewConversation() {
                 <FontAwesomeIcon :icon="faBook" fixed-width />
                 <strong>Notebook Assistant</strong>
             </span>
-            <button
-                class="btn btn-sm btn-outline-secondary"
+            <BButton
+                variant="outline-primary"
+                size="sm"
                 data-description="new conversation button"
                 @click="startNewConversation">
                 New Chat
-            </button>
+            </BButton>
         </div>
 
         <div ref="chatContainer" class="chat-panel-messages flex-grow-1 overflow-auto">
