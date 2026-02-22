@@ -64,13 +64,12 @@ onMounted(async () => {
 
 async function loadNotebookChat() {
     try {
-        // notebook-scoped chat history — schema not yet regenerated, use raw fetch
-        const { data, error } = await GalaxyApi().GET("/api/chat/notebook/{notebook_id}/history" as any, {
-            params: { path: { notebook_id: props.notebookId }, query: { limit: 1 } } as any,
+        const { data, error } = await GalaxyApi().GET("/api/chat/notebook/{notebook_id}/history", {
+            params: { path: { notebook_id: props.notebookId }, query: { limit: 1 } },
         });
 
-        if (data && !error && (data as any[]).length > 0) {
-            const latest = (data as any[])[0];
+        if (data && !error && data.length > 0) {
+            const latest = data[0] as { id: number };
             await loadConversation(latest.id);
         }
     } catch {
@@ -143,7 +142,7 @@ async function submitQuery() {
                 context: null,
                 exchange_id: currentChatId.value,
                 notebook_id: props.notebookId,
-            } as any,
+            },
         });
 
         if (error) {
