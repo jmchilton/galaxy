@@ -35,6 +35,12 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     // Per-history "current notebook" ID persisted across sessions
     const currentNotebookIds = useUserLocalStorage<Record<string, string>>("history-notebook-current", {});
 
+    // Per-notebook chat exchange ID persisted across panel close/reopen
+    const currentChatExchangeIds = useUserLocalStorage<Record<string, number | null>>(
+        "history-notebook-chat-exchange",
+        {},
+    );
+
     // Revision state
     const revisions = ref<HistoryNotebookRevisionSummary[]>([]);
     const selectedRevision = ref<HistoryNotebookRevisionDetails | null>(null);
@@ -157,8 +163,10 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             return;
         }
         try {
-            await deleteHistoryNotebook(historyId.value, currentNotebook.value.id);
+            const deletedId = currentNotebook.value.id;
+            await deleteHistoryNotebook(historyId.value, deletedId);
             clearCurrentNotebookId(historyId.value);
+            clearCurrentChatExchangeId(deletedId);
             currentNotebook.value = null;
             originalContent.value = "";
             currentContent.value = "";
@@ -185,12 +193,16 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     }
 
     function clearCurrentNotebook() {
+        const notebookId = currentNotebook.value?.id;
         currentNotebook.value = null;
         originalContent.value = "";
         currentContent.value = "";
         originalTitle.value = "";
         currentTitle.value = "";
         showChatPanel.value = false;
+        if (notebookId) {
+            clearCurrentChatExchangeId(notebookId);
+        }
         clearRevisionState();
     }
 
@@ -207,6 +219,21 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     function clearCurrentNotebookId(forHistoryId: string) {
         const { [forHistoryId]: _removed, ...rest } = currentNotebookIds.value;
         currentNotebookIds.value = rest;
+    }
+
+    // --- Chat exchange persistence ---
+
+    function getCurrentChatExchangeId(notebookId: string): number | null {
+        return currentChatExchangeIds.value[notebookId] ?? null;
+    }
+
+    function setCurrentChatExchangeId(notebookId: string, exchangeId: number | null) {
+        currentChatExchangeIds.value = { ...currentChatExchangeIds.value, [notebookId]: exchangeId };
+    }
+
+    function clearCurrentChatExchangeId(notebookId: string) {
+        const { [notebookId]: _removed, ...rest } = currentChatExchangeIds.value;
+        currentChatExchangeIds.value = rest;
     }
 
     async function resolveCurrentNotebook(forHistoryId: string): Promise<string> {
@@ -369,6 +396,11 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         setCurrentNotebookId,
         clearCurrentNotebookId,
         resolveCurrentNotebook,
+        // Chat exchange persistence
+        currentChatExchangeIds,
+        getCurrentChatExchangeId,
+        setCurrentChatExchangeId,
+        clearCurrentChatExchangeId,
         // Revision state
         revisions,
         selectedRevision,

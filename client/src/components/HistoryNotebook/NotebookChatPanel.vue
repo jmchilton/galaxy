@@ -63,6 +63,20 @@ onMounted(async () => {
 });
 
 async function loadNotebookChat() {
+    // Try store-cached exchange ID first (avoids API round-trip on panel reopen)
+    const storedExchangeId = store.getCurrentChatExchangeId(props.notebookId);
+    if (storedExchangeId !== null) {
+        try {
+            await loadConversation(storedExchangeId);
+            if (messages.value.length > 0) {
+                return;
+            }
+        } catch {
+            store.clearCurrentChatExchangeId(props.notebookId);
+        }
+    }
+
+    // Fall back to API
     try {
         const { data, error } = await GalaxyApi().GET("/api/chat/notebook/{notebook_id}/history", {
             params: { path: { notebook_id: props.notebookId }, query: { limit: 1 } },
@@ -106,6 +120,7 @@ async function loadConversation(exchangeId: number) {
                 return m;
             });
             currentChatId.value = exchangeId;
+            store.setCurrentChatExchangeId(props.notebookId, exchangeId);
         }
     } catch {
         // silent
@@ -159,6 +174,7 @@ async function submitQuery() {
         } else if (data) {
             if (data.exchange_id) {
                 currentChatId.value = data.exchange_id;
+                store.setCurrentChatExchangeId(props.notebookId, data.exchange_id);
             }
 
             const agentResponse = data.agent_response as AgentResponse | undefined;
@@ -284,6 +300,7 @@ function startNewConversation() {
         },
     ];
     currentChatId.value = null;
+    store.setCurrentChatExchangeId(props.notebookId, null);
     query.value = "";
     dismissedProposals.value = new Set();
 }

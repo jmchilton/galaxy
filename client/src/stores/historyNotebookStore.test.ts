@@ -689,6 +689,65 @@ describe("useHistoryNotebookStore", () => {
         });
     });
 
+    describe("chat exchange persistence", () => {
+        it("get/set/clear exchange ID", () => {
+            const store = useHistoryNotebookStore();
+
+            expect(store.getCurrentChatExchangeId("nb-1")).toBeNull();
+
+            store.setCurrentChatExchangeId("nb-1", 42);
+            expect(store.getCurrentChatExchangeId("nb-1")).toBe(42);
+
+            store.setCurrentChatExchangeId("nb-2", 99);
+            expect(store.getCurrentChatExchangeId("nb-2")).toBe(99);
+
+            store.clearCurrentChatExchangeId("nb-1");
+            expect(store.getCurrentChatExchangeId("nb-1")).toBeNull();
+            expect(store.getCurrentChatExchangeId("nb-2")).toBe(99);
+        });
+
+        it("setCurrentChatExchangeId with null stores null", () => {
+            const store = useHistoryNotebookStore();
+            store.setCurrentChatExchangeId("nb-1", 42);
+            store.setCurrentChatExchangeId("nb-1", null);
+            expect(store.getCurrentChatExchangeId("nb-1")).toBeNull();
+        });
+
+        it("clearCurrentNotebook clears chat exchange ID", async () => {
+            useDefaultHandlers();
+            const store = useHistoryNotebookStore();
+            store.$patch({ historyId: TEST_HISTORY_ID });
+            await store.loadNotebook(TEST_NOTEBOOK_ID);
+            store.setCurrentChatExchangeId(TEST_NOTEBOOK_ID, 55);
+
+            store.clearCurrentNotebook();
+
+            expect(store.getCurrentChatExchangeId(TEST_NOTEBOOK_ID)).toBeNull();
+        });
+
+        it("deleteCurrentNotebook clears chat exchange ID", async () => {
+            server.use(
+                http.get("/api/histories/{history_id}/notebooks/{notebook_id}", ({ response }) => {
+                    return response(200).json(TEST_NOTEBOOK_DETAILS);
+                }),
+                http.get("/api/histories/{history_id}/notebooks", ({ response }) => {
+                    return response(200).json([]);
+                }),
+                http.delete("/api/histories/{history_id}/notebooks/{notebook_id}", ({ response }) => {
+                    return response(204).empty();
+                }),
+            );
+            const store = useHistoryNotebookStore();
+            store.$patch({ historyId: TEST_HISTORY_ID });
+            await store.loadNotebook(TEST_NOTEBOOK_ID);
+            store.setCurrentChatExchangeId(TEST_NOTEBOOK_ID, 77);
+
+            await store.deleteCurrentNotebook();
+
+            expect(store.getCurrentChatExchangeId(TEST_NOTEBOOK_ID)).toBeNull();
+        });
+    });
+
     describe("synchronous actions", () => {
         it("updateContent updates currentContent", () => {
             const store = useHistoryNotebookStore();
