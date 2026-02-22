@@ -11,7 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BBadge, BButton } from "bootstrap-vue";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router/composables";
 
 import { getGalaxyInstance } from "@/app";
@@ -166,15 +166,6 @@ function handleRevisionSelect(revisionId: string) {
 function handleRevisionRestore(revisionId: string) {
     store.restoreRevision(revisionId);
 }
-
-const showChatPanel = ref(false);
-
-function toggleChatPanel() {
-    showChatPanel.value = !showChatPanel.value;
-    if (showChatPanel.value && store.showRevisions) {
-        store.toggleRevisions();
-    }
-}
 </script>
 
 <template>
@@ -282,11 +273,11 @@ function toggleChatPanel() {
                     Preview
                 </BButton>
                 <BButton
-                    :variant="showChatPanel ? 'primary' : 'outline-primary'"
+                    :variant="store.showChatPanel ? 'primary' : 'outline-primary'"
                     size="sm"
                     class="mr-2"
                     data-description="notebook chat button"
-                    @click="toggleChatPanel">
+                    @click="store.toggleChatPanel">
                     <FontAwesomeIcon :icon="faComments" />
                     Chat
                 </BButton>
@@ -308,7 +299,7 @@ function toggleChatPanel() {
             </div>
 
             <div class="notebook-body d-flex flex-grow-1 overflow-hidden">
-                <HistoryNotebookSplit v-if="showChatPanel && notebookId">
+                <HistoryNotebookSplit v-if="store.showChatPanel && notebookId">
                     <template v-slot:editor>
                         <HistoryNotebookEditor
                             :history-id="historyId"

@@ -606,6 +606,89 @@ describe("useHistoryNotebookStore", () => {
         });
     });
 
+    describe("panel toggle mutual exclusion", () => {
+        it("toggleChatPanel opens and closes chat", () => {
+            const store = useHistoryNotebookStore();
+            expect(store.showChatPanel).toBe(false);
+
+            store.toggleChatPanel();
+            expect(store.showChatPanel).toBe(true);
+
+            store.toggleChatPanel();
+            expect(store.showChatPanel).toBe(false);
+        });
+
+        it("toggleChatPanel closes revisions and clears selectedRevision when opening chat", () => {
+            const store = useHistoryNotebookStore();
+            store.$patch({ showRevisions: true });
+            store.selectedRevision = {
+                id: "rev-1",
+                notebook_id: TEST_NOTEBOOK_ID,
+                content: "# Old",
+                content_format: "markdown",
+                edit_source: "user",
+                create_time: "2024-01-01T00:00:00",
+                update_time: "2024-01-01T00:00:00",
+            } as any;
+
+            store.toggleChatPanel();
+
+            expect(store.showChatPanel).toBe(true);
+            expect(store.showRevisions).toBe(false);
+            expect(store.selectedRevision).toBeNull();
+        });
+
+        it("toggleChatPanel does not touch revisions when closing chat", () => {
+            const store = useHistoryNotebookStore();
+            store.$patch({ showChatPanel: true, showRevisions: false });
+
+            store.toggleChatPanel();
+
+            expect(store.showChatPanel).toBe(false);
+            expect(store.showRevisions).toBe(false);
+        });
+
+        it("toggleRevisions closes chat when opening revisions", () => {
+            useDefaultHandlers();
+            const store = useHistoryNotebookStore();
+            store.$patch({ historyId: TEST_HISTORY_ID, showChatPanel: true });
+            store.currentNotebook = TEST_NOTEBOOK_DETAILS;
+
+            store.toggleRevisions();
+
+            expect(store.showRevisions).toBe(true);
+            expect(store.showChatPanel).toBe(false);
+        });
+
+        it("toggleRevisions does not touch chat when closing revisions", () => {
+            const store = useHistoryNotebookStore();
+            store.$patch({ showRevisions: true, showChatPanel: false });
+
+            store.toggleRevisions();
+
+            expect(store.showRevisions).toBe(false);
+            expect(store.showChatPanel).toBe(false);
+        });
+
+        it("$reset clears showChatPanel", () => {
+            const store = useHistoryNotebookStore();
+            store.$patch({ showChatPanel: true });
+
+            store.$reset();
+
+            expect(store.showChatPanel).toBe(false);
+        });
+
+        it("clearCurrentNotebook clears showChatPanel", () => {
+            const store = useHistoryNotebookStore();
+            store.$patch({ showChatPanel: true });
+
+            store.clearCurrentNotebook();
+
+            expect(store.showChatPanel).toBe(false);
+        });
+    });
+
     describe("synchronous actions", () => {
         it("updateContent updates currentContent", () => {
             const store = useHistoryNotebookStore();
