@@ -642,9 +642,8 @@ history_notebooks:
     toolbar:
       type: data-description
       selector: 'notebook toolbar'
-    toolbar_title:
-      type: data-description
-      selector: 'notebook toolbar title'
+    # Target inner span (ClickToEdit's click handler), not outer div where inline text gaps cause missed clicks
+    toolbar_title: '[data-description="notebook toolbar title"] > span'
     manage_button:
       type: data-description
       selector: 'notebook manage button'

@@ -47,10 +47,14 @@ const markdownConfig = computed(() => {
     if (!store.currentNotebook) {
         return null;
     }
+    // In displayOnly mode use the server-resolved content (HIDs expanded to encoded IDs)
+    // so the Markdown renderer can find dataset references.  In editor mode use the
+    // raw editor content which preserves hid=N for editing.
+    const content = props.displayOnly ? (store.currentNotebook.content ?? store.currentContent) : store.currentContent;
     return {
         id: store.currentNotebook.id,
         title: store.currentTitle || "Untitled Notebook",
-        content: store.currentContent,
+        content,
         model_class: "HistoryNotebook",
         update_time: store.currentNotebook.update_time,
     };
