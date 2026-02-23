@@ -1267,6 +1267,11 @@ class CwlToolEvaluator(UserToolEvaluator):
 
         # Create CWL job proxy and extract command
         cwl_tool = cast("CwlCommandBindingTool", self.tool)
+        # Filter out Galaxy-internal parameters (dbkey, __input_ext, chromInfo, etc.)
+        # that aren't actual CWL inputs — these leak from the incoming dict when the
+        # legacy to_cwl path is used and would contaminate $(inputs) expressions.
+        cwl_input_names = {inst.name for inst in cwl_tool._cwl_tool_proxy.input_instances()}
+        input_json = {k: v for k, v in input_json.items() if k in cwl_input_names}
         cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
         cwl_command_line = cwl_job_proxy.command_line
         cwl_stdin = cwl_job_proxy.stdin
