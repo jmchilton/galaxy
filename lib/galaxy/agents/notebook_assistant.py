@@ -167,9 +167,9 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
 
     agent_type = AgentType.NOTEBOOK_ASSISTANT
 
-    def __init__(self, deps: GalaxyAgentDependencies):
-        self.history_id: int = 0
-        self.notebook_content: str = ""
+    def __init__(self, deps: GalaxyAgentDependencies, history_id: int = 0, notebook_content: str = ""):
+        self.history_id: int = history_id
+        self.notebook_content: str = notebook_content
         super().__init__(deps)
 
     def _create_agent(self) -> Agent[GalaxyAgentDependencies, Any]:
