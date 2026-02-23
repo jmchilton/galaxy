@@ -3,7 +3,7 @@
  * Mode 2: Section-level patch view.
  * Shows per-section diffs with checkboxes. User picks which sections to apply.
  */
-import { faCheck, faExclamationTriangle, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BButton, BFormCheckbox } from "bootstrap-vue";
 import { computed, ref } from "vue";
@@ -78,13 +78,11 @@ function sectionLabel(sc: SectionChange): string {
                 {{ changedSections.length }} section{{ changedSections.length !== 1 ? "s" : "" }} changed
                 <template v-if="acceptedCount > 0"> &middot; {{ acceptedCount }} selected</template>
             </span>
-            <span class="patch-actions">
-                <BButton variant="link" size="sm" @click="selectAll">All</BButton>
-                <BButton variant="link" size="sm" @click="selectNone">None</BButton>
-                <span v-if="stale" class="text-warning mr-2">
-                    <FontAwesomeIcon :icon="faExclamationTriangle" />
-                    Document changed
-                </span>
+            <span
+                class="patch-actions"
+                :title="stale ? 'Document has changed and this suggestion no longer applies.' : undefined">
+                <BButton variant="link" size="sm" :disabled="stale" @click="selectAll">All</BButton>
+                <BButton variant="link" size="sm" :disabled="stale" @click="selectNone">None</BButton>
                 <BButton
                     variant="success"
                     size="sm"
@@ -98,6 +96,7 @@ function sectionLabel(sc: SectionChange): string {
                     variant="outline-danger"
                     size="sm"
                     class="ml-1"
+                    :disabled="stale"
                     data-description="reject all patches"
                     @click="emit('reject')">
                     <FontAwesomeIcon :icon="faTimes" />

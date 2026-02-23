@@ -4,7 +4,7 @@
  * Shows a unified line-level diff between the original and proposed content,
  * with Accept/Reject buttons.
  */
-import { faCheck, faExclamationTriangle, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BButton } from "bootstrap-vue";
 import { computed } from "vue";
@@ -35,11 +35,9 @@ const stats = computed(() => diffStats(changes.value));
                 <span class="text-danger">-{{ stats.deletions }}</span>
                 lines
             </span>
-            <span class="diff-actions">
-                <span v-if="stale" class="text-warning mr-2">
-                    <FontAwesomeIcon :icon="faExclamationTriangle" />
-                    Document changed
-                </span>
+            <span
+                class="diff-actions"
+                :title="stale ? 'Document has changed and this suggestion no longer applies.' : undefined">
                 <BButton
                     variant="success"
                     size="sm"
@@ -53,6 +51,7 @@ const stats = computed(() => diffStats(changes.value));
                     variant="outline-danger"
                     size="sm"
                     class="ml-1"
+                    :disabled="stale"
                     data-description="reject proposal"
                     @click="emit('reject')">
                     <FontAwesomeIcon :icon="faTimes" />
