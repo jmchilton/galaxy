@@ -41,6 +41,12 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         {},
     );
 
+    // Per-notebook dismissed proposal message IDs
+    const dismissedChatProposals = useUserLocalStorage<Record<string, string[]>>(
+        "history-notebook-dismissed-proposals",
+        {},
+    );
+
     // Revision state
     const revisions = ref<HistoryNotebookRevisionSummary[]>([]);
     const selectedRevision = ref<HistoryNotebookRevisionDetails | null>(null);
@@ -168,6 +174,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
             await deleteHistoryNotebook(historyId.value, deletedId);
             clearCurrentNotebookId(historyId.value);
             clearCurrentChatExchangeId(deletedId);
+            clearDismissedProposals(deletedId);
             currentNotebook.value = null;
             originalContent.value = "";
             currentContent.value = "";
@@ -235,6 +242,27 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
     function clearCurrentChatExchangeId(notebookId: string) {
         const { [notebookId]: _removed, ...rest } = currentChatExchangeIds.value;
         currentChatExchangeIds.value = rest;
+    }
+
+    // --- Dismissed proposals persistence ---
+
+    function getDismissedProposals(notebookId: string): string[] {
+        return dismissedChatProposals.value[notebookId] ?? [];
+    }
+
+    function addDismissedProposal(notebookId: string, messageId: string) {
+        const current = dismissedChatProposals.value[notebookId] ?? [];
+        if (!current.includes(messageId)) {
+            dismissedChatProposals.value = {
+                ...dismissedChatProposals.value,
+                [notebookId]: [...current, messageId],
+            };
+        }
+    }
+
+    function clearDismissedProposals(notebookId: string) {
+        const { [notebookId]: _removed, ...rest } = dismissedChatProposals.value;
+        dismissedChatProposals.value = rest;
     }
 
     async function resolveCurrentNotebook(forHistoryId: string): Promise<string> {
@@ -402,6 +430,10 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         getCurrentChatExchangeId,
         setCurrentChatExchangeId,
         clearCurrentChatExchangeId,
+        // Dismissed proposals persistence
+        getDismissedProposals,
+        addDismissedProposal,
+        clearDismissedProposals,
         // Revision state
         revisions,
         selectedRevision,

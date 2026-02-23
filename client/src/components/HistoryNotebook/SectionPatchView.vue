@@ -3,7 +3,7 @@
  * Mode 2: Section-level patch view.
  * Shows per-section diffs with checkboxes. User picks which sections to apply.
  */
-import { faCheck, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faExclamationTriangle, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BButton, BFormCheckbox } from "bootstrap-vue";
 import { computed, ref } from "vue";
@@ -13,6 +13,7 @@ import { applySectionPatches, diffStats, type SectionChange, sectionDiff } from 
 const props = defineProps<{
     original: string;
     proposed: string;
+    stale?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -80,10 +81,14 @@ function sectionLabel(sc: SectionChange): string {
             <span class="patch-actions">
                 <BButton variant="link" size="sm" @click="selectAll">All</BButton>
                 <BButton variant="link" size="sm" @click="selectNone">None</BButton>
+                <span v-if="stale" class="text-warning mr-2">
+                    <FontAwesomeIcon :icon="faExclamationTriangle" />
+                    Document changed
+                </span>
                 <BButton
                     variant="success"
                     size="sm"
-                    :disabled="acceptedCount === 0"
+                    :disabled="stale || acceptedCount === 0"
                     data-description="apply selected patches"
                     @click="applySelected">
                     <FontAwesomeIcon :icon="faCheck" />

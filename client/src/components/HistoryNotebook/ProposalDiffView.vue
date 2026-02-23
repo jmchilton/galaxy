@@ -4,7 +4,7 @@
  * Shows a unified line-level diff between the original and proposed content,
  * with Accept/Reject buttons.
  */
-import { faCheck, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faExclamationTriangle, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BButton } from "bootstrap-vue";
 import { computed } from "vue";
@@ -14,6 +14,7 @@ import { computeLineDiff, diffStats } from "./sectionDiffUtils";
 const props = defineProps<{
     original: string;
     proposed: string;
+    stale?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -35,7 +36,16 @@ const stats = computed(() => diffStats(changes.value));
                 lines
             </span>
             <span class="diff-actions">
-                <BButton variant="success" size="sm" data-description="accept proposal" @click="emit('accept')">
+                <span v-if="stale" class="text-warning mr-2">
+                    <FontAwesomeIcon :icon="faExclamationTriangle" />
+                    Document changed
+                </span>
+                <BButton
+                    variant="success"
+                    size="sm"
+                    :disabled="stale"
+                    data-description="accept proposal"
+                    @click="emit('accept')">
                     <FontAwesomeIcon :icon="faCheck" />
                     Accept
                 </BButton>

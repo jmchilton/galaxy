@@ -41,6 +41,14 @@ from .history_tools import (
 log = logging.getLogger(__name__)
 
 
+def _djb2_hash(s: str) -> str:
+    """DJB2 string hash — matches the frontend implementation."""
+    h = 5381
+    for c in s:
+        h = ((h * 33) + ord(c)) & 0xFFFFFFFF
+    return format(h, "08x")
+
+
 def _build_directive_reference() -> str:
     """Generate directive reference from the authoritative source in markdown_parse.py.
 
@@ -286,6 +294,8 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
             # Extract the result data
             result_data = result.output if hasattr(result, "output") else result.data
 
+            content_hash = _djb2_hash(self.notebook_content)
+
             if isinstance(result_data, FullReplacementEdit):
                 return self._build_response(
                     content=f"I've prepared a full document rewrite.\n\n**Reasoning:** {result_data.reasoning}",
@@ -297,6 +307,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
                         "edit_mode": "full_replacement",
                         "reasoning": result_data.reasoning,
                         "content": result_data.content,
+                        "original_content_hash": content_hash,
                     },
                 )
             elif isinstance(result_data, SectionPatchEdit):
@@ -314,6 +325,7 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
                         "reasoning": result_data.reasoning,
                         "target_section_heading": result_data.target_section_heading,
                         "new_section_content": result_data.new_section_content,
+                        "original_content_hash": content_hash,
                     },
                 )
             else:

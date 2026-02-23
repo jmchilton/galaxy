@@ -122,6 +122,7 @@ async function loadConversation(exchangeId: number) {
             });
             currentChatId.value = exchangeId;
             store.setCurrentChatExchangeId(props.notebookId, exchangeId);
+            dismissedProposals.value = new Set(store.getDismissedProposals(props.notebookId));
         }
     } catch {
         // silent
@@ -235,6 +236,23 @@ async function sendFeedback(messageId: string, value: "up" | "down") {
     }
 }
 
+function djb2Hash(s: string): string {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+        h = (h * 33 + s.charCodeAt(i)) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+}
+
+function isProposalStale(msg: ChatMessage): boolean {
+    const meta = msg.agentResponse?.metadata;
+    const originalHash = meta?.original_content_hash as string | undefined;
+    if (!originalHash) {
+        return false;
+    }
+    return originalHash !== djb2Hash(props.notebookContent);
+}
+
 function getEditProposal(msg: ChatMessage): EditProposal | null {
     const meta = msg.agentResponse?.metadata;
     const editMode = meta?.edit_mode as EditProposal["mode"] | undefined;
@@ -250,7 +268,18 @@ function getEditProposal(msg: ChatMessage): EditProposal | null {
 }
 
 function isProposalVisible(msg: ChatMessage): boolean {
-    return !dismissedProposals.value.has(msg.id) && getEditProposal(msg) !== null;
+    if (dismissedProposals.value.has(msg.id)) {
+        return false;
+    }
+    const proposal = getEditProposal(msg);
+    if (!proposal) {
+        return false;
+    }
+    // Content-based: if full_replacement content matches current doc, already applied
+    if (proposal.mode === "full_replacement" && proposal.content === props.notebookContent) {
+        return false;
+    }
+    return true;
 }
 
 function getProposalMode(msg: ChatMessage): string {
@@ -281,16 +310,19 @@ async function applyFullReplacement(msg: ChatMessage) {
     store.updateContent(proposal.content);
     await store.saveNotebook("agent");
     dismissedProposals.value.add(msg.id);
+    store.addDismissedProposal(props.notebookId, msg.id);
 }
 
 async function applySectionPatched(patchedContent: string, msg: ChatMessage) {
     store.updateContent(patchedContent);
     await store.saveNotebook("agent");
     dismissedProposals.value.add(msg.id);
+    store.addDismissedProposal(props.notebookId, msg.id);
 }
 
 function dismissProposal(msg: ChatMessage) {
     dismissedProposals.value.add(msg.id);
+    store.addDismissedProposal(props.notebookId, msg.id);
 }
 
 function startNewConversation() {
@@ -310,6 +342,7 @@ function startNewConversation() {
     store.setCurrentChatExchangeId(props.notebookId, null);
     query.value = "";
     dismissedProposals.value = new Set();
+    store.clearDismissedProposals(props.notebookId);
 }
 </script>
 
@@ -343,12 +376,14 @@ function startNewConversation() {
                         v-if="getProposalMode(msg) === 'full_replacement'"
                         :original="notebookContent"
                         :proposed="buildProposedContent(msg)"
+                        :stale="isProposalStale(msg)"
                         @accept="applyFullReplacement(msg)"
                         @reject="dismissProposal(msg)" />
                     <SectionPatchView
                         v-else-if="getProposalMode(msg) === 'section_patch'"
                         :original="notebookContent"
                         :proposed="buildProposedContent(msg)"
+                        :stale="isProposalStale(msg)"
                         @accept="applySectionPatched($event, msg)"
                         @reject="dismissProposal(msg)" />
                 </template>
