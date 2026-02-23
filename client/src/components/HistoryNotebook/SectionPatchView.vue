@@ -81,7 +81,7 @@ function sectionLabel(sc: SectionChange): string {
                 <BButton variant="link" size="sm" @click="selectAll">All</BButton>
                 <BButton variant="link" size="sm" @click="selectNone">None</BButton>
                 <BButton
-                    variant="outline-success"
+                    variant="success"
                     size="sm"
                     :disabled="acceptedCount === 0"
                     data-description="apply selected patches"
