@@ -938,6 +938,33 @@ workflow_editor:
       activity_button: "#activity-workflow-editor-inputs"
       activity_panel: ".activity-panel[data-description='Inputs']"
       input: ".workflow-input-button[data-id='${id}']"
+  data_input_form:
+    selectors:
+      optional: 'div.ui-form-element[id="form-element-optional"] .ui-form-field label'
+      format: 'div.ui-form-element[id="form-element-format"] .ui-input'
+      tag: 'div.ui-form-element[id="form-element-tag"] .ui-input'
+  collection_input_form:
+    selectors:
+      collection_type:
+        type: xpath
+        selector: '//div[@id="form-element-collection_type"]//input'
+      optional: 'div.ui-form-element[id="form-element-optional"] .ui-form-field label'
+      format: 'div.ui-form-element[id="form-element-format"] .multiselect'
+      tag: 'div.ui-form-element[id="form-element-tag"] .ui-input'
+  parameter_input_form:
+    selectors:
+      parameter_type: '#parameter_definition\|parameter_type'
+      multiple: 'div.ui-form-element[id="form-element-parameter_definition|multiple"] .ui-form-field label'
+      restrictions_how: '#parameter_definition\|restrictions\|how'
+      restrictions_value: 'div.ui-form-element[id="form-element-parameter_definition|restrictions|restrictions"] .ui-input'
+      suggestions_value: 'div.ui-form-element[id="form-element-parameter_definition|restrictions|suggestions"] .ui-input'
+      min: 'div.ui-form-element[id="form-element-parameter_definition|min"] .ui-input'
+      max: 'div.ui-form-element[id="form-element-parameter_definition|max"] .ui-input'
+      optional: 'div.ui-form-element[id="form-element-parameter_definition|optional|optional"] .ui-form-field label'
+      specify_default: 'div.ui-form-element[id="form-element-parameter_definition|optional|specify_default|specify_default"] .ui-form-field label'
+      default_value: 'div.ui-form-element[id="form-element-parameter_definition|optional|specify_default|default"] .ui-input'
+      default_boolean: 'div.ui-form-element[id="form-element-parameter_definition|optional|specify_default|default"] .ui-form-field label'
+      default_color: 'div.ui-form-element[id="form-element-parameter_definition|optional|specify_default|default"] input[type="color"]'
   selectors:
     node_inspector: '.tool-inspector'
     node_inspector_close: ".tool-inspector [title='close']"
