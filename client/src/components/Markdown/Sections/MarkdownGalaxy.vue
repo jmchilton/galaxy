@@ -1,6 +1,6 @@
 <script setup>
 import { BAlert, BCollapse, BLink } from "bootstrap-vue";
-import { computed, ref, watch } from "vue";
+import { computed, inject, ref, watch } from "vue";
 
 import { getArgs } from "@/components/Markdown/parse";
 import { parseInvocation } from "@/components/Markdown/Utilities/parseInvocation";
@@ -11,6 +11,7 @@ import {
     hasValidObject,
 } from "@/components/Markdown/Utilities/requirements";
 import { useConfig } from "@/composables/config";
+import { useHistoryItemsStore } from "@/stores/historyItemsStore";
 import { useInvocationStore } from "@/stores/invocationStore";
 import { useWorkflowStore } from "@/stores/workflowStore";
 
@@ -38,8 +39,11 @@ import WorkflowInvocationInputs from "@/components/WorkflowInvocationState/Workf
 import WorkflowInvocationOutputs from "@/components/WorkflowInvocationState/WorkflowInvocationOutputs.vue";
 
 const { config, isConfigLoaded } = useConfig();
+const historyItemsStore = useHistoryItemsStore();
 const { getInvocationById, getInvocationLoadError, isLoadingInvocation } = useInvocationStore();
 const { fetchWorkflowForInstanceIdCached, getStoredWorkflowIdByInstanceId } = useWorkflowStore();
+
+const notebookHistoryId = inject("notebookHistoryId", ref(null));
 
 const props = defineProps({
     content: {
@@ -58,11 +62,30 @@ const toggle = ref(false);
 const workflowLoading = ref(false);
 
 const args = computed(() => {
+    let resolved;
     if (invocation.value && workflowId.value) {
-        return parseInvocation(invocation.value, workflowId.value, name.value, attributes.value.args);
+        resolved = parseInvocation(invocation.value, workflowId.value, name.value, attributes.value.args);
     } else {
-        return { ...attributes.value.args };
+        resolved = { ...attributes.value.args };
     }
+    // Resolve hid= → history_dataset_id=/history_dataset_collection_id= for notebook editor preview
+    if (
+        resolved.hid &&
+        notebookHistoryId.value &&
+        !resolved.history_dataset_id &&
+        !resolved.history_dataset_collection_id
+    ) {
+        const allItems = historyItemsStore.getHistoryItems(notebookHistoryId.value, "");
+        const item = allItems.find((i) => i.hid === parseInt(resolved.hid));
+        if (item) {
+            if (item.history_content_type === "dataset_collection") {
+                resolved.history_dataset_collection_id = item.id;
+            } else {
+                resolved.history_dataset_id = item.id;
+            }
+        }
+    }
+    return resolved;
 });
 
 const hasLabels = computed(() => props.labels !== undefined);

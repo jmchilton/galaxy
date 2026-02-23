@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, provide, toRef } from "vue";
 
 import { useHistoryStore } from "@/stores/historyStore";
 
@@ -9,6 +9,8 @@ const props = defineProps<{
     historyId: string;
     content: string;
 }>();
+
+provide("notebookHistoryId", toRef(props, "historyId"));
 
 const emit = defineEmits<{
     (e: "update:content", content: string): void;
