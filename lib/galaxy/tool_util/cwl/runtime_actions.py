@@ -90,7 +90,7 @@ def handle_outputs(job_directory: Optional[str] = None):
         read_exit_code_from,
     )
 
-    exit_code_file = default_exit_code_file(".", job_id_tag)
+    exit_code_file = default_exit_code_file(job_directory, job_id_tag)
     tool_exit_code = read_exit_code_from(exit_code_file, job_id_tag)
     outputs = job_proxy.collect_outputs(tool_working_directory, tool_exit_code)
 
