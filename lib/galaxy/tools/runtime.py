@@ -54,6 +54,7 @@ def setup_for_runtimeify(
     compute_environment: Optional["ComputeEnvironment"],
     input_datasets: InpDataDictT,
     input_dataset_collections: Optional[InpDataCollectionsDictT] = None,
+    extra_hda_id_mappings: Optional[dict[int, "HistoryDatasetAssociation"]] = None,
 ):
     """Set up callbacks for runtimeify to convert tool state to runtime representations.
 
@@ -66,6 +67,13 @@ def setup_for_runtimeify(
     hdas_by_id: dict[int, tuple[DatasetInstance, int]] = {
         d.id: (d, i) for (i, d) in enumerate(input_datasets.values()) if d is not None
     }
+
+    # Include extra mappings for deferred datasets that were materialized
+    # into new transient HDAs (original id -> materialized HDA).
+    if extra_hda_id_mappings:
+        for original_id, hda in extra_hda_id_mappings.items():
+            if original_id not in hdas_by_id:
+                hdas_by_id[original_id] = (hda, len(hdas_by_id))
 
     # Build separate lookups for HDCAs and DCEs
     hdcas_by_id: dict[int, HistoryDatasetCollectionAssociation] = {}

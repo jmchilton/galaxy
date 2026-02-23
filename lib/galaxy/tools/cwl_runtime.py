@@ -82,6 +82,7 @@ def setup_for_cwl_runtimeify(
     compute_environment: Optional["ComputeEnvironment"],
     input_datasets: "InpDataDictT",
     input_dataset_collections: Optional["InpDataCollectionsDictT"] = None,
+    extra_hda_id_mappings: Optional[dict[int, "HistoryDatasetAssociation"]] = None,
 ):
     """CWL-enriched version of :func:`setup_for_runtimeify`.
 
@@ -91,12 +92,21 @@ def setup_for_cwl_runtimeify(
     Returns ``(hda_references, adapt_dataset, adapt_collection, adapt_cwl_collection)``.
     """
     hda_references, base_adapt_dataset, adapt_collection = setup_for_runtimeify(
-        app, compute_environment, input_datasets, input_dataset_collections
+        app,
+        compute_environment,
+        input_datasets,
+        input_dataset_collections,
+        extra_hda_id_mappings=extra_hda_id_mappings,
     )
 
     hdas_by_id = {
         d.id: d for d in input_datasets.values() if d is not None and isinstance(d, HistoryDatasetAssociation)
     }
+    # Include extra mappings for deferred->materialized datasets
+    if extra_hda_id_mappings:
+        for original_id, hda in extra_hda_id_mappings.items():
+            if original_id not in hdas_by_id:
+                hdas_by_id[original_id] = hda
     hdcas_by_id: dict[int, HistoryDatasetCollectionAssociation] = {}
     if input_dataset_collections:
         for value in input_dataset_collections.values():
@@ -201,7 +211,10 @@ def discover_secondary_files(
     secondary_files_dir = os.path.join(extra_files_path, SECONDARY_FILES_EXTRA_PREFIX)
 
     if not os.path.exists(secondary_files_dir):
-        return []
+        # For deferred datasets that were materialized, secondary files may
+        # not have been copied to the extra_files_path. Try to discover them
+        # next to the source URI (the original CWL File location).
+        return _discover_secondary_files_from_source(hda, compute_environment)
 
     secondary_files: list[dict] = []
     for name in sorted(os.listdir(secondary_files_dir)):
@@ -224,6 +237,62 @@ def discover_secondary_files(
             "basename": name,
         }
         secondary_files.append(entry)
+
+    return secondary_files
+
+
+def _discover_secondary_files_from_source(
+    hda: "HistoryDatasetAssociation",
+    compute_environment: Optional["ComputeEnvironment"] = None,
+) -> list[dict]:
+    """Discover secondary files from the HDA's dataset source URI.
+
+    For deferred datasets created via ``raw_to_galaxy()`` from CWL defaults,
+    the secondary files were never copied into the extra_files_path. This
+    fallback resolves them from the original ``file://`` source URI and
+    provides direct paths to the files on disk.
+    """
+    dataset = hda.dataset
+    if not dataset or not dataset.sources:
+        return []
+
+    source_uri = None
+    for source in dataset.sources:
+        if source.source_uri:
+            source_uri = source.source_uri
+            break
+    if not source_uri:
+        return []
+
+    # Resolve to filesystem path
+    if source_uri.startswith("file://"):
+        source_path = source_uri[len("file://") :]
+    else:
+        source_path = source_uri
+
+    if not os.path.exists(source_path):
+        return []
+
+    # Look for secondary files next to the source file
+    source_dir = os.path.dirname(source_path)
+    source_basename = os.path.basename(source_path)
+    secondary_files: list[dict] = []
+
+    for name in sorted(os.listdir(source_dir)):
+        # Secondary files match patterns like "{basename}.ext" where ext is
+        # appended to the primary basename. Common patterns: .2, .bai, .idx
+        if name != source_basename and name.startswith(source_basename):
+            sf_source = os.path.join(source_dir, name)
+            sf_suffix = name[len(source_basename) :]
+            sf_basename = (dataset.created_from_basename or hda.name) + sf_suffix
+            is_dir = os.path.isdir(sf_source)
+
+            entry = {
+                "class": "Directory" if is_dir else "File",
+                "path": sf_source,
+                "basename": sf_basename,
+            }
+            secondary_files.append(entry)
 
     return secondary_files
 
@@ -263,8 +332,9 @@ def raw_to_galaxy(
                 hash_object.hash_value = as_dict_value[hash_name]
                 dataset.hashes.append(hash_object)
 
-        if "created_from_basename" in as_dict_value:
-            dataset.created_from_basename = as_dict_value["created_from_basename"]
+        # Always set created_from_basename for CWL datasets so that the
+        # basename is preserved after deferred materialization.
+        dataset.created_from_basename = as_dict_value.get("created_from_basename") or name
 
         dataset.state = Dataset.states.DEFERRED
         primary_data = HistoryDatasetAssociation(
