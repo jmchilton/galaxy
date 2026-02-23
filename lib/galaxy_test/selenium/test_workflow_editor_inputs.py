@@ -1,6 +1,7 @@
 import json
 
 from .framework import (
+    retry_during_transitions,
     RunsWorkflows,
     selenium_test,
     SeleniumTestCase,
@@ -40,10 +41,8 @@ class TestWorkflowEditorInputs(SeleniumTestCase, RunsWorkflows):
             ), f"tool_state['{key}'] expected {expected_value!r} but got {actual_value!r}"
         return tool_state
 
+    @retry_during_transitions
     def _leave_and_reopen(self, workflow_name, node_label):
-        self._retry_during_dom_rebuilds(lambda: self._do_leave_and_reopen(workflow_name, node_label))
-
-    def _do_leave_and_reopen(self, workflow_name, node_label):
         self.workflow_index_open_with_name(workflow_name)
         editor = self.components.workflow_editor
         editor.canvas_body.wait_for_visible()
@@ -52,16 +51,6 @@ class TestWorkflowEditorInputs(SeleniumTestCase, RunsWorkflows):
         node.title.wait_for_and_click()
         editor.node_inspector.wait_for_visible()
         self.sleep_for(self.wait_types.UX_RENDER)
-
-    def _retry_during_dom_rebuilds(self, func, attempts=3):
-        for i in range(attempts):
-            try:
-                return func()
-            except Exception as e:
-                if "not attached" in str(e) and i < attempts - 1:
-                    self.sleep_for(self.wait_types.UX_RENDER)
-                else:
-                    raise
 
     def _set_text_field(self, component, value):
         component.wait_for_and_clear_and_send_keys(value)
