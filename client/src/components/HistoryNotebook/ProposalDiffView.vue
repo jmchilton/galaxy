@@ -35,7 +35,7 @@ const stats = computed(() => diffStats(changes.value));
                 lines
             </span>
             <span class="diff-actions">
-                <BButton variant="outline-success" size="sm" data-description="accept proposal" @click="emit('accept')">
+                <BButton variant="success" size="sm" data-description="accept proposal" @click="emit('accept')">
                     <FontAwesomeIcon :icon="faCheck" />
                     Accept
                 </BButton>
