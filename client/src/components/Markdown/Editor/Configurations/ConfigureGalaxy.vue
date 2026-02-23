@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { BAlert } from "bootstrap-vue";
-import { computed, type Ref, ref, watch } from "vue";
+import { computed, inject, type Ref, ref, watch } from "vue";
 
 import type { WorkflowLabel } from "@/components/Markdown/Editor/types";
 import { getArgs } from "@/components/Markdown/parse";
@@ -30,6 +30,8 @@ const emit = defineEmits<{
     (e: "cancel"): void;
     (e: "change", content: string): void;
 }>();
+
+const notebookHistoryId = inject("notebookHistoryId", ref(null));
 
 interface contentType {
     args: Record<string, any>;
@@ -60,6 +62,11 @@ function onChange(option: OptionType) {
                 .join(", ");
             emit("change", `${contentName.value}(${values})`);
         } else if (option.id) {
+            // Resolve to hid= format for notebook editor
+            if (notebookHistoryId.value && option.data?.hid !== undefined) {
+                emit("change", `${contentName.value}(hid=${option.data.hid})`);
+                return;
+            }
             emit("change", `${contentName.value}(${requiredObject.value}=${option.id})`);
         }
     }
