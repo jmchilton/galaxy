@@ -137,10 +137,21 @@ def rewrite_locations(workflow_path: str, output_path: str):
     cwl_version = workflow_path.split("test/functional/tools/cwl_tools/v")[1].split("/")[0]
     # deps = find_deps(workflow_obj, loading_context.loader, uri)
     # basedir=os.path.dirname(workflow_path)
+    # base_dir must be the CWL tests root directory so that relative paths
+    # in defaults (like mixed-versions/hello.txt) map correctly to URLs.
+    # get_cwl_test_url() returns e.g. https://.../tests, so relpath must be
+    # computed from the local "tests/" directory (not the workflow's subdir).
+    cwl_tools_root = (
+        workflow_path.split("test/functional/tools/cwl_tools/v")[0] + f"test/functional/tools/cwl_tools/v{cwl_version}/"
+    )
+    if cwl_version == "1.0":
+        tests_root = os.path.normpath(os.path.join(cwl_tools_root, "v1.0"))
+    else:
+        tests_root = os.path.normpath(os.path.join(cwl_tools_root, "tests"))
     visit_field(
         workflow_obj,
         ("default"),
-        functools.partial(get_url, cwl_version=cwl_version, base_dir=os.path.normpath(os.path.dirname(workflow_path))),
+        functools.partial(get_url, cwl_version=cwl_version, base_dir=tests_root),
     )
     with open(output_path, "w") as output:
         json.dump(workflow_obj, output)

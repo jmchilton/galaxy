@@ -1206,7 +1206,25 @@ class CwlToolEvaluator(UserToolEvaluator):
     def _setup_for_runtimeify(self, compute_environment, input_datasets, input_dataset_collections):
         from galaxy.tools.cwl_runtime import setup_for_cwl_runtimeify
 
-        return setup_for_cwl_runtimeify(self.app, compute_environment, input_datasets, input_dataset_collections)
+        # Build mapping from original (pre-materialization) HDA ids to current
+        # HDAs.  Deferred datasets may be materialized into transient HDAs with
+        # different (or None) ids; the validated_tool_state still references
+        # the original ids, so adapt_dataset needs to resolve them.
+        extra_hda_id_mappings: dict[int, model.HistoryDatasetAssociation] = {}
+        for assoc in self.job.input_datasets:
+            current_hda = input_datasets.get(assoc.name)
+            if current_hda is not None:
+                original_id = assoc.dataset.id
+                if original_id != current_hda.id:
+                    extra_hda_id_mappings[original_id] = current_hda
+
+        return setup_for_cwl_runtimeify(
+            self.app,
+            compute_environment,
+            input_datasets,
+            input_dataset_collections,
+            extra_hda_id_mappings=extra_hda_id_mappings or None,
+        )
 
     def _build_command_line(self):
         from cwltool.utils import visit_class
@@ -1224,6 +1242,11 @@ class CwlToolEvaluator(UserToolEvaluator):
                 del entry["path"]
 
         visit_class(input_json, ("File", "Directory"), _use_path_as_location)
+
+        # Stage secondary files from deferred source URIs.
+        # Deferred CWL File defaults may have secondary files at the remote
+        # source but not staged locally. Resolve them before cwltool validation.
+        self._stage_deferred_secondary_files(input_json)
 
         # Build output dict from job's output datasets
         _, out_data, _ = self.job.io_dicts()
@@ -1280,6 +1303,122 @@ class CwlToolEvaluator(UserToolEvaluator):
         cwl_job_proxy.save_job()
 
         self.command_line = command_line
+
+    def _stage_deferred_secondary_files(self, input_json: dict) -> None:
+        """Stage secondary files for CWL File inputs from deferred sources.
+
+        Deferred CWL datasets (created from workflow defaults) may reference
+        remote files whose secondary files were never staged locally.  This
+        method detects File inputs without ``secondaryFiles`` and, if the
+        underlying HDA has a ``source_uri``, downloads expected secondary
+        files to the job inputs directory so cwltool can find them.
+        """
+        import urllib.request
+
+        from cwltool.utils import visit_class
+
+        # Build lookup: basename -> source_uri from job associations
+        source_uris_by_basename: dict[str, str] = {}
+        inp_data, _, _ = self.job.io_dicts()
+        for _name, hda in inp_data.items():
+            if hda is None:
+                continue
+            dataset = hda.dataset
+            if dataset and dataset.sources:
+                for source in dataset.sources:
+                    if source.source_uri:
+                        uri = source.source_uri
+                        uri_basename = os.path.basename(urllib.parse.urlparse(uri).path)
+                        source_uris_by_basename[uri_basename] = uri
+                        break
+
+        if not source_uris_by_basename:
+            return
+
+        # Get secondary file patterns from the CWL tool definition
+        cwl_tool = cast("CwlCommandBindingTool", self.tool)
+        sf_patterns = _get_secondary_file_patterns(cwl_tool)
+        if not sf_patterns:
+            return
+
+        def _maybe_stage_secondary(entry):
+            if entry.get("secondaryFiles"):
+                return  # Already has secondary files
+            location = entry.get("location", "")
+            if not location or not os.path.isfile(location):
+                return
+
+            basename = entry.get("basename", "")
+            source_uri = source_uris_by_basename.get(basename)
+            if not source_uri:
+                return
+
+            input_dir = os.path.dirname(location)
+            source_dir = source_uri.rsplit("/", 1)[0] if "/" in source_uri else ""
+
+            secondary_files = []
+            for pattern in sf_patterns:
+                sf_name = _apply_secondary_file_pattern(basename, pattern)
+                sf_local = os.path.join(input_dir, sf_name)
+                if os.path.exists(sf_local):
+                    secondary_files.append(
+                        {
+                            "class": "File",
+                            "location": sf_local,
+                            "basename": sf_name,
+                        }
+                    )
+                    continue
+
+                sf_url = f"{source_dir}/{sf_name}"
+                try:
+                    urllib.request.urlretrieve(sf_url, sf_local)
+                    secondary_files.append(
+                        {
+                            "class": "File",
+                            "location": sf_local,
+                            "basename": sf_name,
+                        }
+                    )
+                except Exception:
+                    log.debug(f"Could not download secondary file {sf_url}")
+
+            if secondary_files:
+                entry["secondaryFiles"] = secondary_files
+
+        visit_class(input_json, ("File",), _maybe_stage_secondary)
+
+
+def _apply_secondary_file_pattern(basename: str, pattern: str) -> str:
+    """Apply a CWL secondary file pattern to a basename.
+
+    If pattern starts with ``^``, each ``^`` strips one file extension,
+    then the remainder is appended.  Otherwise the pattern is appended directly.
+    """
+    if pattern.startswith("^"):
+        name = basename
+        i = 0
+        while i < len(pattern) and pattern[i] == "^":
+            name = name.rsplit(".", 1)[0] if "." in name else name
+            i += 1
+        return name + pattern[i:]
+    return basename + pattern
+
+
+def _get_secondary_file_patterns(cwl_tool) -> list[str]:
+    """Extract secondary file patterns from a CWL tool's input definitions."""
+    patterns: list[str] = []
+    tool_dict = cwl_tool._cwl_tool_proxy._tool.tool
+    for inp in tool_dict.get("inputs", []):
+        sf_list = inp.get("secondaryFiles", [])
+        for sf in sf_list:
+            if isinstance(sf, str):
+                patterns.append(sf)
+            elif isinstance(sf, dict):
+                p = sf.get("pattern", "")
+                if p:
+                    patterns.append(p)
+    return patterns
 
 
 class RemoteToolEvaluator(ToolEvaluator):

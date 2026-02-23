@@ -143,6 +143,8 @@ class DatasetInstanceMaterializer:
 
             materialized_dataset.sources = copied_sources
             materialized_dataset.hashes = materialized_dataset_hashes
+            if dataset.created_from_basename:
+                materialized_dataset.created_from_basename = dataset.created_from_basename
         target_source = self._find_closest_dataset_source(dataset)
         transient_paths = None
         replacement_dataset: Optional[HistoryDatasetAssociation] = None
