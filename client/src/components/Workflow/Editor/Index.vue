@@ -973,6 +973,7 @@ export default {
                 await this.onCreate();
             } else {
                 await this.onSave();
+                this.hasChanges = false;
             }
         },
         async onActivityClicked(activityId) {
