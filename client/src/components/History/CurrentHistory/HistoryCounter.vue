@@ -156,32 +156,34 @@ onMounted(() => {
 
 <template>
     <div class="history-size my-1 d-flex justify-content-between">
-        <GButton
-            tooltip
-            :title="localize('History Size')"
-            transparent
-            size="small"
-            color="blue"
-            class="rounded-0 history-storage-overview-button"
-            :disabled="!canManageStorage"
-            data-description="storage dashboard button"
-            @click="onDashboard">
-            <FontAwesomeIcon :icon="faDatabase" />
-            <span>{{ niceHistorySize }}</span>
-        </GButton>
+        <div class="d-flex">
+            <GButton
+                tooltip
+                :title="localize('History Size')"
+                transparent
+                size="small"
+                color="blue"
+                class="rounded-0 history-storage-overview-button"
+                :disabled="!canManageStorage"
+                data-description="storage dashboard button"
+                @click="onDashboard">
+                <FontAwesomeIcon :icon="faDatabase" />
+                <span>{{ niceHistorySize }}</span>
+            </GButton>
 
-        <GButton
-            tooltip
-            :title="localize('History Notebook')"
-            transparent
-            size="small"
-            color="blue"
-            class="rounded-0"
-            :disabled="isAnonymous || isResolvingNotebook"
-            data-description="history notebook button"
-            @click="navigateToCurrentNotebook">
-            <FontAwesomeIcon :icon="isResolvingNotebook ? faSpinner : faBook" :spin="isResolvingNotebook" />
-        </GButton>
+            <GButton
+                tooltip
+                :title="localize('History Notebook')"
+                transparent
+                size="small"
+                color="blue"
+                class="rounded-0"
+                :disabled="isAnonymous || isResolvingNotebook"
+                data-description="history notebook button"
+                @click="navigateToCurrentNotebook">
+                <FontAwesomeIcon :icon="isResolvingNotebook ? faSpinner : faBook" :spin="isResolvingNotebook" />
+            </GButton>
+        </div>
 
         <BButtonGroup v-if="currentUser">
             <BButtonGroup>
