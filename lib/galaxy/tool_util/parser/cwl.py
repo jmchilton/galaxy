@@ -308,7 +308,11 @@ class CwlToolSource(ToolSource):
             containers.append({"type": "docker", "identifier": docker_identifier})
 
         software_requirements = self.tool_proxy.software_requirements()
-        resource_requirements = self.tool_proxy.resource_requirements()
+        resource_requirements = list(self.tool_proxy.resource_requirements())
+        for tl in self.tool_proxy.timelimit_requirements():
+            timelimit_value = tl.get("timelimit")
+            if timelimit_value is not None:
+                resource_requirements.append({"type": "resource", "timelimit": timelimit_value})
         credentials = self.tool_proxy.credentials_requirements()
         return requirements.parse_requirements_from_lists(
             software_requirements=[{"name": r[0], "version": r[1], "type": "package"} for r in software_requirements],
