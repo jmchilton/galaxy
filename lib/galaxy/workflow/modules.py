@@ -301,7 +301,7 @@ def build_cwl_input_dict(
     # Fill defaults from step inputs
     for step_input in step.inputs:
         name = step_input.name
-        if name is not None and name not in cwl_input_dict and step_input.default_value is not None:
+        if name is not None and cwl_input_dict.get(name) is None and step_input.default_value is not None:
             cwl_input_dict[name] = _resolve_cwl_default(step_input.default_value, trans, progress)
 
     return cwl_input_dict
