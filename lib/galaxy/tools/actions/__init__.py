@@ -685,7 +685,7 @@ class DefaultToolAction(ToolAction):
                         # Output collection is mapped over and has already been copied from original job
                         continue
                     collections_manager = app.dataset_collection_manager
-                    element_identifiers: list[dict[str, Union[str, list[dict[str, Union[str, list[Any]]]]]]] = []
+                    element_identifiers: list[dict[str, Any]] = []
                     # mypy doesn't yet support recursive type definitions
                     known_outputs = output.known_outputs(input_collections, collections_manager.type_registry)
                     # Just to echo TODO elsewhere - this should be restructured to allow
