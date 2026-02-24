@@ -10,11 +10,11 @@ from galaxy.tool_util.parameters import (
     validate_internal_job,
 )
 from galaxy.tool_util.parameters.convert import runtimeify
+from galaxy.tool_util.unittest_utils.parameters import parameter_bundle_for_file
 from galaxy.tool_util_models.parameters import (
     DataInternalJson,
     DataRequestInternalDereferencedT,
 )
-from galaxy.tool_util.unittest_utils.parameters import parameter_bundle_for_file
 
 
 def _mock_adapt_dataset(value: DataRequestInternalDereferencedT) -> DataInternalJson:

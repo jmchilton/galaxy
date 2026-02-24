@@ -8,9 +8,8 @@ job_runtime pydantic models.
 import json
 import os
 
-import yaml
-
 import pytest
+import yaml
 
 from galaxy.tool_util.cwl.job_conversion import cwl_job_to_request
 from galaxy.tool_util.cwl.job_normalization import (

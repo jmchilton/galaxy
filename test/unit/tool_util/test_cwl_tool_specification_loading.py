@@ -13,9 +13,8 @@ Three tiers:
 
 import os
 
-import yaml
-
 import pytest
+import yaml
 
 from galaxy.tool_util.parameters import input_models_for_tool_source
 from galaxy.tool_util.parser import get_tool_source
