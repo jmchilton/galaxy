@@ -100,13 +100,13 @@ from galaxy.schema.schema import (
     WorkflowLandingRequest,
 )
 from galaxy.tool_util.client.staging import InteractorStaging
-from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
 from galaxy.tool_util.cwl.util import (
     GalaxyOutput,
     guess_artifact_type,
     invocation_to_output,
     output_to_cwl_json,
 )
+from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
 from galaxy.tool_util.verify.test_data import TestDataResolver
 from galaxy.tool_util.verify.wait import (
     timeout_type,

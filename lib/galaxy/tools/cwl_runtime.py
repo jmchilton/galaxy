@@ -44,10 +44,12 @@ if TYPE_CHECKING:
     from galaxy.model import (
         History,
         HistoryItem,
+        InpDataDictT,
     )
-    from galaxy.structured_app import MinimalApp
-    from galaxy.model import InpDataDictT
-    from galaxy.structured_app import MinimalToolApp
+    from galaxy.structured_app import (
+        MinimalApp,
+        MinimalToolApp,
+    )
     from galaxy.tools.runtime import InpDataCollectionsDictT
 
 

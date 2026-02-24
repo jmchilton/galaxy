@@ -64,6 +64,7 @@ from galaxy.schema.invocation import (
     InvocationFailureWorkflowParameterInvalid,
 )
 from galaxy.tool_util.cwl.util import set_basename_and_derived_properties
+from galaxy.tool_util.parameters.state import JobInternalToolState
 from galaxy.tool_util.parser import get_input_source
 from galaxy.tool_util.parser.output_objects import (
     ToolExpressionOutput,
@@ -77,7 +78,8 @@ from galaxy.tools import (
     get_safe_version,
     Tool,
 )
-from galaxy.tool_util.parameters.state import JobInternalToolState
+from galaxy.tools.cwl_runtime import raw_to_galaxy
+from galaxy.tools.evaluation import CWL_TOOL_TYPES
 from galaxy.tools.execute import (
     execute,
     MappingParameters,
@@ -90,8 +92,6 @@ from galaxy.tools.parameters import (
     params_to_incoming,
     visit_input_values,
 )
-from galaxy.tools.cwl_runtime import raw_to_galaxy
-from galaxy.tools.evaluation import CWL_TOOL_TYPES
 from galaxy.tools.parameters.basic import (
     BaseDataToolParameter,
     BooleanToolParameter,

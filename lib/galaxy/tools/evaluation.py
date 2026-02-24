@@ -9,11 +9,11 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import (
     Any,
+    cast,
     Literal,
     Optional,
     TYPE_CHECKING,
     Union,
-    cast,
 )
 
 from packaging.version import Version
