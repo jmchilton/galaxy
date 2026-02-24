@@ -397,6 +397,15 @@ def test_load_proxy_simple():
     assert len(credentials) == 0
 
 
+def test_cwl_timelimit_as_resource_requirement():
+    timelimit_tool = _cwl_tool_path("v1.2/tests/timelimit.cwl")
+    tool_source = get_tool_source(timelimit_tool)
+    _, _, resource_requirements, _, _ = tool_source.parse_requirements()
+    timelimit_reqs = [rr for rr in resource_requirements if rr.resource_type == "timelimit"]
+    assert len(timelimit_reqs) == 1
+    assert timelimit_reqs[0].to_dict() == {"resource_type": "timelimit", "value_or_expression": 3}
+
+
 def test_cwl_strict_parsing():
     md5sum_non_strict_path = _cwl_tool_path("v1.0_custom/md5sum_non_strict.cwl")
     with pytest.raises(schema_salad.exceptions.ValidationException):

@@ -254,6 +254,9 @@ class ToolProxy(metaclass=ABCMeta):
     def credentials_requirements(self) -> List:
         return self.hints_or_requirements_of_class("CredentialsRequirement")
 
+    def timelimit_requirements(self) -> List:
+        return self.hints_or_requirements_of_class("ToolTimeLimit")
+
 
 def _resolve_schema_defs(type_val, schema_defs, _seen=None):
     """Recursively resolve SchemaDefRequirement references in type structures.
