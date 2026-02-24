@@ -872,6 +872,7 @@ workflow_editor:
       _: "[node-label='${label}']"
       by_id: "#wf-node-step-${id}"
       title: '${_} .node-title'
+      loading: '${_} .loading-icon.fa-spinner'
       destroy: '${_} .node-destroy'
       clone: '${_} .node-clone'
       output_data_row:
