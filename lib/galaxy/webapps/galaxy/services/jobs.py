@@ -246,6 +246,12 @@ class JobsService(ServiceBase):
         if (history_id := job_request.history_id) is not None:
             target_history = self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
         inputs = job_request.inputs
+        # CWL job files may contain inputs not defined in the tool (shared across
+        # tools). cwltool ignores extras with non-strict validation; Galaxy must
+        # strip them before Pydantic validation which uses extra="forbid".
+        if inputs and tool.tool_type in ("cwl", "galactic_cwl"):
+            param_names = {p.name for p in tool.parameters}
+            inputs = {k: v for k, v in inputs.items() if k in param_names}
         strict = job_request.strict
         if tool.parameters is None:
             raise exceptions.RequestParameterInvalidException(f"Tool {tool.id} has no parameters defined")
