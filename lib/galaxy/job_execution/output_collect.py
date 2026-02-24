@@ -177,41 +177,83 @@ def collect_dynamic_outputs(
         if not output_collection_def:
             continue
 
-        if not output_collection_def.dynamic_structure:
+        if output_collection_def.dynamic_structure:
+            # Could be HDCA for normal jobs or a DC for mapping
+            # jobs.
+            if hasattr(has_collection, "collection"):
+                collection = has_collection.collection
+            else:
+                collection = has_collection
+
+            # We are adding dynamic collections, which may be precreated, but their actually state is still new!
+            collection.populated_state = collection.populated_states.NEW
+
+            try:
+                collection_builder = builder.BoundCollectionBuilder(collection)
+                dataset_collectors = [
+                    dataset_collector(description)
+                    for description in output_collection_def.dataset_collector_descriptions
+                ]
+                output_name = output_collection_def.name
+                filenames = job_context.find_files(output_name, collection, dataset_collectors)
+                job_context.populate_collection_elements(
+                    collection,
+                    collection_builder,
+                    filenames,
+                    name=output_collection_def.name,
+                    metadata_source_name=output_collection_def.metadata_source,
+                    final_job_state=job_context.final_job_state,
+                    change_datatype_actions=job_context.change_datatype_actions,
+                )
+                collection_builder.populate()
+            except Exception:
+                log.exception("Problem gathering output collection.")
+                collection.handle_population_failed("Problem building datasets for collection.")
+
+            job_context.add_dataset_collection(has_collection)
             continue
 
-        # Could be HDCA for normal jobs or a DC for mapping
-        # jobs.
+        # Static collections (e.g. records) may contain nested dynamic sub-collections
+        # (e.g. array fields within CWL records). Populate those from provided metadata.
         if hasattr(has_collection, "collection"):
             collection = has_collection.collection
         else:
             collection = has_collection
+        _populate_nested_dynamic_collections(job_context, name, collection)
 
-        # We are adding dynamic collections, which may be precreated, but their actually state is still new!
-        collection.populated_state = collection.populated_states.NEW
 
+def _populate_nested_dynamic_collections(job_context, collection_name, collection):
+    """Populate nested sub-collections within a static collection from provided metadata.
+
+    For CWL record outputs, some fields may be arrays represented as nested list
+    sub-collections. These are populated dynamically from tool-provided metadata
+    using keys like ``record_output|__part__|field_name``.
+    """
+    for element in collection.elements:
+        if not element.is_collection:
+            continue
+        sub_collection = element.element_object
+        if sub_collection.populated:
+            continue
+        sub_output_name = f"{collection_name}|__part__|{element.element_identifier}"
+        sub_collector_desc = ToolProvidedMetadataDatasetCollection()
+        sub_collectors = [dataset_collector(sub_collector_desc)]
+        sub_collection.populated_state = sub_collection.populated_states.NEW
         try:
-            collection_builder = builder.BoundCollectionBuilder(collection)
-            dataset_collectors = [
-                dataset_collector(description) for description in output_collection_def.dataset_collector_descriptions
-            ]
-            output_name = output_collection_def.name
-            filenames = job_context.find_files(output_name, collection, dataset_collectors)
+            collection_builder = builder.BoundCollectionBuilder(sub_collection)
+            filenames = job_context.find_files(sub_output_name, sub_collection, sub_collectors)
             job_context.populate_collection_elements(
-                collection,
+                sub_collection,
                 collection_builder,
                 filenames,
-                name=output_collection_def.name,
-                metadata_source_name=output_collection_def.metadata_source,
+                name=sub_output_name,
                 final_job_state=job_context.final_job_state,
                 change_datatype_actions=job_context.change_datatype_actions,
             )
             collection_builder.populate()
         except Exception:
-            log.exception("Problem gathering output collection.")
-            collection.handle_population_failed("Problem building datasets for collection.")
-
-        job_context.add_dataset_collection(has_collection)
+            log.exception("Problem gathering nested output collection for %s.", sub_output_name)
+            sub_collection.handle_population_failed("Problem building datasets for nested collection.")
 
 
 class BaseJobContext(ModelPersistenceContext):

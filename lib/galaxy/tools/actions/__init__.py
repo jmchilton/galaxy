@@ -746,9 +746,27 @@ class DefaultToolAction(ToolAction):
                         assert not element_identifiers  # known_outputs must have been empty
                         element_kwds = dict(elements=collections_manager.ELEMENTS_UNINITIALIZED)
                     else:
+                        # For record outputs with array-type fields, known_outputs
+                        # won't produce output parts for those fields (since array
+                        # contents are dynamic). Add empty unpopulated sub-collection
+                        # entries so generate_elements sees the right element count.
+                        fields = output.structure.fields
+                        if fields:
+                            existing_names = {ei["name"] for ei in element_identifiers}
+                            for field in fields:
+                                field_name = field.get("name")
+                                field_type = field.get("type", "File")
+                                if (
+                                    field_name
+                                    and field_name not in existing_names
+                                    and isinstance(field_type, dict)
+                                    and field_type.get("type") == "array"
+                                ):
+                                    sub_collection = model.DatasetCollection(collection_type="list", populated=False)
+                                    element_identifiers.append({"__object__": sub_collection, "name": field_name})
                         element_kwds = dict(
                             element_identifiers=element_identifiers,
-                            fields=output.structure.fields,
+                            fields=fields,
                         )
                     output_collections.create_collection(
                         output=output, name=name, completed_job=completed_job, **element_kwds
