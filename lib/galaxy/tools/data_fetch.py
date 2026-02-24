@@ -403,7 +403,7 @@ def _fetch_target(upload_config: "UploadConfig", target: dict[str, Any]):
                 assert path
                 datatype.groom_dataset_content(path)
 
-            if ext == "directory" and not deferred and path:
+            if ext == "directory" and not deferred and path and not staged_extra_files:
                 CompressedFile(path).extract(extra_files_path)
                 staged_extra_files = extra_files_path
 

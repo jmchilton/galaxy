@@ -119,6 +119,11 @@ def setup_for_cwl_runtimeify(
         if hda is None:
             return base_result
 
+        # For directory-type HDAs, cwltool needs the extra_files directory
+        # (where actual contents are stored), not the primary .dat file.
+        if hda.extension == "directory":
+            base_result.path = hda.dataset.extra_files_path
+
         # Enrich with secondary files
         secondary_files = discover_secondary_files(hda, compute_environment)
         if secondary_files:
