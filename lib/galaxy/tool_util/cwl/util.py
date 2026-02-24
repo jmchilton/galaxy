@@ -345,7 +345,7 @@ def galactic_job_json(
         upload_response.update(value)
         # Strip CWL-specific keys that cause Pydantic validation failures
         # on the tool_request API (Extra inputs not permitted on HDA ref).
-        for cwl_key in ("class", "location", "path"):
+        for cwl_key in ("class", "location", "path", "basename", "listing", "contents", "format"):
             upload_response.pop(cwl_key, None)
         return upload_response
 

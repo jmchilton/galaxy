@@ -1243,6 +1243,24 @@ class CwlToolEvaluator(UserToolEvaluator):
 
         visit_class(input_json, ("File", "Directory"), _use_path_as_location)
 
+        # Populate directory listings from the filesystem so cwltool
+        # valueFrom expressions like $(self.listing[0].path) work.
+        # TODO(jmchilton): this scans the local filesystem and will need to
+        # happen on the worker node for remote execution backends.
+        def _populate_directory_listing(entry):
+            location = entry.get("location")
+            if location and os.path.isdir(location) and "listing" not in entry:
+                listing = []
+                for name in sorted(os.listdir(location)):
+                    item_path = os.path.join(location, name)
+                    if os.path.isdir(item_path):
+                        listing.append({"class": "Directory", "location": item_path, "basename": name})
+                    else:
+                        listing.append({"class": "File", "location": item_path, "basename": name})
+                entry["listing"] = listing
+
+        visit_class(input_json, ("Directory",), _populate_directory_listing)
+
         # Stage secondary files from deferred source URIs.
         # Deferred CWL File defaults may have secondary files at the remote
         # source but not staged locally. Resolve them before cwltool validation.
