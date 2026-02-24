@@ -10,6 +10,7 @@ from .parser import (
     load_job_proxy,
 )
 from .util import (
+    SECONDARY_FILES_EXTRA_PREFIX,
     SECONDARY_FILES_INDEX_PATH,
     STORE_SECONDARY_FILES_WITH_BASENAME,
 )
@@ -64,6 +65,71 @@ def _possible_uri_to_path(location):
     else:
         path = location
     return path
+
+
+def _build_list_elements(output_list, output_key, tool_working_directory, job_proxy):
+    """Build provided_metadata elements dict for a list of CWL outputs."""
+    elements = []
+    for index, el in enumerate(output_list):
+        if isinstance(el, dict) and el.get("class") == "File":
+            output_path = _possible_uri_to_path(el["location"])
+            element = {
+                "name": str(index),
+                "filename": output_path,
+                "created_from_basename": el["basename"],
+            }
+            secondary_files = el.get("secondaryFiles", [])
+            if secondary_files:
+                extra_files_dir = os.path.join(tool_working_directory, f"_{output_key}_{index}_extra")
+                _write_secondary_files(el, secondary_files, extra_files_dir)
+                element["extra_files"] = extra_files_dir
+            elements.append(element)
+        elif isinstance(el, dict) and el.get("class") == "Directory":
+            output_path = _possible_uri_to_path(el["location"])
+            element = {
+                "name": str(index),
+                "filename": output_path,
+                "created_from_basename": el["basename"],
+                "ext": "directory",
+            }
+            elements.append(element)
+        else:
+            target_path = f"{output_key}____{str(index)}"
+            with open(target_path, "w") as f:
+                f.write(json.dumps(el))
+            elements.append({"name": str(index), "filename": target_path, "ext": "expression.json"})
+    return {"elements": elements}
+
+
+def _write_secondary_files(primary_output, secondary_files, extra_files_dir):
+    """Write secondary files into an extra_files directory structure for an element."""
+    secondary_dir = os.path.join(extra_files_dir, SECONDARY_FILES_EXTRA_PREFIX)
+    safe_makedirs(secondary_dir)
+    order = []
+    for secondary_file in secondary_files:
+        secondary_file_description = file_dict_to_description(secondary_file)
+        secondary_file_basename = secondary_file["basename"]
+        if not STORE_SECONDARY_FILES_WITH_BASENAME:
+            output_basename = primary_output["basename"]
+            prefix = ""
+            while True:
+                if secondary_file_basename.startswith(output_basename):
+                    secondary_file_name = prefix + secondary_file_basename[len(output_basename) :]
+                    break
+                prefix = f"^{prefix}"
+                if "." not in output_basename:
+                    secondary_file_name = prefix + secondary_file_basename
+                    break
+                else:
+                    output_basename = output_basename.rsplit(".", 1)[0]
+        else:
+            secondary_file_name = secondary_file_basename
+        extra_target = os.path.join(secondary_dir, secondary_file_name)
+        secondary_file_description.write_to(extra_target)
+        order.append(secondary_file_name)
+    index_contents = {"order": order}
+    with open(os.path.join(extra_files_dir, SECONDARY_FILES_INDEX_PATH), "w") as f:
+        json.dump(index_contents, f)
 
 
 def handle_outputs(job_directory: Optional[str] = None):
@@ -196,24 +262,18 @@ def handle_outputs(job_directory: Optional[str] = None):
                 record_value_output_key = f"{prefix}{record_key}"
                 if isinstance(record_value, dict) and "class" in record_value:
                     handle_known_output(record_value, record_value_output_key)
-                else:
-                    # param_evaluation_noexpr
-                    handle_known_output_json(output, output_name)
-
-        elif isinstance(output, list):
-            elements = []
-            for index, el in enumerate(output):
-                if isinstance(el, dict) and el["class"] == "File":
-                    output_path = _possible_uri_to_path(el["location"])
-                    elements.append(
-                        {"name": str(index), "filename": output_path, "created_from_basename": el["basename"]}
+                elif isinstance(record_value, list):
+                    provided_metadata[record_value_output_key] = _build_list_elements(
+                        record_value, record_value_output_key, tool_working_directory, job_proxy
                     )
                 else:
-                    target_path = f"{output_name}____{str(index)}"
-                    with open(target_path, "w") as f:
-                        f.write(json.dumps(el))
-                    elements.append({"name": str(index), "filename": target_path, "ext": "expression.json"})
-            provided_metadata[output_name] = {"elements": elements}
+                    # param_evaluation_noexpr
+                    handle_known_output_json(record_value, record_value_output_key)
+
+        elif isinstance(output, list):
+            provided_metadata[output_name] = _build_list_elements(
+                output, output_name, tool_working_directory, job_proxy
+            )
         else:
             handle_known_output_json(output, output_name)
 

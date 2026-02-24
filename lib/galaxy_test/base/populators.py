@@ -379,6 +379,10 @@ def output_to_disk(output, download_folder):
                     new_dir = os.path.join(download_folder, key)
                     os.makedirs(new_dir, exist_ok=True)
                     new_output[key] = output_to_disk(value, download_folder=new_dir)
+                elif isinstance(value, (list, dict)):
+                    new_dir = os.path.join(download_folder, key)
+                    os.makedirs(new_dir, exist_ok=True)
+                    new_output[key] = output_to_disk(value, download_folder=new_dir)
                 else:
                     new_output[key] = value
             return new_output

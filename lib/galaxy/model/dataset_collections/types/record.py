@@ -5,6 +5,7 @@ from typing import (
 
 from galaxy.exceptions import RequestParameterMissingException
 from galaxy.model import (
+    DatasetCollection,
     DatasetCollectionElement,
     HistoryDatasetAssociation,
 )
@@ -47,9 +48,16 @@ class RecordDatasetCollectionType(BaseDatasetCollectionType):
         for field in fields:
             name = field.get("name", None)
             assert name
-            assert field.get("type", "File")  # NS: this assert doesn't make sense as it is
-            field_dataset = DatasetCollectionElement(
-                element=HistoryDatasetAssociation(),
-                element_identifier=name,
-            )
-            yield field_dataset
+            field_type = field.get("type", "File")
+            if isinstance(field_type, dict) and field_type.get("type") == "array":
+                sub_collection = DatasetCollection(collection_type="list")
+                field_element = DatasetCollectionElement(
+                    element=sub_collection,
+                    element_identifier=name,
+                )
+            else:
+                field_element = DatasetCollectionElement(
+                    element=HistoryDatasetAssociation(),
+                    element_identifier=name,
+                )
+            yield field_element
