@@ -334,7 +334,8 @@ def galactic_job_json(
             file_path = os.path.join(test_data_directory, file_path)
 
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".tar")
-            with tarfile.open(fileobj=tmp, mode="w:", dereference=True) as tf:
+            tmp.close()
+            with tarfile.open(tmp.name, mode="w:", dereference=True) as tf:
                 tf.add(file_path, ".")
         finally:
             if temp_dir:
@@ -342,6 +343,10 @@ def galactic_job_json(
         file_type = value.get("filetype", None) or value.get("format", None) or "directory"
         upload_response = upload_tar(tmp.name, file_type=file_type, name=os.path.basename(file_path))
         upload_response.update(value)
+        # Strip CWL-specific keys that cause Pydantic validation failures
+        # on the tool_request API (Extra inputs not permitted on HDA ref).
+        for cwl_key in ("class", "location", "path"):
+            upload_response.pop(cwl_key, None)
         return upload_response
 
     def replacement_list(value) -> Dict[str, str]:
