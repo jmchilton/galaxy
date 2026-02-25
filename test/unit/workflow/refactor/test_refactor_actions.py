@@ -1,10 +1,10 @@
-"""Unit tests for workflow refactor schema and executor additions (Step 2).
+"""Unit tests for workflow refactor schema and executor additions.
 
 Tests cover:
-- UpdateStepPositionAction: position_absolute vs position_shift, validation
-- RemoveStepAction: connection cleanup, workflow output messages, sparse dict handling
-- Comment actions: add, delete, update position/size/color/data, remove all freehand
-- Schema validation: model_validator on UpdateStepPositionAction
+- UpdateStepPositionAction: position_absolute vs position_shift, missing position key, validation
+- RemoveStepAction: connection cleanup, workflow output messages, sparse dict handling, error cases, frame child_steps cleanup
+- Comment actions: add, delete, update position/size/color/data, remove all freehand, frame child_comments cleanup
+- Schema validation: model_validator on UpdateStepPositionAction, Literal types on comment type/color
 """
 
 from typing import Any
@@ -552,3 +552,130 @@ class TestRemoveAllFreehandComments:
         action = RemoveAllFreehandCommentsAction(action_type="remove_all_freehand_comments")
         _run_action(executor, action)
         assert wf.get("comments", []) == []
+
+
+class TestPositionShiftMissingPositionKey:
+    def test_shift_with_no_position_key(self):
+        wf = {
+            "steps": {
+                0: {
+                    "id": 0,
+                    "order_index": 0,
+                    "type": "data_input",
+                    "label": "no_pos",
+                    "input_connections": {},
+                    "workflow_outputs": [],
+                },
+            },
+        }
+        executor = _make_executor(wf)
+        action = UpdateStepPositionAction(
+            action_type="update_step_position",
+            step={"order_index": 0},
+            position_shift={"left": 50, "top": 75},
+        )
+        _run_action(executor, action)
+        assert wf["steps"][0]["position"] == {"left": 50, "top": 75}
+
+
+class TestRemoveStepNotFound:
+    def test_remove_step_invalid_order_index(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = RemoveStepAction(action_type="remove_step", step={"order_index": 99})
+        with pytest.raises(Exception, match="Failed to resolve"):
+            _run_action(executor, action)
+
+    def test_remove_step_invalid_label(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = RemoveStepAction(action_type="remove_step", step={"label": "nonexistent"})
+        with pytest.raises(Exception, match="Failed to resolve"):
+            _run_action(executor, action)
+
+
+class TestDeleteCommentCleansFrameChildComments:
+    def test_frame_child_comments_cleaned(self):
+        wf = {
+            "steps": {},
+            "comments": [
+                {
+                    "id": 0,
+                    "type": "frame",
+                    "position": [0, 0],
+                    "size": [500, 500],
+                    "color": "none",
+                    "data": {"title": "My Frame"},
+                    "child_comments": [1, 2],
+                },
+                {"id": 1, "type": "text", "position": [10, 10], "size": [100, 50], "color": "none", "data": {}},
+                {"id": 2, "type": "text", "position": [20, 20], "size": [100, 50], "color": "none", "data": {}},
+            ],
+        }
+        executor = _make_executor(wf)
+        action = DeleteCommentAction(action_type="delete_comment", comment={"comment_id": 1})
+        _run_action(executor, action)
+        frame = next(c for c in wf["comments"] if c["id"] == 0)
+        assert frame["child_comments"] == [2]
+
+
+class TestRemoveStepCleansFrameChildSteps:
+    def test_frame_child_steps_cleaned(self):
+        wf = {
+            "steps": {
+                0: {
+                    "id": 0,
+                    "order_index": 0,
+                    "type": "data_input",
+                    "label": "input1",
+                    "position": {"left": 0, "top": 0},
+                    "input_connections": {},
+                    "workflow_outputs": [],
+                },
+                1: {
+                    "id": 1,
+                    "order_index": 1,
+                    "type": "tool",
+                    "label": "tool1",
+                    "position": {"left": 200, "top": 0},
+                    "input_connections": {},
+                    "workflow_outputs": [],
+                },
+            },
+            "comments": [
+                {
+                    "id": 0,
+                    "type": "frame",
+                    "position": [0, 0],
+                    "size": [500, 500],
+                    "color": "none",
+                    "data": {"title": "Frame"},
+                    "child_steps": [0, 1],
+                },
+            ],
+        }
+        executor = _make_executor(wf)
+        action = RemoveStepAction(action_type="remove_step", step={"order_index": 0})
+        _run_action(executor, action)
+        assert wf["comments"][0]["child_steps"] == [1]
+
+
+class TestInvalidCommentTypeColor:
+    def test_invalid_comment_type_rejected(self):
+        with pytest.raises(ValidationError):
+            AddCommentAction(
+                action_type="add_comment",
+                type="invalid",
+                position={"left": 0, "top": 0},
+                size={"width": 100, "height": 50},
+                color="none",
+                data={},
+            )
+
+    def test_invalid_comment_color_rejected(self):
+        with pytest.raises(ValidationError):
+            UpdateCommentColorAction(
+                action_type="update_comment_color",
+                comment={"comment_id": 0},
+                color="magenta",
+            )
