@@ -1,7 +1,4 @@
-from galaxy_test.base.populators import (
-    DatasetPopulator,
-    WorkflowPopulator,
-)
+from galaxy_test.base.populators import WorkflowPopulator
 from ._framework import ApiTestCase
 
 CHANGELOG_SIMPLE_WF = """
@@ -20,11 +17,8 @@ steps:
 
 
 class TestWorkflowChangelogApi(ApiTestCase):
-    dataset_populator: DatasetPopulator
-
     def setUp(self):
         super().setUp()
-        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
         self.workflow_populator = WorkflowPopulator(self.galaxy_interactor)
 
     def test_refactor_with_title_creates_journal_entry(self):
@@ -78,15 +72,13 @@ class TestWorkflowChangelogApi(ApiTestCase):
                 title=f"Change {i}",
             ).raise_for_status()
 
-        response = self.workflow_populator.get_workflow_changelog(workflow_id, limit=2, offset=0)
-        response.raise_for_status()
-        assert len(response.json()) == 2
-        assert response.headers["total_matches"] == "3"
+        changelog, headers = self._get_changelog(workflow_id, limit=2, offset=0)
+        assert len(changelog) == 2
+        assert headers["total_matches"] == "3"
 
-        response = self.workflow_populator.get_workflow_changelog(workflow_id, limit=2, offset=2)
-        response.raise_for_status()
-        assert len(response.json()) == 1
-        assert response.headers["total_matches"] == "3"
+        changelog, headers = self._get_changelog(workflow_id, limit=2, offset=2)
+        assert len(changelog) == 1
+        assert headers["total_matches"] == "3"
 
     def test_changelog_ordering_newest_first(self):
         workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
@@ -159,7 +151,7 @@ class TestWorkflowChangelogApi(ApiTestCase):
         revert_response = self.workflow_populator.revert_workflow(workflow_id, current_workflow_id)
         self._assert_status_code_is(revert_response, 400)
 
-    def test_journal_entry_stores_action_payloads(self):
+    def test_multi_action_execution_messages(self):
         workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
         actions = [
             {"action_type": "update_name", "name": "new name"},
@@ -173,23 +165,10 @@ class TestWorkflowChangelogApi(ApiTestCase):
 
         changelog = self._get_changelog(workflow_id)
         assert len(changelog) == 1
-        # ChangelogEntry doesn't expose action_payloads directly,
-        # but we can verify execution_messages structure
-        assert isinstance(changelog[0]["execution_messages"], list)
-        assert len(changelog[0]["execution_messages"]) == 2
-
-    def test_journal_entry_stores_execution_messages(self):
-        workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
-        actions = [{"action_type": "update_name", "name": "new name"}]
-        self.workflow_populator.refactor_workflow(
-            workflow_id,
-            actions,
-            title="With messages",
-        ).raise_for_status()
-
-        changelog = self._get_changelog(workflow_id)
-        assert len(changelog) == 1
-        assert isinstance(changelog[0]["execution_messages"], list)
+        messages = changelog[0]["execution_messages"]
+        assert isinstance(messages, list)
+        # One message group per action executed
+        assert len(messages) == 2
 
     def test_refactor_failure_no_journal_entry(self):
         workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
@@ -199,15 +178,16 @@ class TestWorkflowChangelogApi(ApiTestCase):
             actions,
             title="Should not persist",
         )
-        # Expect failure
-        assert response.status_code >= 400
+        self._assert_status_code_is(response, 400)
 
         changelog = self._get_changelog(workflow_id)
         assert len(changelog) == 0
 
     # --- Helpers ---
 
-    def _get_changelog(self, workflow_id):
-        response = self.workflow_populator.get_workflow_changelog(workflow_id)
+    def _get_changelog(self, workflow_id, **kwargs):
+        response = self.workflow_populator.get_workflow_changelog(workflow_id, **kwargs)
         response.raise_for_status()
+        if kwargs:
+            return response.json(), response.headers
         return response.json()
