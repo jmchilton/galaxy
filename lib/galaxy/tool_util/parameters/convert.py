@@ -746,6 +746,8 @@ def _runtimeify_cwl_union(parameter, value, cwl_adapt):
 
 
 def _runtimeify_cwl_any(value, cwl_adapt):
+    if _is_collection_ref(value):
+        return VISITOR_NO_REPLACEMENT
     if _is_dataset_ref(value):
         # No param context for Any — default to File
         return cwl_adapt(CwlFileParameterModel(name="_any"), value)
@@ -824,8 +826,15 @@ def runtimeify(
                 return adapt_cwl_collection(DataCollectionRequestInternal(**value), parameter)
             return _runtimeify_cwl_record(parameter, value, cwl_adapt)
         elif isinstance(parameter, CwlUnionParameterModel):
+            if _is_collection_ref(value) and adapt_cwl_collection is not None:
+                for member in parameter.parameters:
+                    if isinstance(member, CwlArrayParameterModel):
+                        return adapt_cwl_collection(DataCollectionRequestInternal(**value), member)
+                return adapt_cwl_collection(DataCollectionRequestInternal(**value), parameter)
             return _runtimeify_cwl_union(parameter, value, cwl_adapt)
         elif isinstance(parameter, CwlAnyParameterModel):
+            if _is_collection_ref(value) and adapt_cwl_collection is not None:
+                return adapt_cwl_collection(DataCollectionRequestInternal(**value), parameter)
             return _runtimeify_cwl_any(value, cwl_adapt)
         else:
             return VISITOR_NO_REPLACEMENT
