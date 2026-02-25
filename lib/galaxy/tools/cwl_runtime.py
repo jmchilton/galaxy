@@ -10,6 +10,7 @@
 import json
 import os
 import urllib.parse
+
 from typing import (
     Any,
     Optional,
@@ -27,6 +28,7 @@ from galaxy.model import (
 from galaxy.model.dataset_collections import builder
 from galaxy.tool_util.cwl.util import SECONDARY_FILES_EXTRA_PREFIX
 from galaxy.tool_util_models.parameters import (
+    CwlAnyParameterModel,
     CwlArrayParameterModel,
     CwlBooleanParameterModel,
     CwlDirectoryParameterModel,
@@ -220,6 +222,17 @@ def setup_for_cwl_runtimeify(
                 elements,
                 CwlRecordParameterModel(name=parameter.name, fields=list(all_fields.values())),
             )
+        elif isinstance(parameter, CwlAnyParameterModel):
+            if collection.collection_type == "record":
+                result = {}
+                for e in elements:
+                    identifier = e.element_identifier
+                    if identifier is None:
+                        continue
+                    result[identifier] = _adapt_element(e, parameter)
+                return result
+            else:
+                return [_adapt_element(e, parameter) for e in elements]
         else:
             raise ValueError(f"Cannot adapt collection for parameter type: {type(parameter)}")
 
