@@ -281,7 +281,7 @@ def handle_outputs(job_directory: Optional[str] = None):
             # Any-type output that evaluated to a dict — write as single expression.json
             handle_known_output_json(output, output_name)
 
-        elif isinstance(output, list):
+        elif isinstance(output, list) and output_name not in any_typed_outputs:
             provided_metadata[output_name] = _build_list_elements(
                 output, output_name, tool_working_directory, job_proxy
             )
