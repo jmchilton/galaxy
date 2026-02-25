@@ -418,25 +418,54 @@ def find_cwl_scatter_collections(
     step: WorkflowStep,
     cwl_input_dict: dict,
     trans,
+    tool=None,
 ) -> matching.CollectionsToMatch:
     """Identify scatter inputs and build a ``CollectionsToMatch``.
 
     CWL scatter is simpler than the legacy Galaxy path — no subcollection
     type matching or ``multiple=True`` handling.  Each scatter input maps
     its HDCA directly.
+
+    Also handles implicit mapping: when an HDCA is passed to a scalar CWL
+    input (e.g. inside a subworkflow with outer scatter), the HDCA is
+    treated as an implicit scatter target.
     """
+    from galaxy.tool_util_models.parameters import (
+        CwlArrayParameterModel,
+        CwlRecordParameterModel,
+    )
+
     collections_to_match = matching.CollectionsToMatch()
-    for step_input in step.inputs:
-        name = step_input.name
-        scatter_type = step_input.scatter_type or "dotproduct"
-        if scatter_type == "disabled" or name not in cwl_input_dict:
-            continue
-        ref = cwl_input_dict[name]
+    step_inputs_by_name = {si.name: si for si in step.inputs}
+
+    # Collection-typed params (array/record) should NOT be implicitly mapped.
+    collection_param_names: set[str] = set()
+    if tool:
+        for p in tool.parameters:
+            if isinstance(p, (CwlArrayParameterModel, CwlRecordParameterModel)):
+                collection_param_names.add(p.name)
+
+    for name, ref in cwl_input_dict.items():
         if not isinstance(ref, dict) or ref.get("src") != "hdca":
             continue
+
+        step_input = step_inputs_by_name.get(name)
+        scatter_type = (step_input.scatter_type if step_input else None) or "dotproduct"
+        if scatter_type == "disabled":
+            continue
+
         hdca = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, ref["id"])
-        if hdca and hdca.collection.allow_implicit_mapping:
+        if not hdca or not hdca.collection.allow_implicit_mapping:
+            continue
+
+        if step_input:
+            # Explicit scatter annotation (WorkflowStepInput exists)
             collections_to_match.add(name, hdca)
+        elif name not in collection_param_names:
+            # Implicit mapping: HDCA passed to a scalar parameter
+            # (e.g. inside a subworkflow with outer scatter)
+            collections_to_match.add(name, hdca)
+
     return collections_to_match
 
 
@@ -2905,7 +2934,7 @@ class ToolModule(WorkflowModule):
             cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
 
             # Scatter: identify collection inputs and match
-            collections_to_match = find_cwl_scatter_collections(step, cwl_input_dict, trans)
+            collections_to_match = find_cwl_scatter_collections(step, cwl_input_dict, trans, tool=tool)
             collection_info = self.trans.app.dataset_collection_manager.match_collections(collections_to_match)
             if collection_info:
                 if progress.subworkflow_collection_info:
