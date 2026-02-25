@@ -35,6 +35,7 @@ from galaxy.tool_util_models.parameters import (
     CwlIntegerParameterModel,
     CwlRecordParameterModel,
     CwlStringParameterModel,
+    CwlUnionParameterModel,
 )
 from galaxy.tools.runtime import setup_for_runtimeify
 from galaxy.util.hash_util import HASH_NAMES
@@ -174,29 +175,65 @@ def setup_for_cwl_runtimeify(
                 content = f.read().strip()
             return _parse_scalar(content, item_type_param)
 
+    def _adapt_collection_elements(collection, parameter):
+        """Recursively expand a DatasetCollection to native CWL value."""
+        elements = sorted(collection.elements, key=lambda e: e.element_index or 0)
+
+        if isinstance(parameter, CwlArrayParameterModel):
+            return [_adapt_element(e, parameter.item_type) for e in elements]
+        elif isinstance(parameter, CwlRecordParameterModel):
+            return _adapt_record_elements(elements, parameter)
+        elif isinstance(parameter, CwlUnionParameterModel):
+            # Union of records — match variant by element field names
+            element_names = {e.element_identifier for e in elements}
+            for variant in parameter.parameters:
+                if isinstance(variant, CwlRecordParameterModel):
+                    field_names = {f.name for f in variant.fields}
+                    if element_names <= field_names:
+                        return _adapt_record_elements(elements, variant)
+            # Fallback: merge all record variant fields
+            all_fields: dict[str, Any] = {}
+            for variant in parameter.parameters:
+                if isinstance(variant, CwlRecordParameterModel):
+                    for f in variant.fields:
+                        if f.name not in all_fields:
+                            all_fields[f.name] = f
+            return _adapt_record_elements(
+                elements,
+                CwlRecordParameterModel(name=parameter.name, fields=list(all_fields.values())),
+            )
+        else:
+            raise ValueError(f"Cannot adapt collection for parameter type: {type(parameter)}")
+
+    def _adapt_record_elements(elements, record_param):
+        """Expand collection elements as a CWL record dict."""
+        fields_by_name = {f.name: f for f in record_param.fields}
+        result = {}
+        for e in elements:
+            identifier = e.element_identifier
+            if identifier is None:
+                continue
+            field_param = fields_by_name.get(identifier)
+            if field_param is not None:
+                result[identifier] = _adapt_element(e, field_param)
+        return result
+
+    def _adapt_element(element, parameter):
+        """Adapt a collection element (HDA or subcollection) to CWL native value."""
+        obj = element.element_object
+        if isinstance(obj, DatasetCollection):
+            return _adapt_collection_elements(obj, parameter)
+        elif isinstance(obj, HistoryDatasetAssociation):
+            return _adapt_element_hda(obj, parameter)
+        else:
+            raise ValueError(f"Unexpected collection element type: {type(obj)}")
+
     def adapt_cwl_collection(ref, parameter):
         """Expand an HDCA reference to native CWL list or dict."""
         hdca = hdcas_by_id.get(ref.id)
         if hdca is None:
             raise ValueError(f"HDCA {ref.id} not found for CWL collection expansion")
-        collection = hdca.collection
-        elements = sorted(collection.elements, key=lambda e: e.element_index or 0)
-
-        if isinstance(parameter, CwlArrayParameterModel):
-            return [_adapt_element_hda(e.element_object, parameter.item_type) for e in elements]
-        elif isinstance(parameter, CwlRecordParameterModel):
-            fields_by_name = {f.name: f for f in parameter.fields}
-            result = {}
-            for e in elements:
-                identifier = e.element_identifier
-                if identifier is None:
-                    continue
-                field_param = fields_by_name.get(identifier)
-                if field_param is not None:
-                    result[identifier] = _adapt_element_hda(e.element_object, field_param)
-            return result
-        else:
-            raise ValueError(f"Unexpected parameter type for CWL collection expansion: {type(parameter)}")
+        return _adapt_collection_elements(hdca.collection, parameter)
 
     return hda_references, adapt_dataset, adapt_collection, adapt_cwl_collection
 
