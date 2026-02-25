@@ -14,4 +14,8 @@ log = logging.getLogger(__name__)
 
 
 def relocate_dynamic_outputs():
-    handle_outputs()
+    try:
+        handle_outputs()
+    except Exception:
+        log.exception("Failed to relocate CWL dynamic outputs")
+        raise

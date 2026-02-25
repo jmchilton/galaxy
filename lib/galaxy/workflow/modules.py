@@ -367,6 +367,8 @@ def _ref_to_cwl(value, hda_references, trans, step):
             return to_cwl(hdca, hda_references=hda_references, step=step)
         elif value["src"] == "json":
             return value["value"]
+    elif isinstance(value, model.DatasetCollection):
+        return to_cwl(value, hda_references=hda_references, step=step)
     return value
 
 
@@ -2930,8 +2932,12 @@ class ToolModule(WorkflowModule):
             # Build input dict directly from step connections.
             cwl_input_dict = build_cwl_input_dict(step, progress, trans)
 
-            # Evaluate valueFrom expressions (modifies cwl_input_dict in place)
-            cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
+            # Per CWL spec, when scatter + valueFrom are combined, valueFrom
+            # is evaluated per scatter element (self = element, not array).
+            # So only evaluate valueFrom pre-scatter when there is no scatter.
+            has_scatter = any(si.scatter_type and si.scatter_type != "disabled" for si in step.inputs)
+            if not has_scatter:
+                cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
 
             # Scatter: identify collection inputs and match
             collections_to_match = find_cwl_scatter_collections(step, cwl_input_dict, trans, tool=tool)
@@ -2954,6 +2960,8 @@ class ToolModule(WorkflowModule):
                 if iteration_elements:
                     for name, element in iteration_elements.items():
                         slice_dict[name] = _galaxy_to_cwl_ref(element.element_object)
+                if has_scatter:
+                    slice_dict = evaluate_cwl_value_from_expressions(step, slice_dict, progress, trans)
                 if step.when_expression and when_value is not False:
                     hda_references: list[model.HistoryDatasetAssociation] = []
                     step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in slice_dict.items()}
