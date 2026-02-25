@@ -334,6 +334,8 @@ def _galaxy_to_cwl_ref(value):
         return {"src": "hdca", "id": value.id}
     elif isinstance(value, model.DatasetCollectionElement):
         return {"src": "dce", "id": value.id}
+    elif isinstance(value, dict) and value.get("src") == "json":
+        return value["value"]
     else:
         return value
 
