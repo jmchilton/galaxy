@@ -124,9 +124,9 @@ class FetchUploadToolAction(BaseUploadToolAction):
                     if "name" not in request_part:
                         request_part["name"] = path_def["file_data"]["filename"]
                     request_part["src"] = "path"
-                else:
-                    for value in request_part.values():
-                        replace_file_srcs(value)
+                # Always recurse into values to handle nested src:files (e.g. extra_files)
+                for value in list(request_part.values()):
+                    replace_file_srcs(value)
             elif isinstance(request_part, list):
                 for value in request_part:
                     replace_file_srcs(value)

@@ -414,18 +414,13 @@ def galactic_job_json(
     def replacement_record(value):
         collection_element_identifiers = []
         for record_key, record_value in value.items():
-            if isinstance(record_value, list):
-                # Array field in record - create as list collection, reference as hdca
-                list_ref = replacement_list(record_value)
-                collection_element = {"name": record_key, "src": "hdca", "id": list_ref["id"]}
-            elif isinstance(record_value, dict) and record_value.get("class") == "File":
-                filetype = record_value.get("filetype", None) or record_value.get("format", None)
-                kwd = {}
-                cwl_fmt = record_value.get("format")
-                if cwl_fmt:
-                    kwd["tags"] = [f"cwl_format:{cwl_fmt}"]
-                dataset = upload_file(record_value["location"], None, filetype=filetype, **kwd)
+            if isinstance(record_value, dict) and record_value.get("class") == "File":
+                dataset = replacement_file(record_value)
                 collection_element = dataset.copy()
+                collection_element["name"] = record_key
+            elif isinstance(record_value, list):
+                collection_element = replacement_list(record_value)
+                collection_element = collection_element.copy()
                 collection_element["name"] = record_key
             else:
                 dataset = replacement_item(record_value, force_to_file=True)
@@ -445,6 +440,123 @@ def galactic_job_json(
 
     job.update(replace_keys)
     return job, datasets
+
+
+def resolve_cwl_secondary_files(
+    job: Dict[str, Any],
+    cwl_tool_path: str,
+    test_data_directory: str,
+) -> None:
+    """Walk *job* and populate ``secondaryFiles`` entries discovered from the filesystem.
+
+    CWL runners are expected to auto-discover secondary files from tool
+    ``secondaryFiles`` patterns when not explicitly listed in the job input.
+    This resolves them before staging so that ``galactic_job_json`` can
+    upload them alongside primary files.
+
+    Modifies *job* in place.
+    """
+    with open(cwl_tool_path) as f:
+        tool_def = yaml.safe_load(f)
+
+    inputs = tool_def.get("inputs", [])
+    if isinstance(inputs, dict):
+        inputs = [{"id": k, **(v if isinstance(v, dict) else {"type": v})} for k, v in inputs.items()]
+
+    for input_def in inputs:
+        input_id = input_def.get("id", input_def.get("name", ""))
+        input_id = input_id.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+        if input_id in job:
+            _resolve_sf_for_value(job[input_id], input_def, test_data_directory)
+
+
+def _resolve_sf_for_value(
+    value: Any,
+    input_def: Dict[str, Any],
+    test_data_directory: str,
+) -> None:
+    """Recursively resolve secondary files for a job value from its CWL type definition."""
+    sf_patterns = _extract_sf_patterns(input_def)
+    input_type = input_def.get("type", input_def)
+
+    if isinstance(input_type, dict):
+        type_kind = input_type.get("type")
+        if type_kind == "record":
+            fields = input_type.get("fields", [])
+            if isinstance(fields, dict):
+                fields = [{"name": k, **(v if isinstance(v, dict) else {"type": v})} for k, v in fields.items()]
+            if isinstance(value, dict):
+                for field in fields:
+                    fname = field.get("name", field.get("id", ""))
+                    fname = fname.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+                    if fname in value:
+                        _resolve_sf_for_value(value[fname], field, test_data_directory)
+            return
+        elif type_kind == "array":
+            items_type = input_type.get("items")
+            if isinstance(value, list):
+                child_def: Dict[str, Any] = {"type": items_type}
+                if sf_patterns:
+                    child_def["secondaryFiles"] = sf_patterns
+                for item in value:
+                    _resolve_sf_for_value(item, child_def, test_data_directory)
+            return
+
+    # Leaf: if this is a File with secondary file patterns, discover them
+    if isinstance(value, dict) and value.get("class") == "File" and sf_patterns:
+        if "secondaryFiles" not in value:
+            _discover_sf_on_disk(value, sf_patterns, test_data_directory)
+
+
+def _extract_sf_patterns(input_def: Dict[str, Any]) -> List[str]:
+    raw = input_def.get("secondaryFiles", [])
+    if isinstance(raw, str):
+        raw = [raw]
+    patterns: List[str] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            patterns.append(entry)
+        elif isinstance(entry, dict):
+            p = entry.get("pattern", "")
+            if p:
+                patterns.append(p)
+    return patterns
+
+
+def _discover_sf_on_disk(
+    file_value: Dict[str, Any],
+    patterns: List[str],
+    test_data_directory: str,
+) -> None:
+    location = file_value.get("location") or file_value.get("path")
+    if not location:
+        return
+
+    basename = os.path.basename(location)
+    dirname = os.path.dirname(location)
+
+    secondary_files: List[Dict[str, Any]] = []
+    for pattern in patterns:
+        sf_basename = _apply_sf_pattern(basename, pattern)
+        sf_location = os.path.join(dirname, sf_basename) if dirname else sf_basename
+        sf_full_path = os.path.join(test_data_directory, sf_location)
+        if os.path.exists(sf_full_path):
+            secondary_files.append({"class": "File", "location": sf_location, "basename": sf_basename})
+
+    if secondary_files:
+        file_value["secondaryFiles"] = secondary_files
+
+
+def _apply_sf_pattern(basename: str, pattern: str) -> str:
+    """Apply a CWL secondaryFiles pattern to a file basename."""
+    if pattern.startswith("^"):
+        name = basename
+        i = 0
+        while i < len(pattern) and pattern[i] == "^":
+            name = name.rsplit(".", 1)[0] if "." in name else name
+            i += 1
+        return name + pattern[i:]
+    return basename + pattern
 
 
 def _ensure_file_exists(file_path: str) -> None:
