@@ -20,7 +20,6 @@ interface MarkdownDialogProps {
     argumentType?: string;
     argumentPayload?: object;
     labels?: Array<WorkflowLabel>;
-    useHids?: boolean;
 }
 
 const props = withDefaults(defineProps<MarkdownDialogProps>(), {
@@ -28,7 +27,6 @@ const props = withDefaults(defineProps<MarkdownDialogProps>(), {
     argumentType: undefined,
     argumentPayload: undefined,
     labels: undefined,
-    useHids: false,
 });
 
 const emit = defineEmits<{
@@ -92,25 +90,16 @@ const selectedLabelTitle = computed(() => {
 
 function onData(response: unknown) {
     dataShow.value = false;
-    if (props.useHids) {
-        emit("onInsert", `${props.argumentName}(hid=${response})`);
-    } else {
-        emit("onInsert", `${props.argumentName}(history_dataset_id=${response})`);
-    }
+    emit("onInsert", `${props.argumentName}(history_dataset_id=${response})`);
 }
 
 interface ObjectReference {
     id: string;
-    hid?: number;
 }
 
 function onDataCollection(response: ObjectReference) {
     dataCollectionShow.value = false;
-    if (props.useHids) {
-        emit("onInsert", `${props.argumentName}(hid=${response.hid})`);
-    } else {
-        emit("onInsert", `${props.argumentName}(history_dataset_collection_id=${response.id})`);
-    }
+    emit("onInsert", `${props.argumentName}(history_dataset_collection_id=${response.id})`);
 }
 
 function onJob(response: ObjectReference) {
@@ -250,7 +239,7 @@ if (props.argumentType == "workflow_id") {
         <DataDialog
             v-else-if="dataShow && currentHistoryId !== null"
             :history="currentHistoryId"
-            :format="useHids ? 'hid' : 'id'"
+            format="id"
             @onOk="onData"
             @onCancel="onCancel" />
         <DatasetCollectionDialog
