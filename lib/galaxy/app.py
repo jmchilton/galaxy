@@ -71,6 +71,7 @@ from galaxy.managers.tasks import (
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.managers.users import UserManager
 from galaxy.managers.workflow_completion import WorkflowCompletionManager
+from galaxy.managers.workflow_action_journal import WorkflowActionJournalManager
 from galaxy.managers.workflows import (
     WorkflowContentsManager,
     WorkflowsManager,
@@ -636,6 +637,7 @@ class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication):
         self.dataset_collection_manager = self._register_singleton(DatasetCollectionManager)
         self.workflow_manager = self._register_singleton(WorkflowsManager)
         self.workflow_contents_manager = self._register_singleton(WorkflowContentsManager)
+        self.workflow_action_journal_manager = self._register_singleton(WorkflowActionJournalManager)
         self.library_folder_manager = self._register_singleton(FolderManager)
         self.library_manager = self._register_singleton(LibraryManager)
         self.library_datasets_manager = self._register_singleton(LibraryDatasetsManager)

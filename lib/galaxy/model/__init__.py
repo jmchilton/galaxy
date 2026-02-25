@@ -9450,6 +9450,43 @@ class WorkflowComment(Base, RepresentById):
         return comment
 
 
+class WorkflowActionJournalEntry(Base, RepresentById, UsesCreateAndUpdateTime):
+    __tablename__ = "workflow_action_journal_entry"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
+    update_time: Mapped[datetime] = mapped_column(default=now, onupdate=now, nullable=True)
+    stored_workflow_id: Mapped[int] = mapped_column(ForeignKey("stored_workflow.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    source_action_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    action_payloads: Mapped[Optional[bytes]] = mapped_column(JSONType)
+    workflow_id_before: Mapped[int] = mapped_column(ForeignKey("workflow.id"))
+    workflow_id_after: Mapped[int] = mapped_column(ForeignKey("workflow.id"))
+    execution_messages: Mapped[Optional[bytes]] = mapped_column(JSONType)
+    is_revert: Mapped[bool] = mapped_column(default=False)
+    reverted_entry_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("workflow_action_journal_entry.id"), nullable=True
+    )
+
+    stored_workflow: Mapped["StoredWorkflow"] = relationship(
+        primaryjoin=(lambda: StoredWorkflow.id == WorkflowActionJournalEntry.stored_workflow_id),
+    )
+    user: Mapped["User"] = relationship(
+        primaryjoin=(lambda: User.id == WorkflowActionJournalEntry.user_id),
+    )
+    workflow_before: Mapped["Workflow"] = relationship(
+        primaryjoin=(lambda: Workflow.id == WorkflowActionJournalEntry.workflow_id_before),
+    )
+    workflow_after: Mapped["Workflow"] = relationship(
+        primaryjoin=(lambda: Workflow.id == WorkflowActionJournalEntry.workflow_id_after),
+    )
+    reverted_entry: Mapped[Optional["WorkflowActionJournalEntry"]] = relationship(
+        primaryjoin=(lambda: WorkflowActionJournalEntry.reverted_entry_id == WorkflowActionJournalEntry.id),
+        remote_side=[id],
+    )
+
+
 class StoredWorkflowUserShareAssociation(Base, UserShareAssociation):
     __tablename__ = "stored_workflow_user_share_connection"
 
