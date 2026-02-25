@@ -353,7 +353,8 @@ def output_to_disk(output, download_folder):
             if output["class"] == "Directory":
                 zip_path = f"{download_path}.zip"
                 download_to_file(output["location"], zip_path)
-                CompressedFile(zip_path).extract(download_folder)
+                os.makedirs(download_path, exist_ok=True)
+                CompressedFile(zip_path).extract(download_path)
                 os.remove(zip_path)
             else:
                 download_to_file(output["location"], download_path)
