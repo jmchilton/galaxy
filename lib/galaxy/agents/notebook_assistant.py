@@ -36,6 +36,7 @@ from .history_tools import (
     get_dataset_info as _get_dataset_info,
     get_dataset_peek as _get_dataset_peek,
     list_history_items as _list_history_items,
+    resolve_hid as _resolve_hid,
 )
 
 log = logging.getLogger(__name__)
@@ -271,6 +272,19 @@ class NotebookAssistantAgent(BaseGalaxyAgent):
                 max_elements=max_elements,
             )
 
+        @agent.tool
+        async def resolve_hid(
+            ctx: RunContext[GalaxyAgentDependencies],
+            hid: int,
+        ) -> str:
+            """Resolve a HID to the directive argument for Galaxy markdown.
+
+            Use this when you know a dataset's HID number and need the
+            history_dataset_id or history_dataset_collection_id for a directive.
+            Also returns the job_id if the item was created by a tool.
+            """
+            return await _resolve_hid(ctx.deps.trans.sa_session, agent_self.history_id, hid)
+
         return agent
 
     def get_system_prompt(self) -> str:
@@ -362,9 +376,14 @@ TARGET_SECTION: ## Section Name
 Then provide the new content after a blank line.
 
 For questions about the history data, use the available tools to look up datasets.
+Users refer to items by HID (the number in the history panel). Use resolve_hid(hid)
+to get the history_dataset_id or history_dataset_collection_id for directives.
+The resolve_hid and get_dataset_info tools also return job_id for job directives.
 
 Galaxy markdown uses block directives (```galaxy fenced blocks with one directive each)
 and inline directives (${{galaxy directive_name(args)}}) for embed-capable directives.
+Dataset directives use history_dataset_id=ID, collection directives use
+history_dataset_collection_id=ID, job directives use job_id=ID.
 
 {directive_ref}
 

@@ -40,6 +40,7 @@ async def list_history_items(
 
     hda_rows = session.execute(
         select(
+            HDA.id,
             HDA.hid,
             HDA.name,
             HDA.extension,
@@ -53,29 +54,33 @@ async def list_history_items(
     ).all()
 
     hdca_rows = session.execute(
-        select(HDCA.hid, HDCA.name, DC.collection_type, HDCA.deleted, HDCA.visible)
+        select(HDCA.id, HDCA.hid, HDCA.name, DC.collection_type, HDCA.deleted, HDCA.visible)
         .join(DC, HDCA.collection_id == DC.id)
         .where(HDCA.history_id == history_id)
     ).all()
 
     items = []
     for row in hda_rows:
-        hid, name, ext, state, deleted, visible, file_size = row
+        item_id, hid, name, ext, state, deleted, visible, file_size = row
         if not include_deleted and deleted:
             continue
         if not include_hidden and not visible:
             continue
         size_str = _format_size(file_size) if file_size else ""
         size_part = f" size={size_str}" if size_str else ""
-        items.append((hid, f"HID {hid}: {name} [dataset, {ext}] state={state}{size_part}"))
+        items.append(
+            (hid, f"HID {hid} (history_dataset_id={item_id}): {name} [dataset, {ext}] state={state}{size_part}")
+        )
 
     for row in hdca_rows:
-        hid, name, collection_type, deleted, visible = row
+        item_id, hid, name, collection_type, deleted, visible = row
         if not include_deleted and deleted:
             continue
         if not include_hidden and not visible:
             continue
-        items.append((hid, f"HID {hid}: {name} [collection, {collection_type}]"))
+        items.append(
+            (hid, f"HID {hid} (history_dataset_collection_id={item_id}): {name} [collection, {collection_type}]")
+        )
 
     items.sort(key=lambda x: x[0])
     total = len(items)
@@ -101,7 +106,7 @@ async def get_dataset_info(session: Session, history_id: int, hid: int) -> str:
 
     if hda:
         lines = [
-            f"Dataset: {hda.name} (HID {hid})",
+            f"Dataset: {hda.name} (HID {hid}, history_dataset_id={hda.id})",
             f"Format: {hda.extension}",
             f"State: {hda.state}",
         ]
@@ -118,7 +123,7 @@ async def get_dataset_info(session: Session, history_id: int, hid: int) -> str:
             lines.append(f"Info: {hda.info[:200]}")
         if hda.creating_job:
             job = hda.creating_job
-            lines.append(f"Created by tool: {job.tool_id} (v{job.tool_version})")
+            lines.append(f"Created by tool: {job.tool_id} (v{job.tool_version}), job_id={job.id}")
         # Metadata fields
         if hda.metadata and hasattr(hda.metadata, "items"):
             meta_lines = []
@@ -139,7 +144,7 @@ async def get_dataset_info(session: Session, history_id: int, hid: int) -> str:
 
     if hdca:
         lines = [
-            f"Collection: {hdca.name} (HID {hid})",
+            f"Collection: {hdca.name} (HID {hid}, history_dataset_collection_id={hdca.id})",
             f"Type: {hdca.collection.collection_type}",
         ]
         if hdca.collection and hdca.collection.elements:
@@ -213,6 +218,37 @@ async def get_collection_structure(
         lines.append(f"  ... and {total - max_elements} more elements")
 
     return "\n".join(lines)
+
+
+async def resolve_hid(session: Session, history_id: int, hid: int) -> str:
+    """Resolve a HID to the directive argument needed for Galaxy markdown.
+
+    Returns the appropriate directive argument string:
+    - For datasets: "history_dataset_id=<id>"
+    - For collections: "history_dataset_collection_id=<id>"
+
+    Also returns the job_id if a creating job exists (for job directives).
+    """
+    from galaxy.model import (
+        HistoryDatasetAssociation as HDA,
+        HistoryDatasetCollectionAssociation as HDCA,
+    )
+
+    hda = session.execute(select(HDA).where(HDA.history_id == history_id, HDA.hid == hid)).scalar_one_or_none()
+    if hda:
+        lines = [
+            f"HID {hid} is a dataset: {hda.name}",
+            f"Directive argument: history_dataset_id={hda.id}",
+        ]
+        if hda.creating_job:
+            lines.append(f"Creating job: job_id={hda.creating_job.id}")
+        return "\n".join(lines)
+
+    hdca = session.execute(select(HDCA).where(HDCA.history_id == history_id, HDCA.hid == hid)).scalar_one_or_none()
+    if hdca:
+        return f"HID {hid} is a collection: {hdca.name}\nDirective argument: history_dataset_collection_id={hdca.id}"
+
+    return f"No dataset or collection found with HID {hid} in this history."
 
 
 def _format_size(size_bytes: Union[int, float, None]) -> str:
