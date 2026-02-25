@@ -16,6 +16,7 @@ import {
 import type { Connection, ConnectionId } from "@/stores/workflowStoreTypes";
 import { assertDefined } from "@/utils/assertions";
 
+import { ConnectStepAction, DisconnectStepAction } from "../Actions/connectionActions";
 import {
     ANY_COLLECTION_TYPE_DESCRIPTION,
     CollectionTypeDescription,
@@ -94,26 +95,26 @@ class Terminal extends EventEmitter {
         return connection;
     }
     connect(other: Terminal | Connection) {
-        this.stores.undoRedoStore
-            .action()
-            .onRun(() => this.makeConnection(other))
-            .onUndo(() => this.dropConnection(other))
-            .setName("connect steps")
-            .setDataAttributes({ type: "connect" })
-            .apply();
+        const connection = this.buildConnection(other);
+        const action = new ConnectStepAction(
+            connection,
+            () => this.makeConnection(other),
+            () => this.dropConnection(other),
+        );
+        this.stores.undoRedoStore.applyAction(action);
     }
     makeConnection(other: Terminal | Connection) {
         const connection = this.buildConnection(other);
         this.stores.connectionStore.addConnection(connection);
     }
     disconnect(other: Terminal | Connection) {
-        this.stores.undoRedoStore
-            .action()
-            .onRun(() => this.dropConnection(other))
-            .onUndo(() => this.makeConnection(other))
-            .setName("disconnect steps")
-            .setDataAttributes({ type: "disconnect" })
-            .apply();
+        const connection = this.buildConnection(other);
+        const action = new DisconnectStepAction(
+            connection,
+            () => this.dropConnection(other),
+            () => this.makeConnection(other),
+        );
+        this.stores.undoRedoStore.applyAction(action);
     }
     dropConnection(other: Terminal | Connection) {
         const connection = this.buildConnection(other);
