@@ -2631,6 +2631,8 @@ class BaseWorkflowPopulator(BasePopulator):
         dry_run: Optional[bool] = None,
         style: Optional[str] = None,
         version: Optional[int] = None,
+        title: Optional[str] = None,
+        source_action_type: Optional[str] = None,
     ) -> Response:
         data: dict[str, Any] = dict(
             actions=actions,
@@ -2641,9 +2643,34 @@ class BaseWorkflowPopulator(BasePopulator):
             data["dry_run"] = dry_run
         if version is not None:
             data["version"] = version
+        if title is not None:
+            data["title"] = title
+        if source_action_type is not None:
+            data["source_action_type"] = source_action_type
         raw_url = f"workflows/{workflow_id}/refactor"
         put_response = self._put(raw_url, data, json=True)
         return put_response
+
+    def get_workflow_changelog(
+        self,
+        workflow_id: str,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Response:
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        return self._get(f"workflows/{workflow_id}/changelog", data=params)
+
+    def revert_workflow(
+        self,
+        workflow_id: str,
+        target_workflow_id: str,
+    ) -> Response:
+        data = {"target_workflow_id": target_workflow_id}
+        return self._post(f"workflows/{workflow_id}/revert", data=data, json=True)
 
     @contextlib.contextmanager
     def export_for_update(self, workflow_id):
