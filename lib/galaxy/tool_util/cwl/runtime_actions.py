@@ -256,7 +256,8 @@ def handle_outputs(job_directory: Optional[str] = None):
         handled_outputs.append(output_name)
         if isinstance(output, dict) and "location" in output:
             handle_known_output(output, output_name)
-        elif isinstance(output, dict):
+        elif isinstance(output, dict) and output_name not in job_proxy._output_dict:
+            # True record-type output (ToolOutputCollection) — split into parts
             prefix = f"{output_name}|__part__|"
             for record_key, record_value in output.items():
                 record_value_output_key = f"{prefix}{record_key}"
@@ -267,8 +268,10 @@ def handle_outputs(job_directory: Optional[str] = None):
                         record_value, record_value_output_key, tool_working_directory, job_proxy
                     )
                 else:
-                    # param_evaluation_noexpr
                     handle_known_output_json(record_value, record_value_output_key)
+        elif isinstance(output, dict):
+            # Any-type output that evaluated to a dict — write as single expression.json
+            handle_known_output_json(output, output_name)
 
         elif isinstance(output, list):
             provided_metadata[output_name] = _build_list_elements(
