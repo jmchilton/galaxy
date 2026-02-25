@@ -41,6 +41,7 @@ from galaxy.model import (
     WorkflowStepConnection,
 )
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.model.orm.util import get_object_session
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.model.dataset_collections import matching
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
@@ -296,6 +297,12 @@ def build_cwl_input_dict(
         if isinstance(replacement, NoReplacement):
             continue
 
+        # EphemeralCollection HDCAs aren't flushed yet — add to session so they get IDs.
+        if isinstance(replacement, EphemeralCollection):
+            session = get_object_session(step)
+            session.add(replacement.persistent_object)
+            session.flush()
+
         cwl_input_dict[input_name] = _galaxy_to_cwl_ref(replacement)
 
     # Fill defaults from step inputs
@@ -336,6 +343,8 @@ def _galaxy_to_cwl_ref(value):
         return {"src": "dce", "id": value.id}
     elif isinstance(value, dict) and value.get("src") == "json":
         return value["value"]
+    elif isinstance(value, EphemeralCollection):
+        return {"src": "hdca", "id": value.persistent_object.id}
     else:
         return value
 
