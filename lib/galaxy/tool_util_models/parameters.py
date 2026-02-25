@@ -2591,7 +2591,7 @@ class CwlRecordParameterModel(BaseToolParameterModelDefinition):
             alias = field_param.name if field_param.name != name else None
             field_type = field_param.py_type_for_state(state_representation)
             if state_representation == "job_runtime":
-                field_required = True
+                field_required = field_param.request_requires_value
             elif state_representation == "job_internal":
                 field_required = not field_param.has_default
             else:
