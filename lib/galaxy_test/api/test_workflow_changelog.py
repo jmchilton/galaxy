@@ -170,6 +170,59 @@ class TestWorkflowChangelogApi(ApiTestCase):
         # One message group per action executed
         assert len(messages) == 2
 
+    def test_empty_changelog_on_fresh_workflow(self):
+        workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
+        changelog = self._get_changelog(workflow_id)
+        assert len(changelog) == 0
+
+    def test_revert_entry_has_null_reverted_entry_id(self):
+        workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
+
+        actions = [{"action_type": "update_name", "name": "v2"}]
+        self.workflow_populator.refactor_workflow(
+            workflow_id,
+            actions,
+            title="Create v2",
+        ).raise_for_status()
+
+        changelog = self._get_changelog(workflow_id)
+        original_workflow_id = changelog[0]["workflow_id_before"]
+
+        self.workflow_populator.revert_workflow(
+            workflow_id,
+            original_workflow_id,
+        ).raise_for_status()
+
+        changelog = self._get_changelog(workflow_id)
+        revert_entry = changelog[0]
+        assert revert_entry["is_revert"] is True
+        # reverted_entry_id not yet wired in create_revert_entry
+        assert revert_entry["reverted_entry_id"] is None
+        # Non-revert entry should also be None
+        refactor_entry = changelog[1]
+        assert refactor_entry["reverted_entry_id"] is None
+
+    def test_revert_with_invalid_target_workflow_id(self):
+        workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
+
+        # Bogus encoded ID that doesn't correspond to any workflow
+        revert_response = self.workflow_populator.revert_workflow(workflow_id, "invalid_id_xyz")
+        assert revert_response.status_code >= 400
+
+        # ID from a different stored workflow
+        other_workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
+        actions = [{"action_type": "update_name", "name": "other"}]
+        self.workflow_populator.refactor_workflow(
+            other_workflow_id,
+            actions,
+            title="Other change",
+        ).raise_for_status()
+        other_changelog = self._get_changelog(other_workflow_id)
+        other_internal_id = other_changelog[0]["workflow_id_before"]
+
+        revert_response = self.workflow_populator.revert_workflow(workflow_id, other_internal_id)
+        assert revert_response.status_code >= 400
+
     def test_refactor_failure_no_journal_entry(self):
         workflow_id = self.workflow_populator.upload_yaml_workflow(CHANGELOG_SIMPLE_WF)
         actions = [{"action_type": "update_step_label", "label": "x", "step": {"order_index": 999}}]
