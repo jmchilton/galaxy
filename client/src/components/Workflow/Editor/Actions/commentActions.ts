@@ -17,7 +17,7 @@ function getCommentName(comment: { color: WorkflowCommentColor; type: WorkflowCo
 
 class CommentAction extends UndoRedoAction {
     protected store: WorkflowCommentStore;
-    protected comment: WorkflowComment;
+    readonly comment: WorkflowComment;
 
     constructor(store: WorkflowCommentStore, comment: BaseWorkflowComment) {
         super();
@@ -67,8 +67,8 @@ export class DeleteCommentAction extends CommentAction {
 }
 
 export class ChangeColorAction extends UndoRedoAction {
-    private commentId: number;
-    private toColor: WorkflowCommentColor;
+    readonly commentId: number;
+    readonly toColor: WorkflowCommentColor;
     private fromColor: WorkflowCommentColor;
     private store: WorkflowCommentStore;
     protected type;
@@ -100,9 +100,9 @@ export class ChangeColorAction extends UndoRedoAction {
 }
 
 class LazyMutateCommentAction<K extends keyof WorkflowComment> extends LazyUndoRedoAction {
-    protected commentId: number;
+    readonly commentId: number;
     protected startData: WorkflowComment[K];
-    protected endData: WorkflowComment[K];
+    endData: WorkflowComment[K];
     protected type;
     protected color: WorkflowCommentColor;
     protected applyDataCallback: (commentId: number, data: WorkflowComment[K]) => void;

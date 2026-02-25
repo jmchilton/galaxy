@@ -258,6 +258,30 @@ export class LazyMoveMultipleAction extends LazyUndoRedoAction {
     redo() {
         this.setPosition(this.positionTo);
     }
+
+    /** Returns final absolute positions for all moved steps and comments. Used by refactor serializer. */
+    getFinalPositions(): {
+        steps: Map<number, { left: number; top: number }>;
+        comments: Map<number, [number, number]>;
+    } {
+        const stepPositions = new Map<number, { left: number; top: number }>();
+        const commentPositions = new Map<number, [number, number]>();
+
+        this.steps.forEach((step) => {
+            const offset = this.stepStartOffsets.get(step.id) ?? [0, 0];
+            stepPositions.set(step.id, {
+                left: this.positionTo.x + offset[0],
+                top: this.positionTo.y + offset[1],
+            });
+        });
+
+        this.comments.forEach((comment) => {
+            const offset = this.commentStartOffsets.get(comment.id) ?? [0, 0];
+            commentPositions.set(comment.id, [this.positionTo.x + offset[0], this.positionTo.y + offset[1]]);
+        });
+
+        return { steps: stepPositions, comments: commentPositions };
+    }
 }
 
 type SelectionState = {

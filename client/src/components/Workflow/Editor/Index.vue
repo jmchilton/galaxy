@@ -430,6 +430,7 @@ export default {
             (value) => (doi.value = value),
             showAttributes,
             "set DOI",
+            "doi",
         );
         function setDoi(newDoi) {
             setDoiHandler.set(doi.value, newDoi);
@@ -460,6 +461,7 @@ export default {
                 showAttributes(args);
             },
             "modify readme",
+            "readme",
         );
         function setReadme(newReadme) {
             if (readme.value !== newReadme) {
@@ -483,6 +485,7 @@ export default {
             (value) => (help.value = value),
             showAttributes,
             "modify help",
+            "help",
         );
         function setHelp(newHelp) {
             if (help.value !== newHelp) {
@@ -496,6 +499,7 @@ export default {
             (value) => (logoUrl.value = value),
             showAttributes,
             "modify logo url",
+            "logoUrl",
         );
         function setLogoUrl(newLogoUrl) {
             if (logoUrl.value !== newLogoUrl) {
@@ -510,6 +514,7 @@ export default {
             (value) => (tags.value = structuredClone(value)),
             showAttributes,
             "change tags",
+            "tags",
         );
         /** user set tags. queues an undo/redo action */
         function setTags(newTags) {
