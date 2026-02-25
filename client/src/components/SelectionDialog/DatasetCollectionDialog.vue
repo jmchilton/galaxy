@@ -68,6 +68,7 @@ function load() {
             items.value = collection_instances.map((item: HistoryItem) => {
                 return {
                     id: item.id,
+                    hid: item.hid,
                     label: item.name,
                     time: item.created_time,
                     isLeaf: true,

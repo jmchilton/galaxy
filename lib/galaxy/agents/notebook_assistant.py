@@ -62,6 +62,7 @@ def _build_directive_reference() -> str:
 
     # Addressing args hidden from display — they're the primary key shown in the signature
     DATASET_ADDRESSING = {
+        "hid",
         "history_dataset_id",
         "history_dataset_collection_id",
         "input",
@@ -71,7 +72,7 @@ def _build_directive_reference() -> str:
 
     def _primary_and_hidden(name):
         if name.startswith("history_dataset_"):
-            return "history_dataset_id", DATASET_ADDRESSING
+            return "hid", DATASET_ADDRESSING
         if name.startswith("workflow_"):
             return "workflow_id", {"workflow_id"}
         if name.startswith("invocation_"):
@@ -98,7 +99,7 @@ def _build_directive_reference() -> str:
 
     categories = [
         (
-            "Dataset Directives (use history_dataset_id=ID to reference history items)",
+            "Dataset Directives (use hid=N to reference history items)",
             lambda n: n.startswith("history_dataset_"),
             True,
             False,

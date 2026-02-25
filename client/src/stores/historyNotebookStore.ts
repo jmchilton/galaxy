@@ -87,7 +87,7 @@ export const useHistoryNotebookStore = defineStore("historyNotebook", () => {
         try {
             const data = await fetchHistoryNotebook(historyId.value, notebookId);
             currentNotebook.value = data;
-            // Use content_editor (raw) for the editor, not content (expanded for rendering)
+            // Use content_editor (raw HIDs) for the editor, not content (expanded for rendering)
             const editorContent = data.content_editor ?? data.content ?? "";
             originalContent.value = editorContent;
             currentContent.value = editorContent;
