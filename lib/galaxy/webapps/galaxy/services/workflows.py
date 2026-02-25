@@ -12,7 +12,9 @@ from galaxy import (
     web,
 )
 from galaxy.managers.context import ProvidesUserContext
+from galaxy.managers.workflow_action_journal import WorkflowActionJournalManager
 from galaxy.managers.workflows import (
+    ChangelogEntry,
     RefactorRequest,
     RefactorResponse,
     WorkflowContentsManager,
@@ -49,6 +51,21 @@ class WorkflowIndexPayload(WorkflowIndexQueryPayload):
     missing_tools: bool = False
 
 
+def _journal_entry_to_changelog(entry, security):
+    return ChangelogEntry(
+        id=security.encode_id(entry.id),
+        title=entry.title,
+        source_action_type=entry.source_action_type,
+        create_time=entry.create_time,
+        user_id=security.encode_id(entry.user_id),
+        workflow_id_before=security.encode_id(entry.workflow_id_before),
+        workflow_id_after=security.encode_id(entry.workflow_id_after),
+        execution_messages=entry.execution_messages or [],
+        is_revert=entry.is_revert,
+        reverted_entry_id=security.encode_id(entry.reverted_entry_id) if entry.reverted_entry_id else None,
+    )
+
+
 class WorkflowsService(ServiceBase):
     def __init__(
         self,
@@ -57,12 +74,14 @@ class WorkflowsService(ServiceBase):
         serializer: WorkflowSerializer,
         tool_shed_registry: Registry,
         notification_service: NotificationService,
+        workflow_action_journal_manager: WorkflowActionJournalManager,
     ):
         self._workflows_manager = workflows_manager
         self._workflow_contents_manager = workflow_contents_manager
         self._serializer = serializer
         self.shareable_service = ShareableService(workflows_manager, serializer, notification_service)
         self._tool_shed_registry = tool_shed_registry
+        self._workflow_action_journal_manager = workflow_action_journal_manager
 
     def index(
         self,
@@ -236,7 +255,68 @@ class WorkflowsService(ServiceBase):
         instance: bool,
     ) -> RefactorResponse:
         stored_workflow = self._workflows_manager.get_stored_workflow(trans, workflow_id, by_stored_id=not instance)
-        return self._workflow_contents_manager.refactor(trans, stored_workflow, payload)
+
+        should_journal = payload.title is not None and not payload.dry_run
+
+        if should_journal:
+            workflow_before = stored_workflow.latest_workflow
+
+        response = self._workflow_contents_manager.refactor(
+            trans,
+            stored_workflow,
+            payload,
+            defer_commit=should_journal,
+        )
+
+        if should_journal:
+            workflow_after = stored_workflow.latest_workflow
+            action_dicts = [a.model_dump() for a in payload.actions]
+            message_dicts = [[m.model_dump() for m in ae.messages] for ae in response.action_executions]
+            self._workflow_action_journal_manager.create_entry(
+                sa_session=trans.sa_session,
+                stored_workflow=stored_workflow,
+                user=trans.user,
+                title=payload.title,
+                source_action_type=payload.source_action_type,
+                action_payloads=action_dicts,
+                workflow_before=workflow_before,
+                workflow_after=workflow_after,
+                execution_messages=message_dicts,
+            )
+            trans.sa_session.commit()
+
+        return response
+
+    def changelog(self, trans, workflow_id, limit, offset):
+        stored_workflow = self._workflows_manager.get_stored_workflow(trans, workflow_id)
+        entries, total = self._workflow_action_journal_manager.list_entries(
+            trans.sa_session, stored_workflow, limit, offset
+        )
+        return [_journal_entry_to_changelog(e, trans.app.security) for e in entries], total
+
+    def revert(self, trans, workflow_id, target_workflow_id):
+        stored_workflow = self._workflows_manager.get_stored_workflow(trans, workflow_id)
+        workflow_before = stored_workflow.latest_workflow
+
+        new_workflow, target_workflow = self._workflow_contents_manager.revert(
+            trans, stored_workflow, target_workflow_id
+        )
+
+        self._workflow_action_journal_manager.create_revert_entry(
+            sa_session=trans.sa_session,
+            stored_workflow=stored_workflow,
+            user=trans.user,
+            workflow_before=workflow_before,
+            workflow_after=new_workflow,
+            target_workflow=target_workflow,
+        )
+        trans.sa_session.commit()
+
+        return RefactorResponse(
+            action_executions=[],
+            workflow=self._workflow_contents_manager.workflow_to_dict(trans, stored_workflow),
+            dry_run=False,
+        )
 
     def show_workflow(self, trans, workflow_id, instance, legacy, version) -> StoredWorkflowDetailed:
         stored_workflow = self._workflows_manager.get_stored_workflow(trans, workflow_id, by_stored_id=not instance)

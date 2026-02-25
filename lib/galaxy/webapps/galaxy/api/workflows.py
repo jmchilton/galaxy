@@ -22,6 +22,7 @@ from fastapi import (
 )
 from gxformat2.yaml import ordered_dump
 from pydantic import (
+    BaseModel,
     UUID1,
     UUID4,
 )
@@ -43,6 +44,7 @@ from galaxy.managers.context import (
 )
 from galaxy.managers.landing import LandingRequestManager
 from galaxy.managers.workflows import (
+    ChangelogEntry,
     MissingToolsException,
     RefactorRequest,
     RefactorResponse,
@@ -919,6 +921,20 @@ RefactorWorkflowBody = Annotated[
 ]
 
 
+class RevertRequest(BaseModel):
+    target_workflow_id: DecodedDatabaseIdField
+
+
+RevertWorkflowBody = Annotated[
+    RevertRequest,
+    Body(
+        default=...,
+        title="Revert workflow",
+        description="Specify the target version to revert to.",
+    ),
+]
+
+
 @router.cbv
 class FastAPIWorkflows:
     service: WorkflowsService = depends(WorkflowsService)
@@ -1020,6 +1036,34 @@ class FastAPIWorkflows:
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> RefactorResponse:
         return self.service.refactor(trans, workflow_id, payload, instance or False)
+
+    @router.get(
+        "/api/workflows/{workflow_id}/changelog",
+        summary="Get the action changelog for a workflow.",
+    )
+    def changelog(
+        self,
+        workflow_id: StoredWorkflowIDPathParam,
+        response: Response,
+        limit: Optional[int] = Query(default=50, ge=1, title="Maximum entries to return"),
+        offset: Optional[int] = Query(default=0, ge=0, title="Number of entries to skip"),
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> list[ChangelogEntry]:
+        entries, total = self.service.changelog(trans, workflow_id, limit, offset)
+        response.headers["total_matches"] = str(total)
+        return entries
+
+    @router.post(
+        "/api/workflows/{workflow_id}/revert",
+        summary="Revert a workflow to a previous version.",
+    )
+    def revert(
+        self,
+        workflow_id: StoredWorkflowIDPathParam,
+        payload: RevertWorkflowBody,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> RefactorResponse:
+        return self.service.revert(trans, workflow_id, payload.target_workflow_id)
 
     @router.put(
         "/api/workflows/{workflow_id}/publish",

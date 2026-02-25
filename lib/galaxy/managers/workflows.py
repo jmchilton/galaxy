@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import (
     Annotated,
     Any,
@@ -83,6 +84,7 @@ from galaxy.model.index_filter_util import (
     text_column_filter,
 )
 from galaxy.model.item_attrs import UsesAnnotations
+from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.invocation import InvocationCancellationUserRequest
 from galaxy.schema.schema import WorkflowIndexQueryPayload
 from galaxy.structured_app import MinimalManagerApp
@@ -577,6 +579,8 @@ class CreatedWorkflow(NamedTuple):
 class RefactorRequest(RefactorActions):
     style: str = "export"
     version: Optional[int] = None
+    title: Optional[str] = None
+    source_action_type: Optional[str] = None
 
 
 class WorkflowSerializer(sharable.SharableModelSerializer):
@@ -724,7 +728,12 @@ class WorkflowContentsManager(UsesAnnotations):
         return CreatedWorkflow(stored_workflow=stored, workflow=workflow, missing_tools=missing_tool_tups)
 
     def update_workflow_from_raw_description(
-        self, trans, stored_workflow, raw_workflow_description, workflow_update_options
+        self,
+        trans,
+        stored_workflow,
+        raw_workflow_description,
+        workflow_update_options,
+        defer_commit=False,
     ):
         raw_workflow_description = self.ensure_raw_description(raw_workflow_description)
 
@@ -781,7 +790,10 @@ class WorkflowContentsManager(UsesAnnotations):
 
         # Persist
         if not dry_run:
-            trans.sa_session.commit()
+            if not defer_commit:
+                trans.sa_session.commit()
+            else:
+                trans.sa_session.flush()
             if stored_workflow.from_path:
                 self._sync_stored_workflow(trans, stored_workflow)
         # Return something informative
@@ -2225,7 +2237,11 @@ class WorkflowContentsManager(UsesAnnotations):
                 step.label = module.label = default_label
 
     def do_refactor(
-        self, trans: ProvidesUserContext, stored_workflow: StoredWorkflow, refactor_request: RefactorRequest
+        self,
+        trans: ProvidesUserContext,
+        stored_workflow: StoredWorkflow,
+        refactor_request: RefactorRequest,
+        defer_commit=False,
     ):
         """Apply supplied actions to either the latest version of the workflow or a specific version to build a new version."""
         # Get the workflow version to refactor (latest or specific version)
@@ -2249,6 +2265,7 @@ class WorkflowContentsManager(UsesAnnotations):
             stored_workflow,
             raw_workflow_description,
             workflow_update_options,
+            defer_commit=defer_commit,
         )
         # errors could be three things:
         # - we allow missing tools so it won't be that.
@@ -2258,13 +2275,39 @@ class WorkflowContentsManager(UsesAnnotations):
         #   we send back anyway
         return refactored_workflow, action_executions
 
-    def refactor(self, trans: ProvidesUserContext, stored_workflow: StoredWorkflow, refactor_request: RefactorRequest):
-        refactored_workflow, action_executions = self.do_refactor(trans, stored_workflow, refactor_request)
+    def refactor(
+        self,
+        trans: ProvidesUserContext,
+        stored_workflow: StoredWorkflow,
+        refactor_request: RefactorRequest,
+        defer_commit=False,
+    ):
+        refactored_workflow, action_executions = self.do_refactor(
+            trans,
+            stored_workflow,
+            refactor_request,
+            defer_commit=defer_commit,
+        )
         return RefactorResponse(
             action_executions=action_executions,
             workflow=self.workflow_to_dict(trans, refactored_workflow.stored_workflow, style=refactor_request.style),
             dry_run=refactor_request.dry_run,
         )
+
+    def revert(self, trans, stored_workflow, target_workflow_id):
+        """Create a new workflow version by restoring a previous version's content."""
+        target_workflow = stored_workflow.get_internal_version_by_id(target_workflow_id)
+
+        if target_workflow.id == stored_workflow.latest_workflow.id:
+            raise exceptions.RequestParameterInvalidException("Target version is already the current version")
+
+        as_dict = self._workflow_to_dict_export(trans, stored_workflow, workflow=target_workflow, internal=True)
+        raw_description = self.normalize_workflow_format(trans, as_dict)
+        workflow_update_options = WorkflowUpdateOptions(fill_defaults=False, allow_missing_tools=True)
+        new_workflow, errors = self.update_workflow_from_raw_description(
+            trans, stored_workflow, raw_description, workflow_update_options, defer_commit=True
+        )
+        return new_workflow, target_workflow
 
     def get_all_tools(self, workflow):
         tools = []
@@ -2392,6 +2435,19 @@ class RefactorResponse(BaseModel):
     action_executions: list[RefactorActionExecution]
     workflow: Annotated[dict, WrapSerializer(safe_wraps, when_used="json")]
     dry_run: bool
+
+
+class ChangelogEntry(BaseModel):
+    id: EncodedDatabaseIdField
+    title: str
+    source_action_type: Optional[str]
+    create_time: datetime
+    user_id: EncodedDatabaseIdField
+    workflow_id_before: EncodedDatabaseIdField
+    workflow_id_after: EncodedDatabaseIdField
+    execution_messages: list
+    is_revert: bool
+    reverted_entry_id: Optional[EncodedDatabaseIdField] = None
 
 
 class WorkflowStateResolutionOptions(BaseModel):
