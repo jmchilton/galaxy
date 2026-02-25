@@ -105,6 +105,7 @@ from galaxy.tool_util.cwl.util import (
     guess_artifact_type,
     invocation_to_output,
     output_to_cwl_json,
+    resolve_cwl_secondary_files,
 )
 from galaxy.tool_util.unittest_utils.cwl_data import conformance_tests_gen
 from galaxy.tool_util.verify.test_data import TestDataResolver
@@ -3384,6 +3385,8 @@ class CwlPopulator:
         elif job is None:
             job = {}
         if not skip_input_staging:
+            if tool_or_workflow == "tool" and os.path.exists(artifact_without_id) and test_data_directory:
+                resolve_cwl_secondary_files(job, artifact_without_id, test_data_directory)
             _, datasets = stage_inputs(
                 self.dataset_populator.galaxy_interactor,
                 history_id,

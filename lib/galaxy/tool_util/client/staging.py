@@ -129,6 +129,11 @@ class StagingInterface(metaclass=abc.ABCMeta):
                         "items": composite_items,
                     }
 
+                if upload_target.secondary_files:
+                    extra_files = _attach_file(fetch_payload, upload_target.secondary_files, index=1)
+                    extra_files["items_from"] = "archive"
+                    fetch_payload["targets"][0]["elements"][0]["extra_files"] = extra_files
+
                 tags = upload_target.properties.get("tags")
                 if tags:
                     fetch_payload["targets"][0]["elements"][0]["tags"] = tags
