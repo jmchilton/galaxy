@@ -48,6 +48,9 @@ def validate_datatype_extension(datatypes_registry, ext):
             ext_by_ontology = datatypes_registry.get_datatype_ext_by_format_ontology(ext)
             if ext_by_ontology:
                 return ext_by_ontology
+            # CWL format URIs that can't be mapped - fall back to auto-detection
+            if "://" in ext:
+                return "auto"
         raise RequestParameterInvalidException(f"Requested extension '{ext}' unknown, cannot upload dataset.")
     return ext
 

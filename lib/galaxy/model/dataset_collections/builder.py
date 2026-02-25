@@ -82,7 +82,7 @@ def guess_fields(dataset_instances: "DatasetInstanceMapping") -> list["FieldDict
     fields: list[FieldDict] = []
     for identifier, element in dataset_instances.items():
         if isinstance(element, DatasetCollection):
-            return []
+            fields.append({"type": {"type": "array", "items": "File"}, "name": identifier})
         else:
             fields.append({"type": "File", "name": identifier})
 
