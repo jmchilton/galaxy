@@ -3396,6 +3396,7 @@ class CwlPopulator:
                 tool_or_workflow=tool_or_workflow,
                 job_dir=test_data_directory,
                 use_path_paste=False,
+                to_posix_lines=False,
             )
             if datasets:
                 self.dataset_populator.wait_for_history(history_id=history_id, assert_ok=True)
