@@ -20,6 +20,7 @@ import {
     LazyChangeSizeAction,
     RemoveAllFreehandCommentsAction,
 } from "./commentActions";
+import { ConnectStepAction, DisconnectStepAction } from "./connectionActions";
 import {
     InsertStepAction,
     LazyMutateStepAction,
@@ -200,6 +201,12 @@ function serializeWorkflowMetadata(action: LazySetValueAction<unknown>): Seriali
                 title: `Set workflow creator`,
                 success: true,
             };
+        case "readme":
+            return {
+                actions: [{ action_type: "update_report" as const, report: { markdown: action.toValue as string } }],
+                title: `Update workflow report`,
+                success: true,
+            };
         default:
             return {
                 actions: [],
@@ -307,6 +314,46 @@ function serializeRemoveAllFreehand(): SerializationResult {
     };
 }
 
+function serializeConnect(action: ConnectStepAction): SerializationResult {
+    return {
+        actions: [
+            {
+                action_type: "connect" as const,
+                input: {
+                    order_index: action.connection.input.stepId,
+                    input_name: action.connection.input.name,
+                },
+                output: {
+                    order_index: action.connection.output.stepId,
+                    output_name: action.connection.output.name,
+                },
+            },
+        ],
+        title: "Connect steps",
+        success: true,
+    };
+}
+
+function serializeDisconnect(action: DisconnectStepAction): SerializationResult {
+    return {
+        actions: [
+            {
+                action_type: "disconnect" as const,
+                input: {
+                    order_index: action.connection.input.stepId,
+                    input_name: action.connection.input.name,
+                },
+                output: {
+                    order_index: action.connection.output.stepId,
+                    output_name: action.connection.output.name,
+                },
+            },
+        ],
+        title: "Disconnect steps",
+        success: true,
+    };
+}
+
 /**
  * Serialize a frontend undo/redo action into backend refactor API action(s).
  *
@@ -363,6 +410,14 @@ export function serializeAction(action: UndoRedoAction): SerializationResult {
         }
         if (action instanceof RemoveAllFreehandCommentsAction) {
             return serializeRemoveAllFreehand();
+        }
+
+        // Connection actions
+        if (action instanceof ConnectStepAction) {
+            return serializeConnect(action);
+        }
+        if (action instanceof DisconnectStepAction) {
+            return serializeDisconnect(action);
         }
 
         // Unsupported action

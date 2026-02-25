@@ -16,6 +16,7 @@ import {
     LazyChangeSizeAction,
     RemoveAllFreehandCommentsAction,
 } from "./commentActions";
+import { ConnectStepAction, DisconnectStepAction } from "./connectionActions";
 import { mockComment, mockFreehandComment, mockToolStep, mockWorkflow } from "./mockData";
 import { serializeAction } from "./refactorSerialization";
 import {
@@ -407,6 +408,67 @@ describe("refactorSerialization", () => {
             // Comment: original position [0,0], offset from origin = [0,0]
             // Final = positionTo(50,100) + offset(0,0) = {left:50, top:100}
             expect(commentActions[0]).toHaveProperty("position", { left: 50, top: 100 });
+        });
+    });
+
+    describe("Connection Actions", () => {
+        it("serializes connecting two steps", () => {
+            const connection = {
+                input: { stepId: 1, name: "input1", connectorType: "input" as const },
+                output: { stepId: 0, name: "output", connectorType: "output" as const },
+            };
+            const action = new ConnectStepAction(
+                connection,
+                () => {},
+                () => {},
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            expect(result.actions[0]).toEqual({
+                action_type: "connect",
+                input: { order_index: 1, input_name: "input1" },
+                output: { order_index: 0, output_name: "output" },
+            });
+        });
+
+        it("serializes disconnecting two steps", () => {
+            const connection = {
+                input: { stepId: 1, name: "input1", connectorType: "input" as const },
+                output: { stepId: 0, name: "output", connectorType: "output" as const },
+            };
+            const action = new DisconnectStepAction(
+                connection,
+                () => {},
+                () => {},
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            expect(result.actions[0]).toEqual({
+                action_type: "disconnect",
+                input: { order_index: 1, input_name: "input1" },
+                output: { order_index: 0, output_name: "output" },
+            });
+        });
+    });
+
+    describe("Workflow Report", () => {
+        it("serializes readme/report change", () => {
+            const action = new LazySetValueAction(
+                "",
+                "# Report",
+                () => {},
+                () => {},
+                "readme",
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            expect(result.actions[0]).toEqual({
+                action_type: "update_report",
+                report: { markdown: "# Report" },
+            });
         });
     });
 
