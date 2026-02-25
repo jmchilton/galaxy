@@ -5,11 +5,6 @@
                 {{ error }}
             </b-alert>
             <ToolSection v-if="isWorkflow" :category="historyInEditorSection" :expanded="true" @onClick="onClick" />
-            <ToolSection
-                v-else-if="isHistoryNotebook"
-                :category="historyNotebookSection"
-                :expanded="true"
-                @onClick="onClick" />
             <ToolSection v-else :category="historySection" :expanded="true" @onClick="onClick" />
             <ToolSection :category="jobSection" :expanded="true" @onClick="onClick" />
             <ToolSection v-if="isWorkflow" :category="workflowInEditorSection" :expanded="true" @onClick="onClick" />
@@ -29,7 +24,6 @@
             :argument-payload="selectedPayload"
             :labels="workflowLabels"
             :use-labels="isWorkflow"
-            :use-hids="isHistoryNotebook"
             @onInsert="onInsert"
             @onCancel="onCancel" />
     </ActivityPanel>
@@ -100,10 +94,6 @@ export default {
             type: Object,
             default: null,
         },
-        notebookMode: {
-            type: Boolean,
-            default: false,
-        },
     },
     data() {
         return {
@@ -127,11 +117,6 @@ export default {
                 title: "History",
                 name: "history",
                 elems: [...historySharedElements("report"), directiveEntry("history_link", "report")],
-            },
-            historyNotebookSection: {
-                title: "History",
-                name: "history",
-                elems: [...historySharedElements("history_notebook")],
             },
             workflowSection: {
                 title: "Workflow",
@@ -216,15 +201,9 @@ export default {
         isWorkflow() {
             return !!this.steps;
         },
-        isHistoryNotebook() {
-            return this.notebookMode;
-        },
         mode() {
             if (this.isWorkflow) {
                 return "report";
-            }
-            if (this.isHistoryNotebook) {
-                return "history_notebook";
             }
             return "page";
         },

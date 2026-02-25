@@ -4201,7 +4201,7 @@ class HistoryNotebookDetails(HistoryNotebookSummary):
     content_editor: Optional[str] = Field(
         default=None,
         title="Content for Editor",
-        description="Raw notebook content with HID references preserved (for editing).",
+        description="Raw notebook content preserved for editing.",
     )
     content_format: NotebookContentFormat = NotebookContentFormat.markdown
     edit_source: Optional[str] = Field(default="user")

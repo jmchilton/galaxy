@@ -95,7 +95,7 @@ describe("TextEditor drag-and-drop", () => {
             setDatasetDragItem(3);
 
             const content = await dropAndGetUpdate(wrapper);
-            expect(content).toContain("history_dataset_display(hid=3)");
+            expect(content).toContain("history_dataset_display(history_dataset_id=abc123)");
             expect(content).toContain("```galaxy");
         });
 
@@ -104,7 +104,7 @@ describe("TextEditor drag-and-drop", () => {
             setCollectionDragItem(5);
 
             const content = await dropAndGetUpdate(wrapper);
-            expect(content).toContain("history_dataset_collection_display(hid=5)");
+            expect(content).toContain("history_dataset_collection_display(history_dataset_collection_id=col123)");
         });
 
         it("does not insert anything when mode is 'page'", async () => {
