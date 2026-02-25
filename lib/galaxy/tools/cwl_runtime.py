@@ -116,6 +116,22 @@ def setup_for_cwl_runtimeify(
             if isinstance(value, HistoryDatasetCollectionAssociation):
                 hdcas_by_id[value.id] = value
 
+    def _get_cwl_format_from_tags(hda) -> Optional[str]:
+        """Extract original CWL format URI stored as a tag during staging."""
+        for tag in hda.tags:
+            if tag.user_tname == "cwl_format" and tag.user_value:
+                return tag.user_value
+        return None
+
+    def _resolve_cwl_format(hda) -> Optional[str]:
+        """Return best CWL format URI for an HDA: tag override > EDAM from datatype."""
+        tag_format = _get_cwl_format_from_tags(hda)
+        if tag_format:
+            return tag_format
+        if hasattr(hda, "cwl_formats") and hda.cwl_formats:
+            return str(hda.cwl_formats[0])
+        return None
+
     def adapt_dataset(value):
         base_result = base_adapt_dataset(value)
         hda = hdas_by_id.get(value.id)
@@ -132,9 +148,10 @@ def setup_for_cwl_runtimeify(
         if secondary_files:
             base_result.secondaryFiles = secondary_files
 
-        # Enrich with CWL format URI (replace Galaxy extension with EDAM URI)
-        if hasattr(hda, "cwl_formats") and hda.cwl_formats:
-            base_result.format = str(hda.cwl_formats[0])
+        # Enrich with CWL format URI
+        fmt = _resolve_cwl_format(hda)
+        if fmt:
+            base_result.format = fmt
 
         return base_result
 
@@ -157,8 +174,9 @@ def setup_for_cwl_runtimeify(
         if secondary_files:
             properties["secondaryFiles"] = secondary_files
         # Enrich with CWL format URI
-        if hasattr(hda, "cwl_formats") and hda.cwl_formats:
-            properties["format"] = str(hda.cwl_formats[0])
+        fmt = _resolve_cwl_format(hda)
+        if fmt:
+            properties["format"] = fmt
         return properties
 
     def _adapt_element_hda(hda, item_type_param):

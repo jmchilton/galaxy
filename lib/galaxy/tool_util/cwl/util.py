@@ -254,8 +254,14 @@ def galactic_job_json(
         filetype = value.get("filetype", None) or value.get("format", None)
         composite_data_raw = value.get("composite_data", None)
         kwd = {}
-        if "tags" in value:
-            kwd["tags"] = value.get("tags")
+        tags = list(value.get("tags", []) or [])
+        # Preserve original CWL format URI as a tag so runtime adaptation
+        # can reconstruct it (Galaxy's cwl_formats derives from datatype only).
+        cwl_format = value.get("format")
+        if cwl_format:
+            tags.append(f"cwl_format:{cwl_format}")
+        if tags:
+            kwd["tags"] = tags
         if "dbkey" in value:
             kwd["dbkey"] = value.get("dbkey")
         if "decompress" in value:
@@ -408,14 +414,24 @@ def galactic_job_json(
     def replacement_record(value):
         collection_element_identifiers = []
         for record_key, record_value in value.items():
-            if not isinstance(record_value, dict) or record_value.get("class") != "File":
+            if isinstance(record_value, list):
+                # Array field in record - create as list collection, reference as hdca
+                list_ref = replacement_list(record_value)
+                collection_element = {"name": record_key, "src": "hdca", "id": list_ref["id"]}
+            elif isinstance(record_value, dict) and record_value.get("class") == "File":
+                filetype = record_value.get("filetype", None) or record_value.get("format", None)
+                kwd = {}
+                cwl_fmt = record_value.get("format")
+                if cwl_fmt:
+                    kwd["tags"] = [f"cwl_format:{cwl_fmt}"]
+                dataset = upload_file(record_value["location"], None, filetype=filetype, **kwd)
+                collection_element = dataset.copy()
+                collection_element["name"] = record_key
+            else:
                 dataset = replacement_item(record_value, force_to_file=True)
                 collection_element = dataset.copy()
-            else:
-                dataset = upload_file(record_value["location"], None)
-                collection_element = dataset.copy()
+                collection_element["name"] = record_key
 
-            collection_element["name"] = record_key
             collection_element_identifiers.append(collection_element)
 
         collection = collection_create_func(collection_element_identifiers, "record")
