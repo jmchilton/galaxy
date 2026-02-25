@@ -11,7 +11,10 @@ from galaxy.exceptions import (
     RequestParameterMissingException,
 )
 from galaxy.managers.context import ProvidesUserContext
-from galaxy.managers.markdown_util import ready_galaxy_markdown_for_export
+from galaxy.managers.markdown_util import (
+    ready_galaxy_markdown_for_export,
+    resolve_history_markdown,
+)
 from galaxy.schema.schema import (
     CreateHistoryNotebookPayload,
     UpdateHistoryNotebookPayload,
@@ -21,9 +24,9 @@ from galaxy.schema.schema import (
 class HistoryNotebookManager:
     """Manager for history notebook operations.
 
-    History notebooks store markdown using the same directive format as Pages
-    (e.g., history_dataset_id=X). Content is stored as-is; ID encoding for
-    export happens at render time via ready_galaxy_markdown_for_export().
+    History notebooks store markdown with HID references (e.g., hid=42).
+    Unlike Pages, content is stored as-is without transforming HIDs to internal IDs.
+    HID resolution happens at render time via resolve_history_markdown().
     """
 
     def list_notebooks(
@@ -62,7 +65,7 @@ class HistoryNotebookManager:
         notebook.history = history
         notebook.title = payload.title or history.name
 
-        # Create initial revision - content stored as-is
+        # Create initial revision - content stored as-is with HIDs
         content = payload.content or ""
         content_format = getattr(payload.content_format, "value", payload.content_format) or "markdown"
 
@@ -102,7 +105,7 @@ class HistoryNotebookManager:
         if payload.title:
             notebook.title = payload.title
 
-        # Content stored as-is - no transformation needed
+        # Content stored as-is with HIDs - no transformation needed
         revision = model.HistoryNotebookRevision()
         revision.notebook = notebook
         revision.content = content
@@ -159,7 +162,7 @@ class HistoryNotebookManager:
         trans: ProvidesUserContext,
         notebook: model.HistoryNotebook,
     ) -> str:
-        """Encode IDs for Page creation.
+        """Resolve HID references and encode IDs for Page creation.
 
         Returns markdown with encoded IDs, matching the format that
         POST /api/pages expects (same as invocation report content).
@@ -168,7 +171,8 @@ class HistoryNotebookManager:
         content = notebook.latest_revision.content
         if not content:
             return ""
-        export_content, _, _ = ready_galaxy_markdown_for_export(trans, content)
+        resolved = resolve_history_markdown(trans, notebook.history.id, content)
+        export_content, _, _ = ready_galaxy_markdown_for_export(trans, resolved)
         return export_content
 
     def rewrite_content_for_export(self, trans: ProvidesUserContext, history: model.History, rval: dict) -> None:
@@ -176,13 +180,16 @@ class HistoryNotebookManager:
 
         Produces two content fields (mirroring the Page pattern):
         - content: directives expanded + IDs encoded (for Markdown renderer)
-        - content_editor: raw DB content preserved (for text editor)
+        - content_editor: raw DB content with HID references preserved (for text editor)
         """
         content = rval.get("content")
         if content:
-            content, content_expanded, _ = ready_galaxy_markdown_for_export(trans, content)
-            rval["content"] = content_expanded
+            # content_editor = raw content as-is (HIDs preserved for editor)
             rval["content_editor"] = content
+            # content = fully resolved + expanded (for rendering)
+            resolved = resolve_history_markdown(trans, history.id, content)
+            export_content, export_content_expanded, _ = ready_galaxy_markdown_for_export(trans, resolved)
+            rval["content"] = export_content_expanded
         else:
             rval["content_editor"] = content
 

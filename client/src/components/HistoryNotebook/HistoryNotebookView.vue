@@ -51,9 +51,9 @@ const markdownConfig = computed(() => {
     if (!store.currentNotebook) {
         return null;
     }
-    // In displayOnly mode use the server-resolved content (IDs encoded)
+    // In displayOnly mode use the server-resolved content (HIDs expanded to encoded IDs)
     // so the Markdown renderer can find dataset references.  In editor mode use the
-    // raw editor content for editing.
+    // raw editor content which preserves hid=N for editing.
     const content = props.displayOnly ? (store.currentNotebook.content ?? store.currentContent) : store.currentContent;
     return {
         id: store.currentNotebook.id,

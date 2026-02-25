@@ -50,7 +50,12 @@ const pagelike = computed(() => page.value || notebook.value);
             These commands reference a dataset or dataset collection. For instance, the following examples would display
             the dataset collection metadata and would embed a dataset into the document as an image.
 
-            <span v-if="pagelike">
+            <span v-if="notebook">
+                These elements are referenced by their history ID number (HID). The Markdown editor will let you pick
+                objects graphically and they will be embedded into the Markdown with their HID.
+            </span>
+
+            <span v-else-if="page">
                 These elements are referenced by object IDs used by the Galaxy API. The Markdown editor will let you
                 pick objects graphically but they will be embedded into the Markdown with these IDs.
             </span>
@@ -62,7 +67,13 @@ const pagelike = computed(() => page.value || notebook.value);
             </span>
         </p>
 
-        <pre v-if="pagelike">
+        <pre v-if="notebook">
+```galaxy
+history_dataset_collection_display(hid=12)
+```
+</pre
+        >
+        <pre v-else-if="page">
 ```galaxy
 history_dataset_collection_display(history_dataset_collection_id=33b43b4e7093c91f)
 ```
@@ -75,7 +86,13 @@ history_dataset_collection_display(output=mapped_bams)
 </pre
         >
 
-        <pre v-if="pagelike">
+        <pre v-if="notebook">
+```galaxy
+history_dataset_as_image(hid=42)
+```
+</pre
+        >
+        <pre v-else-if="page">
 ```galaxy
 history_dataset_as_image(history_dataset_id=33b43b4e7093c91f)
 ```

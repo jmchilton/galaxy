@@ -1,7 +1,7 @@
 <template>
     <div class="d-flex h-100 w-100">
         <FlexPanel side="left">
-            <MarkdownToolBox :steps="steps" @insert="insertMarkdown" />
+            <MarkdownToolBox :steps="steps" :notebook-mode="mode === 'history_notebook'" @insert="insertMarkdown" />
         </FlexPanel>
         <textarea
             id="workflow-report-editor"
@@ -83,7 +83,7 @@ const eventStore = useEventStore();
 const dropHighlight = ref<string | null>(null);
 const dragTarget = ref<EventTarget | null>(null);
 
-function getDroppableItem(): { id: string; contentType: string } | null {
+function getDroppableItem(): { hid: number; contentType: string } | null {
     if (props.mode !== "history_notebook") {
         return null;
     }
@@ -95,12 +95,12 @@ function getDroppableItem(): { id: string; contentType: string } | null {
     if (!item || !isHistoryItem(item)) {
         return null;
     }
-    const id = item.id;
+    const hid = item.hid;
     const contentType = item.history_content_type;
-    if (!id) {
+    if (typeof hid !== "number") {
         return null;
     }
-    return { id, contentType };
+    return { hid, contentType };
 }
 
 function onDragEnter(evt: DragEvent) {
@@ -127,11 +127,11 @@ function onDrop(_evt: DragEvent) {
     if (!droppable) {
         return;
     }
-    const { id, contentType } = droppable;
+    const { hid, contentType } = droppable;
     const directive =
         contentType === "dataset_collection"
-            ? `history_dataset_collection_display(history_dataset_collection_id=${id})`
-            : `history_dataset_display(history_dataset_id=${id})`;
+            ? `history_dataset_collection_display(hid=${hid})`
+            : `history_dataset_display(hid=${hid})`;
     insertMarkdown(directive);
 }
 </script>
