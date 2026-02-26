@@ -354,7 +354,10 @@ def output_to_disk(output, download_folder):
                 zip_path = f"{download_path}.zip"
                 download_to_file(output["location"], zip_path)
                 os.makedirs(download_path, exist_ok=True)
-                CompressedFile(zip_path).extract(download_path)
+                # Use extractall directly — CompressedFile.extract() nests
+                # single-file archives in an extra subdirectory.
+                cf = CompressedFile(zip_path)
+                cf.archive.extractall(download_path, members=list(cf.safemembers()))
                 os.remove(zip_path)
             else:
                 download_to_file(output["location"], download_path)
