@@ -378,6 +378,8 @@ class ModelPersistenceContext(metaclass=abc.ABCMeta):
             "rows": [],
         }
         ext_override = change_datatype_actions.get(name)
+        _max_log_elements = 10
+        _element_count = 0
         for discovered_file in chunk:
             filename = discovered_file.path
             create_dataset_timer = ExecutionTimer()
@@ -419,14 +421,22 @@ class ModelPersistenceContext(metaclass=abc.ABCMeta):
                 created_from_basename=created_from_basename,
                 final_job_state=final_job_state,
             )
-            log.debug(
-                "(%s) Created dynamic collection dataset for path [%s] with element identifier [%s] for output [%s] %s",
-                self.job_id(),
-                filename,
-                designation,
-                name,
-                create_dataset_timer,
-            )
+            _element_count += 1
+            if _element_count <= _max_log_elements:
+                log.debug(
+                    "(%s) Created dynamic collection dataset for path [%s] with element identifier [%s] for output [%s] %s",
+                    self.job_id(),
+                    filename,
+                    designation,
+                    name,
+                    create_dataset_timer,
+                )
+                if _element_count == _max_log_elements:
+                    log.debug(
+                        "(%s) Suppressing further dynamic collection dataset log messages for output [%s]...",
+                        self.job_id(),
+                        name,
+                    )
             element_datasets["element_identifiers"].append(element_identifiers)
             element_datasets["extra_files"].append(extra_files)
             element_datasets["datasets"].append(dataset)
@@ -434,6 +444,13 @@ class ModelPersistenceContext(metaclass=abc.ABCMeta):
             element_datasets["paths"].append(filename)
             element_datasets["rows"].append(discovered_file.match.row)
 
+        if _element_count > _max_log_elements:
+            log.debug(
+                "(%s) Created %d dynamic collection datasets total for output [%s]",
+                self.job_id(),
+                _element_count,
+                name,
+            )
         self.add_tags_to_datasets(datasets=element_datasets["datasets"], tag_lists=element_datasets["tag_lists"])
         for element_identifiers, dataset, row in zip(
             element_datasets["element_identifiers"], element_datasets["datasets"], element_datasets["rows"]
