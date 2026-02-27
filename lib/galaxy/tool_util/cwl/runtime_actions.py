@@ -86,11 +86,17 @@ def _build_list_elements(output_list, output_key, tool_working_directory, job_pr
             elements.append(element)
         elif isinstance(el, dict) and el.get("class") == "Directory":
             output_path = _possible_uri_to_path(el["location"])
+            # Directory datasets store content in extra_files_path, not primary .dat.
+            # Create empty primary file; set extra_files to the directory path.
+            empty_file = os.path.join(tool_working_directory, f"_{output_key}_{index}_empty")
+            with open(empty_file, "w"):
+                pass
             element = {
                 "name": str(index),
-                "filename": output_path,
+                "filename": empty_file,
                 "created_from_basename": el["basename"],
                 "ext": "directory",
+                "extra_files": output_path,
             }
             elements.append(element)
         else:
