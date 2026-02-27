@@ -2995,6 +2995,14 @@ class ToolModule(WorkflowModule):
                     step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in slice_dict.items()}
                     when_value = do_eval(str(step.when_expression), step_state)
                     when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
+                    if not isinstance(when_value, bool):
+                        raise FailWorkflowEvaluation(
+                            InvocationFailureWhenNotBoolean(
+                                reason=FailureReason.when_not_boolean,
+                                workflow_step_id=step.id,
+                                details=f"Type is: {when_value.__class__.__name__}",
+                            )
+                        )
                 if when_value is not None:
                     slice_dict["__when_value__"] = when_value
                 param_combinations.append(slice_dict)
