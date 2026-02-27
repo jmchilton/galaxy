@@ -398,8 +398,73 @@ class JobProxy:
             # (instead of globally manipulating self._tool_proxy._tool, which is likely not thread-safe).
             cwl_tool_instance = copy.copy(self._tool_proxy._tool)
             cwl_tool_instance.inputs_record_schema = copy.deepcopy(cwl_tool_instance.inputs_record_schema)
-            self._cwl_job = next(cwl_tool_instance.job(self._input_dict, self._output_callback, runtimeContext))
+            # Deep copy _input_dict so cwltool works on a separate copy.
+            # Galaxy pre-populates directory listings for all inputs (since
+            # staging strips inline listings from the original job).  The
+            # full listings must be available in _init_job for
+            # ResourceRequirement expression evaluation.  After the job is
+            # created, we strip listings from the Builder's job dict based
+            # on loadListing so outputEval sees the correct state.  Using a
+            # deep copy keeps _input_dict untouched for save_job (which
+            # preserves full listings for re-loading in handle_outputs).
+            cwl_input = copy.deepcopy(self._input_dict)
+            self._cwl_job = next(cwl_tool_instance.job(cwl_input, self._output_callback, runtimeContext))
             self._is_command_line_job = hasattr(self._cwl_job, "command_line")
+            self._apply_load_listing_to_builder()
+
+    def _apply_load_listing_to_builder(self):
+        """Strip/trim directory listings on the CWL Builder's job dict.
+
+        After _init_job evaluates ResourceRequirement (which may reference
+        directory listings), adjust the Builder's job dict so that
+        outputEval expressions see the listing state mandated by the CWL
+        loadListing setting.
+        """
+        if not hasattr(self._cwl_job, "builder"):
+            return
+        tool = self._tool_proxy._tool
+        load_listing_reqs = self._tool_proxy.hints_or_requirements_of_class("LoadListingRequirement")
+        default_ll = "no_listing"
+        if load_listing_reqs:
+            default_ll = load_listing_reqs[0].get("loadListing", "no_listing")
+
+        input_lls: Dict[str, str] = {}
+        for field in tool.inputs_record_schema["fields"]:
+            raw_name = field["name"]
+            name = raw_name.split("#")[-1] if "#" in raw_name else raw_name
+            input_lls[name] = field.get("loadListing", default_ll)
+
+        def _strip(value):
+            if isinstance(value, dict):
+                if value.get("class") == "Directory":
+                    value.pop("listing", None)
+                    return
+                for v in value.values():
+                    _strip(v)
+            elif isinstance(value, list):
+                for item in value:
+                    _strip(item)
+
+        def _shallow(value):
+            if isinstance(value, dict):
+                if value.get("class") == "Directory":
+                    for entry in value.get("listing", []):
+                        if isinstance(entry, dict) and entry.get("class") == "Directory":
+                            entry.pop("listing", None)
+                    return
+                for v in value.values():
+                    _shallow(v)
+            elif isinstance(value, list):
+                for item in value:
+                    _shallow(item)
+
+        builder_job = self._cwl_job.builder.job
+        for input_name in list(builder_job.keys()):
+            ll = input_lls.get(input_name, default_ll)
+            if ll == "no_listing":
+                _strip(builder_job[input_name])
+            elif ll == "shallow_listing":
+                _shallow(builder_job[input_name])
 
     def _normalize_job(self):
         # Somehow reuse whatever causes validate in cwltool... maybe?

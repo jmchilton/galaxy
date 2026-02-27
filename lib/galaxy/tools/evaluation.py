@@ -1238,22 +1238,15 @@ class CwlToolEvaluator(UserToolEvaluator):
 
         visit_class(input_json, ("File", "Directory"), _use_path_as_location)
 
-        # Populate directory listings from the filesystem respecting CWL
-        # LoadListingRequirement and per-input loadListing settings.
-        # CWL v1.1 default is no_listing when not specified.
-        cwl_tool_for_listing = cast("CwlCommandBindingTool", self.tool)
-        cwl_proxy = cwl_tool_for_listing._cwl_tool_proxy
-        load_listing_reqs = cwl_proxy.hints_or_requirements_of_class("LoadListingRequirement")
-        default_load_listing = "no_listing"
-        if load_listing_reqs:
-            default_load_listing = load_listing_reqs[0].get("loadListing", "no_listing")
-
-        input_load_listings: dict[str, str] = {}
-        for field in cwl_proxy._tool.inputs_record_schema["fields"]:
-            input_load_listings[field["name"]] = field.get("loadListing", default_load_listing)
-
+        # Always pre-populate deep directory listings from the filesystem.
+        # Galaxy strips inline listings during staging, so we reconstruct
+        # them here.  cwltool needs listings for ResourceRequirement
+        # expression evaluation (e.g. $(inputs.dir.listing[0].size)).
+        # The JobProxy deep-copies _input_dict before passing to cwltool
+        # and then applies loadListing settings (stripping for no_listing,
+        # trimming for shallow_listing) on the Builder's job dict so
+        # outputEval expressions see the correct listing state.
         def _populate_directory_listing_deep(entry):
-            """Populate directory listing recursively (deep_listing mode)."""
             location = entry.get("location")
             if not location or not os.path.isdir(location) or "listing" in entry:
                 return
@@ -1279,13 +1272,8 @@ class CwlToolEvaluator(UserToolEvaluator):
                 for item in value:
                     _visit_directories_deep(item)
 
-        for input_name, input_value in input_json.items():
-            load_listing = input_load_listings.get(input_name, default_load_listing)
-            if load_listing == "deep_listing":
-                # Only pre-populate for deep_listing. For shallow_listing
-                # and no_listing, let cwltool handle it via fill_in_defaults
-                # which respects both per-input and requirement-level settings.
-                _visit_directories_deep(input_value)
+        for _input_name, input_value in input_json.items():
+            _visit_directories_deep(input_value)
 
         # Stage secondary files from deferred source URIs.
         # Deferred CWL File defaults may have secondary files at the remote
