@@ -305,7 +305,11 @@ class CwlToolSource(ToolSource):
         containers = []
         docker_identifier = self.tool_proxy.docker_identifier()
         if docker_identifier:
-            containers.append({"type": "docker", "identifier": docker_identifier})
+            container = {"type": "docker", "identifier": docker_identifier}
+            docker_output_directory = self.tool_proxy.docker_output_directory()
+            if docker_output_directory:
+                container["docker_output_directory"] = docker_output_directory
+            containers.append(container)
 
         software_requirements = self.tool_proxy.software_requirements()
         resource_requirements = list(self.tool_proxy.resource_requirements())
