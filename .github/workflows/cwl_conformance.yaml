@@ -14,6 +14,10 @@ on:
       - 'packages/**'
 env:
   GALAXY_TEST_DBURI: 'postgresql://postgres:postgres@localhost:5432/galaxy?client_encoding=utf8'
+  # Poll local runner limits every 1s so ToolTimeLimit tests (sleep 15, limit 3s) get
+  # caught before the process exits. Default is 20 (~20s), too slow for short sleeps.
+  # TODO: replace with a proper GALAXY_CONFIG_ parameter or job_conf destination param.
+  GALAXY_LOCAL_LIMIT_CHECK_INTERVAL: '1'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
