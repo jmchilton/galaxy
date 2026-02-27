@@ -453,8 +453,6 @@ def find_cwl_scatter_collections(
 
         step_input = step_inputs_by_name.get(name)
         scatter_type = (step_input.scatter_type if step_input else None) or "dotproduct"
-        if scatter_type == "disabled":
-            continue
 
         hdca = trans.sa_session.get(model.HistoryDatasetCollectionAssociation, ref["id"])
         if not hdca or not hdca.collection.allow_implicit_mapping:
@@ -467,7 +465,13 @@ def find_cwl_scatter_collections(
         if ":" in collection_type:
             subcollection_type = collection_type.split(":", 1)[1]
 
-        if step_input:
+        if scatter_type == "disabled":
+            # "disabled" means no explicit scatter on this input. But if an
+            # HDCA reaches a scalar tool param (e.g. inside a subworkflow
+            # with outer scatter), we still need implicit mapping over it.
+            if name not in collection_param_names:
+                collections_to_match.add(name, hdca, subcollection_type=subcollection_type)
+        elif step_input:
             # Explicit scatter annotation (WorkflowStepInput exists)
             collections_to_match.add(name, hdca, subcollection_type=subcollection_type)
         elif name not in collection_param_names:
