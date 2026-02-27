@@ -176,6 +176,7 @@ TOOL_WITH_SHELL_COMMAND = {
 }
 
 DEFAULT_TIMEOUT = 60  # Secs to wait for state to turn ok
+CWL_TOOL_TIMEOUT = 300  # CWL tools with large array outputs (e.g. string[]) need more time
 
 SKIP_FLAKEY_TESTS_ON_ERROR = os.environ.get("GALAXY_TEST_SKIP_FLAKEY_TESTS_ON_ERROR", None)
 INPUT_FORMAT_T = Literal["legacy", "21.01", "request"]
@@ -511,7 +512,7 @@ class CwlToolRun(CwlRun):
         raise Exception(f"Failed to find output with label [{output_name}] in job {self.job_id}")
 
     def wait(self):
-        self.dataset_populator.wait_for_job(self.job_id, assert_ok=True)
+        self.dataset_populator.wait_for_job(self.job_id, assert_ok=True, timeout=CWL_TOOL_TIMEOUT)
 
 
 class CwlWorkflowRun(CwlRun):
@@ -3446,6 +3447,10 @@ class CwlPopulator:
             raise Exception("Expected run to fail but it didn't.")
 
         expected_outputs = test["output"]
+        if "$import" in expected_outputs:
+            import_path = os.path.join(directory, expected_outputs["$import"])
+            with open(import_path) as f:
+                expected_outputs = json.load(f)
         for key, value in expected_outputs.items():
             with tempfile.TemporaryDirectory() as tmpdir:
                 try:
