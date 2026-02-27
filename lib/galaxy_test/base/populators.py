@@ -3152,7 +3152,7 @@ class CwlPopulator:
         elif job is None:
             job = {}
         if not skip_input_staging:
-            if tool_or_workflow == "tool" and os.path.exists(artifact_without_id) and test_data_directory:
+            if os.path.exists(artifact_without_id) and test_data_directory:
                 resolve_cwl_secondary_files(job, artifact_without_id, test_data_directory)
             _, datasets = stage_inputs(
                 self.dataset_populator.galaxy_interactor,
