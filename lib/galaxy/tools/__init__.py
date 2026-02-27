@@ -1595,8 +1595,19 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.cores_min = tool_source.parse_cores_min()
         self.timelimit = None
         for rr in self.resource_requirements:
-            if rr.resource_type == "timelimit" and not rr.runtime_required:
-                self.timelimit = rr.get_value()
+            if rr.resource_type == "timelimit":
+                if not rr.runtime_required:
+                    self.timelimit = rr.get_value()
+                else:
+                    try:
+                        from galaxy.tools.expressions import do_eval
+
+                        def _js_eval(expression, runtime):
+                            return do_eval(expression, runtime, javascript_requirements=self.javascript_requirements)
+
+                        self.timelimit = rr.get_value(js_evaluator=_js_eval)
+                    except Exception:
+                        log.debug("Could not evaluate timelimit expression: %s", rr.value_or_expression)
                 break
 
     def __parse_legacy_features(self, tool_source: ToolSource):
