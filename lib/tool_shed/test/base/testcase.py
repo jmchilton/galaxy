@@ -639,6 +639,9 @@ class ShedTestCase(ShedApiTestCase):
         self.file_dir: str = os.environ.get("TOOL_SHED_TEST_FILE_DIR", "")
         self.shed_tool_conf = os.environ.get("GALAXY_TEST_SHED_TOOL_CONF")
         self.test_db_util = test_db_util
+        installation_client_class: type[
+            Union[StandaloneToolShedInstallationClient, GalaxyInteractorToolShedInstallationClient]
+        ]
         if os.environ.get("TOOL_SHED_TEST_INSTALL_CLIENT") == "standalone":
             # TODO: once nose is out of the way - try to get away without
             # instantiating the unused Galaxy server here.
