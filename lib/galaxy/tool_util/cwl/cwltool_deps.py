@@ -99,7 +99,7 @@ except ImportError:
 needs_shell_quoting = re.compile(r"""(^$|[\s|&;()<>\'"$@])""").search
 
 # if set to True, file format checking is not performed.
-beta_relaxed_fmt_check = True
+beta_relaxed_fmt_check = False
 
 
 def ensure_cwltool_available():
