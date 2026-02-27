@@ -2481,7 +2481,9 @@ class MinimalJobWrapper(HasResourceParameters):
         try:
             if not tmp_dir or util.asbool(tmp_dir):
                 working_directory = self.working_directory
-                return f"""$([ ! -e '{working_directory}/tmp' ] || mv '{working_directory}/tmp' '{working_directory}'/tmp.$(date +%Y%m%d-%H%M%S) ; mkdir '{working_directory}/tmp'; echo '{working_directory}/tmp')"""
+                # CWL spec requires TMPDIR to end in /cwltmp, not /tmp
+                tmp_dir_name = "cwltmp" if self.is_cwl_job else "tmp"
+                return f"""$([ ! -e '{working_directory}/{tmp_dir_name}' ] || mv '{working_directory}/{tmp_dir_name}' '{working_directory}'/{tmp_dir_name}.$(date +%Y%m%d-%H%M%S) ; mkdir '{working_directory}/{tmp_dir_name}'; echo '{working_directory}/{tmp_dir_name}')"""
             else:
                 return tmp_dir
         except ValueError:
