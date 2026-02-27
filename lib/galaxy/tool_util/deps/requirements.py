@@ -277,8 +277,8 @@ class ResourceRequirement:
 
     def get_value(self, runtime: Optional[Dict] = None, js_evaluator: Optional[Callable] = None) -> float:
         if self.runtime_required:
-            # TODO: hook up evaluator
-            # return js_evaluator(self.value_or_expression, runtime)
+            if js_evaluator is not None:
+                return float(js_evaluator(self.value_or_expression, runtime or {}))
             raise NotImplementedError(
                 f"{self.value_or_expression} is not an integer or float value, expressions currently not implemented"
             )
