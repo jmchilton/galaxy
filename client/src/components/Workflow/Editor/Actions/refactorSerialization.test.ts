@@ -432,6 +432,25 @@ describe("refactorSerialization", () => {
             });
         });
 
+        it("serializes connection from input step (output_name convention = 'output')", () => {
+            // Input/data steps in Galaxy have a single output named "output" by convention.
+            // The backend OutputReferenceByOrderIndex.output_name defaults to "output" when None,
+            // but we always send it explicitly to avoid relying on the backend default.
+            const connection = {
+                input: { stepId: 2, name: "input1", connectorType: "input" as const },
+                output: { stepId: 0, name: "output", connectorType: "output" as const },
+            };
+            const action = new ConnectStepAction(
+                connection,
+                () => {},
+                () => {},
+            );
+            const result = serializeAction(action);
+            expect(result.actions[0]).toHaveProperty("output");
+            const output = (result.actions[0] as any).output;
+            expect(output.output_name).toBe("output");
+        });
+
         it("serializes disconnecting two steps", () => {
             const connection = {
                 input: { stepId: 1, name: "input1", connectorType: "input" as const },

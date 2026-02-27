@@ -314,11 +314,22 @@ function serializeRemoveAllFreehand(): SerializationResult {
     };
 }
 
-function serializeConnect(action: ConnectStepAction): SerializationResult {
+/**
+ * Shared serializer for connect/disconnect — identical structure, different action_type.
+ *
+ * Note: These action classes use callbacks for run/undo (not store references), so they
+ * cannot be reconstructed from persisted JSON. Journal replay goes through the refactor
+ * API directly — the serialized payload is the replay unit, not the frontend action.
+ */
+function serializeConnectionAction(
+    action: ConnectStepAction | DisconnectStepAction,
+    actionType: "connect" | "disconnect",
+    title: string,
+): SerializationResult {
     return {
         actions: [
             {
-                action_type: "connect" as const,
+                action_type: actionType as const,
                 input: {
                     order_index: action.connection.input.stepId,
                     input_name: action.connection.input.name,
@@ -329,27 +340,7 @@ function serializeConnect(action: ConnectStepAction): SerializationResult {
                 },
             },
         ],
-        title: "Connect steps",
-        success: true,
-    };
-}
-
-function serializeDisconnect(action: DisconnectStepAction): SerializationResult {
-    return {
-        actions: [
-            {
-                action_type: "disconnect" as const,
-                input: {
-                    order_index: action.connection.input.stepId,
-                    input_name: action.connection.input.name,
-                },
-                output: {
-                    order_index: action.connection.output.stepId,
-                    output_name: action.connection.output.name,
-                },
-            },
-        ],
-        title: "Disconnect steps",
+        title,
         success: true,
     };
 }
@@ -414,10 +405,10 @@ export function serializeAction(action: UndoRedoAction): SerializationResult {
 
         // Connection actions
         if (action instanceof ConnectStepAction) {
-            return serializeConnect(action);
+            return serializeConnectionAction(action, "connect", "Connect steps");
         }
         if (action instanceof DisconnectStepAction) {
-            return serializeDisconnect(action);
+            return serializeConnectionAction(action, "disconnect", "Disconnect steps");
         }
 
         // Unsupported action
