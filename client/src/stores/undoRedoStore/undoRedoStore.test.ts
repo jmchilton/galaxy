@@ -1,0 +1,193 @@
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { SerializationResult } from "@/components/Workflow/Editor/Actions/refactorSerialization";
+import { useConfigStore } from "@/stores/configurationStore";
+
+import { UndoRedoAction } from "./undoRedoAction";
+
+const mockSerializeAction = vi.fn<(action: UndoRedoAction) => SerializationResult>();
+
+vi.mock("@/components/Workflow/Editor/Actions/refactorSerialization", () => ({
+    serializeAction: (...args: unknown[]) => mockSerializeAction(args[0] as UndoRedoAction),
+    // re-export the type — not needed at runtime but keeps TS happy
+    buildBatchTitle: vi.fn(),
+}));
+
+// Must import after vi.mock
+const { useUndoRedoStore } = await import("./index");
+
+const workflowId = "test-workflow";
+
+class TestAction extends UndoRedoAction {
+    ran = false;
+    undone = false;
+
+    run() {
+        this.ran = true;
+    }
+
+    undo() {
+        this.undone = true;
+    }
+}
+
+function makeSuccessResult(title = "test action"): SerializationResult {
+    return {
+        actions: [{ action_type: "update_name" as const, name: "test" }],
+        title,
+        success: true,
+    };
+}
+
+function makeFailResult(): SerializationResult {
+    return { actions: [], title: "failed", success: false, error: "unsupported" };
+}
+
+describe("undoRedoStore persistence", () => {
+    beforeEach(() => {
+        setActivePinia(createPinia());
+        mockSerializeAction.mockReset();
+    });
+
+    function enablePersistence() {
+        const configStore = useConfigStore();
+        configStore.config = { enable_workflow_action_persistence: true };
+    }
+
+    function disablePersistence() {
+        const configStore = useConfigStore();
+        configStore.config = { enable_workflow_action_persistence: false };
+    }
+
+    describe("applyAction with persistence enabled", () => {
+        it("serializes and queues pending action", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action = new TestAction();
+            store.applyAction(action);
+
+            expect(mockSerializeAction).toHaveBeenCalledWith(action);
+            expect(store.pendingActions.length).toBe(1);
+            expect(store.pendingActions[0]!.actionId).toBe(action.id);
+            expect(store.hasPendingActions).toBe(true);
+        });
+
+        it("does not queue failed serializations", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeFailResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+
+            expect(store.pendingActions.length).toBe(0);
+            expect(store.hasPendingActions).toBe(false);
+        });
+    });
+
+    describe("applyAction with persistence disabled", () => {
+        it("does not serialize or queue", () => {
+            disablePersistence();
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+
+            expect(mockSerializeAction).not.toHaveBeenCalled();
+            expect(store.pendingActions.length).toBe(0);
+        });
+    });
+
+    describe("undo", () => {
+        it("removes matching pending action", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action = new TestAction();
+            store.applyAction(action);
+
+            expect(store.pendingActions.length).toBe(1);
+
+            store.undo();
+
+            expect(store.pendingActions.length).toBe(0);
+        });
+
+        it("only removes the undone action, not others", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action1 = new TestAction();
+            const action2 = new TestAction();
+            store.applyAction(action1);
+            store.applyAction(action2);
+
+            expect(store.pendingActions.length).toBe(2);
+
+            store.undo(); // undoes action2
+
+            expect(store.pendingActions.length).toBe(1);
+            expect(store.pendingActions[0]!.actionId).toBe(action1.id);
+        });
+    });
+
+    describe("redo", () => {
+        it("re-serializes and re-adds to pending", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action = new TestAction();
+            store.applyAction(action);
+            store.undo();
+
+            expect(store.pendingActions.length).toBe(0);
+
+            store.redo();
+
+            expect(store.pendingActions.length).toBe(1);
+            expect(store.pendingActions[0]!.actionId).toBe(action.id);
+            // serializeAction called twice: once for apply, once for redo
+            expect(mockSerializeAction).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe("flushPendingActions", () => {
+        it("returns and clears pending actions", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+            store.applyAction(new TestAction());
+
+            expect(store.pendingActions.length).toBe(2);
+
+            const flushed = store.flushPendingActions();
+
+            expect(flushed.length).toBe(2);
+            expect(store.pendingActions.length).toBe(0);
+            expect(store.hasPendingActions).toBe(false);
+        });
+    });
+
+    describe("$reset", () => {
+        it("clears pending actions", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+
+            expect(store.pendingActions.length).toBe(1);
+
+            store.$reset();
+
+            expect(store.pendingActions.length).toBe(0);
+            expect(store.hasPendingActions).toBe(false);
+        });
+    });
+});

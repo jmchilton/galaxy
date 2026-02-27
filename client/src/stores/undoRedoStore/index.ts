@@ -1,7 +1,9 @@
 import { computed, ref, watch } from "vue";
 
+import { type SerializationResult, serializeAction } from "@/components/Workflow/Editor/Actions/refactorSerialization";
 import { useClamp, useStep } from "@/composables/math";
 import { useUserLocalStorage } from "@/composables/userLocalStorage";
+import { useConfigStore } from "@/stores/configurationStore";
 import { defineScopedStore } from "@/stores/scopedStore";
 
 import { type LazyUndoRedoAction, UndoRedoAction } from "./undoRedoAction";
@@ -19,9 +21,21 @@ export class ActionOutOfBoundsError extends Error {
     }
 }
 
+export interface PendingAction {
+    actionId: number;
+    serialization: SerializationResult;
+}
+
 export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
     const undoActionStack = ref<UndoRedoAction[]>([]);
     const redoActionStack = ref<UndoRedoAction[]>([]);
+
+    const pendingActions = ref<PendingAction[]>([]);
+    const hasPendingActions = computed(() => pendingActions.value.length > 0);
+    const persistenceEnabled = computed(() => {
+        const configStore = useConfigStore();
+        return configStore.config?.enable_workflow_action_persistence === true;
+    });
 
     const minUndoActions = ref(10);
     const maxUndoActions = ref(10000);
@@ -45,6 +59,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         undoActionStack.value.forEach((action) => action.destroy());
         undoActionStack.value = [];
         deletedActions.value = [];
+        pendingActions.value = [];
         minUndoActions.value = 10;
         maxUndoActions.value = 10000;
         clearRedoStack();
@@ -57,6 +72,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         if (action !== undefined) {
             action.undo();
             redoActionStack.value.push(action);
+            pendingActions.value = pendingActions.value.filter((p) => p.actionId !== action.id);
         }
     }
 
@@ -66,6 +82,17 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         if (action !== undefined) {
             action.redo();
             undoActionStack.value.push(action);
+            trySerialize(action);
+        }
+    }
+
+    function trySerialize(action: UndoRedoAction): void {
+        if (!persistenceEnabled.value) {
+            return;
+        }
+        const serialization = serializeAction(action);
+        if (serialization.success) {
+            pendingActions.value.push({ actionId: action.id, serialization });
         }
     }
 
@@ -74,6 +101,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         action.run();
         clearRedoStack();
         undoActionStack.value.push(action);
+        trySerialize(action);
 
         while (undoActionStack.value.length > savedUndoActions.value && undoActionStack.value.length > 0) {
             const action = undoActionStack.value.shift();
@@ -145,6 +173,12 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         lazyActionTimeout = setTimeout(() => flushLazyAction(), timeout);
     }
 
+    function flushPendingActions(): PendingAction[] {
+        const flushed = [...pendingActions.value];
+        pendingActions.value = [];
+        return flushed;
+    }
+
     const isQueued = computed(() => (action?: UndoRedoAction | null) => action && pendingLazyAction.value === action);
 
     const nextUndoAction = computed(() => undoActionStack.value[undoActionStack.value.length - 1]);
@@ -207,6 +241,9 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         savedUndoActions,
         deletedActions,
         undoStackLength,
+        pendingActions,
+        hasPendingActions,
+        persistenceEnabled,
         undo,
         redo,
         applyAction,
@@ -214,6 +251,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         applyLazyAction,
         clearLazyAction,
         flushLazyAction,
+        flushPendingActions,
         setLazyActionTimeout,
         isQueued,
         pendingLazyAction,

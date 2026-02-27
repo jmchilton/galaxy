@@ -9,7 +9,7 @@
  */
 
 import type { components } from "@/api/schema";
-import type { UndoRedoAction } from "@/stores/undoRedoStore";
+import type { UndoRedoAction } from "@/stores/undoRedoStore/undoRedoAction";
 
 import {
     AddCommentAction,
@@ -343,6 +343,28 @@ function serializeConnectionAction(
         title,
         success: true,
     };
+}
+
+/**
+ * Build a batch title from pending action serializations.
+ * Joins individual titles with "; ", collapses adjacent duplicates, truncates at 200 chars.
+ */
+export function buildBatchTitle(serializations: SerializationResult[]): string {
+    const titles: string[] = [];
+
+    for (const s of serializations) {
+        if (s.title && s.title !== titles[titles.length - 1]) {
+            titles.push(s.title);
+        }
+    }
+
+    const joined = titles.join("; ");
+
+    if (joined.length <= 200) {
+        return joined;
+    }
+
+    return joined.slice(0, 197) + "...";
 }
 
 /**

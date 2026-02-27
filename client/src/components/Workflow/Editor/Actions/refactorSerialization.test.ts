@@ -18,7 +18,7 @@ import {
 } from "./commentActions";
 import { ConnectStepAction, DisconnectStepAction } from "./connectionActions";
 import { mockComment, mockFreehandComment, mockToolStep, mockWorkflow } from "./mockData";
-import { serializeAction } from "./refactorSerialization";
+import { buildBatchTitle, type SerializationResult, serializeAction } from "./refactorSerialization";
 import {
     InsertStepAction,
     LazyMutateStepAction,
@@ -506,5 +506,45 @@ describe("refactorSerialization", () => {
             const result = serializeAction(action);
             expect(result).toHaveProperty("success");
         });
+    });
+});
+
+function makeSerialization(title: string): SerializationResult {
+    return { actions: [], title, success: true };
+}
+
+describe("buildBatchTitle", () => {
+    it("returns single title unchanged", () => {
+        expect(buildBatchTitle([makeSerialization("Move step")])).toBe("Move step");
+    });
+
+    it("joins multiple titles with semicolons", () => {
+        const result = buildBatchTitle([makeSerialization("Move step"), makeSerialization("Add step")]);
+        expect(result).toBe("Move step; Add step");
+    });
+
+    it("collapses adjacent duplicate titles", () => {
+        const result = buildBatchTitle([
+            makeSerialization("Move step"),
+            makeSerialization("Move step"),
+            makeSerialization("Add step"),
+            makeSerialization("Add step"),
+            makeSerialization("Move step"),
+        ]);
+        expect(result).toBe("Move step; Add step; Move step");
+    });
+
+    it("truncates at 200 characters", () => {
+        const result = buildBatchTitle([
+            makeSerialization("A".repeat(100)),
+            makeSerialization("B".repeat(100)),
+            makeSerialization("C".repeat(100)),
+        ]);
+        expect(result.length).toBeLessThanOrEqual(200);
+        expect(result).toMatch(/\.\.\.$/);
+    });
+
+    it("returns empty string for empty input", () => {
+        expect(buildBatchTitle([])).toBe("");
     });
 });

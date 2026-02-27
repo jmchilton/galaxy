@@ -6,6 +6,7 @@ import { GalaxyApi } from "./client";
 export type Creator = components["schemas"]["Person"] | components["schemas"]["CreatorOrganization"];
 export type RefactorRequestAction = components["schemas"]["RefactorRequest"]["actions"][number];
 export type RefactorResponse = components["schemas"]["RefactorResponse"];
+export type ChangelogEntry = components["schemas"]["ChangelogEntry"];
 export type RefactorResponseActionExecution = RefactorResponse["action_executions"][number];
 export type StoredWorkflowDetailed = components["schemas"]["StoredWorkflowDetailed"];
 export type WorkflowStepTyped = StoredWorkflowDetailed["steps"][number];
@@ -123,6 +124,8 @@ export async function refactor(
     style: string,
     dryRun = false,
     version?: number,
+    title?: string | null,
+    sourceActionType?: string | null,
 ) {
     const { data, error } = await GalaxyApi().PUT("/api/workflows/{workflow_id}/refactor", {
         params: {
@@ -133,6 +136,8 @@ export async function refactor(
             style: style,
             dry_run: dryRun,
             version: version,
+            title: title,
+            source_action_type: sourceActionType,
         },
     });
     if (error) {
@@ -164,4 +169,46 @@ export function hasCreator(entry?: AnyWorkflow): entry is StoredWorkflowDetailed
 
 export function hasVersion(entry: AnyWorkflow): entry is StoredWorkflowDetailed {
     return "version" in entry;
+}
+
+export async function getChangelog(
+    workflowId: string,
+    limit = 50,
+    offset = 0,
+): Promise<{ data: ChangelogEntry[]; totalMatches: number }> {
+    const {
+        response,
+        data: entries,
+        error,
+    } = await GalaxyApi().GET("/api/workflows/{workflow_id}/changelog", {
+        params: {
+            path: { workflow_id: workflowId },
+            query: { limit, offset },
+        },
+    });
+
+    if (error) {
+        rethrowSimple(error);
+    }
+
+    const totalMatches = parseInt(response.headers.get("Total_matches") || "0", 10) || 0;
+
+    return { data: entries!, totalMatches };
+}
+
+export async function revertWorkflow(workflowId: string, targetWorkflowId: string): Promise<RefactorResponse> {
+    const { data, error } = await GalaxyApi().POST("/api/workflows/{workflow_id}/revert", {
+        params: {
+            path: { workflow_id: workflowId },
+        },
+        body: {
+            target_workflow_id: targetWorkflowId,
+        },
+    });
+
+    if (error) {
+        rethrowSimple(error);
+    }
+
+    return data as RefactorResponse;
 }

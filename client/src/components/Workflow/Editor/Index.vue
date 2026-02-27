@@ -253,6 +253,7 @@ import { BDropdown, BDropdownDivider, BDropdownItem, BDropdownText } from "boots
 import { storeToRefs } from "pinia";
 import Vue, { computed, nextTick, onUnmounted, ref, unref, watch } from "vue";
 
+import { refactor } from "@/api/workflows";
 import { getUntypedWorkflowParameters } from "@/components/Workflow/Editor/modules/parameters";
 import { getWorkflowFull } from "@/components/Workflow/workflows.services";
 import { ConfirmDialog, useConfirmDialog } from "@/composables/confirmDialog";
@@ -269,6 +270,7 @@ import { errorMessageAsString } from "@/utils/simple-error";
 import { textify } from "@/utils/utils";
 
 import { Services } from "../services";
+import { buildBatchTitle } from "./Actions/refactorSerialization";
 import { InsertStepAction, useStepActions } from "./Actions/stepActions";
 import { CopyIntoWorkflowAction, SetValueActionHandler } from "./Actions/workflowActions";
 import { defaultPosition } from "./composables/useDefaultStepPosition";
@@ -395,6 +397,18 @@ export default {
         }
 
         const { report } = storeToRefs(stateStore);
+        const setReportHandler = new SetValueActionHandler(
+            undoRedoStore,
+            (value) => (report.value.markdown = value),
+            () => {},
+            "update report",
+            "readme",
+        );
+        function setReport(newMarkdown) {
+            if (report.value.markdown !== newMarkdown) {
+                setReportHandler.set(report.value.markdown, newMarkdown);
+            }
+        }
 
         const license = ref(null);
         const setLicenseHandler = new SetValueActionHandler(
@@ -664,6 +678,7 @@ export default {
             showAttributes,
             setName,
             report,
+            setReport,
             license,
             getLabels,
             setLicense,
@@ -1083,8 +1098,8 @@ export default {
             this.onAttemptRefactor([{ action_type: "upgrade_all_steps" }]);
         },
         onReportUpdate(markdown) {
+            this.setReport(markdown);
             this.hasChanges = true;
-            this.report.markdown = markdown;
         },
         onRun() {
             this.onNavigate(`/workflows/run?id=${this.id}`, false, false, true);
@@ -1128,7 +1143,11 @@ export default {
             try {
                 this.loadingWorkflow = true;
 
+                this.undoRedoStore.flushLazyAction();
+
                 const data = await saveWorkflow(this);
+
+                await this.submitPendingActions();
 
                 const versions = await getVersions(this.id);
                 this.versions = versions;
@@ -1151,6 +1170,30 @@ export default {
                 this.loadingWorkflow = false;
             }
             return true;
+        },
+        async submitPendingActions() {
+            if (!this.undoRedoStore.hasPendingActions) {
+                return;
+            }
+
+            try {
+                const pending = this.undoRedoStore.flushPendingActions();
+                const allActions = [];
+
+                for (const p of pending) {
+                    allActions.push(...p.serialization.actions);
+                }
+
+                if (allActions.length === 0) {
+                    return;
+                }
+
+                const batchTitle = buildBatchTitle(pending.map((p) => p.serialization));
+                await refactor(this.id, allActions, "export", false, undefined, batchTitle, "editor_save");
+            } catch (e) {
+                Toast.warning("Workflow saved, but action history could not be persisted.");
+                console.warn("Action persistence failed:", e);
+            }
         },
         onVersion(version) {
             if (version != this.version) {

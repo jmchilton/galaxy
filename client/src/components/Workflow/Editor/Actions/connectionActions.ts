@@ -1,4 +1,4 @@
-import { UndoRedoAction } from "@/stores/undoRedoStore";
+import { UndoRedoAction } from "@/stores/undoRedoStore/undoRedoAction";
 import type { Connection } from "@/stores/workflowStoreTypes";
 
 /**
