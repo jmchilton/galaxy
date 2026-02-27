@@ -555,7 +555,10 @@ def _decode_cwl_record(parameter, value, decode_fn):
             else:
                 result[field_name] = field_value
         elif isinstance(field_param, CwlArrayParameterModel):
-            if isinstance(field_param.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+            if _is_collection_ref(field_value):
+                result[field_name] = decode_fn(field_value)
+                changed = True
+            elif isinstance(field_param.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
                 result[field_name] = [decode_fn(v) for v in field_value]
                 changed = True
             else:
@@ -579,6 +582,12 @@ def _decode_cwl_union(parameter, value, decode_fn):
         if isinstance(member, (CwlFileParameterModel, CwlDirectoryParameterModel)):
             if _is_dataset_ref(value):
                 return decode_fn(value)
+        elif isinstance(member, CwlArrayParameterModel):
+            if _is_collection_ref(value):
+                return decode_fn(value)
+            if isinstance(member.item_type, (CwlFileParameterModel, CwlDirectoryParameterModel)):
+                if isinstance(value, list):
+                    return [decode_fn(v) for v in value]
     return VISITOR_NO_REPLACEMENT
 
 
