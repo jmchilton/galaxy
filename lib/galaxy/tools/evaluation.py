@@ -1241,6 +1241,13 @@ class CwlToolEvaluator(UserToolEvaluator):
         # Populate directory listings from the filesystem respecting CWL
         # LoadListingRequirement and per-input loadListing settings.
         # CWL v1.1 default is no_listing when not specified.
+        #
+        # Galaxy always populates at least a shallow listing because
+        # Galaxy strips CWL Directory listings during upload (the listing
+        # is lost when the Directory becomes an HDA). Expressions like
+        # stdin: $(inputs.dir1.listing[0].path) need the listing to be
+        # present — cwltool's reference runner reads it from the filesystem,
+        # but Galaxy must reconstruct it since it passes a pre-built input dict.
         cwl_tool_for_listing = cast("CwlCommandBindingTool", self.tool)
         cwl_proxy = cwl_tool_for_listing._cwl_tool_proxy
         load_listing_reqs = cwl_proxy.hints_or_requirements_of_class("LoadListingRequirement")
@@ -1251,6 +1258,20 @@ class CwlToolEvaluator(UserToolEvaluator):
         input_load_listings: dict[str, str] = {}
         for field in cwl_proxy._tool.inputs_record_schema["fields"]:
             input_load_listings[field["name"]] = field.get("loadListing", default_load_listing)
+
+        def _populate_directory_listing_shallow(entry):
+            """Populate directory listing non-recursively (top-level only)."""
+            location = entry.get("location")
+            if not location or not os.path.isdir(location) or "listing" in entry:
+                return
+            listing = []
+            for name in sorted(os.listdir(location)):
+                item_path = os.path.join(location, name)
+                if os.path.isdir(item_path):
+                    listing.append({"class": "Directory", "location": item_path, "basename": name})
+                else:
+                    listing.append({"class": "File", "location": item_path, "basename": name})
+            entry["listing"] = listing
 
         def _populate_directory_listing_deep(entry):
             """Populate directory listing recursively (deep_listing mode)."""
@@ -1268,24 +1289,26 @@ class CwlToolEvaluator(UserToolEvaluator):
                     listing.append({"class": "File", "location": item_path, "basename": name})
             entry["listing"] = listing
 
-        def _visit_directories_deep(value):
+        def _visit_directories(value, populate_fn):
             if isinstance(value, dict):
                 if value.get("class") == "Directory":
-                    _populate_directory_listing_deep(value)
+                    populate_fn(value)
                     return
                 for v in value.values():
-                    _visit_directories_deep(v)
+                    _visit_directories(v, populate_fn)
             elif isinstance(value, list):
                 for item in value:
-                    _visit_directories_deep(item)
+                    _visit_directories(item, populate_fn)
 
         for input_name, input_value in input_json.items():
             load_listing = input_load_listings.get(input_name, default_load_listing)
             if load_listing == "deep_listing":
-                # Only pre-populate for deep_listing. For shallow_listing
-                # and no_listing, let cwltool handle it via fill_in_defaults
-                # which respects both per-input and requirement-level settings.
-                _visit_directories_deep(input_value)
+                _visit_directories(input_value, _populate_directory_listing_deep)
+            else:
+                # Always populate at least a shallow listing. Galaxy strips
+                # the original CWL listing during Directory→HDA upload, so
+                # we must reconstruct it for cwltool expression evaluation.
+                _visit_directories(input_value, _populate_directory_listing_shallow)
 
         # Stage secondary files from deferred source URIs.
         # Deferred CWL File defaults may have secondary files at the remote
@@ -1316,6 +1339,21 @@ class CwlToolEvaluator(UserToolEvaluator):
         # legacy to_cwl path is used and would contaminate $(inputs) expressions.
         cwl_input_names = {inst.name for inst in cwl_tool._cwl_tool_proxy.input_instances()}
         input_json = {k: v for k, v in input_json.items() if k in cwl_input_names}
+        # Resolve CURIE format URIs (e.g. edam:format_2330 → http://edamontology.org/format_2330)
+        # so they match the full URIs cwltool resolves in the tool schema.
+        cwl_namespaces = cwl_tool._cwl_tool_proxy._tool.metadata.get("$namespaces", {})
+        if cwl_namespaces:
+
+            def _resolve_format_curie(entry):
+                fmt = entry.get("format")
+                if fmt and "://" not in fmt and ":" in fmt:
+                    prefix, suffix = fmt.split(":", 1)
+                    ns = cwl_namespaces.get(prefix)
+                    if ns:
+                        entry["format"] = ns + suffix
+
+            visit_class(input_json, ("File",), _resolve_format_curie)
+
         cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
         cwl_command_line = cwl_job_proxy.command_line
         cwl_stdin = cwl_job_proxy.stdin

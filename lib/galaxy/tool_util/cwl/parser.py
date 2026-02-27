@@ -140,12 +140,7 @@ class ToolProxy(metaclass=ABCMeta):
         self.uuid = uuid
         self._tool_path = tool_path
         self._raw_process_reference = raw_process_reference
-        # remove input parameter formats from CWL files so that cwltool
-        # does not complain they are missing in the input data
         assert isinstance(self._tool.inputs_record_schema, dict)
-        for input_field in self._tool.inputs_record_schema["fields"]:
-            if "format" in input_field:
-                del input_field["format"]
 
     def job_proxy(self, input_dict: Dict[str, Any], output_dict, job_directory: str = "."):
         """Build a cwltool.job.Job describing computation using a input_json
