@@ -1238,23 +1238,54 @@ class CwlToolEvaluator(UserToolEvaluator):
 
         visit_class(input_json, ("File", "Directory"), _use_path_as_location)
 
-        # Populate directory listings from the filesystem so cwltool
-        # valueFrom expressions like $(self.listing[0].path) work.
-        # TODO(jmchilton): this scans the local filesystem and will need to
-        # happen on the worker node for remote execution backends.
-        def _populate_directory_listing(entry):
-            location = entry.get("location")
-            if location and os.path.isdir(location) and "listing" not in entry:
-                listing = []
-                for name in sorted(os.listdir(location)):
-                    item_path = os.path.join(location, name)
-                    if os.path.isdir(item_path):
-                        listing.append({"class": "Directory", "location": item_path, "basename": name})
-                    else:
-                        listing.append({"class": "File", "location": item_path, "basename": name})
-                entry["listing"] = listing
+        # Populate directory listings from the filesystem respecting CWL
+        # LoadListingRequirement and per-input loadListing settings.
+        # CWL v1.1 default is no_listing when not specified.
+        cwl_tool_for_listing = cast("CwlCommandBindingTool", self.tool)
+        cwl_proxy = cwl_tool_for_listing._cwl_tool_proxy
+        load_listing_reqs = cwl_proxy.hints_or_requirements_of_class("LoadListingRequirement")
+        default_load_listing = "no_listing"
+        if load_listing_reqs:
+            default_load_listing = load_listing_reqs[0].get("loadListing", "no_listing")
 
-        visit_class(input_json, ("Directory",), _populate_directory_listing)
+        input_load_listings: dict[str, str] = {}
+        for field in cwl_proxy._tool.inputs_record_schema["fields"]:
+            input_load_listings[field["name"]] = field.get("loadListing", default_load_listing)
+
+        def _populate_directory_listing_deep(entry):
+            """Populate directory listing recursively (deep_listing mode)."""
+            location = entry.get("location")
+            if not location or not os.path.isdir(location) or "listing" in entry:
+                return
+            listing = []
+            for name in sorted(os.listdir(location)):
+                item_path = os.path.join(location, name)
+                if os.path.isdir(item_path):
+                    dir_entry: dict[str, Any] = {"class": "Directory", "location": item_path, "basename": name}
+                    _populate_directory_listing_deep(dir_entry)
+                    listing.append(dir_entry)
+                else:
+                    listing.append({"class": "File", "location": item_path, "basename": name})
+            entry["listing"] = listing
+
+        def _visit_directories_deep(value):
+            if isinstance(value, dict):
+                if value.get("class") == "Directory":
+                    _populate_directory_listing_deep(value)
+                    return
+                for v in value.values():
+                    _visit_directories_deep(v)
+            elif isinstance(value, list):
+                for item in value:
+                    _visit_directories_deep(item)
+
+        for input_name, input_value in input_json.items():
+            load_listing = input_load_listings.get(input_name, default_load_listing)
+            if load_listing == "deep_listing":
+                # Only pre-populate for deep_listing. For shallow_listing
+                # and no_listing, let cwltool handle it via fill_in_defaults
+                # which respects both per-input and requirement-level settings.
+                _visit_directories_deep(input_value)
 
         # Stage secondary files from deferred source URIs.
         # Deferred CWL File defaults may have secondary files at the remote
