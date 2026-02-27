@@ -6244,6 +6244,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/{workflow_id}/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the action changelog for a workflow. */
+        get: operations["changelog_api_workflows__workflow_id__changelog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/{workflow_id}/counts": {
         parameters: {
             query?: never;
@@ -6481,6 +6498,23 @@ export interface paths {
          */
         put: operations["refactor_api_workflows__workflow_id__refactor_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert a workflow to a previous version. */
+        post: operations["revert_api_workflows__workflow_id__revert_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8256,6 +8290,44 @@ export interface components {
              * @constant
              */
             type: "change_dbkey";
+        };
+        /** ChangelogEntry */
+        ChangelogEntry: {
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            /** Execution Messages */
+            execution_messages: unknown[];
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Is Revert */
+            is_revert: boolean;
+            /** Reverted Entry Id */
+            reverted_entry_id?: string | null;
+            /** Source Action Type */
+            source_action_type: string | null;
+            /** Title */
+            title: string;
+            /**
+             * User Id
+             * @example 0123456789ABCDEF
+             */
+            user_id: string;
+            /**
+             * Workflow Id After
+             * @example 0123456789ABCDEF
+             */
+            workflow_id_after: string;
+            /**
+             * Workflow Id Before
+             * @example 0123456789ABCDEF
+             */
+            workflow_id_before: string;
         };
         /** ChatCompletionRequest */
         ChatCompletionRequest: {
@@ -20717,11 +20789,15 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /** Source Action Type */
+            source_action_type?: string | null;
             /**
              * Style
              * @default export
              */
             style: string;
+            /** Title */
+            title?: string | null;
             /** Version */
             version?: number | null;
         };
@@ -21195,6 +21271,14 @@ export interface components {
              * @constant
              */
             type: "resource";
+        };
+        /** RevertRequest */
+        RevertRequest: {
+            /**
+             * Target Workflow Id
+             * @example 0123456789ABCDEF
+             */
+            target_workflow_id: string;
         };
         /** RoleDefinitionModel */
         RoleDefinitionModel: {
@@ -45846,6 +45930,53 @@ export interface operations {
             };
         };
     };
+    changelog_api_workflows__workflow_id__changelog_get: {
+        parameters: {
+            query?: {
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded database identifier of the Stored Workflow. */
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangelogEntry"][];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     workflows__invocation_counts: {
         parameters: {
             query?: {
@@ -46558,6 +46689,54 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RefactorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefactorResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    revert_api_workflows__workflow_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded database identifier of the Stored Workflow. */
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevertRequest"];
             };
         };
         responses: {
