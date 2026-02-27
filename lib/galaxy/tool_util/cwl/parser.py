@@ -344,6 +344,11 @@ class CommandLineToolProxy(ToolProxy):
 
         return None
 
+    def docker_output_directory(self):
+        for hint in self.hints_or_requirements_of_class("DockerRequirement"):
+            return hint.get("dockerOutputDirectory")
+        return None
+
 
 class ExpressionToolProxy(CommandLineToolProxy):
     _class = "ExpressionTool"

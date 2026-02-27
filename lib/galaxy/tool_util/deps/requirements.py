@@ -188,6 +188,7 @@ class ContainerDescription:
         type: str = DEFAULT_CONTAINER_TYPE,
         resolve_dependencies: bool = DEFAULT_CONTAINER_RESOLVE_DEPENDENCIES,
         shell: str = DEFAULT_CONTAINER_SHELL,
+        docker_output_directory: Optional[str] = None,
     ) -> None:
         # Force to lowercase because container image names must be lowercase.
         # Cached singularity images include the path on disk, so only lowercase
@@ -206,15 +207,19 @@ class ContainerDescription:
         self.type = type
         self.resolve_dependencies = resolve_dependencies
         self.shell = shell
+        self.docker_output_directory = docker_output_directory
         self.explicit = False
 
     def to_dict(self, *args, **kwds) -> Dict[str, Any]:
-        return dict(
+        d = dict(
             identifier=self.identifier,
             type=self.type,
             resolve_dependencies=self.resolve_dependencies,
             shell=self.shell,
         )
+        if self.docker_output_directory:
+            d["docker_output_directory"] = self.docker_output_directory
+        return d
 
     @classmethod
     def from_dict(cls, dict: Dict[str, Any]) -> "ContainerDescription":
@@ -222,11 +227,13 @@ class ContainerDescription:
         type = dict.get("type", DEFAULT_CONTAINER_TYPE)
         resolve_dependencies = dict.get("resolve_dependencies", DEFAULT_CONTAINER_RESOLVE_DEPENDENCIES)
         shell = dict.get("shell", DEFAULT_CONTAINER_SHELL)
+        docker_output_directory = dict.get("docker_output_directory")
         return cls(
             identifier=identifier,
             type=type,
             resolve_dependencies=resolve_dependencies,
             shell=shell,
+            docker_output_directory=docker_output_directory,
         )
 
     def __str__(self) -> str:

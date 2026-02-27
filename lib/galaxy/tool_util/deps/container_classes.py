@@ -463,6 +463,13 @@ class DockerContainer(Container, HasDockerLikeVolumes):
             raise Exception(f"Cannot containerize command [{working_directory}] without defined working directory.")
 
         volumes_raw = self._expand_volume_str(self.destination_info.get("docker_volumes", "$defaults"))
+        # CWL dockerOutputDirectory: mount host working dir at container path, use as -w
+        docker_output_directory = (
+            getattr(self.container_description, "docker_output_directory", None) if self.container_description else None
+        )
+        if docker_output_directory:
+            volumes_raw += f",{working_directory}:{docker_output_directory}:rw"
+            working_directory = docker_output_directory
         volumes = _parse_volumes(volumes_raw, self.container_type)
         volumes_from = self.destination_info.get("docker_volumes_from", docker_util.DEFAULT_VOLUMES_FROM)
 
