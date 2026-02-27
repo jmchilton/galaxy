@@ -36,6 +36,7 @@ log = logging.getLogger(__name__)
 __all__ = ("LocalJobRunner",)
 
 DEFAULT_POOL_SLEEP_TIME = 1
+DEFAULT_LIMIT_CHECK_INTERVAL = int(os.environ.get("GALAXY_LOCAL_LIMIT_CHECK_INTERVAL", "20"))
 # TODO: Set to false and just get rid of this option. It would simplify this
 # class nicely. -John
 DEFAULT_EMBED_METADATA_IN_JOB = True
@@ -237,13 +238,16 @@ class LocalJobRunner(BaseJobRunner):
         if not job_wrapper.has_limits():
             return
 
+        limit_check_interval = int(
+            job_wrapper.job_destination.params.get("limit_check_interval", DEFAULT_LIMIT_CHECK_INTERVAL)
+        )
         job_start = datetime.datetime.now()
         i = 0
         pgid = proc.pid
         # Iterate until the process exits, periodically checking its limits
         while check_pg(pgid):
             i += 1
-            if (i % 20) == 0:
+            if (i % limit_check_interval) == 0:
                 limit_state = job_wrapper.check_limits(runtime=datetime.datetime.now() - job_start)
                 if limit_state is not None:
                     job_wrapper.fail(limit_state[1])
