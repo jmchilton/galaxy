@@ -1261,19 +1261,19 @@ class CwlToolEvaluator(UserToolEvaluator):
                     listing.append({"class": "File", "location": item_path, "basename": name})
             entry["listing"] = listing
 
-        def _visit_directories_deep(value):
+        def _visit_directories(value, populate_fn):
             if isinstance(value, dict):
                 if value.get("class") == "Directory":
-                    _populate_directory_listing_deep(value)
+                    populate_fn(value)
                     return
                 for v in value.values():
-                    _visit_directories_deep(v)
+                    _visit_directories(v, populate_fn)
             elif isinstance(value, list):
                 for item in value:
-                    _visit_directories_deep(item)
+                    _visit_directories(item, populate_fn)
 
         for _input_name, input_value in input_json.items():
-            _visit_directories_deep(input_value)
+            _visit_directories(input_value, _populate_directory_listing_deep)
 
         # Stage secondary files from deferred source URIs.
         # Deferred CWL File defaults may have secondary files at the remote
@@ -1304,6 +1304,21 @@ class CwlToolEvaluator(UserToolEvaluator):
         # legacy to_cwl path is used and would contaminate $(inputs) expressions.
         cwl_input_names = {inst.name for inst in cwl_tool._cwl_tool_proxy.input_instances()}
         input_json = {k: v for k, v in input_json.items() if k in cwl_input_names}
+        # Resolve CURIE format URIs (e.g. edam:format_2330 → http://edamontology.org/format_2330)
+        # so they match the full URIs cwltool resolves in the tool schema.
+        cwl_namespaces = cwl_tool._cwl_tool_proxy._tool.metadata.get("$namespaces", {})
+        if cwl_namespaces:
+
+            def _resolve_format_curie(entry):
+                fmt = entry.get("format")
+                if fmt and "://" not in fmt and ":" in fmt:
+                    prefix, suffix = fmt.split(":", 1)
+                    ns = cwl_namespaces.get(prefix)
+                    if ns:
+                        entry["format"] = ns + suffix
+
+            visit_class(input_json, ("File",), _resolve_format_curie)
+
         cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
         cwl_command_line = cwl_job_proxy.command_line
         cwl_stdin = cwl_job_proxy.stdin
