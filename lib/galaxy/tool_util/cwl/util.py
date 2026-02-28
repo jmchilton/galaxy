@@ -479,6 +479,17 @@ def _resolve_sf_for_value(
     sf_patterns = _extract_sf_patterns(input_def)
     input_type = input_def.get("type", input_def)
 
+    # Handle CWL shorthand array syntax (e.g. "File[]", "Directory[]")
+    if isinstance(input_type, str) and input_type.endswith("[]"):
+        items_type = input_type[:-2]
+        if isinstance(value, list):
+            child_def: Dict[str, Any] = {"type": items_type}
+            if sf_patterns:
+                child_def["secondaryFiles"] = sf_patterns
+            for item in value:
+                _resolve_sf_for_value(item, child_def, test_data_directory)
+        return
+
     if isinstance(input_type, dict):
         type_kind = input_type.get("type")
         if type_kind == "record":
@@ -495,11 +506,11 @@ def _resolve_sf_for_value(
         elif type_kind == "array":
             items_type = input_type.get("items")
             if isinstance(value, list):
-                child_def: Dict[str, Any] = {"type": items_type}
+                child_def_d: Dict[str, Any] = {"type": items_type}
                 if sf_patterns:
-                    child_def["secondaryFiles"] = sf_patterns
+                    child_def_d["secondaryFiles"] = sf_patterns
                 for item in value:
-                    _resolve_sf_for_value(item, child_def, test_data_directory)
+                    _resolve_sf_for_value(item, child_def_d, test_data_directory)
             return
 
     # Leaf: if this is a File with secondary file patterns, discover them
