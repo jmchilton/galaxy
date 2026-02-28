@@ -669,24 +669,25 @@ class WorkflowProxy:
     def get_outputs_for_label(self, label):
         outputs = []
         for output in self._workflow.tool["outputs"]:
-            step, output_name = split_step_references(
+            split_references = split_step_references(
                 output["outputSource"],
-                multiple=False,
+                multiple=True,
                 workflow_id=self.cwl_id,
             )
-            if step == label:
-                output_id = output["id"]
-                if "#" not in self.cwl_id:
-                    _, output_label = output_id.rsplit("#", 1)
-                else:
-                    _, output_label = output_id.rsplit("/", 1)
+            for step, output_name in split_references:
+                if step == label:
+                    output_id = output["id"]
+                    if "#" not in self.cwl_id:
+                        _, output_label = output_id.rsplit("#", 1)
+                    else:
+                        _, output_label = output_id.rsplit("/", 1)
 
-                outputs.append(
-                    {
-                        "output_name": output_name,
-                        "label": output_label,
-                    }
-                )
+                    outputs.append(
+                        {
+                            "output_name": output_name,
+                            "label": output_label,
+                        }
+                    )
         return outputs
 
     def tool_reference_proxies(self):

@@ -440,13 +440,20 @@ class CwlRun:
                 self.history_id, dataset_id=dataset_details["id"]
             )
 
-        output = output_to_cwl_json(
-            galaxy_output,
-            get_metadata,
-            get_dataset,
-            get_extra_files,
-            pseudo_location=self.dataset_populator.galaxy_interactor.api_url,
-        )
+        def _to_cwl_json(single_output):
+            return output_to_cwl_json(
+                single_output,
+                get_metadata,
+                get_dataset,
+                get_extra_files,
+                pseudo_location=self.dataset_populator.galaxy_interactor.api_url,
+            )
+
+        # Multiple outputs with same label (CWL MultipleInputFeatureRequirement)
+        if isinstance(galaxy_output, list):
+            output = [_to_cwl_json(o) for o in galaxy_output]
+        else:
+            output = _to_cwl_json(galaxy_output)
         if download_folder:
             return output_to_disk(
                 output,
