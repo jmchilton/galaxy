@@ -1320,6 +1320,31 @@ class CwlToolEvaluator(UserToolEvaluator):
             visit_class(input_json, ("File",), _resolve_format_curie)
 
         cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
+
+        # Validate CWL output glob patterns — reject absolute paths outside the
+        # output directory.  cwltool performs this check during collect_output_ports(),
+        # but in Galaxy that runs in the post-job relocate script whose failures
+        # are masked by the captured exit code.  Validating here ensures the error
+        # surfaces before the job is submitted.
+        cwl_job = cwl_job_proxy.cwl_job()
+        builder_outdir = cwl_job.builder.outdir
+        for output_port in cwl_tool._cwl_tool_proxy._tool.tool["outputs"]:
+            binding = output_port.get("outputBinding", {})
+            glob_val = binding.get("glob")
+            if glob_val is None:
+                continue
+            globs = glob_val if isinstance(glob_val, list) else [glob_val]
+            for gb in globs:
+                resolved = cwl_job.builder.do_eval(gb)
+                if not resolved:
+                    continue
+                resolved_list = resolved if isinstance(resolved, list) else [resolved]
+                for gb_str in resolved_list:
+                    if isinstance(gb_str, str) and gb_str.startswith("/") and not gb_str.startswith(builder_outdir):
+                        raise Exception(
+                            f"CWL glob pattern '{gb_str}' resolves to absolute path outside output directory"
+                        )
+
         cwl_command_line = cwl_job_proxy.command_line
         cwl_stdin = cwl_job_proxy.stdin
         cwl_stdout = cwl_job_proxy.stdout

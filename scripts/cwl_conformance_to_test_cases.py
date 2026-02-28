@@ -54,7 +54,6 @@ RED_TESTS = {
     ],
     "v1.1": [
         # required
-        "fail_glob_outside_output_dir",
         "input_records_file_entry_with_format",
         "outputEval_exitCode",
         "outputbinding_glob_directory",
@@ -103,7 +102,6 @@ RED_TESTS = {
     ],
     "v1.2": [
         # required
-        "glob_outside_outputs_fails",
         "stage_file_array",
         "stage_file_array_basename",
         "stage_file_array_entryname_overrides",
