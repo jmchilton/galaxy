@@ -16,7 +16,7 @@ export class UndoRedoAction {
         this.internalName = name;
     }
 
-    run() {
+    run(): void | Promise<void> {
         return;
     }
 

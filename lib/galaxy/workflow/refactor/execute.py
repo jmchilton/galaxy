@@ -231,7 +231,7 @@ class WorkflowRefactorExecutor:
         order_index = max(steps.keys(), default=-1) + 1
         step_dict = {
             "order_index": order_index,
-            "id": f"new_{order_index}",
+            "id": order_index,
             "type": action.type,
         }
         if action.tool_state:

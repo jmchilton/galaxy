@@ -1021,3 +1021,35 @@ class TestAddStepExtendedFields:
         step = wf["steps"][0]
         for field in ("annotation", "post_job_actions", "workflow_outputs", "when", "content_id", "input_connections"):
             assert field not in step
+
+    def test_add_step_id_is_integer(self):
+        """add_step assigns integer id matching order_index, not string."""
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        _run_action(executor, AddStepAction(action_type="add_step", type="data_input"))
+        assert wf["steps"][0]["id"] == 0
+        assert isinstance(wf["steps"][0]["id"], int)
+
+    def test_batch_add_step_with_internal_connections(self):
+        """Two add_step actions where second connects to first via input_connections.
+
+        Verifies integer IDs allow connection resolution between newly-added steps.
+        """
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        # First step: a data input
+        _run_action(executor, AddStepAction(action_type="add_step", type="data_input", label="source"))
+        # Second step: connects to first step (id=0) via input_connections
+        _run_action(
+            executor,
+            AddStepAction(
+                action_type="add_step",
+                type="tool",
+                label="consumer",
+                content_id="cat1",
+                input_connections={"input1": [{"id": 0, "output_name": "output"}]},
+            ),
+        )
+        assert wf["steps"][0]["id"] == 0
+        assert wf["steps"][1]["id"] == 1
+        assert wf["steps"][1]["input_connections"] == {"input1": [{"id": 0, "output_name": "output"}]}

@@ -1174,6 +1174,24 @@ export default {
             await this._loadCurrent(this.id, data.version);
         },
         async saveViaRefactor() {
+            // Wait for any async actions (e.g. AutoLayout) to finish serializing
+            if (this.undoRedoStore.asyncSerializationsInFlight > 0) {
+                await Promise.race([
+                    new Promise((resolve) => {
+                        const unwatch = watch(
+                            () => this.undoRedoStore.asyncSerializationsInFlight,
+                            (val) => {
+                                if (val === 0) {
+                                    unwatch();
+                                    resolve(undefined);
+                                }
+                            },
+                        );
+                    }),
+                    new Promise((resolve) => setTimeout(resolve, 5000)),
+                ]);
+            }
+
             const { pending, allSerialized } = this.undoRedoStore.flushPendingActions();
 
             if (!allSerialized || pending.length === 0) {

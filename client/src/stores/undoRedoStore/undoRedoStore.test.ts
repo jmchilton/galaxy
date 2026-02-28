@@ -243,4 +243,98 @@ describe("undoRedoStore persistence", () => {
             expect(store.hasPendingActions).toBe(false);
         });
     });
+
+    describe("async action serialization", () => {
+        class AsyncTestAction extends UndoRedoAction {
+            resolve!: () => void;
+            reject!: (err: Error) => void;
+            private promise: Promise<void>;
+
+            constructor() {
+                super();
+                this.promise = new Promise<void>((resolve, reject) => {
+                    this.resolve = resolve;
+                    this.reject = reject;
+                });
+            }
+
+            run() {
+                return this.promise;
+            }
+        }
+
+        it("defers serialization until async run resolves", async () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action = new AsyncTestAction();
+            store.applyAction(action);
+
+            // Before resolve: action is on undo stack but not yet serialized
+            expect(store.undoActionStack.length).toBe(1);
+            expect(store.asyncSerializationsInFlight).toBe(1);
+            expect(mockSerializeAction).not.toHaveBeenCalled();
+
+            action.resolve();
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(0));
+
+            expect(mockSerializeAction).toHaveBeenCalledWith(action);
+            expect(store.pendingActions.length).toBe(1);
+        });
+
+        it("does not serialize if action was undone before async resolves", async () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action = new AsyncTestAction();
+            store.applyAction(action);
+
+            // Undo before the async completes
+            store.undo();
+
+            action.resolve();
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(0));
+
+            // Should NOT have serialized — action was removed from undo stack
+            expect(mockSerializeAction).not.toHaveBeenCalled();
+            expect(store.pendingActions.length).toBe(0);
+        });
+
+        it("sets allActionsSerialized false on async rejection", async () => {
+            enablePersistence();
+
+            const store = useUndoRedoStore(workflowId);
+            const action = new AsyncTestAction();
+            store.applyAction(action);
+
+            action.reject(new Error("ELK failed"));
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(0));
+
+            expect(store.allActionsSerialized).toBe(false);
+            expect(mockSerializeAction).not.toHaveBeenCalled();
+        });
+
+        it("tracks multiple concurrent async actions", async () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            const action1 = new AsyncTestAction();
+            const action2 = new AsyncTestAction();
+            store.applyAction(action1);
+            store.applyAction(action2);
+
+            expect(store.asyncSerializationsInFlight).toBe(2);
+
+            action1.resolve();
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(1));
+
+            action2.resolve();
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(0));
+
+            expect(store.pendingActions.length).toBe(2);
+        });
+    });
 });

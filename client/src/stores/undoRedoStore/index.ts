@@ -38,6 +38,8 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         return configStore.config?.enable_workflow_action_persistence === true;
     });
 
+    const asyncSerializationsInFlight = ref(0);
+
     const minUndoActions = ref(10);
     const maxUndoActions = ref(10000);
 
@@ -62,6 +64,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         deletedActions.value = [];
         pendingActions.value = [];
         allActionsSerialized.value = true;
+        asyncSerializationsInFlight.value = 0;
         minUndoActions.value = 10;
         maxUndoActions.value = 10000;
         clearRedoStack();
@@ -102,10 +105,27 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
 
     function applyAction(action: UndoRedoAction) {
         flushLazyAction();
-        action.run();
+        const result = action.run();
         clearRedoStack();
         undoActionStack.value.push(action);
-        trySerialize(action);
+
+        if (result instanceof Promise) {
+            asyncSerializationsInFlight.value++;
+            result
+                .then(() => {
+                    if (undoActionStack.value.includes(action)) {
+                        trySerialize(action);
+                    }
+                })
+                .catch(() => {
+                    allActionsSerialized.value = false;
+                })
+                .finally(() => {
+                    asyncSerializationsInFlight.value--;
+                });
+        } else {
+            trySerialize(action);
+        }
 
         while (undoActionStack.value.length > savedUndoActions.value && undoActionStack.value.length > 0) {
             const action = undoActionStack.value.shift();
@@ -250,6 +270,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         pendingActions,
         hasPendingActions,
         allActionsSerialized,
+        asyncSerializationsInFlight,
         persistenceEnabled,
         undo,
         redo,
