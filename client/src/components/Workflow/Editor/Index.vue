@@ -402,7 +402,7 @@ export default {
             (value) => (report.value.markdown = value),
             () => {},
             "update report",
-            "readme",
+            "report",
         );
         function setReport(newMarkdown) {
             if (report.value.markdown !== newMarkdown) {

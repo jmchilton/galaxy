@@ -7244,6 +7244,14 @@ export interface components {
              * @enum {string}
              */
             action_type: "add_step";
+            /** Annotation */
+            annotation?: string | null;
+            /** Content Id */
+            content_id?: string | null;
+            /** Input Connections */
+            input_connections?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Label
              * @description A unique label for the step being added, must be distinct from the labels already present in the workflow.
@@ -7251,6 +7259,10 @@ export interface components {
             label?: string | null;
             /** @description The location of the step in the Galaxy workflow editor. */
             position?: components["schemas"]["Position"] | null;
+            /** Post Job Actions */
+            post_job_actions?: {
+                [key: string]: unknown;
+            } | null;
             /** Tool State */
             tool_state?: {
                 [key: string]: unknown;
@@ -7260,6 +7272,14 @@ export interface components {
              * @description Module type of the step to add, see galaxy.workflow.modules for available types.
              */
             type: string;
+            /** When */
+            when?: string | null;
+            /** Workflow Outputs */
+            workflow_outputs?:
+                | {
+                      [key: string]: unknown;
+                  }[]
+                | null;
         };
         /** AdminToolSource */
         AdminToolSource: {
@@ -20677,6 +20697,7 @@ export interface components {
                 | components["schemas"]["UpdateNameAction"]
                 | components["schemas"]["UpdateLicenseAction"]
                 | components["schemas"]["UpdateOutputLabelAction"]
+                | components["schemas"]["UpdateReadmeAction"]
                 | components["schemas"]["UpdateReportAction"]
                 | components["schemas"]["UpdateStepAction"]
                 | components["schemas"]["UpdateStepAnnotationAction"]
@@ -20786,6 +20807,7 @@ export interface components {
                 | components["schemas"]["UpdateNameAction"]
                 | components["schemas"]["UpdateLicenseAction"]
                 | components["schemas"]["UpdateOutputLabelAction"]
+                | components["schemas"]["UpdateReadmeAction"]
                 | components["schemas"]["UpdateReportAction"]
                 | components["schemas"]["UpdateStepAction"]
                 | components["schemas"]["UpdateStepAnnotationAction"]
@@ -24319,6 +24341,16 @@ export interface components {
              * @default =
              */
             operation: components["schemas"]["QuotaOperation"];
+        };
+        /** UpdateReadmeAction */
+        UpdateReadmeAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_readme";
+            /** Readme */
+            readme: string;
         };
         /** UpdateReportAction */
         UpdateReportAction: {

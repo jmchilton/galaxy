@@ -141,6 +141,9 @@ class WorkflowRefactorExecutor:
     def _apply_update_report(self, action: UpdateReportAction, execution: RefactorActionExecution):
         self._as_dict["report"] = {"markdown": action.report.markdown}
 
+    def _apply_update_readme(self, action, execution: RefactorActionExecution):
+        self._as_dict["readme"] = action.readme
+
     def _apply_update_tags(self, action: UpdateTagsAction, execution: RefactorActionExecution):
         self._as_dict["tags"] = action.tags
 
@@ -236,6 +239,18 @@ class WorkflowRefactorExecutor:
             step_dict["label"] = action.label
         if action.position:
             step_dict["position"] = action.position.to_dict()
+        if action.annotation is not None:
+            step_dict["annotation"] = action.annotation
+        if action.post_job_actions is not None:
+            step_dict["post_job_actions"] = action.post_job_actions
+        if action.workflow_outputs is not None:
+            step_dict["workflow_outputs"] = action.workflow_outputs
+        if action.when is not None:
+            step_dict["when"] = action.when
+        if action.content_id is not None:
+            step_dict["content_id"] = action.content_id
+        if action.input_connections is not None:
+            step_dict["input_connections"] = action.input_connections
         steps[order_index] = step_dict
 
     def _apply_remove_step(self, action: RemoveStepAction, execution: RefactorActionExecution):

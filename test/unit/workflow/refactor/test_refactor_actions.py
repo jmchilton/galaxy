@@ -31,6 +31,7 @@ from galaxy.workflow.refactor.schema import (
     UpdateDoiAction,
     UpdateHelpAction,
     UpdateLogoUrlAction,
+    UpdateReadmeAction,
     UpdateStepAction,
     UpdateStepAnnotationAction,
     UpdateStepPositionAction,
@@ -915,3 +916,108 @@ class TestUpdateStep:
             actions=[{"action_type": "update_step", "step": {"order_index": 0}, "tool_state": {"a": 1}}]
         )
         assert isinstance(req.actions[0], UpdateStepAction)
+
+
+class TestUpdateReadme:
+    def test_sets_readme(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = UpdateReadmeAction(action_type="update_readme", readme="# My Workflow")
+        _run_action(executor, action)
+        assert wf["readme"] == "# My Workflow"
+
+    def test_sets_empty_readme(self):
+        wf = {"steps": {}, "readme": "old content"}
+        executor = _make_executor(wf)
+        action = UpdateReadmeAction(action_type="update_readme", readme="")
+        _run_action(executor, action)
+        assert wf["readme"] == ""
+
+    def test_registered_and_parses(self):
+        assert "update_readme" in ACTION_CLASSES_BY_TYPE
+        req = RefactorActions(actions=[{"action_type": "update_readme", "readme": "test"}])
+        assert isinstance(req.actions[0], UpdateReadmeAction)
+
+
+class TestAddStepExtendedFields:
+    def test_add_step_with_annotation(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = AddStepAction(
+            action_type="add_step",
+            type="tool",
+            label="annotated",
+            annotation="This step does something",
+        )
+        _run_action(executor, action)
+        assert wf["steps"][0]["annotation"] == "This step does something"
+
+    def test_add_step_with_post_job_actions(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        pjas = {
+            "RenameDatasetActionout_file1": {
+                "action_type": "RenameDatasetAction",
+                "output_name": "out_file1",
+                "action_arguments": {"newname": "renamed"},
+            }
+        }
+        action = AddStepAction(
+            action_type="add_step",
+            type="tool",
+            post_job_actions=pjas,
+        )
+        _run_action(executor, action)
+        assert wf["steps"][0]["post_job_actions"] == pjas
+
+    def test_add_step_with_content_id_and_input_connections(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = AddStepAction(
+            action_type="add_step",
+            type="tool",
+            content_id="cat1",
+            input_connections={"input1": [{"id": 0, "output_name": "output"}]},
+        )
+        _run_action(executor, action)
+        new_step = wf["steps"][2]
+        assert new_step["content_id"] == "cat1"
+        assert new_step["input_connections"] == {"input1": [{"id": 0, "output_name": "output"}]}
+
+    def test_add_step_with_all_fields(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = AddStepAction(
+            action_type="add_step",
+            type="tool",
+            label="full_step",
+            position={"left": 100, "top": 200},
+            tool_state={"param": "value"},
+            annotation="A note",
+            post_job_actions={"pja": {}},
+            workflow_outputs=[{"output_name": "out", "label": "result"}],
+            when="$(inputs.x)",
+            content_id="cat1",
+            input_connections={"in1": [{"id": 0, "output_name": "output"}]},
+        )
+        _run_action(executor, action)
+        step = wf["steps"][0]
+        assert step["label"] == "full_step"
+        assert step["position"] == {"left": 100, "top": 200}
+        assert step["tool_state"] == {"param": "value"}
+        assert step["annotation"] == "A note"
+        assert step["post_job_actions"] == {"pja": {}}
+        assert step["workflow_outputs"] == [{"output_name": "out", "label": "result"}]
+        assert step["when"] == "$(inputs.x)"
+        assert step["content_id"] == "cat1"
+        assert step["input_connections"] == {"in1": [{"id": 0, "output_name": "output"}]}
+
+    def test_omitted_extended_fields_not_in_step(self):
+        """Optional fields that aren't provided should not appear on the step dict."""
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = AddStepAction(action_type="add_step", type="data_input")
+        _run_action(executor, action)
+        step = wf["steps"][0]
+        for field in ("annotation", "post_job_actions", "workflow_outputs", "when", "content_id", "input_connections"):
+            assert field not in step

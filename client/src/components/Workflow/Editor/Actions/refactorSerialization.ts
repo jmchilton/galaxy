@@ -22,6 +22,8 @@ import {
 } from "./commentActions";
 import { ConnectStepAction, DisconnectStepAction } from "./connectionActions";
 import {
+    AutoLayoutAction,
+    CopyStepAction,
     InsertStepAction,
     LazyMutateStepAction,
     LazySetLabelAction,
@@ -29,7 +31,7 @@ import {
     RemoveStepAction,
     UpdateStepAction,
 } from "./stepActions";
-import { LazyMoveMultipleAction, LazySetValueAction } from "./workflowActions";
+import { CopyIntoWorkflowAction, LazyMoveMultipleAction, LazySetValueAction } from "./workflowActions";
 
 type RefactorAction = components["schemas"]["RefactorRequest"]["actions"][number];
 
@@ -163,6 +165,42 @@ function serializeAddStep(action: InsertStepAction): SerializationResult {
     };
 }
 
+function serializeCopyStep(action: CopyStepAction): SerializationResult {
+    const step = action.step;
+    const addStepAction: Record<string, unknown> = {
+        action_type: "add_step" as const,
+        type: step.type as string,
+        label: step.label ?? null,
+        position: step.position ? { left: step.position.left, top: step.position.top } : null,
+        tool_state: step.tool_state ?? null,
+    };
+
+    if (step.annotation) {
+        addStepAction["annotation"] = step.annotation;
+    }
+    if (step.post_job_actions && Object.keys(step.post_job_actions).length > 0) {
+        addStepAction["post_job_actions"] = step.post_job_actions;
+    }
+    if (step.workflow_outputs && step.workflow_outputs.length > 0) {
+        addStepAction["workflow_outputs"] = step.workflow_outputs;
+    }
+    if (step.when) {
+        addStepAction["when"] = step.when;
+    }
+    if (step.content_id) {
+        addStepAction["content_id"] = step.content_id;
+    }
+    if (step.input_connections && Object.keys(step.input_connections).length > 0) {
+        addStepAction["input_connections"] = step.input_connections;
+    }
+
+    return {
+        actions: [addStepAction as RefactorAction],
+        title: `Duplicate step "${action.step.label ?? action.step.name}"`,
+        success: true,
+    };
+}
+
 function serializeRemoveStep(action: RemoveStepAction): SerializationResult {
     return {
         actions: [
@@ -231,10 +269,16 @@ function serializeWorkflowMetadata(action: LazySetValueAction<unknown>): Seriali
                 title: `Set workflow creator`,
                 success: true,
             };
-        case "readme":
+        case "report":
             return {
                 actions: [{ action_type: "update_report" as const, report: { markdown: action.toValue as string } }],
                 title: `Update workflow report`,
+                success: true,
+            };
+        case "readme":
+            return {
+                actions: [{ action_type: "update_readme" as const, readme: action.toValue as string }],
+                title: `Update workflow readme`,
                 success: true,
             };
         case "tags":
@@ -401,6 +445,142 @@ function serializeConnectionAction(
     };
 }
 
+function serializeCopyIntoWorkflow(action: CopyIntoWorkflowAction): SerializationResult {
+    // After run(), newStepIds/newCommentIds hold the assigned IDs
+    if (action.newStepIds.length === 0 && action.newCommentIds.length === 0) {
+        return { actions: [], title: action.name, success: false, error: "No steps/comments were pasted" };
+    }
+
+    const refactorActions: RefactorAction[] = [];
+    const originalSteps = Object.values(action.data.steps).sort((a, b) => a.id - b.id);
+
+    // Build old→new ID mapping using positional correspondence
+    const oldToNewId = new Map<number, number>();
+    originalSteps.forEach((step, index) => {
+        if (index < action.newStepIds.length) {
+            oldToNewId.set(step.id, action.newStepIds[index]!);
+        }
+    });
+
+    const position = action.position;
+
+    // Emit add_step for each step
+    for (let i = 0; i < originalSteps.length; i++) {
+        const step = originalSteps[i]!;
+        const addStepAction: Record<string, unknown> = {
+            action_type: "add_step" as const,
+            type: step.type as string,
+            label: step.label ?? null,
+            tool_state: step.tool_state ?? null,
+        };
+
+        // Apply position offset
+        if (step.position) {
+            addStepAction["position"] = {
+                left: step.position.left + position.left,
+                top: step.position.top + position.top,
+            };
+        }
+
+        if (step.annotation) {
+            addStepAction["annotation"] = step.annotation;
+        }
+        if (step.post_job_actions && Object.keys(step.post_job_actions).length > 0) {
+            addStepAction["post_job_actions"] = step.post_job_actions;
+        }
+        if (step.workflow_outputs && step.workflow_outputs.length > 0) {
+            addStepAction["workflow_outputs"] = step.workflow_outputs;
+        }
+        if (step.when) {
+            addStepAction["when"] = step.when;
+        }
+        if (step.content_id) {
+            addStepAction["content_id"] = step.content_id;
+        }
+
+        // Remap input_connections: old step IDs → new step IDs
+        if (step.input_connections && Object.keys(step.input_connections).length > 0) {
+            const remapped: Record<string, unknown> = {};
+            for (const [inputName, links] of Object.entries(step.input_connections)) {
+                const linkArray = Array.isArray(links) ? links : [links];
+                const remappedLinks = linkArray
+                    .filter((link) => link && typeof link === "object" && "id" in link)
+                    .map((link) => ({
+                        ...link,
+                        id: oldToNewId.get(link.id as number) ?? link.id,
+                    }));
+                if (remappedLinks.length > 0) {
+                    remapped[inputName] = remappedLinks;
+                }
+            }
+            if (Object.keys(remapped).length > 0) {
+                addStepAction["input_connections"] = remapped;
+            }
+        }
+
+        refactorActions.push(addStepAction as RefactorAction);
+    }
+
+    // Emit add_comment for each comment
+    for (const comment of action.data.comments ?? []) {
+        refactorActions.push({
+            action_type: "add_comment" as const,
+            type: comment.type as "text" | "markdown" | "frame" | "freehand",
+            position: {
+                left: comment.position[0] + position.left,
+                top: comment.position[1] + position.top,
+            },
+            size: { width: comment.size[0], height: comment.size[1] },
+            color: comment.color as "none",
+            data: comment.data as Record<string, unknown>,
+        });
+    }
+
+    return {
+        actions: refactorActions,
+        title: `Paste ${originalSteps.length} step(s) into workflow`,
+        success: true,
+    };
+}
+
+function serializeAutoLayout(action: AutoLayoutAction): SerializationResult {
+    const { positions } = action;
+
+    // If positions haven't been computed yet (async not complete), fall back
+    if (!positions || (positions.steps.length === 0 && positions.comments.length === 0)) {
+        return { actions: [], title: "auto layout", success: false, error: "Layout positions not available" };
+    }
+
+    const refactorActions: RefactorAction[] = [];
+
+    for (const p of positions.steps) {
+        refactorActions.push({
+            action_type: "update_step_position" as const,
+            step: stepRef(parseInt(p.id, 10)),
+            position_absolute: { left: p.x, top: p.y },
+        });
+    }
+
+    for (const c of positions.comments) {
+        refactorActions.push({
+            action_type: "update_comment_position" as const,
+            comment: { comment_id: parseInt(c.id, 10) },
+            position: { left: c.x, top: c.y },
+        });
+        refactorActions.push({
+            action_type: "update_comment_size" as const,
+            comment: { comment_id: parseInt(c.id, 10) },
+            size: { width: c.w, height: c.h },
+        });
+    }
+
+    return {
+        actions: refactorActions,
+        title: `Auto-layout ${positions.steps.length} step(s) and ${positions.comments.length} comment(s)`,
+        success: true,
+    };
+}
+
 /**
  * Build a batch title from pending action serializations.
  * Joins individual titles with "; ", collapses adjacent duplicates, truncates at 200 chars.
@@ -454,6 +634,9 @@ export function serializeAction(action: UndoRedoAction): SerializationResult {
                 success: true,
             };
         }
+        if (action instanceof CopyStepAction) {
+            return serializeCopyStep(action);
+        }
         if (action instanceof InsertStepAction) {
             return serializeAddStep(action);
         }
@@ -505,6 +688,16 @@ export function serializeAction(action: UndoRedoAction): SerializationResult {
         }
         if (action instanceof DisconnectStepAction) {
             return serializeConnectionAction(action, "disconnect", "Disconnect steps");
+        }
+
+        // Paste workflow fragment
+        if (action instanceof CopyIntoWorkflowAction) {
+            return serializeCopyIntoWorkflow(action);
+        }
+
+        // Auto layout
+        if (action instanceof AutoLayoutAction) {
+            return serializeAutoLayout(action);
         }
 
         // Unsupported action

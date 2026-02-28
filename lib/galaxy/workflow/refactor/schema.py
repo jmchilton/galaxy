@@ -145,6 +145,12 @@ class AddStepAction(BaseAction):
         description="A unique label for the step being added, must be distinct from the labels already present in the workflow.",
     )
     position: Optional[Position] = Field(None, description="The location of the step in the Galaxy workflow editor.")
+    annotation: Optional[str] = None
+    post_job_actions: Optional[dict[str, Any]] = None
+    workflow_outputs: Optional[list[dict[str, Any]]] = None
+    when: Optional[str] = None
+    content_id: Optional[str] = None
+    input_connections: Optional[dict[str, Any]] = None
 
 
 class RemoveStepAction(BaseAction):
@@ -222,6 +228,11 @@ class Report(BaseModel):
 class UpdateReportAction(BaseAction):
     action_type: Literal["update_report"]
     report: Report
+
+
+class UpdateReadmeAction(BaseAction):
+    action_type: Literal["update_readme"]
+    readme: str
 
 
 class UpdateOutputLabelAction(BaseAction):
@@ -368,6 +379,7 @@ union_action_classes = Union[
     UpdateNameAction,
     UpdateLicenseAction,
     UpdateOutputLabelAction,
+    UpdateReadmeAction,
     UpdateReportAction,
     UpdateStepAction,
     UpdateStepAnnotationAction,

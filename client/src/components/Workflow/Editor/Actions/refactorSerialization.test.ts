@@ -20,6 +20,8 @@ import { ConnectStepAction, DisconnectStepAction } from "./connectionActions";
 import { mockComment, mockFreehandComment, mockToolStep, mockWorkflow } from "./mockData";
 import { buildBatchTitle, type SerializationResult, serializeAction } from "./refactorSerialization";
 import {
+    AutoLayoutAction,
+    CopyStepAction,
     InsertStepAction,
     LazyMutateStepAction,
     LazySetLabelAction,
@@ -28,7 +30,7 @@ import {
     SetDataAction,
     UpdateStepAction,
 } from "./stepActions";
-import { LazyMoveMultipleAction, LazySetValueAction } from "./workflowActions";
+import { CopyIntoWorkflowAction, LazyMoveMultipleAction, LazySetValueAction } from "./workflowActions";
 
 const workflowId = "mock-workflow";
 
@@ -212,6 +214,29 @@ describe("refactorSerialization", () => {
                     step: { order_index: 1 },
                 });
             });
+        });
+    });
+
+    describe("serializeCopyStep", () => {
+        it("serializes CopyStepAction with full step data", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const action = new CopyStepAction(stores.stepStore, stores.stateStore, step);
+            // CopyStepAction clones the step, so action.step has all fields
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            const a = result.actions[0] as Record<string, unknown>;
+            expect(a).toHaveProperty("action_type", "add_step");
+            expect(a).toHaveProperty("type", "tool");
+            expect(a).toHaveProperty("content_id", "cat1");
+        });
+
+        it("includes input_connections when present", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const action = new CopyStepAction(stores.stepStore, stores.stateStore, step);
+            const result = serializeAction(action);
+            const a = result.actions[0] as Record<string, unknown>;
+            expect(a).toHaveProperty("input_connections");
         });
     });
 
@@ -664,14 +689,14 @@ describe("refactorSerialization", () => {
         });
     });
 
-    describe("Workflow Report", () => {
-        it("serializes readme/report change", () => {
+    describe("Workflow Report and Readme", () => {
+        it("serializes report change (what='report')", () => {
             const action = new LazySetValueAction(
                 "",
                 "# Report",
                 () => {},
                 () => {},
-                "readme",
+                "report",
             );
             const result = serializeAction(action);
             expect(result.success).toBe(true);
@@ -680,6 +705,143 @@ describe("refactorSerialization", () => {
                 action_type: "update_report",
                 report: { markdown: "# Report" },
             });
+        });
+
+        it("serializes readme change (what='readme')", () => {
+            const action = new LazySetValueAction(
+                "",
+                "This is the readme",
+                () => {},
+                () => {},
+                "readme",
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            expect(result.actions[0]).toEqual({
+                action_type: "update_readme",
+                readme: "This is the readme",
+            });
+        });
+
+        it("readme and report produce different action_types", () => {
+            const readmeAction = new LazySetValueAction(
+                "",
+                "readme text",
+                () => {},
+                () => {},
+                "readme",
+            );
+            const reportAction = new LazySetValueAction(
+                "",
+                "report text",
+                () => {},
+                () => {},
+                "report",
+            );
+            const readmeResult = serializeAction(readmeAction);
+            const reportResult = serializeAction(reportAction);
+            expect((readmeResult.actions[0] as any).action_type).toBe("update_readme");
+            expect((reportResult.actions[0] as any).action_type).toBe("update_report");
+        });
+    });
+
+    describe("CopyIntoWorkflowAction", () => {
+        it("serializes paste with steps and a comment, remaps input_connections", () => {
+            const pasteData = {
+                name: "Pasted Workflow",
+                steps: {
+                    "0": {
+                        ...mockToolStep(0),
+                        type: "data_input" as const,
+                        content_id: null,
+                        input_connections: {},
+                        tool_state: {},
+                    },
+                    "1": {
+                        ...mockToolStep(1),
+                        input_connections: { input1: [{ output_name: "output", id: 0 }] },
+                    },
+                },
+                comments: [mockComment(0)],
+            };
+
+            const action = new CopyIntoWorkflowAction(workflowId, pasteData as any, { left: 50, top: 50 });
+            action.run();
+
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+
+            // 2 add_step + 1 add_comment = 3 actions
+            const addSteps = result.actions.filter((a) => a.action_type === "add_step");
+            const addComments = result.actions.filter((a) => a.action_type === "add_comment");
+            expect(addSteps).toHaveLength(2);
+            expect(addComments).toHaveLength(1);
+
+            // The second step's input_connections should reference the new ID of the first step
+            const secondStep = addSteps[1] as Record<string, any>;
+            const conns = secondStep.input_connections;
+            expect(conns).toBeDefined();
+            // The remapped ID should be one of the newStepIds (not the original 0)
+            const connLink = conns.input1[0];
+            expect(action.newStepIds).toContain(connLink.id);
+        });
+
+        it("returns failure when no steps/comments pasted", () => {
+            const pasteData = { name: "Empty", steps: {}, comments: [] };
+            const action = new CopyIntoWorkflowAction(workflowId, pasteData as any, { left: 0, top: 0 });
+            // Don't run — newStepIds stays empty
+            const result = serializeAction(action);
+            expect(result.success).toBe(false);
+        });
+    });
+
+    describe("AutoLayoutAction", () => {
+        it("serializes auto layout with step and comment positions", () => {
+            const action = new AutoLayoutAction(workflowId);
+            // Manually set positions as if run() completed
+            action.positions = {
+                steps: [
+                    { id: "0", x: 100, y: 200 },
+                    { id: "1", x: 300, y: 400 },
+                ],
+                comments: [{ id: "0", x: 50, y: 60, w: 170, h: 50 }],
+            };
+
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+
+            const stepPositions = result.actions.filter((a) => a.action_type === "update_step_position");
+            const commentPositions = result.actions.filter((a) => a.action_type === "update_comment_position");
+            const commentSizes = result.actions.filter((a) => a.action_type === "update_comment_size");
+
+            expect(stepPositions).toHaveLength(2);
+            expect(commentPositions).toHaveLength(1);
+            expect(commentSizes).toHaveLength(1);
+
+            expect(stepPositions[0]).toEqual({
+                action_type: "update_step_position",
+                step: { order_index: 0 },
+                position_absolute: { left: 100, top: 200 },
+            });
+            expect(commentPositions[0]).toEqual({
+                action_type: "update_comment_position",
+                comment: { comment_id: 0 },
+                position: { left: 50, top: 60 },
+            });
+            expect(commentSizes[0]).toEqual({
+                action_type: "update_comment_size",
+                comment: { comment_id: 0 },
+                size: { width: 170, height: 50 },
+            });
+        });
+
+        it("returns failure when positions are empty", () => {
+            const action = new AutoLayoutAction(workflowId);
+            // positions default to empty arrays
+            const result = serializeAction(action);
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("not available");
         });
     });
 
