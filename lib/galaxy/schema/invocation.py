@@ -617,10 +617,10 @@ class WorkflowInvocationElementView(WorkflowInvocationCollectionView):
     input_step_parameters: dict[str, InvocationInputParameter] = Field(
         default=..., title="Input step parameters", description="Input step parameters of the workflow invocation."
     )
-    outputs: dict[str, InvocationOutput] = Field(
+    outputs: dict[str, Union[InvocationOutput, list[InvocationOutput]]] = Field(
         default=..., title="Outputs", description="Output datasets of the workflow invocation."
     )
-    output_collections: dict[str, InvocationOutputCollection] = Field(
+    output_collections: dict[str, Union[InvocationOutputCollection, list[InvocationOutputCollection]]] = Field(
         default=...,
         title="Output collections",
         description="Output dataset collections of the workflow invocation.",

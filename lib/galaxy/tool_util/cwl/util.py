@@ -646,9 +646,14 @@ def tool_response_to_output(tool_response, history_id, output_name):
 def invocation_to_output(invocation, history_id, output_name):
     if output_name in invocation["outputs"]:
         dataset = invocation["outputs"][output_name]
+        if isinstance(dataset, list):
+            # Multiple outputs with same label (CWL MultipleInputFeatureRequirement)
+            return [GalaxyOutput(history_id, "dataset", d["id"], None) for d in dataset]
         return GalaxyOutput(history_id, "dataset", dataset["id"], None)
     elif output_name in invocation["output_collections"]:
         collection = invocation["output_collections"][output_name]
+        if isinstance(collection, list):
+            return [GalaxyOutput(history_id, "dataset_collection", c["id"], None) for c in collection]
         return GalaxyOutput(history_id, "dataset_collection", collection["id"], None)
     elif output_name in invocation["output_values"]:
         output_value = invocation["output_values"][output_name]
