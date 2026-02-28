@@ -10,6 +10,7 @@
 
 import type { components } from "@/api/schema";
 import type { UndoRedoAction } from "@/stores/undoRedoStore/undoRedoAction";
+import type { NewStep } from "@/stores/workflowStepStore";
 
 import {
     AddCommentAction,
@@ -44,6 +45,43 @@ export interface SerializationResult {
 
 function stepRef(stepId: number): { order_index: number } {
     return { order_index: stepId };
+}
+
+/** Build an add_step payload from a step-like object. Shared by CopyStep and CopyIntoWorkflow serializers. */
+function stepToAddStepPayload(
+    step: NewStep,
+    positionOverride?: { left: number; top: number } | null,
+): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
+        action_type: "add_step" as const,
+        type: step.type as string,
+        label: step.label ?? null,
+        position:
+            positionOverride !== undefined
+                ? positionOverride
+                : step.position
+                  ? { left: step.position.left, top: step.position.top }
+                  : null,
+        tool_state: step.tool_state ?? null,
+    };
+
+    if (step.annotation) {
+        payload["annotation"] = step.annotation;
+    }
+    if (step.post_job_actions && Object.keys(step.post_job_actions).length > 0) {
+        payload["post_job_actions"] = step.post_job_actions;
+    }
+    if (step.workflow_outputs && step.workflow_outputs.length > 0) {
+        payload["workflow_outputs"] = step.workflow_outputs;
+    }
+    if (step.when) {
+        payload["when"] = step.when;
+    }
+    if (step.content_id) {
+        payload["content_id"] = step.content_id;
+    }
+
+    return payload;
 }
 
 function serializeLabelChange(action: LazySetLabelAction): SerializationResult {
@@ -167,35 +205,14 @@ function serializeAddStep(action: InsertStepAction): SerializationResult {
 
 function serializeCopyStep(action: CopyStepAction): SerializationResult {
     const step = action.step;
-    const addStepAction: Record<string, unknown> = {
-        action_type: "add_step" as const,
-        type: step.type as string,
-        label: step.label ?? null,
-        position: step.position ? { left: step.position.left, top: step.position.top } : null,
-        tool_state: step.tool_state ?? null,
-    };
+    const payload = stepToAddStepPayload(step);
 
-    if (step.annotation) {
-        addStepAction["annotation"] = step.annotation;
-    }
-    if (step.post_job_actions && Object.keys(step.post_job_actions).length > 0) {
-        addStepAction["post_job_actions"] = step.post_job_actions;
-    }
-    if (step.workflow_outputs && step.workflow_outputs.length > 0) {
-        addStepAction["workflow_outputs"] = step.workflow_outputs;
-    }
-    if (step.when) {
-        addStepAction["when"] = step.when;
-    }
-    if (step.content_id) {
-        addStepAction["content_id"] = step.content_id;
-    }
     if (step.input_connections && Object.keys(step.input_connections).length > 0) {
-        addStepAction["input_connections"] = step.input_connections;
+        payload["input_connections"] = step.input_connections;
     }
 
     return {
-        actions: [addStepAction as RefactorAction],
+        actions: [payload as RefactorAction],
         title: `Duplicate step "${action.step.label ?? action.step.name}"`,
         success: true,
     };
@@ -467,36 +484,10 @@ function serializeCopyIntoWorkflow(action: CopyIntoWorkflowAction): Serializatio
     // Emit add_step for each step
     for (let i = 0; i < originalSteps.length; i++) {
         const step = originalSteps[i]!;
-        const addStepAction: Record<string, unknown> = {
-            action_type: "add_step" as const,
-            type: step.type as string,
-            label: step.label ?? null,
-            tool_state: step.tool_state ?? null,
-        };
-
-        // Apply position offset
-        if (step.position) {
-            addStepAction["position"] = {
-                left: step.position.left + position.left,
-                top: step.position.top + position.top,
-            };
-        }
-
-        if (step.annotation) {
-            addStepAction["annotation"] = step.annotation;
-        }
-        if (step.post_job_actions && Object.keys(step.post_job_actions).length > 0) {
-            addStepAction["post_job_actions"] = step.post_job_actions;
-        }
-        if (step.workflow_outputs && step.workflow_outputs.length > 0) {
-            addStepAction["workflow_outputs"] = step.workflow_outputs;
-        }
-        if (step.when) {
-            addStepAction["when"] = step.when;
-        }
-        if (step.content_id) {
-            addStepAction["content_id"] = step.content_id;
-        }
+        const positionWithOffset = step.position
+            ? { left: step.position.left + position.left, top: step.position.top + position.top }
+            : null;
+        const payload = stepToAddStepPayload(step, positionWithOffset);
 
         // Remap input_connections: old step IDs → new step IDs
         if (step.input_connections && Object.keys(step.input_connections).length > 0) {
@@ -514,14 +505,17 @@ function serializeCopyIntoWorkflow(action: CopyIntoWorkflowAction): Serializatio
                 }
             }
             if (Object.keys(remapped).length > 0) {
-                addStepAction["input_connections"] = remapped;
+                payload["input_connections"] = remapped;
             }
         }
 
-        refactorActions.push(addStepAction as RefactorAction);
+        refactorActions.push(payload as RefactorAction);
     }
 
-    // Emit add_comment for each comment
+    // Emit add_comment for each comment.
+    // Note: frame comments' child_steps/child_comments are NOT remapped here — the backend's
+    // add_comment stores data as-is, and spatial containment is recomputed by
+    // resolveCommentsInFrames()/resolveStepsInFrames() on the frontend.
     for (const comment of action.data.comments ?? []) {
         refactorActions.push({
             action_type: "add_comment" as const,

@@ -45,6 +45,7 @@ from .schema import (
     UpdateLicenseAction,
     UpdateNameAction,
     UpdateOutputLabelAction,
+    UpdateReadmeAction,
     UpdateReportAction,
     UpdateStepAction,
     UpdateStepAnnotationAction,
@@ -141,7 +142,7 @@ class WorkflowRefactorExecutor:
     def _apply_update_report(self, action: UpdateReportAction, execution: RefactorActionExecution):
         self._as_dict["report"] = {"markdown": action.report.markdown}
 
-    def _apply_update_readme(self, action, execution: RefactorActionExecution):
+    def _apply_update_readme(self, action: UpdateReadmeAction, execution: RefactorActionExecution):
         self._as_dict["readme"] = action.readme
 
     def _apply_update_tags(self, action: UpdateTagsAction, execution: RefactorActionExecution):
