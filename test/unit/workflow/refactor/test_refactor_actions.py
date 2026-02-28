@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from galaxy.workflow.refactor.execute import WorkflowRefactorExecutor
 from galaxy.workflow.refactor.schema import (
+    ACTION_CLASSES_BY_TYPE,
     AddCommentAction,
     AddStepAction,
     DeleteCommentAction,
@@ -27,7 +28,12 @@ from galaxy.workflow.refactor.schema import (
     UpdateCommentDataAction,
     UpdateCommentPositionAction,
     UpdateCommentSizeAction,
+    UpdateDoiAction,
+    UpdateHelpAction,
+    UpdateLogoUrlAction,
+    UpdateStepAnnotationAction,
     UpdateStepPositionAction,
+    UpdateTagsAction,
 )
 
 # --- Fixtures ---
@@ -214,8 +220,6 @@ class TestActionDiscriminator:
             "remove_all_freehand_comments",
         ]
         for action_type in new_types:
-            from galaxy.workflow.refactor.schema import ACTION_CLASSES_BY_TYPE
-
             assert action_type in ACTION_CLASSES_BY_TYPE, f"{action_type} not registered"
 
     def test_refactor_actions_parses_remove_step(self):
@@ -679,3 +683,114 @@ class TestInvalidCommentTypeColor:
                 comment={"comment_id": 0},
                 color="magenta",
             )
+
+
+# --- New metadata / step annotation action tests ---
+
+
+class TestNewActionTypesRegistered:
+    def test_new_action_types_in_registry(self):
+        for action_type in ["update_tags", "update_help", "update_logo_url", "update_doi", "update_step_annotation"]:
+            assert action_type in ACTION_CLASSES_BY_TYPE, f"{action_type} not registered"
+
+    def test_refactor_actions_parses_update_tags(self):
+        req = RefactorActions(actions=[{"action_type": "update_tags", "tags": ["a", "b"]}])
+        assert isinstance(req.actions[0], UpdateTagsAction)
+
+    def test_refactor_actions_parses_update_step_annotation(self):
+        req = RefactorActions(
+            actions=[{"action_type": "update_step_annotation", "step": {"order_index": 0}, "annotation": "note"}]
+        )
+        assert isinstance(req.actions[0], UpdateStepAnnotationAction)
+
+
+class TestUpdateTags:
+    def test_sets_tags(self):
+        wf = {"steps": {}, "tags": ["old"]}
+        executor = _make_executor(wf)
+        action = UpdateTagsAction(action_type="update_tags", tags=["new1", "new2"])
+        _run_action(executor, action)
+        assert wf["tags"] == ["new1", "new2"]
+
+    def test_sets_tags_when_missing(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = UpdateTagsAction(action_type="update_tags", tags=["first"])
+        _run_action(executor, action)
+        assert wf["tags"] == ["first"]
+
+    def test_clears_tags(self):
+        wf = {"steps": {}, "tags": ["old"]}
+        executor = _make_executor(wf)
+        action = UpdateTagsAction(action_type="update_tags", tags=[])
+        _run_action(executor, action)
+        assert wf["tags"] == []
+
+
+class TestUpdateHelp:
+    def test_sets_help(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = UpdateHelpAction(action_type="update_help", help="Some help text")
+        _run_action(executor, action)
+        assert wf["help"] == "Some help text"
+
+
+class TestUpdateLogoUrl:
+    def test_sets_logo_url(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = UpdateLogoUrlAction(action_type="update_logo_url", logo_url="https://example.com/logo.png")
+        _run_action(executor, action)
+        assert wf["logo_url"] == "https://example.com/logo.png"
+
+    def test_clears_logo_url(self):
+        wf = {"steps": {}, "logo_url": "https://example.com/old.png"}
+        executor = _make_executor(wf)
+        action = UpdateLogoUrlAction(action_type="update_logo_url", logo_url=None)
+        _run_action(executor, action)
+        assert wf["logo_url"] is None
+
+
+class TestUpdateDoi:
+    def test_sets_doi(self):
+        wf: dict[str, Any] = {"steps": {}}
+        executor = _make_executor(wf)
+        action = UpdateDoiAction(action_type="update_doi", doi=["10.1234/test"])
+        _run_action(executor, action)
+        assert wf["doi"] == ["10.1234/test"]
+
+
+class TestUpdateStepAnnotation:
+    def test_sets_step_annotation_by_order_index(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = UpdateStepAnnotationAction(
+            action_type="update_step_annotation",
+            step={"order_index": 1},
+            annotation="This step does X",
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["annotation"] == "This step does X"
+
+    def test_sets_step_annotation_by_label(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = UpdateStepAnnotationAction(
+            action_type="update_step_annotation",
+            step={"label": "input1"},
+            annotation="Input step note",
+        )
+        _run_action(executor, action)
+        assert wf["steps"][0]["annotation"] == "Input step note"
+
+    def test_invalid_step_raises(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = UpdateStepAnnotationAction(
+            action_type="update_step_annotation",
+            step={"order_index": 99},
+            annotation="won't work",
+        )
+        with pytest.raises(Exception, match="Failed to resolve"):
+            _run_action(executor, action)

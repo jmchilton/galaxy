@@ -150,6 +150,21 @@ describe("refactorSerialization", () => {
             });
         });
 
+        describe("serializeStepAnnotation", () => {
+            it("serializes step annotation change", () => {
+                const step = stores.stepStore.getStep(0)!;
+                const action = new LazyMutateStepAction(stores.stepStore, step.id, "annotation", "", "My annotation");
+                const result = serializeAction(action);
+                expect(result.success).toBe(true);
+                expect(result.actions).toHaveLength(1);
+                expect(result.actions[0]).toEqual({
+                    action_type: "update_step_annotation",
+                    step: { order_index: 0 },
+                    annotation: "My annotation",
+                });
+            });
+        });
+
         describe("serializeAddStep", () => {
             it("serializes adding a tool step", () => {
                 const action = new InsertStepAction(stores.stepStore, stores.stateStore, {
@@ -362,13 +377,68 @@ describe("refactorSerialization", () => {
                 expect(result.actions[0]).toEqual({ action_type: "update_creator", creator });
             });
 
+            it("serializes tags change", () => {
+                const action = new LazySetValueAction(
+                    ["old"],
+                    ["new1", "new2"],
+                    () => {},
+                    () => {},
+                    "tags",
+                );
+                const result = serializeAction(action);
+                expect(result.success).toBe(true);
+                expect(result.actions[0]).toEqual({ action_type: "update_tags", tags: ["new1", "new2"] });
+            });
+
+            it("serializes help change", () => {
+                const action = new LazySetValueAction(
+                    "",
+                    "Help text",
+                    () => {},
+                    () => {},
+                    "help",
+                );
+                const result = serializeAction(action);
+                expect(result.success).toBe(true);
+                expect(result.actions[0]).toEqual({ action_type: "update_help", help: "Help text" });
+            });
+
+            it("serializes logoUrl change", () => {
+                const action = new LazySetValueAction(
+                    null,
+                    "https://example.com/logo.png",
+                    () => {},
+                    () => {},
+                    "logoUrl",
+                );
+                const result = serializeAction(action);
+                expect(result.success).toBe(true);
+                expect(result.actions[0]).toEqual({
+                    action_type: "update_logo_url",
+                    logo_url: "https://example.com/logo.png",
+                });
+            });
+
+            it("serializes doi change", () => {
+                const action = new LazySetValueAction(
+                    [],
+                    ["10.1234/test"],
+                    () => {},
+                    () => {},
+                    "doi",
+                );
+                const result = serializeAction(action);
+                expect(result.success).toBe(true);
+                expect(result.actions[0]).toEqual({ action_type: "update_doi", doi: ["10.1234/test"] });
+            });
+
             it("returns error for unsupported metadata type", () => {
                 const action = new LazySetValueAction(
                     "a",
                     "b",
                     () => {},
                     () => {},
-                    "tags",
+                    "unknownField",
                 );
                 const result = serializeAction(action);
                 expect(result.success).toBe(false);

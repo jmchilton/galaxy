@@ -207,6 +207,32 @@ function serializeWorkflowMetadata(action: LazySetValueAction<unknown>): Seriali
                 title: `Update workflow report`,
                 success: true,
             };
+        case "tags":
+            return {
+                actions: [{ action_type: "update_tags" as const, tags: action.toValue as string[] }],
+                title: `Update tags`,
+                success: true,
+            };
+        case "help":
+            return {
+                actions: [{ action_type: "update_help" as const, help: action.toValue as string }],
+                title: `Update help`,
+                success: true,
+            };
+        case "logoUrl":
+            return {
+                actions: [
+                    { action_type: "update_logo_url" as const, logo_url: (action.toValue as string | null) ?? null },
+                ],
+                title: `Update logo URL`,
+                success: true,
+            };
+        case "doi":
+            return {
+                actions: [{ action_type: "update_doi" as const, doi: action.toValue as string[] }],
+                title: `Update DOI`,
+                success: true,
+            };
         default:
             return {
                 actions: [],
@@ -384,6 +410,19 @@ export function serializeAction(action: UndoRedoAction): SerializationResult {
         }
         if (action instanceof LazyMutateStepAction && action.key === "position") {
             return serializePositionChange(action as LazyMutateStepAction<"position">);
+        }
+        if (action instanceof LazyMutateStepAction && action.key === "annotation") {
+            return {
+                actions: [
+                    {
+                        action_type: "update_step_annotation" as const,
+                        step: stepRef(action.stepId),
+                        annotation: (action.toValue as string) ?? "",
+                    },
+                ],
+                title: "Update step annotation",
+                success: true,
+            };
         }
         if (action instanceof InsertStepAction) {
             return serializeAddStep(action);

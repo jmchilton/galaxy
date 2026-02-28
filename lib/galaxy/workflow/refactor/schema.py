@@ -230,6 +230,32 @@ class UpdateOutputLabelAction(BaseAction):
     output_label: str
 
 
+class UpdateTagsAction(BaseAction):
+    action_type: Literal["update_tags"]
+    tags: list[str]
+
+
+class UpdateHelpAction(BaseAction):
+    action_type: Literal["update_help"]
+    help: str
+
+
+class UpdateLogoUrlAction(BaseAction):
+    action_type: Literal["update_logo_url"]
+    logo_url: Optional[str] = None
+
+
+class UpdateDoiAction(BaseAction):
+    action_type: Literal["update_doi"]
+    doi: list[str]
+
+
+class UpdateStepAnnotationAction(BaseAction):
+    action_type: Literal["update_step_annotation"]
+    step: step_reference_union = step_target_field
+    annotation: str
+
+
 class FillStepDefaultsAction(BaseAction):
     action_type: Literal["fill_step_defaults"]
     step: step_reference_union
@@ -327,12 +353,17 @@ union_action_classes = Union[
     UpdateCommentPositionAction,
     UpdateCommentSizeAction,
     UpdateCreatorAction,
+    UpdateDoiAction,
+    UpdateHelpAction,
+    UpdateLogoUrlAction,
     UpdateNameAction,
     UpdateLicenseAction,
     UpdateOutputLabelAction,
     UpdateReportAction,
+    UpdateStepAnnotationAction,
     UpdateStepLabelAction,
     UpdateStepPositionAction,
+    UpdateTagsAction,
     UpgradeSubworkflowAction,
     UpgradeToolAction,
     UpgradeAllStepsAction,

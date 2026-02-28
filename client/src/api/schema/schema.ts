@@ -20671,12 +20671,17 @@ export interface components {
                 | components["schemas"]["UpdateCommentPositionAction"]
                 | components["schemas"]["UpdateCommentSizeAction"]
                 | components["schemas"]["UpdateCreatorAction"]
+                | components["schemas"]["UpdateDoiAction"]
+                | components["schemas"]["UpdateHelpAction"]
+                | components["schemas"]["UpdateLogoUrlAction"]
                 | components["schemas"]["UpdateNameAction"]
                 | components["schemas"]["UpdateLicenseAction"]
                 | components["schemas"]["UpdateOutputLabelAction"]
                 | components["schemas"]["UpdateReportAction"]
+                | components["schemas"]["UpdateStepAnnotationAction"]
                 | components["schemas"]["UpdateStepLabelAction"]
                 | components["schemas"]["UpdateStepPositionAction"]
+                | components["schemas"]["UpdateTagsAction"]
                 | components["schemas"]["UpgradeSubworkflowAction"]
                 | components["schemas"]["UpgradeToolAction"]
                 | components["schemas"]["UpgradeAllStepsAction"];
@@ -20774,12 +20779,17 @@ export interface components {
                 | components["schemas"]["UpdateCommentPositionAction"]
                 | components["schemas"]["UpdateCommentSizeAction"]
                 | components["schemas"]["UpdateCreatorAction"]
+                | components["schemas"]["UpdateDoiAction"]
+                | components["schemas"]["UpdateHelpAction"]
+                | components["schemas"]["UpdateLogoUrlAction"]
                 | components["schemas"]["UpdateNameAction"]
                 | components["schemas"]["UpdateLicenseAction"]
                 | components["schemas"]["UpdateOutputLabelAction"]
                 | components["schemas"]["UpdateReportAction"]
+                | components["schemas"]["UpdateStepAnnotationAction"]
                 | components["schemas"]["UpdateStepLabelAction"]
                 | components["schemas"]["UpdateStepPositionAction"]
+                | components["schemas"]["UpdateTagsAction"]
                 | components["schemas"]["UpgradeSubworkflowAction"]
                 | components["schemas"]["UpgradeToolAction"]
                 | components["schemas"]["UpgradeAllStepsAction"]
@@ -24046,6 +24056,26 @@ export interface components {
              */
             modify_ids?: string[] | string | null;
         };
+        /** UpdateDoiAction */
+        UpdateDoiAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_doi";
+            /** Doi */
+            doi: string[];
+        };
+        /** UpdateHelpAction */
+        UpdateHelpAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_help";
+            /** Help */
+            help: string;
+        };
         /**
          * UpdateHistoryContentsBatchPayload
          * @description Contains property values that will be updated for all the history `items` provided.
@@ -24189,6 +24219,16 @@ export interface components {
             /** License */
             license: string;
         };
+        /** UpdateLogoUrlAction */
+        UpdateLogoUrlAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_logo_url";
+            /** Logo Url */
+            logo_url?: string | null;
+        };
         /** UpdateNameAction */
         UpdateNameAction: {
             /**
@@ -24287,6 +24327,21 @@ export interface components {
             action_type: "update_report";
             report: components["schemas"]["Report"];
         };
+        /** UpdateStepAnnotationAction */
+        UpdateStepAnnotationAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_step_annotation";
+            /** Annotation */
+            annotation: string;
+            /**
+             * Step
+             * @description The target step for this action.
+             */
+            step: components["schemas"]["StepReferenceByOrderIndex"] | components["schemas"]["StepReferenceByLabel"];
+        };
         /** UpdateStepLabelAction */
         UpdateStepLabelAction: {
             /**
@@ -24319,6 +24374,16 @@ export interface components {
              * @description The target step for this action.
              */
             step: components["schemas"]["StepReferenceByOrderIndex"] | components["schemas"]["StepReferenceByLabel"];
+        };
+        /** UpdateTagsAction */
+        UpdateTagsAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_tags";
+            /** Tags */
+            tags: string[];
         };
         /**
          * UpdateUserNotificationPreferencesRequest

@@ -46,8 +46,10 @@ from .schema import (
     UpdateNameAction,
     UpdateOutputLabelAction,
     UpdateReportAction,
+    UpdateStepAnnotationAction,
     UpdateStepLabelAction,
     UpdateStepPositionAction,
+    UpdateTagsAction,
     UpgradeAllStepsAction,
     UpgradeSubworkflowAction,
     UpgradeToolAction,
@@ -137,6 +139,22 @@ class WorkflowRefactorExecutor:
 
     def _apply_update_report(self, action: UpdateReportAction, execution: RefactorActionExecution):
         self._as_dict["report"] = {"markdown": action.report.markdown}
+
+    def _apply_update_tags(self, action: UpdateTagsAction, execution: RefactorActionExecution):
+        self._as_dict["tags"] = action.tags
+
+    def _apply_update_help(self, action, execution: RefactorActionExecution):
+        self._as_dict["help"] = action.help
+
+    def _apply_update_logo_url(self, action, execution: RefactorActionExecution):
+        self._as_dict["logo_url"] = action.logo_url
+
+    def _apply_update_doi(self, action, execution: RefactorActionExecution):
+        self._as_dict["doi"] = action.doi
+
+    def _apply_update_step_annotation(self, action: UpdateStepAnnotationAction, execution: RefactorActionExecution):
+        step = self._find_step_for_action(action)
+        step["annotation"] = action.annotation
 
     def _get_next_input_position(self):
         """

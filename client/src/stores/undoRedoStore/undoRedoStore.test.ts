@@ -156,7 +156,7 @@ describe("undoRedoStore persistence", () => {
     });
 
     describe("flushPendingActions", () => {
-        it("returns and clears pending actions", () => {
+        it("returns and clears pending actions with allSerialized true", () => {
             enablePersistence();
             mockSerializeAction.mockReturnValue(makeSuccessResult());
 
@@ -166,11 +166,64 @@ describe("undoRedoStore persistence", () => {
 
             expect(store.pendingActions.length).toBe(2);
 
-            const flushed = store.flushPendingActions();
+            const { pending, allSerialized } = store.flushPendingActions();
 
-            expect(flushed.length).toBe(2);
+            expect(pending.length).toBe(2);
+            expect(allSerialized).toBe(true);
             expect(store.pendingActions.length).toBe(0);
             expect(store.hasPendingActions).toBe(false);
+        });
+
+        it("returns allSerialized false when any action failed", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValueOnce(makeSuccessResult()).mockReturnValueOnce(makeFailResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+            store.applyAction(new TestAction());
+
+            const { pending, allSerialized } = store.flushPendingActions();
+
+            expect(pending.length).toBe(1); // only the successful one
+            expect(allSerialized).toBe(false);
+        });
+
+        it("resets allActionsSerialized after flush", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeFailResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+
+            expect(store.allActionsSerialized).toBe(false);
+
+            store.flushPendingActions();
+
+            expect(store.allActionsSerialized).toBe(true);
+        });
+    });
+
+    describe("allActionsSerialized", () => {
+        it("is true when all actions serialize successfully", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+            store.applyAction(new TestAction());
+
+            expect(store.allActionsSerialized).toBe(true);
+        });
+
+        it("is false when any action fails serialization", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValueOnce(makeSuccessResult()).mockReturnValueOnce(makeFailResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+            store.applyAction(new TestAction());
+
+            expect(store.allActionsSerialized).toBe(false);
         });
     });
 

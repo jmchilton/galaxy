@@ -1142,22 +1142,20 @@ export default {
 
             try {
                 this.loadingWorkflow = true;
-
                 this.undoRedoStore.flushLazyAction();
 
-                const data = await saveWorkflow(this);
-
-                await this.submitPendingActions();
+                if (this.undoRedoStore.persistenceEnabled) {
+                    await this.saveViaRefactor();
+                } else {
+                    await this.saveViaRawPut();
+                }
 
                 const versions = await getVersions(this.id);
                 this.versions = versions;
 
-                // If version is not defined, set it to the latest version
                 if (this.version === undefined || this.version === null) {
                     this.version = versions[versions.length - 1].version;
                 }
-
-                await this._loadCurrent(this.id, data.version);
             } catch (response) {
                 this.onWorkflowError("Saving workflow failed...", response, {
                     Ok: () => {
@@ -1171,29 +1169,34 @@ export default {
             }
             return true;
         },
-        async submitPendingActions() {
-            if (!this.undoRedoStore.hasPendingActions) {
+        async saveViaRawPut() {
+            const data = await saveWorkflow(this);
+            await this._loadCurrent(this.id, data.version);
+        },
+        async saveViaRefactor() {
+            const { pending, allSerialized } = this.undoRedoStore.flushPendingActions();
+
+            if (!allSerialized || pending.length === 0) {
+                // Fallback: some actions weren't serializable, or no tracked changes.
+                // Use raw save to capture everything.
+                if (this.hasChanges || pending.length > 0) {
+                    const data = await saveWorkflow(this);
+                    await this._loadCurrent(this.id, data.version);
+                }
                 return;
             }
 
-            try {
-                const pending = this.undoRedoStore.flushPendingActions();
-                const allActions = [];
-
-                for (const p of pending) {
-                    allActions.push(...p.serialization.actions);
-                }
-
-                if (allActions.length === 0) {
-                    return;
-                }
-
-                const batchTitle = buildBatchTitle(pending.map((p) => p.serialization));
-                await refactor(this.id, allActions, "export", false, undefined, batchTitle, "editor_save");
-            } catch (e) {
-                Toast.warning("Workflow saved, but action history could not be persisted.");
-                console.warn("Action persistence failed:", e);
+            // All actions serialized — use refactor API as sole save
+            const allActions = [];
+            for (const p of pending) {
+                allActions.push(...p.serialization.actions);
             }
+
+            const batchTitle = buildBatchTitle(pending.map((p) => p.serialization));
+            await refactor(this.id, allActions, "export", false, undefined, batchTitle, "editor_save");
+
+            // Re-fetch to get editor-style data (tool forms, config_form, etc.)
+            await this._loadCurrent(this.id);
         },
         onVersion(version) {
             if (version != this.version) {

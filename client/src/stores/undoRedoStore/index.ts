@@ -32,6 +32,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
 
     const pendingActions = ref<PendingAction[]>([]);
     const hasPendingActions = computed(() => pendingActions.value.length > 0);
+    const allActionsSerialized = ref(true);
     const persistenceEnabled = computed(() => {
         const configStore = useConfigStore();
         return configStore.config?.enable_workflow_action_persistence === true;
@@ -60,6 +61,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         undoActionStack.value = [];
         deletedActions.value = [];
         pendingActions.value = [];
+        allActionsSerialized.value = true;
         minUndoActions.value = 10;
         maxUndoActions.value = 10000;
         clearRedoStack();
@@ -93,6 +95,8 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         const serialization = serializeAction(action);
         if (serialization.success) {
             pendingActions.value.push({ actionId: action.id, serialization });
+        } else {
+            allActionsSerialized.value = false;
         }
     }
 
@@ -173,10 +177,12 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         lazyActionTimeout = setTimeout(() => flushLazyAction(), timeout);
     }
 
-    function flushPendingActions(): PendingAction[] {
+    function flushPendingActions(): { pending: PendingAction[]; allSerialized: boolean } {
         const flushed = [...pendingActions.value];
+        const serialized = allActionsSerialized.value;
         pendingActions.value = [];
-        return flushed;
+        allActionsSerialized.value = true;
+        return { pending: flushed, allSerialized: serialized };
     }
 
     const isQueued = computed(() => (action?: UndoRedoAction | null) => action && pendingLazyAction.value === action);
@@ -243,6 +249,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         undoStackLength,
         pendingActions,
         hasPendingActions,
+        allActionsSerialized,
         persistenceEnabled,
         undo,
         redo,
