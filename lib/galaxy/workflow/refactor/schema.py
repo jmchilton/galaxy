@@ -250,6 +250,15 @@ class UpdateDoiAction(BaseAction):
     doi: list[str]
 
 
+class UpdateStepAction(BaseAction):
+    action_type: Literal["update_step"]
+    step: step_reference_union = step_target_field
+    tool_state: Optional[dict[str, Any]] = None
+    post_job_actions: Optional[dict[str, Any]] = None
+    workflow_outputs: Optional[list[dict[str, Any]]] = None
+    when: Optional[str] = None
+
+
 class UpdateStepAnnotationAction(BaseAction):
     action_type: Literal["update_step_annotation"]
     step: step_reference_union = step_target_field
@@ -360,6 +369,7 @@ union_action_classes = Union[
     UpdateLicenseAction,
     UpdateOutputLabelAction,
     UpdateReportAction,
+    UpdateStepAction,
     UpdateStepAnnotationAction,
     UpdateStepLabelAction,
     UpdateStepPositionAction,

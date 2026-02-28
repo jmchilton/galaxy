@@ -27,6 +27,7 @@ import {
     LazySetLabelAction,
     LazySetOutputLabelAction,
     RemoveStepAction,
+    UpdateStepAction,
 } from "./stepActions";
 import { LazyMoveMultipleAction, LazySetValueAction } from "./workflowActions";
 
@@ -171,6 +172,35 @@ function serializeRemoveStep(action: RemoveStepAction): SerializationResult {
             },
         ],
         title: `Remove step "${action.step.label ?? action.step.name}"`,
+        success: true,
+    };
+}
+
+/** Fields the refactor API's `update_step` action accepts. */
+const REFACTORABLE_STEP_FIELDS = ["tool_state", "post_job_actions", "workflow_outputs", "when"] as const;
+
+function serializeUpdateStep(action: UpdateStepAction): SerializationResult {
+    const stepAction: Record<string, unknown> = {
+        action_type: "update_step" as const,
+        step: stepRef(action.stepId),
+    };
+
+    const { toPartial } = action;
+    for (const field of REFACTORABLE_STEP_FIELDS) {
+        if (toPartial[field] !== undefined) {
+            stepAction[field] = toPartial[field];
+        }
+    }
+
+    // If diff only contains derived/UI fields (inputs, outputs, config_form, errors),
+    // nothing to send — backend recomputes them.
+    if (!REFACTORABLE_STEP_FIELDS.some((k) => k in toPartial)) {
+        return { actions: [], title: "Derived step update", success: true };
+    }
+
+    return {
+        actions: [stepAction as RefactorAction],
+        title: `Update step ${action.stepLabel}`,
         success: true,
     };
 }
@@ -429,6 +459,11 @@ export function serializeAction(action: UndoRedoAction): SerializationResult {
         }
         if (action instanceof RemoveStepAction) {
             return serializeRemoveStep(action);
+        }
+
+        // Generic step update (SetDataAction extends UpdateStepAction, so this catches both)
+        if (action instanceof UpdateStepAction) {
+            return serializeUpdateStep(action);
         }
 
         // Workflow metadata

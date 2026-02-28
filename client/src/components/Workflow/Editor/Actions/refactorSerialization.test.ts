@@ -25,6 +25,8 @@ import {
     LazySetLabelAction,
     LazySetOutputLabelAction,
     RemoveStepAction,
+    SetDataAction,
+    UpdateStepAction,
 } from "./stepActions";
 import { LazyMoveMultipleAction, LazySetValueAction } from "./workflowActions";
 
@@ -209,6 +211,126 @@ describe("refactorSerialization", () => {
                     action_type: "remove_step",
                     step: { order_index: 1 },
                 });
+            });
+        });
+    });
+
+    describe("serializeUpdateStep", () => {
+        it("serializes UpdateStepAction with tool_state change", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const action = new UpdateStepAction(
+                stores.stepStore,
+                stores.stateStore,
+                step.id,
+                { tool_state: step.tool_state },
+                { tool_state: { new_param: "new_value" } },
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            expect(result.actions[0]).toMatchObject({
+                action_type: "update_step",
+                step: { order_index: 1 },
+                tool_state: { new_param: "new_value" },
+            });
+        });
+
+        it("serializes UpdateStepAction with post_job_actions change", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const newPjas = {
+                HideDatasetActionout_file1: {
+                    action_type: "HideDatasetAction",
+                    output_name: "out_file1",
+                    action_arguments: {},
+                },
+            };
+            const action = new UpdateStepAction(
+                stores.stepStore,
+                stores.stateStore,
+                step.id,
+                { post_job_actions: step.post_job_actions },
+                { post_job_actions: newPjas },
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions[0]).toMatchObject({
+                action_type: "update_step",
+                post_job_actions: newPjas,
+            });
+        });
+
+        it("serializes UpdateStepAction with workflow_outputs change", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const newOutputs = [{ output_name: "out_file1", label: "MyOutput" }];
+            const action = new UpdateStepAction(
+                stores.stepStore,
+                stores.stateStore,
+                step.id,
+                { workflow_outputs: step.workflow_outputs },
+                { workflow_outputs: newOutputs },
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions[0]).toMatchObject({
+                action_type: "update_step",
+                workflow_outputs: newOutputs,
+            });
+        });
+
+        it("serializes mixed diff with multiple refactorable fields", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const action = new UpdateStepAction(
+                stores.stepStore,
+                stores.stateStore,
+                step.id,
+                { tool_state: step.tool_state, post_job_actions: step.post_job_actions },
+                { tool_state: { mixed: true }, post_job_actions: { pja: {} } },
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            const a = result.actions[0] as Record<string, unknown>;
+            expect(a).toHaveProperty("tool_state", { mixed: true });
+            expect(a).toHaveProperty("post_job_actions", { pja: {} });
+        });
+
+        it("returns success with empty actions for derived-only diff", () => {
+            const step = stores.stepStore.getStep(1)!;
+            // Only `inputs` changed — a derived field
+            const action = new UpdateStepAction(
+                stores.stepStore,
+                stores.stateStore,
+                step.id,
+                { inputs: step.inputs },
+                {
+                    inputs: [
+                        {
+                            name: "new_input",
+                            label: "x",
+                            multiple: false,
+                            extensions: ["data"],
+                            optional: false,
+                            input_type: "dataset",
+                        },
+                    ],
+                },
+            );
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(0);
+        });
+
+        it("serializes SetDataAction (extends UpdateStepAction)", () => {
+            const step = stores.stepStore.getStep(1)!;
+            const modified = { ...step, tool_state: { changed_param: "yes" } };
+            const action = new SetDataAction(stores.stepStore, stores.stateStore, step, modified);
+            const result = serializeAction(action);
+            expect(result.success).toBe(true);
+            expect(result.actions).toHaveLength(1);
+            expect(result.actions[0]).toMatchObject({
+                action_type: "update_step",
+                step: { order_index: 1 },
+                tool_state: { changed_param: "yes" },
             });
         });
     });

@@ -20678,6 +20678,7 @@ export interface components {
                 | components["schemas"]["UpdateLicenseAction"]
                 | components["schemas"]["UpdateOutputLabelAction"]
                 | components["schemas"]["UpdateReportAction"]
+                | components["schemas"]["UpdateStepAction"]
                 | components["schemas"]["UpdateStepAnnotationAction"]
                 | components["schemas"]["UpdateStepLabelAction"]
                 | components["schemas"]["UpdateStepPositionAction"]
@@ -20786,6 +20787,7 @@ export interface components {
                 | components["schemas"]["UpdateLicenseAction"]
                 | components["schemas"]["UpdateOutputLabelAction"]
                 | components["schemas"]["UpdateReportAction"]
+                | components["schemas"]["UpdateStepAction"]
                 | components["schemas"]["UpdateStepAnnotationAction"]
                 | components["schemas"]["UpdateStepLabelAction"]
                 | components["schemas"]["UpdateStepPositionAction"]
@@ -24326,6 +24328,35 @@ export interface components {
              */
             action_type: "update_report";
             report: components["schemas"]["Report"];
+        };
+        /** UpdateStepAction */
+        UpdateStepAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action_type: "update_step";
+            /** Post Job Actions */
+            post_job_actions?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Step
+             * @description The target step for this action.
+             */
+            step: components["schemas"]["StepReferenceByOrderIndex"] | components["schemas"]["StepReferenceByLabel"];
+            /** Tool State */
+            tool_state?: {
+                [key: string]: unknown;
+            } | null;
+            /** When */
+            when?: string | null;
+            /** Workflow Outputs */
+            workflow_outputs?:
+                | {
+                      [key: string]: unknown;
+                  }[]
+                | null;
         };
         /** UpdateStepAnnotationAction */
         UpdateStepAnnotationAction: {

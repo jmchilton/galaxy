@@ -31,6 +31,7 @@ from galaxy.workflow.refactor.schema import (
     UpdateDoiAction,
     UpdateHelpAction,
     UpdateLogoUrlAction,
+    UpdateStepAction,
     UpdateStepAnnotationAction,
     UpdateStepPositionAction,
     UpdateTagsAction,
@@ -794,3 +795,123 @@ class TestUpdateStepAnnotation:
         )
         with pytest.raises(Exception, match="Failed to resolve"):
             _run_action(executor, action)
+
+
+class TestUpdateStep:
+    def test_update_tool_state_only(self):
+        wf = _simple_two_step_workflow()
+        wf["steps"][1]["tool_state"] = {"old_param": "old_value"}
+        executor = _make_executor(wf)
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 1},
+            tool_state={"new_param": "new_value"},
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["tool_state"] == {"new_param": "new_value"}
+        # Other fields untouched
+        assert wf["steps"][1]["label"] == "tool1"
+
+    def test_update_post_job_actions_only(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        pjas = {
+            "RenameDatasetActionout_file1": {
+                "action_type": "RenameDatasetAction",
+                "output_name": "out_file1",
+                "action_arguments": {"newname": "renamed"},
+            },
+        }
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 1},
+            post_job_actions=pjas,
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["post_job_actions"] == pjas
+
+    def test_update_workflow_outputs_only(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        new_outputs = [{"output_name": "out_file1", "label": "new_label"}]
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 1},
+            workflow_outputs=new_outputs,
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["workflow_outputs"] == new_outputs
+
+    def test_update_when_only(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 1},
+            when="$(inputs.input1 is not None)",
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["when"] == "$(inputs.input1 is not None)"
+
+    def test_update_multiple_fields(self):
+        wf = _simple_two_step_workflow()
+        wf["steps"][1]["tool_state"] = {"old": True}
+        executor = _make_executor(wf)
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 1},
+            tool_state={"new": True},
+            post_job_actions={
+                "HideDatasetActionout_file1": {
+                    "action_type": "HideDatasetAction",
+                    "output_name": "out_file1",
+                    "action_arguments": {},
+                }
+            },
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["tool_state"] == {"new": True}
+        assert "HideDatasetActionout_file1" in wf["steps"][1]["post_job_actions"]
+
+    def test_omitted_fields_untouched(self):
+        wf = _simple_two_step_workflow()
+        original_outputs = wf["steps"][1]["workflow_outputs"][:]
+        executor = _make_executor(wf)
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 1},
+            tool_state={"param": "value"},
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["workflow_outputs"] == original_outputs
+
+    def test_invalid_step_raises(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"order_index": 99},
+            tool_state={"x": 1},
+        )
+        with pytest.raises(Exception, match="Failed to resolve"):
+            _run_action(executor, action)
+
+    def test_by_label(self):
+        wf = _simple_two_step_workflow()
+        executor = _make_executor(wf)
+        action = UpdateStepAction(
+            action_type="update_step",
+            step={"label": "tool1"},
+            tool_state={"labeled": True},
+        )
+        _run_action(executor, action)
+        assert wf["steps"][1]["tool_state"] == {"labeled": True}
+
+    def test_registered_in_action_classes(self):
+        assert "update_step" in ACTION_CLASSES_BY_TYPE
+
+    def test_refactor_actions_parses(self):
+        req = RefactorActions(
+            actions=[{"action_type": "update_step", "step": {"order_index": 0}, "tool_state": {"a": 1}}]
+        )
+        assert isinstance(req.actions[0], UpdateStepAction)

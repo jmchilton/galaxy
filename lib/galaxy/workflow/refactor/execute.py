@@ -46,6 +46,7 @@ from .schema import (
     UpdateNameAction,
     UpdateOutputLabelAction,
     UpdateReportAction,
+    UpdateStepAction,
     UpdateStepAnnotationAction,
     UpdateStepLabelAction,
     UpdateStepPositionAction,
@@ -155,6 +156,13 @@ class WorkflowRefactorExecutor:
     def _apply_update_step_annotation(self, action: UpdateStepAnnotationAction, execution: RefactorActionExecution):
         step = self._find_step_for_action(action)
         step["annotation"] = action.annotation
+
+    def _apply_update_step(self, action: UpdateStepAction, execution: RefactorActionExecution):
+        step = self._find_step_for_action(action)
+        for field in ("tool_state", "post_job_actions", "workflow_outputs", "when"):
+            val = getattr(action, field)
+            if val is not None:
+                step[field] = val
 
     def _get_next_input_position(self):
         """
