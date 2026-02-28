@@ -9883,30 +9883,47 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
                 }
             rval["input_step_parameters"] = input_parameters
 
-            outputs = {}
+            outputs: dict[str, Any] = {}
             for output_assoc in self.output_datasets:
                 # TODO: does this work correctly if outputs are mapped over?
                 label = output_assoc.workflow_output.label
                 if not label:
                     label = f"{output_assoc.workflow_output.output_name} (Step {output_assoc.workflow_output.workflow_step.order_index + 1})"
 
-                outputs[label] = {
+                entry = {
                     "src": "hda",
                     "id": output_assoc.dataset_id,
                     "workflow_step_id": output_assoc.workflow_step_id,
                 }
+                if label in outputs:
+                    # Multiple outputs with same label (CWL MultipleInputFeatureRequirement).
+                    existing = outputs[label]
+                    if isinstance(existing, list):
+                        existing.append(entry)
+                    else:
+                        outputs[label] = [existing, entry]
+                else:
+                    outputs[label] = entry
 
-            output_collections = {}
+            output_collections: dict[str, Any] = {}
             for output_assoc in self.output_dataset_collections:
                 label = output_assoc.workflow_output.label
                 if not label:
                     label = f"{output_assoc.workflow_output.output_name} (Step {output_assoc.workflow_output.workflow_step.order_index + 1})"
 
-                output_collections[label] = {
+                entry = {
                     "src": "hdca",
                     "id": output_assoc.dataset_collection_id,
                     "workflow_step_id": output_assoc.workflow_step_id,
                 }
+                if label in output_collections:
+                    existing = output_collections[label]
+                    if isinstance(existing, list):
+                        existing.append(entry)
+                    else:
+                        output_collections[label] = [existing, entry]
+                else:
+                    output_collections[label] = entry
 
             rval["outputs"] = outputs
             rval["output_collections"] = output_collections
@@ -9916,7 +9933,16 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
                 label = output_param.workflow_output.label
                 if not label:
                     continue
-                output_values[label] = output_param.value
+                if label in output_values:
+                    # Multiple outputs with same label (CWL MultipleInputFeatureRequirement) -
+                    # aggregate into a list.
+                    existing = output_values[label]
+                    if isinstance(existing, list):
+                        existing.append(output_param.value)
+                    else:
+                        output_values[label] = [existing, output_param.value]
+                else:
+                    output_values[label] = output_param.value
             rval["output_values"] = output_values
 
         return rval
