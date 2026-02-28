@@ -115,8 +115,6 @@ RED_TESTS = {
         "capture_dirs",
         "capture_files",
         "capture_files_and_dirs",
-        "colon_in_output_path",
-        "colon_in_paths",
         "cond-with-defaults-1",
         "cond-with-defaults-2",
         "condifional_scatter_on_nonscattered_false",

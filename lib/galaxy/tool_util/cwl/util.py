@@ -112,7 +112,8 @@ def abs_path_or_uri(path_or_uri: str, relative_to: str, resolve_data: Optional[C
     """Return the absolute path if this isn't a URI, otherwise keep the URI the same."""
     if "://" in path_or_uri:
         return path_or_uri
-    abs_path_ = os.path.abspath(os.path.join(relative_to, path_or_uri))
+    # CWL location values are URIs - decode percent-encoding (e.g. %3A -> :)
+    abs_path_ = os.path.abspath(os.path.join(relative_to, urllib.parse.unquote(path_or_uri)))
     if resolve_data and not os.path.exists(abs_path_):
         resolved_data = resolve_data(path_or_uri)
         if resolved_data:
@@ -124,13 +125,14 @@ def abs_path_or_uri(path_or_uri: str, relative_to: str, resolve_data: Optional[C
 def abs_path(path_or_uri: str, relative_to: str) -> str:
     """Return the absolute path if this is a file:// URI or a local path."""
     if path_or_uri.startswith("file://"):
-        # The path after file:// must be absolute
-        abs_path_ = path_or_uri[len("file://") :]
+        # The path after file:// must be absolute; decode percent-encoding
+        abs_path_ = urllib.parse.unquote(path_or_uri[len("file://") :])
     else:
         index = path_or_uri.find("://")
         if index != -1:
             raise ValueError(f"Unsupported URI scheme: {path_or_uri[: index + 3]}")
-        abs_path_ = os.path.abspath(os.path.join(relative_to, path_or_uri))
+        # CWL location values are URIs - decode percent-encoding (e.g. %3A -> :)
+        abs_path_ = os.path.abspath(os.path.join(relative_to, urllib.parse.unquote(path_or_uri)))
     _ensure_file_exists(abs_path_)
     return abs_path_
 
