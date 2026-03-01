@@ -480,17 +480,35 @@ class JobProxy:
 
     def rewrite_inputs_for_staging(self):
         if hasattr(self._cwl_job, "pathmapper"):
-            pass
-            # DO SOMETHING LIKE THE FOLLOWING?
-            # path_rewrites = {}
-            # for f, p in self._cwl_job.pathmapper.items():
-            #     if not p.staged:
-            #         continue
-            #     if p.type in ("File", "Directory"):
-            #         path_rewrites[p.resolved] = p.target
-            # for key, value in self._input_dict.items():
-            #     if key in path_rewrites:
-            #         self._input_dict[key]["location"] = path_rewrites[value]
+            # Build a map from original resolved paths to staged target paths,
+            # then rewrite File/Directory locations in _input_dict so that
+            # save_job() persists the staged paths.  At runtime, load_job_proxy
+            # deserialises these staged paths directly — cwltool will recognise
+            # them in its pathmapper and revmap_file will succeed.
+            path_rewrites: Dict[str, str] = {}
+            for _source_uri, mapper_ent in self._cwl_job.pathmapper.items():
+                if not mapper_ent.staged:
+                    continue
+                if mapper_ent.type in ("File", "Directory"):
+                    path_rewrites[mapper_ent.resolved] = mapper_ent.target
+
+            def _rewrite_locations(value):
+                if isinstance(value, list):
+                    for v in value:
+                        _rewrite_locations(v)
+                elif isinstance(value, dict):
+                    if value.get("class") in ("File", "Directory"):
+                        loc = value.get("location", "")
+                        # location may be a file:// URI — convert to path for lookup
+                        loc_path = loc
+                        if loc_path.startswith("file://"):
+                            loc_path = loc_path[len("file://") :]
+                        if loc_path in path_rewrites:
+                            value["location"] = path_rewrites[loc_path]
+                    for v in value.values():
+                        _rewrite_locations(v)
+
+            _rewrite_locations(self._input_dict)
         else:
             stagedir = os.path.join(self._job_directory, "cwlstagedir")
             safe_makedirs(stagedir)
@@ -591,15 +609,58 @@ class JobProxy:
                 raise Exception(f"Final process state not ok, [{self._process_status}]")
             return self._final_output
         else:
-            return self.cwl_job().collect_outputs(tool_working_directory, rcode)
+            cwl_job = self.cwl_job()
+            # Inject saved pathmapper entries from job prep so that
+            # cwltool's revmap_file can recognise staged input files
+            # appearing in tool outputs.  The runtime cwl_job creates
+            # a fresh pathmapper with different staging UUIDs, so
+            # output JSON paths from the original job won't match
+            # without these entries.
+            saved_entries = getattr(self, "_saved_pathmapper_entries", [])
+            if saved_entries and hasattr(cwl_job, "pathmapper") and cwl_job.pathmapper:
+                from cwltool.pathmapper import MapperEnt
+
+                for entry in saved_entries:
+                    target = entry["target"]
+                    # Only inject entries whose target isn't already in the
+                    # pathmapper (avoid duplicates for normal staged inputs).
+                    already_mapped = False
+                    for _, existing in cwl_job.pathmapper.items():
+                        if existing.target == target:
+                            already_mapped = True
+                            break
+                    if not already_mapped:
+                        cwl_job.pathmapper._pathmap[entry["source"]] = MapperEnt(
+                            resolved=entry["resolved"],
+                            target=entry["target"],
+                            type=entry["type"],
+                            staged=entry["staged"],
+                        )
+            return cwl_job.collect_outputs(tool_working_directory, rcode)
 
     def save_job(self) -> None:
         job_file = self._job_file(self._job_directory)
+        # Save pathmapper entries so runtime output collection can recognise
+        # staged input files when they appear in tool outputs (pass-throughs).
+        pathmapper_entries: List[Dict[str, str]] = []
+        cwl_job = self._cwl_job
+        if cwl_job is not None and hasattr(cwl_job, "pathmapper") and cwl_job.pathmapper:
+            for source_uri, mapper_ent in cwl_job.pathmapper.items():
+                pathmapper_entries.append(
+                    {
+                        "source": source_uri,
+                        "resolved": mapper_ent.resolved,
+                        "target": mapper_ent.target,
+                        "type": mapper_ent.type,
+                        "staged": mapper_ent.staged,
+                    }
+                )
         job_objects = {
             # "tool_path": os.path.abspath(self._tool_proxy._tool_path),
             "tool_representation": self._tool_proxy.to_persistent_representation(),
             "job_inputs": self._input_dict,
             "output_dict": self._output_dict,
+            "pathmapper_entries": pathmapper_entries,
         }
         json.dump(job_objects, open(job_file, "w"))
 
@@ -890,11 +951,14 @@ def load_job_proxy(job_directory: str, strict_cwl_validation: bool = True) -> Jo
     job_objects = json.load(open(job_objects_path))
     job_inputs = job_objects["job_inputs"]
     output_dict = job_objects["output_dict"]
+    saved_pathmapper = job_objects.get("pathmapper_entries", [])
     persisted_tool = job_objects["tool_representation"]
     cwl_tool = tool_proxy_from_persistent_representation(
         persisted_tool=persisted_tool, strict_cwl_validation=strict_cwl_validation
     )
-    return cwl_tool.job_proxy(job_inputs, output_dict, job_directory=job_directory)
+    job_proxy = cwl_tool.job_proxy(job_inputs, output_dict, job_directory=job_directory)
+    job_proxy._saved_pathmapper_entries = saved_pathmapper
+    return job_proxy
 
 
 def _to_cwl_tool_object(
