@@ -170,7 +170,7 @@ describe("refactorSerialization", () => {
         });
 
         describe("serializeAddStep", () => {
-            it("serializes adding a tool step", () => {
+            it("serializes adding a tool step with content_id", () => {
                 const action = new InsertStepAction(stores.stepStore, stores.stateStore, {
                     contentId: "cat1",
                     name: "Concatenate datasets",
@@ -186,10 +186,11 @@ describe("refactorSerialization", () => {
                     label: null,
                     position: { left: 100, top: 200 },
                     tool_state: null,
+                    content_id: "cat1",
                 });
             });
 
-            it("serializes adding a data input", () => {
+            it("serializes adding a data input with null content_id", () => {
                 const action = new InsertStepAction(stores.stepStore, stores.stateStore, {
                     contentId: null,
                     name: "Input dataset",
@@ -199,6 +200,7 @@ describe("refactorSerialization", () => {
                 const result = serializeAction(action);
                 expect(result.success).toBe(true);
                 expect(result.actions[0]!).toHaveProperty("type", "data_input");
+                expect(result.actions[0]!).toHaveProperty("content_id", null);
             });
         });
 

@@ -187,7 +187,7 @@ function serializeMoveMultiple(action: LazyMoveMultipleAction): SerializationRes
 }
 
 function serializeAddStep(action: InsertStepAction): SerializationResult {
-    const { type, position } = action.stepData;
+    const { type, position, contentId } = action.stepData;
     return {
         actions: [
             {
@@ -196,6 +196,7 @@ function serializeAddStep(action: InsertStepAction): SerializationResult {
                 label: null,
                 position: position ? { left: position.left, top: position.top } : null,
                 tool_state: null,
+                content_id: contentId ?? null,
             },
         ],
         title: `Add ${action.stepData.name}`,
