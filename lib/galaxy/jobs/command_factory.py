@@ -155,7 +155,10 @@ def build_command(
         )
         write_script(relocate_script_file, relocate_contents, ScriptIntegrityChecks(check_job_script_integrity=False))
         commands_builder.append_command(SETUP_GALAXY_FOR_METADATA)
-        commands_builder.append_command(f"python '{relocate_script_file}'")
+        exit_code_path = default_exit_code_file(working_directory, job_wrapper.job_id)
+        commands_builder.append_command(
+            f"python '{relocate_script_file}' || {{ return_code=$?; echo $return_code > {exit_code_path}; }}"
+        )
 
     if include_work_dir_outputs:
         __handle_work_dir_outputs(commands_builder, job_wrapper, runner, remote_command_params)
