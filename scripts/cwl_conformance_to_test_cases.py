@@ -176,7 +176,6 @@ RED_TESTS = {
         "record_order_with_input_bindings",
         "record_output_file_entry_format",
         "record_outputeval_nojs",
-        "record_with_default",
         "resreq_step_overrides_wf",
         "scatter_embedded_subworkflow",
         "scatter_multi_input_embedded_subworkflow",
