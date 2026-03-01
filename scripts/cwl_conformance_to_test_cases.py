@@ -128,7 +128,6 @@ RED_TESTS = {
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",
         "cwloutput_nolimit",
-        "directory_literal_with_literal_file_in_subdir_nostdin",
         "docker_entrypoint",
         "dockeroutputdir",
         "dotproduct_dotproduct_scatter",
