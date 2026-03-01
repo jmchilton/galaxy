@@ -69,6 +69,11 @@
                     @onRefactor="onAttemptRefactor"
                     @onScrollTo="onScrollTo" />
                 <UndoRedoStack v-else-if="isActiveSideBar('workflow-undo-redo')" :store-id="id" />
+                <ChangelogPanel
+                    v-else-if="isActiveSideBar('workflow-editor-changelog')"
+                    ref="changelogPanel"
+                    :workflow-id="id"
+                    @revert="onRevertToEntry" />
                 <WorkflowPanel
                     v-else-if="isActiveSideBar('workflow-editor-workflows')"
                     :current-workflow-id="id"
@@ -253,7 +258,7 @@ import { BDropdown, BDropdownDivider, BDropdownItem, BDropdownText } from "boots
 import { storeToRefs } from "pinia";
 import Vue, { computed, nextTick, onUnmounted, ref, unref, watch } from "vue";
 
-import { refactor } from "@/api/workflows";
+import { refactor, revertWorkflow } from "@/api/workflows";
 import { getUntypedWorkflowParameters } from "@/components/Workflow/Editor/modules/parameters";
 import { getWorkflowFull } from "@/components/Workflow/workflows.services";
 import { ConfirmDialog, useConfirmDialog } from "@/composables/confirmDialog";
@@ -284,6 +289,7 @@ import { useLintData } from "./modules/useLinting";
 import { getStateUpgradeMessages } from "./modules/utilities";
 import reportDefault from "./reportDefault";
 
+import ChangelogPanel from "./ChangelogPanel.vue";
 import WorkflowLint from "./Lint.vue";
 import MessagesModal from "./MessagesModal.vue";
 import NodeInspector from "./NodeInspector.vue";
@@ -317,6 +323,7 @@ export default {
         WorkflowGraph,
         FontAwesomeIcon,
         UndoRedoStack,
+        ChangelogPanel,
         WorkflowPanel,
         NodeInspector,
         InputPanel,
@@ -650,7 +657,10 @@ export default {
             hasChanges,
             undoStackLength,
             canUseUnprivilegedTools,
+            computed(() => undoRedoStore.persistenceEnabled),
         );
+
+        const changelogPanel = ref(null);
 
         const scrollToId = ref(null);
 
@@ -732,6 +742,7 @@ export default {
             confirm,
             inputs,
             workflowActivities,
+            changelogPanel,
             faKey,
             faWrench,
             showDropdown: false,
@@ -881,6 +892,58 @@ export default {
             // Adjust for coordinate shifts so nodes appear in the same position
             // and stateStore.position is synced with the d3 transform
             this.adjustForCoordinateShift(transformBefore, boundsBefore);
+        },
+        async onRevertToEntry(entry) {
+            if (this.hasChanges) {
+                const saveFirst = await this.confirm("You have unsaved changes. Save before reverting?", {
+                    okTitle: "Save & Revert",
+                    cancelTitle: "Cancel",
+                });
+                if (!saveFirst) {
+                    return;
+                }
+                const saved = await this.onSave();
+                if (!saved) {
+                    return;
+                }
+            }
+
+            const confirmed = await this.confirm(
+                `Revert workflow to the state before "${entry.title}"? This creates a new version — you can undo by reverting again.`,
+                {
+                    title: "Revert Workflow",
+                    okTitle: "Revert",
+                    okVariant: "warning",
+                },
+            );
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                this.loadingWorkflow = true;
+                const response = await revertWorkflow(this.id, entry.workflow_id_before);
+
+                await this.resetStores();
+                await fromSimple(this.id, response.workflow);
+                await this._loadEditorData(response.workflow);
+
+                const versions = await getVersions(this.id);
+                this.versions = versions;
+
+                this.changelogPanel?.refresh?.();
+
+                this.workflowGraph.fitWorkflow();
+
+                Toast.success("Workflow reverted successfully.");
+            } catch (e) {
+                this.onWorkflowError(
+                    "Reverting workflow failed",
+                    errorMessageAsString(e) || "Please contact an administrator.",
+                );
+            } finally {
+                this.loadingWorkflow = false;
+            }
         },
         onChange() {
             this.hasChanges = true;
@@ -1156,6 +1219,8 @@ export default {
                 if (this.version === undefined || this.version === null) {
                     this.version = versions[versions.length - 1].version;
                 }
+
+                this.changelogPanel?.refresh?.();
             } catch (response) {
                 this.onWorkflowError("Saving workflow failed...", response, {
                     Ok: () => {

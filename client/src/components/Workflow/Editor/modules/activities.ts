@@ -3,6 +3,7 @@ import {
     faDownload,
     faEdit,
     faHistory,
+    faListUl,
     faMagic,
     faPencilAlt,
     faPlay,
@@ -33,6 +34,8 @@ export function useWorkflowActivities(
     undoStackLength: Ref<number>,
     /** Whether the user can use custom tools */
     canUseUnprivilegedTools: Ref<boolean>,
+    /** Whether action persistence / changelog is enabled */
+    persistenceEnabled: Ref<boolean>,
 ): ComputedRef<Activity[]> {
     const store = useActivityStore(activityBarId);
 
@@ -123,6 +126,20 @@ export function useWorkflowActivities(
             indicator: undoStackLength.value,
             indicatorVariant: "primary",
         },
+        ...(persistenceEnabled.value
+            ? [
+                  {
+                      title: "Changelog",
+                      id: "workflow-editor-changelog",
+                      description: "View the saved change history for this workflow.",
+                      tooltip: "Show saved changelog",
+                      icon: faListUl,
+                      panel: true,
+                      visible: true,
+                      optional: true,
+                  },
+              ]
+            : []),
         {
             title: "Run",
             id: "workflow-run",
