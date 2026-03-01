@@ -310,6 +310,23 @@ def galactic_job_json(
 
         return upload_file(file_path, secondary_files_tar_path, filetype=filetype, **kwd)
 
+    def _populate_directory_listing(base_dir: pathlib.Path, listing: list) -> None:
+        for entry in listing:
+            if entry["class"] == "File":
+                if "contents" in entry:
+                    with open(base_dir / entry["basename"], "w") as fh:
+                        fh.write(entry["contents"])
+                elif "path" in entry:
+                    entry_path = os.path.join(test_data_directory, entry["path"])
+                    os.symlink(entry_path, str((base_dir / entry["path"]).resolve()))
+            elif entry["class"] == "Directory":
+                sub_dir = base_dir / entry["basename"]
+                sub_dir.mkdir()
+                if "listing" in entry:
+                    _populate_directory_listing(sub_dir, entry["listing"])
+            else:
+                raise Exception(f"{entry['class']} unimplemented")
+
     def replacement_directory(value: Dict[str, Any]) -> Dict[str, Any]:
         file_path = value.get("location", None) or value.get("path", None)
         temp_dir = None
@@ -320,17 +337,7 @@ def galactic_job_json(
                 temp_dir = tempfile.mkdtemp(prefix="file_literal_upload_dir")
                 base_dir = pathlib.Path(temp_dir) / value["basename"]
                 base_dir.mkdir()
-                for entry in value["listing"]:
-                    if entry["class"] == "File":
-                        if "contents" in entry:
-                            with open(base_dir / entry["basename"], "w") as fh:
-                                fh.write(entry["contents"])
-                        elif "path" in entry:
-                            # if path is abspath test_data_directory is ignored, so no need to check if path is abspath
-                            entry_path = os.path.join(test_data_directory, entry["path"])
-                            os.symlink(entry_path, str((base_dir / entry["path"]).resolve()))
-                    else:
-                        raise Exception(f"{entry['class']} unimplemented")
+                _populate_directory_listing(base_dir, value.get("listing", []))
                 file_path = str(base_dir.resolve())
 
             file_path = os.path.join(test_data_directory, file_path)
