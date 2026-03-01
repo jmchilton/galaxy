@@ -178,10 +178,12 @@ def handle_outputs(job_directory: Optional[str] = None):
             # No a real path, just copy listing to target path.
             safe_makedirs(target_path)
             for listed_file in listing:
-                # TODO: handle directories
-                assert listed_file["class"] == "File"
-                file_description = file_dict_to_description(listed_file)
-                file_description.write_to(os.path.join(target_path, listed_file["basename"]))
+                if listed_file["class"] == "Directory":
+                    move_directory(listed_file, os.path.join(target_path, listed_file["basename"]))
+                else:
+                    assert listed_file["class"] == "File"
+                    file_description = file_dict_to_description(listed_file)
+                    file_description.write_to(os.path.join(target_path, listed_file["basename"]))
         else:
             shutil.move(output_path, target_path)
         return {"created_from_basename": output["basename"]}
@@ -232,12 +234,6 @@ def handle_outputs(job_directory: Optional[str] = None):
         return {"created_from_basename": output["basename"], "ext": "data", "format": output.get("format")}
 
     def handle_known_output(output, output_name):
-        # if output["class"] != "File":
-        #    # This case doesn't seem like it would be reached - why is this here?
-        #    provided_metadata[output_name] = {
-        #        "ext": "expression.json",
-        #    }
-        # else:
         assert output_name
         if output["class"] == "File":
             target_path = job_proxy.output_path(output_name)

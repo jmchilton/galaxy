@@ -757,7 +757,7 @@ def output_to_cwl_json(
                             elif extra_file_class == "Directory":
                                 ec_properties = {}
                                 ec_properties["class"] = "Directory"
-                                ec_properties["location"] = ec_basename
+                                ec_properties["location"] = extra_file_basename
                                 ec_properties["listing"] = dir_listing(path)
                             else:
                                 raise Exception("Unknown output type encountered....")
@@ -814,13 +814,37 @@ def output_to_cwl_json(
                 )
 
                 extra_files = get_extra_files(output_metadata)
-                for extra_file in extra_files:
-                    if extra_file["class"] == "File":
+
+                def _build_listing(prefix=""):
+                    dir_listing = []
+                    for extra_file in extra_files:
                         path = extra_file["path"]
-                        ec = get_dataset(output_metadata, filename=path)
-                        ec["basename"] = os.path.basename(path)
-                        ec_properties = output_properties(pseudo_location=pseudo_location, **ec)
-                        listing.append(ec_properties)
+                        extra_file_class = extra_file["class"]
+                        extra_file_basename = os.path.basename(path)
+                        expected_path = os.path.join(prefix, extra_file_basename) if prefix else extra_file_basename
+                        if expected_path != path:
+                            continue
+
+                        if extra_file_class == "File":
+                            ec = get_dataset(output_metadata, filename=path)
+                            ec["basename"] = extra_file_basename
+                            _download_url = (
+                                output_metadata["download_url"] + f"?filename={urllib.parse.quote_plus(path)}"
+                            )
+                            ec_properties = output_properties(
+                                pseudo_location=pseudo_location, download_url=_download_url, **ec
+                            )
+                        elif extra_file_class == "Directory":
+                            ec_properties = {}
+                            ec_properties["class"] = "Directory"
+                            ec_properties["basename"] = extra_file_basename
+                            ec_properties["listing"] = _build_listing(path)
+                        else:
+                            raise Exception("Unknown output type encountered....")
+                        dir_listing.append(ec_properties)
+                    return dir_listing
+
+                listing.extend(_build_listing())
 
             if secondary_files:
                 properties["secondaryFiles"] = secondary_files
