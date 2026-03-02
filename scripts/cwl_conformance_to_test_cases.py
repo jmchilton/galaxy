@@ -157,7 +157,6 @@ RED_TESTS = {
         "nested_types",
         "networkaccess_disabled",
         "paramref_arguments_inputs",
-        "paramref_arguments_self",
         "pass_through_required_fail",
         "pass_through_required_fail_nojs",
         "pass_through_required_false_when",
