@@ -537,13 +537,17 @@ class JobProxy:
             stage_recursive(self._input_dict)
 
     def _select_resources(self, request, runtime_context=None):
-        new_request = request.copy()
-        # TODO: we really need to find a better solution to set cores here.
-        # This could be to delay building the cwl job until we're at the worker node,
-        # (see https://github.com/galaxyproject/galaxy/pull/12459 for an attempt)
-        # or guessing what the value of $GALAXY_SLOTS will be when preparing the job.
-        new_request["cores"] = SENTINEL_GALAXY_SLOTS_VALUE
-        return new_request
+        import math
+
+        # Match cwltool's default select_resources return format (cores, ram,
+        # tmpdirSize, outdirSize) but override cores with a sentinel that gets
+        # replaced by $GALAXY_SLOTS at runtime.
+        return {
+            "cores": SENTINEL_GALAXY_SLOTS_VALUE,
+            "ram": math.ceil(request["ramMin"]),
+            "tmpdirSize": math.ceil(request["tmpdirMin"]),
+            "outdirSize": math.ceil(request["outdirMin"]),
+        }
 
     @property
     def command_line(self):
