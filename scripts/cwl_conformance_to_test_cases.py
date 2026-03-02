@@ -194,7 +194,6 @@ RED_TESTS = {
         "timelimit_expressiontool",
         "user_defined_length_in_parameter_reference",
         "valuefrom_wf_step",
-        "very_big_and_very_floats_nojs",
         "wf_scatter_flat_crossproduct_oneempty",
         "wf_scatter_nested_crossproduct_firstempty",
         "wf_scatter_nested_crossproduct_secondempty",
