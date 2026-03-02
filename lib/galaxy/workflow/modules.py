@@ -185,12 +185,26 @@ def to_cwl(
                 return json.load(f)
         else:
             hda_references.append(value)
-            properties = {
-                "class": "File",
-                "location": f"step_input://{len(hda_references)}",
-                "format": value.extension,
-                "path": compute_environment.input_path_rewrite(value) if compute_environment else value.get_file_name(),
-            }
+            if value.ext == "directory":
+                _dir_path = (
+                    compute_environment.input_extra_files_rewrite(value)
+                    if compute_environment
+                    else value.dataset.extra_files_path
+                )
+                properties = {
+                    "class": "Directory",
+                    "location": f"step_input://{len(hda_references)}",
+                    "path": _dir_path,
+                }
+            else:
+                properties = {
+                    "class": "File",
+                    "location": f"step_input://{len(hda_references)}",
+                    "format": value.extension,
+                    "path": (
+                        compute_environment.input_path_rewrite(value) if compute_environment else value.get_file_name()
+                    ),
+                }
             set_basename_and_derived_properties(
                 properties, value.dataset.created_from_basename or element_identifier or value.name
             )
