@@ -1,4 +1,5 @@
 # GALAXY_CONFIG_OVERRIDE_STATSD_PREFIX="galaxy" GALAXY_CONFIG_OVERRIDE_STATSD_HOST="localhost" GALAXY_CONFIG_OVERRIDE_STATSD_INFLUXDB="true" GALAXY_CONFIG_OVERRIDE_DATABASE_LOG_QUERY_COUNTS="true" GALAXY_CONFIG_OVERRIDE_ENABLE_PER_REQUEST_SQL_DEBUGGING="true" GALAXY_CONFIG_OVERRIDE_SLOW_QUERY_LOG_THRESHOLD=".05" ./run_tests.sh --structured_data_report_file 'test.json' --api  lib/galaxy_test/api/test_configuration.py
+import logging
 import os
 import uuid
 from urllib.parse import urlencode
@@ -58,6 +59,9 @@ def get_timings(test_uuid):
 
 
 def pytest_configure(config):
+    # Suppress noisy DEBUG messages from third-party libraries during tests
+    for logger_name in ["celery.utils.functional"]:
+        logging.getLogger(logger_name).setLevel(logging.INFO)
     if config.pluginmanager.hasplugin("pytest_jsonreport"):
         if config.getoption("json_report"):
             config.pluginmanager.register(JsonReportHooks())
