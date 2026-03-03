@@ -9884,7 +9884,7 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             rval["input_step_parameters"] = input_parameters
 
             outputs: dict[str, Any] = {}
-            for output_assoc in self.output_datasets:
+            for output_assoc in sorted(self.output_datasets, key=lambda a: a.workflow_output.workflow_step.order_index):
                 # TODO: does this work correctly if outputs are mapped over?
                 label = output_assoc.workflow_output.label
                 if not label:
@@ -9906,7 +9906,9 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
                     outputs[label] = entry
 
             output_collections: dict[str, Any] = {}
-            for output_assoc in self.output_dataset_collections:
+            for output_assoc in sorted(
+                self.output_dataset_collections, key=lambda a: a.workflow_output.workflow_step.order_index
+            ):
                 label = output_assoc.workflow_output.label
                 if not label:
                     label = f"{output_assoc.workflow_output.output_name} (Step {output_assoc.workflow_output.workflow_step.order_index + 1})"
@@ -9929,7 +9931,7 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             rval["output_collections"] = output_collections
 
             output_values = {}
-            for output_param in self.output_values:
+            for output_param in sorted(self.output_values, key=lambda a: a.workflow_step.order_index):
                 label = output_param.workflow_output.label
                 if not label:
                     continue
