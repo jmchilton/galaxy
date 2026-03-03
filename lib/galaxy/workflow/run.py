@@ -1,6 +1,5 @@
 import logging
 import uuid
-from collections.abc import MutableMapping
 from typing import (
     Any,
     Optional,
