@@ -415,7 +415,11 @@ class CwlRun:
             if history_content_type == "raw_value":
                 return {}
             elif history_content_type == "dataset":
-                return self.dataset_populator.get_history_dataset_details(self.history_id, dataset_id=content_id)
+                # Don't wait - job already completed; waiting for entire history
+                # is O(n) per element for large collections (e.g. 9999 elements).
+                return self.dataset_populator.get_history_dataset_details(
+                    self.history_id, dataset_id=content_id, wait=False
+                )
             else:
                 assert history_content_type == "dataset_collection"
                 # Don't wait - we've already done that, history might be "new"
@@ -425,7 +429,8 @@ class CwlRun:
 
         def get_dataset(dataset_details, filename=None):
             content = self.dataset_populator.get_history_dataset_content(
-                self.history_id, dataset_id=dataset_details["id"], type="content", filename=filename
+                self.history_id, dataset_id=dataset_details["id"], type="content", filename=filename,
+                wait=False,
             )
             if filename is None:
                 basename = dataset_details.get("created_from_basename")
