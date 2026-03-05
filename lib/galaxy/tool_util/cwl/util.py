@@ -692,11 +692,13 @@ def output_to_cwl_json(
     def element_to_cwl_json(element):
         object = element["object"]
         content_type = object.get("history_content_type")
-        metadata = None
         if content_type is None:
             content_type = "dataset_collection"
             metadata = element["object"]
             metadata["history_content_type"] = content_type
+        else:
+            # Reuse element object as metadata to avoid extra API call
+            metadata = object
         element_output = GalaxyOutput(
             galaxy_output.history_id,
             content_type,
