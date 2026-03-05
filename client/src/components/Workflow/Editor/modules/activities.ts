@@ -23,6 +23,27 @@ import type { Activity } from "@/stores/activityStoreTypes";
 
 import type { LintData } from "./useLinting";
 
+export function applySaveIndicator(
+    activities: Activity[],
+    persistenceEnabled: boolean,
+    pendingCount: number,
+    saveFailed: boolean,
+): Activity[] {
+    if (!persistenceEnabled) {
+        return activities;
+    }
+    return activities.map((a) => {
+        if (a.id !== "save-workflow") {
+            return a;
+        }
+        return {
+            ...a,
+            indicator: pendingCount > 0 ? pendingCount : undefined,
+            indicatorVariant: saveFailed ? ("danger" as const) : ("primary" as const),
+        };
+    });
+}
+
 export function useWorkflowActivities(
     /** The ID of the activity bar these activities belong to (set to "workflow-editor" for now) */
     activityBarId: string,

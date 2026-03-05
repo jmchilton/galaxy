@@ -24,8 +24,8 @@ export class UndoRedoAction {
         return;
     }
 
-    redo() {
-        this.run();
+    redo(): void | Promise<void> {
+        return this.run();
     }
 
     destroy() {

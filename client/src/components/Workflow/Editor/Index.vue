@@ -280,7 +280,7 @@ import { InsertStepAction, useStepActions } from "./Actions/stepActions";
 import { CopyIntoWorkflowAction, SetValueActionHandler } from "./Actions/workflowActions";
 import { defaultPosition } from "./composables/useDefaultStepPosition";
 import { useWorkflowBoundingBox } from "./composables/workflowBoundingBox";
-import { useSpecialWorkflowActivities, useWorkflowActivities } from "./modules/activities";
+import { applySaveIndicator, useSpecialWorkflowActivities, useWorkflowActivities } from "./modules/activities";
 import { getWorkflowInputs } from "./modules/inputs";
 import { fromSteps } from "./modules/labels";
 import { fromSimple } from "./modules/model";
@@ -651,13 +651,22 @@ export default {
 
         const unprivilegedToolStore = useUnprivilegedToolStore();
         const { canUseUnprivilegedTools } = storeToRefs(unprivilegedToolStore);
-        const workflowActivities = useWorkflowActivities(
+        const saveFailed = ref(false);
+        const baseActivities = useWorkflowActivities(
             "workflow-editor",
             isNewTempWorkflow,
             hasChanges,
             undoStackLength,
             canUseUnprivilegedTools,
             computed(() => undoRedoStore.persistenceEnabled),
+        );
+        const workflowActivities = computed(() =>
+            applySaveIndicator(
+                baseActivities.value,
+                undoRedoStore.persistenceEnabled,
+                undoRedoStore.pendingActions.length,
+                saveFailed.value,
+            ),
         );
 
         const changelogPanel = ref(null);
@@ -742,6 +751,7 @@ export default {
             confirm,
             inputs,
             workflowActivities,
+            saveFailed,
             changelogPanel,
             faKey,
             faWrench,
@@ -1204,6 +1214,7 @@ export default {
             const lastActiveNodeId = this.activeNodeId;
 
             try {
+                this.saveFailed = false;
                 this.loadingWorkflow = true;
                 this.undoRedoStore.flushLazyAction();
 
@@ -1222,6 +1233,7 @@ export default {
 
                 this.changelogPanel?.refresh?.();
             } catch (response) {
+                this.saveFailed = true;
                 this.onWorkflowError("Saving workflow failed...", response, {
                     Ok: () => {
                         this.hideModal();
@@ -1241,13 +1253,13 @@ export default {
         async saveViaRefactor() {
             // Wait for any async actions (e.g. AutoLayout) to finish serializing
             if (this.undoRedoStore.asyncSerializationsInFlight > 0) {
+                let unwatch;
                 await Promise.race([
                     new Promise((resolve) => {
-                        const unwatch = watch(
+                        unwatch = watch(
                             () => this.undoRedoStore.asyncSerializationsInFlight,
                             (val) => {
                                 if (val === 0) {
-                                    unwatch();
                                     resolve(undefined);
                                 }
                             },
@@ -1255,6 +1267,12 @@ export default {
                     }),
                     new Promise((resolve) => setTimeout(resolve, 5000)),
                 ]);
+                unwatch?.();
+
+                // Timeout fired but async still in-flight — force raw-save fallback
+                if (this.undoRedoStore.asyncSerializationsInFlight > 0) {
+                    this.undoRedoStore.allActionsSerialized = false;
+                }
             }
 
             const { pending, allSerialized } = this.undoRedoStore.flushPendingActions();
@@ -1276,7 +1294,12 @@ export default {
             }
 
             const batchTitle = buildBatchTitle(pending.map((p) => p.serialization));
-            await refactor(this.id, allActions, "export", false, undefined, batchTitle, "editor_save");
+            try {
+                await refactor(this.id, allActions, "export", false, undefined, batchTitle, "editor_save");
+            } catch (e) {
+                this.undoRedoStore.restorePendingActions(pending, allSerialized);
+                throw e;
+            }
 
             // Re-fetch to get editor-style data (tool forms, config_form, etc.)
             await this._loadCurrent(this.id);

@@ -203,6 +203,53 @@ describe("undoRedoStore persistence", () => {
         });
     });
 
+    describe("restorePendingActions", () => {
+        it("prepends restored actions before any new ones accumulated during save", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+
+            // Simulate two actions that were flushed for save
+            const action1 = new TestAction();
+            const action2 = new TestAction();
+            store.applyAction(action1);
+            store.applyAction(action2);
+            const { pending } = store.flushPendingActions();
+
+            // User performs a new action during the async save
+            const action3 = new TestAction();
+            store.applyAction(action3);
+            expect(store.pendingActions.length).toBe(1);
+
+            // Save fails — restore the flushed batch
+            store.restorePendingActions(pending, true);
+
+            expect(store.pendingActions.length).toBe(3);
+            // Restored batch comes first, then the new action
+            expect(store.pendingActions[0]!.actionId).toBe(action1.id);
+            expect(store.pendingActions[1]!.actionId).toBe(action2.id);
+            expect(store.pendingActions[2]!.actionId).toBe(action3.id);
+        });
+
+        it("restores allActionsSerialized to false when original batch was not fully serialized", () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(new TestAction());
+            store.flushPendingActions();
+
+            // After flush, allActionsSerialized is reset to true
+            expect(store.allActionsSerialized).toBe(true);
+
+            // Restore with wasSerialized=false
+            store.restorePendingActions([], false);
+
+            expect(store.allActionsSerialized).toBe(false);
+        });
+    });
+
     describe("allActionsSerialized", () => {
         it("is true when all actions serialize successfully", () => {
             enablePersistence();
@@ -314,6 +361,46 @@ describe("undoRedoStore persistence", () => {
 
             expect(store.allActionsSerialized).toBe(false);
             expect(mockSerializeAction).not.toHaveBeenCalled();
+        });
+
+        it("defers serialization on redo of async action", async () => {
+            enablePersistence();
+            mockSerializeAction.mockReturnValue(makeSuccessResult());
+
+            // Action that creates a fresh promise per run() call
+            let currentResolve!: () => void;
+            const action = new (class extends UndoRedoAction {
+                run() {
+                    return new Promise<void>((resolve) => {
+                        currentResolve = resolve;
+                    });
+                }
+            })();
+
+            const store = useUndoRedoStore(workflowId);
+            store.applyAction(action);
+
+            // Resolve initial apply
+            currentResolve();
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(0));
+            expect(store.pendingActions.length).toBe(1);
+            mockSerializeAction.mockClear();
+
+            // Undo removes pending action
+            store.undo();
+            expect(store.pendingActions.length).toBe(0);
+
+            // Redo calls run() again → new promise → should defer serialization
+            store.redo();
+
+            expect(store.asyncSerializationsInFlight).toBe(1);
+            expect(mockSerializeAction).not.toHaveBeenCalled();
+
+            currentResolve();
+            await vi.waitFor(() => expect(store.asyncSerializationsInFlight).toBe(0));
+
+            expect(mockSerializeAction).toHaveBeenCalledWith(action);
+            expect(store.pendingActions.length).toBe(1);
         });
 
         it("tracks multiple concurrent async actions", async () => {

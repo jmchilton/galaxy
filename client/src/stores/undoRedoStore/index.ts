@@ -85,9 +85,26 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         const action = redoActionStack.value.pop();
 
         if (action !== undefined) {
-            action.redo();
+            const result = action.redo();
             undoActionStack.value.push(action);
-            trySerialize(action);
+
+            if (result instanceof Promise) {
+                asyncSerializationsInFlight.value++;
+                result
+                    .then(() => {
+                        if (undoActionStack.value.includes(action)) {
+                            trySerialize(action);
+                        }
+                    })
+                    .catch(() => {
+                        allActionsSerialized.value = false;
+                    })
+                    .finally(() => {
+                        asyncSerializationsInFlight.value--;
+                    });
+            } else {
+                trySerialize(action);
+            }
         }
     }
 
@@ -205,6 +222,13 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         return { pending: flushed, allSerialized: serialized };
     }
 
+    function restorePendingActions(actions: PendingAction[], wasSerialized: boolean): void {
+        pendingActions.value = [...actions, ...pendingActions.value];
+        if (!wasSerialized) {
+            allActionsSerialized.value = false;
+        }
+    }
+
     const isQueued = computed(() => (action?: UndoRedoAction | null) => action && pendingLazyAction.value === action);
 
     const nextUndoAction = computed(() => undoActionStack.value[undoActionStack.value.length - 1]);
@@ -280,6 +304,7 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
         clearLazyAction,
         flushLazyAction,
         flushPendingActions,
+        restorePendingActions,
         setLazyActionTimeout,
         isQueued,
         pendingLazyAction,

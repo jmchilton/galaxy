@@ -3,7 +3,9 @@ import { setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ref, shallowRef } from "vue";
 
-import { useSpecialWorkflowActivities, useWorkflowActivities } from "./activities";
+import type { Activity } from "@/stores/activityStoreTypes";
+
+import { applySaveIndicator, useSpecialWorkflowActivities, useWorkflowActivities } from "./activities";
 import type { LintData } from "./useLinting";
 
 function makeLintData(totalPriority = 0, resolvedPriority = 0, totalAttribute = 0, resolvedAttribute = 0): LintData {
@@ -15,6 +17,26 @@ function makeLintData(totalPriority = 0, resolvedPriority = 0, totalAttribute = 
     } as unknown as LintData;
 }
 
+function makeSaveActivity(): Activity {
+    return {
+        id: "save-workflow",
+        title: "Save",
+        description: "Save this workflow.",
+        tooltip: "Save current changes",
+        visible: true,
+    };
+}
+
+function makeOtherActivity(): Activity {
+    return {
+        id: "workflow-editor-tools",
+        title: "Tools",
+        description: "Tool panel.",
+        tooltip: "Search tools",
+        visible: true,
+    };
+}
+
 describe("useWorkflowActivities", () => {
     beforeEach(() => {
         const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
@@ -22,12 +44,12 @@ describe("useWorkflowActivities", () => {
     });
 
     it("excludes custom tools when canUseUnprivilegedTools is false", () => {
-        const activities = useWorkflowActivities("workflow-editor", ref(false), ref(false), ref(0), ref(false));
+        const activities = useWorkflowActivities("workflow-editor", ref(false), ref(false), ref(0), ref(false), ref(false));
         expect(activities.value.map((a) => a.id)).not.toContain("workflow-editor-user-defined-tools");
     });
 
     it("includes custom tools when canUseUnprivilegedTools is true", () => {
-        const activities = useWorkflowActivities("workflow-editor", ref(false), ref(false), ref(0), ref(true));
+        const activities = useWorkflowActivities("workflow-editor", ref(false), ref(false), ref(0), ref(true), ref(false));
         expect(activities.value.map((a) => a.id)).toContain("workflow-editor-user-defined-tools");
     });
 
@@ -39,6 +61,7 @@ describe("useWorkflowActivities", () => {
             ref(false),
             undoStackLength,
             ref(false),
+            ref(false),
         );
         const changesActivity = () => activities.value.find((a) => a.id === "workflow-undo-redo");
 
@@ -49,12 +72,47 @@ describe("useWorkflowActivities", () => {
 
     it("reflects hasChanges reactively as the Save activity tooltip", () => {
         const hasChanges = ref(false);
-        const activities = useWorkflowActivities("workflow-editor", ref(false), hasChanges, ref(0), ref(false));
+        const activities = useWorkflowActivities("workflow-editor", ref(false), hasChanges, ref(0), ref(false), ref(false));
         const saveTooltip = () => activities.value.find((a) => a.id === "save-workflow")?.tooltip;
 
         expect(saveTooltip()).toBe("No changes to save");
         hasChanges.value = true;
         expect(saveTooltip()).toBe("Save current changes");
+    });
+});
+
+describe("applySaveIndicator", () => {
+    it("shows count indicator when persistence enabled and actions pending", () => {
+        const activities = [makeOtherActivity(), makeSaveActivity()];
+        const result = applySaveIndicator(activities, true, 3, false);
+
+        const save = result.find((a) => a.id === "save-workflow")!;
+        expect(save.indicator).toBe(3);
+        expect(save.indicatorVariant).toBe("primary");
+    });
+
+    it("shows no indicator when pending count is 0", () => {
+        const activities = [makeSaveActivity()];
+        const result = applySaveIndicator(activities, true, 0, false);
+
+        const save = result.find((a) => a.id === "save-workflow")!;
+        expect(save.indicator).toBeUndefined();
+    });
+
+    it("uses danger variant when saveFailed is true", () => {
+        const activities = [makeSaveActivity()];
+        const result = applySaveIndicator(activities, true, 2, true);
+
+        const save = result.find((a) => a.id === "save-workflow")!;
+        expect(save.indicator).toBe(2);
+        expect(save.indicatorVariant).toBe("danger");
+    });
+
+    it("returns activities unchanged when persistence disabled", () => {
+        const activities = [makeOtherActivity(), makeSaveActivity()];
+        const result = applySaveIndicator(activities, false, 5, false);
+
+        expect(result).toBe(activities); // same reference, no-op
     });
 });
 
