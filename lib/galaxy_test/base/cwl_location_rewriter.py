@@ -4,95 +4,10 @@ import logging
 import os
 import urllib.parse
 
-from cwltool.context import LoadingContext
-from cwltool.load_tool import default_loader
-from cwltool.pack import pack
+from cwl_utils.pack import pack
 from cwltool.utils import visit_field
 
 log = logging.getLogger(__name__)
-
-# https://github.com/common-workflow-language/cwltool/issues/1937
-PACKED_WORKFLOWS_CWL_BUG = {
-    "conflict-wf.cwl": """
-$graph:
-- baseCommand: echo
-  class: CommandLineTool
-  id: echo
-  inputs:
-    text:
-      inputBinding: {}
-      type: string
-  outputs:
-    fileout:
-      outputBinding: {glob: out.txt}
-      type: File
-  stdout: out.txt
-- baseCommand: cat
-  class: CommandLineTool
-  id: cat
-  inputs:
-    file1:
-      inputBinding: {position: 1}
-      type: File
-    file2:
-      inputBinding: {position: 2}
-      type: File
-  outputs:
-    fileout:
-      outputBinding: {glob: out.txt}
-      type: File
-  stdout: out.txt
-- class: Workflow
-  id: collision
-  inputs: {input_1: string, input_2: string}
-  outputs:
-    fileout: {outputSource: cat_step/fileout, type: File}
-  steps:
-    cat_step:
-      in:
-        file1: {source: echo_1/fileout}
-        file2: {source: echo_2/fileout}
-      out: [fileout]
-      run: '#cat'
-    echo_1:
-      in: {text: input_1}
-      out: [fileout]
-      run: '#echo'
-    echo_2:
-      in: {text: input_2}
-      out: [fileout]
-      run: '#echo'
-cwlVersion: v1.1
-""",
-    "js-expr-req-wf.cwl": """
-$graph:
-- arguments: [echo, $(foo())]
-  class: CommandLineTool
-  hints:
-    ResourceRequirement: {ramMin: 8}
-  id: tool
-  inputs: []
-  outputs: {out: stdout}
-  requirements:
-    InlineJavascriptRequirement:
-      expressionLib: ['function foo() { return 2; }']
-  stdout: whatever.txt
-- class: Workflow
-  id: wf
-  inputs: []
-  outputs:
-    out: {outputSource: tool/out, type: File}
-  requirements:
-    InlineJavascriptRequirement:
-      expressionLib: ['function bar() { return 1; }']
-  steps:
-    tool:
-      in: {}
-      out: [out]
-      run: '#tool'
-cwlVersion: v1.0
-""",
-}
 
 
 def get_cwl_test_url(cwl_version):
@@ -126,21 +41,8 @@ def get_url(item, cwl_version, base_dir):
 
 
 def rewrite_locations(workflow_path: str, output_path: str):
-    workflow_path_basename = os.path.basename(workflow_path)
-    if workflow_path_basename in PACKED_WORKFLOWS_CWL_BUG:
-        with open(output_path, "w") as output:
-            output.write(PACKED_WORKFLOWS_CWL_BUG[workflow_path_basename])
-            return
-    loading_context = LoadingContext()
-    loading_context.loader = default_loader()
-    workflow_obj = pack(loading_context, workflow_path)
+    workflow_obj = pack(workflow_path)
     cwl_version = workflow_path.split("test/functional/tools/cwl_tools/v")[1].split("/")[0]
-    # deps = find_deps(workflow_obj, loading_context.loader, uri)
-    # basedir=os.path.dirname(workflow_path)
-    # base_dir must be the CWL tests root directory so that relative paths
-    # in defaults (like mixed-versions/hello.txt) map correctly to URLs.
-    # get_cwl_test_url() returns e.g. https://.../tests, so relpath must be
-    # computed from the local "tests/" directory (not the workflow's subdir).
     cwl_tools_root = (
         workflow_path.split("test/functional/tools/cwl_tools/v")[0] + f"test/functional/tools/cwl_tools/v{cwl_version}/"
     )
