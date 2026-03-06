@@ -54,10 +54,6 @@ RED_TESTS = {
     ],
     "v1.1": [
         # required
-        "input_records_file_entry_with_format",
-        "outputEval_exitCode",
-        "outputbinding_glob_directory",
-        "secondary_files_missing",
         "stage_file_array_to_dir",
         "stage_file_array_to_dir_basename",
         "stage_file_array_to_dir_basename_entryname",
