@@ -384,8 +384,12 @@ def raw_to_galaxy(
     if object_class == "File":
         # TODO: relative_to = "/"
         location = as_dict_value.get("location") or as_dict_value.get("path")
-        assert location
-        assert os.path.exists(location[len("file://")])
+        if not location:
+            raise ValueError("CWL File default must have a 'location' or 'path'")
+        if location.startswith("file://"):
+            local_path = location[len("file://"):]
+            if not os.path.exists(local_path):
+                raise ValueError(f"CWL File default references non-existent path: {local_path}")
         name = (
             as_dict_value.get("identifier")
             or as_dict_value.get("basename")
