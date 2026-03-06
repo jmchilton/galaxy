@@ -698,7 +698,12 @@ def output_to_cwl_json(
             metadata["history_content_type"] = content_type
         else:
             # Reuse element object as metadata to avoid extra API call
-            metadata = object
+            # for expression.json datasets (scalars). File/Directory outputs
+            # need full dataset details (download_url etc.) from get_metadata.
+            if object.get("file_ext") == "expression.json":
+                metadata = object
+            else:
+                metadata = None
         element_output = GalaxyOutput(
             galaxy_output.history_id,
             content_type,
