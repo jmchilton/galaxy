@@ -28,12 +28,23 @@ def get_url(item, cwl_version, base_dir):
     if isinstance(item, dict) and item.get("class") == "File":
         location = item.pop("path", None)
         if not location:
-            parse_result = urllib.parse.urlparse(item["location"])
+            raw_location = item.get("location")
+            if not raw_location:
+                return item
+            parse_result = urllib.parse.urlparse(raw_location)
             if parse_result.scheme == "file":
                 location = urllib.parse.unquote(parse_result.path)
-            if base_dir not in location:
+                if base_dir not in location:
+                    return item
+                location = os.path.relpath(location, base_dir)
+            elif parse_result.scheme in ("http", "https"):
+                # Already a remote URL — leave as-is
                 return item
-            location = os.path.relpath(location, base_dir)
+            elif parse_result.scheme == "":
+                # Bare relative path (e.g. from cwl_utils.pack) — use directly
+                location = raw_location
+            else:
+                return item
         url = f"{get_cwl_test_url(cwl_version)}/{location}"
         log.debug("Rewrote location from '%s' to '%s'", location, url)
         item["location"] = url
