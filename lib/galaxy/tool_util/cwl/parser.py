@@ -754,14 +754,20 @@ def _stage_generate_files(generate_mapper, stage_func, inplace_update):
 
 
 class WorkflowProxy:
-    def __init__(self, workflow: "workflow.Workflow", workflow_path: Optional[str] = None):
+    def __init__(
+        self,
+        workflow: "workflow.Workflow",
+        workflow_path: Optional[str] = None,
+        cwl_id_override: Optional[str] = None,
+    ):
         self._workflow = workflow
         self._workflow_path = workflow_path
         self._step_proxies: Optional[List[Union[SubworkflowStepProxy, ToolStepProxy]]] = None
+        self._cwl_id_override = cwl_id_override
 
     @property
     def cwl_id(self):
-        return self._workflow.tool["id"]
+        return self._cwl_id_override or self._workflow.tool["id"]
 
     def get_outputs_for_label(self, label):
         outputs = []
@@ -1325,7 +1331,16 @@ class SubworkflowStepProxy(BaseStepProxy):
     @property
     def subworkflow_proxy(self):
         if self._subworkflow_proxy is None:
-            self._subworkflow_proxy = WorkflowProxy(self.cwl_tool_object)
+            embedded = self.cwl_tool_object
+            cwl_id_override = None
+            # When cwl_utils.pack inlines a subworkflow, cwltool assigns it a
+            # blank-node id (_:uuid) but resolves internal step/input references
+            # relative to the parent document URI (e.g. file:///tmp/...#step1/run/...).
+            # Derive the correct namespace from the step id so split_step_references
+            # can strip the prefix correctly.
+            if embedded.tool["id"].startswith("_:"):
+                cwl_id_override = self._step.id + "/run"
+            self._subworkflow_proxy = WorkflowProxy(embedded, cwl_id_override=cwl_id_override)
         return self._subworkflow_proxy
 
 
