@@ -16,6 +16,23 @@ from .util import (
 )
 
 
+EMPTY_DIR_MARKER = ".galaxy_empty_directory"
+
+
+def _ensure_no_empty_dirs(directory):
+    """Place a marker file in empty leaf directories.
+
+    Galaxy's object store persists only files; empty directories are silently
+    dropped.  CWL Directory outputs may legitimately contain empty subdirs
+    (e.g. ``mkdir -p a/b/c``).  Placing a zero-byte marker in each empty
+    leaf ensures the directory tree survives round-tripping through the
+    object store (parent dirs are created automatically when persisting files).
+    """
+    for root, dirs, files in os.walk(directory, topdown=False):
+        if not files and not dirs:
+            open(os.path.join(root, EMPTY_DIR_MARKER), "w").close()
+
+
 def file_dict_to_description(file_dict):
     output_class = file_dict["class"]
     assert output_class in ["File", "Directory"], file_dict
@@ -184,6 +201,11 @@ def handle_outputs(job_directory: Optional[str] = None):
                 file_description.write_to(os.path.join(target_path, listed_file["basename"]))
         else:
             shutil.move(output_path, target_path)
+        # Galaxy's object store only persists files, not empty directories.
+        # CWL Directory outputs may contain empty subdirs (e.g. mkdir -p a/b/c).
+        # Place a marker file in each empty leaf directory so the structure
+        # survives persistence and can be reconstructed on input.
+        _ensure_no_empty_dirs(target_path)
         return {"created_from_basename": output["basename"]}
 
     def move_output(output, target_path, output_name=None):

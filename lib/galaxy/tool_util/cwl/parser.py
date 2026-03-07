@@ -8,6 +8,7 @@ import copy
 import json
 import logging
 import os
+import shutil
 from abc import (
     ABCMeta,
     abstractmethod,
@@ -712,13 +713,44 @@ class JobProxy:
             )
             # TODO: figure out what inplace_update should be.
             inplace_update = cwl_job.inplace_update
-            process.stage_files(generate_mapper, stageFunc, ignore_writable=inplace_update, symlink=False)
+            _stage_generate_files(generate_mapper, stageFunc, inplace_update)
             relink_initialworkdir(generate_mapper, outdir, outdir, inplace_update=inplace_update)
         # else: expression tools do not have a path mapper.
 
     @staticmethod
     def _job_file(job_directory):
         return os.path.join(job_directory, JOB_JSON_FILE)
+
+
+def _stage_generate_files(generate_mapper, stage_func, inplace_update):
+    """Stage InitialWorkDirRequirement entries.
+
+    cwltool's ``process.stage_files`` with ``symlink=False`` iterates ALL
+    pathmapper entries (including children of directories).  For
+    ``WritableDirectory`` entries it calls ``shutil.copytree`` which already
+    copies the entire subtree, causing child directory entries to fail with
+    ``FileExistsError``.  This function reimplements the staging loop with
+    ``dirs_exist_ok=True`` to handle that case.
+    """
+    ignore_writable = inplace_update
+    for _key, entry in generate_mapper.items():
+        if not entry.staged:
+            continue
+        if not os.path.exists(os.path.dirname(entry.target)):
+            os.makedirs(os.path.dirname(entry.target))
+        if entry.type in ("File", "Directory"):
+            if os.path.exists(entry.resolved):
+                stage_func(entry.resolved, entry.target)
+        elif entry.type == "WritableFile" and not ignore_writable:
+            shutil.copy(entry.resolved, entry.target)
+        elif entry.type == "WritableDirectory" and not ignore_writable:
+            if entry.resolved.startswith("_:"):
+                os.makedirs(entry.target, exist_ok=True)
+            else:
+                shutil.copytree(entry.resolved, entry.target, dirs_exist_ok=True)
+        elif entry.type in ("CreateFile", "CreateWritableFile"):
+            with open(entry.target, "w") as new:
+                new.write(entry.resolved)
 
 
 class WorkflowProxy:
