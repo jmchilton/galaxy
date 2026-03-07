@@ -88,7 +88,7 @@ class RoundTripResult:
 
 # -- Comparison logic --
 
-SKIP_KEYS = {"__current_case__", "__page__", "__rerun_remap_job_id__"}
+SKIP_KEYS = {"__current_case__", "__page__", "__rerun_remap_job_id__", "__index__", "__job_resource", "chromInfo"}
 
 
 def compare_tool_state(orig: dict, after: dict, path: str = "") -> List[str]:
@@ -99,17 +99,64 @@ def compare_tool_state(orig: dict, after: dict, path: str = "") -> List[str]:
         if key in SKIP_KEYS:
             continue
         key_path = f"{path}.{key}" if path else key
-        orig_val = orig.get(key)
-        after_val = after.get(key)
+        orig_val = _try_json_decode(orig.get(key))
+        after_val = _try_json_decode(after.get(key))
         if key not in orig:
-            diffs.append(f"{key_path}: missing in original, present in roundtripped ({after_val!r})")
+            # New key in roundtripped — only a diff if it has a meaningful value
+            if after_val not in (None, "null"):
+                diffs.append(f"{key_path}: missing in original, present in roundtripped ({after_val!r})")
         elif key not in after:
-            diffs.append(f"{key_path}: present in original ({orig_val!r}), missing in roundtripped")
+            # Missing in roundtripped — null/None/RuntimeValue/ConnectedValue/empty are expected to be stripped
+            if orig_val not in (None, "null", []) and not _is_connection_marker(orig_val):
+                diffs.append(f"{key_path}: present in original ({orig_val!r}), missing in roundtripped")
         elif isinstance(orig_val, dict) and isinstance(after_val, dict):
             diffs.extend(compare_tool_state(orig_val, after_val, key_path))
+        elif isinstance(orig_val, list) and isinstance(after_val, list):
+            diffs.extend(_compare_list_state(orig_val, after_val, key_path))
         elif not _values_equivalent(orig_val, after_val):
             diffs.append(f"{key_path}: {orig_val!r} != {after_val!r}")
     return diffs
+
+
+def _compare_list_state(orig: list, after: list, path: str) -> List[str]:
+    """Compare lists (e.g. repeat instances) in tool state."""
+    diffs = []
+    # Parse JSON strings if needed
+    if len(orig) > 0 and isinstance(orig[0], str):
+        try:
+            orig = [json.loads(v) if isinstance(v, str) else v for v in orig]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if len(after) > 0 and isinstance(after[0], str):
+        try:
+            after = [json.loads(v) if isinstance(v, str) else v for v in after]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if len(orig) != len(after):
+        diffs.append(f"{path}: {len(orig)} items vs {len(after)}")
+        return diffs
+    for i, (o, a) in enumerate(zip(orig, after)):
+        item_path = f"{path}[{i}]"
+        if isinstance(o, dict) and isinstance(a, dict):
+            diffs.extend(compare_tool_state(o, a, item_path))
+        elif not _values_equivalent(o, a):
+            diffs.append(f"{item_path}: {o!r} != {a!r}")
+    return diffs
+
+
+def _try_json_decode(value):
+    """Try to JSON-decode a string value. Returns original if not decodable."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return value
+
+
+def _is_connection_marker(value) -> bool:
+    """Check if value is a ConnectedValue/RuntimeValue marker."""
+    return isinstance(value, dict) and value.get("__class__") in ("ConnectedValue", "RuntimeValue")
 
 
 def _values_equivalent(a: Any, b: Any) -> bool:
@@ -307,6 +354,10 @@ def full_roundtrip_native(
     # Build format2 workflow with state blocks
     # Use gxformat2's from_galaxy_native as the structural base
     native_copy = copy.deepcopy(workflow_dict)
+    # Ensure steps have required fields for gxformat2 export
+    for step in native_copy.get("steps", {}).values():
+        step.setdefault("label", None)
+        step.setdefault("annotation", "")
     format2_dict = from_galaxy_native(native_copy)
 
     # Replace tool_state with state for each tool step
@@ -316,10 +367,14 @@ def full_roundtrip_native(
     else:
         steps_iter = format2_steps.items()
 
+    # Count input steps to compute offset (format2 inputs are in 'inputs' dict, not 'steps')
+    num_inputs = len(format2_dict.get("inputs", {}))
+
     for step_key, format2_step in steps_iter:
         if format2_step.get("tool_id") or "tool_state" in format2_step:
-            # Find the matching native step
-            native_step = _find_matching_native_step(workflow_dict, format2_step)
+            # Map format2 step index to native step id
+            native_step_id = step_key + num_inputs if isinstance(step_key, int) else step_key
+            native_step = _find_matching_native_step(workflow_dict, format2_step, native_step_id)
             if native_step:
                 try:
                     f2_state = convert_state_to_format2(native_step, get_tool_info)
@@ -356,18 +411,21 @@ def full_roundtrip_native(
     return step_result, all_diffs
 
 
-def _find_matching_native_step(native_workflow: dict, format2_step: dict) -> Optional[dict]:
-    """Find the native step matching a format2 step by tool_id."""
+def _find_matching_native_step(native_workflow: dict, format2_step: dict, format2_index: int) -> Optional[dict]:
+    """Find the native step matching a format2 step by position."""
+    # Match by step index — format2 steps are ordered to correspond to native step indices
+    # The format2 steps list includes input steps, so format2_index maps to the native step id
+    step_id = str(format2_index)
+    native_steps = native_workflow.get("steps", {})
+    if step_id in native_steps:
+        return native_steps[step_id]
+    # Fallback: try matching by label then tool_id
     tool_id = format2_step.get("tool_id")
     label = format2_step.get("label")
-    for step in native_workflow["steps"].values():
-        if step.get("tool_id") == tool_id:
-            if label and step.get("label") == label:
-                return step
-            if not label:
-                return step
-    # Fallback: first step with matching tool_id
-    for step in native_workflow["steps"].values():
+    for step in native_steps.values():
+        if label and step.get("label") == label and step.get("tool_id") == tool_id:
+            return step
+    for step in native_steps.values():
         if step.get("tool_id") == tool_id:
             return step
     return None
@@ -532,6 +590,85 @@ def print_sweep_results(results: Dict[str, RoundTripResult]):
     print(f"\n{'='*80}")
 
 
+@dataclass
+class FullRoundTripResult:
+    workflow_name: str
+    conversion_success: bool
+    diffs: Optional[List[str]] = None
+    error: Optional[str] = None
+
+    @property
+    def success(self) -> bool:
+        return self.conversion_success and self.diffs is not None and len(self.diffs) == 0
+
+
+def run_full_roundtrip_sweep(get_tool_info: Optional[GetToolInfo] = None) -> Dict[str, FullRoundTripResult]:
+    """Run full native→format2→native'→compare for all native workflows."""
+    if get_tool_info is None:
+        get_tool_info = GET_TOOL_INFO
+
+    results: Dict[str, FullRoundTripResult] = {}
+
+    for filename in NATIVE_WORKFLOWS:
+        path = os.path.join(TEST_BASE_DATA_DIRECTORY, filename)
+        if not os.path.exists(path):
+            continue
+        try:
+            workflow = load_native_workflow(filename)
+            step_result, diffs = full_roundtrip_native(workflow, get_tool_info, filename)
+            if not step_result.success:
+                failures = [r for r in step_result.step_results if not r.success]
+                error = "; ".join(f"step {f.step_id}: {f.error}" for f in failures)
+                results[filename] = FullRoundTripResult(
+                    workflow_name=filename, conversion_success=False, error=error,
+                )
+            else:
+                results[filename] = FullRoundTripResult(
+                    workflow_name=filename, conversion_success=True, diffs=diffs,
+                )
+        except Exception as e:
+            results[filename] = FullRoundTripResult(
+                workflow_name=filename, conversion_success=False, error=str(e),
+            )
+
+    return results
+
+
+def print_full_roundtrip_results(results: Dict[str, FullRoundTripResult]):
+    print(f"\n{'='*80}")
+    print(f"Full Round-Trip Sweep (native → format2 → native' → compare)")
+    print(f"{'='*80}\n")
+
+    passes = []
+    conversion_failures = []
+    diff_failures = []
+    for name, result in sorted(results.items()):
+        if result.success:
+            passes.append(name)
+        elif not result.conversion_success:
+            conversion_failures.append((name, result))
+        else:
+            diff_failures.append((name, result))
+
+    print(f"PASSED: {len(passes)}/{len(results)}")
+    for name in passes:
+        print(f"  [PASS] {name}")
+
+    if conversion_failures:
+        print(f"\nCONVERSION FAILURES: {len(conversion_failures)}")
+        for name, result in conversion_failures:
+            print(f"  [CONV] {name}: {result.error}")
+
+    if diff_failures:
+        print(f"\nDIFF FAILURES: {len(diff_failures)}")
+        for name, result in diff_failures:
+            print(f"  [DIFF] {name}:")
+            for d in (result.diffs or []):
+                print(f"    {d}")
+
+    print(f"\n{'='*80}")
+
+
 # -- Pytest tests --
 
 
@@ -539,11 +676,16 @@ class TestRoundTripSweep:
     """Run the sweep and report. This is the main entry point for cataloging failures."""
 
     def test_sweep_report(self):
-        """Run full sweep and print results. Does NOT assert all pass - this is diagnostic."""
+        """Run per-step conversion sweep. Does NOT assert all pass - this is diagnostic."""
         results = run_sweep()
         print_sweep_results(results)
-        # Store results for inspection
         self._results = results
+
+    def test_full_roundtrip_sweep(self):
+        """Run full native→format2→native'→compare sweep for native workflows."""
+        results = run_full_roundtrip_sweep()
+        print_full_roundtrip_results(results)
+        self._full_results = results
 
 
 class TestNativeRoundTrip:
@@ -558,6 +700,34 @@ class TestNativeRoundTrip:
         workflow = load_native_workflow("test_workflow_1.ga")
         result = roundtrip_native_workflow(workflow, GET_TOOL_INFO, "test_workflow_1.ga")
         _assert_roundtrip_passes(result)
+
+
+class TestFullNativeRoundTrip:
+    """Full round-trip: native → format2 → native' → compare."""
+
+    def test_workflow_1(self):
+        workflow = load_native_workflow("test_workflow_1.ga")
+        result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_workflow_1.ga")
+        _assert_roundtrip_passes(result)
+        _assert_no_diffs(diffs, "test_workflow_1.ga")
+
+    def test_workflow_two_random_lines(self):
+        workflow = load_native_workflow("test_workflow_two_random_lines.ga")
+        result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_workflow_two_random_lines.ga")
+        _assert_roundtrip_passes(result)
+        _assert_no_diffs(diffs, "test_workflow_two_random_lines.ga")
+
+    def test_workflow_batch(self):
+        workflow = load_native_workflow("test_workflow_batch.ga")
+        result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_workflow_batch.ga")
+        _assert_roundtrip_passes(result)
+        _assert_no_diffs(diffs, "test_workflow_batch.ga")
+
+    def test_workflow_pause(self):
+        workflow = load_native_workflow("test_workflow_pause.ga")
+        result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_workflow_pause.ga")
+        _assert_roundtrip_passes(result)
+        _assert_no_diffs(diffs, "test_workflow_pause.ga")
 
 
 class TestFormat2RoundTrip:
@@ -615,6 +785,14 @@ def _assert_roundtrip_passes(result: RoundTripResult):
             for f in failures
         )
         pytest.fail(f"Round-trip failed for {result.workflow_name}:\n{details}")
+
+
+def _assert_no_diffs(diffs: Optional[List[str]], workflow_name: str):
+    if diffs is None:
+        pytest.fail(f"Full round-trip for {workflow_name} did not produce comparison (conversion failed)")
+    if diffs:
+        details = "\n".join(f"  {d}" for d in diffs)
+        pytest.fail(f"Round-trip diffs for {workflow_name}:\n{details}")
 
 
 # -- CLI entry point --

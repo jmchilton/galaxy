@@ -15,6 +15,7 @@ import json
 from galaxy.tool_util.parameters import (
     ConditionalParameterModel,
     ConditionalWhen,
+    repeat_inputs_to_array,
     RepeatParameterModel,
     SelectParameterModel,
     ToolParameterT,
@@ -271,7 +272,13 @@ def _convert_state_at_level(
         if isinstance(repeat_state, str):
             repeat_state = json.loads(repeat_state)
         if not isinstance(repeat_state, list):
-            return
+            repeat_state = []
+
+        # Ensure enough instances for connections (e.g. inputs_0|input, inputs_1|input)
+        repeat_instance_connects = repeat_inputs_to_array(state_path, input_connections)
+        max_instances = max(len(repeat_state), len(repeat_instance_connects))
+        while len(repeat_state) < max_instances:
+            repeat_state.append({})
 
         format2_array = []
         for i, instance in enumerate(repeat_state):

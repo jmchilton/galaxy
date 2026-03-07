@@ -48,11 +48,16 @@ class GalaxyGetToolInfo(GetToolInfo):
         self.stock_tools_latest_version = stock_tools_latest_version
 
     def get_tool_info(self, tool_id: str, tool_version: Optional[str]) -> ParsedTool:
+        tool_versions = self.stock_tools.get(tool_id, {})
+        if not tool_versions:
+            raise KeyError(tool_id)
         if tool_version is not None:
-            return self.stock_tools[tool_id][parse_version(tool_version)]
-        else:
-            latest_verison = self.stock_tools_latest_version[tool_id]
-            return self.stock_tools[tool_id][latest_verison]
+            version_key = parse_version(tool_version)
+            if version_key in tool_versions:
+                return tool_versions[version_key]
+        # Fall back to latest version
+        latest_version = self.stock_tools_latest_version[tool_id]
+        return tool_versions[latest_version]
 
 
 GET_TOOL_INFO = GalaxyGetToolInfo()
