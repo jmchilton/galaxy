@@ -1,7 +1,7 @@
 from typing import (
+    Any,
     cast,
     Dict,
-    List,
     Optional,
 )
 
@@ -13,15 +13,9 @@ from pydantic import (
 import json
 
 from galaxy.tool_util.parameters import (
-    ConditionalParameterModel,
-    ConditionalWhen,
-    repeat_inputs_to_array,
-    RepeatParameterModel,
     SelectParameterModel,
     ToolParameterT,
-    validate_explicit_conditional_test_value,
 )
-from galaxy.tool_util_models.parameters import SectionParameterModel
 from galaxy.tool_util_models import ParsedTool
 from ._types import (
     Format2StateDict,
@@ -29,6 +23,10 @@ from ._types import (
     NativeStepDict,
 )
 from .validation_format2 import validate_step_against
+from ._walker import (
+    SKIP_VALUE,
+    walk_native_state,
+)
 from .validation_native import (
     get_parsed_tool_for_native_step,
     native_tool_state,
@@ -93,7 +91,6 @@ def _validate_converted_result(result: "Format2State", parsed_tool: ParsedTool):
     markers for parameters that are in the `in` dict.
     """
     import copy
-    import re
     from galaxy.tool_util.parameters import WorkflowStepLinkedToolState
 
     # Build a state dict with ConnectedValue markers for connected params
@@ -167,150 +164,45 @@ def _inject_connected_value(state: dict, connection_path: str):
 
 
 def _convert_valid_state_to_format2(native_step_dict: NativeStepDict, parsed_tool: ParsedTool) -> Format2State:
-    format2_state: Format2StateDict = {}
     format2_in: Format2InputsDictT = {}
-
     root_tool_state = native_tool_state(native_step_dict)
-    tool_inputs = parsed_tool.inputs
-    _convert_state_level(native_step_dict, tool_inputs, root_tool_state, format2_state, format2_in)
+    input_connections = native_step_dict.get("input_connections", {})
+
+    def convert_leaf(tool_input: ToolParameterT, value: Any, state_path: str):
+        parameter_type = tool_input.parameter_type
+
+        if parameter_type in ["gx_data", "gx_data_collection"]:
+            if state_path in input_connections or _is_connected_value(value):
+                format2_in[state_path] = "placeholder"
+            elif isinstance(value, dict) and value.get("__class__") == "RuntimeValue":
+                format2_in[state_path] = "placeholder"
+            return SKIP_VALUE
+
+        if parameter_type == "gx_rules":
+            if value is not None and not _is_connected_value(value):
+                if isinstance(value, str):
+                    value = json.loads(value)
+                return value
+            return SKIP_VALUE
+
+        # Scalar types
+        if _is_connected_value(value):
+            format2_in[state_path] = "placeholder"
+            return SKIP_VALUE
+        if state_path in input_connections:
+            format2_in[state_path] = "placeholder"
+            return SKIP_VALUE
+        if value is not None and value != "null":
+            return _convert_scalar_value(parameter_type, tool_input.name, value, tool_input)
+        return SKIP_VALUE
+
+    format2_state = walk_native_state(native_step_dict, parsed_tool.inputs, root_tool_state, convert_leaf)
     return Format2State(
         **{
             "state": format2_state,
             "in": format2_in,
         }
     )
-
-
-def _convert_state_level(
-    step: NativeStepDict,
-    tool_inputs: List[ToolParameterT],
-    native_state: dict,
-    format2_state_at_level: dict,
-    format2_in: Format2InputsDictT,
-    prefix: Optional[str] = None,
-) -> None:
-    prefix = prefix or ""
-    assert prefix is not None
-    for tool_input in tool_inputs:
-        _convert_state_at_level(step, tool_input, native_state, format2_state_at_level, format2_in, prefix)
-
-
-def _convert_state_at_level(
-    step: NativeStepDict,
-    tool_input: ToolParameterT,
-    native_state_at_level: dict,
-    format2_state_at_level: dict,
-    format2_in: Format2InputsDictT,
-    prefix: str,
-) -> None:
-    parameter_type = tool_input.parameter_type
-    parameter_name = tool_input.name
-    value = native_state_at_level.get(parameter_name, None)
-    state_path = f"{prefix}|{parameter_name}" if prefix else parameter_name
-    input_connections = step.get("input_connections", {})
-
-    if parameter_type in ["gx_data", "gx_data_collection"]:
-        # Data params: connected → goes in format2 `in`; otherwise absent from state
-        if state_path in input_connections or _is_connected_value(value):
-            format2_in[state_path] = "placeholder"
-        elif isinstance(value, dict) and value.get("__class__") == "RuntimeValue":
-            format2_in[state_path] = "placeholder"
-        # else: absent from state (which is valid for data params)
-
-    elif parameter_type in [
-        "gx_integer", "gx_float", "gx_boolean",
-        "gx_text", "gx_color", "gx_hidden", "gx_genomebuild",
-        "gx_group_tag", "gx_baseurl", "gx_directory_uri",
-        "gx_select", "gx_data_column", "gx_drill_down",
-    ]:
-        if _is_connected_value(value):
-            format2_in[state_path] = "placeholder"
-        elif state_path in input_connections:
-            format2_in[state_path] = "placeholder"
-        elif value is not None and value != "null":
-            format2_state_at_level[parameter_name] = _convert_scalar_value(
-                parameter_type, parameter_name, value, tool_input,
-            )
-
-    elif parameter_type == "gx_conditional":
-        conditional = cast(ConditionalParameterModel, tool_input)
-        conditional_state = native_state_at_level.get(parameter_name, {})
-        if isinstance(conditional_state, str):
-            conditional_state = json.loads(conditional_state)
-        if not isinstance(conditional_state, dict):
-            return
-
-        test_parameter = conditional.test_parameter
-        test_parameter_name = test_parameter.name
-        explicit_test_value = conditional_state.get(test_parameter_name)
-        test_value = validate_explicit_conditional_test_value(test_parameter_name, explicit_test_value)
-
-        target_when = None
-        for when in conditional.whens:
-            if test_value is None and when.is_default_when:
-                target_when = when
-            elif test_value == when.discriminator:
-                target_when = when
-        if target_when is None:
-            return
-
-        format2_conditional: dict = {}
-        # Convert test parameter
-        _convert_state_at_level(
-            step, test_parameter, conditional_state, format2_conditional, format2_in, state_path,
-        )
-        # Convert active branch parameters
-        _convert_state_level(
-            step, target_when.parameters, conditional_state, format2_conditional, format2_in, state_path,
-        )
-        if format2_conditional:
-            format2_state_at_level[parameter_name] = format2_conditional
-
-    elif parameter_type == "gx_repeat":
-        repeat = cast(RepeatParameterModel, tool_input)
-        repeat_state = value
-        if isinstance(repeat_state, str):
-            repeat_state = json.loads(repeat_state)
-        if not isinstance(repeat_state, list):
-            repeat_state = []
-
-        # Ensure enough instances for connections (e.g. inputs_0|input, inputs_1|input)
-        repeat_instance_connects = repeat_inputs_to_array(state_path, input_connections)
-        max_instances = max(len(repeat_state), len(repeat_instance_connects))
-        while len(repeat_state) < max_instances:
-            repeat_state.append({})
-
-        format2_array = []
-        for i, instance in enumerate(repeat_state):
-            instance_prefix = f"{state_path}_{i}"
-            format2_instance: dict = {}
-            _convert_state_level(
-                step, repeat.parameters, instance, format2_instance, format2_in, instance_prefix,
-            )
-            format2_array.append(format2_instance)
-        if format2_array:
-            format2_state_at_level[parameter_name] = format2_array
-
-    elif parameter_type == "gx_section":
-        section = cast(SectionParameterModel, tool_input)
-        section_state = value
-        if isinstance(section_state, str):
-            section_state = json.loads(section_state)
-        if not isinstance(section_state, dict):
-            return
-
-        format2_section: dict = {}
-        _convert_state_level(
-            step, section.parameters, section_state, format2_section, format2_in, state_path,
-        )
-        if format2_section:
-            format2_state_at_level[parameter_name] = format2_section
-
-    elif parameter_type == "gx_rules":
-        if value is not None and not _is_connected_value(value):
-            if isinstance(value, str):
-                value = json.loads(value)
-            format2_state_at_level[parameter_name] = value
 
 
 def _convert_scalar_value(parameter_type: str, parameter_name: str, value, tool_input: ToolParameterT):
