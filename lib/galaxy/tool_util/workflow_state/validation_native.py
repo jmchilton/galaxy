@@ -274,7 +274,7 @@ def _merge_into_state(step_dict: NativeStepDict, tool_input: ToolParameterT, sta
             state[name] = repeat_state_array
     else:
         input_connections = step_dict.get("input_connections", {})
-        if state_path in input_connections and state.get(name) in (None, "null"):
+        if state_path in input_connections and not isinstance(state.get(name), dict):
             state[name] = {"__class__": "ConnectedValue"}
 
 
