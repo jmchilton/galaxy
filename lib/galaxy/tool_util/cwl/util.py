@@ -513,7 +513,7 @@ def _resolve_sf_for_value(
                         _resolve_sf_for_value(value[fname], field, test_data_directory)
             return
         elif type_kind == "array":
-            items_type = input_type.get("items")
+            items_type: Any = input_type.get("items")
             if isinstance(value, list):
                 child_def_d: Dict[str, Any] = {"type": items_type}
                 if sf_patterns:

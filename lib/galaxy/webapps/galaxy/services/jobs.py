@@ -250,7 +250,7 @@ class JobsService(ServiceBase):
         # tools). cwltool ignores extras with non-strict validation; Galaxy must
         # strip them before Pydantic validation which uses extra="forbid".
         if inputs and tool.tool_type in ("cwl", "galactic_cwl"):
-            param_names = {p.name for p in tool.parameters}
+            param_names = {p.name for p in tool.parameters} if tool.parameters else set()
             inputs = {k: v for k, v in inputs.items() if k in param_names}
         strict = job_request.strict
         if tool.parameters is None:

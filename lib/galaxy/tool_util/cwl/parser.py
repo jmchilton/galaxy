@@ -425,8 +425,10 @@ class JobProxy:
             default_ll = load_listing_reqs[0].get("loadListing", "no_listing")
 
         input_lls: Dict[str, str] = {}
+        assert isinstance(tool.inputs_record_schema, dict)
         for field in tool.inputs_record_schema["fields"]:
-            raw_name = field["name"]
+            assert isinstance(field, dict)
+            raw_name: str = field["name"]
             name = raw_name.split("#")[-1] if "#" in raw_name else raw_name
             input_lls[name] = field.get("loadListing", default_ll)
 
@@ -454,6 +456,7 @@ class JobProxy:
                 for item in value:
                     _shallow(item)
 
+        assert self._cwl_job is not None
         builder_job = self._cwl_job.builder.job
         for input_name in list(builder_job.keys()):
             ll = input_lls.get(input_name, default_ll)
@@ -480,7 +483,7 @@ class JobProxy:
         #                         strict=False, logger=_logger_validation_warnings)
 
     def rewrite_inputs_for_staging(self):
-        if hasattr(self._cwl_job, "pathmapper"):
+        if self._cwl_job is not None and hasattr(self._cwl_job, "pathmapper"):
             # Build a map from original resolved paths to staged target paths,
             # then rewrite File/Directory locations in _input_dict so that
             # save_job() persists the staged paths.  At runtime, load_job_proxy
@@ -656,8 +659,8 @@ class JobProxy:
                         "source": source_uri,
                         "resolved": mapper_ent.resolved,
                         "target": mapper_ent.target,
-                        "type": mapper_ent.type,
-                        "staged": mapper_ent.staged,
+                        "type": str(mapper_ent.type),
+                        "staged": str(mapper_ent.staged),
                     }
                 )
         job_objects = {
