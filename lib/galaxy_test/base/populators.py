@@ -403,7 +403,7 @@ class CwlRun:
         self.history_id = history_id
 
     @abstractmethod
-    def _output_name_to_object(self, output_name) -> GalaxyOutput:
+    def _output_name_to_object(self, output_name) -> "Union[GalaxyOutput, list[GalaxyOutput]]":
         """
         Convert the name of a run output to a GalaxyOutput object.
         """

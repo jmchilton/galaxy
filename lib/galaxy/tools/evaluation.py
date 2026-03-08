@@ -224,7 +224,8 @@ class ToolEvaluator:
             internal_tool_state = None
             if job.tool_state:
                 internal_tool_state = JobInternalToolState(job.tool_state)
-                internal_tool_state.validate(self.tool, f"{self.tool.id} (job internal model)")
+                if self.tool.parameters is not None:
+                    internal_tool_state.validate(self.tool, f"{self.tool.id} (job internal model)")
 
             self.execute_tool_hooks(
                 inp_data=inp_data, out_data=out_data, incoming=incoming, validated_tool_state=internal_tool_state
