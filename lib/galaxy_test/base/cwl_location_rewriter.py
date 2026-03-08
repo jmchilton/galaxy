@@ -23,7 +23,7 @@ def get_cwl_test_url(cwl_version):
     return f"https://raw.githubusercontent.com/common-workflow-language/{repo_name}/{branch}/{tests_dir}"
 
 
-def get_url(item, cwl_version, base_dir):
+def get_url(item, cwl_version, base_dir, workflow_dir=""):
     # quick hack, to make it more useful upload files/directories/paths to Galaxy instance ?
     if isinstance(item, dict) and item.get("class") == "File":
         location = item.pop("path", None)
@@ -41,8 +41,9 @@ def get_url(item, cwl_version, base_dir):
                 # Already a remote URL — leave as-is
                 return item
             elif parse_result.scheme == "":
-                # Bare relative path (e.g. from cwl_utils.pack) — use directly
-                location = raw_location
+                # Bare relative path (e.g. from cwl_utils.pack) — resolve
+                # relative to the original workflow file's directory.
+                location = os.path.join(workflow_dir, raw_location) if workflow_dir else raw_location
             else:
                 return item
         url = f"{get_cwl_test_url(cwl_version)}/{location}"
@@ -61,10 +62,15 @@ def rewrite_locations(workflow_path: str, output_path: str):
         tests_root = os.path.normpath(os.path.join(cwl_tools_root, "v1.0"))
     else:
         tests_root = os.path.normpath(os.path.join(cwl_tools_root, "tests"))
+    # Compute workflow directory relative to tests_root so bare relative
+    # paths in defaults (from cwl_utils.pack) resolve correctly.
+    workflow_dir = os.path.relpath(os.path.dirname(os.path.abspath(workflow_path)), tests_root)
+    if workflow_dir == ".":
+        workflow_dir = ""
     visit_field(
         workflow_obj,
         ("default"),
-        functools.partial(get_url, cwl_version=cwl_version, base_dir=tests_root),
+        functools.partial(get_url, cwl_version=cwl_version, base_dir=tests_root, workflow_dir=workflow_dir),
     )
     with open(output_path, "w") as output:
         json.dump(workflow_obj, output)
