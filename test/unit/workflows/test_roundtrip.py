@@ -433,6 +433,11 @@ def _find_matching_native_step(native_workflow: dict, format2_step: dict, format
 
 # -- Test inventory --
 
+# Workflows excluded from sweep — expected failures with known reasons
+EXCLUDED_WORKFLOWS = {
+    "test_workflow_missing_tool.ga": "Intentionally references nonexistent tool 'cat_missing_tool'",
+}
+
 NATIVE_WORKFLOWS = [
     "test_workflow_1.ga",
     "test_workflow_2.ga",
@@ -497,6 +502,8 @@ def run_sweep(get_tool_info: Optional[GetToolInfo] = None) -> Dict[str, RoundTri
 
     # Native workflows
     for filename in NATIVE_WORKFLOWS:
+        if filename in EXCLUDED_WORKFLOWS:
+            continue
         path = os.path.join(TEST_BASE_DATA_DIRECTORY, filename)
         if not os.path.exists(path):
             continue
@@ -560,6 +567,12 @@ def print_sweep_results(results: Dict[str, RoundTripResult]):
     print(f"Round-Trip Sweep Results")
     print(f"{'='*80}\n")
 
+    if EXCLUDED_WORKFLOWS:
+        print(f"EXCLUDED: {len(EXCLUDED_WORKFLOWS)}")
+        for name, reason in sorted(EXCLUDED_WORKFLOWS.items()):
+            print(f"  [SKIP] {name}: {reason}")
+        print()
+
     passes = []
     failures = []
     for name, result in sorted(results.items()):
@@ -610,6 +623,8 @@ def run_full_roundtrip_sweep(get_tool_info: Optional[GetToolInfo] = None) -> Dic
     results: Dict[str, FullRoundTripResult] = {}
 
     for filename in NATIVE_WORKFLOWS:
+        if filename in EXCLUDED_WORKFLOWS:
+            continue
         path = os.path.join(TEST_BASE_DATA_DIRECTORY, filename)
         if not os.path.exists(path):
             continue
@@ -676,16 +691,18 @@ class TestRoundTripSweep:
     """Run the sweep and report. This is the main entry point for cataloging failures."""
 
     def test_sweep_report(self):
-        """Run per-step conversion sweep. Does NOT assert all pass - this is diagnostic."""
+        """Run per-step conversion sweep. Asserts all non-excluded workflows pass."""
         results = run_sweep()
         print_sweep_results(results)
-        self._results = results
+        failures = {name: r for name, r in results.items() if not r.success}
+        assert not failures, f"{len(failures)} workflow(s) failed per-step conversion: {list(failures.keys())}"
 
     def test_full_roundtrip_sweep(self):
-        """Run full native→format2→native'→compare sweep for native workflows."""
+        """Run full native→format2→native'→compare sweep. Asserts all non-excluded pass."""
         results = run_full_roundtrip_sweep()
         print_full_roundtrip_results(results)
-        self._full_results = results
+        failures = {name: r for name, r in results.items() if not r.success}
+        assert not failures, f"{len(failures)} workflow(s) failed full round-trip: {list(failures.keys())}"
 
 
 class TestNativeRoundTrip:
