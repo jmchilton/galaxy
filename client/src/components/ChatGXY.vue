@@ -58,6 +58,10 @@ watch(
         if (newId === oldId) {
             return;
         }
+        if (newId === "new") {
+            startNewChat();
+            return;
+        }
         if (newId) {
             await loadChatById(newId);
         } else {

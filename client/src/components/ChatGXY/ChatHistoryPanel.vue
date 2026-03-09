@@ -68,9 +68,9 @@ function startNewChat() {
     const Galaxy = getGalaxyInstance();
     if (Galaxy?.frame?.active) {
         // @ts-ignore - monkeypatched router, second arg is RouterPushOptions
-        router.push("/chatgxy?compact=true", { title: "ChatGXY" });
+        router.push("/chatgxy/new?compact=true", { title: "ChatGXY" });
     } else {
-        router.push("/chatgxy");
+        router.push("/chatgxy/new");
     }
 }
 
