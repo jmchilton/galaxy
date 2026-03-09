@@ -750,6 +750,10 @@ class DefaultToolAction(ToolAction):
                         # won't produce output parts for those fields (since array
                         # contents are dynamic). Add empty unpopulated sub-collection
                         # entries so generate_elements sees the right element count.
+                        # Then reorder all element_identifiers to match the fields
+                        # order (known_outputs only yields scalar fields, so without
+                        # reordering, array sub-collections appended at the end would
+                        # be out of position).
                         fields = output.structure.fields
                         if fields:
                             existing_names = {ei["name"] for ei in element_identifiers}
@@ -764,6 +768,9 @@ class DefaultToolAction(ToolAction):
                                 ):
                                     sub_collection = model.DatasetCollection(collection_type="list", populated=False)
                                     element_identifiers.append({"__object__": sub_collection, "name": field_name})
+                            # Reorder to match fields definition order
+                            ei_by_name = {ei["name"]: ei for ei in element_identifiers}
+                            element_identifiers = [ei_by_name[f["name"]] for f in fields if f["name"] in ei_by_name]
                         element_kwds = dict(
                             element_identifiers=element_identifiers,
                             fields=fields,
