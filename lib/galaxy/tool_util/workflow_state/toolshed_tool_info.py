@@ -6,7 +6,8 @@ Supports the full Galaxy workflow tool_id format:
 Converts to TRS-style API call:
   GET {toolshed_url}/api/tools/{owner~repo~tool_id}/versions/{version}
 
-Results are cached locally as JSON files for offline reuse.
+Results are cached locally as JSON files with an index for provenance tracking.
+Cache can be populated from multiple sources: ToolShed API, GitHub, or local XML.
 """
 
 import hashlib
@@ -14,8 +15,13 @@ import json
 import logging
 import os
 import urllib.request
+from datetime import (
+    datetime,
+    timezone,
+)
 from typing import (
     Dict,
+    List,
     Optional,
     Tuple,
 )
@@ -25,9 +31,15 @@ from galaxy.tool_util_models import ParsedTool
 log = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".galaxy", "tool_info_cache")
+CACHE_DIR_ENV_VAR = "GALAXY_TOOL_CACHE_DIR"
 
 
-def parse_toolshed_tool_id(tool_id: str) -> Optional[Tuple[str, str, str]]:
+def get_cache_dir(override: Optional[str] = None) -> str:
+    """Return cache directory from override, env var, or default."""
+    return override or os.environ.get(CACHE_DIR_ENV_VAR) or DEFAULT_CACHE_DIR
+
+
+def parse_toolshed_tool_id(tool_id: str) -> Optional[Tuple[str, str, Optional[str]]]:
     """Parse a toolshed tool_id into (toolshed_url, trs_tool_id, tool_version).
 
     Input format: toolshed.g2.bx.psu.edu/repos/owner/repo/tool_name/version
@@ -69,12 +81,86 @@ def _cache_key(toolshed_url: str, trs_tool_id: str, tool_version: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _tool_id_from_trs(toolshed_url: str, trs_tool_id: str) -> str:
+    """Reconstruct a readable tool_id from toolshed_url and trs_tool_id."""
+    # trs_tool_id is owner~repo~tool_name
+    parts = trs_tool_id.split("~")
+    # Strip scheme for display
+    base = toolshed_url.replace("https://", "").replace("http://", "")
+    return f"{base}/repos/{'/'.join(parts)}"
+
+
+class CacheIndex:
+    """Manages the index.json file that tracks provenance of cached tools."""
+
+    def __init__(self, cache_dir: str):
+        self.cache_dir = cache_dir
+        self._index_path = os.path.join(cache_dir, "index.json")
+        self._entries: Optional[Dict] = None
+
+    @property
+    def entries(self) -> Dict:
+        if self._entries is None:
+            self._entries = self._load()
+        return self._entries
+
+    def _load(self) -> Dict:
+        if not os.path.exists(self._index_path):
+            return {}
+        try:
+            with open(self._index_path) as f:
+                data = json.load(f)
+            return data.get("entries", {})
+        except Exception:
+            log.debug(f"Cache index {self._index_path} invalid, starting fresh")
+            return {}
+
+    def _save(self):
+        os.makedirs(self.cache_dir, exist_ok=True)
+        with open(self._index_path, "w") as f:
+            json.dump({"entries": self.entries}, f, indent=2)
+
+    def add(self, cache_key: str, tool_id: str, tool_version: str, source: str, source_url: str = ""):
+        self.entries[cache_key] = {
+            "tool_id": tool_id,
+            "tool_version": tool_version,
+            "source": source,
+            "source_url": source_url,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._save()
+
+    def remove(self, cache_key: str):
+        if cache_key in self.entries:
+            del self.entries[cache_key]
+            self._save()
+
+    def has(self, cache_key: str) -> bool:
+        return cache_key in self.entries
+
+    def list_all(self) -> List[Dict]:
+        """Return all index entries with their cache keys."""
+        result = []
+        for key, entry in self.entries.items():
+            result.append({"cache_key": key, **entry})
+        return result
+
+    def clear(self):
+        self._entries = {}
+        self._save()
+
+
 class ToolShedGetToolInfo:
     """Fetches ParsedTool from ToolShed 2.0 API with local filesystem cache."""
 
     def __init__(self, cache_dir: Optional[str] = None):
-        self.cache_dir = cache_dir or DEFAULT_CACHE_DIR
+        self.cache_dir = get_cache_dir(cache_dir)
         self._memory_cache: Dict[str, ParsedTool] = {}
+        self._index = CacheIndex(self.cache_dir)
+
+    @property
+    def index(self) -> CacheIndex:
+        return self._index
 
     def get_tool_info(self, tool_id: str, tool_version: Optional[str]) -> ParsedTool:
         parsed = parse_toolshed_tool_id(tool_id)
@@ -100,9 +186,82 @@ class ToolShedGetToolInfo:
 
         # Fetch from API
         parsed_tool = self._fetch_from_api(toolshed_url, trs_tool_id, version)
-        self._save_to_cache(cache_key, parsed_tool)
+        readable_id = _tool_id_from_trs(toolshed_url, trs_tool_id)
+        self._save_to_cache(cache_key, parsed_tool, readable_id, version, source="api",
+                            source_url=f"{toolshed_url}/api/tools/{trs_tool_id}/versions/{version}")
         self._memory_cache[cache_key] = parsed_tool
         return parsed_tool
+
+    def populate_from_parsed_tool(
+        self,
+        tool_id: str,
+        tool_version: str,
+        parsed_tool: ParsedTool,
+        source: str = "local",
+        source_url: str = "",
+    ) -> str:
+        """Cache a ParsedTool directly. Returns the cache key."""
+        parsed = parse_toolshed_tool_id(tool_id)
+        if parsed is None:
+            raise ValueError(f"Not a toolshed tool_id: {tool_id}")
+
+        toolshed_url, trs_tool_id, embedded_version = parsed
+        version = tool_version or embedded_version
+        if version is None:
+            raise ValueError(f"No version for: {tool_id}")
+
+        cache_key = _cache_key(toolshed_url, trs_tool_id, version)
+        readable_id = _tool_id_from_trs(toolshed_url, trs_tool_id)
+        self._save_to_cache(cache_key, parsed_tool, readable_id, version, source, source_url)
+        self._memory_cache[cache_key] = parsed_tool
+        return cache_key
+
+    def has_cached(self, tool_id: str, tool_version: Optional[str] = None) -> bool:
+        """Check if a tool is in the cache (filesystem or memory)."""
+        parsed = parse_toolshed_tool_id(tool_id)
+        if parsed is None:
+            return False
+        toolshed_url, trs_tool_id, embedded_version = parsed
+        version = tool_version or embedded_version
+        if version is None:
+            return False
+        cache_key = _cache_key(toolshed_url, trs_tool_id, version)
+        return cache_key in self._memory_cache or os.path.exists(self._cache_path(cache_key))
+
+    def list_cached(self) -> List[Dict]:
+        """Return provenance info for all cached tools."""
+        return self._index.list_all()
+
+    def clear_cache(self, tool_id: Optional[str] = None):
+        """Clear cache. If tool_id given, clear matching entries; otherwise clear all."""
+        if tool_id is None:
+            # Clear all
+            for entry in self._index.list_all():
+                path = self._cache_path(entry["cache_key"])
+                if os.path.exists(path):
+                    os.remove(path)
+            self._index.clear()
+            self._memory_cache.clear()
+        else:
+            # Clear entries matching tool_id prefix
+            to_remove = []
+            for entry in self._index.list_all():
+                if entry.get("tool_id", "").startswith(tool_id.rstrip("*")):
+                    to_remove.append(entry["cache_key"])
+            for key in to_remove:
+                path = self._cache_path(key)
+                if os.path.exists(path):
+                    os.remove(path)
+                self._index.remove(key)
+                self._memory_cache.pop(key, None)
+
+    def fetch_from_api(self, toolshed_url: str, trs_tool_id: str, tool_version: str) -> ParsedTool:
+        """Fetch ParsedTool from ToolShed API (no caching)."""
+        return self._fetch_from_api(toolshed_url, trs_tool_id, tool_version)
+
+    def load_cached(self, cache_key: str) -> Optional[ParsedTool]:
+        """Load a ParsedTool from the filesystem cache by key."""
+        return self._load_from_cache(cache_key)
 
     def _fetch_from_api(self, toolshed_url: str, trs_tool_id: str, tool_version: str) -> ParsedTool:
         url = f"{toolshed_url}/api/tools/{trs_tool_id}/versions/{tool_version}"
@@ -125,12 +284,18 @@ class ToolShedGetToolInfo:
         try:
             with open(path) as f:
                 data = json.load(f)
-            return ParsedTool.model_validate(data)
+            parsed_tool = ParsedTool.model_validate(data)
+            # Backfill index if cache file exists without index entry
+            if not self._index.has(cache_key):
+                self._index.add(cache_key, data.get("id", "unknown"), data.get("version", "unknown"),
+                                source="unknown")
+            return parsed_tool
         except Exception:
             log.debug(f"Cache entry {path} invalid, ignoring")
             return None
 
-    def _save_to_cache(self, cache_key: str, parsed_tool: ParsedTool):
+    def _save_to_cache(self, cache_key: str, parsed_tool: ParsedTool,
+                       tool_id: str, tool_version: str, source: str, source_url: str = ""):
         os.makedirs(self.cache_dir, exist_ok=True)
         path = self._cache_path(cache_key)
         try:
@@ -138,6 +303,8 @@ class ToolShedGetToolInfo:
                 f.write(parsed_tool.model_dump_json(indent=2))
         except Exception:
             log.debug(f"Failed to write cache entry {path}")
+            return
+        self._index.add(cache_key, tool_id, tool_version, source, source_url)
 
 
 class CombinedGetToolInfo:
