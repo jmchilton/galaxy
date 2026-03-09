@@ -300,14 +300,11 @@ def roundtrip_native_step(
     tool_id = step.get("tool_id")
     step_type = step.get("type", "tool")
 
+    if step_type == "subworkflow":
+        return _roundtrip_subworkflow_step(step, step_id, get_tool_info)
+
     if step_type != "tool" or not tool_id:
         return StepResult(step_id=step_id, tool_id=tool_id, success=True)
-
-    if step_type == "subworkflow":
-        return StepResult(
-            step_id=step_id, tool_id=tool_id, success=False,
-            failure_class=FailureClass.SUBWORKFLOW, error="Subworkflows not yet supported",
-        )
 
     try:
         format2_state = convert_state_to_format2(step, get_tool_info)
@@ -317,6 +314,30 @@ def roundtrip_native_step(
             step_id=step_id, tool_id=tool_id, success=False,
             failure_class=classify_error(e), error=str(e),
         )
+
+
+def _roundtrip_subworkflow_step(
+    step: dict,
+    step_id: str,
+    get_tool_info: GetToolInfo,
+) -> StepResult:
+    """Recurse into a subworkflow step, validating/converting nested tool steps."""
+    subworkflow = step.get("subworkflow")
+    if not subworkflow:
+        return StepResult(
+            step_id=step_id, tool_id=None, success=False,
+            failure_class=FailureClass.SUBWORKFLOW, error="Subworkflow step missing 'subworkflow' key",
+        )
+    nested_results = roundtrip_native_workflow(subworkflow, get_tool_info, f"subworkflow@step{step_id}")
+    # Propagate nested failures
+    nested_failures = [r for r in nested_results.step_results if not r.success]
+    if nested_failures:
+        errors = "; ".join(f"nested step {f.step_id}: {f.error}" for f in nested_failures)
+        return StepResult(
+            step_id=step_id, tool_id=None, success=False,
+            failure_class=nested_failures[0].failure_class, error=f"Subworkflow nested failures: {errors}",
+        )
+    return StepResult(step_id=step_id, tool_id=None, success=True)
 
 
 def roundtrip_native_workflow(
@@ -354,37 +375,12 @@ def full_roundtrip_native(
     # Build format2 workflow with state blocks
     # Use gxformat2's from_galaxy_native as the structural base
     native_copy = copy.deepcopy(workflow_dict)
-    # Ensure steps have required fields for gxformat2 export
-    for step in native_copy.get("steps", {}).values():
-        step.setdefault("label", None)
-        step.setdefault("annotation", "")
+    # Ensure steps have required fields for gxformat2 export (recurse into subworkflows)
+    _ensure_export_defaults(native_copy)
     format2_dict = from_galaxy_native(native_copy)
 
-    # Replace tool_state with state for each tool step
-    format2_steps = format2_dict.get("steps", [])
-    if isinstance(format2_steps, list):
-        steps_iter = enumerate(format2_steps)
-    else:
-        steps_iter = format2_steps.items()
-
-    # Count input steps to compute offset (format2 inputs are in 'inputs' dict, not 'steps')
-    num_inputs = len(format2_dict.get("inputs", {}))
-
-    for step_key, format2_step in steps_iter:
-        if format2_step.get("tool_id") or "tool_state" in format2_step:
-            # Map format2 step index to native step id
-            native_step_id = step_key + num_inputs if isinstance(step_key, int) else step_key
-            native_step = _find_matching_native_step(workflow_dict, format2_step, native_step_id)
-            if native_step:
-                try:
-                    f2_state = convert_state_to_format2(native_step, get_tool_info)
-                    # Replace tool_state with state
-                    format2_step.pop("tool_state", None)
-                    format2_step["state"] = f2_state.state
-                    # Merge connections from format2 in dict
-                    # (connections already handled by from_galaxy_native's in dict)
-                except ConversionValidationFailure:
-                    pass  # Keep tool_state as-is
+    # Replace tool_state with state for each tool step (recursing into subworkflows)
+    _replace_tool_state_with_format2_state(format2_dict, workflow_dict, get_tool_info)
 
     # Convert back to native via gxformat2
     try:
@@ -396,19 +392,87 @@ def full_roundtrip_native(
         ))
         return step_result, None
 
-    # Compare each tool step
-    all_diffs = []
-    for step_id, orig_step in workflow_dict["steps"].items():
-        if orig_step.get("type") not in ("tool",):
-            continue
-        after_step = native_prime.get("steps", {}).get(step_id)
-        if after_step is None:
-            all_diffs.append(f"step {step_id}: missing in roundtripped workflow")
-            continue
-        diffs = compare_steps(orig_step, after_step)
-        all_diffs.extend([f"step {step_id}: {d}" for d in diffs])
+    # Compare each tool step (including nested subworkflow steps)
+    all_diffs = _compare_workflow_steps(workflow_dict, native_prime)
 
     return step_result, all_diffs
+
+
+def _compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefix: str = "") -> List[str]:
+    """Compare tool steps between original and roundtripped workflows, recursing into subworkflows."""
+    all_diffs = []
+    for step_id, orig_step in orig_workflow.get("steps", {}).items():
+        step_type = orig_step.get("type", "tool")
+        step_path = f"{path_prefix}step {step_id}" if not path_prefix else f"{path_prefix}/step {step_id}"
+
+        if step_type == "subworkflow":
+            after_step = after_workflow.get("steps", {}).get(step_id)
+            if after_step is None:
+                all_diffs.append(f"{step_path}: missing in roundtripped workflow")
+                continue
+            orig_sub = orig_step.get("subworkflow", {})
+            after_sub = after_step.get("subworkflow", {})
+            if not after_sub:
+                all_diffs.append(f"{step_path}: subworkflow missing in roundtripped")
+                continue
+            # Recurse into nested subworkflow
+            sub_diffs = _compare_workflow_steps(orig_sub, after_sub, path_prefix=f"{step_path}:subworkflow/")
+            all_diffs.extend(sub_diffs)
+        elif step_type == "tool":
+            after_step = after_workflow.get("steps", {}).get(step_id)
+            if after_step is None:
+                all_diffs.append(f"{step_path}: missing in roundtripped workflow")
+                continue
+            diffs = compare_steps(orig_step, after_step)
+            all_diffs.extend([f"{step_path}: {d}" for d in diffs])
+
+    return all_diffs
+
+
+def _ensure_export_defaults(workflow_dict: dict):
+    """Ensure steps have label/annotation fields required by gxformat2 export, recursing into subworkflows."""
+    for step in workflow_dict.get("steps", {}).values():
+        step.setdefault("label", None)
+        step.setdefault("annotation", "")
+        if step.get("type") == "subworkflow" and "subworkflow" in step:
+            _ensure_export_defaults(step["subworkflow"])
+
+
+def _replace_tool_state_with_format2_state(
+    format2_dict: dict,
+    native_workflow: dict,
+    get_tool_info: GetToolInfo,
+):
+    """Replace tool_state with converted state in format2 steps, recursing into subworkflows."""
+    format2_steps = format2_dict.get("steps", [])
+    if isinstance(format2_steps, list):
+        steps_iter = enumerate(format2_steps)
+    else:
+        steps_iter = format2_steps.items()
+
+    num_inputs = len(format2_dict.get("inputs", {}))
+
+    for step_key, format2_step in steps_iter:
+        # Handle subworkflow steps — recurse into run: block
+        if "run" in format2_step and isinstance(format2_step["run"], dict):
+            native_step_id = step_key + num_inputs if isinstance(step_key, int) else step_key
+            native_step = _find_matching_native_step(native_workflow, format2_step, native_step_id)
+            if native_step and "subworkflow" in native_step:
+                _replace_tool_state_with_format2_state(
+                    format2_step["run"], native_step["subworkflow"], get_tool_info,
+                )
+            continue
+
+        if format2_step.get("tool_id") or "tool_state" in format2_step:
+            native_step_id = step_key + num_inputs if isinstance(step_key, int) else step_key
+            native_step = _find_matching_native_step(native_workflow, format2_step, native_step_id)
+            if native_step:
+                try:
+                    f2_state = convert_state_to_format2(native_step, get_tool_info)
+                    format2_step.pop("tool_state", None)
+                    format2_step["state"] = f2_state.state
+                except ConversionValidationFailure:
+                    pass  # Keep tool_state as-is
 
 
 def _find_matching_native_step(native_workflow: dict, format2_step: dict, format2_index: int) -> Optional[dict]:
@@ -454,6 +518,8 @@ NATIVE_WORKFLOWS = [
     "test_workflow_validation_1.ga",
     "test_workflow_with_input_tags.ga",
     "test_workflow_with_runtime_input.ga",
+    "test_subworkflow_with_integer_input.ga",
+    "test_subworkflow_with_tags.ga",
 ]
 
 FRAMEWORK_WORKFLOWS = [
@@ -745,6 +811,22 @@ class TestFullNativeRoundTrip:
         result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_workflow_pause.ga")
         _assert_roundtrip_passes(result)
         _assert_no_diffs(diffs, "test_workflow_pause.ga")
+
+
+class TestSubworkflowRoundTrip:
+    """Test round-trip for workflows containing subworkflow steps."""
+
+    def test_subworkflow_with_tags(self):
+        workflow = load_native_workflow("test_subworkflow_with_tags.ga")
+        result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_subworkflow_with_tags.ga")
+        _assert_roundtrip_passes(result)
+        _assert_no_diffs(diffs, "test_subworkflow_with_tags.ga")
+
+    def test_subworkflow_with_integer_input(self):
+        workflow = load_native_workflow("test_subworkflow_with_integer_input.ga")
+        result, diffs = full_roundtrip_native(workflow, GET_TOOL_INFO, "test_subworkflow_with_integer_input.ga")
+        _assert_roundtrip_passes(result)
+        _assert_no_diffs(diffs, "test_subworkflow_with_integer_input.ga")
 
 
 class TestFormat2RoundTrip:

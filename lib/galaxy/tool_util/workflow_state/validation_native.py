@@ -131,7 +131,10 @@ def get_parsed_tool_for_native_step(step: NativeStepDict, get_tool_info: GetTool
 
 def validate_workflow_native(workflow_dict: NativeWorkflowDict, get_tool_info: GetToolInfo):
     for step_def in workflow_dict["steps"].values():
-        validate_step_native(step_def, get_tool_info)
+        if step_def.get("type") == "subworkflow" and "subworkflow" in step_def:
+            validate_workflow_native(step_def["subworkflow"], get_tool_info)
+        else:
+            validate_step_native(step_def, get_tool_info)
 
 
 def native_tool_state(step: NativeStepDict) -> NativeToolStateDict:
