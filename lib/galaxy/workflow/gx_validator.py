@@ -13,6 +13,7 @@ from galaxy.tool_util.workflow_state import (
     GetToolInfo,
     validate_workflow as validate_workflow_generic,
 )
+from galaxy.tool_util.workflow_state.toolshed_tool_info import CombinedGetToolInfo
 from galaxy.tool_util_models import (
     ParsedTool,
 )
@@ -61,6 +62,7 @@ class GalaxyGetToolInfo(GetToolInfo):
 
 
 GET_TOOL_INFO = GalaxyGetToolInfo()
+GET_TOOL_INFO_WITH_TOOLSHED = CombinedGetToolInfo(GET_TOOL_INFO)
 
 
 def validate_workflow(as_dict):
