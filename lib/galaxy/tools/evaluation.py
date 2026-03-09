@@ -1244,41 +1244,14 @@ class CwlToolEvaluator(UserToolEvaluator):
 
         visit_class(input_json, ("File", "Directory"), _use_path_as_location)
 
-        # Populate directory listings from the filesystem respecting CWL
-        # LoadListingRequirement and per-input loadListing settings.
-        # CWL v1.1 default is no_listing when not specified.
-        #
-        # Galaxy always populates at least a shallow listing because
-        # Galaxy strips CWL Directory listings during upload (the listing
-        # is lost when the Directory becomes an HDA). Expressions like
-        # stdin: $(inputs.dir1.listing[0].path) need the listing to be
-        # present — cwltool's reference runner reads it from the filesystem,
-        # but Galaxy must reconstruct it since it passes a pre-built input dict.
-        cwl_tool_for_listing = cast("CwlCommandBindingTool", self.tool)
-        cwl_proxy = cwl_tool_for_listing._cwl_tool_proxy
-        load_listing_reqs = cwl_proxy.hints_or_requirements_of_class("LoadListingRequirement")
-        default_load_listing = "no_listing"
-        if load_listing_reqs:
-            default_load_listing = load_listing_reqs[0].get("loadListing", "no_listing")
-
-        input_load_listings: dict[str, str] = {}
-        for field in cwl_proxy._tool.inputs_record_schema["fields"]:
-            input_load_listings[field["name"]] = field.get("loadListing", default_load_listing)
-
-        def _populate_directory_listing_shallow(entry):
-            """Populate directory listing non-recursively (top-level only)."""
-            location = entry.get("location")
-            if not location or not os.path.isdir(location) or "listing" in entry:
-                return
-            listing = []
-            for name in sorted(os.listdir(location)):
-                item_path = os.path.join(location, name)
-                if os.path.isdir(item_path):
-                    listing.append({"class": "Directory", "location": item_path, "basename": name})
-                else:
-                    listing.append({"class": "File", "location": item_path, "basename": name})
-            entry["listing"] = listing
-
+        # Always populate deep directory listings from the filesystem.
+        # Galaxy strips inline listings during Directory→HDA upload, so we
+        # must reconstruct them. Deep listing is always needed because:
+        # 1. Expressions may access nested subdirectory listings
+        #    (e.g. self.listing[0].listing[0].path for Directory literals)
+        # 2. ResourceRequirement expressions may reference listings
+        # JobProxy._apply_load_listing_to_builder() trims these to the
+        # correct loadListing level after _init_job evaluates expressions.
         def _populate_directory_listing_deep(entry):
             location = entry.get("location")
             if not location or not os.path.isdir(location) or "listing" in entry:
@@ -1294,26 +1267,19 @@ class CwlToolEvaluator(UserToolEvaluator):
                     listing.append({"class": "File", "location": item_path, "basename": name})
             entry["listing"] = listing
 
-        def _visit_directories(value, populate_fn):
+        def _visit_directories(value):
             if isinstance(value, dict):
                 if value.get("class") == "Directory":
-                    populate_fn(value)
+                    _populate_directory_listing_deep(value)
                     return
                 for v in value.values():
-                    _visit_directories(v, populate_fn)
+                    _visit_directories(v)
             elif isinstance(value, list):
                 for item in value:
-                    _visit_directories(item, populate_fn)
+                    _visit_directories(item)
 
-        for input_name, input_value in input_json.items():
-            load_listing = input_load_listings.get(input_name, default_load_listing)
-            if load_listing == "deep_listing":
-                _visit_directories(input_value, _populate_directory_listing_deep)
-            else:
-                # Always populate at least a shallow listing. Galaxy strips
-                # the original CWL listing during Directory→HDA upload, so
-                # we must reconstruct it for cwltool expression evaluation.
-                _visit_directories(input_value, _populate_directory_listing_shallow)
+        for _input_name, input_value in input_json.items():
+            _visit_directories(input_value)
 
         # Stage secondary files from deferred source URIs.
         # Deferred CWL File defaults may have secondary files at the remote
