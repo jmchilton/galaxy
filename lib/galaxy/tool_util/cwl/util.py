@@ -836,13 +836,52 @@ def output_to_cwl_json(
                 )
 
                 extra_files = get_extra_files(output_metadata)
-                for extra_file in extra_files:
-                    if extra_file["class"] == "File":
-                        path = extra_file["path"]
-                        ec = get_dataset(output_metadata, filename=path)
-                        ec["basename"] = os.path.basename(path)
-                        ec_properties = output_properties(pseudo_location=pseudo_location, **ec)
-                        listing.append(ec_properties)
+
+                def _build_dir_listing(dir_prefix):
+                    """Build a nested CWL listing for entries under dir_prefix."""
+                    entries = []
+                    seen_dirs = set()
+                    for ef in extra_files:
+                        ef_path = ef["path"]
+                        ef_class = ef["class"]
+                        # Skip empty-directory markers placed by runtime_actions
+                        if os.path.basename(ef_path) == ".galaxy_empty_directory":
+                            continue
+                        # Only consider entries directly under dir_prefix
+                        if dir_prefix:
+                            if not ef_path.startswith(dir_prefix + "/"):
+                                continue
+                            relative = ef_path[len(dir_prefix) + 1:]
+                        else:
+                            relative = ef_path
+                        # Skip entries in deeper subdirectories (handled recursively)
+                        if "/" in relative:
+                            # Track the immediate subdirectory name
+                            subdir_name = relative.split("/", 1)[0]
+                            if subdir_name not in seen_dirs:
+                                seen_dirs.add(subdir_name)
+                                subdir_path = f"{dir_prefix}/{subdir_name}" if dir_prefix else subdir_name
+                                dir_entry: Dict[str, Any] = {
+                                    "class": "Directory",
+                                    "basename": subdir_name,
+                                    "listing": _build_dir_listing(subdir_path),
+                                }
+                                _handle_pseudo_location(
+                                    dir_entry,
+                                    pseudo_location=pseudo_location,
+                                    download_url=output_metadata["download_url"] + f"?filename={urllib.parse.quote_plus(subdir_path)}",
+                                )
+                                entries.append(dir_entry)
+                            continue
+                        if ef_class == "File":
+                            ec = get_dataset(output_metadata, filename=ef_path)
+                            ec["basename"] = os.path.basename(ef_path)
+                            _download_url = output_metadata["download_url"] + f"?filename={urllib.parse.quote_plus(ef_path)}"
+                            ec_properties = output_properties(pseudo_location=pseudo_location, download_url=_download_url, **ec)
+                            entries.append(ec_properties)
+                    return entries
+
+                listing.extend(_build_dir_listing(""))
 
             if secondary_files:
                 properties["secondaryFiles"] = secondary_files
