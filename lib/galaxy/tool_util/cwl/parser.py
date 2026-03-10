@@ -404,6 +404,16 @@ class JobProxy:
             # deep copy keeps _input_dict untouched for save_job (which
             # preserves full listings for re-loading in handle_outputs).
             cwl_input = copy.deepcopy(self._input_dict)
+            # Convert filesystem paths in locations to file:// URIs so that
+            # special characters (e.g. '#' in filenames) are percent-encoded.
+            # cwltool's pathmapper splits on '#' (URI fragment separator), so
+            # unencoded '#' in paths causes KeyError lookups.
+            def _encode_location_as_uri(entry):
+                loc = entry.get("location", "")
+                if loc and os.path.isabs(loc) and not loc.startswith("file://"):
+                    entry["location"] = ref_resolver.file_uri(loc)
+
+            visit_class(cwl_input, ("File", "Directory"), _encode_location_as_uri)
             self._cwl_job = next(cwl_tool_instance.job(cwl_input, self._output_callback, runtimeContext))
             self._is_command_line_job = hasattr(self._cwl_job, "command_line")
             self._apply_load_listing_to_builder()
