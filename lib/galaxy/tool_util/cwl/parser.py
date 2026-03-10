@@ -1213,10 +1213,7 @@ class InputProxy:
         if "linkMerge" in self._cwl_input:
             as_dict["merge_type"] = self._cwl_input["linkMerge"]
         if self.scatter:
-            if "scatterMethod" in self.step_proxy._step.tool:
-                as_dict["scatter_type"] = self.step_proxy._step.tool.get("scatterMethod", "dotproduct")
-            else:
-                as_dict["scatter_type"] = "dotproduct"
+            as_dict["scatter_type"] = self.step_proxy._step.tool.get("scatterMethod", "dotproduct")
         else:
             as_dict["scatter_type"] = "disabled"
         if "valueFrom" in self._cwl_input:
