@@ -790,7 +790,7 @@ class WorkflowProxy:
                 multiple=True,
                 workflow_id=self.cwl_id,
             )
-            for step, output_name in split_references:
+            for ref_index, (step, output_name) in enumerate(split_references):
                 if step == label:
                     output_id = output["id"]
                     if "#" not in self.cwl_id:
@@ -802,6 +802,7 @@ class WorkflowProxy:
                         {
                             "output_name": output_name,
                             "label": output_label,
+                            "source_index": ref_index,
                         }
                     )
         return outputs

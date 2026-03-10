@@ -8971,7 +8971,7 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
             input_connections_by_name[input_name].append(conn)
         self._input_connections_by_name = input_connections_by_name
 
-    def create_or_update_workflow_output(self, output_name, label, uuid):
+    def create_or_update_workflow_output(self, output_name, label, uuid, source_index=None):
         output = self.workflow_output_for(output_name)
         if output is None:
             output = WorkflowOutput(workflow_step=self, output_name=output_name)
@@ -8979,6 +8979,8 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
             output.uuid = uuid
         if label is not None:
             output.label = label
+        if source_index is not None:
+            output.source_index = source_index
         return output
 
     def workflow_output_for(self, output_name):
@@ -9190,31 +9192,37 @@ class WorkflowOutput(Base, Serializable):
     output_name: Mapped[Optional[str]] = mapped_column(String(255))
     label: Mapped[Optional[str]] = mapped_column(Unicode(255))
     uuid: Mapped[Optional[Union[UUID, str]]] = mapped_column(UUIDType)
+    source_index: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     workflow_step: Mapped["WorkflowStep"] = relationship(
         back_populates="workflow_outputs",
         primaryjoin=(lambda: WorkflowStep.id == WorkflowOutput.workflow_step_id),
     )
 
-    def __init__(self, workflow_step, output_name=None, label=None, uuid=None):
+    def __init__(self, workflow_step, output_name=None, label=None, uuid=None, source_index=None):
         self.workflow_step = workflow_step
         ensure_object_added_to_session(self, object_in_session=workflow_step)
         self.output_name = output_name
         self.label = label
         self.uuid = get_uuid(uuid)
+        self.source_index = source_index
 
     def copy(self, copied_step):
         copied_output = WorkflowOutput(copied_step)
         copied_output.output_name = self.output_name
         copied_output.label = self.label
+        copied_output.source_index = self.source_index
         return copied_output
 
     def _serialize(self, id_encoder, serialization_options):
-        return dict_for(
+        rval = dict_for(
             self,
             output_name=self.output_name,
             label=self.label,
             uuid=str(self.uuid),
         )
+        if self.source_index is not None:
+            rval["source_index"] = self.source_index
+        return rval
 
 
 class WorkflowComment(Base, RepresentById):
@@ -9883,8 +9891,18 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
                 }
             rval["input_step_parameters"] = input_parameters
 
+            def _output_sort_key(assoc):
+                wo = assoc.workflow_output
+                if wo is None:
+                    return (float("inf"), getattr(assoc, "workflow_step", None) and assoc.workflow_step.order_index or 0)
+                si = wo.source_index
+                oi = wo.workflow_step.order_index
+                # source_index takes priority when set (CWL workflows).
+                # Use order_index as tiebreaker / fallback for Galaxy native.
+                return (si if si is not None else float("inf"), oi)
+
             outputs: dict[str, Any] = {}
-            for output_assoc in sorted(self.output_datasets, key=lambda a: a.workflow_output.workflow_step.order_index):
+            for output_assoc in sorted(self.output_datasets, key=_output_sort_key):
                 # TODO: does this work correctly if outputs are mapped over?
                 label = output_assoc.workflow_output.label
                 if not label:
@@ -9906,9 +9924,7 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
                     outputs[label] = entry
 
             output_collections: dict[str, Any] = {}
-            for output_assoc in sorted(
-                self.output_dataset_collections, key=lambda a: a.workflow_output.workflow_step.order_index
-            ):
+            for output_assoc in sorted(self.output_dataset_collections, key=_output_sort_key):
                 label = output_assoc.workflow_output.label
                 if not label:
                     label = f"{output_assoc.workflow_output.output_name} (Step {output_assoc.workflow_output.workflow_step.order_index + 1})"
@@ -9931,7 +9947,7 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             rval["output_collections"] = output_collections
 
             output_values = {}
-            for output_param in sorted(self.output_values, key=lambda a: a.workflow_step.order_index):
+            for output_param in sorted(self.output_values, key=_output_sort_key):
                 label = output_param.workflow_output.label
                 if not label:
                     continue
