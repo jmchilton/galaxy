@@ -217,7 +217,7 @@ def to_cwl(
         if value.collection_type == "list":
             return [
                 to_cwl(dce, hda_references=hda_references, step=step, compute_environment=compute_environment)
-                for dce in value.dataset_elements
+                for dce in value.elements
             ]
         else:
             # Could be record or nested lists
@@ -416,6 +416,14 @@ def evaluate_cwl_value_from_expressions(
     return cwl_input_dict
 
 
+def _get_cwl_scatter_method(step) -> str:
+    """Return CWL scatterMethod for a step, default 'dotproduct'."""
+    for si in step.inputs:
+        if si.scatter_type and si.scatter_type not in ("disabled", "dotproduct"):
+            return si.scatter_type
+    return "dotproduct"
+
+
 def find_cwl_scatter_collections(
     step: WorkflowStep,
     cwl_input_dict: dict,
@@ -472,7 +480,9 @@ def find_cwl_scatter_collections(
 
         if scatter_type != "disabled":
             # Explicit scatter — this input is in the step's scatter list.
-            collections_to_match.add(name, hdca, subcollection_type=subcollection_type)
+            scatter_method = _get_cwl_scatter_method(step)
+            is_linked = scatter_method not in ("nested_crossproduct", "flat_crossproduct")
+            collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked)
         elif not has_explicit_scatter and name not in collection_param_names:
             # Implicit mapping: HDCA passed to a scalar (non-array/record)
             # parameter on a step with NO explicit scatter.  This handles
@@ -847,7 +857,9 @@ class WorkflowModule:
             scatter_type = "dotproduct"
             if step_input and step_input.scatter_type:
                 scatter_type = step_input.scatter_type
-                assert scatter_type in ["dotproduct", "disabled"], f"Unimplemented scatter type [{scatter_type}]"
+                assert scatter_type in ["dotproduct", "disabled", "nested_crossproduct", "flat_crossproduct"], f"Unimplemented scatter type [{scatter_type}]"
+
+            is_crossproduct = scatter_type in ("nested_crossproduct", "flat_crossproduct")
 
             subworkflow_structure = progress.subworkflow_structure
             if subworkflow_structure and subworkflow_structure.is_leaf and scatter_type == "disabled":
@@ -879,7 +891,7 @@ class WorkflowModule:
                         # multiple="true" data input, acts like "list" collection_type.
                         effective_input_collection_type = ["list"]
                     else:
-                        collections_to_match.add(name, data)
+                        collections_to_match.add(name, data, linked=not is_crossproduct)
                         continue
                 else:
                     effective_input_collection_type = input_dict.get("collection_types")
@@ -931,13 +943,13 @@ class WorkflowModule:
                         subcollection_type_description = dataset_collection_type_descriptions.for_collection_type(
                             ":".join(type_list)
                         )
-                    collections_to_match.add(name, data, subcollection_type=subcollection_type_description)
+                    collections_to_match.add(name, data, subcollection_type=subcollection_type_description, linked=not is_crossproduct)
                 elif is_data_param and progress.subworkflow_structure:
-                    collections_to_match.add(name, data, subcollection_type=subcollection_type_description)
+                    collections_to_match.add(name, data, subcollection_type=subcollection_type_description, linked=not is_crossproduct)
                 continue
 
             if data is not NO_REPLACEMENT:
-                collections_to_match.add(name, data)
+                collections_to_match.add(name, data, linked=not is_crossproduct)
                 continue
 
         known_input_names = {input_dict["name"] for input_dict in all_inputs}
@@ -1166,7 +1178,11 @@ class SubWorkflowModule(WorkflowModule):
         collection_info = self.compute_collection_info(progress, step, all_inputs)
 
         if collection_info:
-            iteration_elements_iter = collection_info.slice_collections()
+            scatter_method = _get_cwl_scatter_method(step)
+            if scatter_method in ("nested_crossproduct", "flat_crossproduct"):
+                iteration_elements_iter = collection_info.slice_collections_crossproduct()
+            else:
+                iteration_elements_iter = collection_info.slice_collections()
         else:
             if progress.when_values:
                 # If we have more than one item in when_values it must have come from an expression.json
@@ -2965,7 +2981,11 @@ class ToolModule(WorkflowModule):
                 else:
                     collection_info.when_values = progress.when_values
             if collection_info:
-                iteration_elements_iter = collection_info.slice_collections()
+                scatter_method = _get_cwl_scatter_method(step)
+                if scatter_method in ("nested_crossproduct", "flat_crossproduct"):
+                    iteration_elements_iter = collection_info.slice_collections_crossproduct()
+                else:
+                    iteration_elements_iter = collection_info.slice_collections()
             else:
                 when_value = progress.when_values[0] if progress.when_values else None
                 iteration_elements_iter = [(None, when_value)]

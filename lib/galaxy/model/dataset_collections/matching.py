@@ -1,3 +1,5 @@
+from collections import OrderedDict
+from itertools import product
 from typing import Optional
 
 from galaxy import exceptions
@@ -52,6 +54,7 @@ class MatchingCollections:
     def __init__(self):
         self.linked_structure = None
         self.unlinked_structures = []
+        self.unlinked_collections: OrderedDict = OrderedDict()
         self.collections = {}
         self.subcollection_types = {}
         self.action_tuples = {}
@@ -73,6 +76,24 @@ class MatchingCollections:
     def slice_collections(self):
         self.linked_structure.when_values = self.when_values
         return self.linked_structure.walk_collections(self.collections)
+
+    def slice_collections_crossproduct(self):
+        """Yield cartesian product of unlinked collection elements.
+
+        Each yield is (dict of input_name -> DCE, when_value).
+        Iteration order: first unlinked collection = outer loop,
+        last = inner loop (matching CWL nested_crossproduct semantics).
+        """
+        ordered_inputs = list(self.unlinked_collections.items())
+        if not ordered_inputs:
+            return
+        element_lists = []
+        for input_name, hdca in ordered_inputs:
+            collection = hdca.collection if hasattr(hdca, "collection") else hdca.child_collection
+            element_lists.append([(input_name, el) for el in collection.elements])
+        for combo in product(*element_lists):
+            elements = {name: el for name, el in combo}
+            yield elements, None
 
     def subcollection_mapping_type(self, input_name):
         return self.subcollection_types[input_name]
@@ -128,5 +149,6 @@ class MatchingCollections:
             else:
                 structure = get_structure(hdca, collection_type_description, leaf_subcollection_type=subcollection_type)
                 matching_collections.unlinked_structures.append(structure)
+                matching_collections.unlinked_collections[input_key] = hdca
 
         return matching_collections
