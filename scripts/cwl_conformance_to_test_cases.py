@@ -52,12 +52,11 @@ RED_TESTS = {
         "workflow_file_input_default_unspecified",
     ],
     "v1.1": [
-        # required
+        # not required
+        "cwl_requirements_addition",
         "stage_file_array_to_dir",
         "stage_file_array_to_dir_basename",
         "stage_file_array_to_dir_basename_entryname",
-        # not required
-        "cwl_requirements_addition",
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",
         "docker_entrypoint",

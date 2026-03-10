@@ -30,11 +30,23 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.10']
-        marker: ['green', 'red and required', 'red and not required']
-        conformance-version: ['cwl_conformance_v1_0', 'cwl_conformance_v1_1', 'cwl_conformance_v1_2']
-        exclude:
-          - marker: red and required
+        # v1.0 and v1.1 have no red-required tests, so run all required+green
+        # as a single blocking job. v1.2 still has red-required tests.
+        include:
+          - marker: 'green or required'
             conformance-version: cwl_conformance_v1_0
+          - marker: 'red and not required'
+            conformance-version: cwl_conformance_v1_0
+          - marker: 'green or required'
+            conformance-version: cwl_conformance_v1_1
+          - marker: 'red and not required'
+            conformance-version: cwl_conformance_v1_1
+          - marker: 'green'
+            conformance-version: cwl_conformance_v1_2
+          - marker: 'red and required'
+            conformance-version: cwl_conformance_v1_2
+          - marker: 'red and not required'
+            conformance-version: cwl_conformance_v1_2
     services:
       postgres:
         image: postgres:17
