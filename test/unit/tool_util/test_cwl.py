@@ -280,6 +280,24 @@ def test_workflow_scatter_multiple_input():
     assert len(galaxy_workflow_dict["steps"]) == 3
 
 
+def test_workflow_scatter_dotproduct_valuefrom():
+    proxy = workflow_proxy(_cwl_tool_path("v1.0/v1.0/scatter-valuefrom-wf4.cwl"))
+
+    galaxy_workflow_dict = proxy.to_dict()
+    tool_step = [s for s in galaxy_workflow_dict["steps"].values() if s["label"] == "step1"][0]
+    inputs = tool_step["inputs"]
+    inputs_by_name = {i["name"]: i for i in inputs}
+
+    # echo_in1 and echo_in2 are scattered with dotproduct
+    assert inputs_by_name["echo_in1"]["scatter_type"] == "dotproduct"
+    assert "value_from" in inputs_by_name["echo_in1"]
+    assert inputs_by_name["echo_in2"]["scatter_type"] == "dotproduct"
+
+    # 'first' is NOT scattered — it receives the full array for valueFrom
+    assert inputs_by_name["first"]["scatter_type"] == "disabled"
+    assert "value_from" in inputs_by_name["first"]
+
+
 def test_workflow_multiple_input_merge_flattened():
     proxy = workflow_proxy(_cwl_tool_path("v1.0/v1.0/count-lines7-wf.cwl"))
 
