@@ -1726,6 +1726,8 @@ class WorkflowContentsManager(UsesAnnotations):
                     label=workflow_output.label,
                     uuid=str(workflow_output.uuid) if workflow_output.uuid is not None else None,
                 )
+                if workflow_output.source_index is not None:
+                    workflow_output_dict["source_index"] = workflow_output.source_index
                 workflow_outputs_dicts.append(workflow_output_dict)
             step_dict["workflow_outputs"] = workflow_outputs_dicts
 
@@ -2031,10 +2033,12 @@ class WorkflowContentsManager(UsesAnnotations):
                 found_output_names.add(output_name)
                 uuid = workflow_output.get("uuid", None)
                 label = workflow_output.get("label", None)
+                source_index = workflow_output.get("source_index", None)
                 m = step.create_or_update_workflow_output(
                     output_name=output_name,
                     uuid=uuid,
                     label=label,
+                    source_index=source_index,
                 )
                 if not dry_run:
                     trans.sa_session.add(m)
