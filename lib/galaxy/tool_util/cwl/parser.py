@@ -785,11 +785,18 @@ class WorkflowProxy:
     def get_outputs_for_label(self, label):
         outputs = []
         for output in self._workflow.tool["outputs"]:
+            # Skip outputs that have pickValue with multiple sources —
+            # these are handled by synthetic pick_value module steps
+            # created in to_dict().
+            pick_value = output.get("pickValue")
             split_references = split_step_references(
                 output["outputSource"],
                 multiple=True,
                 workflow_id=self.cwl_id,
             )
+            if pick_value and len(split_references) > 1:
+                continue
+
             for ref_index, (step, output_name) in enumerate(split_references):
                 if step == label:
                     output_id = output["id"]
@@ -898,11 +905,72 @@ class WorkflowProxy:
             steps[index] = step_proxy.to_dict(input_connections)
             index += 1
 
+        # Create synthetic pick_value module steps for CWL outputs
+        # with pickValue and multiple outputSource references.
+        index = self._add_pick_value_steps(steps, index, step_proxies)
+
         return {
             "name": name,
             "steps": steps,
             "annotation": self.cwl_object_to_annotation(self._workflow.tool),
         }
+
+    def _add_pick_value_steps(self, steps, index, step_proxies):
+        """Create synthetic pick_value steps for multi-source pickValue outputs."""
+        # Build label-to-step-index map
+        label_to_index = {}
+        for input_dict in self._workflow.tool["inputs"]:
+            input_label = self.jsonld_id_to_label(input_dict["id"])
+            label_to_index[input_label] = len(label_to_index)
+        for step_proxy in step_proxies:
+            label_to_index[step_proxy.label] = len(label_to_index)
+
+        for output in self._workflow.tool["outputs"]:
+            pick_value = output.get("pickValue")
+            if not pick_value:
+                continue
+
+            references = split_step_references(
+                output["outputSource"],
+                multiple=True,
+                workflow_id=self.cwl_id,
+            )
+            if len(references) < 2:
+                continue  # Single source — not Pattern A
+
+            # Validate: all_non_null requires array output type
+            output_type = output.get("type")
+            if pick_value == "all_non_null":
+                is_array = (isinstance(output_type, dict) and output_type.get("type") == "array") or (
+                    isinstance(output_type, str) and output_type.endswith("[]")
+                )
+                if not is_array:
+                    raise MessageException(
+                        f"pickValue 'all_non_null' requires array output type, got '{output_type}'"
+                    )
+
+            output_label = self.jsonld_id_to_label(output["id"])
+
+            # Build input connections from source steps
+            input_connections: Dict[str, List[Dict[str, str]]] = {}
+            for ref_i, (step_name, output_name) in enumerate(references):
+                step_index = label_to_index[step_name]
+                input_connections[f"input_{ref_i}"] = [
+                    {"id": step_index, "output_name": output_name}
+                ]
+
+            steps[index] = {
+                "id": index,
+                "type": "pick_value",
+                "label": f"_pick_{output_label}",
+                "position": {"left": 0, "top": 0},
+                "tool_state": json.dumps({"mode": pick_value, "num_inputs": len(references)}),
+                "input_connections": input_connections,
+                "workflow_outputs": [{"output_name": "output", "label": output_label}],
+            }
+            index += 1
+
+        return index
 
     def find_inputs_step_index(self, label):
         for i, input in enumerate(self._workflow.tool["inputs"]):
