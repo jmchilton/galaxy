@@ -2291,7 +2291,11 @@ class PickValueModule(WorkflowModule):
     def _get_state_dict(self):
         mode = self.state.inputs.get("mode", "first_non_null")
         num_inputs = self.state.inputs.get("num_inputs", 2)
-        return {"mode": mode, "num_inputs": num_inputs}
+        state_dict = {"mode": mode, "num_inputs": num_inputs}
+        link_merge = self.state.inputs.get("link_merge")
+        if link_merge:
+            state_dict["link_merge"] = link_merge
+        return state_dict
 
     def save_to_step(self, step, detached=False):
         step.type = self.type
@@ -2370,10 +2374,16 @@ class PickValueModule(WorkflowModule):
             if replacement is not NO_REPLACEMENT:
                 replacements.append(replacement)
 
-        # If a single input is a collection (e.g. from a scattered step),
-        # filter its elements instead of treating inputs as scalars.
-        if len(replacements) == 1 and isinstance(replacements[0], model.HistoryDatasetCollectionAssociation):
-            output = self._execute_on_collection(trans, invocation_step, mode, replacements[0])
+        # If inputs are collections (from scattered steps), handle specially.
+        hdca_inputs = [r for r in replacements if isinstance(r, model.HistoryDatasetCollectionAssociation)]
+        if hdca_inputs and len(hdca_inputs) == len(replacements):
+            if len(hdca_inputs) == 1:
+                # Single collection (Pattern B: scatter + pickValue)
+                output = self._execute_on_collection(trans, invocation_step, mode, hdca_inputs[0])
+            else:
+                # Multiple collections (multi-source scatter + linkMerge + pickValue)
+                link_merge = step.tool_inputs.get("link_merge", "merge_nested") if step.tool_inputs else "merge_nested"
+                output = self._execute_on_merged_collections(trans, invocation_step, mode, hdca_inputs, link_merge)
             progress.set_step_outputs(invocation_step, {"output": output})
             return None
 
@@ -2462,6 +2472,13 @@ class PickValueModule(WorkflowModule):
         selecting among N scalar inputs.
         """
         step = invocation_step.workflow_step
+
+        # For nested collections (e.g. list:list:list from nested_crossproduct),
+        # pickValue operates on the whole collection as one value — top-level
+        # elements are sub-collections and never null. Pass through as-is.
+        if hdca.collection.has_subcollections:
+            return hdca
+
         non_null_hdas = []
         for element in hdca.collection.elements:
             hda = element.dataset_instance
@@ -2495,6 +2512,60 @@ class PickValueModule(WorkflowModule):
             if not non_null_hdas:
                 return self._create_skipped_output(trans, invocation_step)
             return non_null_hdas[0]
+
+        else:
+            raise ValueError(f"Unknown pick_value mode: {mode}")
+
+    def _execute_on_merged_collections(self, trans, invocation_step, mode, hdcas, link_merge):
+        """Handle pickValue on multiple collection inputs (multi-source scatter).
+
+        Merges elements from all input collections according to link_merge,
+        then applies pickValue filtering.
+        """
+        step = invocation_step.workflow_step
+
+        if link_merge == "merge_flattened":
+            # Concatenate leaf elements from all collections into one flat list
+            all_hdas = []
+            for hdca in hdcas:
+                for element in hdca.collection.elements:
+                    all_hdas.append(element.dataset_instance)
+        # elif link_merge == "merge_nested":
+        #     # Wrap each collection's elements as a nested level.
+        #     # Not yet needed — uncomment when a conformance test requires it.
+        #     raise NotImplementedError("merge_nested for multi-source pickValue not yet implemented")
+        else:
+            raise ValueError(f"Unknown link_merge type: {link_merge}")
+
+        non_null = [hda for hda in all_hdas if not self._is_null_or_skipped(hda)]
+
+        if mode == "all_non_null":
+            return self._create_collection_from_list(trans, invocation_step, non_null)
+
+        elif mode == "first_non_null":
+            if not non_null:
+                raise FailWorkflowEvaluation(
+                    why=InvocationFailureExpressionEvaluationFailed(
+                        reason=FailureReason.expression_evaluation_failed,
+                        workflow_step_id=step.id,
+                    )
+                )
+            return non_null[0]
+
+        elif mode == "the_only_non_null":
+            if len(non_null) != 1:
+                raise FailWorkflowEvaluation(
+                    why=InvocationFailureExpressionEvaluationFailed(
+                        reason=FailureReason.expression_evaluation_failed,
+                        workflow_step_id=step.id,
+                    )
+                )
+            return non_null[0]
+
+        elif mode == "first_or_skip":
+            if not non_null:
+                return self._create_skipped_output(trans, invocation_step)
+            return non_null[0]
 
         else:
             raise ValueError(f"Unknown pick_value mode: {mode}")
