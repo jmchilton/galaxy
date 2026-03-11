@@ -460,6 +460,16 @@ def find_cwl_scatter_collections(
     # valueFrom expressions like self[0] that need the whole array).
     has_explicit_scatter = any(si.scatter_type and si.scatter_type != "disabled" for si in step.inputs)
 
+    # Build scatter position map: step.inputs sorted by DB id preserves
+    # CWL `in:` declaration order from import.  Filter to scattered inputs
+    # to get the nesting order for nested_crossproduct (first = outermost).
+    scatter_order = {}
+    scatter_idx = 0
+    for si in sorted(step.inputs, key=lambda si: si.id):
+        if si.scatter_type and si.scatter_type != "disabled":
+            scatter_order[si.name] = scatter_idx
+            scatter_idx += 1
+
     for name, ref in cwl_input_dict.items():
         if not isinstance(ref, dict) or ref.get("src") != "hdca":
             continue
@@ -482,7 +492,7 @@ def find_cwl_scatter_collections(
             # Explicit scatter — this input is in the step's scatter list.
             scatter_method = _get_cwl_scatter_method(step)
             is_linked = scatter_method not in ("nested_crossproduct", "flat_crossproduct")
-            collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked)
+            collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked, order=scatter_order.get(name))
         elif not has_explicit_scatter and name not in collection_param_names:
             # Implicit mapping: HDCA passed to a scalar (non-array/record)
             # parameter on a step with NO explicit scatter.  This handles
@@ -1356,9 +1366,15 @@ class InputModule(WorkflowModule):
         step = invocation_step.workflow_step
         input_value = step.state.inputs["input"]
         if input_value is NO_REPLACEMENT:
-            default_value = step.get_input_default_value(NO_REPLACEMENT)
-            if default_value is not NO_REPLACEMENT:
-                input_value = raw_to_galaxy(trans.app, trans.history, default_value)
+            # For data_collection_input steps with list defaults, use the HDCA
+            # already materialized by _ensure_input_step_outputs_populated().
+            pre_populated = progress.outputs.get(step.id)
+            if isinstance(pre_populated, dict) and "output" in pre_populated:
+                input_value = pre_populated["output"]
+            else:
+                default_value = step.get_input_default_value(NO_REPLACEMENT)
+                if default_value is not NO_REPLACEMENT:
+                    input_value = raw_to_galaxy(trans.app, trans.history, default_value)
 
         step_outputs = dict(output=input_value)
 
@@ -1570,6 +1586,8 @@ class InputDataCollectionModule(InputModule):
         state_as_dict["collection_type"] = collection_type
         state_as_dict["fields"] = fields
         state_as_dict["column_definitions"] = column_definitions
+        if "default" in inputs:
+            state_as_dict["default"] = inputs["default"]
         return state_as_dict
 
 

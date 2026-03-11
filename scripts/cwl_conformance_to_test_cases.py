@@ -77,8 +77,6 @@ RED_TESTS = {
         "condifional_scatter_on_nonscattered_false",
         "condifional_scatter_on_nonscattered_false_nojs",
         "condifional_scatter_on_nonscattered_true_nojs",
-        "conditionals_multi_scatter_nojs",
-        "conditionals_nested_cross_scatter_nojs",
         "cwl_requirements_addition",
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",

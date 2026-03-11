@@ -8841,6 +8841,14 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
         if self.type == "parameter_input":
             tool_state = self.tool_inputs
             default_value = tool_state.get("default", default_default)
+        elif self.type == "data_collection_input":
+            tool_state = self.tool_inputs
+            default_value = tool_state.get("default", default_default)
+            if default_value is default_default:
+                for step_input in self.inputs:
+                    if step_input.name == "input" and step_input.default_value_set:
+                        default_value = step_input.default_value
+                        break
         else:
             default_value = default_default
             for step_input in self.inputs:

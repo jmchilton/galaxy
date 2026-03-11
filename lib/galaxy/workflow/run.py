@@ -30,6 +30,7 @@ from galaxy.schema.invocation import (
     InvocationWarningWorkflowOutputNotFound,
     WarningReason,
 )
+from galaxy.objectstore import ObjectStorePopulator
 from galaxy.tools.cwl_runtime import raw_to_galaxy
 from galaxy.tools.parameters.workflow_utils import (
     is_runtime_value,
@@ -856,11 +857,55 @@ class WorkflowProgress:
             # InputParameterModule.get_input_value().
             if step.type == "parameter_input" and isinstance(default_value, dict):
                 default_value = default_value.get("value", default_value)
+            elif step.type == "data_collection_input" and isinstance(default_value, list):
+                default_value = self._materialize_collection_default(step, default_value)
             outputs["output"] = default_value
         else:
             outputs["output"] = self.inputs_by_step_id[step.id]
 
         self.outputs[step.id] = outputs
+
+    def _materialize_collection_default(self, step: "WorkflowStep", values: list) -> "model.HistoryDatasetCollectionAssociation":
+        """Materialize a CWL array default (e.g. [1, 2, 3]) as an HDCA of expression.json HDAs."""
+        import json as json_mod
+
+        trans = self.trans
+        history = self.workflow_invocation.history
+        object_store_populator = ObjectStorePopulator(trans.app, trans.user)
+        hdas = []
+        for i, val in enumerate(values):
+            hda = model.HistoryDatasetAssociation(
+                name=f"{step.label}_{i}",
+                extension="expression.json",
+                history=history,
+                create_dataset=True,
+                flush=False,
+            )
+            hda.state = model.Dataset.states.OK
+            hda.visible = False
+            hda.peek = json_mod.dumps(val)
+            trans.sa_session.add(hda)
+            hdas.append(hda)
+
+        # Flush to assign DB IDs, then create in object store and write content.
+        trans.sa_session.flush()
+        for hda, val in zip(hdas, values):
+            object_store_populator.set_object_store_id(hda)
+            content = json_mod.dumps(val)
+            with open(hda.dataset.get_file_name(), "w") as out:
+                out.write(content)
+            hda.set_total_size()
+
+        elements = [dict(name=str(i), src="hda", id=hda.id) for i, hda in enumerate(hdas)]
+        collection_manager = trans.app.dataset_collection_manager
+        hdca = collection_manager.create(
+            trans,
+            history,
+            name=f"{step.label} (default)",
+            collection_type="list",
+            element_identifiers=elements,
+        )
+        return hdca
 
     def subworkflow_invoker(
         self,
