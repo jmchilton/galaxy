@@ -1235,9 +1235,29 @@ class AdaptedDataCollectionPromoteDatasetsToCollectionRequest(AdaptedDataCollect
     adapting: List[AdapterElementRequest]
 
 
+class AdaptedDataCollectionMergeDatasetsRequest(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeDatasets"]
+    adapting: List[DataRequestHda]
+
+
+class AdaptedDataCollectionMergeListsFlattenedRequest(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeListsFlattened"]
+    adapting: List[DataRequestHdca]
+
+
+class AdaptedDataCollectionMergeListsNestedRequest(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeListsNested"]
+    input_collection_type: str
+    adapting: List[DataRequestHdca]
+
+
 AdaptedDataCollectionRequest = Annotated[
     Union[
-        AdaptedDataCollectionPromoteDatasetToCollectionRequest, AdaptedDataCollectionPromoteDatasetsToCollectionRequest
+        AdaptedDataCollectionPromoteDatasetToCollectionRequest,
+        AdaptedDataCollectionPromoteDatasetsToCollectionRequest,
+        AdaptedDataCollectionMergeDatasetsRequest,
+        AdaptedDataCollectionMergeListsFlattenedRequest,
+        AdaptedDataCollectionMergeListsNestedRequest,
     ],
     Field(discriminator="adapter_type"),
 ]
@@ -1266,11 +1286,30 @@ class AdaptedDataCollectionPromoteDatasetsToCollectionRequestInternal(AdaptedDat
     adapting: List[AdapterElementRequestInternal]
 
 
+class AdaptedDataCollectionMergeDatasetsRequestInternal(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeDatasets"]
+    adapting: List[DataRequestInternalHda]
+
+
+class AdaptedDataCollectionMergeListsFlattenedRequestInternal(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeListsFlattened"]
+    adapting: List[DataRequestInternalHdca]
+
+
+class AdaptedDataCollectionMergeListsNestedRequestInternal(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeListsNested"]
+    input_collection_type: str
+    adapting: List[DataRequestInternalHdca]
+
+
 AdaptedDataCollectionRequestInternal = Annotated[
     Union[
         AdaptedDataCollectionPromoteCollectionElementToCollectionRequestInternal,
         AdaptedDataCollectionPromoteDatasetToCollectionRequestInternal,
         AdaptedDataCollectionPromoteDatasetsToCollectionRequestInternal,
+        AdaptedDataCollectionMergeDatasetsRequestInternal,
+        AdaptedDataCollectionMergeListsFlattenedRequestInternal,
+        AdaptedDataCollectionMergeListsNestedRequestInternal,
     ],
     Field(discriminator="adapter_type"),
 ]

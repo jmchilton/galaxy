@@ -44,7 +44,10 @@ from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.orm.util import get_object_session
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.model.dataset_collections import matching
-from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
+from galaxy.model.dataset_collections.adapters import (
+    CollectionAdapter,
+    PromoteCollectionElementToCollectionAdapter,
+)
 from galaxy.model.dataset_collections.query import HistoryQuery
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
@@ -297,11 +300,13 @@ def build_cwl_input_dict(
         if isinstance(replacement, NoReplacement):
             continue
 
-        # EphemeralCollection HDCAs aren't flushed yet — add to session so they get IDs.
-        if isinstance(replacement, EphemeralCollection):
+        # Materialize CollectionAdapters into real HDCAs — CWL scatter
+        # detection needs real HDCA IDs to load collections from the DB.
+        if isinstance(replacement, CollectionAdapter):
+            from galaxy.workflow.run import _persist_adapter_as_hdca
+
             session = get_object_session(step)
-            session.add(replacement.persistent_object)
-            session.flush()
+            replacement = _persist_adapter_as_hdca(replacement, trans.history, session)
 
         cwl_input_dict[input_name] = _galaxy_to_cwl_ref(replacement)
 
@@ -343,8 +348,6 @@ def _galaxy_to_cwl_ref(value):
         return {"src": "dce", "id": value.id}
     elif isinstance(value, dict) and value.get("src") == "json":
         return value["value"]
-    elif isinstance(value, EphemeralCollection):
-        return {"src": "hdca", "id": value.persistent_object.id}
     else:
         return value
 
@@ -876,6 +879,11 @@ class WorkflowModule:
                 continue
 
             data = progress.replacement_for_input(self.trans, step, input_dict)
+            # Subworkflow matching/slicing requires real model objects, not adapters.
+            if isinstance(data, CollectionAdapter):
+                from galaxy.workflow.run import _persist_adapter_as_hdca
+
+                data = _persist_adapter_as_hdca(data, self.trans.history, self.trans.sa_session)
             can_map_over = hasattr(data, "collection") and data.collection.allow_implicit_mapping
 
             if not can_map_over:
@@ -3134,14 +3142,14 @@ class ToolModule(WorkflowModule):
                         if isinstance(obj, model.DatasetCollection):
                             # Subcollection from scatter over nested collection (e.g. list:list).
                             # Wrap in an HDCA so downstream code can reference it by ID.
-                            ephemeral = EphemeralCollection(
+                            hdca = model.HistoryDatasetCollectionAssociation(
                                 collection=obj,
                                 history=invocation.history,
                             )
                             sa_session = get_object_session(step)
-                            sa_session.add(ephemeral.persistent_object)
+                            sa_session.add(hdca)
                             sa_session.flush()
-                            obj = ephemeral
+                            obj = hdca
                         slice_dict[name] = _galaxy_to_cwl_ref(obj)
                 if has_scatter:
                     slice_dict = evaluate_cwl_value_from_expressions(step, slice_dict, progress, trans)
@@ -3613,34 +3621,6 @@ module_types = dict(
     subworkflow=SubWorkflowModule,
 )
 module_factory = WorkflowModuleFactory(module_types)
-
-
-class EphemeralCollection:
-    """Interface for collecting datasets together in workflows and treating as collections.
-
-    These aren't real collections in the database - just datasets groupped together
-    in someway by workflows for passing data around as collections.
-    """
-
-    # Used to distinguish between datasets and collections frequently.
-    ephemeral = True
-    history_content_type = "dataset_collection"
-    name = "Dynamically generated collection"
-
-    def __init__(self, collection, history):
-        self.collection = collection
-        self.history = history
-
-        hdca = model.HistoryDatasetCollectionAssociation(
-            collection=collection,
-            history=history,
-        )
-        history.add_dataset_collection(hdca)
-        self.persistent_object = hdca
-
-    @property
-    def elements(self):
-        return self.collection.elements
 
 
 class DelayedWorkflowEvaluation(Exception):

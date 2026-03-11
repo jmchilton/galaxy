@@ -8,6 +8,9 @@ from typing_extensions import Self
 
 from galaxy.model import CollectionStateSummary
 from galaxy.tool_util_models.parameters import (
+    AdaptedDataCollectionMergeDatasetsRequestInternal,
+    AdaptedDataCollectionMergeListsFlattenedRequestInternal,
+    AdaptedDataCollectionMergeListsNestedRequestInternal,
     AdaptedDataCollectionPromoteCollectionElementToCollectionRequestInternal,
     AdaptedDataCollectionPromoteDatasetsToCollectionRequestInternal,
     AdaptedDataCollectionPromoteDatasetToCollectionRequestInternal,
@@ -15,6 +18,7 @@ from galaxy.tool_util_models.parameters import (
     AdaptedDataCollectionRequestTypeAdapter,
     AdapterElementRequestInternal,
     DataRequestInternalHda,
+    DataRequestInternalHdca,
     DatasetCollectionElementReference,
 )
 
@@ -22,6 +26,7 @@ if TYPE_CHECKING:
     from galaxy.model import (
         DatasetCollectionElement,
         HistoryDatasetAssociation,
+        HistoryDatasetCollectionAssociation,
     )
 
 
@@ -63,6 +68,21 @@ class CollectionAdapter:
         # may want to break this out someday. For now though just return self when asking for
         # the collection object.
         return self
+
+    @property
+    def allow_implicit_mapping(self) -> bool:
+        return True
+
+    @property
+    def populated(self) -> bool:
+        return True
+
+    @property
+    def column_definitions(self):
+        return None
+
+    def __getitem__(self, index):
+        return self.elements[index]
 
     @property
     def collection_type(self) -> str:
@@ -285,6 +305,213 @@ class TransientCollectionAdapterDatasetInstanceElement:
         return None
 
 
+class TransientCollectionAdapterCollectionElement:
+    """Wraps an HDCA as a collection element for nested merge adapters."""
+
+    def __init__(self, element_identifier: str, hdca: "HistoryDatasetCollectionAssociation"):
+        self.element_identifier = element_identifier
+        self._hdca = hdca
+
+    @property
+    def child_collection(self):
+        return self._hdca.collection
+
+    @property
+    def element_object(self):
+        return self._hdca.collection
+
+    @property
+    def dataset_instance(self):
+        return None
+
+    @property
+    def is_collection(self):
+        return True
+
+    @property
+    def columns(self):
+        return None
+
+
+class MergeDatasetsAdapter(CollectionAdapter):
+    """Merge multiple datasets into a list collection (Path A)."""
+
+    def __init__(self, datasets: list["HistoryDatasetAssociation"]):
+        self._datasets = datasets
+        self._elements = [
+            TransientCollectionAdapterDatasetInstanceElement(str(i), hda)
+            for i, hda in enumerate(datasets)
+        ]
+
+    @property
+    def collection_type(self) -> str:
+        return "list"
+
+    @property
+    def elements(self):
+        return self._elements
+
+    @property
+    def dataset_instances(self):
+        return list(self._datasets)
+
+    @property
+    def dataset_action_tuples(self):
+        tuples = []
+        for hda in self._datasets:
+            tuples.extend([(p.action, p.role_id) for p in hda.dataset.actions])
+        return tuples
+
+    @property
+    def dataset_states_and_extensions_summary(self):
+        dbkeys = set()
+        extensions = set()
+        states: dict[str, int] = defaultdict(int)
+        deleted = 0
+        for hda in self._datasets:
+            if hda.dbkey:
+                dbkeys.add(hda.dbkey)
+            if hda.extension:
+                extensions.add(hda.extension)
+            if hda.dataset.state:
+                states[hda.dataset.state] += 1
+            if hda.deleted or (hda.dataset and hda.dataset.deleted):
+                deleted += 1
+        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+
+    @property
+    def adapting(self):
+        return self._elements
+
+    def to_adapter_model(self) -> AdaptedDataCollectionMergeDatasetsRequestInternal:
+        return AdaptedDataCollectionMergeDatasetsRequestInternal(
+            src="CollectionAdapter",
+            adapter_type="MergeDatasets",
+            adapting=[DataRequestInternalHda(src="hda", id=hda.id) for hda in self._datasets],
+        )
+
+
+class MergeListsFlattenedAdapter(CollectionAdapter):
+    """Flatten multiple list collections into one list (Path B)."""
+
+    def __init__(self, hdcas: list["HistoryDatasetCollectionAssociation"]):
+        self._hdcas = hdcas
+
+    @property
+    def collection_type(self) -> str:
+        return "list"
+
+    @property
+    def elements(self):
+        result = []
+        idx = 0
+        for hdca in self._hdcas:
+            for elem in hdca.collection.elements:
+                result.append(TransientCollectionAdapterDatasetInstanceElement(
+                    str(idx), elem.dataset_instance
+                ))
+                idx += 1
+        return result
+
+    @property
+    def dataset_instances(self):
+        instances = []
+        for hdca in self._hdcas:
+            instances.extend(hdca.dataset_instances)
+        return instances
+
+    @property
+    def dataset_action_tuples(self):
+        tuples = []
+        for hdca in self._hdcas:
+            tuples.extend(hdca.collection.dataset_action_tuples)
+        return tuples
+
+    @property
+    def dataset_states_and_extensions_summary(self):
+        dbkeys = set()
+        extensions = set()
+        states: dict[str, int] = defaultdict(int)
+        deleted = 0
+        for hdca in self._hdcas:
+            summary = hdca.collection.dataset_states_and_extensions_summary
+            dbkeys.update(summary.dbkeys)
+            extensions.update(summary.extensions)
+            for state, count in summary.states.items():
+                states[state] += count
+            deleted += summary.deleted
+        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+
+    @property
+    def adapting(self):
+        return self._hdcas
+
+    def to_adapter_model(self) -> AdaptedDataCollectionMergeListsFlattenedRequestInternal:
+        return AdaptedDataCollectionMergeListsFlattenedRequestInternal(
+            src="CollectionAdapter",
+            adapter_type="MergeListsFlattened",
+            adapting=[DataRequestInternalHdca(src="hdca", id=hdca.id) for hdca in self._hdcas],
+        )
+
+
+class MergeListsNestedAdapter(CollectionAdapter):
+    """Nest multiple list collections as sub-collections (Path C)."""
+
+    def __init__(self, hdcas: list["HistoryDatasetCollectionAssociation"], input_collection_type: str):
+        self._hdcas = hdcas
+        self._input_collection_type = input_collection_type
+
+    @property
+    def collection_type(self) -> str:
+        return f"list:{self._input_collection_type}"
+
+    @property
+    def elements(self):
+        return [TransientCollectionAdapterCollectionElement(str(i), hdca)
+                for i, hdca in enumerate(self._hdcas)]
+
+    @property
+    def dataset_instances(self):
+        instances = []
+        for hdca in self._hdcas:
+            instances.extend(hdca.dataset_instances)
+        return instances
+
+    @property
+    def dataset_action_tuples(self):
+        tuples = []
+        for hdca in self._hdcas:
+            tuples.extend(hdca.collection.dataset_action_tuples)
+        return tuples
+
+    @property
+    def dataset_states_and_extensions_summary(self):
+        dbkeys = set()
+        extensions = set()
+        states: dict[str, int] = defaultdict(int)
+        deleted = 0
+        for hdca in self._hdcas:
+            summary = hdca.collection.dataset_states_and_extensions_summary
+            dbkeys.update(summary.dbkeys)
+            extensions.update(summary.extensions)
+            for state, count in summary.states.items():
+                states[state] += count
+            deleted += summary.deleted
+        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+
+    @property
+    def adapting(self):
+        return self._hdcas
+
+    def to_adapter_model(self) -> AdaptedDataCollectionMergeListsNestedRequestInternal:
+        return AdaptedDataCollectionMergeListsNestedRequestInternal(
+            src="CollectionAdapter",
+            adapter_type="MergeListsNested",
+            input_collection_type=self._input_collection_type,
+            adapting=[DataRequestInternalHdca(src="hdca", id=hdca.id) for hdca in self._hdcas],
+        )
+
+
 def recover_adapter(wrapped_object, adapter_model):
     adapter_type = adapter_model.adapter_type
     if adapter_type == "PromoteCollectionElementToCollection":
@@ -293,6 +520,12 @@ def recover_adapter(wrapped_object, adapter_model):
         return PromoteDatasetToCollection(wrapped_object, adapter_model.collection_type)
     elif adapter_type == "PromoteDatasetsToCollection":
         return PromoteDatasetsToCollection(wrapped_object, adapter_model.collection_type)
+    elif adapter_type == "MergeDatasets":
+        return MergeDatasetsAdapter(wrapped_object)
+    elif adapter_type == "MergeListsFlattened":
+        return MergeListsFlattenedAdapter(wrapped_object)
+    elif adapter_type == "MergeListsNested":
+        return MergeListsNestedAdapter(wrapped_object, adapter_model.input_collection_type)
     else:
         raise Exception(f"Unknown collection adapter encountered {adapter_type}")
 

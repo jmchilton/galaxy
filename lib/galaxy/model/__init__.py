@@ -10303,7 +10303,9 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
         return self.state == self.states.NEW
 
     def add_output(self, output_name, output_object):
-        if getattr(output_object, "ephemeral", False):
+        from galaxy.model.dataset_collections.adapters import CollectionAdapter
+
+        if isinstance(output_object, CollectionAdapter):
             return
         if output_object.history_content_type == "dataset":
             output_assoc = WorkflowInvocationStepOutputDatasetAssociation()

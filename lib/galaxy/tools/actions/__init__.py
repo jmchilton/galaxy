@@ -986,8 +986,8 @@ class DefaultToolAction(ToolAction):
         for collections in inp_dataset_collections.values():
             for dataset_collection, _ in collections:
                 if isinstance(dataset_collection, HistoryDatasetCollectionAssociation):
-                    assert dataset_collection.hid
-                    collection_hids.append(dataset_collection.hid)
+                    if dataset_collection.hid:
+                        collection_hids.append(dataset_collection.hid)
 
         for input_name in inp_data:
             data = inp_data[input_name]
@@ -1053,9 +1053,6 @@ class DefaultToolAction(ToolAction):
                         reductions[name] = []
                     reductions[name].append(dataset_collection)
 
-                if getattr(dataset_collection, "ephemeral", False):
-                    dataset_collection = dataset_collection.persistent_object
-
                 # TODO: verify can have multiple with same name, don't want to lose traceability
                 if isinstance(dataset_collection, model.HistoryDatasetCollectionAssociation):
                     job.add_input_dataset_collection(name, dataset_collection)
@@ -1076,9 +1073,19 @@ class DefaultToolAction(ToolAction):
                     elif isinstance(adapting, model.HistoryDatasetAssociation):
                         job.add_input_dataset(name, dataset=adapting, adapter_json=adapter_model.model_dump())
                     elif isinstance(adapting, list):
-                        for element in adapting:
-                            input_key = f"{name}|__adapter_part__|{element.element_identifier}"
-                            job.add_input_dataset(input_key, dataset=element.hda)
+                        adapter_model_dump = adapter_model.model_dump()
+                        for i, element in enumerate(adapting):
+                            if isinstance(element, model.HistoryDatasetCollectionAssociation):
+                                # MergeListsFlattened/MergeListsNested: list of HDCAs
+                                input_key = f"{name}|__adapter_part__|{i}"
+                                job.add_input_dataset_collection(
+                                    input_key, element,
+                                    adapter_json=adapter_model_dump if i == 0 else None,
+                                )
+                            elif hasattr(element, "element_identifier"):
+                                # PromoteDatasetsToCollection / MergeDatasetsAdapter: transient elements
+                                input_key = f"{name}|__adapter_part__|{element.element_identifier}"
+                                job.add_input_dataset(input_key, dataset=element.hda)
                 else:
                     log.info(f"not recording something as a collection in here... for name {name}")
 
