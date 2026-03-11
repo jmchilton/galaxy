@@ -965,7 +965,11 @@ class WorkflowProxy:
                 "type": "pick_value",
                 "label": f"_pick_{output_label}",
                 "position": {"left": 0, "top": 0},
-                "tool_state": json.dumps({"mode": pick_value, "num_inputs": len(references)}),
+                "tool_state": json.dumps({
+                    "mode": pick_value,
+                    "num_inputs": len(references),
+                    "link_merge": output.get("linkMerge", "merge_nested"),
+                }),
                 "input_connections": input_connections,
                 "workflow_outputs": [{"output_name": "output", "label": output_label}],
             }
