@@ -349,7 +349,7 @@ def params_to_strings(
     for key, value in param_values.items():
         if key in params:
             value = params[key].value_to_basic(value, app, use_security=use_security)
-        rval[key] = value if nested or value is None else str(dumps(value, sort_keys=True))
+            rval[key] = value if nested or value is None else str(dumps(value, sort_keys=True))
     return rval
 
 
@@ -364,7 +364,9 @@ def params_from_strings(params: dict[str, Union[Group, ToolParameter]], param_va
     param_values = param_values or {}
     for key, value in param_values.items():
         param = params.get(key)
-        if not param or not (param.type == "text" and value == "null"):
+        if not param:
+            continue
+        if not (param.type == "text" and value == "null"):
             # safe_loads attempts to handle some, but not all divergent handling
             # between JSON types and python types. TODO: We should let the
             # parameters handle all conversion, since they know what is an
@@ -372,11 +374,10 @@ def params_from_strings(params: dict[str, Union[Group, ToolParameter]], param_va
             # in a text parameter, while it should be a boolean in a boolean parameter.
             # This would resolve a lot of back and forth in the various to/from methods.
             value = safe_loads(value)
-        if param:
-            try:
-                value = param.value_from_basic(value, app, ignore_errors)
-            except ParameterValueError:
-                continue
+        try:
+            value = param.value_from_basic(value, app, ignore_errors)
+        except ParameterValueError:
+            continue
         rval[key] = value
     return rval
 
