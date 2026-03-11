@@ -21,12 +21,13 @@ class CollectionsToMatch:
         self.collections = {}
         self.uses_ephemeral_collections = False
 
-    def add(self, input_name, hdca, subcollection_type=None, linked=True):
+    def add(self, input_name, hdca, subcollection_type=None, linked=True, order=None):
         self.uses_ephemeral_collections = self.uses_ephemeral_collections or not hasattr(hdca, "hid")
         self.collections[input_name] = bunch.Bunch(
             hdca=hdca,
             subcollection_type=subcollection_type,
             linked=linked,
+            order=order,
         )
 
     def has_collections(self):
@@ -135,7 +136,10 @@ class MatchingCollections:
 
         matching_collections = MatchingCollections()
         matching_collections.uses_ephemeral_collections = collections_to_match.uses_ephemeral_collections
-        for input_key, to_match in sorted(collections_to_match.items()):
+        for input_key, to_match in sorted(
+            collections_to_match.items(),
+            key=lambda item: item[1].order if item[1].order is not None else item[0],
+        ):
             hdca = to_match.hdca
             collection_type_description = collection_type_descriptions.for_collection_type(
                 get_child_collection(hdca).collection_type

@@ -1006,6 +1006,13 @@ class WorkflowProxy:
         elif isinstance(input_type, dict) and input_type.get("type") == "array":
             input_as_dict["type"] = "data_collection_input"
             input_as_dict["collection_type"] = "list"
+            tool_state: ToolStateType = {"collection_type": "list"}
+            default_set = "default" in input
+            optional = default_set
+            if default_set:
+                tool_state["default"] = input["default"]
+            tool_state["optional"] = optional
+            input_as_dict["tool_state"] = tool_state
         elif isinstance(input_type, dict) and input_type.get("type") == "record":
             input_as_dict["type"] = "data_collection_input"
             input_as_dict["collection_type"] = "record"
