@@ -15,7 +15,7 @@
     echo '$stdoutmsg' &&
 #end if
 #if str($stderrmsg) != ""
-    >2& echo '$stderrmsg' && 
+    >&2 echo '$stderrmsg' &&
 #end if
 sh -c 'exit $exit_code'
     ]]>
