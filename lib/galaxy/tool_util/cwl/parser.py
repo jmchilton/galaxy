@@ -785,17 +785,16 @@ class WorkflowProxy:
     def get_outputs_for_label(self, label):
         outputs = []
         for output in self._workflow.tool["outputs"]:
-            # Skip outputs that have pickValue with multiple sources —
-            # these are handled by synthetic pick_value module steps
-            # created in to_dict().
+            # Skip outputs that have pickValue — these are handled by
+            # synthetic pick_value module steps created in to_dict().
             pick_value = output.get("pickValue")
+            if pick_value:
+                continue
             split_references = split_step_references(
                 output["outputSource"],
                 multiple=True,
                 workflow_id=self.cwl_id,
             )
-            if pick_value and len(split_references) > 1:
-                continue
 
             for ref_index, (step, output_name) in enumerate(split_references):
                 if step == label:
@@ -916,7 +915,11 @@ class WorkflowProxy:
         }
 
     def _add_pick_value_steps(self, steps, index, step_proxies):
-        """Create synthetic pick_value steps for multi-source pickValue outputs."""
+        """Create synthetic pick_value steps for pickValue outputs.
+
+        Handles both Pattern A (multiple outputSource) and Pattern B
+        (single outputSource, typically from a scattered step).
+        """
         # Build label-to-step-index map
         label_to_index = {}
         for input_dict in self._workflow.tool["inputs"]:
@@ -935,12 +938,10 @@ class WorkflowProxy:
                 multiple=True,
                 workflow_id=self.cwl_id,
             )
-            if len(references) < 2:
-                continue  # Single source — not Pattern A
 
-            # Validate: all_non_null requires array output type
+            # Validate: all_non_null requires array output type (multi-source only)
             output_type = output.get("type")
-            if pick_value == "all_non_null":
+            if pick_value == "all_non_null" and len(references) > 1:
                 is_array = (isinstance(output_type, dict) and output_type.get("type") == "array") or (
                     isinstance(output_type, str) and output_type.endswith("[]")
                 )

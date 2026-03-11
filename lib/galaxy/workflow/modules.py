@@ -2370,6 +2370,13 @@ class PickValueModule(WorkflowModule):
             if replacement is not NO_REPLACEMENT:
                 replacements.append(replacement)
 
+        # If a single input is a collection (e.g. from a scattered step),
+        # filter its elements instead of treating inputs as scalars.
+        if len(replacements) == 1 and isinstance(replacements[0], model.HistoryDatasetCollectionAssociation):
+            output = self._execute_on_collection(trans, invocation_step, mode, replacements[0])
+            progress.set_step_outputs(invocation_step, {"output": output})
+            return None
+
         # Separate non-null from null/skipped, preserving order
         non_null = [r for r in replacements if not self._is_null_or_skipped(r)]
 
@@ -2447,6 +2454,50 @@ class PickValueModule(WorkflowModule):
             element_identifiers=elements,
         )
         return hdca
+
+    def _execute_on_collection(self, trans, invocation_step, mode, hdca):
+        """Handle pickValue on a collection input (Pattern B: scatter + pickValue).
+
+        Filters null/skipped elements from the collection rather than
+        selecting among N scalar inputs.
+        """
+        step = invocation_step.workflow_step
+        non_null_hdas = []
+        for element in hdca.collection.elements:
+            hda = element.dataset_instance
+            if not self._is_null_or_skipped(hda):
+                non_null_hdas.append(hda)
+
+        if mode == "all_non_null":
+            return self._create_collection_from_list(trans, invocation_step, non_null_hdas)
+
+        elif mode == "first_non_null":
+            if not non_null_hdas:
+                raise FailWorkflowEvaluation(
+                    why=InvocationFailureExpressionEvaluationFailed(
+                        reason=FailureReason.expression_evaluation_failed,
+                        workflow_step_id=step.id,
+                    )
+                )
+            return non_null_hdas[0]
+
+        elif mode == "the_only_non_null":
+            if len(non_null_hdas) != 1:
+                raise FailWorkflowEvaluation(
+                    why=InvocationFailureExpressionEvaluationFailed(
+                        reason=FailureReason.expression_evaluation_failed,
+                        workflow_step_id=step.id,
+                    )
+                )
+            return non_null_hdas[0]
+
+        elif mode == "first_or_skip":
+            if not non_null_hdas:
+                return self._create_skipped_output(trans, invocation_step)
+            return non_null_hdas[0]
+
+        else:
+            raise ValueError(f"Unknown pick_value mode: {mode}")
 
 
 class ToolModule(WorkflowModule):
