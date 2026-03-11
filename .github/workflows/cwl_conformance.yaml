@@ -29,8 +29,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # v1.0 and v1.1 have no red-required tests, so run all required+green
-        # as a single blocking job. v1.2 still has red-required tests.
+        # No red-required tests remain, so run all required+green
+        # as a single blocking job per version.
         include:
           - python-version: '3.10'
             marker: 'green or required'
@@ -45,10 +45,7 @@ jobs:
             marker: 'red and not required'
             conformance-version: cwl_conformance_v1_1
           - python-version: '3.10'
-            marker: 'green'
-            conformance-version: cwl_conformance_v1_2
-          - python-version: '3.10'
-            marker: 'red and required'
+            marker: 'green or required'
             conformance-version: cwl_conformance_v1_2
           - python-version: '3.10'
             marker: 'red and not required'
@@ -82,7 +79,7 @@ jobs:
           path: 'galaxy root/.venv'
           key: gxy-venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('galaxy root/requirements.txt') }}-api
       - name: Run tests
-        run: ./run_tests.sh --coverage --skip_flakey_fails -cwl lib/galaxy_test/api/cwl -- -m "${{ matrix.marker }} and ${{ matrix.conformance-version }}"
+        run: ./run_tests.sh --coverage --skip_flakey_fails -cwl lib/galaxy_test/api/cwl -- -m "(${{ matrix.marker }}) and ${{ matrix.conformance-version }}"
         working-directory: 'galaxy root'
       - uses: codecov/codecov-action@v5
         with:
