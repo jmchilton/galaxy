@@ -1922,13 +1922,6 @@ class BaseDataToolParameter(ToolParameter):
                         return hdca
 
     def to_json(self, value, app, use_security):
-        if getattr(value, "ephemeral", False):
-            # wf_wc_scatter_multiple_flattened
-            value = value.persistent_object
-            if value.id is None:
-                app.model.context.add(value)
-                app.model.context.flush()
-
         if value not in [None, "", "None"]:
             if isinstance(value, list) and len(value) > 0:
                 values = [history_item_to_json(v, app, use_security) for v in value]
@@ -2042,14 +2035,20 @@ def src_id_to_item(
         adapter_model = validate_collection_adapter_src_dict(value)
         adapting = adapter_model.adapting
         if isinstance(adapting, list):
-            elements = []
-            for item in adapting:
-                element = TransientCollectionAdapterDatasetInstanceElement(
-                    item.name,
-                    cast(HistoryDatasetAssociation, src_id_to_item(sa_session, item.dict(), security)),
-                )
-                elements.append(element)
-            return recover_adapter(elements, adapter_model)
+            if hasattr(adapting[0], "name"):
+                # PromoteDatasetsToCollection: items have element_identifier
+                elements = []
+                for item in adapting:
+                    element = TransientCollectionAdapterDatasetInstanceElement(
+                        item.name,
+                        cast(HistoryDatasetAssociation, src_id_to_item(sa_session, item.dict(), security)),
+                    )
+                    elements.append(element)
+                return recover_adapter(elements, adapter_model)
+            else:
+                # Merge adapters: items are raw HDA/HDCA refs
+                items = [src_id_to_item(sa_session, item.dict(), security) for item in adapting]
+                return recover_adapter(items, adapter_model)
         else:
             value = adapting.dict()
     src_to_class = {

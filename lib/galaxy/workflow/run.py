@@ -30,6 +30,12 @@ from galaxy.schema.invocation import (
     InvocationWarningWorkflowOutputNotFound,
     WarningReason,
 )
+from galaxy.model.dataset_collections.adapters import (
+    CollectionAdapter,
+    MergeDatasetsAdapter,
+    MergeListsFlattenedAdapter,
+    MergeListsNestedAdapter,
+)
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.tools.cwl_runtime import raw_to_galaxy
 from galaxy.tools.parameters.workflow_utils import (
@@ -58,6 +64,30 @@ if TYPE_CHECKING:
     from galaxy.work.context import WorkRequestContext
 
 log = logging.getLogger(__name__)
+
+
+def _persist_adapter_as_hdca(adapter: CollectionAdapter, history, sa_session) -> "model.HistoryDatasetCollectionAssociation":
+    """Materialize a CollectionAdapter into a real persisted HDCA."""
+    dc = model.DatasetCollection(collection_type=adapter.collection_type)
+    for i, elem in enumerate(adapter.elements):
+        if elem.is_collection:
+            model.DatasetCollectionElement(
+                collection=dc,
+                element=elem.child_collection,
+                element_index=i,
+                element_identifier=elem.element_identifier,
+            )
+        else:
+            model.DatasetCollectionElement(
+                collection=dc,
+                element=elem.dataset_instance,
+                element_index=i,
+                element_identifier=elem.element_identifier,
+            )
+    hdca = model.HistoryDatasetCollectionAssociation(collection=dc, history=history)
+    sa_session.add(hdca)
+    sa_session.flush()
+    return hdca
 
 WorkflowOutputsType = dict[int, Any]
 
@@ -508,53 +538,26 @@ class WorkflowProgress:
                 if input_dict.get("collection_types") != ["list"]:
                     return self.replacement_for_connection(connections[0], is_data=is_data)
 
-            collection = model.DatasetCollection()
-            # If individual datasets provided (type is None) - premote to a list.
-            collection.collection_type = input_collection_type or "list"
-
-            next_index = 0
             if input_collection_type is None:
                 if merge_type == "merge_nested":
                     raise NotImplementedError()
-
-                for input in inputs:
-                    model.DatasetCollectionElement(
-                        collection=collection,
-                        element=input,
-                        element_index=next_index,
-                        element_identifier=str(next_index),
-                    )
-                    next_index += 1
+                # Path A: merge datasets into flat list
+                return MergeDatasetsAdapter(inputs)
 
             elif input_collection_type == "list":
                 if merge_type == "merge_flattened":
-                    for input in inputs:
-                        for dataset_instance in input.dataset_instances:
-                            model.DatasetCollectionElement(
-                                collection=collection,
-                                element=dataset_instance,
-                                element_index=next_index,
-                                element_identifier=str(next_index),
-                            )
-                            next_index += 1
+                    # Path B: flatten lists
+                    return MergeListsFlattenedAdapter(inputs)
                 elif merge_type == "merge_nested":
-                    # Increase nested level of collection
-                    collection.collection_type = f"list:{input_collection_type}"
-                    for input in inputs:
-                        model.DatasetCollectionElement(
-                            collection=collection,
-                            element=input.collection,
-                            element_index=next_index,
-                            element_identifier=str(next_index),
-                        )
-                        next_index += 1
+                    # Path C: nest lists
+                    return MergeListsNestedAdapter(inputs, input_collection_type)
+                else:
+                    # default for lists = flatten (existing behavior)
+                    return MergeListsFlattenedAdapter(inputs)
             else:
-                raise NotImplementedError()
-
-            return modules.EphemeralCollection(
-                collection=collection,
-                history=self.workflow_invocation.history,
-            )
+                raise NotImplementedError(
+                    f"merge not implemented for collection type '{input_collection_type}'"
+                )
 
         return replacement
 
@@ -757,10 +760,11 @@ class WorkflowProgress:
             content = outputs.get("output", NO_REPLACEMENT)
             if content is not NO_REPLACEMENT:
                 log.debug("Adding input for step %s: %s", step.id, content)
-                # Unwrap EphemeralCollection to its persistent HDCA for DB storage
-                if isinstance(content, modules.EphemeralCollection):
-                    content = content.persistent_object
-                invocation.add_input(content, step.id)
+                if isinstance(content, CollectionAdapter):
+                    # Adapters aren't recorded as workflow invocation inputs
+                    pass
+                else:
+                    invocation.add_input(content, step.id)
 
         output = outputs.get("output")
         # TODO: handle extra files and directory types and collections and all the stuff...
@@ -974,10 +978,10 @@ class WorkflowProgress:
                 }
                 replacement = self.replacement_for_input_connections(step, input_dict, matching_connections)
                 if not isinstance(replacement, NoReplacement):
-                    # Flush EphemeralCollection so it gets a DB id for downstream refs
-                    if isinstance(replacement, modules.EphemeralCollection):
-                        self.trans.sa_session.add(replacement.persistent_object)
-                        self.trans.sa_session.flush()
+                    if isinstance(replacement, CollectionAdapter):
+                        replacement = _persist_adapter_as_hdca(
+                            replacement, self.workflow_invocation.history, self.trans.sa_session
+                        )
                     subworkflow_inputs[subworkflow_step_id] = replacement
                     connection_found = True
 

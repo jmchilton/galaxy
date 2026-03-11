@@ -467,7 +467,7 @@ class ExecutionTracker:
     def on_text(self) -> Optional[str]:
         collection_info = self.collection_info
         if self._on_text is None and collection_info is not None:
-            if not collection_info.uses_ephemeral_collections:
+            if not collection_info.uses_non_persisted_collections:
                 collection_hids, element_ids = self._collection_info_to_collection_hids_element_ids(
                     collection_info.collections.values()
                 )

@@ -35,6 +35,7 @@ from galaxy.managers.hdcas import write_dataset_collection
 from galaxy.managers.histories import HistoryManager
 from galaxy.managers.lddas import LDDAManager
 from galaxy.model import DatasetCollection
+from galaxy.model.dataset_collections.adapters import CollectionAdapter
 from galaxy.model.dataset_collections import builder
 from galaxy.model.dataset_collections.matching import MatchingCollections
 from galaxy.model.dataset_collections.registry import DATASET_COLLECTION_TYPES_REGISTRY
@@ -271,8 +272,9 @@ class DatasetCollectionManager:
 
             if implicit_inputs:
                 for input_name, input_collection in implicit_inputs:
-                    if getattr(input_collection, "ephemeral", False):
-                        input_collection = input_collection.persistent_object
+                    if isinstance(input_collection, CollectionAdapter):
+                        # Skip recording adapter collections as implicit inputs
+                        continue
                     if isinstance(input_collection, model.HistoryDatasetCollectionAssociation):
                         # Can also get dragged DatasetCollectionElement's here.
                         # We only use this for extracting workflows currently,
@@ -442,8 +444,11 @@ class DatasetCollectionManager:
         tags = tags or {}
         implicit_inputs = implicit_inputs or []
         for _, v in implicit_inputs:
-            if getattr(v, "ephemeral", False):
-                v = v.persistent_object
+            if isinstance(v, CollectionAdapter):
+                for instance in v.dataset_instances:
+                    for tag in instance.auto_propagated_tags:
+                        tags[tag.value] = tag
+                continue
             for tag in v.auto_propagated_tags:
                 tags[tag.value] = tag
         for _, tag in tags.items():
