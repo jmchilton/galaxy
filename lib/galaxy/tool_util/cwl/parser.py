@@ -777,6 +777,17 @@ class WorkflowProxy:
         self._workflow_path = workflow_path
         self._step_proxies: Optional[List[Union[SubworkflowStepProxy, ToolStepProxy]]] = None
         self._cwl_id_override = cwl_id_override
+        self._load_contents_inputs = self._find_load_contents_inputs()
+
+    def _find_load_contents_inputs(self) -> set:
+        """Find workflow input labels that have loadContents: true."""
+        result: set = set()
+        for inp in self._workflow.tool["inputs"]:
+            has_load_contents = inp.get("loadContents", False)
+            input_binding = inp.get("inputBinding") or {}
+            if has_load_contents or input_binding.get("loadContents", False):
+                result.add(self.jsonld_id_to_label(inp["id"]))
+        return result
 
     @property
     def cwl_id(self):
@@ -1302,7 +1313,23 @@ class InputProxy:
             as_dict["value_from"] = self._cwl_input["valueFrom"]
         if "default" in self._cwl_input:
             as_dict["default"] = self._cwl_input["default"]
+        if self._has_load_contents():
+            as_dict["load_contents"] = True
         return as_dict
+
+    def _has_load_contents(self):
+        """Check if this input needs loadContents — either directly or via source workflow input."""
+        if self._cwl_input.get("loadContents", False):
+            return True
+        # Propagate from workflow input loadContents
+        if self.cwl_source_id:
+            source_refs = split_step_references(
+                listify(self.cwl_source_id), multiple=True, workflow_id=self.step_proxy.cwl_workflow_id
+            )
+            for step_name, _ in source_refs:
+                if step_name in self.workflow_proxy._load_contents_inputs:
+                    return True
+        return False
 
 
 class BaseStepProxy:

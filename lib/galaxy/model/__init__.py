@@ -9102,6 +9102,7 @@ class WorkflowStepInput(Base, RepresentById):
     default_value: Mapped[Optional[bytes]] = mapped_column(MutableJSONType)
     default_value_set: Mapped[Optional[bool]] = mapped_column(default=False)
     runtime_value: Mapped[Optional[bool]] = mapped_column(default=False)
+    load_contents: Mapped[Optional[bool]] = mapped_column(default=False)
 
     workflow_step: Mapped[Optional["WorkflowStep"]] = relationship(
         back_populates="inputs",
@@ -9128,6 +9129,7 @@ class WorkflowStepInput(Base, RepresentById):
         copied_step_input.default_value_set = self.default_value_set
         copied_step_input.merge_type = self.merge_type
         copied_step_input.scatter_type = self.scatter_type
+        copied_step_input.load_contents = self.load_contents
 
         copied_step_input.connections = copy_list(self.connections)
         return copied_step_input

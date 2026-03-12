@@ -68,9 +68,6 @@ RED_TESTS = {
         "timelimit_expressiontool",
         "timelimit_invalid_wf",
         "valuefrom_wf_step",
-        "workflow_input_inputBinding_loadContents",
-        "workflow_input_loadContents_without_inputBinding",
-        "workflow_step_in_loadContents",
     ],
     "v1.2": [
         # not required
@@ -102,9 +99,7 @@ RED_TESTS = {
         "simple_nested_crossproduct_scatter",
         "timelimit_expressiontool",
         "valuefrom_wf_step",
-        "workflow_input_inputBinding_loadContents",
-        "workflow_input_loadContents_without_inputBinding",
-        "workflow_step_in_loadContents",
+        "wf_wc_nomultiple_merge_nested",
     ],
 }
 
