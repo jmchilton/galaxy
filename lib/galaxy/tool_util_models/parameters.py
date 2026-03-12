@@ -1251,6 +1251,11 @@ class AdaptedDataCollectionMergeListsNestedRequest(AdaptedDataCollectionRequestB
     adapting: List[DataRequestHdca]
 
 
+class AdaptedDataCollectionMergeNestedDatasetsRequest(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeNestedDatasets"]
+    adapting: List[DataRequestHda]
+
+
 AdaptedDataCollectionRequest = Annotated[
     Union[
         AdaptedDataCollectionPromoteDatasetToCollectionRequest,
@@ -1258,6 +1263,7 @@ AdaptedDataCollectionRequest = Annotated[
         AdaptedDataCollectionMergeDatasetsRequest,
         AdaptedDataCollectionMergeListsFlattenedRequest,
         AdaptedDataCollectionMergeListsNestedRequest,
+        AdaptedDataCollectionMergeNestedDatasetsRequest,
     ],
     Field(discriminator="adapter_type"),
 ]
@@ -1302,6 +1308,11 @@ class AdaptedDataCollectionMergeListsNestedRequestInternal(AdaptedDataCollection
     adapting: List[DataRequestInternalHdca]
 
 
+class AdaptedDataCollectionMergeNestedDatasetsRequestInternal(AdaptedDataCollectionRequestBase):
+    adapter_type: Literal["MergeNestedDatasets"]
+    adapting: List[DataRequestInternalHda]
+
+
 AdaptedDataCollectionRequestInternal = Annotated[
     Union[
         AdaptedDataCollectionPromoteCollectionElementToCollectionRequestInternal,
@@ -1310,6 +1321,7 @@ AdaptedDataCollectionRequestInternal = Annotated[
         AdaptedDataCollectionMergeDatasetsRequestInternal,
         AdaptedDataCollectionMergeListsFlattenedRequestInternal,
         AdaptedDataCollectionMergeListsNestedRequestInternal,
+        AdaptedDataCollectionMergeNestedDatasetsRequestInternal,
     ],
     Field(discriminator="adapter_type"),
 ]

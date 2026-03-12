@@ -35,6 +35,7 @@ from galaxy.model.dataset_collections.adapters import (
     MergeDatasetsAdapter,
     MergeListsFlattenedAdapter,
     MergeListsNestedAdapter,
+    MergeNestedDatasetsAdapter,
 )
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.tools.cwl_runtime import raw_to_galaxy
@@ -66,14 +67,20 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def _persist_adapter_as_hdca(adapter: CollectionAdapter, history, sa_session) -> "model.HistoryDatasetCollectionAssociation":
-    """Materialize a CollectionAdapter into a real persisted HDCA."""
-    dc = model.DatasetCollection(collection_type=adapter.collection_type)
-    for i, elem in enumerate(adapter.elements):
+def _materialize_collection(adapter_or_collection) -> "model.DatasetCollection":
+    """Recursively materialize a virtual collection (adapter/transient element) into a real DatasetCollection."""
+    dc = model.DatasetCollection(collection_type=adapter_or_collection.collection_type)
+    for i, elem in enumerate(adapter_or_collection.elements):
         if elem.is_collection:
+            child = elem.child_collection
+            if isinstance(child, model.DatasetCollection):
+                element_obj = child
+            else:
+                # Virtual sub-list (e.g. TransientCollectionAdapterSubListElement) — recurse
+                element_obj = _materialize_collection(child)
             model.DatasetCollectionElement(
                 collection=dc,
-                element=elem.child_collection,
+                element=element_obj,
                 element_index=i,
                 element_identifier=elem.element_identifier,
             )
@@ -84,6 +91,12 @@ def _persist_adapter_as_hdca(adapter: CollectionAdapter, history, sa_session) ->
                 element_index=i,
                 element_identifier=elem.element_identifier,
             )
+    return dc
+
+
+def _persist_adapter_as_hdca(adapter: CollectionAdapter, history, sa_session) -> "model.HistoryDatasetCollectionAssociation":
+    """Materialize a CollectionAdapter into a real persisted HDCA."""
+    dc = _materialize_collection(adapter)
     hdca = model.HistoryDatasetCollectionAssociation(collection=dc, history=history)
     sa_session.add(hdca)
     sa_session.flush()
@@ -505,6 +518,13 @@ class WorkflowProgress:
         is_data = input_dict["input_type"] in ["dataset", "dataset_collection"]
         if len(connections) == 1:
             replacement = self.replacement_for_connection(connections[0], is_data=is_data)
+            if merge_type == "merge_nested" and is_data and hasattr(replacement, "history_content_type"):
+                if replacement.history_content_type == "dataset":
+                    replacement = MergeDatasetsAdapter([replacement])
+                elif replacement.history_content_type == "dataset_collection":
+                    replacement = MergeListsNestedAdapter(
+                        [replacement], replacement.collection.collection_type
+                    )
         else:
             # We've mapped multiple individual inputs to a single parameter,
             # promote output to a collection.
@@ -540,7 +560,8 @@ class WorkflowProgress:
 
             if input_collection_type is None:
                 if merge_type == "merge_nested":
-                    raise NotImplementedError()
+                    # Path D: merge_nested for individual datasets -> list:list
+                    return MergeNestedDatasetsAdapter(inputs)
                 # Path A: merge datasets into flat list
                 return MergeDatasetsAdapter(inputs)
 

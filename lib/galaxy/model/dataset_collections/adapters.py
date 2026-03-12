@@ -11,6 +11,7 @@ from galaxy.tool_util_models.parameters import (
     AdaptedDataCollectionMergeDatasetsRequestInternal,
     AdaptedDataCollectionMergeListsFlattenedRequestInternal,
     AdaptedDataCollectionMergeListsNestedRequestInternal,
+    AdaptedDataCollectionMergeNestedDatasetsRequestInternal,
     AdaptedDataCollectionPromoteCollectionElementToCollectionRequestInternal,
     AdaptedDataCollectionPromoteDatasetsToCollectionRequestInternal,
     AdaptedDataCollectionPromoteDatasetToCollectionRequestInternal,
@@ -512,6 +513,104 @@ class MergeListsNestedAdapter(CollectionAdapter):
         )
 
 
+class TransientCollectionAdapterSubListElement:
+    """Virtual sub-list element wrapping a single dataset as a 1-element list.
+
+    Used by MergeNestedDatasetsAdapter to build list:list from individual HDAs.
+    CWL merge_nested: [A, B] -> [[A], [B]]
+    """
+
+    def __init__(self, element_identifier: str, elements: list[TransientCollectionAdapterDatasetInstanceElement]):
+        self.element_identifier = element_identifier
+        self._elements = elements
+
+    @property
+    def child_collection(self):
+        return self
+
+    @property
+    def element_object(self):
+        return self
+
+    @property
+    def is_collection(self):
+        return True
+
+    @property
+    def elements(self):
+        return self._elements
+
+    @property
+    def collection_type(self):
+        return "list"
+
+    @property
+    def dataset_instances(self):
+        return [e.dataset_instance for e in self._elements]
+
+
+class MergeNestedDatasetsAdapter(CollectionAdapter):
+    """Wrap multiple individual datasets into list:list (Path D).
+
+    CWL merge_nested for File inputs: [A, B] -> [[A], [B]]
+    Each HDA becomes a 1-element sub-list.
+    """
+
+    def __init__(self, datasets: list["HistoryDatasetAssociation"]):
+        self._datasets = datasets
+
+    @property
+    def collection_type(self) -> str:
+        return "list:list"
+
+    @property
+    def elements(self):
+        result = []
+        for i, hda in enumerate(self._datasets):
+            inner_element = TransientCollectionAdapterDatasetInstanceElement("0", hda)
+            result.append(TransientCollectionAdapterSubListElement(str(i), [inner_element]))
+        return result
+
+    @property
+    def dataset_instances(self):
+        return list(self._datasets)
+
+    @property
+    def dataset_action_tuples(self):
+        tuples = []
+        for hda in self._datasets:
+            tuples.extend([(p.action, p.role_id) for p in hda.dataset.actions])
+        return tuples
+
+    @property
+    def dataset_states_and_extensions_summary(self):
+        dbkeys = set()
+        extensions = set()
+        states: dict[str, int] = defaultdict(int)
+        deleted = 0
+        for hda in self._datasets:
+            if hda.dbkey:
+                dbkeys.add(hda.dbkey)
+            if hda.extension:
+                extensions.add(hda.extension)
+            if hda.dataset.state:
+                states[hda.dataset.state] += 1
+            if hda.deleted or (hda.dataset and hda.dataset.deleted):
+                deleted += 1
+        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+
+    @property
+    def adapting(self):
+        return self._datasets
+
+    def to_adapter_model(self) -> "AdaptedDataCollectionMergeNestedDatasetsRequestInternal":
+        return AdaptedDataCollectionMergeNestedDatasetsRequestInternal(
+            src="CollectionAdapter",
+            adapter_type="MergeNestedDatasets",
+            adapting=[DataRequestInternalHda(src="hda", id=hda.id) for hda in self._datasets],
+        )
+
+
 def recover_adapter(wrapped_object, adapter_model):
     adapter_type = adapter_model.adapter_type
     if adapter_type == "PromoteCollectionElementToCollection":
@@ -526,6 +625,8 @@ def recover_adapter(wrapped_object, adapter_model):
         return MergeListsFlattenedAdapter(wrapped_object)
     elif adapter_type == "MergeListsNested":
         return MergeListsNestedAdapter(wrapped_object, adapter_model.input_collection_type)
+    elif adapter_type == "MergeNestedDatasets":
+        return MergeNestedDatasetsAdapter(wrapped_object)
     else:
         raise Exception(f"Unknown collection adapter encountered {adapter_type}")
 
