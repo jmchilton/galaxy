@@ -5211,6 +5211,9 @@ class DatasetInstance(RepresentById, UsesCreateAndUpdateTime, _HasTable):
 
     @property
     def cwl_formats(self):
+        for tag in self.tags:
+            if tag.user_tname == "cwl_format" and tag.user_value:
+                return [tag.user_value]
         return [f"http://edamontology.org/{self.datatype.edam_format}"]
 
     @property

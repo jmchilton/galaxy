@@ -2025,6 +2025,9 @@ class MinimalJobWrapper(HasResourceParameters):
                 context_value = context[context_key]
                 setattr(dataset, context_key, context_value)
 
+        if "tags" in context:
+            self.app.tag_handler.add_tags_from_list(job.user, dataset, context["tags"], flush=False)
+
         self.sa_session.add(dataset)
 
     def finish(
