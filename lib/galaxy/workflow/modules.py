@@ -445,16 +445,15 @@ def find_cwl_scatter_collections(
     cwl_input_dict: dict,
     trans,
     tool=None,
-) -> matching.CollectionsToMatch:
-    """Identify scatter inputs and build a ``CollectionsToMatch``.
+    progress=None,
+) -> tuple[matching.CollectionsToMatch, matching.CollectionsToMatch]:
+    """Identify scatter inputs and build ``CollectionsToMatch``.
 
-    CWL scatter is simpler than the legacy Galaxy path — no subcollection
-    type matching or ``multiple=True`` handling.  Each scatter input maps
-    its HDCA directly.
-
-    Also handles implicit mapping: when an HDCA is passed to a scalar CWL
-    input (e.g. inside a subworkflow with outer scatter), the HDCA is
-    treated as an implicit scatter target.
+    Returns (scatter_collections, parent_mapping_collections).  Scatter
+    collections come from explicit CWL scatter annotations.  Parent-mapping
+    collections are HDCAs passed to scalar params inside a mapped subworkflow
+    that need implicit decomposition.  They are returned separately because
+    they form an independent dimension (cross-product with scatter).
     """
     from galaxy.tool_util_models.parameters import (
         CwlArrayParameterModel,
@@ -462,6 +461,7 @@ def find_cwl_scatter_collections(
     )
 
     collections_to_match = matching.CollectionsToMatch()
+    parent_mapping = matching.CollectionsToMatch()
     step_inputs_by_name = {si.name: si for si in step.inputs}
 
     # Collection-typed params (array/record) should NOT be implicitly mapped.
@@ -509,19 +509,56 @@ def find_cwl_scatter_collections(
             scatter_method = _get_cwl_scatter_method(step)
             is_linked = scatter_method not in ("nested_crossproduct", "flat_crossproduct")
             collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked, order=scatter_order.get(name))
-        elif not has_explicit_scatter and name not in collection_param_names:
-            # Implicit mapping: HDCA passed to a scalar (non-array/record)
-            # parameter on a step with NO explicit scatter.  This handles
-            # inner steps of a subworkflow whose parent step scatters — the
-            # inner tools receive HDCAs that need to be mapped over even
-            # though they have no scatter annotation.
-            #
-            # When the step DOES have explicit scatter, "disabled" means
-            # "not part of the scatter" and the full collection must be
-            # preserved (e.g. for valueFrom expressions accessing self[0]).
-            collections_to_match.add(name, hdca, subcollection_type=subcollection_type)
+        elif name not in collection_param_names:
+            if has_explicit_scatter and progress is not None and progress.subworkflow_structure is not None:
+                # Parent-mapping: inside a mapped subworkflow, this disabled-
+                # scatter input carries a parent HDCA that needs decomposition.
+                # Kept separate from scatter collections — they form an
+                # independent dimension (linked together, cross-producted with
+                # the scatter dimension).
+                parent_mapping.add(name, hdca, subcollection_type=subcollection_type)
+            elif not has_explicit_scatter:
+                # Implicit mapping: no explicit scatter on this step.
+                # Inner step of a subworkflow whose parent scatters; HDCAs
+                # need mapping even without scatter annotation.
+                collections_to_match.add(name, hdca, subcollection_type=subcollection_type)
 
-    return collections_to_match
+    return collections_to_match, parent_mapping
+
+
+def _build_combined_collection_info(parent_info, scatter_info):
+    """Merge parent-mapping and scatter MatchingCollections into a combined one.
+
+    Structure = scatter(inner) × parent(outer) = parent:scatter (e.g. list:list).
+    Parent-mapping collections form the linked (outer) structure.
+    Scatter collections form the unlinked (inner) structure(s).
+    """
+    combined = matching.MatchingCollections()
+    combined.linked_structure = parent_info.linked_structure
+    if scatter_info.linked_structure:
+        combined.unlinked_structures.append(scatter_info.linked_structure)
+    combined.unlinked_structures.extend(scatter_info.unlinked_structures)
+    combined.collections = {**parent_info.collections, **scatter_info.collections}
+    combined.subcollection_types = {**parent_info.subcollection_types, **scatter_info.subcollection_types}
+    combined.when_values = scatter_info.when_values or parent_info.when_values
+    return combined
+
+
+def _iter_parent_mapping_x_scatter(parent_info, scatter_iter):
+    """Cross-product parent-mapping slices × scatter iterations.
+
+    Parent-mapping collections are linked (zipped) and form the outer loop.
+    Scatter iterations form the inner loop.
+    """
+    scatter_slices = list(scatter_iter)
+    for parent_elements, _parent_when in parent_info.slice_collections():
+        for scatter_elements, when_value in scatter_slices:
+            combined = {}
+            if parent_elements:
+                combined.update(parent_elements)
+            if scatter_elements:
+                combined.update(scatter_elements)
+            yield combined, when_value
 
 
 def evaluate_value_from_expressions(progress, step, execution_state, extra_step_state):
@@ -3129,8 +3166,11 @@ class ToolModule(WorkflowModule):
                 cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
 
             # Scatter: identify collection inputs and match
-            collections_to_match = find_cwl_scatter_collections(step, cwl_input_dict, trans, tool=tool)
+            collections_to_match, parent_mapping = find_cwl_scatter_collections(
+                step, cwl_input_dict, trans, tool=tool, progress=progress
+            )
             collection_info = self.trans.app.dataset_collection_manager.match_collections(collections_to_match)
+            parent_mapping_info = self.trans.app.dataset_collection_manager.match_collections(parent_mapping)
             if collection_info:
                 if progress.subworkflow_collection_info:
                     collection_info.when_values = progress.subworkflow_collection_info.when_values
@@ -3139,12 +3179,28 @@ class ToolModule(WorkflowModule):
             if collection_info:
                 scatter_method = _get_cwl_scatter_method(step)
                 if scatter_method in ("nested_crossproduct", "flat_crossproduct"):
-                    iteration_elements_iter = collection_info.slice_collections_crossproduct()
+                    scatter_iter = collection_info.slice_collections_crossproduct()
                 else:
-                    iteration_elements_iter = collection_info.slice_collections()
+                    scatter_iter = collection_info.slice_collections()
             else:
                 when_value = progress.when_values[0] if progress.when_values else None
-                iteration_elements_iter = [(None, when_value)]
+                scatter_iter = [(None, when_value)]
+
+            if parent_mapping_info:
+                # Cross-product: parent-mapping dimension × scatter dimension.
+                # Parent-mapping collections are linked (zipped) with each
+                # other; the group cross-products with the scatter iterations.
+                iteration_elements_iter = _iter_parent_mapping_x_scatter(
+                    parent_mapping_info, scatter_iter
+                )
+                # Build combined collection_info so output collections reflect
+                # both parent-mapping and scatter dimensions.
+                if collection_info:
+                    collection_info = _build_combined_collection_info(parent_mapping_info, collection_info)
+                else:
+                    collection_info = parent_mapping_info
+            else:
+                iteration_elements_iter = scatter_iter
 
             param_combinations = []
             for iteration_elements, when_value in iteration_elements_iter:
