@@ -1952,6 +1952,17 @@ class ModelExportStore(metaclass=abc.ABCMeta):
         """Export store should be used as context manager."""
 
 
+def _iter_dataset_instances_recursively(collection):
+    """Yield all leaf HDA instances by walking collection elements recursively."""
+    for element in collection.elements:
+        if element.is_collection:
+            yield from _iter_dataset_instances_recursively(element.child_collection)
+        else:
+            instance = element.dataset_instance
+            if instance:
+                yield instance
+
+
 class DirectoryModelExportStore(ModelExportStore):
     app: Optional[StoreAppProtocol]
     file_sources: Optional[ConfiguredFileSources]
@@ -2397,7 +2408,16 @@ class DirectoryModelExportStore(ModelExportStore):
         has_collection = (
             collection.collection if isinstance(collection, model.HistoryDatasetCollectionAssociation) else collection
         )
-        for collection_dataset in has_collection.dataset_instances:
+        # Record collections can have heterogeneous nesting (e.g. File and
+        # File[] fields) which DatasetCollection.dataset_instances' SQL query
+        # doesn't traverse — it only handles homogeneous nesting encoded in
+        # collection_type (e.g. "list:paired"). Fall back to element traversal
+        # for records so nested sub-collection HDAs are included.
+        if has_collection.collection_type == "record":
+            collection_datasets = list(_iter_dataset_instances_recursively(has_collection))
+        else:
+            collection_datasets = has_collection.dataset_instances
+        for collection_dataset in collection_datasets:
             # ignoring include_hidden since the datasets will default to hidden for this collection.
             if collection_dataset.deleted and not include_deleted:
                 include_files = False
