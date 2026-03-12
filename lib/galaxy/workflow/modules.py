@@ -7,6 +7,7 @@ import logging
 import math
 import re
 from collections import defaultdict
+from itertools import product
 from collections.abc import Iterable
 from typing import (
     Any,
@@ -486,6 +487,8 @@ def find_cwl_scatter_collections(
             scatter_order[si.name] = scatter_idx
             scatter_idx += 1
 
+    flat_cross_inputs: dict[str, tuple] = {}  # name -> (hdca, subcollection_type)
+
     for name, ref in cwl_input_dict.items():
         if not isinstance(ref, dict) or ref.get("src") != "hdca":
             continue
@@ -507,8 +510,12 @@ def find_cwl_scatter_collections(
         if scatter_type != "disabled":
             # Explicit scatter — this input is in the step's scatter list.
             scatter_method = _get_cwl_scatter_method(step)
-            is_linked = scatter_method not in ("nested_crossproduct", "flat_crossproduct")
-            collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked, order=scatter_order.get(name))
+            if scatter_method == "flat_crossproduct":
+                # Collected below; synthetic flat HDCAs will replace these.
+                flat_cross_inputs[name] = (hdca, subcollection_type)
+            else:
+                is_linked = scatter_method != "nested_crossproduct"
+                collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked, order=scatter_order.get(name))
         elif name not in collection_param_names:
             if has_explicit_scatter and progress is not None and progress.subworkflow_structure is not None:
                 # Parent-mapping: inside a mapped subworkflow, this disabled-
@@ -523,20 +530,66 @@ def find_cwl_scatter_collections(
                 # need mapping even without scatter annotation.
                 collections_to_match.add(name, hdca, subcollection_type=subcollection_type)
 
+    if flat_cross_inputs:
+        # Build synthetic flat HDCAs for flat_crossproduct: each input gets
+        # N*M elements in row-major crossproduct order, then matched as
+        # linked (dotproduct) so existing iteration logic handles them.
+        sorted_names = sorted(flat_cross_inputs.keys(), key=lambda n: scatter_order.get(n, 0))
+        scatter_hdcas = {n: flat_cross_inputs[n][0] for n in sorted_names}
+        synthetic = _build_flat_crossproduct_hdcas(scatter_hdcas, trans.history, trans.sa_session)
+        for name, synth_hdca in synthetic.items():
+            cwl_input_dict[name] = {"src": "hdca", "id": synth_hdca.id}
+            collections_to_match.add(name, synth_hdca, subcollection_type=None, linked=True)
+
     return collections_to_match, parent_mapping
+
+
+def _build_flat_crossproduct_hdcas(
+    scatter_inputs: dict[str, model.HistoryDatasetCollectionAssociation],
+    history: model.History,
+    sa_session,
+) -> dict[str, model.HistoryDatasetCollectionAssociation]:
+    """Build synthetic flat HDCAs for flat_crossproduct scatter.
+
+    For each scatter input, creates a new flat HDCA with N*M elements
+    representing the cartesian product in row-major order.  All synthetic
+    HDCAs have the same length and are meant to be matched as linked
+    (dotproduct), so existing iteration logic handles them directly.
+    """
+    names = list(scatter_inputs.keys())
+    element_lists = [list(scatter_inputs[n].collection.elements) for n in names]
+    cross = list(product(*element_lists))
+
+    result = {}
+    for i, name in enumerate(names):
+        dc = model.DatasetCollection(collection_type="list")
+        for j, combo in enumerate(cross):
+            model.DatasetCollectionElement(
+                collection=dc,
+                element=combo[i].element_object,
+                element_identifier=str(j),
+                element_index=j,
+            )
+        hdca = model.HistoryDatasetCollectionAssociation(
+            collection=dc,
+        )
+        history.add_dataset_collection(hdca)
+        sa_session.add(hdca)
+        sa_session.flush()
+        result[name] = hdca
+    return result
 
 
 def _build_combined_collection_info(parent_info, scatter_info):
     """Merge parent-mapping and scatter MatchingCollections into a combined one.
 
-    Structure = scatter(inner) × parent(outer) = parent:scatter (e.g. list:list).
-    Parent-mapping collections form the linked (outer) structure.
-    Scatter collections form the unlinked (inner) structure(s).
+    Structure = parent(outer) × scatter(inner) = parent:scatter (e.g. list:list).
+    In MatchingCollections.structure, unlinked is outer and linked is inner,
+    so parent goes to unlinked and scatter goes to linked.
     """
     combined = matching.MatchingCollections()
-    combined.linked_structure = parent_info.linked_structure
-    if scatter_info.linked_structure:
-        combined.unlinked_structures.append(scatter_info.linked_structure)
+    combined.linked_structure = scatter_info.linked_structure
+    combined.unlinked_structures = [parent_info.linked_structure] if parent_info.linked_structure else []
     combined.unlinked_structures.extend(scatter_info.unlinked_structures)
     combined.collections = {**parent_info.collections, **scatter_info.collections}
     combined.subcollection_types = {**parent_info.subcollection_types, **scatter_info.subcollection_types}
@@ -912,6 +965,7 @@ class WorkflowModule:
     def _find_collections_to_match(self, progress: "WorkflowProgress", step, all_inputs) -> matching.CollectionsToMatch:
         collections_to_match = matching.CollectionsToMatch()
         dataset_collection_type_descriptions = self.trans.app.dataset_collection_manager.collection_type_descriptions
+        flat_cross_inputs: dict[str, model.HistoryDatasetCollectionAssociation] = {}
 
         for input_dict in all_inputs:
             name = input_dict["name"]
@@ -922,7 +976,7 @@ class WorkflowModule:
                 scatter_type = step_input.scatter_type
                 assert scatter_type in ["dotproduct", "disabled", "nested_crossproduct", "flat_crossproduct"], f"Unimplemented scatter type [{scatter_type}]"
 
-            is_crossproduct = scatter_type in ("nested_crossproduct", "flat_crossproduct")
+            is_crossproduct = scatter_type == "nested_crossproduct"
 
             subworkflow_structure = progress.subworkflow_structure
             if subworkflow_structure and subworkflow_structure.is_leaf and scatter_type == "disabled":
@@ -937,6 +991,10 @@ class WorkflowModule:
             can_map_over = hasattr(data, "collection") and data.collection.allow_implicit_mapping
 
             if not can_map_over:
+                continue
+
+            if scatter_type == "flat_crossproduct":
+                flat_cross_inputs[name] = data
                 continue
 
             if subworkflow_structure and not subworkflow_structure.is_leaf:
@@ -1033,6 +1091,23 @@ class WorkflowModule:
                     if hasattr(maybe_collection, "collection"):
                         # Is that always right ?
                         collections_to_match.add(step_input_name, maybe_collection)
+
+        if flat_cross_inputs:
+            # Build scatter order from step inputs (DB id order = CWL declaration order).
+            scatter_order = {}
+            idx = 0
+            for si in sorted(step.inputs, key=lambda si: si.id):
+                if si.scatter_type and si.scatter_type not in ("disabled", "dotproduct"):
+                    scatter_order[si.name] = idx
+                    idx += 1
+            sorted_names = sorted(flat_cross_inputs.keys(), key=lambda n: scatter_order.get(n, 0))
+            scatter_hdcas = {n: flat_cross_inputs[n] for n in sorted_names}
+            synthetic = _build_flat_crossproduct_hdcas(scatter_hdcas, self.trans.history, self.trans.sa_session)
+            for name, synth_hdca in synthetic.items():
+                collections_to_match.add(name, synth_hdca, subcollection_type=None, linked=True)
+            # Store for SubWorkflowModule.execute() to pass as overrides
+            # to the inner subworkflow's input data.
+            self._flat_cross_synthetic = synthetic
 
         return collections_to_match
 
@@ -1247,9 +1322,11 @@ class SubWorkflowModule(WorkflowModule):
 
         if collection_info:
             scatter_method = _get_cwl_scatter_method(step)
-            if scatter_method in ("nested_crossproduct", "flat_crossproduct"):
+            if scatter_method == "nested_crossproduct":
                 iteration_elements_iter = collection_info.slice_collections_crossproduct()
             else:
+                # flat_crossproduct uses synthetic flat HDCAs (already linked),
+                # so slice_collections() (dotproduct) is correct.
                 iteration_elements_iter = collection_info.slice_collections()
         else:
             if progress.when_values:
@@ -1278,12 +1355,24 @@ class SubWorkflowModule(WorkflowModule):
         if collection_info:
             collection_info.when_values = when_values
 
+        # For flat_crossproduct, pass synthetic HDCAs as input overrides
+        # so the inner subworkflow sees the expanded crossproduct data.
+        input_overrides: Optional[dict[int, model.HistoryDatasetCollectionAssociation]] = None
+        flat_cross_synthetic = getattr(self, "_flat_cross_synthetic", None)
+        if flat_cross_synthetic:
+            input_overrides = {}
+            for input_step in self.subworkflow.input_steps:
+                if input_step.label in flat_cross_synthetic:
+                    input_overrides[input_step.id] = flat_cross_synthetic[input_step.label]
+            self._flat_cross_synthetic = None  # consumed
+
         subworkflow_invoker = progress.subworkflow_invoker(
             trans,
             step,
             use_cached_job=use_cached_job,
             subworkflow_collection_info=collection_info,
             when_values=when_values,
+            input_overrides=input_overrides,
         )
         subworkflow_invoker.invoke()
         subworkflow = subworkflow_invoker.workflow
@@ -3178,9 +3267,11 @@ class ToolModule(WorkflowModule):
                     collection_info.when_values = progress.when_values
             if collection_info:
                 scatter_method = _get_cwl_scatter_method(step)
-                if scatter_method in ("nested_crossproduct", "flat_crossproduct"):
+                if scatter_method == "nested_crossproduct":
                     scatter_iter = collection_info.slice_collections_crossproduct()
                 else:
+                    # flat_crossproduct uses synthetic flat HDCAs (already linked),
+                    # so slice_collections() (dotproduct) is correct.
                     scatter_iter = collection_info.slice_collections()
             else:
                 when_value = progress.when_values[0] if progress.when_values else None

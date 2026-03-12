@@ -939,6 +939,7 @@ class WorkflowProgress:
         use_cached_job: bool = False,
         subworkflow_collection_info=None,
         when_values=None,
+        input_overrides=None,
     ) -> WorkflowInvoker:
         subworkflow_invocation = self._subworkflow_invocation(step)
         subworkflow_invocation.handler = self.workflow_invocation.handler
@@ -950,6 +951,7 @@ class WorkflowProgress:
             workflow_run_config.param_map,
             subworkflow_collection_info=subworkflow_collection_info,
             when_values=when_values,
+            input_overrides=input_overrides,
         )
         subworkflow_invocation = subworkflow_progress.workflow_invocation
         return WorkflowInvoker(
@@ -966,12 +968,20 @@ class WorkflowProgress:
         param_map: dict,
         subworkflow_collection_info=None,
         when_values=None,
+        input_overrides=None,
     ) -> "WorkflowProgress":
         subworkflow = subworkflow_invocation.workflow
         subworkflow_inputs = {}
         for input_subworkflow_step in subworkflow.input_steps:
             connection_found = False
             subworkflow_step_id = input_subworkflow_step.id
+
+            # flat_crossproduct: synthetic HDCAs replace the originals.
+            if input_overrides and subworkflow_step_id in input_overrides:
+                subworkflow_inputs[subworkflow_step_id] = input_overrides[subworkflow_step_id]
+                connection_found = True
+                continue
+
             input_connections = step.input_connections
             # Collect ALL connections targeting this subworkflow input step
             # (CWL MultipleInputFeatureRequirement can map multiple outer
