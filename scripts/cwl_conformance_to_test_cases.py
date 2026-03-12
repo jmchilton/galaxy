@@ -65,7 +65,6 @@ RED_TESTS = {
         "symlink_to_file_out_of_workdir_illegal",
         "timelimit_expressiontool",
         "timelimit_invalid_wf",
-        "valuefrom_wf_step",
     ],
     "v1.2": [
         # not required
@@ -89,8 +88,6 @@ RED_TESTS = {
         "resreq_step_overrides_wf",
         "simple_nested_crossproduct_scatter",
         "timelimit_expressiontool",
-        "valuefrom_wf_step",
-        "wf_wc_nomultiple_merge_nested",
     ],
 }
 
