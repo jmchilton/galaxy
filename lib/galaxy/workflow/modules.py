@@ -254,12 +254,12 @@ def from_cwl(value, hda_references, progress: "WorkflowProgress"):
     # TODO: turn actual files into HDAs here ... somehow I suppose. Things with
     # file:// locations for instance.
     if isinstance(value, dict) and "class" in value and "location" in value:
+        location = value["location"]
+        if location.startswith("step_input://"):
+            return hda_references[int(location[len("step_input://") :]) - 1]
         if value["class"] == "File":
-            # This is going to re-file -> HDA this each iteration I think, not a good
-            # implementation.
             return progress.raw_to_galaxy(value)
-        assert value["location"].startswith("step_input://"), f"Invalid location {value}"
-        return hda_references[int(value["location"][len("step_input://") :]) - 1]
+        raise NotImplementedError(f"Unsupported CWL value: {value}")
     elif isinstance(value, dict):
         raise NotImplementedError()
     else:
