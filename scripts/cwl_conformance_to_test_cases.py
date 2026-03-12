@@ -30,8 +30,16 @@ ${marks}    def test_conformance_${version_simple}_${id_}(self):
 
 ${cwl_test_def}
         """  # noqa: W293
-        self.cwl_populator.run_conformance_test("""${version}""", """${doc}""")
+        self.cwl_populator.run_conformance_test("""${version}""", """${doc}"""${timeout_arg})
 ''')
+
+EXTENDED_TIMEOUT_TESTS: dict[str, dict[str, int]] = {
+    "v1.0": {},
+    "v1.1": {},
+    "v1.2": {
+        "simple_flat_crossproduct_scatter": 5,
+    },
+}
 
 RED_TESTS = {
     "v1.0": [
@@ -91,7 +99,6 @@ RED_TESTS = {
         "scatter_on_scattered_conditional",
         "scatter_on_scattered_conditional_nojs",
         "secondary_files_in_named_records",
-        "simple_flat_crossproduct_scatter",
         "simple_nested_crossproduct_scatter",
         "timelimit_expressiontool",
         "valuefrom_wf_step",
@@ -110,6 +117,7 @@ def main():
     version_simple = version.replace(".", "_")
 
     red_tests_list = RED_TESTS[version]
+    extended_timeout_tests = EXTENDED_TIMEOUT_TESTS.get(version, {})
     red_tests_found = set()
     all_tests_found = set()
 
@@ -141,6 +149,8 @@ def main():
                 file=sys.stderr,
             )
 
+        timeout_multiplier = extended_timeout_tests.get(id_)
+        timeout_arg = f", timeout_multiplier={timeout_multiplier}" if timeout_multiplier else ""
         template_kwargs = {
             "version_simple": version_simple,
             "version": version,
@@ -148,6 +158,7 @@ def main():
             "cwl_test_def": cwl_test_def,
             "id_": id_.replace("-", "_"),
             "marks": marks,
+            "timeout_arg": timeout_arg,
         }
         test_body = TEST_TEMPLATE.safe_substitute(template_kwargs)
         tests += test_body
