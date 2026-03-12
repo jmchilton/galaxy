@@ -2007,6 +2007,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 #     # default handling.
                 #     value_from = input_dict.get("default")
                 step_input.value_from = value_from
+                step_input.load_contents = input_dict.get("load_contents", False)
                 step_input.default_value = input_dict.get("default")
                 if step_input.default_value:
                     step_input.default_value_set = True

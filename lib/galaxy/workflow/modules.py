@@ -411,9 +411,12 @@ def evaluate_cwl_value_from_expressions(
     runs each valueFrom expression, and converts results back to refs.
     """
     value_from_map = {}
+    load_contents_set: set[str] = set()
     for step_input in step.inputs:
         if step_input.value_from:
             value_from_map[step_input.name] = step_input.value_from
+        if step_input.load_contents:
+            load_contents_set.add(step_input.name)
 
     if not value_from_map:
         return cwl_input_dict
@@ -422,7 +425,10 @@ def evaluate_cwl_value_from_expressions(
     hda_references: list[model.HistoryDatasetAssociation] = []
     step_state = {}
     for key, value in cwl_input_dict.items():
-        step_state[key] = _ref_to_cwl(value, hda_references, trans, step)
+        cwl_value = _ref_to_cwl(value, hda_references, trans, step)
+        if key in load_contents_set and isinstance(cwl_value, dict) and cwl_value.get("class") == "File":
+            _populate_contents(cwl_value)
+        step_state[key] = cwl_value
 
     # Evaluate each valueFrom expression (value_from is str at runtime via JSONType)
     for key, value_from in value_from_map.items():
@@ -431,6 +437,15 @@ def evaluate_cwl_value_from_expressions(
         cwl_input_dict[key] = _cwl_result_to_ref(result, hda_references, progress)
 
     return cwl_input_dict
+
+
+def _populate_contents(cwl_file_dict: dict) -> None:
+    """Read file contents into a CWL File dict for loadContents support."""
+    CWL_CONTENT_LIMIT = 64 * 1024
+    path = cwl_file_dict.get("path")
+    if path:
+        with open(path, "r") as f:
+            cwl_file_dict["contents"] = f.read(CWL_CONTENT_LIMIT)
 
 
 def _get_cwl_scatter_method(step) -> str:
