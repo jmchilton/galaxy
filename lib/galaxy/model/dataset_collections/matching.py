@@ -138,7 +138,7 @@ class MatchingCollections:
         matching_collections.uses_non_persisted_collections = collections_to_match.uses_non_persisted_collections
         for input_key, to_match in sorted(
             collections_to_match.items(),
-            key=lambda item: item[1].order if item[1].order is not None else item[0],
+            key=lambda item: (0, item[1].order) if item[1].order is not None else (1, item[0]),
         ):
             hdca = to_match.hdca
             collection_type_description = collection_type_descriptions.for_collection_type(
