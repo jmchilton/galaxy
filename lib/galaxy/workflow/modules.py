@@ -284,6 +284,19 @@ def build_cwl_input_dict(
     for input_name, connections in step.input_connections_by_name.items():
         if len(connections) == 1:
             replacement = progress.replacement_for_connection(connections[0])
+            # Check merge_type — merge_nested on a single connection still needs wrapping
+            step_input = step.inputs_by_name.get(input_name)
+            if step_input and step_input.merge_type == "merge_nested":
+                if isinstance(replacement, model.HistoryDatasetAssociation):
+                    from galaxy.model.dataset_collections.adapters import MergeDatasetsAdapter
+
+                    replacement = MergeDatasetsAdapter([replacement])
+                elif isinstance(replacement, model.HistoryDatasetCollectionAssociation):
+                    from galaxy.model.dataset_collections.adapters import MergeListsNestedAdapter
+
+                    replacement = MergeListsNestedAdapter(
+                        [replacement], replacement.collection.collection_type
+                    )
         else:
             # Multiple connections merged into one input — build input_dict
             # compatible with replacement_for_input_connections.

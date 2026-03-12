@@ -110,7 +110,6 @@ RED_TESTS = {
         "wf_scatter_flat_crossproduct_oneempty",
         "wf_scatter_two_flat_crossproduct",
         "wf_scatter_twoparam_flat_crossproduct_valuefrom",
-        "wf_wc_nomultiple_merge_nested",
         "workflow_input_inputBinding_loadContents",
         "workflow_input_loadContents_without_inputBinding",
         "workflow_step_in_loadContents",
