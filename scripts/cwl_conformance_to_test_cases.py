@@ -73,9 +73,6 @@ RED_TESTS = {
         # not required
         "cond-with-defaults-1",
         "cond-with-defaults-2",
-        "condifional_scatter_on_nonscattered_false",
-        "condifional_scatter_on_nonscattered_false_nojs",
-        "condifional_scatter_on_nonscattered_true_nojs",
         "cwl_requirements_addition",
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",
@@ -93,8 +90,6 @@ RED_TESTS = {
         "networkaccess_disabled",
         "record_output_file_entry_format",
         "resreq_step_overrides_wf",
-        "scatter_on_scattered_conditional",
-        "scatter_on_scattered_conditional_nojs",
         "secondary_files_in_named_records",
         "simple_nested_crossproduct_scatter",
         "timelimit_expressiontool",
