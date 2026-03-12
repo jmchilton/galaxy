@@ -95,6 +95,9 @@ def _build_list_elements(output_list, output_key, tool_working_directory, job_pr
                 "filename": output_path,
                 "created_from_basename": el["basename"],
             }
+            cwl_format = el.get("format")
+            if cwl_format:
+                element["tags"] = [f"cwl_format:{cwl_format}"]
             secondary_files = el.get("secondaryFiles", [])
             if secondary_files:
                 extra_files_dir = os.path.join(tool_working_directory, f"_{output_key}_{index}_extra")
@@ -251,7 +254,11 @@ def handle_outputs(job_directory: Optional[str] = None):
             with open(os.path.join(secondary_files_dir, "..", SECONDARY_FILES_INDEX_PATH), "w") as f:
                 json.dump(index_contents, f)
 
-        return {"created_from_basename": output["basename"], "ext": "data", "format": output.get("format")}
+        metadata = {"created_from_basename": output["basename"], "ext": "data", "format": output.get("format")}
+        cwl_format = output.get("format")
+        if cwl_format:
+            metadata["tags"] = [f"cwl_format:{cwl_format}"]
+        return metadata
 
     def handle_known_output(output, output_name):
         # if output["class"] != "File":
