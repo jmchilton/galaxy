@@ -451,6 +451,26 @@ def galactic_job_json(
     return job, datasets
 
 
+def _build_schema_type_registry(tool_def: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Build a name → type definition mapping from SchemaDefRequirement."""
+    registry: Dict[str, Dict[str, Any]] = {}
+    requirements = tool_def.get("requirements", {})
+    if isinstance(requirements, list):
+        for req in requirements:
+            if req.get("class") == "SchemaDefRequirement":
+                for typedef in req.get("types", []):
+                    name = typedef.get("name", "")
+                    if name:
+                        registry[name] = typedef
+    elif isinstance(requirements, dict):
+        schema_req = requirements.get("SchemaDefRequirement", {})
+        for typedef in schema_req.get("types", []):
+            name = typedef.get("name", "")
+            if name:
+                registry[name] = typedef
+    return registry
+
+
 def resolve_cwl_secondary_files(
     job: Dict[str, Any],
     cwl_tool_path: str,
@@ -468,6 +488,8 @@ def resolve_cwl_secondary_files(
     with open(cwl_tool_path) as f:
         tool_def = yaml.safe_load(f)
 
+    schema_types = _build_schema_type_registry(tool_def)
+
     inputs = tool_def.get("inputs", [])
     if isinstance(inputs, dict):
         inputs = [{"id": k, **(v if isinstance(v, dict) else {"type": v})} for k, v in inputs.items()]
@@ -476,17 +498,24 @@ def resolve_cwl_secondary_files(
         input_id = input_def.get("id", input_def.get("name", ""))
         input_id = input_id.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
         if input_id in job:
-            _resolve_sf_for_value(job[input_id], input_def, test_data_directory)
+            _resolve_sf_for_value(job[input_id], input_def, test_data_directory, schema_types)
 
 
 def _resolve_sf_for_value(
     value: Any,
     input_def: Dict[str, Any],
     test_data_directory: str,
+    schema_types: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> None:
     """Recursively resolve secondary files for a job value from its CWL type definition."""
+    if schema_types is None:
+        schema_types = {}
     sf_patterns = _extract_sf_patterns(input_def)
     input_type = input_def.get("type", input_def)
+
+    # Resolve SchemaDefRequirement type references (e.g. "RecordTestType" → inline record def)
+    if isinstance(input_type, str) and input_type in schema_types:
+        input_type = schema_types[input_type]
 
     # Handle CWL shorthand array syntax (e.g. "File[]", "Directory[]")
     if isinstance(input_type, str) and input_type.endswith("[]"):
@@ -496,7 +525,7 @@ def _resolve_sf_for_value(
             if sf_patterns:
                 child_def["secondaryFiles"] = sf_patterns
             for item in value:
-                _resolve_sf_for_value(item, child_def, test_data_directory)
+                _resolve_sf_for_value(item, child_def, test_data_directory, schema_types)
         return
 
     if isinstance(input_type, dict):
@@ -510,7 +539,7 @@ def _resolve_sf_for_value(
                     fname = field.get("name", field.get("id", ""))
                     fname = fname.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
                     if fname in value:
-                        _resolve_sf_for_value(value[fname], field, test_data_directory)
+                        _resolve_sf_for_value(value[fname], field, test_data_directory, schema_types)
             return
         elif type_kind == "array":
             items_type: Any = input_type.get("items")
@@ -519,7 +548,7 @@ def _resolve_sf_for_value(
                 if sf_patterns:
                     child_def_d["secondaryFiles"] = sf_patterns
                 for item in value:
-                    _resolve_sf_for_value(item, child_def_d, test_data_directory)
+                    _resolve_sf_for_value(item, child_def_d, test_data_directory, schema_types)
             return
 
     # Leaf: if this is a File with secondary file patterns, discover them
