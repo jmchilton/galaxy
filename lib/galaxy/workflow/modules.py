@@ -604,13 +604,14 @@ def _iter_parent_mapping_x_scatter(parent_info, scatter_iter):
     Scatter iterations form the inner loop.
     """
     scatter_slices = list(scatter_iter)
-    for parent_elements, _parent_when in parent_info.slice_collections():
-        for scatter_elements, when_value in scatter_slices:
+    for parent_elements, parent_when in parent_info.slice_collections():
+        for scatter_elements, scatter_when in scatter_slices:
             combined = {}
             if parent_elements:
                 combined.update(parent_elements)
             if scatter_elements:
                 combined.update(scatter_elements)
+            when_value = parent_when if parent_when is not None else scatter_when
             yield combined, when_value
 
 
@@ -3260,11 +3261,18 @@ class ToolModule(WorkflowModule):
             )
             collection_info = self.trans.app.dataset_collection_manager.match_collections(collections_to_match)
             parent_mapping_info = self.trans.app.dataset_collection_manager.match_collections(parent_mapping)
-            if collection_info:
-                if progress.subworkflow_collection_info:
-                    collection_info.when_values = progress.subworkflow_collection_info.when_values
-                else:
-                    collection_info.when_values = progress.when_values
+            outer_when_values = (
+                progress.subworkflow_collection_info.when_values
+                if progress.subworkflow_collection_info
+                else progress.when_values
+            )
+            if collection_info and not parent_mapping_info:
+                # when_values from outer subworkflow map 1:1 to scatter elements.
+                collection_info.when_values = outer_when_values
+            if parent_mapping_info:
+                # Outer when_values correspond to the parent-mapping dimension
+                # (e.g. 4 letters), NOT the scatter dimension (e.g. 16 flat_crossproduct combos).
+                parent_mapping_info.when_values = outer_when_values
             if collection_info:
                 scatter_method = _get_cwl_scatter_method(step)
                 if scatter_method == "nested_crossproduct":

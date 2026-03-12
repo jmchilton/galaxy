@@ -542,7 +542,11 @@ class CwlWorkflowRun(CwlRun):
         return invocation_to_output(invocation, self.history_id, output_name)
 
     def wait(self):
-        self.workflow_populator.wait_for_invocation_and_jobs(self.history_id, self.workflow_id, self.invocation_id)
+        timeout_multiplier = getattr(self, "timeout_multiplier", 1)
+        job_timeout = DEFAULT_TIMEOUT * timeout_multiplier
+        self.workflow_populator.wait_for_invocation_and_jobs(
+            self.history_id, self.workflow_id, self.invocation_id, job_timeout=job_timeout
+        )
 
 
 class BasePopulator(metaclass=ABCMeta):
@@ -3046,7 +3050,12 @@ class BaseWorkflowPopulator(BasePopulator):
         return jobs
 
     def wait_for_invocation_and_jobs(
-        self, history_id: str, workflow_id: Optional[str], invocation_id: str, assert_ok: bool = True
+        self,
+        history_id: str,
+        workflow_id: Optional[str],
+        invocation_id: str,
+        assert_ok: bool = True,
+        job_timeout: timeout_type = DEFAULT_TIMEOUT,
     ) -> None:
         """Wait for invocation to be scheduled and all jobs to complete.
 
@@ -3058,7 +3067,7 @@ class BaseWorkflowPopulator(BasePopulator):
         if assert_ok:
             assert state in ("scheduled", "completed"), state
         time.sleep(0.5)
-        self.dataset_populator.wait_for_history_jobs(history_id, assert_ok=assert_ok)
+        self.dataset_populator.wait_for_history_jobs(history_id, assert_ok=assert_ok, timeout=job_timeout)
         time.sleep(0.5)
 
     def get_invocation_completion(self, invocation_id: str) -> Optional[dict[str, Any]]:
@@ -3379,6 +3388,7 @@ class CwlPopulator:
         history_id: Optional[str] = None,
         skip_input_staging: bool = False,
         assert_ok: bool = True,
+        timeout_multiplier: int = 1,
     ) -> CwlRun:
         """
         :param artifact: CWL tool id, or (absolute or relative) path to a CWL
@@ -3431,6 +3441,7 @@ class CwlPopulator:
                 history_id,
                 assert_ok=assert_ok,
             )
+        run_object.timeout_multiplier = timeout_multiplier
         if assert_ok:
             try:
                 run_object.wait()
@@ -3439,7 +3450,7 @@ class CwlPopulator:
                 raise
         return run_object
 
-    def run_conformance_test(self, version: str, doc: str):
+    def run_conformance_test(self, version: str, doc: str, timeout_multiplier: int = 1):
         test = self.get_conformance_test(version, doc)
         directory = test["directory"]
         artifact = os.path.join(directory, test["tool"])
@@ -3448,7 +3459,7 @@ class CwlPopulator:
             job_path = os.path.join(directory, job_path)
         should_fail = test.get("should_fail", False)
         try:
-            run = self.run_cwl_job(artifact, job_path=job_path)
+            run = self.run_cwl_job(artifact, job_path=job_path, timeout_multiplier=timeout_multiplier)
         except Exception:
             # Should fail so this is good!
             if should_fail:
