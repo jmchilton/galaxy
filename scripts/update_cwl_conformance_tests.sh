@@ -28,3 +28,10 @@ for version in $VERSIONS; do
     rm -rf ${branch}.zip
     python3 scripts/cwl_conformance_to_test_cases.py "${DEST_DIR}" "v${version}"
 done
+
+# Generate integration tests for docker-required conformance tests
+python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+from cwl_conformance_to_test_cases import generate_docker_integration_tests
+generate_docker_integration_tests('$DEST_DIR')
+"

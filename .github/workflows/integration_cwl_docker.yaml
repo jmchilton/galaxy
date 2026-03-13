@@ -1,0 +1,72 @@
+name: Integration (CWL Docker)
+on:
+  push:
+    paths-ignore:
+      - 'client/**'
+      - 'doc/**'
+      - 'lib/galaxy_test/selenium/**'
+      - 'packages/**'
+  pull_request:
+    paths-ignore:
+      - 'client/**'
+      - 'doc/**'
+      - 'lib/galaxy_test/selenium/**'
+      - 'packages/**'
+env:
+  GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA: '1'
+  GALAXY_CONFIG_SQLALCHEMY_WARN_20: '1'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10']
+    steps:
+      - name: Prune unused docker images, volumes and containers
+        run: docker system prune -a -f
+      - name: Clean dotnet folder for space
+        run: rm -Rf /usr/share/dotnet
+      - uses: actions/checkout@v6
+        with:
+          path: 'galaxy root'
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Get full Python version
+        id: full-python-version
+        shell: bash
+        run: echo "version=$(python -c 'import sys; print("-".join(str(v) for v in sys.version_info))')" >> $GITHUB_OUTPUT
+      - name: Cache galaxy venv
+        uses: actions/cache@v5
+        with:
+          path: 'galaxy root/.venv'
+          key: gxy-venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('galaxy root/requirements.txt') }}-integration
+      - name: Download CWL conformance test data
+        run: bash scripts/update_cwl_conformance_tests.sh
+        working-directory: 'galaxy root'
+      - name: Pull Docker images used by tests
+        run: |
+          docker pull docker.io/bash:4.4.12
+          docker pull docker.io/debian:stable-slim
+          docker pull docker.io/python:3-slim
+        working-directory: 'galaxy root'
+      - name: Run tests
+        run: ./run_tests.sh --coverage -integration test/integration/test_containerized_cwl_conformance.py -- -m cwl_docker_required
+        working-directory: 'galaxy root'
+      - uses: codecov/codecov-action@v5
+        with:
+          flags: integration-cwl-docker
+          working-directory: 'galaxy root'
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: CWL Docker integration test results (${{ matrix.python-version }})
+          path: 'galaxy root/run_integration_tests.html'
