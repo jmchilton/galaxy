@@ -191,7 +191,6 @@ RED_TESTS = {
         "resreq_step_overrides_wf",
         "stage_array_dirs",
         "stage_null_array",
-        "timelimit_expressiontool",
         "timelimit_invalid_wf",
     ],
     "v1.2": [
@@ -210,7 +209,6 @@ RED_TESTS = {
         "record_output_file_entry_format",
         "resreq_step_overrides_wf",
         "simple_nested_crossproduct_scatter",
-        "timelimit_expressiontool",
     ],
 }
 
