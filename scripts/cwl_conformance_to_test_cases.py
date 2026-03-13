@@ -168,6 +168,7 @@ DOCKER_REQUIRED = {
         "docker_entrypoint",
         "dockeroutputdir",
         "networkaccess_disabled",
+        "stdin_shorcut",
     ],
     "v1.2": [
         "docker_entrypoint",
@@ -191,8 +192,6 @@ RED_TESTS = {
         "resreq_step_overrides_wf",
         "stage_array_dirs",
         "stage_null_array",
-        "stdin_shorcut",
-        "symlink_to_file_out_of_workdir_illegal",
         "timelimit_expressiontool",
         "timelimit_invalid_wf",
     ],
