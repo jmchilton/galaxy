@@ -724,7 +724,11 @@ class CwlDirectoryRuntimeJson(StrictModel):
     class_: Annotated[Literal["Directory"], Field(alias="class")]
     location: str
     basename: str
+    nameroot: Optional[str] = None
+    nameext: Optional[str] = None
     path: Optional[str] = None
+    size: Optional[int] = None
+    format: Optional[str] = None
     listing: Optional[List[Any]] = None
 
 
