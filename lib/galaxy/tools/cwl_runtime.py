@@ -162,7 +162,13 @@ def setup_for_cwl_runtimeify(
         from galaxy.tool_util.cwl.util import set_basename_and_derived_properties as set_props
 
         size = hda.dataset.get_size() if hda.dataset else 0
-        path = compute_environment.input_path_rewrite(hda) if compute_environment else hda.get_file_name()
+        if hda.extension == "directory":
+            if compute_environment:
+                path = compute_environment.input_extra_files_rewrite(hda)
+            else:
+                path = hda.dataset.extra_files_path
+        else:
+            path = compute_environment.input_path_rewrite(hda) if compute_environment else hda.get_file_name()
         properties: dict[str, Any] = {
             "class": "File",
             "location": f"step_input://collection_element_{hda.id}",

@@ -227,6 +227,8 @@ def galactic_job_json(
         if force_to_file:
             if is_file:
                 return replacement_file(value)
+            elif is_directory:
+                return replacement_directory(value)
             else:
                 return upload_object(value)
 
