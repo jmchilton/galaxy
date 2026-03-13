@@ -345,6 +345,11 @@ class CommandLineToolProxy(ToolProxy):
             return hint.get("dockerOutputDirectory")
         return None
 
+    def network_access(self):
+        for hint in self.hints_or_requirements_of_class("NetworkAccess"):
+            return hint.get("networkAccess", False)
+        return False
+
 
 class ExpressionToolProxy(CommandLineToolProxy):
     _class = "ExpressionTool"

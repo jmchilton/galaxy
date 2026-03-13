@@ -309,6 +309,7 @@ class CwlToolSource(ToolSource):
             docker_output_directory = self.tool_proxy.docker_output_directory()
             if docker_output_directory:
                 container["docker_output_directory"] = docker_output_directory
+            container["network_access"] = self.tool_proxy.network_access()
             containers.append(container)
 
         software_requirements = self.tool_proxy.software_requirements()
