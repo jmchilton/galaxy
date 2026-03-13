@@ -34,6 +34,16 @@ ${cwl_test_def}
         self.cwl_populator.run_conformance_test("""${version}""", """${doc}"""${timeout_arg})
 ''')
 
+EXTENDED_TIMEOUT_TESTS: dict[str, dict[str, int]] = {
+    "v1.0": {},
+    "v1.1": {},
+    "v1.2": {
+        "flat_crossproduct_flat_crossproduct_scatter": 5,
+        "flat_crossproduct_simple_scatter": 5,
+        "simple_flat_crossproduct_scatter": 5,
+    },
+}
+
 SKIP_DOCKER_TEMPLATE = string.Template('''
     @pytest.mark.skip(reason="Requires Docker; tested in test/integration/test_containerized_cwl_conformance.py")
     def test_conformance_${version_simple}_${id_}(self):
