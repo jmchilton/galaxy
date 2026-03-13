@@ -580,7 +580,13 @@ class JobProxy:
     @property
     def stdin(self):
         if self.is_command_line_job:
-            return self.cwl_job().stdin
+            cwl_job = self.cwl_job()
+            stdin_path = cwl_job.stdin
+            if stdin_path and hasattr(cwl_job, "pathmapper") and cwl_job.pathmapper:
+                rmap = cwl_job.pathmapper.reversemap(stdin_path)
+                if rmap:
+                    return rmap[1]
+            return stdin_path
         else:
             return None
 
