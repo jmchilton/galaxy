@@ -20,17 +20,29 @@ EMPTY_DIR_MARKER = ".galaxy_empty_directory"
 
 
 def _ensure_no_empty_dirs(directory):
-    """Place a marker file in empty leaf directories.
+    """Manage empty-directory marker files for object store persistence.
 
     Galaxy's object store persists only files; empty directories are silently
     dropped.  CWL Directory outputs may legitimately contain empty subdirs
     (e.g. ``mkdir -p a/b/c``).  Placing a zero-byte marker in each empty
     leaf ensures the directory tree survives round-tripping through the
     object store (parent dirs are created automatically when persisting files).
+
+    Also removes stale markers from directories that are no longer empty
+    (e.g. when a tool adds files to a previously-empty directory via
+    InitialWorkDirRequirement with writable: true).
     """
     for root, dirs, files in os.walk(directory, topdown=False):
-        if not files and not dirs:
-            open(os.path.join(root, EMPTY_DIR_MARKER), "w").close()
+        marker_path = os.path.join(root, EMPTY_DIR_MARKER)
+        real_files = [f for f in files if f != EMPTY_DIR_MARKER]
+        if not real_files and not dirs:
+            # Empty leaf directory — place marker
+            if not os.path.exists(marker_path):
+                open(marker_path, "w").close()
+        else:
+            # Directory has real content — remove stale marker
+            if os.path.exists(marker_path):
+                os.remove(marker_path)
 
 
 def file_dict_to_description(file_dict):
