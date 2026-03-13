@@ -444,6 +444,14 @@ class DockerContainer(Container, HasDockerLikeVolumes):
     def build_pull_command(self) -> List[str]:
         return docker_util.build_pull_command(self.container_id, **self.docker_host_props)
 
+    def _resolve_net(self):
+        explicit_net = self.prop("net", None)
+        if explicit_net is not None:
+            return explicit_net
+        if self.container_description and getattr(self.container_description, "network_access", None) is False:
+            return "none"
+        return None
+
     def containerize_command(self, command: str) -> str:
         env_directives = []
         for pass_through_var in self.tool_info.env_pass_through:
@@ -488,7 +496,7 @@ class DockerContainer(Container, HasDockerLikeVolumes):
             volumes_from=volumes_from,
             env_directives=env_directives,
             working_directory=working_directory,
-            net=self.prop("net", None),  # By default, docker instance has networking disabled
+            net=self._resolve_net(),
             auto_rm=asbool(self.prop("auto_rm", docker_util.DEFAULT_AUTO_REMOVE)),
             set_user=self.prop("set_user", docker_util.DEFAULT_SET_USER),
             run_extra_arguments=self.prop("run_extra_arguments", docker_util.DEFAULT_RUN_EXTRA_ARGUMENTS),
