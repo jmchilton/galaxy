@@ -541,6 +541,10 @@ do
           debug="--pdb"
           shift
           ;;
+      --generate-cwl)
+          generate_cwl_conformance_tests=1
+          shift
+          ;;
       -u|-unit|--unit)
           report_file="run_unit_tests.html"
           unit_extra='--doctest-modules

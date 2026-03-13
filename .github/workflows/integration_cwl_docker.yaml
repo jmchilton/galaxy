@@ -49,9 +49,6 @@ jobs:
         with:
           path: 'galaxy root/.venv'
           key: gxy-venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('galaxy root/requirements.txt') }}-integration
-      - name: Download CWL conformance test data
-        run: bash scripts/update_cwl_conformance_tests.sh
-        working-directory: 'galaxy root'
       - name: Pull Docker images used by tests
         run: |
           docker pull docker.io/bash:4.4.12
@@ -59,7 +56,7 @@ jobs:
           docker pull docker.io/python:3-slim
         working-directory: 'galaxy root'
       - name: Run tests
-        run: ./run_tests.sh --coverage -integration test/integration/test_containerized_cwl_conformance.py -- -m cwl_docker_required
+        run: ./run_tests.sh --coverage --generate-cwl -integration test/integration/test_containerized_cwl_conformance.py -- -m cwl_docker_required
         working-directory: 'galaxy root'
       - uses: codecov/codecov-action@v5
         with:
