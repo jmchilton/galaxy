@@ -1,3 +1,4 @@
+import json
 import os
 import string
 from abc import (
@@ -478,6 +479,13 @@ class DockerContainer(Container, HasDockerLikeVolumes):
         if docker_output_directory:
             volumes_raw += f",{working_directory}:{docker_output_directory}:rw"
             working_directory = docker_output_directory
+        # CWL absolute-path InitialWorkDirRequirement entries (v1.2)
+        if self.job_info and self.job_info.job_directory:
+            cwl_mounts_file = os.path.join(self.job_info.job_directory, ".cwl_container_mounts.json")
+            if os.path.exists(cwl_mounts_file):
+                with open(cwl_mounts_file) as f:
+                    for host_path, container_path in json.load(f).items():
+                        volumes_raw += f",{host_path}:{container_path}:ro"
         volumes = _parse_volumes(volumes_raw, self.container_type)
         volumes_from = self.destination_info.get("docker_volumes_from", docker_util.DEFAULT_VOLUMES_FROM)
 

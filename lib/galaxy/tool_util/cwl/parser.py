@@ -74,6 +74,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 JOB_JSON_FILE = ".cwl_job.json"
+CONTAINER_MOUNTS_FILE = ".cwl_container_mounts.json"
 
 DOCKER_REQUIREMENT = "DockerRequirement"
 SUPPORTED_TOOL_REQUIREMENTS = [
@@ -399,6 +400,10 @@ class JobProxy:
             # (instead of globally manipulating self._tool_proxy._tool, which is likely not thread-safe).
             cwl_tool_instance = copy.copy(self._tool_proxy._tool)
             cwl_tool_instance.inputs_record_schema = copy.deepcopy(cwl_tool_instance.inputs_record_schema)
+            # Deep copy requirements and tool dict so _rewrite_absolute_entrynames
+            # doesn't modify the shared tool proxy state.
+            cwl_tool_instance.requirements = copy.deepcopy(cwl_tool_instance.requirements)
+            cwl_tool_instance.tool = copy.deepcopy(cwl_tool_instance.tool)
             # Deep copy _input_dict so cwltool works on a separate copy.
             # Galaxy pre-populates directory listings for all inputs (since
             # staging strips inline listings from the original job).  The
@@ -419,6 +424,13 @@ class JobProxy:
                     entry["location"] = ref_resolver.file_uri(loc)
 
             visit_class(cwl_input, ("File", "Directory"), _encode_location_as_uri)
+            # Rewrite absolute entrynames in InitialWorkDirRequirement to
+            # relative paths before cwltool processes them.  cwltool validates
+            # that absolute entrynames have DockerRequirement in requirements,
+            # but Galaxy moves DockerRequirement to hints (use_container=False).
+            # We rewrite to relative paths here and record the mapping for
+            # Docker volume binding in stage_files().
+            self._absolute_entryname_map = _rewrite_absolute_entrynames(cwl_tool_instance)
             self._cwl_job = next(cwl_tool_instance.job(cwl_input, self._output_callback, runtimeContext))
             self._is_command_line_job = hasattr(self._cwl_job, "command_line")
             self._apply_load_listing_to_builder()
@@ -735,6 +747,21 @@ class JobProxy:
             generate_mapper = pathmapper.PathMapper(
                 cwl_job.generatefiles["listing"], outdir, outdir, separateDirs=False
             )
+            # Write container mount mapping for absolute-path entrynames
+            # (CWL v1.2).  _rewrite_absolute_entrynames already rewrote
+            # them to relative names; here we map host paths back to the
+            # original absolute container paths for Docker -v binding.
+            entryname_map = getattr(self, "_absolute_entryname_map", {})
+            if entryname_map:
+                container_mounts = {}
+                for _key, entry in generate_mapper.items():
+                    basename = os.path.basename(entry.target)
+                    if basename in entryname_map:
+                        container_mounts[entry.target] = entryname_map[basename]
+                if container_mounts:
+                    mounts_file = os.path.join(self._job_directory, CONTAINER_MOUNTS_FILE)
+                    with open(mounts_file, "w") as f:
+                        json.dump(container_mounts, f)
             # TODO: figure out what inplace_update should be.
             inplace_update = cwl_job.inplace_update
             _stage_generate_files(generate_mapper, stageFunc, inplace_update)
@@ -1202,14 +1229,52 @@ def _schema_loader(strict_cwl_validation: bool):
 
 
 def _hack_cwl_requirements(cwl_tool):
-    move_to_hints: List[int] = []
-    for i, requirement in enumerate(cwl_tool.requirements):
-        if requirement["class"] == DOCKER_REQUIREMENT:
-            move_to_hints.insert(0, i)
+    # Move DockerRequirement from requirements to hints so Galaxy
+    # handles containerization separately from cwltool.
+    docker_reqs = [r for r in cwl_tool.requirements if r["class"] == DOCKER_REQUIREMENT]
+    cwl_tool.requirements = [r for r in cwl_tool.requirements if r["class"] != DOCKER_REQUIREMENT]
+    cwl_tool.hints.extend(docker_reqs)
 
-    for i in move_to_hints:
-        del cwl_tool.requirements[i]
-        cwl_tool.hints.append(requirement)
+
+def _rewrite_absolute_entrynames(cwl_tool):
+    """Rewrite absolute entrynames in IWD listing to relative paths.
+
+    CWL v1.2 allows absolute entrynames as container mount points, but
+    cwltool validates that DockerRequirement is in requirements for this.
+    Galaxy moves DockerRequirement to hints, so we rewrite absolute
+    entrynames to relative paths (basename only) and return a mapping
+    of relative_name -> absolute_container_path for Docker volume binding.
+
+    Modifies the tool's requirements in place (caller should use a copy).
+    """
+    entryname_map = {}
+    for req in cwl_tool.requirements:
+        if req.get("class") != "InitialWorkDirRequirement":
+            continue
+        listing = req.get("listing", [])
+        for entry in listing:
+            if not isinstance(entry, dict):
+                continue
+            entryname = entry.get("entryname", "")
+            if isinstance(entryname, str) and entryname.startswith("/"):
+                relative_name = "_cwl_abs_" + os.path.basename(entryname)
+                entryname_map[relative_name] = entryname
+                entry["entryname"] = relative_name
+    # Also update the raw tool dict (cwltool reads from both)
+    if entryname_map:
+        raw_reqs = cwl_tool.tool.get("requirements", [])
+        for req in raw_reqs:
+            if req.get("class") != "InitialWorkDirRequirement":
+                continue
+            listing = req.get("listing", [])
+            for entry in listing:
+                if not isinstance(entry, dict):
+                    continue
+                entryname = entry.get("entryname", "")
+                if isinstance(entryname, str) and entryname.startswith("/"):
+                    relative_name = "_cwl_abs_" + os.path.basename(entryname)
+                    entry["entryname"] = relative_name
+    return entryname_map
 
 
 def check_requirements(rec, tool=True):
