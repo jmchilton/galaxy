@@ -9907,7 +9907,10 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             def _output_sort_key(assoc):
                 wo = assoc.workflow_output
                 if wo is None:
-                    return (float("inf"), getattr(assoc, "workflow_step", None) and assoc.workflow_step.order_index or 0)
+                    return (
+                        float("inf"),
+                        getattr(assoc, "workflow_step", None) and assoc.workflow_step.order_index or 0,
+                    )
                 si = wo.source_index
                 oi = wo.workflow_step.order_index
                 # source_index takes priority when set (CWL workflows).

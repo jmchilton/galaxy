@@ -17,6 +17,15 @@ from galaxy.model import (
     WorkflowInvocationStep,
 )
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.model.dataset_collections.adapters import (
+    CollectionAdapter,
+    MergeDatasetsAdapter,
+    MergeListsFlattenedAdapter,
+    MergeListsNestedAdapter,
+    MergeNestedDatasetsAdapter,
+)
+from galaxy.model.deferred import materializer_factory
+from galaxy.objectstore import ObjectStorePopulator
 from galaxy.schema.invocation import (
     CancelReason,
     FAILURE_REASONS_EXPECTED,
@@ -30,15 +39,6 @@ from galaxy.schema.invocation import (
     InvocationWarningWorkflowOutputNotFound,
     WarningReason,
 )
-from galaxy.model.dataset_collections.adapters import (
-    CollectionAdapter,
-    MergeDatasetsAdapter,
-    MergeListsFlattenedAdapter,
-    MergeListsNestedAdapter,
-    MergeNestedDatasetsAdapter,
-)
-from galaxy.model.deferred import materializer_factory
-from galaxy.objectstore import ObjectStorePopulator
 from galaxy.tools.cwl_runtime import raw_to_galaxy
 from galaxy.tools.parameters.workflow_utils import (
     is_runtime_value,
@@ -95,13 +95,16 @@ def _materialize_collection(adapter_or_collection) -> "model.DatasetCollection":
     return dc
 
 
-def _persist_adapter_as_hdca(adapter: CollectionAdapter, history, sa_session) -> "model.HistoryDatasetCollectionAssociation":
+def _persist_adapter_as_hdca(
+    adapter: CollectionAdapter, history, sa_session
+) -> "model.HistoryDatasetCollectionAssociation":
     """Materialize a CollectionAdapter into a real persisted HDCA."""
     dc = _materialize_collection(adapter)
     hdca = model.HistoryDatasetCollectionAssociation(collection=dc, history=history)
     sa_session.add(hdca)
     sa_session.flush()
     return hdca
+
 
 WorkflowOutputsType = dict[int, Any]
 
@@ -523,9 +526,7 @@ class WorkflowProgress:
                 if replacement.history_content_type == "dataset":
                     replacement = MergeDatasetsAdapter([replacement])
                 elif replacement.history_content_type == "dataset_collection":
-                    replacement = MergeListsNestedAdapter(
-                        [replacement], replacement.collection.collection_type
-                    )
+                    replacement = MergeListsNestedAdapter([replacement], replacement.collection.collection_type)
         else:
             # We've mapped multiple individual inputs to a single parameter,
             # promote output to a collection.
@@ -585,9 +586,7 @@ class WorkflowProgress:
                     # default for lists = flatten (existing behavior)
                     return MergeListsFlattenedAdapter(inputs)
             else:
-                raise NotImplementedError(
-                    f"merge not implemented for collection type '{input_collection_type}'"
-                )
+                raise NotImplementedError(f"merge not implemented for collection type '{input_collection_type}'")
 
         return replacement
 
@@ -901,7 +900,9 @@ class WorkflowProgress:
 
         self.outputs[step.id] = outputs
 
-    def _materialize_collection_default(self, step: "WorkflowStep", values: list) -> "model.HistoryDatasetCollectionAssociation":
+    def _materialize_collection_default(
+        self, step: "WorkflowStep", values: list
+    ) -> "model.HistoryDatasetCollectionAssociation":
         """Materialize a CWL array default (e.g. [1, 2, 3]) as an HDCA of expression.json HDAs."""
         import json as json_mod
 

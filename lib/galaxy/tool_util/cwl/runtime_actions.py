@@ -15,7 +15,6 @@ from .util import (
     STORE_SECONDARY_FILES_WITH_BASENAME,
 )
 
-
 EMPTY_DIR_MARKER = ".galaxy_empty_directory"
 
 
@@ -209,7 +208,7 @@ def _validate_output_symlinks(outputs, tool_working_directory, staged_input_path
             f"'{real_path}' which is outside the job working directory"
         )
 
-    for output_name, output in outputs.items():
+    for _output_name, output in outputs.items():
         if isinstance(output, dict):
             _check_entry(output)
             if "class" not in output:
@@ -367,7 +366,11 @@ def handle_outputs(job_directory: Optional[str] = None):
         handled_outputs.append(output_name)
         if isinstance(output, dict) and "location" in output:
             handle_known_output(output, output_name)
-        elif isinstance(output, dict) and output_name not in job_proxy._output_dict and output_name not in any_typed_outputs:
+        elif (
+            isinstance(output, dict)
+            and output_name not in job_proxy._output_dict
+            and output_name not in any_typed_outputs
+        ):
             # True record-type output (ToolOutputCollection) — split into parts
             prefix = f"{output_name}|__part__|"
             for record_key, record_value in output.items():

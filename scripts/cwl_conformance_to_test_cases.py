@@ -288,7 +288,6 @@ def main():
             print(f"PROBLEM - Failed to find docker-required test [{docker_test}]", file=sys.stderr)
 
 
-
 def generate_docker_integration_tests(conformance_tests_dir):
     """Collect DOCKER_REQUIRED tests across all versions and write integration test file."""
     collected = []
@@ -298,12 +297,14 @@ def generate_docker_integration_tests(conformance_tests_dir):
         for conformance_test in conformance_tests_gen(os.path.join(conformance_tests_dir, version)):
             id_ = conformance_test.get("id", "")
             if id_ in docker_set:
-                collected.append({
-                    "version_simple": version_simple,
-                    "version": version,
-                    "doc": conformance_test["doc"],
-                    "id_": id_.replace("-", "_"),
-                })
+                collected.append(
+                    {
+                        "version_simple": version_simple,
+                        "version": version,
+                        "doc": conformance_test["doc"],
+                        "id_": id_.replace("-", "_"),
+                    }
+                )
 
     if not collected:
         return

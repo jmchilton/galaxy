@@ -10,7 +10,6 @@
 import json
 import os
 import urllib.parse
-
 from typing import (
     Any,
     Optional,
@@ -393,7 +392,7 @@ def raw_to_galaxy(
         if not location:
             raise ValueError("CWL File default must have a 'location' or 'path'")
         if location.startswith("file://"):
-            local_path = location[len("file://"):]
+            local_path = location[len("file://") :]
             if not os.path.exists(local_path):
                 raise ValueError(f"CWL File default references non-existent path: {local_path}")
         name = (

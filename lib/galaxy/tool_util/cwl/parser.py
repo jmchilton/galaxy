@@ -409,6 +409,7 @@ class JobProxy:
             # deep copy keeps _input_dict untouched for save_job (which
             # preserves full listings for re-loading in handle_outputs).
             cwl_input = copy.deepcopy(self._input_dict)
+
             # Convert filesystem paths in locations to file:// URIs so that
             # special characters (e.g. '#' in filenames) are percent-encoded.
             # cwltool's pathmapper splits on '#' (URI fragment separator), so
@@ -982,9 +983,7 @@ class WorkflowProxy:
                     isinstance(output_type, str) and output_type.endswith("[]")
                 )
                 if not is_array:
-                    raise MessageException(
-                        f"pickValue 'all_non_null' requires array output type, got '{output_type}'"
-                    )
+                    raise MessageException(f"pickValue 'all_non_null' requires array output type, got '{output_type}'")
 
             output_label = self.jsonld_id_to_label(output["id"])
 
@@ -992,20 +991,20 @@ class WorkflowProxy:
             input_connections: Dict[str, List[Dict[str, str]]] = {}
             for ref_i, (step_name, output_name) in enumerate(references):
                 step_index = label_to_index[step_name]
-                input_connections[f"input_{ref_i}"] = [
-                    {"id": step_index, "output_name": output_name}
-                ]
+                input_connections[f"input_{ref_i}"] = [{"id": step_index, "output_name": output_name}]
 
             steps[index] = {
                 "id": index,
                 "type": "pick_value",
                 "label": f"_pick_{output_label}",
                 "position": {"left": 0, "top": 0},
-                "tool_state": json.dumps({
-                    "mode": pick_value,
-                    "num_inputs": len(references),
-                    "link_merge": output.get("linkMerge", "merge_nested"),
-                }),
+                "tool_state": json.dumps(
+                    {
+                        "mode": pick_value,
+                        "num_inputs": len(references),
+                        "link_merge": output.get("linkMerge", "merge_nested"),
+                    }
+                ),
                 "input_connections": input_connections,
                 "workflow_outputs": [{"output_name": "output", "label": output_label}],
             }

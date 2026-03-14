@@ -429,7 +429,10 @@ class CwlRun:
 
         def get_dataset(dataset_details, filename=None):
             content = self.dataset_populator.get_history_dataset_content(
-                self.history_id, dataset_id=dataset_details["id"], type="content", filename=filename,
+                self.history_id,
+                dataset_id=dataset_details["id"],
+                type="content",
+                filename=filename,
                 wait=False,
             )
             if filename is None:

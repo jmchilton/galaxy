@@ -7,8 +7,8 @@ import logging
 import math
 import re
 from collections import defaultdict
-from itertools import product
 from collections.abc import Iterable
+from itertools import product
 from typing import (
     Any,
     cast,
@@ -42,8 +42,6 @@ from galaxy.model import (
     WorkflowStepConnection,
 )
 from galaxy.model.base import ensure_object_added_to_session
-from galaxy.model.orm.util import get_object_session
-from galaxy.objectstore import ObjectStorePopulator
 from galaxy.model.dataset_collections import matching
 from galaxy.model.dataset_collections.adapters import (
     CollectionAdapter,
@@ -52,6 +50,8 @@ from galaxy.model.dataset_collections.adapters import (
 from galaxy.model.dataset_collections.query import HistoryQuery
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
+from galaxy.model.orm.util import get_object_session
+from galaxy.objectstore import ObjectStorePopulator
 from galaxy.schema.credentials import (
     CredentialsContext,
     SelectedGroup,
@@ -295,9 +295,7 @@ def build_cwl_input_dict(
                 elif isinstance(replacement, model.HistoryDatasetCollectionAssociation):
                     from galaxy.model.dataset_collections.adapters import MergeListsNestedAdapter
 
-                    replacement = MergeListsNestedAdapter(
-                        [replacement], replacement.collection.collection_type
-                    )
+                    replacement = MergeListsNestedAdapter([replacement], replacement.collection.collection_type)
         else:
             # Multiple connections merged into one input — build input_dict
             # compatible with replacement_for_input_connections.
@@ -460,7 +458,7 @@ def _populate_contents(cwl_file_dict: dict) -> None:
     CWL_CONTENT_LIMIT = 64 * 1024
     path = cwl_file_dict.get("path")
     if path:
-        with open(path, "r") as f:
+        with open(path) as f:
             cwl_file_dict["contents"] = f.read(CWL_CONTENT_LIMIT)
 
 
@@ -546,7 +544,9 @@ def find_cwl_scatter_collections(
                 flat_cross_inputs[name] = (hdca, subcollection_type)
             else:
                 is_linked = scatter_method != "nested_crossproduct"
-                collections_to_match.add(name, hdca, subcollection_type=subcollection_type, linked=is_linked, order=scatter_order.get(name))
+                collections_to_match.add(
+                    name, hdca, subcollection_type=subcollection_type, linked=is_linked, order=scatter_order.get(name)
+                )
         elif name not in collection_param_names:
             if has_explicit_scatter and progress is not None and progress.subworkflow_structure is not None:
                 # Parent-mapping: inside a mapped subworkflow, this disabled-
@@ -562,7 +562,9 @@ def find_cwl_scatter_collections(
                 )
                 if name in outer_unlinked:
                     outer_order = list(outer_unlinked.keys()).index(name)
-                    parent_mapping.add(name, hdca, subcollection_type=subcollection_type, linked=False, order=outer_order)
+                    parent_mapping.add(
+                        name, hdca, subcollection_type=subcollection_type, linked=False, order=outer_order
+                    )
                 else:
                     parent_mapping.add(name, hdca, subcollection_type=subcollection_type)
             elif not has_explicit_scatter:
@@ -1028,7 +1030,12 @@ class WorkflowModule:
             scatter_type = "dotproduct"
             if step_input and step_input.scatter_type:
                 scatter_type = step_input.scatter_type
-                assert scatter_type in ["dotproduct", "disabled", "nested_crossproduct", "flat_crossproduct"], f"Unimplemented scatter type [{scatter_type}]"
+                assert scatter_type in [
+                    "dotproduct",
+                    "disabled",
+                    "nested_crossproduct",
+                    "flat_crossproduct",
+                ], f"Unimplemented scatter type [{scatter_type}]"
 
             is_crossproduct = scatter_type == "nested_crossproduct"
 
@@ -1123,9 +1130,13 @@ class WorkflowModule:
                         subcollection_type_description = dataset_collection_type_descriptions.for_collection_type(
                             ":".join(type_list)
                         )
-                    collections_to_match.add(name, data, subcollection_type=subcollection_type_description, linked=not is_crossproduct)
+                    collections_to_match.add(
+                        name, data, subcollection_type=subcollection_type_description, linked=not is_crossproduct
+                    )
                 elif is_data_param and progress.subworkflow_structure:
-                    collections_to_match.add(name, data, subcollection_type=subcollection_type_description, linked=not is_crossproduct)
+                    collections_to_match.add(
+                        name, data, subcollection_type=subcollection_type_description, linked=not is_crossproduct
+                    )
                 continue
 
             if data is not NO_REPLACEMENT:
@@ -3337,8 +3348,7 @@ class ToolModule(WorkflowModule):
             # would never be used because the step is skipped.
             if step.when_expression:
                 scatter_input_names = {
-                    si.name for si in step.inputs
-                    if si.scatter_type and si.scatter_type != "disabled"
+                    si.name for si in step.inputs if si.scatter_type and si.scatter_type != "disabled"
                 }
                 when_refs_scatter = has_scatter and any(
                     f"inputs.{name}" in step.when_expression for name in scatter_input_names
@@ -3386,9 +3396,7 @@ class ToolModule(WorkflowModule):
                 # Cross-product: parent-mapping dimension × scatter dimension.
                 # Parent-mapping collections are linked (zipped) with each
                 # other; the group cross-products with the scatter iterations.
-                iteration_elements_iter = _iter_parent_mapping_x_scatter(
-                    parent_mapping_info, scatter_iter
-                )
+                iteration_elements_iter = _iter_parent_mapping_x_scatter(parent_mapping_info, scatter_iter)
                 # Build combined collection_info so output collections reflect
                 # both parent-mapping and scatter dimensions.
                 if collection_info:

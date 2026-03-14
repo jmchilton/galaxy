@@ -1079,7 +1079,8 @@ class DefaultToolAction(ToolAction):
                                 # MergeListsFlattened/MergeListsNested: list of HDCAs
                                 input_key = f"{name}|__adapter_part__|{i}"
                                 job.add_input_dataset_collection(
-                                    input_key, element,
+                                    input_key,
+                                    element,
                                     adapter_json=adapter_model_dump if i == 0 else None,
                                 )
                             elif hasattr(element, "element_identifier"):

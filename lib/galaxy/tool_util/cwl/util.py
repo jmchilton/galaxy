@@ -882,7 +882,7 @@ def output_to_cwl_json(
                         if dir_prefix:
                             if not ef_path.startswith(dir_prefix + "/"):
                                 continue
-                            relative = ef_path[len(dir_prefix) + 1:]
+                            relative = ef_path[len(dir_prefix) + 1 :]
                         else:
                             relative = ef_path
                         # Skip entries in deeper subdirectories (handled recursively)
@@ -900,15 +900,20 @@ def output_to_cwl_json(
                                 _handle_pseudo_location(
                                     dir_entry,
                                     pseudo_location=pseudo_location,
-                                    download_url=output_metadata["download_url"] + f"?filename={urllib.parse.quote_plus(subdir_path)}",
+                                    download_url=output_metadata["download_url"]
+                                    + f"?filename={urllib.parse.quote_plus(subdir_path)}",
                                 )
                                 entries.append(dir_entry)
                             continue
                         if ef_class == "File":
                             ec = get_dataset(output_metadata, filename=ef_path)
                             ec["basename"] = os.path.basename(ef_path)
-                            _download_url = output_metadata["download_url"] + f"?filename={urllib.parse.quote_plus(ef_path)}"
-                            ec_properties = output_properties(pseudo_location=pseudo_location, download_url=_download_url, **ec)
+                            _download_url = (
+                                output_metadata["download_url"] + f"?filename={urllib.parse.quote_plus(ef_path)}"
+                            )
+                            ec_properties = output_properties(
+                                pseudo_location=pseudo_location, download_url=_download_url, **ec
+                            )
                             entries.append(ec_properties)
                     return entries
 

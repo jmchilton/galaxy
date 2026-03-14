@@ -340,8 +340,7 @@ class MergeDatasetsAdapter(CollectionAdapter):
     def __init__(self, datasets: list["HistoryDatasetAssociation"]):
         self._datasets = datasets
         self._elements = [
-            TransientCollectionAdapterDatasetInstanceElement(str(i), hda)
-            for i, hda in enumerate(datasets)
+            TransientCollectionAdapterDatasetInstanceElement(str(i), hda) for i, hda in enumerate(datasets)
         ]
 
     @property
@@ -378,7 +377,9 @@ class MergeDatasetsAdapter(CollectionAdapter):
                 states[hda.dataset.state] += 1
             if hda.deleted or (hda.dataset and hda.dataset.deleted):
                 deleted += 1
-        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+        return CollectionStateSummary(
+            dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted
+        )
 
     @property
     def adapting(self):
@@ -408,9 +409,7 @@ class MergeListsFlattenedAdapter(CollectionAdapter):
         idx = 0
         for hdca in self._hdcas:
             for elem in hdca.collection.elements:
-                result.append(TransientCollectionAdapterDatasetInstanceElement(
-                    str(idx), elem.dataset_instance
-                ))
+                result.append(TransientCollectionAdapterDatasetInstanceElement(str(idx), elem.dataset_instance))
                 idx += 1
         return result
 
@@ -441,7 +440,9 @@ class MergeListsFlattenedAdapter(CollectionAdapter):
             for state, count in summary.states.items():
                 states[state] += count
             deleted += summary.deleted
-        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+        return CollectionStateSummary(
+            dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted
+        )
 
     @property
     def adapting(self):
@@ -468,8 +469,7 @@ class MergeListsNestedAdapter(CollectionAdapter):
 
     @property
     def elements(self):
-        return [TransientCollectionAdapterCollectionElement(str(i), hdca)
-                for i, hdca in enumerate(self._hdcas)]
+        return [TransientCollectionAdapterCollectionElement(str(i), hdca) for i, hdca in enumerate(self._hdcas)]
 
     @property
     def dataset_instances(self):
@@ -498,7 +498,9 @@ class MergeListsNestedAdapter(CollectionAdapter):
             for state, count in summary.states.items():
                 states[state] += count
             deleted += summary.deleted
-        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+        return CollectionStateSummary(
+            dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted
+        )
 
     @property
     def adapting(self):
@@ -597,7 +599,9 @@ class MergeNestedDatasetsAdapter(CollectionAdapter):
                 states[hda.dataset.state] += 1
             if hda.deleted or (hda.dataset and hda.dataset.deleted):
                 deleted += 1
-        return CollectionStateSummary(dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted)
+        return CollectionStateSummary(
+            dbkeys=sorted(dbkeys), extensions=sorted(extensions), states=states, deleted=deleted
+        )
 
     @property
     def adapting(self):

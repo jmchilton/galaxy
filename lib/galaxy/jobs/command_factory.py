@@ -160,8 +160,7 @@ def build_command(
         # propagate the failure to both $return_code and the .ec file so Galaxy
         # marks the job as failed.
         commands_builder.append_command(
-            f"python '{relocate_script_file}'"
-            f" || {{ return_code=$?; echo $return_code > {exit_code_path}; }}"
+            f"python '{relocate_script_file}' || {{ return_code=$?; echo $return_code > {exit_code_path}; }}"
         )
 
     if include_work_dir_outputs:

@@ -169,7 +169,13 @@ class DrillDownOptionsDict(TypedDict):
 # For fields... just implementing a subset of CWL for Galaxy flavors of these objects
 # so far.
 CwlType = Literal["File", "null", "boolean", "int", "float", "string"]
-CwlArrayType = TypedDict("CwlArrayType", {"type": Literal["array"], "items": CwlType})
+
+
+class CwlArrayType(TypedDict):
+    type: Literal["array"]
+    items: CwlType
+
+
 FieldType = Union[CwlType, List[CwlType], CwlArrayType]
 
 

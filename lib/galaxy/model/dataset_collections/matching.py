@@ -93,7 +93,7 @@ class MatchingCollections:
             collection = hdca.collection if hasattr(hdca, "collection") else hdca.child_collection
             element_lists.append([(input_name, el) for el in collection.elements])
         for combo in product(*element_lists):
-            elements = {name: el for name, el in combo}
+            elements = dict(combo)
             yield elements, None
 
     def subcollection_mapping_type(self, input_name):
