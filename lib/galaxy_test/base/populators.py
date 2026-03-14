@@ -3368,6 +3368,20 @@ class CwlPopulator:
         workflow_path, object_id = urllib.parse.urldefrag(workflow_path)
         from .cwl_location_rewriter import rewrite_locations
 
+        # Validate the original CWL document before packing.  cwl_utils.pack
+        # may upgrade cwlVersion (e.g. v1.0 → v1.2 when inline steps use
+        # newer syntax), masking version-syntax mismatches that cwltool's
+        # schema validation would otherwise reject.
+        from cwltool.context import LoadingContext
+        from cwltool.load_tool import (
+            fetch_document,
+            resolve_and_validate_document,
+        )
+
+        lc = LoadingContext()
+        lc, doc, uri = fetch_document(workflow_path, lc)
+        resolve_and_validate_document(lc, doc, uri)
+
         with tempfile.NamedTemporaryFile() as temp:
             rewrite_locations(workflow_path=workflow_path, output_path=temp.name)
             workflow_id = self.workflow_populator.import_workflow_from_path(temp.name, object_id)
