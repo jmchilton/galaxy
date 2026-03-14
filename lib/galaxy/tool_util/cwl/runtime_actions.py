@@ -170,6 +170,60 @@ def _write_secondary_files(primary_output, secondary_files, extra_files_dir):
         json.dump(index_contents, f)
 
 
+def _collect_staged_targets(job_proxy):
+    """Get canonical paths of files that were symlinked by cwltool during staging.
+
+    Reads ``_staged_symlink_targets`` saved during ``save_job()`` — a
+    snapshot of all symlink resolved targets in the working directory
+    taken AFTER cwltool staging but BEFORE the tool command runs.
+    """
+    return getattr(job_proxy, "_staged_symlink_targets", set())
+
+
+def _validate_output_symlinks(outputs, tool_working_directory, staged_input_paths):
+    """Reject output symlinks that escape the working directory.
+
+    Per CWL spec, globbed output files must not follow symlinks outside
+    the job working directory.  Galaxy-staged input symlinks (which
+    legitimately point to the object store) are excluded via
+    ``staged_input_paths``.
+    """
+    real_workdir = os.path.realpath(tool_working_directory)
+
+    def _check_entry(entry):
+        if not isinstance(entry, dict) or entry.get("class") not in ("File", "Directory"):
+            return
+        location = entry.get("location")
+        if not location:
+            return
+        path = _possible_uri_to_path(location)
+        if not os.path.islink(path):
+            return
+        real_path = os.path.realpath(path)
+        if real_path == real_workdir or real_path.startswith(real_workdir + os.sep):
+            return  # target is inside workdir — legal
+        if real_path in staged_input_paths:
+            return  # Galaxy-staged input — not tool-created
+        raise Exception(
+            f"CWL output '{entry.get('basename', path)}' is a symlink resolving to "
+            f"'{real_path}' which is outside the job working directory"
+        )
+
+    for output_name, output in outputs.items():
+        if isinstance(output, dict):
+            _check_entry(output)
+            if "class" not in output:
+                for v in output.values():
+                    if isinstance(v, dict):
+                        _check_entry(v)
+                    elif isinstance(v, list):
+                        for item in v:
+                            _check_entry(item)
+        elif isinstance(output, list):
+            for item in output:
+                _check_entry(item)
+
+
 def handle_outputs(job_directory: Optional[str] = None):
     # Relocate dynamically collected files to pre-determined locations
     # registered with ToolOutput objects via from_work_dir handling.
@@ -197,6 +251,8 @@ def handle_outputs(job_directory: Optional[str] = None):
     exit_code_file = default_exit_code_file(job_directory, job_id_tag)
     tool_exit_code = read_exit_code_from(exit_code_file, job_id_tag)
     outputs = job_proxy.collect_outputs(tool_working_directory, tool_exit_code)
+    staged_paths = _collect_staged_targets(job_proxy)
+    _validate_output_symlinks(outputs, tool_working_directory, staged_paths)
 
     # Build galaxy.json file.
     provided_metadata = {}

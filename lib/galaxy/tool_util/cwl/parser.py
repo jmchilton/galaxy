@@ -684,12 +684,26 @@ class JobProxy:
                         "staged": str(mapper_ent.staged),
                     }
                 )
+        # Record symlinks in the working directory created by cwltool staging
+        # (both inputs and InitialWorkDirRequirement entries).  At runtime,
+        # _validate_output_symlinks uses this to distinguish staged symlinks
+        # from tool-created ones that escape the working directory.
+        tool_working_directory = os.path.join(self._job_directory, "working")
+        staged_symlinks: List[str] = []
+        if os.path.isdir(tool_working_directory):
+            for dirpath, dirnames, filenames in os.walk(tool_working_directory):
+                for name in filenames + dirnames:
+                    full = os.path.join(dirpath, name)
+                    if os.path.islink(full):
+                        staged_symlinks.append(os.path.realpath(full))
+
         job_objects = {
             # "tool_path": os.path.abspath(self._tool_proxy._tool_path),
             "tool_representation": self._tool_proxy.to_persistent_representation(),
             "job_inputs": self._input_dict,
             "output_dict": self._output_dict,
             "pathmapper_entries": pathmapper_entries,
+            "staged_symlink_targets": staged_symlinks,
         }
         json.dump(job_objects, open(job_file, "w"))
 
@@ -1116,6 +1130,7 @@ def load_job_proxy(job_directory: str, strict_cwl_validation: bool = True) -> Jo
     )
     job_proxy = cwl_tool.job_proxy(job_inputs, output_dict, job_directory=job_directory)
     job_proxy._saved_pathmapper_entries = saved_pathmapper
+    job_proxy._staged_symlink_targets = set(job_objects.get("staged_symlink_targets", []))
     return job_proxy
 
 
