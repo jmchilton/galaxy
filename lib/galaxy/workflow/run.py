@@ -553,6 +553,14 @@ class WorkflowProgress:
 
                 inputs.append(input_from_connection)
 
+            # Filter out NO_REPLACEMENT (from unprovided optional inputs).
+            # If all sources are null, return NO_REPLACEMENT so the input
+            # is treated as absent (CWL conditional steps can skip via `when`).
+            data_inputs = [i for i in inputs if not isinstance(i, NoReplacement)]
+            if not data_inputs:
+                return NO_REPLACEMENT
+            inputs = data_inputs
+
             if input_dict["input_type"] == "dataset_collection":
                 # TODO: Implement more nested types here...
                 if input_dict.get("collection_types") != ["list"]:

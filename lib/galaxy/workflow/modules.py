@@ -312,6 +312,9 @@ def build_cwl_input_dict(
             replacement = progress.replacement_for_input_connections(step, input_dict, connections)
 
         if isinstance(replacement, NoReplacement):
+            # CWL semantics: unprovided optional inputs are null, not absent.
+            # This matters for `when` expressions like $(inputs.x === null).
+            cwl_input_dict[input_name] = None
             continue
 
         # Materialize CollectionAdapters into real HDCAs — CWL scatter
@@ -329,6 +332,19 @@ def build_cwl_input_dict(
         name = step_input.name
         if name is not None and cwl_input_dict.get(name) is None and step_input.default_value is not None:
             cwl_input_dict[name] = _resolve_cwl_default(step_input.default_value, trans, progress)
+
+    # Convert default arrays to HDCAs when the input is marked for scatter.
+    # find_cwl_scatter_collections only picks up {"src": "hdca"} refs, so
+    # plain Python lists from defaults would be invisible to scatter matching.
+    for step_input in step.inputs:
+        name = step_input.name
+        if name is None:
+            continue
+        if step_input.scatter_type and step_input.scatter_type != "disabled":
+            value = cwl_input_dict.get(name)
+            if isinstance(value, list):
+                hdca = progress._materialize_collection_default(step, value)
+                cwl_input_dict[name] = _galaxy_to_cwl_ref(hdca)
 
     return cwl_input_dict
 
@@ -2555,16 +2571,24 @@ class PickValueModule(WorkflowModule):
             if replacement is not NO_REPLACEMENT:
                 replacements.append(replacement)
 
-        # If inputs are collections (from scattered steps), handle specially.
+        # If any inputs are collections (from scattered steps), handle via
+        # collection-based path.  Mixed inputs (some HDCA, some scalar HDA)
+        # occur when one source step scatters and another doesn't — wrap
+        # scalar HDAs in single-element collections so merge logic works.
         hdca_inputs = [r for r in replacements if isinstance(r, model.HistoryDatasetCollectionAssociation)]
-        if hdca_inputs and len(hdca_inputs) == len(replacements):
-            if len(hdca_inputs) == 1:
-                # Single collection (Pattern B: scatter + pickValue)
-                output = self._execute_on_collection(trans, invocation_step, mode, hdca_inputs[0])
+        if hdca_inputs:
+            link_merge = step.tool_inputs.get("link_merge", "merge_nested") if step.tool_inputs else "merge_nested"
+            # Wrap non-HDCA replacements in single-element list collections
+            wrapped = []
+            for r in replacements:
+                if isinstance(r, model.HistoryDatasetCollectionAssociation):
+                    wrapped.append(r)
+                else:
+                    wrapped.append(self._wrap_scalar_as_collection(trans, invocation_step, r))
+            if len(wrapped) == 1:
+                output = self._execute_on_collection(trans, invocation_step, mode, wrapped[0])
             else:
-                # Multiple collections (multi-source scatter + linkMerge + pickValue)
-                link_merge = step.tool_inputs.get("link_merge", "merge_nested") if step.tool_inputs else "merge_nested"
-                output = self._execute_on_merged_collections(trans, invocation_step, mode, hdca_inputs, link_merge)
+                output = self._execute_on_merged_collections(trans, invocation_step, mode, wrapped, link_merge)
             progress.set_step_outputs(invocation_step, {"output": output})
             return None
 
@@ -2607,6 +2631,21 @@ class PickValueModule(WorkflowModule):
 
         progress.set_step_outputs(invocation_step, {"output": output})
         return None
+
+    def _wrap_scalar_as_collection(self, trans, invocation_step, hda):
+        """Wrap a scalar HDA in a single-element list collection for merge compatibility."""
+        invocation = invocation_step.workflow_invocation
+        history = invocation.history
+        elements = [dict(name="0", src="hda", id=hda.id)]
+        collection_manager = trans.app.dataset_collection_manager
+        hdca = collection_manager.create(
+            trans,
+            history,
+            name="Pick Value - wrapped",
+            collection_type="list",
+            element_identifiers=elements,
+        )
+        return hdca
 
     def _create_skipped_output(self, trans, invocation_step):
         """Create a skipped HDA for first_or_skip when all inputs are null."""
@@ -3270,6 +3309,27 @@ class ToolModule(WorkflowModule):
             if not has_scatter:
                 cwl_input_dict = evaluate_cwl_value_from_expressions(step, cwl_input_dict, progress, trans)
 
+            # Early `when` evaluation: evaluate `when` before scatter setup
+            # when the expression doesn't reference scatter inputs.  This
+            # avoids validation failures on missing required inputs that
+            # would never be used because the step is skipped.
+            if step.when_expression:
+                scatter_input_names = {
+                    si.name for si in step.inputs
+                    if si.scatter_type and si.scatter_type != "disabled"
+                }
+                when_refs_scatter = has_scatter and any(
+                    f"inputs.{name}" in step.when_expression for name in scatter_input_names
+                )
+                if not when_refs_scatter:
+                    hda_references: list[model.HistoryDatasetAssociation] = []
+                    step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in cwl_input_dict.items()}
+                    early_when = do_eval(str(step.when_expression), step_state)
+                    early_when = from_cwl(early_when, hda_references=hda_references, progress=progress)
+                    if early_when is False:
+                        # Step skipped — produce skipped outputs without scatter.
+                        return self._execute_skipped_cwl_step(trans, invocation_step, progress, step)
+
             # Scatter: identify collection inputs and match
             collections_to_match, parent_mapping = find_cwl_scatter_collections(
                 step, cwl_input_dict, trans, tool=tool, progress=progress
@@ -3642,6 +3702,35 @@ class ToolModule(WorkflowModule):
             raise exceptions.MessageException(message)
 
         return complete
+
+    def _execute_skipped_cwl_step(self, trans, invocation_step, progress, step):
+        """Produce skipped outputs for a CWL step whose `when` is False.
+
+        Called when early `when` evaluation (before scatter setup) determines
+        the step should be skipped.  Creates expression.json HDAs with
+        ``blurb='skipped'`` for each tool output so downstream pickValue
+        modules can detect them as null.
+        """
+        tool = self.tool
+        invocation = invocation_step.workflow_invocation
+        history = invocation.history
+        object_store_populator = ObjectStorePopulator(trans.app, trans.user)
+        step_outputs: dict[str, Any] = {}
+        for output_name in tool.outputs:
+            hda = model.HistoryDatasetAssociation(
+                name=f"{step.label}/{output_name} - skipped",
+                extension="expression.json",
+                history=history,
+                create_dataset=True,
+                flush=False,
+            )
+            hda.set_skipped(object_store_populator, replace_dataset=False)
+            hda.visible = False
+            trans.sa_session.add(hda)
+            step_outputs[output_name] = hda
+        trans.sa_session.flush()
+        progress.set_step_outputs(invocation_step, step_outputs, already_persisted=not invocation_step.is_new)
+        return None
 
     @staticmethod
     def _build_step_error_failure(trans, step, step_errors, progress):
