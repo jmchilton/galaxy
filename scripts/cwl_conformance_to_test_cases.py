@@ -205,7 +205,6 @@ RED_TESTS = {
         "filename_with_hash_mark",
         "illegal_symlink",
         "initial_work_dir_for_array_dirs",
-        "initial_work_dir_for_null_and_arrays",
         "mixed_version_v12_wf",
         "record_output_file_entry_format",
         "resreq_step_overrides_wf",

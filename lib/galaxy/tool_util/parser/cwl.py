@@ -253,9 +253,10 @@ class CwlToolSource(ToolSource):
         name = output_instance.name
         # TODO: handle filters, actions, change_format
         output = ToolOutput(name)
-        if "File" in output_instance.output_data_type:
+        output_data_type_str = str(output_instance.output_data_type)
+        if "File" in output_data_type_str:
             output.format = CWL_DEFAULT_FILE_OUTPUT
-        elif "Directory" in output_instance.output_data_type:
+        elif "Directory" in output_data_type_str:
             output.format = "directory"
         else:
             output.format = "expression.json"
