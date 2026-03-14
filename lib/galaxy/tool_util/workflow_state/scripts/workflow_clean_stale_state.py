@@ -31,6 +31,11 @@ def build_parser():
     )
     parser.add_argument("--diff", action="store_true", help="Show unified diff of changes")
     parser.add_argument(
+        "--strip-bookkeeping",
+        action="store_true",
+        help="Also strip bookkeeping keys (__current_case__, __page__, chromInfo, etc.) that are normally preserved",
+    )
+    parser.add_argument(
         "--report-json",
         nargs="?",
         const="-",

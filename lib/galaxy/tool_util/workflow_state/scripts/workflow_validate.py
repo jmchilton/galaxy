@@ -25,6 +25,12 @@ def build_parser():
     parser.add_argument("--strict", action="store_true", help="Treat skips (missing tool defs) as failures")
     parser.add_argument("--summary", action="store_true", help="Show only summary counts")
     parser.add_argument(
+        "--strip-bookkeeping",
+        action="store_true",
+        help="Strip bookkeeping keys (__current_case__, etc.) before validation "
+        "to test whether validation depends on them",
+    )
+    parser.add_argument(
         "--report-json",
         nargs="?",
         const="-",

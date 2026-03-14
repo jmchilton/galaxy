@@ -23,6 +23,7 @@ from typing import (
 from pydantic import BaseModel
 
 from ._types import GetToolInfo
+from .clean import strip_bookkeeping_from_workflow
 from .validation import _format
 from .validation_format2 import validate_step_format2
 from .validation_native import (
@@ -49,6 +50,7 @@ class ValidateOptions(BaseModel):
     summary: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
+    strip_bookkeeping: bool = False
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace) -> "ValidateOptions":
@@ -262,7 +264,7 @@ def _validate_format2(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: s
     return results
 
 
-def validate_tree(root: str, get_tool_info: GetToolInfo) -> TreeValidationReport:
+def validate_tree(root: str, get_tool_info: GetToolInfo, strip_bookkeeping: bool = False) -> TreeValidationReport:
     """Validate all workflows under a directory tree."""
     from .workflow_tree import (
         discover_workflows,
@@ -284,6 +286,9 @@ def validate_tree(root: str, get_tool_info: GetToolInfo) -> TreeValidationReport
                 )
             )
             continue
+
+        if strip_bookkeeping and _format(wf_dict) == "native":
+            strip_bookkeeping_from_workflow(wf_dict)
 
         try:
             step_results = validate_workflow_cli(wf_dict, get_tool_info)
@@ -520,10 +525,12 @@ def run_validate(options: ValidateOptions) -> int:
     is_dir = os.path.isdir(options.workflow_path)
 
     if is_dir:
-        report = validate_tree(options.workflow_path, tool_info)
+        report = validate_tree(options.workflow_path, tool_info, strip_bookkeeping=options.strip_bookkeeping)
         return _emit_tree_results(options, report)
     else:
         workflow = load_workflow(options.workflow_path)
+        if options.strip_bookkeeping:
+            strip_bookkeeping_from_workflow(workflow)
         results = validate_workflow_cli(workflow, tool_info)
         return _emit_single_results(options, results)
 
