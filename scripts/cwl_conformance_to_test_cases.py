@@ -182,10 +182,7 @@ RED_TESTS = {
         "cwl_requirements_addition",
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",
-        "record_output_file_entry_format",
         "resreq_step_overrides_wf",
-        "stage_array_dirs",
-        "stage_null_array",
         "timelimit_invalid_wf",
     ],
     "v1.2": [
