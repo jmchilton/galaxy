@@ -23,6 +23,7 @@ from galaxy.tool_util.parser import (
     get_tool_source,
     ToolSource,
 )
+from galaxy.tool_util.version_updates import is_workflow_safe_version
 from galaxy.tools.stock import stock_tool_sources
 from galaxy.util import relpath
 from tool_shed.context import (
@@ -176,7 +177,13 @@ def _stock_tool_source_for(tool_id: str, tool_version: str) -> Optional[ToolSour
     tool_version_sources = STOCK_TOOL_SOURCES.get(tool_id)
     if tool_version_sources is None:
         return None
-    return tool_version_sources.get(tool_version)
+    tool_source = tool_version_sources.get(tool_version)
+    if tool_source is not None:
+        return tool_source
+    safe_version = is_workflow_safe_version(tool_id, tool_version)
+    if safe_version is not None:
+        return tool_version_sources.get(safe_version)
+    return None
 
 
 def _init_stock_tool_sources() -> None:
