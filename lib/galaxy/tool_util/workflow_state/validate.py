@@ -1,27 +1,27 @@
-"""Workflow validation: domain logic, result types, formatters, and run() entry point.
+"""Workflow validation: domain logic, formatters, and run() entry point.
 
 Validates a workflow's tool_state against tool definitions.
 Supports both native .ga and format2 .gxwf.yml workflows.
 """
 
 import argparse
-import json
 import logging
 import os
-import sys
-from dataclasses import (
-    dataclass,
-    field,
-)
 from typing import (
-    Dict,
     List,
-    Literal,
     Optional,
 )
 
 from pydantic import BaseModel
 
+from ._report_models import (
+    SingleValidationReport,
+    TreeValidationReport,
+    ValidationStepResult,
+    WorkflowValidationResult,
+    wrap_single_validation,
+)
+from ._report_output import emit_reports
 from ._types import GetToolInfo
 from .clean import strip_bookkeeping_from_workflow
 from .validation import _format
@@ -34,7 +34,8 @@ from .workflow_tools import load_workflow
 
 log = logging.getLogger(__name__)
 
-StepStatus = Literal["ok", "fail", "skip"]
+# Re-export for backwards compat and public API
+StepResult = ValidationStepResult
 
 
 # -- Options model --
@@ -58,60 +59,10 @@ class ValidateOptions(BaseModel):
         return cls(**{k: v for k, v in vars(args).items() if k in fields})
 
 
-# -- Result types --
-
-
-@dataclass
-class StepResult:
-    step: str
-    tool_id: Optional[str]
-    version: Optional[str]
-    status: StepStatus
-    errors: List[str] = field(default_factory=list)
-
-
-@dataclass
-class WorkflowValidationResult:
-    path: str
-    relative_path: str
-    category: str
-    step_results: List[StepResult] = field(default_factory=list)
-    error: Optional[str] = None
-
-
-@dataclass
-class TreeValidationReport:
-    root: str
-    results: List[WorkflowValidationResult] = field(default_factory=list)
-
-    @property
-    def summary(self) -> Dict[str, int]:
-        ok = fail = skip = error = 0
-        for r in self.results:
-            if r.error:
-                error += 1
-                continue
-            for sr in r.step_results:
-                if sr.status == "ok":
-                    ok += 1
-                elif sr.status == "fail":
-                    fail += 1
-                elif sr.status == "skip":
-                    skip += 1
-        return {"ok": ok, "fail": fail, "skip": skip, "error": error}
-
-    def by_category(self) -> Dict[str, List[WorkflowValidationResult]]:
-        groups: Dict[str, List[WorkflowValidationResult]] = {}
-        for r in self.results:
-            cat = r.category or "(root)"
-            groups.setdefault(cat, []).append(r)
-        return groups
-
-
 # -- Domain logic --
 
 
-def validate_workflow_cli(workflow_dict: dict, get_tool_info: GetToolInfo) -> List[StepResult]:
+def validate_workflow_cli(workflow_dict: dict, get_tool_info: GetToolInfo) -> List[ValidationStepResult]:
     """Validate all steps in a workflow, collecting per-step results."""
     fmt = _format(workflow_dict)
     if fmt == "native":
@@ -120,8 +71,10 @@ def validate_workflow_cli(workflow_dict: dict, get_tool_info: GetToolInfo) -> Li
         return _validate_format2(workflow_dict, get_tool_info)
 
 
-def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = "") -> List[StepResult]:
-    results = []
+def _validate_native(
+    workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = ""
+) -> List[ValidationStepResult]:
+    results: List[ValidationStepResult] = []
     steps = workflow_dict.get("steps", {})
     for step_index, step_def in sorted(steps.items(), key=lambda x: int(x[0])):
         step_label = f"{prefix}{step_index}" if prefix else str(step_index)
@@ -140,7 +93,7 @@ def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: st
         tool_state = step_def.get("tool_state")
         if not tool_state or not isinstance(tool_state, str):
             results.append(
-                StepResult(
+                ValidationStepResult(
                     step=step_label,
                     tool_id=tool_id,
                     version=tool_version,
@@ -154,7 +107,7 @@ def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: st
             parsed_tool = get_parsed_tool_for_native_step(step_def, get_tool_info)
         except Exception as e:
             results.append(
-                StepResult(
+                ValidationStepResult(
                     step=step_label,
                     tool_id=tool_id,
                     version=tool_version,
@@ -166,7 +119,7 @@ def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: st
 
         if parsed_tool is None:
             results.append(
-                StepResult(
+                ValidationStepResult(
                     step=step_label,
                     tool_id=tool_id,
                     version=tool_version,
@@ -179,7 +132,7 @@ def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: st
         try:
             validate_native_step_against(step_def, parsed_tool)
             results.append(
-                StepResult(
+                ValidationStepResult(
                     step=step_label,
                     tool_id=tool_id,
                     version=tool_version,
@@ -188,7 +141,7 @@ def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: st
             )
         except Exception as e:
             results.append(
-                StepResult(
+                ValidationStepResult(
                     step=step_label,
                     tool_id=tool_id,
                     version=tool_version,
@@ -200,13 +153,15 @@ def _validate_native(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: st
     return results
 
 
-def _validate_format2(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = "") -> List[StepResult]:
+def _validate_format2(
+    workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = ""
+) -> List[ValidationStepResult]:
     from gxformat2.model import (
         get_native_step_type,
         steps_as_list,
     )
 
-    results = []
+    results: List[ValidationStepResult] = []
     steps = steps_as_list(workflow_dict)
     for i, step_dict in enumerate(steps):
         step_label = f"{prefix}{i}" if prefix else str(i)
@@ -231,7 +186,7 @@ def _validate_format2(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: s
         try:
             validate_step_format2(step_dict, get_tool_info)
             results.append(
-                StepResult(
+                ValidationStepResult(
                     step=step_label,
                     tool_id=tool_id,
                     version=tool_version,
@@ -242,7 +197,7 @@ def _validate_format2(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: s
             error_str = str(e)
             if "No tool definition" in error_str or "Not a toolshed tool" in error_str:
                 results.append(
-                    StepResult(
+                    ValidationStepResult(
                         step=step_label,
                         tool_id=tool_id,
                         version=tool_version,
@@ -252,7 +207,7 @@ def _validate_format2(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: s
                 )
             else:
                 results.append(
-                    StepResult(
+                    ValidationStepResult(
                         step=step_label,
                         tool_id=tool_id,
                         version=tool_version,
@@ -318,7 +273,7 @@ def validate_tree(root: str, get_tool_info: GetToolInfo, strip_bookkeeping: bool
 # -- Formatters --
 
 
-def format_text(results: List[StepResult], summary_only: bool = False) -> str:
+def format_text(results: List[ValidationStepResult], summary_only: bool = False) -> str:
     lines = []
     ok = sum(1 for r in results if r.status == "ok")
     fail = sum(1 for r in results if r.status == "fail")
@@ -425,83 +380,16 @@ def format_tree_markdown(report: TreeValidationReport) -> str:
     return "\n".join(lines)
 
 
-def format_json_single(results: List[StepResult], workflow_path: str) -> dict:
-    return {
-        "workflow": workflow_path,
-        "results": [
-            {
-                "step": r.step,
-                "tool_id": r.tool_id,
-                "version": r.version,
-                "status": r.status,
-                "errors": r.errors,
-            }
-            for r in results
-        ],
-        "summary": {
-            "ok": sum(1 for r in results if r.status == "ok"),
-            "fail": sum(1 for r in results if r.status == "fail"),
-            "skip": sum(1 for r in results if r.status == "skip"),
-        },
-    }
+# -- JSON formatters (delegate to Pydantic model_dump) --
+
+
+def format_json_single(results: List[ValidationStepResult], workflow_path: str) -> dict:
+    report = SingleValidationReport(workflow=workflow_path, results=results)
+    return report.model_dump(by_alias=True)
 
 
 def format_json_tree(report: TreeValidationReport) -> dict:
-    return {
-        "root": report.root,
-        "workflows": [
-            {
-                "path": r.relative_path,
-                "category": r.category,
-                "error": r.error,
-                "results": (
-                    [
-                        {
-                            "step": sr.step,
-                            "tool_id": sr.tool_id,
-                            "version": sr.version,
-                            "status": sr.status,
-                            "errors": sr.errors,
-                        }
-                        for sr in r.step_results
-                    ]
-                    if not r.error
-                    else []
-                ),
-                "summary": (
-                    {
-                        "ok": sum(1 for sr in r.step_results if sr.status == "ok"),
-                        "fail": sum(1 for sr in r.step_results if sr.status == "fail"),
-                        "skip": sum(1 for sr in r.step_results if sr.status == "skip"),
-                    }
-                    if not r.error
-                    else None
-                ),
-            }
-            for r in report.results
-        ],
-        "summary": report.summary,
-    }
-
-
-# -- Output helpers --
-
-
-def _write_output(content: str, dest: Optional[str]):
-    if dest is None or dest == "-":
-        print(content)
-    else:
-        with open(dest, "w") as f:
-            f.write(content)
-        print(f"Report written to {dest}", file=sys.stderr)
-
-
-def _all_reports_to_files(options: ValidateOptions) -> bool:
-    """True if all --report-* flags point to files (none writing to stdout)."""
-    for dest in [options.report_json, options.report_markdown]:
-        if dest is not None and dest == "-":
-            return False
-    return True
+    return report.model_dump(by_alias=True)
 
 
 # -- Entry point --
@@ -535,29 +423,18 @@ def run_validate(options: ValidateOptions) -> int:
         return _emit_single_results(options, results)
 
 
-def _emit_single_results(options: ValidateOptions, results: List[StepResult]) -> int:
-    has_explicit_report = options.report_json is not None or options.report_markdown is not None
+def _emit_single_results(options: ValidateOptions, results: List[ValidationStepResult]) -> int:
+    json_data = SingleValidationReport(workflow=options.workflow_path, results=results)
+    tree_report = wrap_single_validation(options.workflow_path, results)
 
-    if options.report_json is not None:
-        data = format_json_single(results, options.workflow_path)
-        _write_output(json.dumps(data, indent=2), options.report_json)
-
-    if options.report_markdown is not None:
-        tree_report = TreeValidationReport(root=options.workflow_path)
-        tree_report.results.append(
-            WorkflowValidationResult(
-                path=options.workflow_path,
-                relative_path=os.path.basename(options.workflow_path),
-                category="",
-                step_results=results,
-            )
-        )
-        _write_output(format_tree_markdown(tree_report), options.report_markdown)
-
-    if not has_explicit_report:
-        print(format_text(results, summary_only=options.summary))
-    elif _all_reports_to_files(options):
-        print(format_text(results, summary_only=True), file=sys.stderr)
+    emit_reports(
+        options=options,
+        json_data=json_data,
+        markdown_formatter=format_tree_markdown,
+        markdown_report=tree_report,
+        text_content=format_text(results, summary_only=options.summary),
+        stderr_summary=format_text(results, summary_only=True),
+    )
 
     has_failures = any(r.status == "fail" for r in results)
     has_skips = any(r.status == "skip" for r in results)
@@ -570,19 +447,14 @@ def _emit_single_results(options: ValidateOptions, results: List[StepResult]) ->
 
 
 def _emit_tree_results(options: ValidateOptions, report: TreeValidationReport) -> int:
-    has_explicit_report = options.report_json is not None or options.report_markdown is not None
-
-    if options.report_json is not None:
-        data = format_json_tree(report)
-        _write_output(json.dumps(data, indent=2), options.report_json)
-
-    if options.report_markdown is not None:
-        _write_output(format_tree_markdown(report), options.report_markdown)
-
-    if not has_explicit_report:
-        print(format_tree_text(report, summary_only=options.summary))
-    elif _all_reports_to_files(options):
-        print(format_tree_text(report, summary_only=True), file=sys.stderr)
+    emit_reports(
+        options=options,
+        json_data=report,
+        markdown_formatter=format_tree_markdown,
+        markdown_report=report,
+        text_content=format_tree_text(report, summary_only=options.summary),
+        stderr_summary=format_tree_text(report, summary_only=True),
+    )
 
     s = report.summary
     if s["fail"] > 0 or s["error"] > 0:

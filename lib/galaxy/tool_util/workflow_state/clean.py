@@ -1,4 +1,4 @@
-"""Stale state cleaning: domain logic, result types, formatters, and run() entry point.
+"""Stale state cleaning: domain logic, formatters, and run() entry point.
 
 Strips stale tool_state keys from native .ga workflows by comparing
 keys against current tool input definitions.
@@ -10,11 +10,6 @@ import difflib
 import json
 import logging
 import os
-import sys
-from dataclasses import (
-    dataclass,
-    field,
-)
 from typing import (
     Any,
     cast,
@@ -33,6 +28,14 @@ from galaxy.tool_util.parameters import (
 )
 from galaxy.tool_util_models import ParsedTool
 from galaxy.tool_util_models.parameters import SectionParameterModel
+from ._report_models import (
+    CleanStepResult,
+    SingleCleanReport,
+    TreeCleanReport,
+    WorkflowCleanResult,
+    wrap_single_clean,
+)
+from ._report_output import emit_reports
 from ._types import (
     GetToolInfo,
     NativeStepDict,
@@ -48,6 +51,9 @@ from .validation_native import get_parsed_tool_for_native_step
 from .workflow_tools import load_workflow
 
 log = logging.getLogger(__name__)
+
+# Re-export for backwards compat
+StepCleanResult = CleanStepResult
 
 
 def _strip_bookkeeping_recursive(d: Dict[str, Any]) -> None:
@@ -121,22 +127,14 @@ class CleanOptions(BaseModel):
         return cls(**{k: v for k, v in vars(args).items() if k in fields})
 
 
-# -- Result types --
+# -- Intermediate result (for single-workflow cleaning before wrapping) --
 
 
-@dataclass
-class StepCleanResult:
-    step_index: str
-    tool_id: str
-    version: Optional[str]
-    removed_keys: List[str] = field(default_factory=list)
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class CleanResult:
-    step_results: List[StepCleanResult] = field(default_factory=list)
+    """Mutable accumulator for a single workflow's cleaning pass."""
+
+    def __init__(self):
+        self.step_results: List[CleanStepResult] = []
 
     @property
     def total_removed(self) -> int:
@@ -148,37 +146,6 @@ class CleanResult:
 
     def merge(self, other: "CleanResult"):
         self.step_results.extend(other.step_results)
-
-
-@dataclass
-class WorkflowCleanResult:
-    path: str
-    relative_path: str
-    category: str
-    step_results: List[StepCleanResult] = field(default_factory=list)
-    total_removed: int = 0
-    error: Optional[str] = None
-
-
-@dataclass
-class TreeCleanReport:
-    root: str
-    results: List[WorkflowCleanResult] = field(default_factory=list)
-
-    @property
-    def summary(self) -> Dict[str, int]:
-        total_keys = sum(r.total_removed for r in self.results)
-        affected = sum(1 for r in self.results if r.total_removed > 0)
-        errors = sum(1 for r in self.results if r.error)
-        clean = len(self.results) - affected - errors
-        return {"total_keys": total_keys, "affected": affected, "clean": clean, "errors": errors}
-
-    def by_category(self) -> Dict[str, List[WorkflowCleanResult]]:
-        groups: Dict[str, List[WorkflowCleanResult]] = {}
-        for r in self.results:
-            cat = r.category or "(root)"
-            groups.setdefault(cat, []).append(r)
-        return groups
 
 
 # -- Domain logic --
@@ -284,15 +251,15 @@ def _strip_recursive(
                 state[name] = json.dumps(section_state)
 
 
-def strip_stale_keys(step: NativeStepDict, parsed_tool: ParsedTool, strip_bookkeeping: bool = False) -> StepCleanResult:
+def strip_stale_keys(step: NativeStepDict, parsed_tool: ParsedTool, strip_bookkeeping: bool = False) -> CleanStepResult:
     """Strip stale keys from a single step's tool_state."""
     tool_id = step.get("tool_id", "?")
     tool_version = step.get("tool_version")
 
     tool_state_str = step.get("tool_state")
     if not tool_state_str or not isinstance(tool_state_str, str):
-        return StepCleanResult(
-            step_index="?",
+        return CleanStepResult(
+            step="?",
             tool_id=tool_id,
             version=tool_version,
             skipped=True,
@@ -304,8 +271,8 @@ def strip_stale_keys(step: NativeStepDict, parsed_tool: ParsedTool, strip_bookke
     _strip_recursive(tool_state, list(parsed_tool.inputs), removed_keys, strip_bookkeeping=strip_bookkeeping)
     step["tool_state"] = json.dumps(tool_state)
 
-    return StepCleanResult(
-        step_index="?",
+    return CleanStepResult(
+        step="?",
         tool_id=tool_id,
         version=tool_version,
         removed_keys=removed_keys,
@@ -341,8 +308,8 @@ def clean_stale_state(
             parsed_tool = get_parsed_tool_for_native_step(step_def, get_tool_info)
         except Exception as e:
             result.step_results.append(
-                StepCleanResult(
-                    step_index=step_label,
+                CleanStepResult(
+                    step=step_label,
                     tool_id=tool_id,
                     version=step_def.get("tool_version"),
                     skipped=True,
@@ -353,8 +320,8 @@ def clean_stale_state(
 
         if parsed_tool is None:
             result.step_results.append(
-                StepCleanResult(
-                    step_index=step_label,
+                CleanStepResult(
+                    step=step_label,
                     tool_id=tool_id,
                     version=step_def.get("tool_version"),
                     skipped=True,
@@ -364,7 +331,7 @@ def clean_stale_state(
             continue
 
         step_result = strip_stale_keys(step_def, parsed_tool, strip_bookkeeping=strip_bookkeeping)
-        step_result.step_index = step_label
+        step_result.step = step_label
         result.step_results.append(step_result)
 
     return result
@@ -463,13 +430,13 @@ def format_dry_run(result: CleanResult) -> str:
     lines = []
     for sr in result.step_results:
         if sr.skipped:
-            lines.append(f"Step {sr.step_index} ({sr.tool_id}): SKIP ({sr.skip_reason})")
+            lines.append(f"Step {sr.step} ({sr.tool_id}): SKIP ({sr.skip_reason})")
             continue
         if sr.removed_keys:
             tool_label = sr.tool_id
             if sr.version:
                 tool_label += f" {sr.version}"
-            lines.append(f"Step {sr.step_index} ({tool_label}):")
+            lines.append(f"Step {sr.step} ({tool_label}):")
             lines.append(f"  Removed: {', '.join(sr.removed_keys)}")
 
     if result.total_removed:
@@ -497,7 +464,7 @@ def format_tree_clean_text(report: TreeCleanReport) -> str:
             lines.append(f"  {r.relative_path}: {r.total_removed} stale key(s)")
             for sr in r.step_results:
                 if sr.removed_keys:
-                    lines.append(f"    Step {sr.step_index} ({sr.tool_id}): {', '.join(sr.removed_keys)}")
+                    lines.append(f"    Step {sr.step} ({sr.tool_id}): {', '.join(sr.removed_keys)}")
 
     lines.append("---")
     lines.append(
@@ -532,7 +499,7 @@ def format_tree_clean_markdown(report: TreeCleanReport) -> str:
             details_parts = []
             for sr in r.step_results:
                 if sr.removed_keys:
-                    details_parts.append(f"Step {sr.step_index} ({sr.tool_id}): {', '.join(sr.removed_keys)}")
+                    details_parts.append(f"Step {sr.step} ({sr.tool_id}): {', '.join(sr.removed_keys)}")
             detail = "; ".join(details_parts) if details_parts else ""
             lines.append(f"| {name} | {steps_affected} | {r.total_removed} | {detail} |")
         lines.append("")
@@ -552,9 +519,7 @@ def format_tree_clean_markdown(report: TreeCleanReport) -> str:
                     tool_label = sr.tool_id
                     if sr.version:
                         tool_label += f" {sr.version}"
-                    detail_lines.append(
-                        f"- Step {sr.step_index} ({tool_label}): " f"Removed `{'`, `'.join(sr.removed_keys)}`"
-                    )
+                    detail_lines.append(f"- Step {sr.step} ({tool_label}): Removed `{'`, `'.join(sr.removed_keys)}`")
             detail_lines.append("")
 
     if detail_lines:
@@ -565,74 +530,16 @@ def format_tree_clean_markdown(report: TreeCleanReport) -> str:
     return "\n".join(lines)
 
 
+# -- JSON formatters (delegate to Pydantic model_dump) --
+
+
 def format_json_single(result: CleanResult, workflow_path: str) -> dict:
-    return {
-        "workflow": workflow_path,
-        "total_removed": result.total_removed,
-        "steps_with_removals": result.steps_with_removals,
-        "results": [
-            {
-                "step": sr.step_index,
-                "tool_id": sr.tool_id,
-                "version": sr.version,
-                "removed_keys": sr.removed_keys,
-                "skipped": sr.skipped,
-                "skip_reason": sr.skip_reason,
-            }
-            for sr in result.step_results
-        ],
-    }
+    report = SingleCleanReport(workflow=workflow_path, results=result.step_results)
+    return report.model_dump(by_alias=True)
 
 
 def format_json_tree(report: TreeCleanReport) -> dict:
-    return {
-        "root": report.root,
-        "workflows": [
-            {
-                "path": r.relative_path,
-                "category": r.category,
-                "error": r.error,
-                "total_removed": r.total_removed,
-                "results": (
-                    [
-                        {
-                            "step": sr.step_index,
-                            "tool_id": sr.tool_id,
-                            "version": sr.version,
-                            "removed_keys": sr.removed_keys,
-                            "skipped": sr.skipped,
-                            "skip_reason": sr.skip_reason,
-                        }
-                        for sr in r.step_results
-                    ]
-                    if not r.error
-                    else []
-                ),
-            }
-            for r in report.results
-        ],
-        "summary": report.summary,
-    }
-
-
-# -- Output helpers --
-
-
-def _write_output(content: str, dest: Optional[str]):
-    if dest is None or dest == "-":
-        print(content)
-    else:
-        with open(dest, "w") as f:
-            f.write(content)
-        print(f"Report written to {dest}", file=sys.stderr)
-
-
-def _all_reports_to_files(options: CleanOptions) -> bool:
-    """True if all --report-* flags point to files (none writing to stdout)."""
-    for dest in [options.report_json, options.report_markdown]:
-        if dest is not None and dest == "-":
-            return False
-    return True
+    return report.model_dump(by_alias=True)
 
 
 # -- Entry point --
@@ -688,29 +595,31 @@ def _run_single(options: CleanOptions, tool_info) -> int:
         else:
             print("No changes.")
 
+    json_data = SingleCleanReport(workflow=options.workflow_path, results=result.step_results)
+    tree_report = wrap_single_clean(options.workflow_path, result.step_results)
+
     has_explicit_report = options.report_json is not None or options.report_markdown is not None
 
-    if options.report_json is not None:
-        data = format_json_single(result, options.workflow_path)
-        _write_output(json.dumps(data, indent=2), options.report_json)
+    # When --diff is shown, skip text/stderr output (diff already printed above)
+    if not options.diff:
+        text_content = format_dry_run(result)
+        stderr_summary = format_dry_run(result)
+    else:
+        text_content = None
+        stderr_summary = None
 
-    if options.report_markdown is not None:
-        tree_report = TreeCleanReport(root=options.workflow_path)
-        tree_report.results.append(
-            WorkflowCleanResult(
-                path=options.workflow_path,
-                relative_path=os.path.basename(options.workflow_path),
-                category="",
-                step_results=result.step_results,
-                total_removed=result.total_removed,
-            )
+    # Emit JSON/Markdown reports via shared infrastructure
+    if has_explicit_report:
+        emit_reports(
+            options=options,
+            json_data=json_data,
+            markdown_formatter=format_tree_clean_markdown,
+            markdown_report=tree_report,
+            text_content=text_content or "",
+            stderr_summary=stderr_summary or "",
         )
-        _write_output(format_tree_clean_markdown(tree_report), options.report_markdown)
-
-    if not has_explicit_report and not options.diff:
-        print(format_dry_run(result))
-    elif _all_reports_to_files(options) and not options.diff:
-        print(format_dry_run(result), file=sys.stderr)
+    elif text_content:
+        print(text_content)
 
     if not dry_run and result.total_removed > 0:
         output_json = json.dumps(work_copy, indent=4) + "\n"
@@ -730,22 +639,16 @@ def _run_tree(options: CleanOptions, tool_info) -> int:
         strip_bookkeeping=options.strip_bookkeeping,
     )
 
-    has_explicit_report = options.report_json is not None or options.report_markdown is not None
-
-    if options.report_json is not None:
-        data = format_json_tree(report)
-        _write_output(json.dumps(data, indent=2), options.report_json)
-
-    if options.report_markdown is not None:
-        _write_output(format_tree_clean_markdown(report), options.report_markdown)
-
-    if not has_explicit_report:
-        print(format_tree_clean_text(report))
-    elif _all_reports_to_files(options):
-        s = report.summary
-        print(f"Summary: {s['total_keys']} stale key(s), {s['affected']} affected", file=sys.stderr)
-
     s = report.summary
+    emit_reports(
+        options=options,
+        json_data=report,
+        markdown_formatter=format_tree_clean_markdown,
+        markdown_report=report,
+        text_content=format_tree_clean_text(report),
+        stderr_summary=f"Summary: {s['total_keys']} stale key(s), {s['affected']} affected",
+    )
+
     if s["total_keys"] > 0 or s["errors"] > 0:
         return 1
     return 0
