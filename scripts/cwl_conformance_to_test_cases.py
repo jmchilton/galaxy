@@ -204,9 +204,7 @@ RED_TESTS = {
         "cwl_requirements_override_static",
         "filename_with_hash_mark",
         "illegal_symlink",
-        "initial_work_dir_for_array_dirs",
         "mixed_version_v12_wf",
-        "record_output_file_entry_format",
         "resreq_step_overrides_wf",
     ],
 }
