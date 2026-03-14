@@ -197,8 +197,6 @@ RED_TESTS = {
         "timelimit_invalid_wf",
     ],
     "v1.2": [
-        "cond-with-defaults-1",
-        "cond-with-defaults-2",
         "cwl_requirements_addition",
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",
