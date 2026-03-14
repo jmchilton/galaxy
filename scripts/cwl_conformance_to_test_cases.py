@@ -203,8 +203,6 @@ RED_TESTS = {
         "cwl_requirements_override_expression",
         "cwl_requirements_override_static",
         "filename_with_hash_mark",
-        "illegal_symlink",
-        "mixed_version_v12_wf",
         "resreq_step_overrides_wf",
     ],
 }

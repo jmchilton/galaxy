@@ -37,6 +37,7 @@ from galaxy.model.dataset_collections.adapters import (
     MergeListsNestedAdapter,
     MergeNestedDatasetsAdapter,
 )
+from galaxy.model.deferred import materializer_factory
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.tools.cwl_runtime import raw_to_galaxy
 from galaxy.tools.parameters.workflow_utils import (
@@ -799,6 +800,8 @@ class WorkflowProgress:
         # TODO: handle extra files and directory types and collections and all the stuff...
         if output and isinstance(output, dict) and output.get("class") == "File":
             primary_data = self.raw_to_galaxy(output)
+            if primary_data.has_deferred_data:
+                self._materialize_deferred_hda(primary_data)
             outputs["output"] = primary_data
 
         log.debug("outputs are %s", outputs)
@@ -1066,6 +1069,18 @@ class WorkflowProgress:
 
     def raw_to_galaxy(self, value: dict):
         return raw_to_galaxy(self.module_injector.trans.app, self.module_injector.trans.history, value)
+
+    def _materialize_deferred_hda(self, hda: "model.HistoryDatasetAssociation") -> None:
+        """Materialize a deferred HDA in place (download from source URI)."""
+        trans = self.trans
+        materializer = materializer_factory(
+            True,
+            object_store=trans.app.object_store,
+            file_sources=trans.app.file_sources,
+            sa_session=trans.sa_session,
+        )
+        materializer.ensure_materialized(hda, in_place=True)
+        trans.sa_session.commit()
 
     def _recover_mapping(self, step_invocation: WorkflowInvocationStep) -> None:
         assert step_invocation.workflow_step.module
