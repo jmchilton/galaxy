@@ -40,7 +40,10 @@ EXTENDED_TIMEOUT_TESTS: dict[str, dict[str, int]] = {
     "v1.2": {
         "flat_crossproduct_flat_crossproduct_scatter": 5,
         "flat_crossproduct_simple_scatter": 5,
+        "nested_crossproduct_nested_crossproduct_scatter": 5,
+        "nested_crossproduct_simple_scatter": 5,
         "simple_flat_crossproduct_scatter": 5,
+        "simple_nested_crossproduct_scatter": 5,
     },
 }
 
@@ -204,11 +207,8 @@ RED_TESTS = {
         "initial_work_dir_for_array_dirs",
         "initial_work_dir_for_null_and_arrays",
         "mixed_version_v12_wf",
-        "nested_crossproduct_nested_crossproduct_scatter",
-        "nested_crossproduct_simple_scatter",
         "record_output_file_entry_format",
         "resreq_step_overrides_wf",
-        "simple_nested_crossproduct_scatter",
     ],
 }
 

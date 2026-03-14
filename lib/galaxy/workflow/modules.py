@@ -552,9 +552,19 @@ def find_cwl_scatter_collections(
                 # Parent-mapping: inside a mapped subworkflow, this disabled-
                 # scatter input carries a parent HDCA that needs decomposition.
                 # Kept separate from scatter collections — they form an
-                # independent dimension (linked together, cross-producted with
-                # the scatter dimension).
-                parent_mapping.add(name, hdca, subcollection_type=subcollection_type)
+                # independent dimension (cross-producted with the scatter dimension).
+                # If the outer scatter was crossproduct, these parent-mapped inputs
+                # must also be unlinked (crossproduct with each other), not linked.
+                outer_unlinked = (
+                    progress.subworkflow_collection_info.unlinked_collections
+                    if progress.subworkflow_collection_info is not None
+                    else {}
+                )
+                if name in outer_unlinked:
+                    outer_order = list(outer_unlinked.keys()).index(name)
+                    parent_mapping.add(name, hdca, subcollection_type=subcollection_type, linked=False, order=outer_order)
+                else:
+                    parent_mapping.add(name, hdca, subcollection_type=subcollection_type)
             elif not has_explicit_scatter:
                 # Implicit mapping: no explicit scatter on this step.
                 # Inner step of a subworkflow whose parent scatters; HDCAs
@@ -620,9 +630,15 @@ def _build_combined_collection_info(parent_info, scatter_info):
     """
     combined = matching.MatchingCollections()
     combined.linked_structure = scatter_info.linked_structure
-    combined.unlinked_structures = [parent_info.linked_structure] if parent_info.linked_structure else []
+    combined.unlinked_structures = []
+    if parent_info.linked_structure:
+        combined.unlinked_structures.append(parent_info.linked_structure)
+    # Propagate parent's unlinked structures (outer crossproduct scatter).
+    combined.unlinked_structures.extend(parent_info.unlinked_structures)
     combined.unlinked_structures.extend(scatter_info.unlinked_structures)
     combined.collections = {**parent_info.collections, **scatter_info.collections}
+    combined.unlinked_collections.update(parent_info.unlinked_collections)
+    combined.unlinked_collections.update(scatter_info.unlinked_collections)
     combined.subcollection_types = {**parent_info.subcollection_types, **scatter_info.subcollection_types}
     combined.when_values = scatter_info.when_values or parent_info.when_values
     return combined
@@ -631,11 +647,17 @@ def _build_combined_collection_info(parent_info, scatter_info):
 def _iter_parent_mapping_x_scatter(parent_info, scatter_iter):
     """Cross-product parent-mapping slices × scatter iterations.
 
-    Parent-mapping collections are linked (zipped) and form the outer loop.
+    Parent-mapping collections form the outer loop.  If the parent-mapping
+    collections are unlinked (outer scatter was crossproduct), use crossproduct
+    iteration; otherwise use dotproduct (linked) iteration.
     Scatter iterations form the inner loop.
     """
     scatter_slices = list(scatter_iter)
-    for parent_elements, parent_when in parent_info.slice_collections():
+    if parent_info.unlinked_collections:
+        parent_iter = parent_info.slice_collections_crossproduct()
+    else:
+        parent_iter = parent_info.slice_collections()
+    for parent_elements, parent_when in parent_iter:
         for scatter_elements, scatter_when in scatter_slices:
             combined = {}
             if parent_elements:
