@@ -154,14 +154,6 @@ INTEGRATION_TEST_TEMPLATE = string.Template('''
         self.cwl_populator.run_conformance_test("""${version}""", """${doc}""")
 ''')
 
-EXTENDED_TIMEOUT_TESTS: dict[str, dict[str, int]] = {
-    "v1.0": {},
-    "v1.1": {},
-    "v1.2": {
-        "simple_flat_crossproduct_scatter": 5,
-    },
-}
-
 DOCKER_REQUIRED = {
     "v1.0": [
         "docker_entrypoint",
