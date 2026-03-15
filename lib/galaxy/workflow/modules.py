@@ -323,13 +323,13 @@ def build_cwl_input_dict(
             session = get_object_session(step)
             replacement = _persist_adapter_as_hdca(replacement, trans.history, session)
 
-        cwl_input_dict[input_name] = _galaxy_to_cwl_ref(replacement)
+        cwl_input_dict[input_name] = _galaxy_to_cwl_ref(replacement, step)
 
     # Fill defaults from step inputs
     for step_input in step.inputs:
         name = step_input.name
         if name is not None and cwl_input_dict.get(name) is None and step_input.default_value is not None:
-            cwl_input_dict[name] = _resolve_cwl_default(step_input.default_value, trans, progress)
+            cwl_input_dict[name] = _resolve_cwl_default(step_input.default_value, trans, progress, step)
 
     # Convert default arrays to HDCAs when the input is marked for scatter.
     # find_cwl_scatter_collections only picks up {"src": "hdca"} refs, so
@@ -342,12 +342,12 @@ def build_cwl_input_dict(
             value = cwl_input_dict.get(name)
             if isinstance(value, list):
                 hdca = progress._materialize_collection_default(step, value)
-                cwl_input_dict[name] = _galaxy_to_cwl_ref(hdca)
+                cwl_input_dict[name] = _galaxy_to_cwl_ref(hdca, step)
 
     return cwl_input_dict
 
 
-def _galaxy_to_cwl_ref(value):
+def _galaxy_to_cwl_ref(value, step):
     """Convert Galaxy model objects to CWL input dict references."""
     if isinstance(value, model.HistoryDatasetAssociation):
         if value.ext == "expression.json":
@@ -359,7 +359,7 @@ def _galaxy_to_cwl_ref(value):
                 raise FailWorkflowEvaluation(
                     why=InvocationFailureDatasetFailed(
                         reason=FailureReason.dataset_failed,
-                        workflow_step_id=None,
+                        workflow_step_id=step.id,
                         hda_id=value.id,
                         dependent_workflow_step_id=None,
                     )
@@ -380,10 +380,10 @@ def _galaxy_to_cwl_ref(value):
         return value
 
 
-def _resolve_cwl_default(default_value, trans, progress: "WorkflowProgress"):
+def _resolve_cwl_default(default_value, trans, progress: "WorkflowProgress", step=None):
     """Resolve a CWL step input default value."""
     if isinstance(default_value, dict) and "class" in default_value:
-        return _galaxy_to_cwl_ref(raw_to_galaxy(trans.app, trans.history, default_value))
+        return _galaxy_to_cwl_ref(raw_to_galaxy(trans.app, trans.history, default_value), step)
     return default_value
 
 
@@ -3423,7 +3423,7 @@ class ToolModule(WorkflowModule):
                             sa_session.add(hdca)
                             sa_session.flush()
                             obj = hdca
-                        slice_dict[name] = _galaxy_to_cwl_ref(obj)
+                        slice_dict[name] = _galaxy_to_cwl_ref(obj, step)
                 if has_scatter:
                     slice_dict = evaluate_cwl_value_from_expressions(step, slice_dict, progress, trans)
                 if step.when_expression and when_value is not False:

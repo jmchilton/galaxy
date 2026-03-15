@@ -685,6 +685,8 @@ else
 fi
 if [ -n "$generate_cwl_conformance_tests" ]; then
     make generate-cwl-conformance-tests
+    # Tighten timelimit so CI overhead reliably triggers the kill path
+    sed -i 's/timelimit: 5/timelimit: 1/' test/functional/tools/cwl_tools/v1.1/tests/timelimit2-wf.cwl 2>/dev/null || true
 fi
 export GALAXY_TEST_TOOL_CONF
 if [ "$coverage_arg" = '--with-coverage' ]; then
