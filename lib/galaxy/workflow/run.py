@@ -511,7 +511,7 @@ class WorkflowProgress:
         return remaining_steps
 
     def replacement_for_input_connections(self, step: "WorkflowStep", input_dict: dict[str, Any], connections):
-        replacement = NO_REPLACEMENT
+        replacement: Any = NO_REPLACEMENT
 
         prefixed_name = input_dict["name"]
 

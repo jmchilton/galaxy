@@ -429,7 +429,7 @@ def evaluate_cwl_value_from_expressions(
     for step_input in step.inputs:
         if step_input.value_from:
             value_from_map[step_input.name] = step_input.value_from
-        if step_input.load_contents:
+        if step_input.load_contents and step_input.name:
             load_contents_set.add(step_input.name)
 
     if not value_from_map:
@@ -1429,7 +1429,7 @@ class SubWorkflowModule(WorkflowModule):
             for input_step in self.subworkflow.input_steps:
                 if input_step.label in flat_cross_synthetic:
                     input_overrides[input_step.id] = flat_cross_synthetic[input_step.label]
-            self._flat_cross_synthetic = None  # consumed
+            self._flat_cross_synthetic = None  # type: ignore[assignment]  # consumed
 
         subworkflow_invoker = progress.subworkflow_invoker(
             trans,
@@ -3350,8 +3350,9 @@ class ToolModule(WorkflowModule):
                 scatter_input_names = {
                     si.name for si in step.inputs if si.scatter_type and si.scatter_type != "disabled"
                 }
+                when_expr_str = str(step.when_expression)
                 when_refs_scatter = has_scatter and any(
-                    f"inputs.{name}" in step.when_expression for name in scatter_input_names
+                    f"inputs.{name}" in when_expr_str for name in scatter_input_names
                 )
                 if not when_refs_scatter:
                     hda_references: list[model.HistoryDatasetAssociation] = []
@@ -3427,7 +3428,7 @@ class ToolModule(WorkflowModule):
                 if has_scatter:
                     slice_dict = evaluate_cwl_value_from_expressions(step, slice_dict, progress, trans)
                 if step.when_expression and when_value is not False:
-                    hda_references: list[model.HistoryDatasetAssociation] = []
+                    hda_references = []
                     step_state = {k: _ref_to_cwl(v, hda_references, trans, step) for k, v in slice_dict.items()}
                     when_value = do_eval(str(step.when_expression), step_state)
                     when_value = from_cwl(when_value, hda_references=hda_references, progress=progress)
@@ -3746,6 +3747,7 @@ class ToolModule(WorkflowModule):
         history = invocation.history
         object_store_populator = ObjectStorePopulator(trans.app, trans.user)
         step_outputs: dict[str, Any] = {}
+        assert tool is not None
         for output_name in tool.outputs:
             hda = model.HistoryDatasetAssociation(
                 name=f"{step.label}/{output_name} - skipped",

@@ -401,6 +401,7 @@ class CwlRun:
     def __init__(self, dataset_populator, history_id):
         self.dataset_populator = dataset_populator
         self.history_id = history_id
+        self.timeout_multiplier: int = 1
 
     @abstractmethod
     def _output_name_to_object(self, output_name) -> "Union[GalaxyOutput, list[GalaxyOutput]]":

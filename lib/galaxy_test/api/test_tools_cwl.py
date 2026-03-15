@@ -164,8 +164,12 @@ class TestCwlTools(ApiTestCase):
         run_object = self.cwl_populator.run_cwl_job(
             "optional-output.cwl", "test/functional/tools/cwl_tools/v1.0/v1.0/cat-job.json"
         )
-        output_file_id = run_object._output_name_to_object("output_file").history_content_id
-        optional_file_id = run_object._output_name_to_object("optional_file").history_content_id
+        output_obj = run_object._output_name_to_object("output_file")
+        assert not isinstance(output_obj, list)
+        output_file_id = output_obj.history_content_id
+        optional_obj = run_object._output_name_to_object("optional_file")
+        assert not isinstance(optional_obj, list)
+        optional_file_id = optional_obj.history_content_id
         output_content = self.dataset_populator.get_history_dataset_content(
             run_object.history_id, dataset_id=output_file_id
         )

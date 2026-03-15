@@ -225,7 +225,7 @@ class ToolEvaluator:
             if job.tool_state:
                 internal_tool_state = JobInternalToolState(job.tool_state)
                 if self.tool.parameters is not None:
-                    internal_tool_state.validate(self.tool, f"{self.tool.id} (job internal model)")
+                    internal_tool_state.validate(ToolParameterBundleModel(parameters=self.tool.parameters), f"{self.tool.id} (job internal model)")
 
             self.execute_tool_hooks(
                 inp_data=inp_data, out_data=out_data, incoming=incoming, validated_tool_state=internal_tool_state
