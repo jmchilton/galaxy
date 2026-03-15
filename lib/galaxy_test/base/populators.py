@@ -3376,16 +3376,23 @@ class CwlPopulator:
         # Validate the original CWL document before packing.  cwl_utils.pack
         # may upgrade cwlVersion (e.g. v1.0 → v1.2 when inline steps use
         # newer syntax), masking version-syntax mismatches that cwltool's
-        # schema validation would otherwise reject.
+        # schema validation would otherwise reject.  make_tool() recursively
+        # loads and validates referenced tools against their declared
+        # cwlVersion (resolve_and_validate_document alone only validates the
+        # top-level document schema).
         from cwltool.context import LoadingContext
         from cwltool.load_tool import (
             fetch_document,
+            make_tool,
             resolve_and_validate_document,
         )
+        from cwltool.workflow import default_make_tool
 
         lc = LoadingContext()
+        lc.construct_tool_object = default_make_tool
         lc, doc, uri = fetch_document(workflow_path, lc)
-        resolve_and_validate_document(lc, doc, uri)
+        lc, uri = resolve_and_validate_document(lc, doc, uri)
+        make_tool(uri, lc)
 
         with tempfile.NamedTemporaryFile() as temp:
             rewrite_locations(workflow_path=workflow_path, output_path=temp.name)
