@@ -1357,17 +1357,25 @@ class CwlToolEvaluator(UserToolEvaluator):
         cwl_stderr = cwl_job_proxy.stderr
         env = cwl_job_proxy.environment
 
-        # Build shell command string
+        # Build shell command string.  CWL stdin/stdout/stderr redirects
+        # need special handling for containerized execution:
+        # - stdin: host-level redirect with Docker -i, preserving pipe
+        #   semantics (some tools like wc format output differently for
+        #   pipe vs file input)
+        # - stdout: use tee inside the container to write to the CWL
+        #   output file without conflicting with Galaxy's own stdout
+        #   capture redirect
         command_line = " ".join(
             shlex.quote(arg) if (arg != "$GALAXY_SLOTS" and needs_shell_quoting(arg)) else arg
             for arg in cwl_command_line
         )
-        if cwl_stdin:
-            command_line += f' < "{cwl_stdin}"'
         if cwl_stdout:
-            command_line += f' > "{cwl_stdout}"'
+            # Pipe through tee inside container to write CWL stdout file
+            command_line = f"/bin/sh -c {shlex.quote(command_line + f' | tee {shlex.quote(cwl_stdout)}')}"
         if cwl_stderr:
             command_line += f' 2> "{cwl_stderr}"'
+        if cwl_stdin:
+            command_line += f' < "{cwl_stdin}"'
 
         # Store state for env var extraction by _build_environment_variables()
         self.param_dict["__cwl_command_state"] = {
