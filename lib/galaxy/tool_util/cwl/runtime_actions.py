@@ -169,6 +169,37 @@ def _write_secondary_files(primary_output, secondary_files, extra_files_dir):
         json.dump(index_contents, f)
 
 
+def _collect_input_file_paths(job_proxy):
+    """Get resolved paths of all input files from the job proxy.
+
+    ExpressionTools can pass through input files (with modified metadata
+    like basename).  These files live in Galaxy's object store and are
+    legitimate symlink targets for output files.
+    """
+    paths = set()
+    input_dict = getattr(job_proxy, "_input_dict", {})
+
+    def _visit(value):
+        if isinstance(value, dict):
+            if value.get("class") in ("File", "Directory"):
+                loc = value.get("location") or value.get("path", "")
+                path = _possible_uri_to_path(loc)
+                if path and os.path.exists(path):
+                    paths.add(os.path.realpath(path))
+                for sf in value.get("secondaryFiles", []):
+                    _visit(sf)
+            else:
+                for v in value.values():
+                    _visit(v)
+        elif isinstance(value, list):
+            for item in value:
+                _visit(item)
+
+    for v in input_dict.values():
+        _visit(v)
+    return paths
+
+
 def _collect_staged_targets(job_proxy):
     """Get canonical paths of files that were symlinked by cwltool during staging.
 
@@ -251,6 +282,10 @@ def handle_outputs(job_directory: Optional[str] = None):
     tool_exit_code = read_exit_code_from(exit_code_file, job_id_tag)
     outputs = job_proxy.collect_outputs(tool_working_directory, tool_exit_code)
     staged_paths = _collect_staged_targets(job_proxy)
+    # Also allow paths that are input files — ExpressionTools can return
+    # input files with modified metadata (e.g. basename) and these point
+    # to Galaxy's object store via symlinks, not to tool-created outputs.
+    staged_paths = staged_paths | _collect_input_file_paths(job_proxy)
     _validate_output_symlinks(outputs, tool_working_directory, staged_paths)
 
     # Build galaxy.json file.
