@@ -12,11 +12,13 @@ from .convert import (
     convert_state_to_format2,
     Format2State,
 )
+from .export_format2 import export_workflow_to_format2
 from .validation import validate_workflow
 
 __all__ = (
     "ConversionValidationFailure",
     "convert_state_to_format2",
+    "export_workflow_to_format2",
     "GetToolInfo",
     "Format2State",
     "validate_workflow",
