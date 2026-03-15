@@ -1366,6 +1366,7 @@ class BaseDatasetPopulator(BasePopulator):
         history_id: str,
         strict: bool = True,
         tool_uuid: Optional[str] = None,
+        cwl_requirements: Optional[list[dict[str, Any]]] = None,
     ) -> Response:
         payload = {
             "tool_id": tool_id,
@@ -1375,6 +1376,8 @@ class BaseDatasetPopulator(BasePopulator):
         }
         if tool_uuid:
             payload["tool_uuid"] = tool_uuid
+        if cwl_requirements:
+            payload["cwl_requirements"] = cwl_requirements
         response = self._post("jobs", data=payload, json=True)
         return response
 
@@ -3330,6 +3333,7 @@ class CwlPopulator:
         job: dict,
         history_id: str,
         assert_ok: bool = True,
+        cwl_requirements: Optional[list[dict[str, Any]]] = None,
     ) -> CwlRun:
         galaxy_tool_id: Optional[str] = tool_id
         tool_uuid = None
@@ -3348,7 +3352,8 @@ class CwlPopulator:
 
         assert galaxy_tool_id is not None or tool_uuid is not None
         tool_request_response = self.dataset_populator.tool_request_raw(
-            galaxy_tool_id or "", job, history_id, tool_uuid=tool_uuid
+            galaxy_tool_id or "", job, history_id, tool_uuid=tool_uuid,
+            cwl_requirements=cwl_requirements,
         )
         if assert_ok:
             api_asserts.assert_status_code_is(tool_request_response, 200)
@@ -3429,6 +3434,9 @@ class CwlPopulator:
                 job = yaml.safe_load(f)
         elif job is None:
             job = {}
+        # Extract cwl:requirements before staging so it doesn't get
+        # converted into a collection reference by stage_inputs().
+        cwl_requirements = job.pop("cwl:requirements", None)
         if not skip_input_staging:
             if os.path.exists(artifact_without_id) and test_data_directory:
                 resolve_cwl_secondary_files(job, artifact_without_id, test_data_directory)
@@ -3450,6 +3458,7 @@ class CwlPopulator:
                 job,
                 history_id,
                 assert_ok=assert_ok,
+                cwl_requirements=cwl_requirements,
             )
         else:
             run_object = self._run_cwl_workflow_job(

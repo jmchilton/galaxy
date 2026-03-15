@@ -85,6 +85,11 @@ class JobRequest(BaseModel):
         title="Strict",
         description="Turn on strict validation of the inputs that drops support for some inconsistent legacy behavior.",
     )
+    cwl_requirements: Optional[list[dict[str, Any]]] = Field(
+        default=None,
+        title="CWL Requirements",
+        description="cwl:requirements from CWL job documents, merged into tool requirements at execution time.",
+    )
     use_cached_jobs: Optional[bool] = Field(default=None, title="use_cached_jobs")
     rerun_remap_job_id: Optional[DecodedDatabaseIdField] = Field(
         default=None, title="rerun_remap_job_id", description="TODO"
@@ -271,7 +276,10 @@ class JobsService(ServiceBase):
             source_class=type(tool.tool_source).__name__,
             hash="TODO",
         )
-        tool_request.request = request_internal_state.input_state
+        request_dict = request_internal_state.input_state
+        if job_request.cwl_requirements:
+            request_dict["__cwl_requirements"] = job_request.cwl_requirements
+        tool_request.request = request_dict
         tool_request.tool_source = tool_source_model
         tool_request.state = ToolRequest.states.NEW
         tool_request.history = target_history

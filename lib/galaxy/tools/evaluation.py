@@ -1325,7 +1325,15 @@ class CwlToolEvaluator(UserToolEvaluator):
 
             visit_class(input_json, ("File",), _resolve_format_curie)
 
-        cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(input_json, output_dict, local_working_directory)
+        # Read cwl:requirements stashed in tool_request by the jobs API
+        cwl_requirements = None
+        if self.job.tool_request and self.job.tool_request.request:
+            cwl_requirements = self.job.tool_request.request.get("__cwl_requirements")
+
+        cwl_job_proxy = cwl_tool._cwl_tool_proxy.job_proxy(
+            input_json, output_dict, local_working_directory,
+            cwl_requirements=cwl_requirements,
+        )
 
         # Validate CWL output glob patterns — reject absolute paths outside the
         # output directory.  cwltool performs this check during collect_output_ports(),

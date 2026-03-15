@@ -179,16 +179,10 @@ RED_TESTS = {
         "valuefrom_wf_step",
     ],
     "v1.1": [
-        "cwl_requirements_addition",
-        "cwl_requirements_override_expression",
-        "cwl_requirements_override_static",
         "resreq_step_overrides_wf",
         "timelimit_invalid_wf",
     ],
     "v1.2": [
-        "cwl_requirements_addition",
-        "cwl_requirements_override_expression",
-        "cwl_requirements_override_static",
         "filename_with_hash_mark",
         "resreq_step_overrides_wf",
     ],

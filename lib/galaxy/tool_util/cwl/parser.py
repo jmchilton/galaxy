@@ -144,12 +144,14 @@ class ToolProxy(metaclass=ABCMeta):
         self._raw_process_reference = raw_process_reference
         assert isinstance(self._tool.inputs_record_schema, dict)
 
-    def job_proxy(self, input_dict: Dict[str, Any], output_dict, job_directory: str = "."):
+    def job_proxy(self, input_dict: Dict[str, Any], output_dict, job_directory: str = ".",
+                  cwl_requirements=None):
         """Build a cwltool.job.Job describing computation using a input_json
         Galaxy will generate mapping the Galaxy description of the inputs into
         a cwltool compatible variant.
         """
-        return JobProxy(self, input_dict, output_dict, job_directory=job_directory)
+        return JobProxy(self, input_dict, output_dict, job_directory=job_directory,
+                        cwl_requirements=cwl_requirements)
 
     @property
     def id(self):
@@ -359,12 +361,14 @@ class ExpressionToolProxy(CommandLineToolProxy):
 class JobProxy:
     _is_command_line_job: bool
 
-    def __init__(self, tool_proxy: ToolProxy, input_dict: Dict[str, Any], output_dict, job_directory: str):
+    def __init__(self, tool_proxy: ToolProxy, input_dict: Dict[str, Any], output_dict, job_directory: str,
+                 cwl_requirements=None):
         assert RuntimeContext is not None, "cwltool is not installed, cannot run CWL jobs"
         self._tool_proxy = tool_proxy
         self._input_dict = input_dict
         self._output_dict = output_dict
         self._job_directory = job_directory
+        self._cwl_requirements = cwl_requirements
 
         self._final_output: Optional[CWLObjectType] = None
         self._ok = True
@@ -403,6 +407,12 @@ class JobProxy:
             # Deep copy requirements and tool dict so _rewrite_absolute_entrynames
             # doesn't modify the shared tool proxy state.
             cwl_tool_instance.requirements = copy.deepcopy(cwl_tool_instance.requirements)
+            # Merge cwl:requirements from job document (CWL spec §3.1).
+            # Appended after tool requirements so cwltool's reversed() lookup
+            # in get_requirement() gives job-level requirements precedence.
+            if self._cwl_requirements:
+                for req in self._cwl_requirements:
+                    cwl_tool_instance.requirements.append(req)
             cwl_tool_instance.tool = copy.deepcopy(cwl_tool_instance.tool)
             # Deep copy _input_dict so cwltool works on a separate copy.
             # Galaxy pre-populates directory listings for all inputs (since
