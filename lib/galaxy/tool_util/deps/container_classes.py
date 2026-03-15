@@ -497,9 +497,14 @@ class DockerContainer(Container, HasDockerLikeVolumes):
             cache_command = docker_util.build_docker_cache_command(self.container_id, **docker_host_props)
         else:
             cache_command = self.__cache_from_file_command(cached_image_file, docker_host_props)
+        # Enable stdin forwarding when the command uses shell input
+        # redirection (e.g. CWL stdin).  Without -i, docker run does not
+        # forward host stdin to the container process.
+        needs_stdin = " < " in command
         run_command = docker_util.build_docker_run_command(
             command,
             self.container_id,
+            interactive=needs_stdin,
             volumes=volumes,
             volumes_from=volumes_from,
             env_directives=env_directives,
