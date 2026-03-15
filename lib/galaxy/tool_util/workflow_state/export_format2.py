@@ -28,6 +28,10 @@ from ._types import (
     NativeWorkflowDict,
 )
 from .convert import convert_state_to_format2
+from .roundtrip import (
+    ensure_export_defaults,
+    find_matching_native_step,
+)
 from .validation import _format
 from .workflow_tools import load_workflow
 
@@ -83,22 +87,13 @@ def export_workflow_to_format2(
         raise ValueError("export_workflow_to_format2 requires a native (.ga) workflow")
 
     native_copy = copy.deepcopy(workflow_dict)
-    _ensure_export_defaults(native_copy)
+    ensure_export_defaults(native_copy)
     format2_dict = from_galaxy_native(native_copy)
 
     steps: List[StepExportStatus] = []
     _replace_states(format2_dict, workflow_dict, get_tool_info, steps, strict)
 
     return ExportResult(format2_dict=format2_dict, steps=steps)
-
-
-def _ensure_export_defaults(workflow_dict: dict):
-    """Ensure steps have label/annotation fields required by gxformat2 export."""
-    for step in workflow_dict.get("steps", {}).values():
-        step.setdefault("label", None)
-        step.setdefault("annotation", "")
-        if step.get("type") == "subworkflow" and "subworkflow" in step:
-            _ensure_export_defaults(step["subworkflow"])
 
 
 def _replace_states(
@@ -124,7 +119,7 @@ def _replace_states(
 
         # Subworkflow — recurse into run: block
         if "run" in format2_step and isinstance(format2_step["run"], dict):
-            native_step = _find_native_step(native_workflow, format2_step, native_step_id)
+            native_step = find_matching_native_step(native_workflow, format2_step, native_step_id)
             if native_step and "subworkflow" in native_step:
                 _replace_states(
                     format2_step["run"],
@@ -140,7 +135,7 @@ def _replace_states(
         if not format2_step.get("tool_id") and "tool_state" not in format2_step:
             continue
 
-        native_step = _find_native_step(native_workflow, format2_step, native_step_id)
+        native_step = find_matching_native_step(native_workflow, format2_step, native_step_id)
         tool_id = format2_step.get("tool_id")
 
         if native_step is None:
@@ -180,26 +175,6 @@ def _replace_states(
             if strict:
                 raise ExportError(f"Step {step_label}: {error_msg}") from e
             log.debug("Step %s: conversion failed, keeping tool_state: %s", step_label, error_msg)
-
-
-def _find_native_step(native_workflow: dict, format2_step: dict, format2_index) -> Optional[dict]:
-    """Find the native step matching a format2 step by index, then label+tool_id.
-
-    Does NOT fall back to tool_id-only matching — for workflows with duplicate
-    tools that would silently match the wrong step.
-    """
-    step_id = str(format2_index)
-    native_steps = native_workflow.get("steps", {})
-    if step_id in native_steps:
-        return native_steps[step_id]
-    tool_id = format2_step.get("tool_id")
-    label = format2_step.get("label")
-    if label:
-        for step in native_steps.values():
-            if step.get("label") == label and step.get("tool_id") == tool_id:
-                log.debug("Step %s: matched by label+tool_id fallback", format2_index)
-                return step
-    return None
 
 
 class ExportError(Exception):
@@ -312,7 +287,7 @@ def run_export(options: ExportOptions) -> int:
     if options.diff:
         # Generate naive format2 for comparison
         naive_copy = copy.deepcopy(workflow)
-        _ensure_export_defaults(naive_copy)
+        ensure_export_defaults(naive_copy)
         naive_format2 = from_galaxy_native(naive_copy)
         diff_text = format_diff(naive_format2, result.format2_dict, options.workflow_path)
         if diff_text:
