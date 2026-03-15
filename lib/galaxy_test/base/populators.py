@@ -3381,6 +3381,7 @@ class CwlPopulator:
         # loads and validates referenced tools against their declared
         # cwlVersion (resolve_and_validate_document alone only validates the
         # top-level document schema).
+        from cwl_utils.errors import GraphTargetMissingException
         from cwltool.context import LoadingContext
         from cwltool.load_tool import (
             fetch_document,
@@ -3393,7 +3394,12 @@ class CwlPopulator:
         lc.construct_tool_object = default_make_tool
         lc, doc, uri = fetch_document(workflow_path, lc)
         lc, uri = resolve_and_validate_document(lc, doc, uri)
-        make_tool(uri, lc)
+        try:
+            make_tool(uri, lc)
+        except GraphTargetMissingException:
+            # $graph document with no #main — validate each entry
+            for entry in doc["$graph"]:
+                make_tool(entry["id"], lc)
 
         with tempfile.NamedTemporaryFile() as temp:
             rewrite_locations(workflow_path=workflow_path, output_path=temp.name)
