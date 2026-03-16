@@ -15,6 +15,7 @@ from ._types import (
     NativeStepDict,
     NativeToolStateDict,
     NativeWorkflowDict,
+    ToolInputs,
 )
 from ._walker import (
     SKIP_VALUE,
@@ -44,11 +45,12 @@ def _is_replacement_param(value) -> bool:
     return "${" in value or "#{" in value
 
 
-def validate_native_step_against(step: NativeStepDict, parsed_tool: ParsedTool):
-    tool_state_jsonified = step.get("tool_state")
-    assert tool_state_jsonified
-    tool_state = json.loads(tool_state_jsonified)
-    _decode_double_encoded_values(tool_state)
+def validate_native_step_against(step: NativeStepDict, parsed_tool: ToolInputs):
+    tool_state = step.get("tool_state")
+    assert tool_state is not None
+    if isinstance(tool_state, str):
+        tool_state = json.loads(tool_state)
+        _decode_double_encoded_values(tool_state)
 
     input_connections = step.get("input_connections", {})
 
@@ -165,10 +167,11 @@ def validate_workflow_native(workflow_dict: NativeWorkflowDict, get_tool_info: G
 
 
 def native_tool_state(step: NativeStepDict) -> NativeToolStateDict:
-    tool_state_jsonified = step.get("tool_state")
-    assert tool_state_jsonified
-    tool_state = json.loads(tool_state_jsonified)
-    _decode_double_encoded_values(tool_state)
+    tool_state = step.get("tool_state")
+    assert tool_state is not None
+    if isinstance(tool_state, str):
+        tool_state = json.loads(tool_state)
+        _decode_double_encoded_values(tool_state)
     return tool_state
 
 

@@ -26,7 +26,6 @@ from galaxy.tool_util.parameters import (
     ToolParameterT,
     validate_explicit_conditional_test_value,
 )
-from galaxy.tool_util_models import ParsedTool
 from galaxy.tool_util_models.parameters import SectionParameterModel
 from ._report_models import (
     CleanStepResult,
@@ -40,12 +39,19 @@ from ._types import (
     GetToolInfo,
     NativeStepDict,
     NativeWorkflowDict,
+    ToolInputs,
 )
 from ._walker import (
     _NATIVE_BOOKKEEPING_KEYS,
     _test_value_matches_discriminator,
     as_dict,
     as_list,
+)
+from .stale_keys import (
+    ConflictingCategoryError,
+    InvalidCategoryError,
+    StaleKeyCategory,
+    StaleKeyPolicy,
 )
 from .validation_native import get_parsed_tool_for_native_step
 from .workflow_tools import load_workflow
@@ -80,12 +86,12 @@ def _strip_bookkeeping_recursive(d: Dict[str, Any]) -> None:
                 continue
             if isinstance(decoded, dict):
                 _strip_bookkeeping_recursive(decoded)
-                d[key] = json.dumps(decoded)
+                d[key] = decoded
             elif isinstance(decoded, list):
                 for item in decoded:
                     if isinstance(item, dict):
                         _strip_bookkeeping_recursive(item)
-                d[key] = json.dumps(decoded)
+                d[key] = decoded
 
 
 def strip_bookkeeping_from_workflow(workflow_dict: NativeWorkflowDict) -> None:
@@ -95,15 +101,20 @@ def strip_bookkeeping_from_workflow(workflow_dict: NativeWorkflowDict) -> None:
         if step_def.get("type") == "subworkflow" and "subworkflow" in step_def:
             strip_bookkeeping_from_workflow(step_def["subworkflow"])
             continue
-        tool_state_str = step_def.get("tool_state")
-        if not tool_state_str or not isinstance(tool_state_str, str):
+        tool_state_raw = step_def.get("tool_state")
+        if not tool_state_raw:
             continue
-        try:
-            tool_state = json.loads(tool_state_str)
-        except (json.JSONDecodeError, TypeError):
+        if isinstance(tool_state_raw, str):
+            try:
+                tool_state = json.loads(tool_state_raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        elif isinstance(tool_state_raw, dict):
+            tool_state = tool_state_raw
+        else:
             continue
         _strip_bookkeeping_recursive(tool_state)
-        step_def["tool_state"] = json.dumps(tool_state)
+        step_def["tool_state"] = tool_state
 
 
 # -- Options model --
@@ -119,7 +130,8 @@ class CleanOptions(BaseModel):
     diff: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
-    strip_bookkeeping: bool = False
+    preserve: List[str] = []
+    strip: List[str] = []
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace) -> "CleanOptions":
@@ -213,8 +225,7 @@ def _strip_recursive(
             _strip_recursive(
                 cond_state, branch_inputs, removed_keys, prefix=child_prefix, strip_bookkeeping=strip_bookkeeping
             )
-            if isinstance(value, str):
-                state[name] = json.dumps(cond_state)
+            state[name] = cond_state
 
         elif parameter_type == "gx_repeat":
             repeat = cast(RepeatParameterModel, tool_input)
@@ -232,8 +243,7 @@ def _strip_recursive(
                         prefix=instance_prefix,
                         strip_bookkeeping=strip_bookkeeping,
                     )
-            if isinstance(value, str):
-                state[name] = json.dumps(repeat_state)
+            state[name] = repeat_state
 
         elif parameter_type == "gx_section":
             section = cast(SectionParameterModel, tool_input)
@@ -247,17 +257,25 @@ def _strip_recursive(
                 prefix=child_prefix,
                 strip_bookkeeping=strip_bookkeeping,
             )
-            if isinstance(value, str):
-                state[name] = json.dumps(section_state)
+            state[name] = section_state
 
 
-def strip_stale_keys(step: NativeStepDict, parsed_tool: ParsedTool, strip_bookkeeping: bool = False) -> CleanStepResult:
+def _policy_to_strip_bookkeeping(policy: Optional[StaleKeyPolicy]) -> bool:
+    """Extract strip_bookkeeping boolean from policy for _strip_recursive."""
+    if policy is None:
+        return False
+    return policy.is_denied(StaleKeyCategory.BOOKKEEPING)
+
+
+def strip_stale_keys(
+    step: NativeStepDict, parsed_tool: ToolInputs, policy: Optional[StaleKeyPolicy] = None
+) -> CleanStepResult:
     """Strip stale keys from a single step's tool_state."""
     tool_id = step.get("tool_id", "?")
     tool_version = step.get("tool_version")
 
-    tool_state_str = step.get("tool_state")
-    if not tool_state_str or not isinstance(tool_state_str, str):
+    tool_state_raw = step.get("tool_state")
+    if not tool_state_raw:
         return CleanStepResult(
             step="?",
             tool_id=tool_id,
@@ -266,10 +284,27 @@ def strip_stale_keys(step: NativeStepDict, parsed_tool: ParsedTool, strip_bookke
             skip_reason="No tool_state",
         )
 
-    tool_state = json.loads(tool_state_str)
+    if isinstance(tool_state_raw, str):
+        tool_state = json.loads(tool_state_raw)
+    elif isinstance(tool_state_raw, dict):
+        tool_state = tool_state_raw
+    else:
+        return CleanStepResult(
+            step="?",
+            tool_id=tool_id,
+            version=tool_version,
+            skipped=True,
+            skip_reason="No tool_state",
+        )
+
     removed_keys: List[str] = []
-    _strip_recursive(tool_state, list(parsed_tool.inputs), removed_keys, strip_bookkeeping=strip_bookkeeping)
-    step["tool_state"] = json.dumps(tool_state)
+    _strip_recursive(
+        tool_state,
+        list(parsed_tool.inputs),
+        removed_keys,
+        strip_bookkeeping=_policy_to_strip_bookkeeping(policy),
+    )
+    step["tool_state"] = tool_state
 
     return CleanStepResult(
         step="?",
@@ -280,7 +315,10 @@ def strip_stale_keys(step: NativeStepDict, parsed_tool: ParsedTool, strip_bookke
 
 
 def clean_stale_state(
-    workflow_dict: NativeWorkflowDict, get_tool_info: GetToolInfo, prefix: str = "", strip_bookkeeping: bool = False
+    workflow_dict: NativeWorkflowDict,
+    get_tool_info: GetToolInfo,
+    prefix: str = "",
+    policy: Optional[StaleKeyPolicy] = None,
 ) -> CleanResult:
     """Clean stale keys from all steps in a native workflow dict (mutates in place)."""
     result = CleanResult()
@@ -291,7 +329,7 @@ def clean_stale_state(
 
         if step_def.get("type") == "subworkflow" and "subworkflow" in step_def:
             sub_result = clean_stale_state(
-                step_def["subworkflow"], get_tool_info, prefix=f"{step_label}.", strip_bookkeeping=strip_bookkeeping
+                step_def["subworkflow"], get_tool_info, prefix=f"{step_label}.", policy=policy
             )
             result.merge(sub_result)
             continue
@@ -301,7 +339,11 @@ def clean_stale_state(
             continue
 
         tool_state = step_def.get("tool_state")
-        if not tool_state or not isinstance(tool_state, str):
+        if not tool_state:
+            continue
+        if isinstance(tool_state, dict):
+            step_def["tool_state"] = json.dumps(tool_state)
+        elif not isinstance(tool_state, str):
             continue
 
         try:
@@ -330,7 +372,7 @@ def clean_stale_state(
             )
             continue
 
-        step_result = strip_stale_keys(step_def, parsed_tool, strip_bookkeeping=strip_bookkeeping)
+        step_result = strip_stale_keys(step_def, parsed_tool, policy=policy)
         step_result.step = step_label
         result.step_results.append(step_result)
 
@@ -359,7 +401,7 @@ def clean_tree(
     root: str,
     get_tool_info: "GetToolInfo",
     output_template: Optional[str] = None,
-    strip_bookkeeping: bool = False,
+    policy: Optional[StaleKeyPolicy] = None,
 ) -> TreeCleanReport:
     """Clean stale state from all native .ga workflows under a directory tree.
 
@@ -392,7 +434,7 @@ def clean_tree(
             work_copy = wf_dict
 
         try:
-            result = clean_stale_state(work_copy, get_tool_info, strip_bookkeeping=strip_bookkeeping)
+            result = clean_stale_state(work_copy, get_tool_info, policy=policy)
         except Exception as e:
             report.results.append(
                 WorkflowCleanResult(
@@ -433,7 +475,7 @@ def format_dry_run(result: CleanResult) -> str:
             lines.append(f"Step {sr.step} ({sr.tool_id}): SKIP ({sr.skip_reason})")
             continue
         if sr.removed_keys:
-            tool_label = sr.tool_id
+            tool_label = sr.tool_id or "unknown"
             if sr.version:
                 tool_label += f" {sr.version}"
             lines.append(f"Step {sr.step} ({tool_label}):")
@@ -516,7 +558,7 @@ def format_tree_clean_markdown(report: TreeCleanReport) -> str:
             detail_lines.append(f"### {r.relative_path}")
             for sr in r.step_results:
                 if sr.removed_keys:
-                    tool_label = sr.tool_id
+                    tool_label = sr.tool_id or "unknown"
                     if sr.version:
                         tool_label += f" {sr.version}"
                     detail_lines.append(f"- Step {sr.step} ({tool_label}): Removed `{'`, `'.join(sr.removed_keys)}`")
@@ -547,6 +589,8 @@ def format_json_tree(report: TreeCleanReport) -> dict:
 
 def run_clean(options: CleanOptions) -> int:
     """Run clean pipeline. Returns exit code."""
+    import sys
+
     from ._cli_common import setup_logging
     from .cache import (
         build_tool_info,
@@ -556,6 +600,12 @@ def run_clean(options: CleanOptions) -> int:
     setup_logging(options.verbose)
     tool_info = build_tool_info(options.tool_source_cache_dir)
 
+    try:
+        policy = StaleKeyPolicy.for_clean(options.preserve, options.strip)
+    except (InvalidCategoryError, ConflictingCategoryError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
     if options.populate_cache:
         populate_cache(tool_info, options.workflow_path, source=options.tool_source)
         print()
@@ -563,12 +613,12 @@ def run_clean(options: CleanOptions) -> int:
     is_dir = os.path.isdir(options.workflow_path)
 
     if is_dir:
-        return _run_tree(options, tool_info)
+        return _run_tree(options, tool_info, policy)
     else:
-        return _run_single(options, tool_info)
+        return _run_single(options, tool_info, policy)
 
 
-def _run_single(options: CleanOptions, tool_info) -> int:
+def _run_single(options: CleanOptions, tool_info, policy: StaleKeyPolicy) -> int:
     workflow = load_workflow(options.workflow_path)
     original_json = json.dumps(workflow, indent=4) + "\n"
 
@@ -579,7 +629,7 @@ def _run_single(options: CleanOptions, tool_info) -> int:
     else:
         work_copy = workflow
 
-    result = clean_stale_state(work_copy, tool_info, strip_bookkeeping=options.strip_bookkeeping)
+    result = clean_stale_state(work_copy, tool_info, policy=policy)
 
     if options.diff:
         cleaned_json = json.dumps(work_copy, indent=4) + "\n"
@@ -623,7 +673,7 @@ def _run_single(options: CleanOptions, tool_info) -> int:
 
     if not dry_run and result.total_removed > 0:
         output_json = json.dumps(work_copy, indent=4) + "\n"
-        output_path = expand_output_path(options.output_template, options.workflow_path)
+        output_path = expand_output_path(options.output_template or options.workflow_path, options.workflow_path)
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         with open(output_path, "w") as f:
             f.write(output_json)
@@ -631,12 +681,12 @@ def _run_single(options: CleanOptions, tool_info) -> int:
     return 1 if result.total_removed else 0
 
 
-def _run_tree(options: CleanOptions, tool_info) -> int:
+def _run_tree(options: CleanOptions, tool_info, policy: StaleKeyPolicy) -> int:
     report = clean_tree(
         options.workflow_path,
         tool_info,
         output_template=options.output_template,
-        strip_bookkeeping=options.strip_bookkeeping,
+        policy=policy,
     )
 
     s = report.summary

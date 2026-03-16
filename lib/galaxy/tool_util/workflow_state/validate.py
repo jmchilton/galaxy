@@ -7,6 +7,7 @@ Supports both native .ga and format2 .gxwf.yml workflows.
 import argparse
 import logging
 import os
+import sys
 from typing import (
     List,
     Optional,
@@ -23,7 +24,13 @@ from ._report_models import (
 )
 from ._report_output import emit_reports
 from ._types import GetToolInfo
-from .clean import strip_bookkeeping_from_workflow
+from .stale_keys import (
+    classify_stale_keys,
+    ConflictingCategoryError,
+    format_stale_keys,
+    InvalidCategoryError,
+    StaleKeyPolicy,
+)
 from .validation import _format
 from .validation_format2 import validate_step_format2
 from .validation_native import (
@@ -51,7 +58,8 @@ class ValidateOptions(BaseModel):
     summary: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
-    strip_bookkeeping: bool = False
+    allow: List[str] = []
+    deny: List[str] = []
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace) -> "ValidateOptions":
@@ -62,25 +70,39 @@ class ValidateOptions(BaseModel):
 # -- Domain logic --
 
 
-def validate_workflow_cli(workflow_dict: dict, get_tool_info: GetToolInfo) -> List[ValidationStepResult]:
+def validate_workflow_cli(
+    workflow_dict: dict,
+    get_tool_info: GetToolInfo,
+    policy: Optional[StaleKeyPolicy] = None,
+) -> List[ValidationStepResult]:
     """Validate all steps in a workflow, collecting per-step results."""
     fmt = _format(workflow_dict)
     if fmt == "native":
-        return _validate_native(workflow_dict, get_tool_info)
+        return _validate_native(workflow_dict, get_tool_info, policy=policy)
     else:
+        # Format2 workflows don't have the stale key problem — tool_state is
+        # already clean `state` dicts. Policy only applies to native validation.
         return _validate_format2(workflow_dict, get_tool_info)
 
 
 def _validate_native(
-    workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = ""
+    workflow_dict: dict,
+    get_tool_info: GetToolInfo,
+    prefix: str = "",
+    policy: Optional[StaleKeyPolicy] = None,
 ) -> List[ValidationStepResult]:
+    if policy is None:
+        policy = StaleKeyPolicy.for_validate([], [])
+
     results: List[ValidationStepResult] = []
     steps = workflow_dict.get("steps", {})
     for step_index, step_def in sorted(steps.items(), key=lambda x: int(x[0])):
         step_label = f"{prefix}{step_index}" if prefix else str(step_index)
 
         if step_def.get("type") == "subworkflow" and "subworkflow" in step_def:
-            sub_results = _validate_native(step_def["subworkflow"], get_tool_info, prefix=f"{step_label}.")
+            sub_results = _validate_native(
+                step_def["subworkflow"], get_tool_info, prefix=f"{step_label}.", policy=policy
+            )
             results.extend(sub_results)
             continue
 
@@ -91,7 +113,7 @@ def _validate_native(
             continue
 
         tool_state = step_def.get("tool_state")
-        if not tool_state or not isinstance(tool_state, str):
+        if not tool_state:
             results.append(
                 ValidationStepResult(
                     step=step_label,
@@ -129,16 +151,9 @@ def _validate_native(
             )
             continue
 
+        # Validate types (walker without unknown key checking)
         try:
             validate_native_step_against(step_def, parsed_tool)
-            results.append(
-                ValidationStepResult(
-                    step=step_label,
-                    tool_id=tool_id,
-                    version=tool_version,
-                    status="ok",
-                )
-            )
         except Exception as e:
             results.append(
                 ValidationStepResult(
@@ -149,13 +164,37 @@ def _validate_native(
                     errors=[str(e)],
                 )
             )
+            continue
+
+        # Classify stale keys and filter by policy
+        stale = classify_stale_keys(step_def, parsed_tool)
+        denied, allowed = policy.filter(stale)
+
+        if denied:
+            errors = format_stale_keys(denied, indent="")
+            results.append(
+                ValidationStepResult(
+                    step=step_label,
+                    tool_id=tool_id,
+                    version=tool_version,
+                    status="fail",
+                    errors=errors,
+                )
+            )
+        else:
+            results.append(
+                ValidationStepResult(
+                    step=step_label,
+                    tool_id=tool_id,
+                    version=tool_version,
+                    status="ok",
+                )
+            )
 
     return results
 
 
-def _validate_format2(
-    workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = ""
-) -> List[ValidationStepResult]:
+def _validate_format2(workflow_dict: dict, get_tool_info: GetToolInfo, prefix: str = "") -> List[ValidationStepResult]:
     from gxformat2.model import (
         get_native_step_type,
         steps_as_list,
@@ -219,7 +258,11 @@ def _validate_format2(
     return results
 
 
-def validate_tree(root: str, get_tool_info: GetToolInfo, strip_bookkeeping: bool = False) -> TreeValidationReport:
+def validate_tree(
+    root: str,
+    get_tool_info: GetToolInfo,
+    policy: Optional[StaleKeyPolicy] = None,
+) -> TreeValidationReport:
     """Validate all workflows under a directory tree."""
     from .workflow_tree import (
         discover_workflows,
@@ -242,11 +285,8 @@ def validate_tree(root: str, get_tool_info: GetToolInfo, strip_bookkeeping: bool
             )
             continue
 
-        if strip_bookkeeping and _format(wf_dict) == "native":
-            strip_bookkeeping_from_workflow(wf_dict)
-
         try:
-            step_results = validate_workflow_cli(wf_dict, get_tool_info)
+            step_results = validate_workflow_cli(wf_dict, get_tool_info, policy=policy)
         except Exception as e:
             report.results.append(
                 WorkflowValidationResult(
@@ -405,6 +445,11 @@ def run_validate(options: ValidateOptions) -> int:
 
     setup_logging(options.verbose)
     tool_info = build_tool_info(options.tool_source_cache_dir)
+    try:
+        policy = StaleKeyPolicy.for_validate(options.allow, options.deny)
+    except (InvalidCategoryError, ConflictingCategoryError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
 
     if options.populate_cache:
         populate_cache(tool_info, options.workflow_path, source=options.tool_source)
@@ -413,13 +458,11 @@ def run_validate(options: ValidateOptions) -> int:
     is_dir = os.path.isdir(options.workflow_path)
 
     if is_dir:
-        report = validate_tree(options.workflow_path, tool_info, strip_bookkeeping=options.strip_bookkeeping)
+        report = validate_tree(options.workflow_path, tool_info, policy=policy)
         return _emit_tree_results(options, report)
     else:
         workflow = load_workflow(options.workflow_path)
-        if options.strip_bookkeeping:
-            strip_bookkeeping_from_workflow(workflow)
-        results = validate_workflow_cli(workflow, tool_info)
+        results = validate_workflow_cli(workflow, tool_info, policy=policy)
         return _emit_single_results(options, results)
 
 

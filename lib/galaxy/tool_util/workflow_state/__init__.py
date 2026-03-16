@@ -6,7 +6,10 @@ Galaxy's runtime. It is meant to provide utilities for reasonsing about tool sta
 context of workflows.
 """
 
-from ._types import GetToolInfo
+from ._types import (
+    GetToolInfo,
+    ToolInputs,
+)
 from .convert import (
     ConversionValidationFailure,
     convert_state_to_format2,
@@ -20,6 +23,7 @@ __all__ = (
     "convert_state_to_format2",
     "export_workflow_to_format2",
     "GetToolInfo",
+    "ToolInputs",
     "Format2State",
     "validate_workflow",
 )

@@ -32,7 +32,14 @@ from .roundtrip import (
     ensure_export_defaults,
     find_matching_native_step,
 )
+from .stale_keys import (
+    classify_stale_keys,
+    ConflictingCategoryError,
+    InvalidCategoryError,
+    StaleKeyPolicy,
+)
 from .validation import _format
+from .validation_native import get_parsed_tool_for_native_step
 from .workflow_tools import load_workflow
 
 log = logging.getLogger(__name__)
@@ -71,6 +78,7 @@ def export_workflow_to_format2(
     workflow_dict: NativeWorkflowDict,
     get_tool_info: GetToolInfo,
     strict: bool = False,
+    policy: Optional[StaleKeyPolicy] = None,
 ) -> ExportResult:
     """Export native workflow as format2 with schema-aware state blocks.
 
@@ -80,6 +88,8 @@ def export_workflow_to_format2(
 
     In best-effort mode (default), steps that fail conversion keep their
     tool_state. In strict mode, any failure raises.
+
+    If policy is provided, steps with denied stale key categories are skipped.
     """
     from gxformat2.export import from_galaxy_native
 
@@ -91,7 +101,7 @@ def export_workflow_to_format2(
     format2_dict = from_galaxy_native(native_copy)
 
     steps: List[StepExportStatus] = []
-    _replace_states(format2_dict, workflow_dict, get_tool_info, steps, strict)
+    _replace_states(format2_dict, workflow_dict, get_tool_info, steps, strict, policy=policy)
 
     return ExportResult(format2_dict=format2_dict, steps=steps)
 
@@ -103,6 +113,7 @@ def _replace_states(
     steps: List[StepExportStatus],
     strict: bool,
     path_prefix: str = "",
+    policy: Optional[StaleKeyPolicy] = None,
 ):
     """Replace tool_state with converted state in format2 steps."""
     format2_steps = format2_dict.get("steps", [])
@@ -128,6 +139,7 @@ def _replace_states(
                     steps,
                     strict,
                     path_prefix=f"{step_label}.",
+                    policy=policy,
                 )
             continue
 
@@ -151,27 +163,53 @@ def _replace_states(
                 raise ExportError(f"Step {step_label}: {status.error}")
             continue
 
+        # Check stale key policy before conversion
+        if policy and policy.denied:
+            try:
+                parsed_tool = get_parsed_tool_for_native_step(native_step, get_tool_info)
+                if parsed_tool:
+                    stale = classify_stale_keys(native_step, parsed_tool)
+                    denied, _ = policy.filter(stale)
+                    if denied:
+                        cats = ", ".join(sorted({sk.category.value for sk in denied}))
+                        steps.append(
+                            StepExportStatus(
+                                step_id=step_label,
+                                step_label=format2_step.get("label"),
+                                tool_id=tool_id,
+                                converted=False,
+                                error=f"Denied stale key categories: {cats}",
+                            )
+                        )
+                        continue
+            except Exception:
+                pass  # classification failure shouldn't block conversion
+
         try:
             f2_state = convert_state_to_format2(native_step, get_tool_info)
             format2_step.pop("tool_state", None)
             format2_step["state"] = f2_state.state
             if f2_state.inputs:
                 format2_step["in"] = {k: {"source": v} for k, v in f2_state.inputs.items() if v != "placeholder"}
-            steps.append(StepExportStatus(
-                step_id=step_label,
-                step_label=format2_step.get("label"),
-                tool_id=tool_id,
-                converted=True,
-            ))
+            steps.append(
+                StepExportStatus(
+                    step_id=step_label,
+                    step_label=format2_step.get("label"),
+                    tool_id=tool_id,
+                    converted=True,
+                )
+            )
         except Exception as e:
             error_msg = str(e)
-            steps.append(StepExportStatus(
-                step_id=step_label,
-                step_label=format2_step.get("label"),
-                tool_id=tool_id,
-                converted=False,
-                error=error_msg,
-            ))
+            steps.append(
+                StepExportStatus(
+                    step_id=step_label,
+                    step_label=format2_step.get("label"),
+                    tool_id=tool_id,
+                    converted=False,
+                    error=error_msg,
+                )
+            )
             if strict:
                 raise ExportError(f"Step {step_label}: {error_msg}") from e
             log.debug("Step %s: conversion failed, keeping tool_state: %s", step_label, error_msg)
@@ -194,6 +232,8 @@ class ExportOptions(BaseModel):
     tool_source: str = "auto"
     strict: bool = False
     diff: bool = False
+    allow: List[str] = []
+    deny: List[str] = []
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace) -> "ExportOptions":
@@ -228,9 +268,9 @@ def format_yaml(format2_dict: dict) -> str:
         yaml.dump(format2_dict, stream)
         return stream.getvalue()
     except ImportError:
-        import yaml
+        import yaml as pyyaml
 
-        return yaml.dump(format2_dict, default_flow_style=False, sort_keys=False)
+        return pyyaml.dump(format2_dict, default_flow_style=False, sort_keys=False)
 
 
 def format_json(format2_dict: dict) -> str:
@@ -279,7 +319,13 @@ def run_export(options: ExportOptions) -> int:
         return 1
 
     try:
-        result = export_workflow_to_format2(workflow, tool_info, strict=options.strict)
+        policy = StaleKeyPolicy.for_export(options.allow, options.deny)
+    except (InvalidCategoryError, ConflictingCategoryError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        result = export_workflow_to_format2(workflow, tool_info, strict=options.strict, policy=policy)
     except ExportError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

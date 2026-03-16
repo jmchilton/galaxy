@@ -129,6 +129,8 @@ def walk_native_state(
                     raise Exception(f"Invalid conditional state found {value!r} for conditional {parameter_name}")
                 continue
             target_when = _select_which_when_native(conditional, conditional_state)
+            if target_when is None:
+                continue
             all_params: List[ToolParameterT] = [conditional.test_parameter] + list(target_when.parameters)
             nested = walk_native_state(
                 step,
@@ -244,42 +246,28 @@ def _test_value_matches_discriminator(test_value, discriminator) -> bool:
     return False
 
 
-def _select_which_when_native(conditional: ConditionalParameterModel, conditional_state: dict) -> ConditionalWhen:
+def _select_which_when_native(
+    conditional: ConditionalParameterModel, conditional_state: dict
+) -> Optional[ConditionalWhen]:
+    """Select which conditional branch matches the test parameter value.
+
+    Returns None when no branch matches (e.g., boolean conditional set to
+    false with only a <when value="true"> branch — the conditional is inactive).
+    """
     test_parameter = conditional.test_parameter
     test_parameter_name = test_parameter.name
     explicit_test_value = conditional_state.get(test_parameter_name)
     test_value = validate_explicit_conditional_test_value(test_parameter_name, explicit_test_value)
-    target_when = None
+
     for when in conditional.whens:
         if test_value is None and when.is_default_when:
-            target_when = when
+            return when
         elif test_value is not None and _test_value_matches_discriminator(test_value, when.discriminator):
-            target_when = when
+            return when
 
-    recorded_when = None
-    recorded_case = conditional_state.get("__current_case__")
-    if recorded_case is not None:
-        if not isinstance(recorded_case, int):
-            raise Exception(f"Unknown type of value for __current_case__ encountered {recorded_case}")
-        if recorded_case < 0 or recorded_case >= len(conditional.whens):
-            raise Exception(f"Unknown index value for __current_case__ encountered {recorded_case}")
-        recorded_when = conditional.whens[recorded_case]
+    # No branch matched — try default when as fallback
+    for when in conditional.whens:
+        if when.is_default_when:
+            return when
 
-    if target_when is None:
-        if recorded_when is not None:
-            target_when = recorded_when
-        else:
-            for when in conditional.whens:
-                if when.is_default_when:
-                    target_when = when
-                    break
-            if target_when is None:
-                raise Exception(
-                    f"Cannot determine conditional branch for parameter {test_parameter_name} "
-                    f"with value {explicit_test_value!r}"
-                )
-    if target_when and recorded_when and target_when != recorded_when:
-        raise Exception(
-            f"Problem parsing out tool state - inferred conflicting tool states for parameter {test_parameter_name}"
-        )
-    return target_when
+    return None

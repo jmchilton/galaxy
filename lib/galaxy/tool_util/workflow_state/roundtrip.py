@@ -23,13 +23,15 @@ from typing import (
 
 from pydantic import BaseModel
 
-from gxformat2.converter import python_to_workflow
+from gxformat2.converter import ImportOptions, python_to_workflow
 from gxformat2.export import from_galaxy_native
 
 from ._types import GetToolInfo
 from .convert import (
     ConversionValidationFailure,
     convert_state_to_format2,
+    make_convert_tool_state,
+    make_encode_tool_state,
 )
 
 log = logging.getLogger(__name__)
@@ -191,6 +193,11 @@ def _values_equivalent(a: Any, b: Any) -> bool:
         return True
     if a is None and b == "null":
         return True
+    # Multiple select: list form vs comma-delimited string are equivalent
+    if isinstance(a, list) and isinstance(b, str):
+        return ",".join(str(v) for v in a) == b
+    if isinstance(a, str) and isinstance(b, list):
+        return a == ",".join(str(v) for v in b)
     return False
 
 
@@ -417,44 +424,6 @@ def ensure_export_defaults(workflow_dict: dict):
             ensure_export_defaults(step["subworkflow"])
 
 
-def replace_tool_state_with_format2_state(
-    format2_dict: dict,
-    native_workflow: dict,
-    get_tool_info: GetToolInfo,
-):
-    """Replace tool_state with converted state in format2 steps, recursing into subworkflows."""
-    format2_steps = format2_dict.get("steps", [])
-    if isinstance(format2_steps, list):
-        steps_iter = enumerate(format2_steps)
-    else:
-        steps_iter = format2_steps.items()
-
-    num_inputs = len(format2_dict.get("inputs", {}))
-
-    for step_key, format2_step in steps_iter:
-        if "run" in format2_step and isinstance(format2_step["run"], dict):
-            native_step_id = step_key + num_inputs if isinstance(step_key, int) else step_key
-            native_step = find_matching_native_step(native_workflow, format2_step, native_step_id)
-            if native_step and "subworkflow" in native_step:
-                replace_tool_state_with_format2_state(
-                    format2_step["run"],
-                    native_step["subworkflow"],
-                    get_tool_info,
-                )
-            continue
-
-        if format2_step.get("tool_id") or "tool_state" in format2_step:
-            native_step_id = step_key + num_inputs if isinstance(step_key, int) else step_key
-            native_step = find_matching_native_step(native_workflow, format2_step, native_step_id)
-            if native_step:
-                try:
-                    f2_state = convert_state_to_format2(native_step, get_tool_info)
-                    format2_step.pop("tool_state", None)
-                    format2_step["state"] = f2_state.state
-                except ConversionValidationFailure:
-                    pass  # Keep tool_state as-is
-
-
 def find_matching_native_step(native_workflow: dict, format2_step: dict, format2_index) -> Optional[dict]:
     """Find the native step matching a format2 step by index, then label+tool_id.
 
@@ -532,37 +501,50 @@ def roundtrip_validate(
     get_tool_info: "GetToolInfo",
     workflow_path: str = "",
     strip_bookkeeping: bool = False,
+    clean_stale: bool = True,
 ) -> RoundTripValidationResult:
     """Validate a native workflow survives native→format2→native round-trip.
 
     Returns a RoundTripValidationResult with the intermediate format2 dict,
     the reimported native dict, and any diffs found.
+
+    If clean_stale is True (default), stale tool_state keys are stripped
+    before conversion — these are keys left behind by older tool versions
+    or Galaxy serialization bugs that would otherwise cause validation failures.
     """
-    from .clean import strip_bookkeeping_from_workflow
+    from .clean import clean_stale_state, strip_bookkeeping_from_workflow
 
     result = RoundTripValidationResult(workflow_path=workflow_path)
 
     if strip_bookkeeping:
         strip_bookkeeping_from_workflow(workflow_dict)
 
+    if clean_stale:
+        strip_bookkeeping_from_workflow(workflow_dict)
+        clean_stale_state(workflow_dict, get_tool_info)
+
     workflow_name = os.path.basename(workflow_path) if workflow_path else ""
 
-    # Per-step conversion
+    # Per-step conversion (validates each tool step can be converted)
     step_result = roundtrip_native_workflow(workflow_dict, get_tool_info, workflow_name)
     result.conversion_result = step_result
     if not step_result.success:
         return result
 
-    # Build format2 with state blocks
+    # Forward: native → format2 with schema-aware state conversion
     native_copy = copy.deepcopy(workflow_dict)
     ensure_export_defaults(native_copy)
-    format2_dict = from_galaxy_native(native_copy)
-    replace_tool_state_with_format2_state(format2_dict, workflow_dict, get_tool_info)
+    convert_cb = make_convert_tool_state(get_tool_info)
+    format2_dict = from_galaxy_native(native_copy, convert_tool_state=convert_cb)
     result.format2_dict = format2_dict
 
-    # Convert back to native
+    # Reverse: format2 → native with schema-aware encoding
     try:
-        native_prime = python_to_workflow(copy.deepcopy(format2_dict), galaxy_interface=None)
+        import_options = ImportOptions()
+        import_options.native_state_encoder = make_encode_tool_state(get_tool_info)
+        native_prime = python_to_workflow(
+            copy.deepcopy(format2_dict), galaxy_interface=None, import_options=import_options
+        )
     except Exception as e:
         result.error = f"Reimport failed: {e}"
         return result

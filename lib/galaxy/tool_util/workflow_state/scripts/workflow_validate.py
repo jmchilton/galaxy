@@ -5,6 +5,7 @@ import sys
 from .._cli_common import (
     add_common_args,
     add_populate_args,
+    add_stale_key_args,
 )
 from ..validate import (
     run_validate,
@@ -21,15 +22,10 @@ def build_parser():
     )
     add_common_args(parser)
     add_populate_args(parser)
+    add_stale_key_args(parser, mode="validate")
     parser.add_argument("workflow_path", help="Path to .ga/.gxwf.yml file or directory (auto-detected)")
     parser.add_argument("--strict", action="store_true", help="Treat skips (missing tool defs) as failures")
     parser.add_argument("--summary", action="store_true", help="Show only summary counts")
-    parser.add_argument(
-        "--strip-bookkeeping",
-        action="store_true",
-        help="Strip bookkeeping keys (__current_case__, etc.) before validation "
-        "to test whether validation depends on them",
-    )
     parser.add_argument(
         "--report-json",
         nargs="?",

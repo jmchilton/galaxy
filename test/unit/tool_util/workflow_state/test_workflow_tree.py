@@ -438,7 +438,8 @@ class TestCleanTree:
         assert (tmp_path / "test.ga").read_text() != original
         # Stale key should be gone from file
         cleaned = json.loads((tmp_path / "test.ga").read_text())
-        tool_state = json.loads(cleaned["steps"]["0"]["tool_state"])
+        tool_state = cleaned["steps"]["0"]["tool_state"]
+        assert isinstance(tool_state, dict), "Cleaned tool_state should be a dict, not a JSON string"
         assert "old_param" not in tool_state
 
     def test_adjacent_creates_cleaned_copy(self, tmp_path):
@@ -456,7 +457,8 @@ class TestCleanTree:
         # Adjacent file created
         assert (tmp_path / "test.cleaned.ga").exists()
         cleaned = json.loads((tmp_path / "test.cleaned.ga").read_text())
-        tool_state = json.loads(cleaned["steps"]["0"]["tool_state"])
+        tool_state = cleaned["steps"]["0"]["tool_state"]
+        assert isinstance(tool_state, dict), "Cleaned tool_state should be a dict, not a JSON string"
         assert "old_param" not in tool_state
 
     def test_clean_workflow_no_changes(self, tmp_path):

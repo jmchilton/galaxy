@@ -22,11 +22,11 @@ from galaxy.tool_util.parameters import (
     WorkflowStepLinkedToolState,
     WorkflowStepToolState,
 )
-from galaxy.tool_util_models import ParsedTool
 from ._types import (
     Format2StepDict,
     Format2WorkflowDict,
     GetToolInfo,
+    ToolInputs,
 )
 
 
@@ -53,7 +53,7 @@ def validate_step_format2(step_dict: Format2StepDict, get_tool_info: GetToolInfo
         validate_step_against(step_dict, parsed_tool)
 
 
-def validate_step_against(step_dict: Format2StepDict, parsed_tool: ParsedTool):
+def validate_step_against(step_dict: Format2StepDict, parsed_tool: ToolInputs):
     source_tool_state_model = WorkflowStepToolState.parameter_model_for(parsed_tool.inputs)
     linked_tool_state_model = WorkflowStepLinkedToolState.parameter_model_for(parsed_tool.inputs)
     contains_format2_state = "state" in step_dict
@@ -69,7 +69,7 @@ def validate_step_against(step_dict: Format2StepDict, parsed_tool: ParsedTool):
         linked_tool_state_model.model_validate(linked_step["state"])
 
 
-def merge_inputs(step_dict: Format2StepDict, parsed_tool: ParsedTool) -> Format2StepDict:
+def merge_inputs(step_dict: Format2StepDict, parsed_tool: ToolInputs) -> Format2StepDict:
     connect = pop_connect_from_step_dict(step_dict)
     step_dict = setup_connected_values(step_dict, connect)
     tool_inputs = parsed_tool.inputs

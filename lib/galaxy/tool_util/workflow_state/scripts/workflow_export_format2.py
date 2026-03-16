@@ -5,6 +5,7 @@ import sys
 from .._cli_common import (
     add_common_args,
     add_populate_args,
+    add_stale_key_args,
 )
 from ..export_format2 import (
     ExportOptions,
@@ -21,6 +22,7 @@ def build_parser():
     )
     add_common_args(parser)
     add_populate_args(parser)
+    add_stale_key_args(parser, mode="export")
     parser.add_argument("workflow_path", help="Path to native .ga workflow file")
     parser.add_argument("--output", "-o", help="Output file (default: stdout)")
     parser.add_argument(
