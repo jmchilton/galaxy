@@ -929,6 +929,9 @@ class WorkflowContentsManager(UsesAnnotations):
         history=None,
         instance_id=None,
         preserve_external_subworkflow_links=False,
+        clean=False,
+        clean_preserve=None,
+        clean_strip=None,
     ):
         """Export the workflow contents to a dictionary ready for JSON-ification and to be
         sent out via API for instance. There are three styles of export allowed 'export', 'instance', and
@@ -941,6 +944,9 @@ class WorkflowContentsManager(UsesAnnotations):
         If preserve_external_subworkflow_links is True, subworkflow steps whose subworkflow has
         source_metadata (indicating it was fetched from a URL or TRS) will preserve the external
         reference instead of embedding the full subworkflow content.
+
+        If clean is True, stale keys are stripped from tool_state using tool definitions.
+        clean_preserve/clean_strip control which stale key categories are preserved/stripped.
         """
 
         def to_format_2(wf_dict, json_wrapper: bool):
@@ -969,29 +975,19 @@ class WorkflowContentsManager(UsesAnnotations):
             wf_dict = self._workflow_to_dict_run(trans, stored, workflow=workflow, history=history or trans.history)
         elif style == "preview":
             wf_dict = self._workflow_to_dict_preview(trans, workflow=workflow)
-        elif style == "format2":
+        elif style in ("format2", "format2_wrapped_yaml", "ga"):
             wf_dict = self._workflow_to_dict_export(
                 trans,
                 stored,
                 workflow=workflow,
                 preserve_external_subworkflow_links=preserve_external_subworkflow_links,
             )
-            wf_dict = self._export_as_format2(trans, wf_dict, to_format_2)
-        elif style == "format2_wrapped_yaml":
-            wf_dict = self._workflow_to_dict_export(
-                trans,
-                stored,
-                workflow=workflow,
-                preserve_external_subworkflow_links=preserve_external_subworkflow_links,
-            )
-            wf_dict = to_format_2(wf_dict, json_wrapper=True)
-        elif style == "ga":
-            wf_dict = self._workflow_to_dict_export(
-                trans,
-                stored,
-                workflow=workflow,
-                preserve_external_subworkflow_links=preserve_external_subworkflow_links,
-            )
+            if clean:
+                self._clean_native_dict(trans, wf_dict, clean_preserve or [], clean_strip or [])
+            if style == "format2":
+                wf_dict = self._export_as_format2(trans, wf_dict, to_format_2)
+            elif style == "format2_wrapped_yaml":
+                wf_dict = to_format_2(wf_dict, json_wrapper=True)
         else:
             raise exceptions.RequestParameterInvalidException(f"Unknown workflow style {style}")
         if version is not None:
@@ -1017,6 +1013,27 @@ class WorkflowContentsManager(UsesAnnotations):
         get_tool_info = ToolboxGetToolInfo(toolbox)
         result = export_workflow_to_format2(native_dict, get_tool_info)
         return result.format2_dict
+
+    def _clean_native_dict(self, trans, wf_dict, preserve, strip):
+        """Strip stale keys from a native workflow dict in place."""
+        from galaxy.tool_util.workflow_state.clean import clean_stale_state
+        from galaxy.tool_util.workflow_state.stale_keys import (
+            ConflictingCategoryError,
+            InvalidCategoryError,
+            StaleKeyPolicy,
+        )
+
+        toolbox = getattr(trans.app, "toolbox", None)
+        if toolbox is None:
+            raise exceptions.ConfigDoesNotAllowException(
+                "Workflow cleaning requires a toolbox but none is available"
+            )
+        try:
+            policy = StaleKeyPolicy.for_clean(preserve, strip)
+        except (InvalidCategoryError, ConflictingCategoryError) as e:
+            raise exceptions.RequestParameterInvalidException(str(e))
+        get_tool_info = ToolboxGetToolInfo(toolbox)
+        clean_stale_state(wf_dict, get_tool_info, policy=policy)
 
     def _sync_stored_workflow(self, trans, stored_workflow):
         if trans.user_is_admin:
