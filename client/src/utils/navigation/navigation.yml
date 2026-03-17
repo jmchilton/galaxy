@@ -936,6 +936,18 @@ workflow_editor:
       changes: "#activity-workflow-undo-redo"
       upgrade_all: "#activity-workflow-upgrade"
       best_practices: "#activity-workflow-best-practices"
+      changelog: "#activity-workflow-editor-changelog"
+
+  changelog:
+    selectors:
+      _: ".changelog-list"
+      entry: ".changelog-entry"
+      entry_title: ".changelog-entry .entry-title"
+      entry_time: ".changelog-entry .entry-time"
+      entry_revert_btn: ".changelog-entry .entry-revert-btn"
+      entry_badge_revert: ".changelog-entry .badge.badge-warning.entry-badge"
+      load_more: ".load-more-btn"
+      empty_message: ".text-muted.p-2"
 
   best_practices:
     selectors:

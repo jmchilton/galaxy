@@ -51,18 +51,18 @@ class WorkflowIndexPayload(WorkflowIndexQueryPayload):
     missing_tools: bool = False
 
 
-def _journal_entry_to_changelog(entry, security):
+def _journal_entry_to_changelog(entry):
     return ChangelogEntry(
-        id=security.encode_id(entry.id),
+        id=entry.id,
         title=entry.title,
         source_action_type=entry.source_action_type,
         create_time=entry.create_time,
-        user_id=security.encode_id(entry.user_id),
-        workflow_id_before=security.encode_id(entry.workflow_id_before),
-        workflow_id_after=security.encode_id(entry.workflow_id_after),
+        user_id=entry.user_id,
+        workflow_id_before=entry.workflow_id_before,
+        workflow_id_after=entry.workflow_id_after,
         execution_messages=entry.execution_messages or [],
         is_revert=entry.is_revert,
-        reverted_entry_id=security.encode_id(entry.reverted_entry_id) if entry.reverted_entry_id else None,
+        reverted_entry_id=entry.reverted_entry_id,
     )
 
 
@@ -292,7 +292,7 @@ class WorkflowsService(ServiceBase):
         entries, total = self._workflow_action_journal_manager.list_entries(
             trans.sa_session, stored_workflow, limit, offset
         )
-        return [_journal_entry_to_changelog(e, trans.app.security) for e in entries], total
+        return [_journal_entry_to_changelog(e) for e in entries], total
 
     def revert(self, trans, workflow_id, target_workflow_id):
         stored_workflow = self._workflows_manager.get_stored_workflow(trans, workflow_id)

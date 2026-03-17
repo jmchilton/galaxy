@@ -1541,6 +1541,46 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def workflow_editor_open_changes_panel(self):
         self.components.workflow_editor.tool_bar.changes.wait_for_and_click()
 
+    def workflow_editor_open_changelog_panel(self):
+        self.components.workflow_editor.tool_bar.changelog.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+    def workflow_editor_changelog_entries(self):
+        return self.components.workflow_editor.changelog.entry.all()
+
+    def workflow_editor_changelog_entry_titles(self):
+        entries = self.components.workflow_editor.changelog.entry_title.all()
+        return [e.text for e in entries]
+
+    def workflow_editor_revert_changelog_entry(self, index=0):
+        buttons = self.components.workflow_editor.changelog.entry_revert_btn.all()
+        buttons[index].click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+    def workflow_editor_confirm_modal(self, button_variant="primary"):
+        """Click a button in the currently visible b-modal footer."""
+        selector = f".modal-footer .btn-{button_variant}"
+        self.wait_for_selector_clickable(selector)
+        self.find_element_by_selector(selector).click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
+    def workflow_editor_confirm_revert(self):
+        """Handle revert confirmation dialog(s).
+
+        Revert may show an unsaved-changes dialog first (.btn-primary),
+        then the revert confirmation (.btn-warning).
+        """
+        # Check if unsaved changes dialog appears first
+        try:
+            primary_btn = self.wait_for_selector_clickable(".modal-footer .btn-primary", timeout=3)
+            primary_btn.click()
+            self.sleep_for(self.wait_types.UX_RENDER)
+        except Exception:
+            pass  # No unsaved changes dialog — proceed to revert confirmation
+        self.wait_for_selector_clickable(".modal-footer .btn-warning")
+        self.find_element_by_selector(".modal-footer .btn-warning").click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+
     def workflow_editor_place_comment(self, comment_type="text_comment", offset_x=0, offset_y=0, width=200, height=150):
         """Select a comment tool and drag on the canvas to place a comment.
 
