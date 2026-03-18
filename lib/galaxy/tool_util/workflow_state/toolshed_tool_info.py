@@ -41,6 +41,48 @@ def get_cache_dir(override: Optional[str] = None) -> str:
     return override or os.environ.get(CACHE_DIR_ENV_VAR) or DEFAULT_CACHE_DIR
 
 
+def _builtin_tools_dir() -> str:
+    """Path to Galaxy's builtin tool XMLs (lib/galaxy/tools/)."""
+    galaxy_tools = os.path.join(os.path.dirname(__file__), "..", "..", "tools")
+    return os.path.normpath(galaxy_tools)
+
+
+_BUILTIN_CACHE: Dict[str, Optional[ParsedTool]] = {}
+
+
+def _try_builtin_tool(tool_id: str) -> Optional[ParsedTool]:
+    """Try to parse a Galaxy builtin tool by ID (e.g. __FILTER_EMPTY_DATASETS__)."""
+    if tool_id in _BUILTIN_CACHE:
+        return _BUILTIN_CACHE[tool_id]
+
+    tools_dir = _builtin_tools_dir()
+    if not os.path.isdir(tools_dir):
+        return None
+
+    # Scan XMLs for matching tool ID
+    try:
+        from galaxy.tool_util.model_factory import parse_tool
+        from galaxy.tool_util.parser.factory import get_tool_source
+
+        for fname in os.listdir(tools_dir):
+            if not fname.endswith(".xml"):
+                continue
+            xml_path = os.path.join(tools_dir, fname)
+            try:
+                ts = get_tool_source(xml_path)
+                if ts.parse_id() == tool_id:
+                    parsed = parse_tool(ts)
+                    _BUILTIN_CACHE[tool_id] = parsed
+                    return parsed
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    _BUILTIN_CACHE[tool_id] = None
+    return None
+
+
 def parse_toolshed_tool_id(tool_id: str) -> Optional[Tuple[str, str, Optional[str]]]:
     """Parse a toolshed tool_id into (toolshed_url, trs_tool_id, tool_version).
 
@@ -183,7 +225,7 @@ class ToolShedGetToolInfo:
             readable_id = tool_id
         return toolshed_url, trs_tool_id, version, readable_id
 
-    def get_tool_info(self, tool_id: str, tool_version: Optional[str]) -> ParsedTool:
+    def get_tool_info(self, tool_id: str, tool_version: Optional[str]) -> Optional[ParsedTool]:
         toolshed_url, trs_tool_id, version, readable_id = self._resolve_tool_coordinates(tool_id, tool_version)
         if version is None:
             raise KeyError(f"No version available for tool: {tool_id}")
@@ -199,6 +241,12 @@ class ToolShedGetToolInfo:
         if cached is not None:
             self._memory_cache[cache_key] = cached
             return cached
+
+        # Try Galaxy builtin tools before hitting the API
+        builtin = _try_builtin_tool(tool_id)
+        if builtin is not None:
+            self._memory_cache[cache_key] = builtin
+            return builtin
 
         # Fetch from API
         parsed_tool = self._fetch_from_api(toolshed_url, trs_tool_id, version)
