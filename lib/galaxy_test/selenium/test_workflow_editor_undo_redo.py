@@ -364,3 +364,193 @@ class TestWorkflowEditorUndoRedo(SeleniumTestCase, RunsWorkflows, UsesWorkflowAs
         changes.action_insert_parameter.wait_for_and_click()
         editor.node.by_id(id=0).wait_for_present()
         editor.node.by_id(id=1).wait_for_present()
+
+
+class TestWorkflowEditorPersistence(SeleniumTestCase, RunsWorkflows, UsesWorkflowAssertions):
+    """Tests for workflow persistence across saves (Section 3.1 and 3.2 of persistence test plan)."""
+
+    ensure_registered = True
+
+    # =================================================================
+    # Section 3.1: Undo/Redo Surviving Saves (RED-TO-GREEN TESTS)
+    # =================================================================
+
+    @selenium_test
+    def test_persistence_undo_survives_save(self):
+        """Add step, set label, save, then undo — verify label gone, node still present."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="undo_survives_save")
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+
+        self.workflow_editor_set_node_label("MyInput", node=0)
+        editor.canvas_body.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        editor.node._(label="MyInput").wait_for_present()
+
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_undo()
+        editor.node._(label="MyInput").assert_absent_or_hidden_after_transitions()
+        editor.node.by_id(id=0).wait_for_present()
+
+    @selenium_test
+    def test_persistence_undo_redo_across_multiple_saves(self):
+        """Three saves, then undo x2 / redo x2 — verify correct state at each step."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="undo_redo_multiple_saves")
+
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_set_node_label("Input1", node=0)
+        editor.canvas_body.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        editor.node._(label="Input1").wait_for_present()
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_undo()
+        editor.node._(label="Input1").assert_absent_or_hidden_after_transitions()
+        editor.node.by_id(id=0).wait_for_present()
+
+        self.workflow_editor_undo()
+        editor.node.by_id(id=0).assert_absent_or_hidden_after_transitions()
+
+        self.workflow_editor_redo()
+        editor.node.by_id(id=0).wait_for_present()
+
+        self.workflow_editor_redo()
+        editor.node._(label="Input1").wait_for_present()
+
+    @selenium_test
+    def test_persistence_undo_redo_full_cycle_across_save_boundary(self):
+        """Add step, set label, undo label, save (without label), redo label — verify label reappears."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="undo_redo_full_cycle")
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+
+        self.workflow_editor_set_node_label("TestLabel", node=0)
+        editor.canvas_body.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        editor.node._(label="TestLabel").wait_for_present()
+
+        self.workflow_editor_undo()
+        editor.node._(label="TestLabel").assert_absent_or_hidden_after_transitions()
+
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_redo()
+        editor.node._(label="TestLabel").wait_for_present()
+
+    # =================================================================
+    # Section 3.2: Changelog Panel Tests
+    # =================================================================
+
+    @selenium_test
+    def test_persistence_changelog_initial_save_creates_entry(self):
+        """Create and save a fresh workflow, open changelog, verify initial save created one entry."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="changelog_initial_test")
+
+        self.workflow_editor_open_changelog_panel()
+        editor.changelog.entry.wait_for_present()
+        entries = self.workflow_editor_changelog_entries()
+        assert len(entries) == 1, f"Expected exactly 1 changelog entry from initial save, got {len(entries)}"
+
+    @selenium_test
+    def test_persistence_changelog_entry_after_save(self):
+        """Create, add step, save, open changelog panel, assert entry present with non-empty title."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="changelog_entry_test")
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_open_changelog_panel()
+        editor.changelog.entry.wait_for_present()
+        titles = self.workflow_editor_changelog_entry_titles()
+        assert len(titles) > 0, "Expected at least one changelog entry"
+        assert titles[0], "Changelog entry title should not be empty"
+
+    @selenium_test
+    def test_persistence_changelog_multiple_entries(self):
+        """Three saves, open changelog, assert >= 3 entry elements visible."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="changelog_multiple_entries_test")
+
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_set_node_label("Input1", node=0)
+        editor.canvas_body.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_open_changelog_panel()
+        entries = self.workflow_editor_changelog_entries()
+        assert len(entries) >= 3, f"Expected at least 3 changelog entries, got {len(entries)}"
+
+    @selenium_test
+    def test_persistence_changelog_revert(self):
+        """Add step, save, set label, save, add unsaved step, revert, assert label absent."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="changelog_revert_test")
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_set_node_label("RevertLabel", node=0)
+        editor.canvas_body.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        editor.node._(label="RevertLabel").wait_for_present()
+        self.workflow_editor_click_save()
+
+        # Add unsaved step to trigger save-before-revert dialog
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=1).wait_for_present()
+
+        self.workflow_editor_open_changelog_panel()
+        self.workflow_editor_revert_changelog_entry(index=0)
+        self.workflow_editor_confirm_revert()
+
+        editor.node._(label="RevertLabel").assert_absent_or_hidden_after_transitions()
+
+    @selenium_test
+    def test_persistence_changelog_revert_badge(self):
+        """Revert flow, then reopen changelog and assert entry_badge_revert present."""
+        editor = self.components.workflow_editor
+        self.workflow_create_new(annotation="changelog_revert_badge_test")
+
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=0).wait_for_present()
+        self.workflow_editor_click_save()
+
+        self.workflow_editor_set_node_label("BadgeLabel", node=0)
+        editor.canvas_body.wait_for_and_click()
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        editor.node._(label="BadgeLabel").wait_for_present()
+        self.workflow_editor_click_save()
+
+        # Add unsaved step to trigger save-before-revert dialog
+        self.workflow_editor_add_input(item_name="data_input")
+        editor.node.by_id(id=1).wait_for_present()
+
+        self.workflow_editor_open_changelog_panel()
+        self.workflow_editor_revert_changelog_entry(index=0)
+        self.workflow_editor_confirm_revert()
+
+        editor.node._(label="BadgeLabel").assert_absent_or_hidden_after_transitions()
+
+        self.workflow_editor_open_changelog_panel()
+        editor.changelog.entry_badge_revert.wait_for_present()
