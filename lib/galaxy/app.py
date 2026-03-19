@@ -70,8 +70,8 @@ from galaxy.managers.tasks import (
 )
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.managers.users import UserManager
-from galaxy.managers.workflow_completion import WorkflowCompletionManager
 from galaxy.managers.workflow_action_journal import WorkflowActionJournalManager
+from galaxy.managers.workflow_completion import WorkflowCompletionManager
 from galaxy.managers.workflows import (
     WorkflowContentsManager,
     WorkflowsManager,

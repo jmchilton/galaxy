@@ -1,3 +1,4 @@
+import { faSave, faWrench } from "@fortawesome/free-solid-svg-icons";
 import { createTestingPinia } from "@pinia/testing";
 import { setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +24,7 @@ function makeSaveActivity(): Activity {
         title: "Save",
         description: "Save this workflow.",
         tooltip: "Save current changes",
+        icon: faSave,
         visible: true,
     };
 }
@@ -33,6 +35,7 @@ function makeOtherActivity(): Activity {
         title: "Tools",
         description: "Tool panel.",
         tooltip: "Search tools",
+        icon: faWrench,
         visible: true,
     };
 }

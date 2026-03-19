@@ -311,14 +311,19 @@ describe("refactorSerialization", () => {
                 stores.stateStore,
                 step.id,
                 { tool_state: step.tool_state, post_job_actions: step.post_job_actions },
-                { tool_state: { mixed: true }, post_job_actions: { pja: {} } },
+                {
+                    tool_state: { mixed: true },
+                    post_job_actions: { pja: { action_type: "x", output_name: "o", action_arguments: {} } },
+                },
             );
             const result = serializeAction(action);
             expect(result.success).toBe(true);
             expect(result.actions).toHaveLength(1);
             const a = result.actions[0] as Record<string, unknown>;
             expect(a).toHaveProperty("tool_state", { mixed: true });
-            expect(a).toHaveProperty("post_job_actions", { pja: {} });
+            expect(a).toHaveProperty("post_job_actions", {
+                pja: { action_type: "x", output_name: "o", action_arguments: {} },
+            });
         });
 
         it("returns success with empty actions for derived-only diff", () => {

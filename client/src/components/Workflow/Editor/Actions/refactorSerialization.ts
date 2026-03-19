@@ -328,7 +328,7 @@ function serializeWorkflowMetadata(action: LazySetValueAction<unknown>): Seriali
         default:
             return {
                 actions: [],
-                title: action.name,
+                title: action.name ?? "Unknown action",
                 success: false,
                 error: `Metadata type "${action.what}" not yet supported for serialization`,
             };
@@ -447,7 +447,7 @@ function serializeConnectionAction(
     return {
         actions: [
             {
-                action_type: actionType as const,
+                action_type: actionType,
                 input: {
                     order_index: action.connection.input.stepId,
                     input_name: action.connection.input.name,
@@ -499,7 +499,7 @@ function serializeCopyIntoWorkflow(action: CopyIntoWorkflowAction): Serializatio
                     .filter((link) => link && typeof link === "object" && "id" in link)
                     .map((link) => ({
                         ...link,
-                        id: oldToNewId.get(link.id as number) ?? link.id,
+                        id: oldToNewId.get(link!.id as number) ?? link!.id,
                     }));
                 if (remappedLinks.length > 0) {
                     remapped[inputName] = remappedLinks;

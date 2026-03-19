@@ -6,7 +6,6 @@ from galaxy.model import (
     StoredWorkflow,
     Workflow,
 )
-
 from .base import BaseTestCase
 
 
