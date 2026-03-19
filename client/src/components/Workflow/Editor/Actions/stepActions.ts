@@ -2,7 +2,7 @@ import { replaceLabel } from "@/components/Markdown/parse";
 import { autoLayout } from "@/components/Workflow/Editor/modules/layout";
 import { useToast } from "@/composables/toast";
 import { useRefreshFromStore } from "@/stores/refreshFromStore";
-import { useUndoRedoStore, type UndoRedoStore } from "@/stores/undoRedoStore";
+import { type UndoRedoStore, useUndoRedoStore } from "@/stores/undoRedoStore";
 import { LazyUndoRedoAction, UndoRedoAction } from "@/stores/undoRedoStore/undoRedoAction";
 import type { WorkflowConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowCommentStore } from "@/stores/workflowEditorCommentStore";

@@ -44,12 +44,26 @@ describe("useWorkflowActivities", () => {
     });
 
     it("excludes custom tools when canUseUnprivilegedTools is false", () => {
-        const activities = useWorkflowActivities("workflow-editor", ref(false), ref(false), ref(0), ref(false), ref(false));
+        const activities = useWorkflowActivities(
+            "workflow-editor",
+            ref(false),
+            ref(false),
+            ref(0),
+            ref(false),
+            ref(false),
+        );
         expect(activities.value.map((a) => a.id)).not.toContain("workflow-editor-user-defined-tools");
     });
 
     it("includes custom tools when canUseUnprivilegedTools is true", () => {
-        const activities = useWorkflowActivities("workflow-editor", ref(false), ref(false), ref(0), ref(true), ref(false));
+        const activities = useWorkflowActivities(
+            "workflow-editor",
+            ref(false),
+            ref(false),
+            ref(0),
+            ref(true),
+            ref(false),
+        );
         expect(activities.value.map((a) => a.id)).toContain("workflow-editor-user-defined-tools");
     });
 
@@ -72,7 +86,14 @@ describe("useWorkflowActivities", () => {
 
     it("reflects hasChanges reactively as the Save activity tooltip", () => {
         const hasChanges = ref(false);
-        const activities = useWorkflowActivities("workflow-editor", ref(false), hasChanges, ref(0), ref(false), ref(false));
+        const activities = useWorkflowActivities(
+            "workflow-editor",
+            ref(false),
+            hasChanges,
+            ref(0),
+            ref(false),
+            ref(false),
+        );
         const saveTooltip = () => activities.value.find((a) => a.id === "save-workflow")?.tooltip;
 
         expect(saveTooltip()).toBe("No changes to save");
