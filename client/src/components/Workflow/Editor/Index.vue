@@ -256,11 +256,12 @@ import { until, whenever } from "@vueuse/core";
 import { logicAnd, logicNot, logicOr } from "@vueuse/math";
 import { BDropdown, BDropdownDivider, BDropdownItem, BDropdownText } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
-import Vue, { computed, nextTick, onUnmounted, ref, unref, watch } from "vue";
+import Vue, { computed, nextTick, onUnmounted, ref, unref, watch, watchEffect } from "vue";
 
 import { refactor, revertWorkflow } from "@/api/workflows";
 import { getUntypedWorkflowParameters } from "@/components/Workflow/Editor/modules/parameters";
 import { getWorkflowFull } from "@/components/Workflow/workflows.services";
+import { useConfig } from "@/composables/config";
 import { ConfirmDialog, useConfirmDialog } from "@/composables/confirmDialog";
 import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { Toast } from "@/composables/toast";
@@ -355,6 +356,11 @@ export default {
         const id = ref(props.workflowId || uid);
 
         const { connectionStore, stepStore, stateStore, commentStore, undoRedoStore } = provideScopedWorkflowStores(id);
+
+        const { config } = useConfig();
+        watchEffect(() => {
+            undoRedoStore.persistenceEnabled = config.value?.enable_workflow_action_persistence === true;
+        });
 
         const { getWorkflowBoundingBox, captureTransformAndBounds, calculateAdjustedTransform } =
             useWorkflowBoundingBox(id);

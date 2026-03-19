@@ -2,16 +2,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SerializationResult } from "@/components/Workflow/Editor/Actions/refactorSerialization";
-import { resetMockConfig, setMockConfig } from "@/composables/__mocks__/config";
 
 import { UndoRedoAction } from "./undoRedoAction";
 
 const mockSerializeAction = vi.fn<(action: UndoRedoAction) => SerializationResult>();
 
-vi.mock("@/composables/config");
 vi.mock("@/components/Workflow/Editor/Actions/refactorSerialization", () => ({
     serializeAction: (...args: unknown[]) => mockSerializeAction(args[0] as UndoRedoAction),
-    // re-export the type — not needed at runtime but keeps TS happy
     buildBatchTitle: vi.fn(),
 }));
 
@@ -48,16 +45,17 @@ function makeFailResult(): SerializationResult {
 describe("undoRedoStore persistence", () => {
     beforeEach(() => {
         setActivePinia(createPinia());
-        resetMockConfig();
         mockSerializeAction.mockReset();
     });
 
     function enablePersistence() {
-        setMockConfig({ enable_workflow_action_persistence: true });
+        const store = useUndoRedoStore(workflowId);
+        store.persistenceEnabled = true;
     }
 
     function disablePersistence() {
-        setMockConfig({ enable_workflow_action_persistence: false });
+        const store = useUndoRedoStore(workflowId);
+        store.persistenceEnabled = false;
     }
 
     describe("applyAction with persistence enabled", () => {
