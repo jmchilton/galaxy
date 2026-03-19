@@ -229,7 +229,7 @@ def compare_connections(orig_connections: dict, after_connections: dict, path: s
 
 
 def compare_steps(orig_step: dict, after_step: dict) -> list[str]:
-    """Compare two native workflow steps for functional equivalence."""
+    """Compare two native workflow steps for functional and graphical equivalence."""
     diffs = []
     for key in ["tool_id", "tool_version"]:
         if orig_step.get(key) != after_step.get(key):
@@ -245,6 +245,28 @@ def compare_steps(orig_step: dict, after_step: dict) -> list[str]:
     orig_ic = orig_step.get("input_connections", {})
     after_ic = after_step.get("input_connections", {})
     diffs.extend(compare_connections(orig_ic, after_ic))
+
+    return diffs
+
+
+def _compare_step_visual(orig_step: dict, after_step: dict) -> list[str]:
+    """Compare visual/layout fields of two workflow steps."""
+    diffs = []
+
+    orig_pos = orig_step.get("position", {})
+    after_pos = after_step.get("position", {})
+    if orig_pos.get("left") != after_pos.get("left") or orig_pos.get("top") != after_pos.get("top"):
+        diffs.append(f"position: {orig_pos} != {after_pos}")
+
+    orig_label = orig_step.get("label")
+    after_label = after_step.get("label")
+    if orig_label != after_label:
+        diffs.append(f"label: {orig_label!r} != {after_label!r}")
+
+    orig_ann = orig_step.get("annotation", "")
+    after_ann = after_step.get("annotation", "")
+    if orig_ann != after_ann:
+        diffs.append(f"annotation: {orig_ann!r} != {after_ann!r}")
 
     return diffs
 
@@ -382,18 +404,68 @@ def full_roundtrip_native(
     return conversion_result, result.diffs
 
 
-def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefix: str = "") -> list[str]:
-    """Compare tool steps between original and roundtripped workflows, recursing into subworkflows."""
-    all_diffs = []
-    for step_id, orig_step in orig_workflow.get("steps", {}).items():
+def _build_step_id_mapping(orig_workflow: dict, after_workflow: dict) -> dict[str, Optional[str]]:
+    """Build a mapping from original step IDs to after step IDs using label+type matching.
+
+    Falls back to positional ID matching when labels are absent or non-unique.
+    """
+    orig_steps = orig_workflow.get("steps", {})
+    after_steps = after_workflow.get("steps", {})
+    mapping: dict[str, Optional[str]] = {}
+    used_after_ids: set[str] = set()
+
+    # First pass: match by label+type (strongest signal)
+    for orig_id, orig_step in orig_steps.items():
+        label = orig_step.get("label")
+        if not label:
+            continue
         step_type = orig_step.get("type", "tool")
-        step_path = f"{path_prefix}step {step_id}" if not path_prefix else f"{path_prefix}/step {step_id}"
+        for after_id, after_step in after_steps.items():
+            if after_id in used_after_ids:
+                continue
+            if after_step.get("label") == label and after_step.get("type", "tool") == step_type:
+                mapping[orig_id] = after_id
+                used_after_ids.add(after_id)
+                break
+
+    # Second pass: match remaining by same ID if type matches
+    for orig_id, orig_step in orig_steps.items():
+        if orig_id in mapping:
+            continue
+        after_step = after_steps.get(orig_id)
+        if after_step and orig_id not in used_after_ids:
+            if after_step.get("type", "tool") == orig_step.get("type", "tool"):
+                mapping[orig_id] = orig_id
+                used_after_ids.add(orig_id)
+
+    # Mark unmatched as None
+    for orig_id in orig_steps:
+        if orig_id not in mapping:
+            mapping[orig_id] = None
+
+    return mapping
+
+
+def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefix: str = "") -> list[str]:
+    """Compare steps between original and roundtripped workflows, recursing into subworkflows.
+
+    Matches steps by label+type rather than step ID to handle gxformat2 step reordering.
+    """
+    all_diffs = []
+    id_mapping = _build_step_id_mapping(orig_workflow, after_workflow)
+
+    for orig_id, orig_step in orig_workflow.get("steps", {}).items():
+        step_type = orig_step.get("type", "tool")
+        step_path = f"{path_prefix}step {orig_id}" if not path_prefix else f"{path_prefix}/step {orig_id}"
+
+        after_id = id_mapping.get(orig_id)
+        if after_id is None:
+            all_diffs.append(f"{step_path}: missing in roundtripped workflow")
+            continue
+
+        after_step = after_workflow["steps"][after_id]
 
         if step_type == "subworkflow":
-            after_step = after_workflow.get("steps", {}).get(step_id)
-            if after_step is None:
-                all_diffs.append(f"{step_path}: missing in roundtripped workflow")
-                continue
             orig_sub = orig_step.get("subworkflow", {})
             after_sub = after_step.get("subworkflow", {})
             if not after_sub:
@@ -402,14 +474,137 @@ def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefi
             sub_diffs = compare_workflow_steps(orig_sub, after_sub, path_prefix=f"{step_path}:subworkflow/")
             all_diffs.extend(sub_diffs)
         elif step_type == "tool":
-            after_step = after_workflow.get("steps", {}).get(step_id)
-            if after_step is None:
-                all_diffs.append(f"{step_path}: missing in roundtripped workflow")
-                continue
-            diffs = compare_steps(orig_step, after_step)
+            diffs = _compare_steps_with_id_mapping(orig_step, after_step, id_mapping)
             all_diffs.extend([f"{step_path}: {d}" for d in diffs])
 
+        visual_diffs = _compare_step_visual(orig_step, after_step)
+        all_diffs.extend([f"{step_path}: {d}" for d in visual_diffs])
+
+    all_diffs.extend(compare_comments(orig_workflow, after_workflow, path_prefix, id_mapping))
+
     return all_diffs
+
+
+def _compare_steps_with_id_mapping(
+    orig_step: dict, after_step: dict, id_mapping: dict[str, Optional[str]]
+) -> list[str]:
+    """Compare two tool steps, remapping connection step IDs to account for reordering."""
+    diffs = []
+    for key in ["tool_id", "tool_version"]:
+        if orig_step.get(key) != after_step.get(key):
+            diffs.append(f"{key}: {orig_step.get(key)!r} != {after_step.get(key)!r}")
+
+    orig_ts = orig_step.get("tool_state")
+    after_ts = after_step.get("tool_state")
+    if orig_ts and after_ts:
+        orig_parsed = json.loads(orig_ts) if isinstance(orig_ts, str) else orig_ts
+        after_parsed = json.loads(after_ts) if isinstance(after_ts, str) else after_ts
+        diffs.extend(compare_tool_state(orig_parsed, after_parsed))
+
+    orig_ic = orig_step.get("input_connections", {})
+    after_ic = after_step.get("input_connections", {})
+    diffs.extend(_compare_connections_with_id_mapping(orig_ic, after_ic, id_mapping))
+
+    return diffs
+
+
+def _compare_connections_with_id_mapping(
+    orig_connections: dict, after_connections: dict, id_mapping: dict[str, Optional[str]], path: str = ""
+) -> list[str]:
+    """Compare input_connections, remapping step IDs via id_mapping before comparison."""
+    # Build reverse mapping: after_id -> orig_id
+    reverse_map = {v: k for k, v in id_mapping.items() if v is not None}
+
+    def _remap_connection(conn: dict) -> dict:
+        """Remap a connection's step ID from after-space back to orig-space."""
+        after_id = conn.get("id")
+        orig_id = reverse_map.get(str(after_id))
+        if orig_id is not None:
+            return {**conn, "id": int(orig_id)}
+        return conn
+
+    diffs = []
+    all_keys = set(list(orig_connections.keys()) + list(after_connections.keys()))
+    for key in sorted(all_keys):
+        key_path = f"{path}.input_connections.{key}" if path else f"input_connections.{key}"
+        if key not in orig_connections:
+            diffs.append(f"{key_path}: missing in original")
+        elif key not in after_connections:
+            diffs.append(f"{key_path}: missing in roundtripped")
+        else:
+            orig_val = orig_connections[key]
+            after_val = after_connections[key]
+            if not isinstance(orig_val, list):
+                orig_val = [orig_val]
+            if not isinstance(after_val, list):
+                after_val = [after_val]
+            after_val = [_remap_connection(c) if isinstance(c, dict) else c for c in after_val]
+            if len(orig_val) != len(after_val):
+                diffs.append(f"{key_path}: {len(orig_val)} connections vs {len(after_val)}")
+            else:
+                for i, (o, a) in enumerate(zip(orig_val, after_val)):
+                    if isinstance(o, dict) and isinstance(a, dict):
+                        if o.get("id") != a.get("id") or o.get("output_name") != a.get("output_name"):
+                            diffs.append(f"{key_path}[{i}]: {o} != {a}")
+    return diffs
+
+
+def compare_comments(
+    orig_workflow: dict,
+    after_workflow: dict,
+    path_prefix: str = "",
+    id_mapping: Optional[dict[str, Optional[str]]] = None,
+) -> list[str]:
+    """Compare workflow comments between original and roundtripped workflows.
+
+    Comments are matched by content rather than id, since reimport may renumber ids.
+    child_steps references are remapped through id_mapping to account for step reordering.
+    """
+    orig_comments = orig_workflow.get("comments", [])
+    after_comments = after_workflow.get("comments", [])
+    diffs = []
+    prefix = f"{path_prefix}comments" if not path_prefix else f"{path_prefix}/comments"
+
+    if len(orig_comments) != len(after_comments):
+        diffs.append(f"{prefix}: {len(orig_comments)} comments vs {len(after_comments)}")
+        return diffs
+
+    orig_normalized = sorted((_normalize_comment(c) for c in orig_comments), key=_comment_sort_key)
+    after_normalized = sorted(
+        (_normalize_comment(c, id_mapping=id_mapping) for c in after_comments), key=_comment_sort_key
+    )
+
+    for i, (o, a) in enumerate(zip(orig_normalized, after_normalized)):
+        if o != a:
+            for k in sorted(set(list(o.keys()) + list(a.keys()))):
+                if o.get(k) != a.get(k):
+                    diffs.append(f"{prefix}[{i}].{k}: {o.get(k)!r} != {a.get(k)!r}")
+
+    return diffs
+
+
+def _normalize_comment(comment: dict, id_mapping: Optional[dict[str, Optional[str]]] = None) -> dict:
+    """Normalize a comment for comparison — drop id, normalize position/size, remap child_steps."""
+    normalized = {k: v for k, v in comment.items() if k != "id"}
+    for key in ("position", "size"):
+        val = normalized.get(key)
+        if isinstance(val, (list, tuple)):
+            normalized[key] = list(val)
+    if "child_steps" in normalized:
+        if id_mapping:
+            reverse_map = {int(v): int(k) for k, v in id_mapping.items() if v is not None}
+            normalized["child_steps"] = sorted(
+                reverse_map.get(step_id, step_id) for step_id in normalized["child_steps"]
+            )
+        else:
+            normalized["child_steps"] = sorted(normalized["child_steps"])
+    return normalized
+
+
+def _comment_sort_key(comment: dict) -> tuple:
+    """Sort key for comments — by type, then position, then data content."""
+    pos = comment.get("position", [0, 0])
+    return (comment.get("type", ""), pos[0] if pos else 0, pos[1] if pos else 0, str(comment.get("data", "")))
 
 
 # -- Shared helpers for format2 export --
@@ -425,22 +620,37 @@ def ensure_export_defaults(workflow_dict: dict):
 
 
 def find_matching_native_step(native_workflow: dict, format2_step: dict, format2_index) -> Optional[dict]:
-    """Find the native step matching a format2 step by index, then label+tool_id.
+    """Find the native step matching a format2 step by label+tool_id, then index.
 
-    Does NOT fall back to tool_id-only matching — for workflows with duplicate
-    tools that would silently match the wrong step.
+    Prefers label+tool_id matching to handle step ID reordering (e.g., gxformat2
+    moving inputs before tools in subworkflows). Falls back to index only if the
+    step at that index has a compatible tool_id. Does NOT fall back to tool_id-only
+    matching — for workflows with duplicate tools that would silently match the
+    wrong step.
     """
-    step_id = str(format2_index)
     native_steps = native_workflow.get("steps", {})
-    if step_id in native_steps:
-        return native_steps[step_id]
     tool_id = format2_step.get("tool_id")
     label = format2_step.get("label")
+
+    # Prefer label+tool_id match
     if label:
         for step in native_steps.values():
             if step.get("label") == label and step.get("tool_id") == tool_id:
-                log.debug("Step %s: matched by label+tool_id fallback", format2_index)
                 return step
+
+    # Fall back to index, but only if tool_id matches
+    step_id = str(format2_index)
+    if step_id in native_steps:
+        candidate = native_steps[step_id]
+        if candidate.get("tool_id") == tool_id:
+            return candidate
+        log.debug(
+            "Step %s: index match has tool_id %r, expected %r — skipping",
+            format2_index,
+            candidate.get("tool_id"),
+            tool_id,
+        )
+
     return None
 
 
