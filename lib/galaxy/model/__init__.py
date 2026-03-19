@@ -9460,10 +9460,10 @@ class WorkflowActionJournalEntry(Base, RepresentById, UsesCreateAndUpdateTime):
     user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     source_action_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    action_payloads: Mapped[Optional[bytes]] = mapped_column(JSONType)
+    action_payloads: Mapped[Optional[list]] = mapped_column(JSONType)
     workflow_id_before: Mapped[int] = mapped_column(ForeignKey("workflow.id"))
     workflow_id_after: Mapped[int] = mapped_column(ForeignKey("workflow.id"))
-    execution_messages: Mapped[Optional[bytes]] = mapped_column(JSONType)
+    execution_messages: Mapped[Optional[list]] = mapped_column(JSONType)
     is_revert: Mapped[bool] = mapped_column(default=False)
     reverted_entry_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("workflow_action_journal_entry.id"), nullable=True

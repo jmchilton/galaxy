@@ -663,7 +663,7 @@ class TestRemoveStepCleansFrameChildSteps:
         executor = _make_executor(wf)
         action = RemoveStepAction(action_type="remove_step", step={"order_index": 0})
         _run_action(executor, action)
-        assert wf["comments"][0]["child_steps"] == [1]
+        assert wf["comments"][0]["child_steps"] == [1]  # type: ignore[index]
 
 
 class TestInvalidCommentTypeColor:
