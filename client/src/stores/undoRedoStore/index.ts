@@ -1,9 +1,9 @@
 import { computed, ref, watch } from "vue";
 
 import { type SerializationResult, serializeAction } from "@/components/Workflow/Editor/Actions/refactorSerialization";
+import { useConfig } from "@/composables/config";
 import { useClamp, useStep } from "@/composables/math";
 import { useUserLocalStorage } from "@/composables/userLocalStorage";
-import { useConfigStore } from "@/stores/configurationStore";
 import { defineScopedStore } from "@/stores/scopedStore";
 
 import { type LazyUndoRedoAction, UndoRedoAction } from "./undoRedoAction";
@@ -34,8 +34,8 @@ export const useUndoRedoStore = defineScopedStore("undoRedoStore", () => {
     const hasPendingActions = computed(() => pendingActions.value.length > 0);
     const allActionsSerialized = ref(true);
     const persistenceEnabled = computed(() => {
-        const configStore = useConfigStore();
-        return configStore.config?.enable_workflow_action_persistence === true;
+        const { config } = useConfig();
+        return config.value?.enable_workflow_action_persistence === true;
     });
 
     const asyncSerializationsInFlight = ref(0);
