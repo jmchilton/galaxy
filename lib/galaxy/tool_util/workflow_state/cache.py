@@ -32,7 +32,8 @@ class PopulateOptions(BaseModel):
     tool_source_cache_dir: Optional[str] = None
     verbose: bool = False
     workflow_path: str
-    tool_source: str = "auto"
+    tool_source: str = "shed"
+    galaxy_url: Optional[str] = None
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace) -> "PopulateOptions":
@@ -45,7 +46,8 @@ class AddOptions(BaseModel):
     verbose: bool = False
     tool_id: str
     version: Optional[str] = None
-    tool_source: str = "auto"
+    tool_source: str = "shed"
+    galaxy_url: Optional[str] = None
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace) -> "AddOptions":
@@ -107,12 +109,12 @@ class ClearOptions(BaseModel):
 # -- Core cache operations --
 
 
-def build_tool_info(cache_dir: Optional[str] = None) -> ToolShedGetToolInfo:
+def build_tool_info(cache_dir: Optional[str] = None, galaxy_url: Optional[str] = None) -> ToolShedGetToolInfo:
     """Build ToolShedGetToolInfo from a cache directory path."""
-    return ToolShedGetToolInfo(cache_dir=cache_dir)
+    return ToolShedGetToolInfo(cache_dir=cache_dir, galaxy_url=galaxy_url)
 
 
-def add_tool(tool_info: ToolShedGetToolInfo, tool_id: str, tool_version: Optional[str], source: str = "auto") -> bool:
+def add_tool(tool_info: ToolShedGetToolInfo, tool_id: str, tool_version: Optional[str], source: str = "shed") -> bool:
     """Add a single tool to the cache. Returns True on success."""
     parsed = parse_toolshed_tool_id(tool_id)
     if parsed is not None:
@@ -131,30 +133,25 @@ def add_tool(tool_info: ToolShedGetToolInfo, tool_id: str, tool_version: Optiona
         print(f"  CACHED {tool_id} {version}")
         return True
 
-    sources_to_try = []
     if source == "auto":
-        sources_to_try = ["api", "galaxy"]
+        sources_to_try = ["shed", "galaxy"]
     else:
         sources_to_try = [source]
 
     for src in sources_to_try:
         try:
-            if src == "api":
+            if src == "shed":
                 parsed_tool = tool_info.fetch_from_api(toolshed_url, trs_tool_id, version)
                 source_url = f"{toolshed_url}/api/tools/{trs_tool_id}/versions/{version}"
             elif src == "galaxy":
-                raise NotImplementedError("Galaxy instance API source not yet implemented")
+                parsed_tool = tool_info.fetch_from_galaxy(tool_info.galaxy_url, tool_id, version)
+                source_url = f"{tool_info.galaxy_url}/api/tools/{tool_id}/parsed"
             else:
                 continue
 
             tool_info.populate_from_parsed_tool(tool_id, version, parsed_tool, source=src, source_url=source_url)
             print(f"  OK {tool_id} {version} (from {src})")
             return True
-        except NotImplementedError:
-            if source != "auto":
-                raise
-            log.debug(f"  Source {src} not implemented, skipping")
-            continue
         except Exception as e:
             log.debug(f"  Failed to fetch {tool_id} {version} from {src}: {e}")
             continue
@@ -228,12 +225,12 @@ def _populate_cache_for_tree(tool_info: ToolShedGetToolInfo, root: str, source: 
 
 
 def run_populate(options: PopulateOptions):
-    tool_info = build_tool_info(options.tool_source_cache_dir)
+    tool_info = build_tool_info(options.tool_source_cache_dir, galaxy_url=options.galaxy_url)
     populate_cache(tool_info, options.workflow_path, source=options.tool_source)
 
 
 def run_add(options: AddOptions):
-    tool_info = build_tool_info(options.tool_source_cache_dir)
+    tool_info = build_tool_info(options.tool_source_cache_dir, galaxy_url=options.galaxy_url)
     add_tool(tool_info, options.tool_id, options.version, source=options.tool_source)
 
 

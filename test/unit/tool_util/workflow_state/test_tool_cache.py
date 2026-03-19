@@ -311,7 +311,7 @@ class TestCLIParser:
         args = parser.parse_args(["populate-workflow", "test.ga"])
         assert args.command == "populate-workflow"
         assert args.workflow_path == "test.ga"
-        assert args.tool_source == "auto"
+        assert args.tool_source == "shed"
 
     def test_populate_workflow_with_source(self):
         parser = build_parser()
@@ -351,18 +351,73 @@ class TestCLIParser:
         assert args.tool_id_prefix == "devteam~fastqc~*"
 
 
-# --- Galaxy API source stub ---
+class TestGalaxySource:
+    def test_fetch_from_galaxy(self, tmp_path, monkeypatch):
+        """fetch_from_galaxy calls the /parsed endpoint and returns ParsedTool."""
+        import requests
 
+        fake_parsed = {
+            "id": "param_value_from_file",
+            "version": "0.1.0",
+            "name": "Parse parameter value",
+            "description": None,
+            "inputs": [],
+            "outputs": [],
+            "citations": [],
+            "license": None,
+            "profile": None,
+            "edam_operations": [],
+            "edam_topics": [],
+            "xrefs": [],
+            "help": None,
+        }
 
-class TestGalaxySourceStub:
-    def test_galaxy_source_raises_not_implemented(self):
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return fake_parsed
+
+        def mock_get(url, **kwargs):
+            assert "/api/tools/param_value_from_file/parsed" in url
+            return MockResponse()
+
+        monkeypatch.setattr(requests, "get", mock_get)
+        tool_info = ToolShedGetToolInfo(cache_dir=str(tmp_path), galaxy_url="http://localhost:8080")
+        result = tool_info.fetch_from_galaxy("http://localhost:8080", "param_value_from_file")
+        assert result.id == "param_value_from_file"
+        assert result.name == "Parse parameter value"
+
+    def test_add_tool_galaxy_source(self, tmp_path, monkeypatch):
+        """add_tool with source='galaxy' fetches and caches."""
+        import requests
+
         from galaxy.tool_util.workflow_state.cache import add_tool as _add_tool
 
-        tool_info = ToolShedGetToolInfo(cache_dir="/tmp/test-cache-stub")
-        with pytest.raises(NotImplementedError, match="Galaxy instance API source not yet implemented"):
-            _add_tool(
-                tool_info,
-                "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc/0.74+galaxy0",
-                "0.74+galaxy0",
-                source="galaxy",
-            )
+        fake_parsed = {
+            "id": "param_value_from_file",
+            "version": "0.1.0",
+            "name": "Parse parameter value",
+            "description": None,
+            "inputs": [],
+            "outputs": [],
+            "citations": [],
+            "license": None,
+            "profile": None,
+            "edam_operations": [],
+            "edam_topics": [],
+            "xrefs": [],
+            "help": None,
+        }
+
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return fake_parsed
+
+        monkeypatch.setattr(requests, "get", lambda url, **kw: MockResponse())
+        tool_info = ToolShedGetToolInfo(cache_dir=str(tmp_path), galaxy_url="http://localhost:8080")
+        result = _add_tool(tool_info, "param_value_from_file", "0.1.0", source="galaxy")
+        assert result is True
+        assert tool_info.has_cached("param_value_from_file", "0.1.0")

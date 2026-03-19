@@ -13,12 +13,16 @@ def add_common_args(parser):
 
 
 def add_tool_source_arg(parser):
-    """Add --tool-source to any argparse parser."""
+    """Add --tool-source and --galaxy-url to any argparse parser."""
     parser.add_argument(
         "--tool-source",
-        choices=["auto", "api", "galaxy"],
-        default="auto",
-        help="Source for tool definitions: auto (try api then galaxy), api, or galaxy (default: auto)",
+        choices=["shed", "galaxy", "auto"],
+        default="shed",
+        help="Source for tool definitions: shed (ToolShed API), galaxy (Galaxy instance API), or auto (try both) (default: shed)",
+    )
+    parser.add_argument(
+        "--galaxy-url",
+        help="Galaxy instance URL for --tool-source galaxy (default: $GALAXY_URL or https://usegalaxy.org)",
     )
 
 

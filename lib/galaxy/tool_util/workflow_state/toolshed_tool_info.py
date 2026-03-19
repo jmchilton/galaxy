@@ -14,7 +14,6 @@ import hashlib
 import json
 import logging
 import os
-import urllib.request
 from datetime import (
     datetime,
     timezone,
@@ -41,46 +40,8 @@ def get_cache_dir(override: Optional[str] = None) -> str:
     return override or os.environ.get(CACHE_DIR_ENV_VAR) or DEFAULT_CACHE_DIR
 
 
-def _builtin_tools_dir() -> str:
-    """Path to Galaxy's builtin tool XMLs (lib/galaxy/tools/)."""
-    galaxy_tools = os.path.join(os.path.dirname(__file__), "..", "..", "tools")
-    return os.path.normpath(galaxy_tools)
-
-
-_BUILTIN_CACHE: Dict[str, Optional[ParsedTool]] = {}
-
-
-def _try_builtin_tool(tool_id: str) -> Optional[ParsedTool]:
-    """Try to parse a Galaxy builtin tool by ID (e.g. __FILTER_EMPTY_DATASETS__)."""
-    if tool_id in _BUILTIN_CACHE:
-        return _BUILTIN_CACHE[tool_id]
-
-    tools_dir = _builtin_tools_dir()
-    if not os.path.isdir(tools_dir):
-        return None
-
-    # Scan XMLs for matching tool ID
-    try:
-        from galaxy.tool_util.model_factory import parse_tool
-        from galaxy.tool_util.parser.factory import get_tool_source
-
-        for fname in os.listdir(tools_dir):
-            if not fname.endswith(".xml"):
-                continue
-            xml_path = os.path.join(tools_dir, fname)
-            try:
-                ts = get_tool_source(xml_path)
-                if ts.parse_id() == tool_id:
-                    parsed = parse_tool(ts)
-                    _BUILTIN_CACHE[tool_id] = parsed
-                    return parsed
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    _BUILTIN_CACHE[tool_id] = None
-    return None
+GALAXY_URL_ENV_VAR = "GALAXY_URL"
+DEFAULT_GALAXY_URL = "https://usegalaxy.org"
 
 
 def parse_toolshed_tool_id(tool_id: str) -> Optional[Tuple[str, str, Optional[str]]]:
@@ -197,9 +158,15 @@ class CacheIndex:
 class ToolShedGetToolInfo:
     """Fetches ParsedTool from ToolShed 2.0 API with local filesystem cache."""
 
-    def __init__(self, cache_dir: Optional[str] = None, default_toolshed_url: Optional[str] = None):
+    def __init__(
+        self,
+        cache_dir: Optional[str] = None,
+        default_toolshed_url: Optional[str] = None,
+        galaxy_url: Optional[str] = None,
+    ):
         self.cache_dir = get_cache_dir(cache_dir)
         self.default_toolshed_url = default_toolshed_url or os.environ.get(TOOLSHED_URL_ENV_VAR) or DEFAULT_TOOLSHED_URL
+        self.galaxy_url = galaxy_url or os.environ.get(GALAXY_URL_ENV_VAR) or DEFAULT_GALAXY_URL
         self._memory_cache: Dict[str, ParsedTool] = {}
         self._index = CacheIndex(self.cache_dir)
 
@@ -241,12 +208,6 @@ class ToolShedGetToolInfo:
         if cached is not None:
             self._memory_cache[cache_key] = cached
             return cached
-
-        # Try Galaxy builtin tools before hitting the API
-        builtin = _try_builtin_tool(tool_id)
-        if builtin is not None:
-            self._memory_cache[cache_key] = builtin
-            return builtin
 
         # Fetch from API
         parsed_tool = self._fetch_from_api(toolshed_url, trs_tool_id, version)
@@ -319,20 +280,34 @@ class ToolShedGetToolInfo:
         """Fetch ParsedTool from ToolShed API (no caching)."""
         return self._fetch_from_api(toolshed_url, trs_tool_id, tool_version)
 
+    def fetch_from_galaxy(self, galaxy_url: str, tool_id: str, tool_version: Optional[str] = None) -> ParsedTool:
+        """Fetch ParsedTool from a Galaxy instance's /api/tools/{id}/parsed endpoint."""
+        import requests
+
+        encoded_id = requests.utils.quote(tool_id, safe="")
+        url = f"{galaxy_url}/api/tools/{encoded_id}/parsed"
+        params = {}
+        if tool_version:
+            params["tool_version"] = tool_version
+        log.info(f"Fetching tool info from Galaxy: {url}")
+        response = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=30)
+        if response.status_code != 200:
+            raise KeyError(f"Failed to fetch tool from Galaxy {url}: {response.status_code} {response.text[:200]}")
+        return ParsedTool.model_validate(response.json())
+
     def load_cached(self, cache_key: str) -> Optional[ParsedTool]:
         """Load a ParsedTool from the filesystem cache by key."""
         return self._load_from_cache(cache_key)
 
     def _fetch_from_api(self, toolshed_url: str, trs_tool_id: str, tool_version: str) -> ParsedTool:
+        import requests
+
         url = f"{toolshed_url}/api/tools/{trs_tool_id}/versions/{tool_version}"
         log.info(f"Fetching tool info from {url}")
-        try:
-            req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode())
-        except Exception as e:
-            raise KeyError(f"Failed to fetch tool info from {url}: {e}")
-        return ParsedTool.model_validate(data)
+        response = requests.get(url, headers={"Accept": "application/json"}, timeout=30)
+        if response.status_code != 200:
+            raise KeyError(f"Failed to fetch tool info from {url}: {response.status_code} {response.text[:200]}")
+        return ParsedTool.model_validate(response.json())
 
     def _cache_path(self, cache_key: str) -> str:
         return os.path.join(self.cache_dir, f"{cache_key}.json")
