@@ -86,6 +86,144 @@ class RoundTripResult:
         return "; ".join(parts)
 
 
+# -- Diff model --
+
+
+class DiffType(Enum):
+    VALUE_MISMATCH = "value_mismatch"
+    MISSING_IN_ROUNDTRIP = "missing_in_roundtrip"
+    MISSING_IN_ORIGINAL = "missing_in_original"
+    CONNECTION_MISMATCH = "connection_mismatch"
+    POSITION_MISMATCH = "position_mismatch"
+    LABEL_MISMATCH = "label_mismatch"
+    ANNOTATION_MISMATCH = "annotation_mismatch"
+    COMMENT_MISMATCH = "comment_mismatch"
+    STEP_MISSING = "step_missing"
+
+
+class DiffSeverity(Enum):
+    ERROR = "error"
+    BENIGN = "benign"
+
+
+@dataclass
+class StepDiff:
+    step_path: str
+    key_path: str
+    diff_type: DiffType
+    severity: DiffSeverity
+    description: str
+    original_value: Optional[Any] = None
+    roundtrip_value: Optional[Any] = None
+    benign_reason: Optional[str] = None
+
+    def format_line(self, verbose: bool = False) -> str:
+        tag = f"[{self.severity.value}] " if self.severity == DiffSeverity.BENIGN else ""
+        suffix = f" ({self.benign_reason})" if verbose and self.benign_reason else ""
+        return f"  {tag}{self.step_path}: {self.description}{suffix}"
+
+
+# -- Benign classifiers --
+
+
+def _is_all_none_dict(d) -> bool:
+    """Dict where every leaf is None/null — dropped by gxformat2 as empty."""
+    if not isinstance(d, dict):
+        return False
+    if not d:
+        return True
+    for v in d.values():
+        if isinstance(v, dict):
+            if not _is_all_none_dict(v):
+                return False
+        elif v not in (None, "null"):
+            return False
+    return True
+
+
+def _is_empty_container_dict(d) -> bool:
+    """Dict containing only empty lists and None/null — dropped by gxformat2."""
+    if not isinstance(d, dict):
+        return False
+    has_empty_list = False
+    for v in d.values():
+        if isinstance(v, list) and len(v) == 0:
+            has_empty_list = True
+        elif isinstance(v, dict):
+            if not _is_empty_container_dict(v):
+                return False
+        elif v not in (None, "null"):
+            return False
+    return has_empty_list
+
+
+def _is_connection_only_dict(d) -> bool:
+    """Dict where every leaf is ConnectedValue/RuntimeValue or None — connections preserved in 'in' block."""
+    if not isinstance(d, dict):
+        return False
+    if not d:
+        return False
+    for v in d.values():
+        if isinstance(v, dict):
+            if _is_connection_marker(v):
+                continue
+            if not _is_connection_only_dict(v):
+                return False
+        elif v not in (None, "null"):
+            return False
+    return True
+
+
+def _classify_missing_value(orig_val: Any) -> tuple[DiffSeverity, Optional[str]]:
+    """Classify a value present in original but missing in roundtripped."""
+    if isinstance(orig_val, dict):
+        if _is_all_none_dict(orig_val):
+            return DiffSeverity.BENIGN, "all-None section omitted by format2 export"
+        if _is_empty_container_dict(orig_val):
+            return DiffSeverity.BENIGN, "empty repeat/list omitted by format2 export"
+        if _is_connection_only_dict(orig_val):
+            return DiffSeverity.BENIGN, "connection-only section omitted (connections in 'in' block)"
+    return DiffSeverity.ERROR, None
+
+
+def _classify_value_mismatch(orig_val: Any, after_val: Any) -> tuple[DiffSeverity, Optional[str]]:
+    """Classify a value mismatch — some are benign multiple-select representation differences."""
+    if _is_multiple_select_equivalent(orig_val, after_val):
+        if isinstance(after_val, list) and not isinstance(orig_val, list):
+            return DiffSeverity.BENIGN, "multiple-select scalar normalized to list"
+        elif isinstance(orig_val, list) and not isinstance(after_val, list):
+            return DiffSeverity.BENIGN, "multiple-select list collapsed to scalar"
+        else:
+            return DiffSeverity.BENIGN, "multiple-select representation difference"
+    return DiffSeverity.ERROR, None
+
+
+def _is_multiple_select_equivalent(a: Any, b: Any) -> bool:
+    """Check if two values are equivalent multiple-select representations.
+
+    Native tool_state may store multiple-select values as:
+    - comma-delimited string: "35" or "35,62"
+    - JSON list: ["35"] or ["35", "62"]
+    - bare scalar (after JSON decode): 35
+    All are equivalent for the same parameter.
+    """
+
+    def _to_str_list(v):
+        if isinstance(v, list):
+            return [str(x) for x in v]
+        if isinstance(v, str):
+            return [x.strip() for x in v.split(",")]
+        if isinstance(v, (int, float)):
+            return [str(v)]
+        return None
+
+    a_list = _to_str_list(a)
+    b_list = _to_str_list(b)
+    if a_list is not None and b_list is not None:
+        return a_list == b_list
+    return False
+
+
 # -- Comparison logic --
 
 SKIP_KEYS = {
@@ -99,9 +237,9 @@ SKIP_KEYS = {
 }
 
 
-def compare_tool_state(orig: dict, after: dict, path: str = "") -> list[str]:
+def compare_tool_state(orig: dict, after: dict, path: str = "", step_path: str = "") -> list[StepDiff]:
     """Recursively compare parsed tool_state dicts, skipping bookkeeping keys."""
-    diffs = []
+    diffs: list[StepDiff] = []
     all_keys = set(list(orig.keys()) + list(after.keys()))
     for key in sorted(all_keys):
         if key in SKIP_KEYS:
@@ -111,22 +249,55 @@ def compare_tool_state(orig: dict, after: dict, path: str = "") -> list[str]:
         after_val = _try_json_decode(after.get(key))
         if key not in orig:
             if after_val not in (None, "null"):
-                diffs.append(f"{key_path}: missing in original, present in roundtripped ({after_val!r})")
+                diffs.append(
+                    StepDiff(
+                        step_path=step_path,
+                        key_path=key_path,
+                        diff_type=DiffType.MISSING_IN_ORIGINAL,
+                        severity=DiffSeverity.ERROR,
+                        description=f"missing in original, present in roundtripped ({after_val!r})",
+                        roundtrip_value=after_val,
+                    )
+                )
         elif key not in after:
-            if orig_val not in (None, "null", []) and not _is_connection_marker(orig_val):
-                diffs.append(f"{key_path}: present in original ({orig_val!r}), missing in roundtripped")
+            if orig_val in (None, "null", []) or _is_connection_marker(orig_val):
+                continue
+            severity, reason = _classify_missing_value(orig_val)
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key_path,
+                    diff_type=DiffType.MISSING_IN_ROUNDTRIP,
+                    severity=severity,
+                    description=f"present in original ({orig_val!r}), missing in roundtripped",
+                    original_value=orig_val,
+                    benign_reason=reason,
+                )
+            )
         elif isinstance(orig_val, dict) and isinstance(after_val, dict):
-            diffs.extend(compare_tool_state(orig_val, after_val, key_path))
+            diffs.extend(compare_tool_state(orig_val, after_val, key_path, step_path))
         elif isinstance(orig_val, list) and isinstance(after_val, list):
-            diffs.extend(_compare_list_state(orig_val, after_val, key_path))
+            diffs.extend(_compare_list_state(orig_val, after_val, key_path, step_path))
         elif not _values_equivalent(orig_val, after_val):
-            diffs.append(f"{key_path}: {orig_val!r} != {after_val!r}")
+            severity, reason = _classify_value_mismatch(orig_val, after_val)
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key_path,
+                    diff_type=DiffType.VALUE_MISMATCH,
+                    severity=severity,
+                    description=f"{orig_val!r} != {after_val!r}",
+                    original_value=orig_val,
+                    roundtrip_value=after_val,
+                    benign_reason=reason,
+                )
+            )
     return diffs
 
 
-def _compare_list_state(orig: list, after: list, path: str) -> list[str]:
+def _compare_list_state(orig: list, after: list, path: str, step_path: str = "") -> list[StepDiff]:
     """Compare lists (e.g. repeat instances) in tool state."""
-    diffs = []
+    diffs: list[StepDiff] = []
     if len(orig) > 0 and isinstance(orig[0], str):
         try:
             orig = [json.loads(v) if isinstance(v, str) else v for v in orig]
@@ -138,14 +309,36 @@ def _compare_list_state(orig: list, after: list, path: str) -> list[str]:
         except (json.JSONDecodeError, TypeError):
             pass
     if len(orig) != len(after):
-        diffs.append(f"{path}: {len(orig)} items vs {len(after)}")
+        diffs.append(
+            StepDiff(
+                step_path=step_path,
+                key_path=path,
+                diff_type=DiffType.VALUE_MISMATCH,
+                severity=DiffSeverity.ERROR,
+                description=f"{len(orig)} items vs {len(after)}",
+                original_value=orig,
+                roundtrip_value=after,
+            )
+        )
         return diffs
     for i, (o, a) in enumerate(zip(orig, after)):
         item_path = f"{path}[{i}]"
         if isinstance(o, dict) and isinstance(a, dict):
-            diffs.extend(compare_tool_state(o, a, item_path))
+            diffs.extend(compare_tool_state(o, a, item_path, step_path))
         elif not _values_equivalent(o, a):
-            diffs.append(f"{item_path}: {o!r} != {a!r}")
+            severity, reason = _classify_value_mismatch(o, a)
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=item_path,
+                    diff_type=DiffType.VALUE_MISMATCH,
+                    severity=severity,
+                    description=f"{o!r} != {a!r}",
+                    original_value=o,
+                    roundtrip_value=a,
+                    benign_reason=reason,
+                )
+            )
     return diffs
 
 
@@ -193,24 +386,37 @@ def _values_equivalent(a: Any, b: Any) -> bool:
         return True
     if a is None and b == "null":
         return True
-    # Multiple select: list form vs comma-delimited string are equivalent
-    if isinstance(a, list) and isinstance(b, str):
-        return ",".join(str(v) for v in a) == b
-    if isinstance(a, str) and isinstance(b, list):
-        return a == ",".join(str(v) for v in b)
     return False
 
 
-def compare_connections(orig_connections: dict, after_connections: dict, path: str = "") -> list[str]:
+def compare_connections(
+    orig_connections: dict, after_connections: dict, step_path: str = "", path: str = ""
+) -> list[StepDiff]:
     """Compare input_connections dicts for topology equivalence."""
-    diffs = []
+    diffs: list[StepDiff] = []
     all_keys = set(list(orig_connections.keys()) + list(after_connections.keys()))
     for key in sorted(all_keys):
         key_path = f"{path}.input_connections.{key}" if path else f"input_connections.{key}"
         if key not in orig_connections:
-            diffs.append(f"{key_path}: missing in original")
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key_path,
+                    diff_type=DiffType.CONNECTION_MISMATCH,
+                    severity=DiffSeverity.ERROR,
+                    description="missing in original",
+                )
+            )
         elif key not in after_connections:
-            diffs.append(f"{key_path}: missing in roundtripped")
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key_path,
+                    diff_type=DiffType.CONNECTION_MISMATCH,
+                    severity=DiffSeverity.ERROR,
+                    description="missing in roundtripped",
+                )
+            )
         else:
             orig_val = orig_connections[key]
             after_val = after_connections[key]
@@ -219,54 +425,83 @@ def compare_connections(orig_connections: dict, after_connections: dict, path: s
             if not isinstance(after_val, list):
                 after_val = [after_val]
             if len(orig_val) != len(after_val):
-                diffs.append(f"{key_path}: {len(orig_val)} connections vs {len(after_val)}")
+                diffs.append(
+                    StepDiff(
+                        step_path=step_path,
+                        key_path=key_path,
+                        diff_type=DiffType.CONNECTION_MISMATCH,
+                        severity=DiffSeverity.ERROR,
+                        description=f"{len(orig_val)} connections vs {len(after_val)}",
+                        original_value=orig_val,
+                        roundtrip_value=after_val,
+                    )
+                )
             else:
                 for i, (o, a) in enumerate(zip(orig_val, after_val)):
                     if isinstance(o, dict) and isinstance(a, dict):
                         if o.get("id") != a.get("id") or o.get("output_name") != a.get("output_name"):
-                            diffs.append(f"{key_path}[{i}]: {o} != {a}")
+                            diffs.append(
+                                StepDiff(
+                                    step_path=step_path,
+                                    key_path=f"{key_path}[{i}]",
+                                    diff_type=DiffType.CONNECTION_MISMATCH,
+                                    severity=DiffSeverity.ERROR,
+                                    description=f"{o} != {a}",
+                                    original_value=o,
+                                    roundtrip_value=a,
+                                )
+                            )
     return diffs
 
 
-def compare_steps(orig_step: dict, after_step: dict) -> list[str]:
-    """Compare two native workflow steps for functional and graphical equivalence."""
-    diffs = []
-    for key in ["tool_id", "tool_version"]:
-        if orig_step.get(key) != after_step.get(key):
-            diffs.append(f"{key}: {orig_step.get(key)!r} != {after_step.get(key)!r}")
-
-    orig_ts = orig_step.get("tool_state")
-    after_ts = after_step.get("tool_state")
-    if orig_ts and after_ts:
-        orig_parsed = json.loads(orig_ts) if isinstance(orig_ts, str) else orig_ts
-        after_parsed = json.loads(after_ts) if isinstance(after_ts, str) else after_ts
-        diffs.extend(compare_tool_state(orig_parsed, after_parsed))
-
-    orig_ic = orig_step.get("input_connections", {})
-    after_ic = after_step.get("input_connections", {})
-    diffs.extend(compare_connections(orig_ic, after_ic))
-
-    return diffs
-
-
-def _compare_step_visual(orig_step: dict, after_step: dict) -> list[str]:
+def _compare_step_visual(orig_step: dict, after_step: dict, step_path: str) -> list[StepDiff]:
     """Compare visual/layout fields of two workflow steps."""
-    diffs = []
+    diffs: list[StepDiff] = []
 
     orig_pos = orig_step.get("position", {})
     after_pos = after_step.get("position", {})
     if orig_pos.get("left") != after_pos.get("left") or orig_pos.get("top") != after_pos.get("top"):
-        diffs.append(f"position: {orig_pos} != {after_pos}")
+        diffs.append(
+            StepDiff(
+                step_path=step_path,
+                key_path="position",
+                diff_type=DiffType.POSITION_MISMATCH,
+                severity=DiffSeverity.ERROR,
+                description=f"{orig_pos} != {after_pos}",
+                original_value=orig_pos,
+                roundtrip_value=after_pos,
+            )
+        )
 
     orig_label = orig_step.get("label")
     after_label = after_step.get("label")
     if orig_label != after_label:
-        diffs.append(f"label: {orig_label!r} != {after_label!r}")
+        diffs.append(
+            StepDiff(
+                step_path=step_path,
+                key_path="label",
+                diff_type=DiffType.LABEL_MISMATCH,
+                severity=DiffSeverity.ERROR,
+                description=f"{orig_label!r} != {after_label!r}",
+                original_value=orig_label,
+                roundtrip_value=after_label,
+            )
+        )
 
     orig_ann = orig_step.get("annotation", "")
     after_ann = after_step.get("annotation", "")
     if orig_ann != after_ann:
-        diffs.append(f"annotation: {orig_ann!r} != {after_ann!r}")
+        diffs.append(
+            StepDiff(
+                step_path=step_path,
+                key_path="annotation",
+                diff_type=DiffType.ANNOTATION_MISMATCH,
+                severity=DiffSeverity.ERROR,
+                description=f"{orig_ann!r} != {after_ann!r}",
+                original_value=orig_ann,
+                roundtrip_value=after_ann,
+            )
+        )
 
     return diffs
 
@@ -380,7 +615,7 @@ def full_roundtrip_native(
     workflow_dict: dict,
     get_tool_info: GetToolInfo,
     workflow_name: str = "",
-) -> tuple[RoundTripResult, Optional[list[str]]]:
+) -> tuple[RoundTripResult, Optional[list[StepDiff]]]:
     """Full round-trip: native → format2 → native' → compare.
 
     Delegates to roundtrip_validate() and unwraps the result to the
@@ -464,12 +699,12 @@ def _build_step_id_mapping(orig_workflow: dict, after_workflow: dict) -> dict[st
     return mapping
 
 
-def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefix: str = "") -> list[str]:
+def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefix: str = "") -> list[StepDiff]:
     """Compare steps between original and roundtripped workflows, recursing into subworkflows.
 
     Matches steps by label+type rather than step ID to handle gxformat2 step reordering.
     """
-    all_diffs = []
+    all_diffs: list[StepDiff] = []
     id_mapping = _build_step_id_mapping(orig_workflow, after_workflow)
 
     for orig_id, orig_step in orig_workflow.get("steps", {}).items():
@@ -478,7 +713,15 @@ def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefi
 
         after_id = id_mapping.get(orig_id)
         if after_id is None:
-            all_diffs.append(f"{step_path}: missing in roundtripped workflow")
+            all_diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path="",
+                    diff_type=DiffType.STEP_MISSING,
+                    severity=DiffSeverity.ERROR,
+                    description="missing in roundtripped workflow",
+                )
+            )
             continue
 
         after_step = after_workflow["steps"][after_id]
@@ -487,16 +730,22 @@ def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefi
             orig_sub = orig_step.get("subworkflow", {})
             after_sub = after_step.get("subworkflow", {})
             if not after_sub:
-                all_diffs.append(f"{step_path}: subworkflow missing in roundtripped")
+                all_diffs.append(
+                    StepDiff(
+                        step_path=step_path,
+                        key_path="subworkflow",
+                        diff_type=DiffType.STEP_MISSING,
+                        severity=DiffSeverity.ERROR,
+                        description="subworkflow missing in roundtripped",
+                    )
+                )
                 continue
             sub_diffs = compare_workflow_steps(orig_sub, after_sub, path_prefix=f"{step_path}:subworkflow/")
             all_diffs.extend(sub_diffs)
         elif step_type == "tool":
-            diffs = _compare_steps_with_id_mapping(orig_step, after_step, id_mapping)
-            all_diffs.extend([f"{step_path}: {d}" for d in diffs])
+            all_diffs.extend(_compare_steps_with_id_mapping(orig_step, after_step, id_mapping, step_path))
 
-        visual_diffs = _compare_step_visual(orig_step, after_step)
-        all_diffs.extend([f"{step_path}: {d}" for d in visual_diffs])
+        all_diffs.extend(_compare_step_visual(orig_step, after_step, step_path))
 
     all_diffs.extend(compare_comments(orig_workflow, after_workflow, path_prefix, id_mapping))
 
@@ -504,51 +753,79 @@ def compare_workflow_steps(orig_workflow: dict, after_workflow: dict, path_prefi
 
 
 def _compare_steps_with_id_mapping(
-    orig_step: dict, after_step: dict, id_mapping: dict[str, Optional[str]]
-) -> list[str]:
+    orig_step: dict, after_step: dict, id_mapping: dict[str, Optional[str]], step_path: str
+) -> list[StepDiff]:
     """Compare two tool steps, remapping connection step IDs to account for reordering."""
-    diffs = []
+    diffs: list[StepDiff] = []
     for key in ["tool_id", "tool_version"]:
         if orig_step.get(key) != after_step.get(key):
-            diffs.append(f"{key}: {orig_step.get(key)!r} != {after_step.get(key)!r}")
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key,
+                    diff_type=DiffType.VALUE_MISMATCH,
+                    severity=DiffSeverity.ERROR,
+                    description=f"{orig_step.get(key)!r} != {after_step.get(key)!r}",
+                    original_value=orig_step.get(key),
+                    roundtrip_value=after_step.get(key),
+                )
+            )
 
     orig_ts = orig_step.get("tool_state")
     after_ts = after_step.get("tool_state")
     if orig_ts and after_ts:
         orig_parsed = json.loads(orig_ts) if isinstance(orig_ts, str) else orig_ts
         after_parsed = json.loads(after_ts) if isinstance(after_ts, str) else after_ts
-        diffs.extend(compare_tool_state(orig_parsed, after_parsed))
+        diffs.extend(compare_tool_state(orig_parsed, after_parsed, step_path=step_path))
 
     orig_ic = orig_step.get("input_connections", {})
     after_ic = after_step.get("input_connections", {})
-    diffs.extend(_compare_connections_with_id_mapping(orig_ic, after_ic, id_mapping))
+    diffs.extend(_compare_connections_with_id_mapping(orig_ic, after_ic, id_mapping, step_path=step_path))
 
     return diffs
 
 
 def _compare_connections_with_id_mapping(
-    orig_connections: dict, after_connections: dict, id_mapping: dict[str, Optional[str]], path: str = ""
-) -> list[str]:
+    orig_connections: dict,
+    after_connections: dict,
+    id_mapping: dict[str, Optional[str]],
+    path: str = "",
+    step_path: str = "",
+) -> list[StepDiff]:
     """Compare input_connections, remapping step IDs via id_mapping before comparison."""
-    # Build reverse mapping: after_id -> orig_id
     reverse_map = {v: k for k, v in id_mapping.items() if v is not None}
 
     def _remap_connection(conn: dict) -> dict:
-        """Remap a connection's step ID from after-space back to orig-space."""
         after_id = conn.get("id")
         orig_id = reverse_map.get(str(after_id))
         if orig_id is not None:
             return {**conn, "id": int(orig_id)}
         return conn
 
-    diffs = []
+    diffs: list[StepDiff] = []
     all_keys = set(list(orig_connections.keys()) + list(after_connections.keys()))
     for key in sorted(all_keys):
         key_path = f"{path}.input_connections.{key}" if path else f"input_connections.{key}"
         if key not in orig_connections:
-            diffs.append(f"{key_path}: missing in original")
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key_path,
+                    diff_type=DiffType.CONNECTION_MISMATCH,
+                    severity=DiffSeverity.ERROR,
+                    description="missing in original",
+                )
+            )
         elif key not in after_connections:
-            diffs.append(f"{key_path}: missing in roundtripped")
+            diffs.append(
+                StepDiff(
+                    step_path=step_path,
+                    key_path=key_path,
+                    diff_type=DiffType.CONNECTION_MISMATCH,
+                    severity=DiffSeverity.ERROR,
+                    description="missing in roundtripped",
+                )
+            )
         else:
             orig_val = orig_connections[key]
             after_val = after_connections[key]
@@ -558,12 +835,32 @@ def _compare_connections_with_id_mapping(
                 after_val = [after_val]
             after_val = [_remap_connection(c) if isinstance(c, dict) else c for c in after_val]
             if len(orig_val) != len(after_val):
-                diffs.append(f"{key_path}: {len(orig_val)} connections vs {len(after_val)}")
+                diffs.append(
+                    StepDiff(
+                        step_path=step_path,
+                        key_path=key_path,
+                        diff_type=DiffType.CONNECTION_MISMATCH,
+                        severity=DiffSeverity.ERROR,
+                        description=f"{len(orig_val)} connections vs {len(after_val)}",
+                        original_value=orig_val,
+                        roundtrip_value=after_val,
+                    )
+                )
             else:
                 for i, (o, a) in enumerate(zip(orig_val, after_val)):
                     if isinstance(o, dict) and isinstance(a, dict):
                         if o.get("id") != a.get("id") or o.get("output_name") != a.get("output_name"):
-                            diffs.append(f"{key_path}[{i}]: {o} != {a}")
+                            diffs.append(
+                                StepDiff(
+                                    step_path=step_path,
+                                    key_path=f"{key_path}[{i}]",
+                                    diff_type=DiffType.CONNECTION_MISMATCH,
+                                    severity=DiffSeverity.ERROR,
+                                    description=f"{o} != {a}",
+                                    original_value=o,
+                                    roundtrip_value=a,
+                                )
+                            )
     return diffs
 
 
@@ -572,7 +869,7 @@ def compare_comments(
     after_workflow: dict,
     path_prefix: str = "",
     id_mapping: Optional[dict[str, Optional[str]]] = None,
-) -> list[str]:
+) -> list[StepDiff]:
     """Compare workflow comments between original and roundtripped workflows.
 
     Comments are matched by content rather than id, since reimport may renumber ids.
@@ -580,11 +877,21 @@ def compare_comments(
     """
     orig_comments = orig_workflow.get("comments", [])
     after_comments = after_workflow.get("comments", [])
-    diffs = []
+    diffs: list[StepDiff] = []
     prefix = f"{path_prefix}comments" if not path_prefix else f"{path_prefix}/comments"
 
     if len(orig_comments) != len(after_comments):
-        diffs.append(f"{prefix}: {len(orig_comments)} comments vs {len(after_comments)}")
+        diffs.append(
+            StepDiff(
+                step_path=prefix,
+                key_path="",
+                diff_type=DiffType.COMMENT_MISMATCH,
+                severity=DiffSeverity.ERROR,
+                description=f"{len(orig_comments)} comments vs {len(after_comments)}",
+                original_value=len(orig_comments),
+                roundtrip_value=len(after_comments),
+            )
+        )
         return diffs
 
     orig_normalized = sorted((_normalize_comment(c) for c in orig_comments), key=_comment_sort_key)
@@ -596,7 +903,17 @@ def compare_comments(
         if o != a:
             for k in sorted(set(list(o.keys()) + list(a.keys()))):
                 if o.get(k) != a.get(k):
-                    diffs.append(f"{prefix}[{i}].{k}: {o.get(k)!r} != {a.get(k)!r}")
+                    diffs.append(
+                        StepDiff(
+                            step_path=f"{prefix}[{i}]",
+                            key_path=k,
+                            diff_type=DiffType.COMMENT_MISMATCH,
+                            severity=DiffSeverity.ERROR,
+                            description=f"{o.get(k)!r} != {a.get(k)!r}",
+                            original_value=o.get(k),
+                            roundtrip_value=a.get(k),
+                        )
+                    )
 
     return diffs
 
@@ -683,8 +1000,16 @@ class RoundTripValidationResult:
     format2_dict: Optional[dict] = None
     reimported_dict: Optional[dict] = None
     conversion_result: Optional[RoundTripResult] = None
-    diffs: Optional[list[str]] = None
+    diffs: Optional[list[StepDiff]] = None
     error: Optional[str] = None
+
+    @property
+    def error_diffs(self) -> list[StepDiff]:
+        return [d for d in (self.diffs or []) if d.severity == DiffSeverity.ERROR]
+
+    @property
+    def benign_diffs(self) -> list[StepDiff]:
+        return [d for d in (self.diffs or []) if d.severity == DiffSeverity.BENIGN]
 
     @property
     def ok(self) -> bool:
@@ -692,7 +1017,9 @@ class RoundTripValidationResult:
             return False
         if self.conversion_result and not self.conversion_result.success:
             return False
-        return self.diffs is not None and len(self.diffs) == 0
+        if self.diffs is None:
+            return False
+        return len(self.error_diffs) == 0
 
     @property
     def status(self) -> str:
@@ -702,7 +1029,7 @@ class RoundTripValidationResult:
             return "conversion_fail"
         if self.diffs is None:
             return "error"
-        if len(self.diffs) > 0:
+        if len(self.error_diffs) > 0:
             return "roundtrip_mismatch"
         return "ok"
 
@@ -710,16 +1037,23 @@ class RoundTripValidationResult:
     def summary_line(self) -> str:
         status = self.status
         name = os.path.basename(self.workflow_path)
+        n_steps = len(self.conversion_result.step_results) if self.conversion_result else 0
         if status == "ok":
-            n_steps = len(self.conversion_result.step_results) if self.conversion_result else 0
+            benign = len(self.benign_diffs)
+            if benign:
+                return f"{name}: OK ({n_steps} steps, {benign} benign diff(s))"
             return f"{name}: OK ({n_steps} steps)"
         elif status == "conversion_fail":
             assert self.conversion_result is not None
             failures = [r for r in self.conversion_result.step_results if not r.success]
             return f"{name}: CONVERSION FAIL ({len(failures)} step(s))"
         elif status == "roundtrip_mismatch":
-            assert self.diffs is not None
-            return f"{name}: MISMATCH ({len(self.diffs)} diff(s))"
+            errors = len(self.error_diffs)
+            benign = len(self.benign_diffs)
+            parts = f"{errors} error(s)"
+            if benign:
+                parts += f", {benign} benign"
+            return f"{name}: MISMATCH ({parts})"
         else:
             return f"{name}: ERROR ({self.error})"
 
@@ -792,6 +1126,7 @@ class RoundTripValidateOptions(BaseModel):
     populate_cache: bool = False
     tool_source: str = "auto"
     strip_bookkeeping: bool = False
+    strict: bool = False
     output_native: Optional[str] = None
     output_format2: Optional[str] = None
 
@@ -801,19 +1136,34 @@ class RoundTripValidateOptions(BaseModel):
         return cls(**{k: v for k, v in vars(args).items() if k in fields})
 
 
+def _is_passing(result: RoundTripValidationResult, strict: bool) -> bool:
+    if strict:
+        return (
+            result.diffs is not None
+            and len(result.diffs) == 0
+            and not result.error
+            and (not result.conversion_result or result.conversion_result.success)
+        )
+    return result.ok
+
+
 # -- Formatters --
 
 
 def format_validation_text(
     results: List[RoundTripValidationResult],
     verbose: bool = False,
+    strict: bool = False,
 ) -> str:
     lines = []
-    ok = sum(1 for r in results if r.ok)
-    fail = len(results) - ok
+    ok_count = sum(1 for r in results if _is_passing(r, strict))
+    fail_count = len(results) - ok_count
 
     for r in results:
-        lines.append(r.summary_line)
+        if strict:
+            lines.append(r.summary_line)
+        else:
+            lines.append(r.summary_line)
         if verbose and r.status == "conversion_fail" and r.conversion_result:
             for sr in r.conversion_result.step_results:
                 if not sr.success:
@@ -821,12 +1171,18 @@ def format_validation_text(
                     lines.append(f"  step {sr.step_id} ({sr.tool_id}): [{fc}] {sr.error}")
         if verbose and r.diffs:
             for d in r.diffs:
-                lines.append(f"  {d}")
+                lines.append(d.format_line(verbose=verbose))
         if verbose and r.error:
             lines.append(f"  {r.error}")
 
     lines.append("---")
-    lines.append(f"Summary: {ok} OK, {fail} FAIL (total {len(results)} workflows)")
+    ok_clean = sum(1 for r in results if _is_passing(r, strict) and not r.benign_diffs)
+    ok_benign = ok_count - ok_clean
+    if ok_benign and not strict:
+        ok_label = f"{ok_count} OK ({ok_clean} clean, {ok_benign} with benign diffs)"
+    else:
+        ok_label = f"{ok_count} OK"
+    lines.append(f"Summary: {ok_label}, {fail_count} FAIL (total {len(results)} workflows)")
     return "\n".join(lines)
 
 
@@ -881,8 +1237,8 @@ def _run_single_validation(options: "RoundTripValidateOptions", tool_info) -> in
         _write_json(result.reimported_dict, options.output_native)
         print(f"Reimported native written to {options.output_native}", file=sys.stderr)
 
-    print(format_validation_text([result], verbose=options.verbose))
-    return 0 if result.ok else 1
+    print(format_validation_text([result], verbose=options.verbose, strict=options.strict))
+    return 0 if _is_passing(result, options.strict) else 1
 
 
 def _run_tree_validation(options: "RoundTripValidateOptions", tool_info) -> int:
@@ -917,9 +1273,9 @@ def _run_tree_validation(options: "RoundTripValidateOptions", tool_info) -> int:
         )
         results.append(result)
 
-    print(format_validation_text(results, verbose=options.verbose))
+    print(format_validation_text(results, verbose=options.verbose, strict=options.strict))
 
-    has_failures = any(not r.ok for r in results)
+    has_failures = any(not _is_passing(r, options.strict) for r in results)
     return 1 if has_failures else 0
 
 

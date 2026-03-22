@@ -330,7 +330,7 @@ def _reverse_value(tool_input: ToolParameterT, value: Any) -> Any:
     if parameter_type == "gx_select":
         select = cast(SelectParameterModel, tool_input)
         if select.multiple and isinstance(value, list):
-            return ",".join(str(v) for v in value)
+            return [str(v) for v in value]
         return value
 
     elif parameter_type == "gx_data_column":
@@ -338,7 +338,7 @@ def _reverse_value(tool_input: ToolParameterT, value: Any) -> Any:
 
         dc = cast(DataColumnParameterModel, tool_input)
         if dc.multiple and isinstance(value, list):
-            return ",".join(str(v) for v in value)
+            return [str(v) for v in value]
         return str(value) if isinstance(value, int) else value
 
     elif parameter_type == "gx_conditional":

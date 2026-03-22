@@ -28,6 +28,11 @@ def build_parser():
         help="Strip bookkeeping keys (__current_case__, etc.) before comparison",
     )
     parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat benign diffs (dropped all-None sections, empty repeats) as errors",
+    )
+    parser.add_argument(
         "--output-native",
         metavar="FILE",
         help="Write the round-tripped native workflow for inspection",
