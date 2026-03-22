@@ -438,6 +438,24 @@ def _build_step_id_mapping(orig_workflow: dict, after_workflow: dict) -> dict[st
                 mapping[orig_id] = orig_id
                 used_after_ids.add(orig_id)
 
+    # Third pass: match remaining by tool_id+type (handles unlabeled steps that shifted position)
+    unmatched_orig = {oid: orig_steps[oid] for oid in orig_steps if oid not in mapping}
+    unmatched_after = {aid: after_steps[aid] for aid in after_steps if aid not in used_after_ids}
+    for orig_id, orig_step in unmatched_orig.items():
+        tool_id = orig_step.get("tool_id")
+        step_type = orig_step.get("type", "tool")
+        if not tool_id:
+            continue
+        candidates = [
+            aid
+            for aid, astep in unmatched_after.items()
+            if astep.get("tool_id") == tool_id and astep.get("type", "tool") == step_type
+        ]
+        if len(candidates) == 1:
+            mapping[orig_id] = candidates[0]
+            used_after_ids.add(candidates[0])
+            del unmatched_after[candidates[0]]
+
     # Mark unmatched as None
     for orig_id in orig_steps:
         if orig_id not in mapping:

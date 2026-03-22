@@ -239,8 +239,23 @@ def _convert_scalar_value(parameter_type: str, parameter_name: str, value, tool_
             elif isinstance(value, list):
                 return [_coerce_select_value(v) for v in value]
         return _coerce_select_value(value)
+    elif parameter_type == "gx_data_column":
+        if _is_replacement_param(value):
+            return value
+        from galaxy.tool_util_models.parameters import DataColumnParameterModel
+
+        dc = cast(DataColumnParameterModel, tool_input)
+        if dc.multiple:
+            if isinstance(value, str):
+                return [int(v.strip()) for v in value.split(",") if v.strip()] if value else []
+            elif isinstance(value, list):
+                return [int(v) for v in value]
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return value
     else:
-        # gx_text, gx_color, gx_hidden, gx_data_column, gx_drill_down, etc.
+        # gx_text, gx_color, gx_hidden, gx_drill_down, etc.
         return value
 
 
@@ -317,6 +332,14 @@ def _reverse_value(tool_input: ToolParameterT, value: Any) -> Any:
         if select.multiple and isinstance(value, list):
             return ",".join(str(v) for v in value)
         return value
+
+    elif parameter_type == "gx_data_column":
+        from galaxy.tool_util_models.parameters import DataColumnParameterModel
+
+        dc = cast(DataColumnParameterModel, tool_input)
+        if dc.multiple and isinstance(value, list):
+            return ",".join(str(v) for v in value)
+        return str(value) if isinstance(value, int) else value
 
     elif parameter_type == "gx_conditional":
         if not isinstance(value, dict):
