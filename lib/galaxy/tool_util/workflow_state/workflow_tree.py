@@ -22,6 +22,8 @@ from galaxy.tool_util.loader_directory import EXCLUDE_WALK_DIRS
 
 NATIVE_EXTENSIONS = (".ga",)
 FORMAT2_EXTENSIONS = (".gxwf.yml", ".gxwf.yaml")
+YAML_EXTENSIONS = (".yml", ".yaml")
+JSON_EXTENSIONS = (".json",)
 
 WorkflowFormat = Literal["native", "format2"]
 
@@ -50,26 +52,29 @@ class WorkflowReport:
 
 
 def _is_workflow_content(path: str, fmt: WorkflowFormat) -> bool:
-    """Validate file content looks like a workflow (first 5KB check)."""
+    """Validate file content looks like a workflow by parsing and checking key fields."""
     try:
-        with open(path) as f:
-            head = f.read(5120)
-    except (OSError, UnicodeDecodeError):
-        return False
+        if fmt == "native":
+            with open(path) as f:
+                data = json.load(f)
+            return isinstance(data, dict) and data.get("a_galaxy_workflow") == "true"
+        else:
+            from gxformat2.yaml import ordered_load
 
-    if fmt == "native":
-        return '"steps"' in head
-    else:
-        return "class: GalaxyWorkflow" in head or "class: 'GalaxyWorkflow'" in head
+            with open(path) as f:
+                data = ordered_load(f)
+            return isinstance(data, dict) and data.get("class") == "GalaxyWorkflow"
+    except Exception:
+        return False
 
 
 def discover_workflows(root: str, include_format2: bool = True) -> List[WorkflowInfo]:
     """Discover workflow files under root directory.
 
-    Follows loader_directory.py patterns:
-    - os.walk() with in-place dir exclusion via EXCLUDE_WALK_DIRS
-    - Extension-based filtering (.ga, .gxwf.yml/.gxwf.yaml)
-    - Content validation (first 5KB) to reject non-workflow files
+    Recognizes workflows by extension and content:
+    - .ga, .json → native if a_galaxy_workflow == "true"
+    - .gxwf.yml, .gxwf.yaml → format2 if class == "GalaxyWorkflow"
+    - .yml, .yaml → format2 if class == "GalaxyWorkflow" (checked before .gxwf)
     """
     root = os.path.abspath(root)
     workflows: List[WorkflowInfo] = []
@@ -82,7 +87,11 @@ def discover_workflows(root: str, include_format2: bool = True) -> List[Workflow
 
             if filename.endswith(NATIVE_EXTENSIONS):
                 fmt = "native"
+            elif filename.endswith(JSON_EXTENSIONS):
+                fmt = "native"
             elif include_format2 and filename.endswith(FORMAT2_EXTENSIONS):
+                fmt = "format2"
+            elif include_format2 and filename.endswith(YAML_EXTENSIONS):
                 fmt = "format2"
             else:
                 continue

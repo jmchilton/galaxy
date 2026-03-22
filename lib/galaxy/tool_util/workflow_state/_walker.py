@@ -130,8 +130,9 @@ def walk_native_state(
                 continue
             target_when = _select_which_when_native(conditional, conditional_state)
             if target_when is None:
-                continue
-            all_params: List[ToolParameterT] = [conditional.test_parameter] + list(target_when.parameters)
+                all_params: List[ToolParameterT] = [conditional.test_parameter]
+            else:
+                all_params = [conditional.test_parameter] + list(target_when.parameters)
             nested = walk_native_state(
                 step,
                 all_params,
