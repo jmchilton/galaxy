@@ -109,6 +109,7 @@ from galaxy.workflow.format2 import (
     convert_from_format2,
     convert_to_format2,
 )
+from galaxy.workflow.gx_validator import ToolboxGetToolInfo
 from galaxy.workflow.modules import (
     module_factory,
     ToolModule,
@@ -975,7 +976,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 workflow=workflow,
                 preserve_external_subworkflow_links=preserve_external_subworkflow_links,
             )
-            wf_dict = to_format_2(wf_dict, json_wrapper=False)
+            wf_dict = self._export_as_format2(trans, wf_dict, to_format_2)
         elif style == "format2_wrapped_yaml":
             wf_dict = self._workflow_to_dict_export(
                 trans,
@@ -1001,6 +1002,21 @@ class WorkflowContentsManager(UsesAnnotations):
         else:
             wf_dict["version"] = len(stored.workflows) - 1
         return wf_dict
+
+    def _export_as_format2(self, trans, native_dict, to_format_2_fallback):
+        """Export native workflow dict as format2 with schema-aware state blocks.
+
+        Uses the toolbox to resolve tool definitions for clean state conversion.
+        Falls back to naive from_galaxy_native() if the toolbox is unavailable.
+        """
+        from galaxy.tool_util.workflow_state.export_format2 import export_workflow_to_format2
+
+        toolbox = getattr(trans.app, "toolbox", None)
+        if toolbox is None:
+            return to_format_2_fallback(native_dict, json_wrapper=False)
+        get_tool_info = ToolboxGetToolInfo(toolbox)
+        result = export_workflow_to_format2(native_dict, get_tool_info)
+        return result.format2_dict
 
     def _sync_stored_workflow(self, trans, stored_workflow):
         if trans.user_is_admin:
