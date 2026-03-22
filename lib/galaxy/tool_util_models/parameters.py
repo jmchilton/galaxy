@@ -1857,6 +1857,9 @@ class DataColumnParameterModel(BaseGalaxyToolParameterModelDefinition):
             return dynamic_model_information_from_py_type(
                 self, self.py_type, validators={}, requires_value=requires_value
             )
+        elif state_representation == "workflow_step_linked":
+            py_type = allow_connected_value(self.py_type)
+            return dynamic_model_information_from_py_type(self, py_type, requires_value=False)
         else:
             requires_value = self.request_requires_value
             if state_representation in ("job_internal", "job_runtime"):
@@ -1955,6 +1958,7 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
     def pydantic_template(self, state_representation: StateRepresentationT) -> DynamicModelInformation:
         is_boolean = isinstance(self.test_parameter, BooleanParameterModel)
         test_param_name = self.test_parameter.name
+        safe_test_name = safe_field_name(test_param_name)
         test_info = self.test_parameter.pydantic_template(state_representation)
         extra_validators = test_info.validators
         if state_representation in ("job_internal", "job_runtime"):
@@ -1971,7 +1975,8 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
             else:
                 initialize_test = None
             tag = str(discriminator) if not is_boolean else str(discriminator).lower()
-            extra_kwd = {test_param_name: (Literal[when.discriminator], initialize_test)}
+            test_field_alias = test_param_name if safe_test_name != test_param_name else None
+            extra_kwd = {safe_test_name: (Literal[when.discriminator], Field(initialize_test, alias=test_field_alias))}
             when_types.append(
                 cast(
                     Type[BaseModel],
@@ -2042,9 +2047,11 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
                 initialize_cond = None
 
         field_kwargs = self.field_kwargs()
+        name = safe_field_name(self.name)
+        alias = self.name if self.name != name else None
         return DynamicModelInformation(
-            self.name,
-            (py_type, Field(initialize_cond, **field_kwargs)),
+            name,
+            (py_type, Field(initialize_cond, alias=alias, **field_kwargs)),
             {},
         )
 
@@ -2093,9 +2100,11 @@ class RepeatParameterModel(BaseGalaxyToolParameterModelDefinition):
             root: List[instance_class] = Field(initialize_repeat, min_length=min_length, max_length=max_length)  # type: ignore[valid-type]
 
         field_kwargs = self.field_kwargs()
+        name = safe_field_name(self.name)
+        alias = self.name if self.name != name else None
         return DynamicModelInformation(
-            self.name,
-            (RepeatType, Field(initialize_repeat, **field_kwargs)),
+            name,
+            (RepeatType, Field(initialize_repeat, alias=alias, **field_kwargs)),
             {},
         )
 
@@ -2128,9 +2137,11 @@ class SectionParameterModel(BaseGalaxyToolParameterModelDefinition):
         else:
             initialize_section = None
         field_kwargs = self.field_kwargs()
+        name = safe_field_name(self.name)
+        alias = self.name if self.name != name else None
         return DynamicModelInformation(
-            self.name,
-            (instance_class, Field(initialize_section, **field_kwargs)),
+            name,
+            (instance_class, Field(initialize_section, alias=alias, **field_kwargs)),
             {},
         )
 
