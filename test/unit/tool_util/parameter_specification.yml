@@ -2322,6 +2322,11 @@ gx_data_column:
   - { ref_parameter: {class: "File", path: "1.bed"}, parameter: 3 }
   test_case_json_invalid:
   - { ref_parameter: {class: "File", path: "1.bed"}, parameter: "3" }
+  workflow_step_linked_valid:
+  - { ref_parameter: {__class__: ConnectedValue}, parameter: 0 }
+  - { ref_parameter: {__class__: ConnectedValue}, parameter: {__class__: ConnectedValue} }
+  workflow_step_linked_invalid:
+  - { ref_parameter: {__class__: ConnectedValue}, parameter: "0" }
 
 gx_data_column_optional:
   request_valid:
@@ -2368,6 +2373,11 @@ gx_data_column_multiple:
   - { ref_parameter: {class: "File", path: "1.bed"}, parameter: [1, 2, 3] }
   test_case_json_invalid:
   - { ref_parameter: {class: "File", path: "1.bed"}, parameter: "1,2,3" }
+  workflow_step_linked_valid:
+  - { ref_parameter: {__class__: ConnectedValue}, parameter: [0, 1] }
+  - { ref_parameter: {__class__: ConnectedValue}, parameter: {__class__: ConnectedValue} }
+  workflow_step_linked_invalid:
+  - { ref_parameter: {__class__: ConnectedValue}, parameter: "0,1" }
 
 gx_data_column_multiple_accept_default:
   request_valid:
@@ -4240,3 +4250,28 @@ cwl_directory:
    - parameter: true
    - parameter: 5
    - parameter: "5"
+
+gx_section_underscore_name:
+  request_valid:
+  - { __section_opts__: { param: "hello" } }
+  - {}
+  workflow_step_valid:
+  - { __section_opts__: { param: "hello" } }
+  - {}
+  workflow_step_linked_valid:
+  - { __section_opts__: { param: "hello" } }
+  - { __section_opts__: { param: {__class__: ConnectedValue} } }
+  - {}
+
+gx_conditional_underscore_name:
+  request_valid:
+  - { __cond_opts__: { selector: "a", param_a: "test" } }
+  - { __cond_opts__: { selector: "b", param_b: "test" } }
+  - {}
+  workflow_step_valid:
+  - { __cond_opts__: { selector: "a", param_a: "test" } }
+  - {}
+  workflow_step_linked_valid:
+  - { __cond_opts__: { selector: "a", param_a: "test" } }
+  - { __cond_opts__: { selector: "a", param_a: {__class__: ConnectedValue} } }
+  - {}
