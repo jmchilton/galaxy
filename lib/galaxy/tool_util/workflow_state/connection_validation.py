@@ -16,10 +16,9 @@ from typing import (
 )
 
 from galaxy.tool_util.collections import (
-    CollectionTypeDescription,
     COLLECTION_TYPE_DESCRIPTION_FACTORY,
+    CollectionTypeDescription,
 )
-
 from ._report_models import (
     ConnectionResult,
     ConnectionStatus,
@@ -425,7 +424,7 @@ def _resolve_collection_type_source(
     if map_over:
         prefix = map_over.collection_type + ":"
         if ct.startswith(prefix):
-            ct = ct[len(prefix):]
+            ct = ct[len(prefix) :]
 
     return ct
 

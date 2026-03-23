@@ -259,8 +259,9 @@ def format_summary(result: ExportResult) -> str:
 
 def format_yaml(format2_dict: dict) -> str:
     try:
-        from ruamel.yaml import YAML
         import io
+
+        from ruamel.yaml import YAML
 
         yaml = YAML()
         yaml.default_flow_style = False

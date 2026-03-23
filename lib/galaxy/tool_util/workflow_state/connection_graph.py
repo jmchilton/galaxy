@@ -27,7 +27,6 @@ from galaxy.tool_util_models.tool_outputs import (
     ToolOutputText,
 )
 from galaxy.util.topsort import topsort
-
 from ._types import (
     GetToolInfo,
     NativeStepDict,

@@ -1025,9 +1025,7 @@ class WorkflowContentsManager(UsesAnnotations):
 
         toolbox = getattr(trans.app, "toolbox", None)
         if toolbox is None:
-            raise exceptions.ConfigDoesNotAllowException(
-                "Workflow cleaning requires a toolbox but none is available"
-            )
+            raise exceptions.ConfigDoesNotAllowException("Workflow cleaning requires a toolbox but none is available")
         try:
             policy = StaleKeyPolicy.for_clean(preserve, strip)
         except (InvalidCategoryError, ConflictingCategoryError) as e:

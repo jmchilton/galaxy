@@ -16,8 +16,8 @@ from typing import (
 )
 
 from galaxy.tool_util.collections import (
-    CollectionTypeDescription,
     COLLECTION_TYPE_DESCRIPTION_FACTORY,
+    CollectionTypeDescription,
 )
 
 
