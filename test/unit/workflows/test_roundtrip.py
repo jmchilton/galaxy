@@ -9,20 +9,21 @@ this file contains test inventory, loaders, sweep runners, and pytest classes.
 
 import json
 import os
+
 import pytest
 from gxformat2.converter import python_to_workflow
 from gxformat2.yaml import ordered_load
 
 from galaxy.tool_util.workflow_state.roundtrip import (
+    _values_equivalent,
     classify_error,
     compare_tool_state,
     FailureClass,
-    RoundTripResult,
-    RoundTripValidationResult,
     roundtrip_native_workflow,
     roundtrip_validate,
+    RoundTripResult,
+    RoundTripValidationResult,
     StepResult,
-    _values_equivalent,
 )
 from galaxy.util import galaxy_directory
 from galaxy.workflow.gx_validator import (
