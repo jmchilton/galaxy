@@ -14,9 +14,8 @@ from gxformat2.converter import python_to_workflow
 from galaxy.tool_util.workflow_state.connection_validation import (
     validate_connections_report,
 )
-
-from ..util import dict_verify_each
 from .functional_tool_info import FunctionalGetToolInfo
+from ..util import dict_verify_each
 
 WORKFLOW_DIR = Path(__file__).parent / "connection_workflows"
 EXPECTED_DIR = WORKFLOW_DIR / "expected"

@@ -4,6 +4,7 @@ Ports relevant test cases from terminals.test.ts and validates against
 collection_semantics.yml examples.
 """
 
+from galaxy.tool_util.collections import COLLECTION_TYPE_DESCRIPTION_FACTORY as factory
 from galaxy.tool_util.workflow_state.connection_types import (
     ANY_COLLECTION_TYPE,
     can_map_over,
@@ -12,7 +13,6 @@ from galaxy.tool_util.workflow_state.connection_types import (
     effective_map_over,
     NULL_COLLECTION_TYPE,
 )
-from galaxy.tool_util.collections import COLLECTION_TYPE_DESCRIPTION_FACTORY as factory
 
 
 def c_t(collection_type: str):

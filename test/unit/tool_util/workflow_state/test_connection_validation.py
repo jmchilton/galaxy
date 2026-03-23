@@ -9,7 +9,6 @@ collection_type_source, structured_like, incompatible types.
 from galaxy.tool_util.workflow_state.connection_validation import (
     validate_connections,
 )
-
 from galaxy.tool_util_models.parameters import (
     IntegerParameterModel,
     TextParameterModel,
@@ -17,7 +16,6 @@ from galaxy.tool_util_models.parameters import (
 from galaxy.tool_util_models.tool_outputs import (
     ToolOutputInteger,
 )
-
 from .connection_test_fixtures import (
     make_collection_input,
     make_data_input,

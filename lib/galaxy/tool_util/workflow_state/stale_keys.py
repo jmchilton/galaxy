@@ -18,11 +18,11 @@ from dataclasses import (
 from enum import Enum
 from typing import (
     Any,
+    cast,
     Dict,
     List,
     Optional,
     Set,
-    cast,
 )
 
 from galaxy.tool_util.parameters import (
@@ -32,7 +32,6 @@ from galaxy.tool_util.parameters import (
     validate_explicit_conditional_test_value,
 )
 from galaxy.tool_util_models.parameters import SectionParameterModel
-
 from ._types import (
     NativeStepDict,
     ToolInputs,

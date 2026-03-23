@@ -12,10 +12,6 @@ from galaxy.tool_util.parameters import (
     RepeatParameterModel,
     SelectParameterModel,
 )
-from galaxy.tool_util_models.parameters import (
-    LabelValue,
-    SectionParameterModel,
-)
 from galaxy.tool_util.workflow_state.connection_graph import (
     _collect_inputs,
     _collect_outputs,
@@ -24,8 +20,11 @@ from galaxy.tool_util.workflow_state.connection_graph import (
     build_workflow_graph,
     ResolvedStep,
 )
+from galaxy.tool_util_models.parameters import (
+    LabelValue,
+    SectionParameterModel,
+)
 from galaxy.util.topsort import CycleError
-
 from .connection_test_fixtures import (
     make_collection_input,
     make_collection_output,
