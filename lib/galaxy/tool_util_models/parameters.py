@@ -2020,6 +2020,14 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
             select = cast(SelectParameterModel, self.test_parameter)
             all_possible_tags = [str(opt.value) for opt in (select.options or [])]
 
+        missing_when_default_value = cond_test_parameter_default_value(self.test_parameter)
+        if missing_when_default_value is not None:
+            missing_when_default_tag: Optional[str] = (
+                str(missing_when_default_value) if not is_boolean else str(missing_when_default_value).lower()
+            )
+        else:
+            missing_when_default_tag = None
+
         for tag in all_possible_tags:
             if tag in declared_tags:
                 continue
@@ -2041,6 +2049,21 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
                 extra_validators=extra_validators,
             )
             when_types.append(cast(Type[BaseModel], Annotated[empty_when, Tag(tag)]))
+
+            # If this missing when corresponds to the default test parameter value,
+            # also generate an __absent__ branch so omitting the test param resolves here,
+            # and set default_type so the conditional field itself becomes optional.
+            if state_representation not in ("job_internal", "job_runtime"):
+                if missing_when_default_tag is not None and tag == missing_when_default_tag:
+                    absent_type = create_field_model(
+                        [],
+                        f"When_{test_param_name}___absent",
+                        state_representation,
+                        extra_kwd={},
+                        extra_validators={},
+                    )
+                    when_types.append(cast(Type[BaseModel], Annotated[absent_type, Tag("__absent__")]))
+                    default_type = absent_type
 
         def model_x_discriminator(v: Any) -> Optional[str]:
             # returning None causes a validation error, this is what we would want if

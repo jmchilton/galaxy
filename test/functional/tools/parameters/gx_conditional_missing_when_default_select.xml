@@ -1,0 +1,21 @@
+<tool id="gx_conditional_missing_when_default_select" name="gx_conditional_missing_when_default_select" version="1.0.0" profile="24.2">
+    <command detect_errors="exit_code"><![CDATA[echo '$cond.selector' > '$output']]></command>
+    <inputs>
+        <conditional name="cond">
+            <param name="selector" type="select" label="Choose option">
+                <option value="a" selected="true">A</option>
+                <option value="b">B</option>
+                <option value="c">C</option>
+            </param>
+            <when value="b">
+                <param name="param_b" type="integer" value="1" label="Param B"/>
+            </when>
+            <when value="c">
+                <param name="param_c" type="text" value="default_c" label="Param C"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt"/>
+    </outputs>
+</tool>
