@@ -1074,7 +1074,10 @@ def roundtrip_validate(
     before conversion — these are keys left behind by older tool versions
     or Galaxy serialization bugs that would otherwise cause validation failures.
     """
-    from .clean import clean_stale_state, strip_bookkeeping_from_workflow
+    from .clean import (
+        clean_stale_state,
+        strip_bookkeeping_from_workflow,
+    )
 
     result = RoundTripValidationResult(workflow_path=workflow_path)
 
