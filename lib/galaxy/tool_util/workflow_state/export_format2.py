@@ -7,7 +7,6 @@ using tool definitions. This module wires that callback with stale key
 policy, strict mode, and per-step status tracking.
 """
 
-import argparse
 import copy
 import logging
 import os
@@ -23,11 +22,13 @@ from typing import (
     Optional,
 )
 
-from pydantic import BaseModel
-
 from gxformat2.normalized import NormalizedFormat2
 from gxformat2.options import ConversionOptions
 
+from ._cli_common import (
+    setup_tool_info,
+    ToolCacheOptions,
+)
 from ._types import (
     GetToolInfo,
     NativeWorkflowDict,
@@ -198,23 +199,13 @@ class ExportError(Exception):
 # -- Options model --
 
 
-class ExportOptions(BaseModel):
-    workflow_path: str
+class ExportOptions(ToolCacheOptions):
     output: Optional[str] = None
     json_output: bool = False
-    tool_source_cache_dir: Optional[str] = None
-    verbose: bool = False
-    populate_cache: bool = False
-    tool_source: str = "auto"
     strict: bool = False
     diff: bool = False
     allow: List[str] = []
     deny: List[str] = []
-
-    @classmethod
-    def from_namespace(cls, args: argparse.Namespace) -> "ExportOptions":
-        fields = set(cls.model_fields)
-        return cls(**{k: v for k, v in vars(args).items() if k in fields})
 
 
 # -- Formatters --
@@ -277,18 +268,7 @@ def run_export(options: ExportOptions) -> int:
     """Run export pipeline. Returns exit code."""
     from gxformat2.to_format2 import to_format2
 
-    from ._cli_common import setup_logging
-    from .cache import (
-        build_tool_info,
-        populate_cache,
-    )
-
-    setup_logging(options.verbose)
-    tool_info = build_tool_info(options.tool_source_cache_dir)
-
-    if options.populate_cache:
-        populate_cache(tool_info, options.workflow_path, source=options.tool_source)
-        print("", file=sys.stderr)
+    tool_info = setup_tool_info(options)
 
     workflow = load_workflow(options.workflow_path)
     if _format(workflow) != "native":
