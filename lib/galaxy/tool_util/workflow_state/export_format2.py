@@ -87,6 +87,7 @@ def export_workflow_to_format2(
     workflow: NormalizedNativeWorkflow,
     get_tool_info: GetToolInfo,
     strict: bool = False,
+    compact: bool = False,
     policy: Optional[StaleKeyPolicy] = None,
 ) -> ExportResult:
     """Export native workflow as format2 with schema-aware state blocks.
@@ -98,7 +99,7 @@ def export_workflow_to_format2(
     step_statuses: List[StepExportStatus] = []
     callback = _make_export_callback(get_tool_info, step_statuses, strict=strict, policy=policy)
 
-    options = ConversionOptions(state_encode_to_format2=callback)
+    options = ConversionOptions(state_encode_to_format2=callback, compact=compact)
     format2_model = to_format2(workflow, options=options)
 
     return ExportResult(format2=format2_model, steps=step_statuses)
@@ -196,8 +197,8 @@ class ExportError(Exception):
 class ExportOptions(ToolCacheOptions):
     output: Optional[str] = None
     json_output: bool = False
+    compact: bool = False
     strict: bool = False
-    diff: bool = False
     allow: List[str] = []
     deny: List[str] = []
 
@@ -241,20 +242,6 @@ def format_json(format2_dict: dict) -> str:
     return json.dumps(format2_dict, indent=4) + "\n"
 
 
-def format_diff(original_format2: dict, converted_format2: dict, workflow_path: str) -> str:
-    import difflib
-
-    original_yaml = format_yaml(original_format2)
-    converted_yaml = format_yaml(converted_format2)
-    diff = difflib.unified_diff(
-        original_yaml.splitlines(keepends=True),
-        converted_yaml.splitlines(keepends=True),
-        fromfile=f"{workflow_path} (naive)",
-        tofile=f"{workflow_path} (schema-aware)",
-    )
-    return "".join(diff)
-
-
 # -- Entry point --
 
 
@@ -280,23 +267,12 @@ def run_export(options: ExportOptions) -> int:
         return 0
 
     try:
-        result = export_workflow_to_format2(workflow, tool_info, strict=options.strict, policy=policy)
+        result = export_workflow_to_format2(
+            workflow, tool_info, strict=options.strict, compact=options.compact, policy=policy
+        )
     except ExportError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-
-    if options.diff:
-        # Generate naive format2 for comparison
-        naive_model = to_format2(workflow)
-        naive_dict = naive_model.to_dict()
-        diff_text = format_diff(naive_dict, result.format2_dict, options.workflow_path)
-        if diff_text:
-            print(diff_text, end="")
-        else:
-            print("No differences.")
-        print("---", file=sys.stderr)
-        print(result.summary, file=sys.stderr)
-        return 0
 
     # Format output
     if options.json_output:
