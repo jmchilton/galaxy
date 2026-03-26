@@ -1016,6 +1016,8 @@ class WorkflowContentsManager(UsesAnnotations):
 
     def _clean_native_dict(self, trans, wf_dict, preserve, strip):
         """Strip stale keys from a native workflow dict in place."""
+        from gxformat2.normalized import ensure_native
+
         from galaxy.tool_util.workflow_state.clean import clean_stale_state
         from galaxy.tool_util.workflow_state.stale_keys import (
             ConflictingCategoryError,
@@ -1031,7 +1033,8 @@ class WorkflowContentsManager(UsesAnnotations):
         except (InvalidCategoryError, ConflictingCategoryError) as e:
             raise exceptions.RequestParameterInvalidException(str(e))
         get_tool_info = ToolboxGetToolInfo(toolbox)
-        clean_stale_state(wf_dict, get_tool_info, policy=policy)
+        normalized = ensure_native(wf_dict)
+        clean_stale_state(normalized, wf_dict, get_tool_info, policy=policy)
 
     def _sync_stored_workflow(self, trans, stored_workflow):
         if trans.user_is_admin:
