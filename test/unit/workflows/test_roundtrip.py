@@ -232,9 +232,9 @@ def run_full_roundtrip_sweep(get_tool_info=None) -> dict[str, RoundTripValidatio
 
 
 def print_sweep_results(results: dict[str, RoundTripResult]):
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("Round-Trip Sweep Results")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     if EXCLUDED_WORKFLOWS:
         print(f"EXCLUDED: {len(EXCLUDED_WORKFLOWS)}")
@@ -268,7 +268,7 @@ def print_sweep_results(results: dict[str, RoundTripResult]):
         for name, detail in items:
             print(f"    {name}: {detail}")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
 
 
 def print_full_roundtrip_results(results: dict[str, RoundTripValidationResult]):
@@ -398,7 +398,7 @@ class TestComparison:
         after = {"param": "world"}
         diffs = compare_tool_state(orig, after)
         assert len(diffs) == 1
-        assert "param" in diffs[0]
+        assert diffs[0].key_path == "param"
 
 
 def _assert_roundtrip_passes(result: RoundTripResult):
