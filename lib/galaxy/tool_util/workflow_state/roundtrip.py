@@ -42,6 +42,10 @@ from ._report_models import (
 )
 from ._report_output import emit_reports
 from ._types import GetToolInfo
+from .precheck import (
+    precheck_native_workflow,
+    SkipWorkflowReason,
+)
 from .clean import (
     clean_stale_state,
     strip_bookkeeping_from_workflow,
@@ -1002,6 +1006,7 @@ class RoundTripValidationResult(BaseModel):
     stale_clean_results: Optional[list[CleanStepResult]] = None
     original_dict: Optional[dict] = Field(default=None, exclude=True)
     error: Optional[str] = None
+    skipped_reason: Optional["SkipWorkflowReason"] = None
 
     @property
     def error_diffs(self) -> list[StepDiff]:
@@ -1013,7 +1018,7 @@ class RoundTripValidationResult(BaseModel):
 
     @property
     def ok(self) -> bool:
-        if self.error:
+        if self.skipped_reason or self.error:
             return False
         if self.conversion_result and not self.conversion_result.success:
             return False
@@ -1023,6 +1028,8 @@ class RoundTripValidationResult(BaseModel):
 
     @property
     def status(self) -> str:
+        if self.skipped_reason:
+            return "skipped"
         if self.error:
             return "error"
         if self.conversion_result and not self.conversion_result.success:
@@ -1043,6 +1050,8 @@ class RoundTripValidationResult(BaseModel):
             if benign:
                 return f"{name}: OK ({n_steps} steps, {benign} benign diff(s))"
             return f"{name}: OK ({n_steps} steps)"
+        elif status == "skipped":
+            return f"{name}: SKIPPED ({self.skipped_reason.value})"
         elif status == "conversion_fail":
             assert self.conversion_result is not None
             failures = [r for r in self.conversion_result.step_results if not r.success]
@@ -1075,6 +1084,12 @@ def roundtrip_validate(
     or Galaxy serialization bugs that would otherwise cause validation failures.
     """
     result = RoundTripValidationResult(workflow_path=workflow_path)
+
+    precheck = precheck_native_workflow(workflow_dict, get_tool_info)
+    if not precheck.can_process:
+        result.skipped_reason = precheck.skip_reasons[0]
+        return result
+
     result.original_dict = copy.deepcopy(workflow_dict)
 
     if strip_bookkeeping or clean_stale:
@@ -1129,7 +1144,7 @@ class RoundTripTreeReport(TreeReportBase):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def summary(self) -> dict[str, int]:
-        ok = fail = error = benign_only = 0
+        ok = fail = error = benign_only = skipped = 0
         for r in self.results:
             status = r.status
             if status == "ok":
@@ -1137,18 +1152,20 @@ class RoundTripTreeReport(TreeReportBase):
                     benign_only += 1
                 else:
                     ok += 1
+            elif status == "skipped":
+                skipped += 1
             elif status == "error":
                 error += 1
             else:
                 fail += 1
-        return {"clean": ok, "benign_only": benign_only, "fail": fail, "error": error}
+        return {"clean": ok, "benign_only": benign_only, "fail": fail, "error": error, "skipped": skipped}
 
     def format_summary_line(self) -> str:
         s = self.summary
         total = sum(s.values())
         return (
             f"Summary: {s['clean']} clean, {s['benign_only']} benign, "
-            f"{s['fail']} fail, {s['error']} error (total {total} workflows)"
+            f"{s['fail']} fail, {s['error']} error, {s['skipped']} skipped (total {total} workflows)"
         )
 
 
@@ -1172,6 +1189,8 @@ class RoundTripValidateOptions(ToolCacheOptions):
 
 
 def _is_passing(result: RoundTripValidationResult, strict: bool) -> bool:
+    if result.skipped_reason:
+        return True
     if strict:
         return (
             result.diffs is not None
@@ -1233,7 +1252,7 @@ def format_roundtrip_markdown(report: RoundTripTreeReport) -> str:
         f"# Roundtrip Validation: {report.root}",
         "",
         f"**{total} workflows:** {s['clean']} clean, {s['benign_only']} benign, "
-        f"{s['fail']} fail, {s['error']} error",
+        f"{s['fail']} fail, {s['error']} error, {s['skipped']} skipped",
         "",
     ]
     for r in report.results:
