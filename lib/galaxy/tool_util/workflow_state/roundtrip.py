@@ -15,13 +15,6 @@ from typing import (
     Optional,
 )
 
-from pydantic import (
-    BaseModel,
-    computed_field,
-    ConfigDict,
-    Field,
-)
-
 from gxformat2.normalized import (
     ensure_native,
     NormalizedNativeStep,
@@ -31,6 +24,12 @@ from gxformat2.normalized import (
 )
 from gxformat2.options import ConversionOptions
 from gxformat2.schema.native import NativeInputConnection
+from pydantic import (
+    BaseModel,
+    computed_field,
+    ConfigDict,
+    Field,
+)
 
 from ._cli_common import (
     setup_tool_info,
@@ -42,10 +41,6 @@ from ._report_models import (
 )
 from ._report_output import emit_reports
 from ._types import GetToolInfo
-from .precheck import (
-    precheck_native_workflow,
-    SkipWorkflowReason,
-)
 from .clean import (
     clean_stale_state,
     strip_bookkeeping_from_workflow,
@@ -55,6 +50,10 @@ from .convert import (
     convert_state_to_format2,
     make_convert_tool_state,
     make_encode_tool_state,
+)
+from .precheck import (
+    precheck_native_workflow,
+    SkipWorkflowReason,
 )
 from .validation import _format
 from .workflow_tools import load_workflow
@@ -1374,7 +1373,10 @@ def run_roundtrip_validate_tree(options: RoundTripValidateTreeOptions) -> int:
             results=results,
         )
 
-    from ._tree_orchestrator import TreeContext, run_tree
+    from ._tree_orchestrator import (
+        run_tree,
+        TreeContext,
+    )
 
     ctx = TreeContext(root=options.workflow_path, tool_info=tool_info, include_format2=False)
     return run_tree(
