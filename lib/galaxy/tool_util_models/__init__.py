@@ -172,6 +172,13 @@ class ParsedTool(ToolSourceBaseModel):
     xrefs: List[XrefDict]
     help: Optional[HelpContent]
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_description(cls, values):
+        if isinstance(values, dict) and values.get("description") == "":
+            values["description"] = None
+        return values
+
 
 class StrictModel(BaseModel):
 
