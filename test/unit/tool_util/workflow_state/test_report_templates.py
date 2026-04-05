@@ -26,6 +26,12 @@ from galaxy.tool_util.workflow_state.export_format2 import (
     ExportTreeReport,
     WorkflowExportResult,
 )
+from galaxy.tool_util.workflow_state._report_models import (
+    LintTreeReport,
+    LintWorkflowResult,
+    ValidationStepResult,
+)
+from galaxy.tool_util.workflow_state.precheck import SkipWorkflowReason
 from galaxy.tool_util.workflow_state.to_native_stateful import (
     ToNativeTreeReport,
     WorkflowToNativeResult,
@@ -36,7 +42,10 @@ GOLDENS_DIR = os.path.join(os.path.dirname(__file__), "report_markdown_goldens")
 
 
 def _load_golden(name: str) -> str:
-    with open(os.path.join(GOLDENS_DIR, name)) as fh:
+    """Load a markdown golden. Uses ``.md.golden`` suffix so prettier's
+    table-aligner doesn't reformat the file (templates emit unaligned tables
+    because Jinja2/Nunjucks have no shared column-pad filter)."""
+    with open(os.path.join(GOLDENS_DIR, f"{name}.md.golden")) as fh:
         return fh.read()
 
 
@@ -196,7 +205,7 @@ def _export_tree_fixture() -> ExportTreeReport:
 
 
 def test_export_tree_matches_golden() -> None:
-    expected = _load_golden("export_tree.md").rstrip() + "\n"
+    expected = _load_golden("export_tree").rstrip() + "\n"
     actual = render_report("export_tree.md.j2", _export_tree_fixture()).rstrip() + "\n"
     assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
 
@@ -242,6 +251,54 @@ def _to_native_tree_fixture() -> ToNativeTreeReport:
 
 
 def test_to_native_tree_matches_golden() -> None:
-    expected = _load_golden("to_native_tree.md").rstrip() + "\n"
+    expected = _load_golden("to_native_tree").rstrip() + "\n"
     actual = render_report("to_native_tree.md.j2", _to_native_tree_fixture()).rstrip() + "\n"
+    assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
+
+
+# -- lint_tree.md.j2 golden (Step 4) -----------------------------------------
+
+
+def _lint_tree_fixture() -> LintTreeReport:
+    def step(i: int, status: str) -> ValidationStepResult:
+        return ValidationStepResult(step=str(i), tool_id=f"tool_{i}", status=status)
+
+    return LintTreeReport(
+        root="/tmp/workflows",
+        results=[
+            LintWorkflowResult(
+                path="/tmp/workflows/catA/wf_ok.ga",
+                relative_path="catA/wf_ok.ga",
+                category="catA",
+                lint_errors=0,
+                lint_warnings=1,
+                step_results=[step(1, "ok"), step(2, "ok"), step(3, "ok")],
+            ),
+            LintWorkflowResult(
+                path="/tmp/workflows/catA/wf_fail.ga",
+                relative_path="catA/wf_fail.ga",
+                category="catA",
+                lint_errors=2,
+                lint_warnings=0,
+                step_results=[step(1, "ok"), step(2, "fail"), step(3, "fail")],
+            ),
+            LintWorkflowResult(
+                path="/tmp/workflows/catB/wf_err.ga",
+                relative_path="catB/wf_err.ga",
+                category="catB",
+                error="parse failed",
+            ),
+            LintWorkflowResult(
+                path="/tmp/workflows/catB/wf_skip.ga",
+                relative_path="catB/wf_skip.ga",
+                category="catB",
+                skipped_reason=SkipWorkflowReason.LEGACY_ENCODING,
+            ),
+        ],
+    )
+
+
+def test_lint_tree_matches_golden() -> None:
+    expected = _load_golden("lint_tree").rstrip() + "\n"
+    actual = render_report("lint_tree.md.j2", _lint_tree_fixture()).rstrip() + "\n"
     assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
