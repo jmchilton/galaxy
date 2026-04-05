@@ -18,6 +18,7 @@ from dataclasses import (
 from typing import (
     Dict,
     List,
+    Literal,
     Optional,
 )
 
@@ -184,6 +185,20 @@ class WorkflowToNativeResult(WorkflowResultBase):
     ok: bool = False
     steps_encoded: int = 0
     steps_fallback: int = 0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def status(self) -> Literal["ok", "partial", "error", "skipped"]:
+        # Precedence mirrors the original ``_format_tree_markdown`` branches:
+        # error → skipped → ok → partial. ``ok=True`` with ``steps_fallback>0``
+        # stays "ok" (fallback count is a detail, not a state).
+        if self.error:
+            return "error"
+        if self.skipped_reason:
+            return "skipped"
+        if self.ok:
+            return "ok"
+        return "partial"
 
 
 class SingleToNativeReport(BaseModel):

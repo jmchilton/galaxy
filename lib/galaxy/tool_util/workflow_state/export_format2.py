@@ -20,6 +20,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Literal,
     Optional,
 )
 
@@ -416,6 +417,21 @@ class WorkflowExportResult(WorkflowResultBase):
     ok: bool = False
     steps_converted: int = 0
     steps_fallback: int = 0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def status(self) -> Literal["ok", "partial", "error", "skipped"]:
+        # Precedence mirrors the original ``_format_tree_markdown`` branches:
+        # error → skipped → ok → partial. ``ok=True`` with ``steps_fallback>0``
+        # is still "ok" — the original labeled this as OK (with a fallback
+        # count in parens), so status must not demote it to "partial".
+        if self.error:
+            return "error"
+        if self.skipped_reason:
+            return "skipped"
+        if self.ok:
+            return "ok"
+        return "partial"
 
 
 class SingleExportReport(BaseModel):
