@@ -27,9 +27,12 @@ from galaxy.tool_util.workflow_state.export_format2 import (
     WorkflowExportResult,
 )
 from galaxy.tool_util.workflow_state._report_models import (
+    CleanStepResult,
     LintTreeReport,
     LintWorkflowResult,
+    TreeCleanReport,
     ValidationStepResult,
+    WorkflowCleanResult,
 )
 from galaxy.tool_util.workflow_state.precheck import SkipWorkflowReason
 from galaxy.tool_util.workflow_state.to_native_stateful import (
@@ -301,4 +304,48 @@ def _lint_tree_fixture() -> LintTreeReport:
 def test_lint_tree_matches_golden() -> None:
     expected = _load_golden("lint_tree").rstrip() + "\n"
     actual = render_report("lint_tree.md.j2", _lint_tree_fixture()).rstrip() + "\n"
+    assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
+
+
+# -- clean_tree.md.j2 golden (Step 4) ----------------------------------------
+
+
+def _clean_tree_fixture() -> TreeCleanReport:
+    return TreeCleanReport(
+        root="/tmp/workflows",
+        results=[
+            WorkflowCleanResult(
+                path="/tmp/workflows/catA/wf_clean.ga",
+                relative_path="catA/wf_clean.ga",
+                category="catA",
+            ),
+            WorkflowCleanResult(
+                path="/tmp/workflows/catA/wf_affected.ga",
+                relative_path="catA/wf_affected.ga",
+                category="catA",
+                total_removed=3,
+                step_results=[
+                    CleanStepResult(step="1", tool_id="tool_1", version="1.0.0", removed_keys=["old_key"]),
+                    CleanStepResult(step="2", tool_id="tool_2", removed_keys=["deprecated_a", "deprecated_b"]),
+                ],
+            ),
+            WorkflowCleanResult(
+                path="/tmp/workflows/catB/wf_err.ga",
+                relative_path="catB/wf_err.ga",
+                category="catB",
+                error="parse failed",
+            ),
+            WorkflowCleanResult(
+                path="/tmp/workflows/catB/wf_skip.ga",
+                relative_path="catB/wf_skip.ga",
+                category="catB",
+                skipped_reason=SkipWorkflowReason.LEGACY_ENCODING,
+            ),
+        ],
+    )
+
+
+def test_clean_tree_matches_golden() -> None:
+    expected = _load_golden("clean_tree").rstrip() + "\n"
+    actual = render_report("clean_tree.md.j2", _clean_tree_fixture()).rstrip() + "\n"
     assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"

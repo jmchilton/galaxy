@@ -481,17 +481,15 @@ class TestCleanTree:
         assert s["total_keys"] == 0
 
     def test_markdown_report_structure(self, tmp_path):
-        from galaxy.tool_util.workflow_state.clean import (
-            clean_tree,
-            format_tree_clean_markdown,
-        )
+        from galaxy.tool_util.workflow_state._report_templates import make_markdown_renderer
+        from galaxy.tool_util.workflow_state.clean import clean_tree
         from galaxy.workflow.gx_validator import GET_TOOL_INFO
 
         wf = _make_native_workflow_with_stale({"stale_key": "val"})
         _write_tree(tmp_path, {"imaging/seg.ga": wf})
 
         report = clean_tree(str(tmp_path), GET_TOOL_INFO)
-        md = format_tree_clean_markdown(report)
+        md = make_markdown_renderer("clean_tree.md.j2")(report)
         assert "# Stale State Cleaning Report" in md
         assert "stale_key" in md
 
