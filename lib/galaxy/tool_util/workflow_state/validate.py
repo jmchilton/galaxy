@@ -15,6 +15,7 @@ from typing import (
 
 from ._cli_common import (
     setup_tool_info,
+    StrictOptions,
     ToolCacheOptions,
 )
 from ._report_models import (
@@ -30,6 +31,10 @@ from ._tree_orchestrator import (
     skip_workflow,
     TreeContext,
     TreeResult,
+)
+from ._encoding import (
+    validate_encoding_format2,
+    validate_encoding_native,
 )
 from ._types import GetToolInfo
 from .connection_validation import validate_connections_report
@@ -66,8 +71,7 @@ StepResult = ValidationStepResult
 # -- Options model --
 
 
-class _ValidateCommonOptions(ToolCacheOptions):
-    strict: bool = False
+class _ValidateCommonOptions(ToolCacheOptions, StrictOptions):
     summary: bool = False
     connections: bool = False
     mode: str = "pydantic"
@@ -169,10 +173,12 @@ def validate_single(
         connections=connections,
         clean=clean,
     )
+    skipped_reason = precheck.detail if precheck and not precheck.can_process else None
     return SingleValidationReport(
         workflow=workflow_name,
         results=results,
         connection_report=conn_report,
+        skipped_reason=skipped_reason,
     )
 
 
@@ -350,10 +356,16 @@ def _make_validate_process_one(
     policy: Optional[StaleKeyPolicy] = None,
     connections: bool = False,
     clean: bool = False,
+    strict_state: bool = False,
+    strict_encoding: bool = False,
 ):
     """Build a process_one callback for validation tree runs."""
 
     def process_one(info: WorkflowInfo, wf_dict: dict, get_tool_info: GetToolInfo):
+        if strict_encoding:
+            enc_errors = _check_strict_encoding(wf_dict)
+            if enc_errors:
+                raise RuntimeError("strict-encoding: " + "; ".join(enc_errors))
         step_results, precheck, conn_report = validate_workflow_cli(
             wf_dict,
             get_tool_info,
@@ -362,6 +374,8 @@ def _make_validate_process_one(
             clean=clean,
         )
         if precheck and not precheck.can_process:
+            if strict_state:
+                raise RuntimeError(f"strict-state: cannot process: {precheck.detail}")
             skip_workflow(precheck.skip_reasons[0].value)
         return step_results, conn_report
 
@@ -748,6 +762,13 @@ def _make_json_schema_process_one(
     return process_one
 
 
+def _check_strict_encoding(workflow_dict: dict) -> List[str]:
+    """Run the encoding validator appropriate for a workflow's format."""
+    if _format(workflow_dict) == "native":
+        return validate_encoding_native(workflow_dict)
+    return validate_encoding_format2(workflow_dict)
+
+
 def run_validate(options: ValidateOptions) -> int:
     """Run single-file validation pipeline. Returns exit code."""
     if os.path.isdir(options.workflow_path):
@@ -761,6 +782,14 @@ def run_validate(options: ValidateOptions) -> int:
     except (InvalidCategoryError, ConflictingCategoryError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 2
+
+    if options.strict_encoding:
+        enc_errors = _check_strict_encoding(load_workflow(options.workflow_path))
+        if enc_errors:
+            print("Error: strict-encoding:", file=sys.stderr)
+            for e in enc_errors:
+                print(f"  {e}", file=sys.stderr)
+            return 2
 
     report = validate_single(
         options.workflow_path,
@@ -776,6 +805,9 @@ def run_validate(options: ValidateOptions) -> int:
     if not report.results:
         # Precheck or empty — treat as skip
         print("Skipped (legacy encoding or no tool steps)", file=sys.stderr)
+        if report.skipped_reason and options.strict_state:
+            print(f"Error: strict-state: cannot process: {report.skipped_reason}", file=sys.stderr)
+            return 2
         return 0
 
     return _emit_single_results(options, report.results, report.connection_report)
@@ -803,7 +835,13 @@ def run_validate_tree(options: ValidateTreeOptions) -> int:
             clean=options.clean,
         )
     else:
-        process_one = _make_validate_process_one(policy=policy, connections=options.connections, clean=options.clean)
+        process_one = _make_validate_process_one(
+            policy=policy,
+            connections=options.connections,
+            clean=options.clean,
+            strict_state=options.strict_state,
+            strict_encoding=options.strict_encoding,
+        )
 
     from ._tree_orchestrator import run_tree
 
@@ -865,7 +903,7 @@ def _emit_single_results(
     has_skips = any(r.status == "skip_tool_not_found" for r in results)
     if has_failures:
         exit_code = 1
-    elif has_skips and options.strict:
+    elif has_skips and options.strict_state:
         exit_code = 2
     if conn_report and not conn_report.valid:
         exit_code = max(exit_code, 1)
@@ -878,7 +916,7 @@ def _compute_tree_exit_code(report: TreeValidationReport, options) -> int:
     exit_code = 0
     if s["fail"] > 0 or s["error"] > 0:
         exit_code = 1
-    elif s["skip_tool_not_found"] > 0 and options.strict:
+    elif s["skip_tool_not_found"] > 0 and options.strict_state:
         exit_code = 2
     if options.connections:
         for r in report.results:

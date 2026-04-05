@@ -30,6 +30,7 @@ from gxformat2.normalized import (
     to_format2,
 )
 from gxformat2.options import ConversionOptions
+from gxformat2.yaml import ordered_load_path
 from pydantic import (
     BaseModel,
     computed_field,
@@ -38,11 +39,16 @@ from pydantic import (
 
 from ._cli_common import (
     setup_tool_info,
+    StrictOptions,
     ToolCacheOptions,
 )
 from ._report_models import (
     TreeReportBase,
     WorkflowResultBase,
+)
+from ._encoding import (
+    validate_encoding_format2,
+    validate_encoding_native,
 )
 from ._report_output import emit_reports
 from ._types import GetToolInfo
@@ -206,22 +212,20 @@ class ExportError(Exception):
 # -- Options model --
 
 
-class ExportOptions(ToolCacheOptions):
+class ExportOptions(ToolCacheOptions, StrictOptions):
     output: Optional[str] = None
     json_output: bool = False
     compact: bool = False
-    strict: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
     allow: List[str] = []
     deny: List[str] = []
 
 
-class ExportTreeOptions(ToolCacheOptions):
+class ExportTreeOptions(ToolCacheOptions, StrictOptions):
     output_dir: str = ""
     json_output: bool = False
     compact: bool = False
-    strict: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
     allow: List[str] = []
@@ -324,6 +328,15 @@ def run_export(options: ExportOptions) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    if options.strict_encoding:
+        raw_dict = ordered_load_path(options.workflow_path)
+        enc_errors = validate_encoding_native(raw_dict)
+        if enc_errors:
+            print("Error: strict-encoding (input):", file=sys.stderr)
+            for e in enc_errors:
+                print(f"  {e}", file=sys.stderr)
+            return 2
+
     try:
         policy = StaleKeyPolicy.for_export(options.allow, options.deny)
     except (InvalidCategoryError, ConflictingCategoryError) as e:
@@ -333,15 +346,26 @@ def run_export(options: ExportOptions) -> int:
     precheck = precheck_native_workflow(workflow, tool_info)
     if not precheck.can_process:
         print(f"Skipped: {precheck.detail}", file=sys.stderr)
+        if options.strict_state:
+            print(f"Error: strict-state: cannot process: {precheck.detail}", file=sys.stderr)
+            return 2
         return 0
 
     try:
         result = export_workflow_to_format2(
-            workflow, tool_info, strict=options.strict, compact=options.compact, policy=policy
+            workflow, tool_info, strict=options.strict_state, compact=options.compact, policy=policy
         )
     except ExportError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    if options.strict_encoding:
+        enc_errors = validate_encoding_format2(result.format2_dict)
+        if enc_errors:
+            print("Error: strict-encoding (output):", file=sys.stderr)
+            for e in enc_errors:
+                print(f"  {e}", file=sys.stderr)
+            return 2
 
     # Format output
     if options.json_output:
@@ -486,18 +510,29 @@ def run_export_tree(options: ExportTreeOptions) -> int:
     from .workflow_tree import WorkflowInfo
 
     def process_one(info: WorkflowInfo, wf_dict: dict, get_tool_info):
+        if options.strict_encoding:
+            enc_errors = validate_encoding_native(wf_dict)
+            if enc_errors:
+                raise RuntimeError("strict-encoding (input): " + "; ".join(enc_errors))
         workflow = ensure_native(wf_dict)
         precheck = precheck_native_workflow(workflow, get_tool_info)
         if not precheck.can_process:
+            if options.strict_state:
+                raise RuntimeError(f"strict-state: cannot process: {precheck.detail}")
             skip_workflow(precheck.skip_reasons[0].value)
 
         result = export_workflow_to_format2(
             workflow,
             get_tool_info,
-            strict=options.strict,
+            strict=options.strict_state,
             compact=options.compact,
             policy=policy,
         )
+
+        if options.strict_encoding:
+            enc_errors = validate_encoding_format2(result.format2_dict)
+            if enc_errors:
+                raise RuntimeError("strict-encoding (output): " + "; ".join(enc_errors))
 
         ext = ".json" if options.json_output else ".gxwf.yml"
         stem = os.path.splitext(info.relative_path)[0]

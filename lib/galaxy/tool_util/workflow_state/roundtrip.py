@@ -33,6 +33,7 @@ from pydantic import (
 
 from ._cli_common import (
     setup_tool_info,
+    StrictOptions,
     ToolCacheOptions,
 )
 from ._report_models import (
@@ -1183,18 +1184,16 @@ class SingleRoundTripReport(BaseModel):
 # -- Options model --
 
 
-class RoundTripValidateOptions(ToolCacheOptions):
+class RoundTripValidateOptions(ToolCacheOptions, StrictOptions):
     strip_bookkeeping: bool = False
-    strict: bool = False
     output_native: Optional[str] = None
     output_format2: Optional[str] = None
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
 
 
-class RoundTripValidateTreeOptions(ToolCacheOptions):
+class RoundTripValidateTreeOptions(ToolCacheOptions, StrictOptions):
     strip_bookkeeping: bool = False
-    strict: bool = False
     verbose: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None

@@ -205,6 +205,7 @@ class SingleValidationReport(BaseModel):
     workflow: str
     results: List[ValidationStepResult]
     connection_report: Optional["ConnectionValidationReport"] = None
+    skipped_reason: Optional[str] = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

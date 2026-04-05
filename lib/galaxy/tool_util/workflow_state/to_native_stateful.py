@@ -35,11 +35,16 @@ from pydantic import (
 
 from ._cli_common import (
     setup_tool_info,
+    StrictOptions,
     ToolCacheOptions,
 )
 from ._report_models import (
     TreeReportBase,
     WorkflowResultBase,
+)
+from ._encoding import (
+    validate_encoding_format2,
+    validate_encoding_native,
 )
 from ._report_output import emit_reports
 from ._types import GetToolInfo
@@ -160,16 +165,14 @@ class EncodeError(Exception):
 # -- Options model --
 
 
-class ToNativeOptions(ToolCacheOptions):
+class ToNativeOptions(ToolCacheOptions, StrictOptions):
     output: Optional[str] = None
-    strict: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
 
 
-class ToNativeTreeOptions(ToolCacheOptions):
+class ToNativeTreeOptions(ToolCacheOptions, StrictOptions):
     output_dir: str = ""
-    strict: bool = False
     report_json: Optional[str] = None
     report_markdown: Optional[str] = None
 
@@ -280,15 +283,36 @@ def run_to_native(options: ToNativeOptions) -> int:
 
     tool_info = setup_tool_info(options)
 
+    if options.strict_encoding:
+        try:
+            raw_dict = ordered_load_path(options.workflow_path)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        enc_errors = validate_encoding_format2(raw_dict)
+        if enc_errors:
+            print("Error: strict-encoding (input):", file=sys.stderr)
+            for e_msg in enc_errors:
+                print(f"  {e_msg}", file=sys.stderr)
+            return 2
+
     try:
         result = convert_to_native_stateful(
             options.workflow_path,
             tool_info,
-            strict=options.strict,
+            strict=options.strict_state,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    if options.strict_encoding:
+        enc_errors = validate_encoding_native(result.native_dict)
+        if enc_errors:
+            print("Error: strict-encoding (output):", file=sys.stderr)
+            for e_msg in enc_errors:
+                print(f"  {e_msg}", file=sys.stderr)
+            return 2
 
     output = format_native_json(result.native_dict)
 
@@ -369,12 +393,22 @@ def run_to_native_tree(options: ToNativeTreeOptions) -> int:
         if isinstance(wf_dict, dict) and wf_dict.get("a_galaxy_workflow") == "true":
             skip_workflow("native format (not format2)")
 
+        if options.strict_encoding:
+            enc_errors = validate_encoding_format2(wf_dict)
+            if enc_errors:
+                raise RuntimeError("strict-encoding (input): " + "; ".join(enc_errors))
+
         result = _convert_dict_to_native(
             wf_dict,
             get_tool_info,
-            strict=options.strict,
+            strict=options.strict_state,
             workflow_dir=os.path.dirname(info.path),
         )
+
+        if options.strict_encoding:
+            enc_errors = validate_encoding_native(result.native_dict)
+            if enc_errors:
+                raise RuntimeError("strict-encoding (output): " + "; ".join(enc_errors))
 
         stem = os.path.splitext(info.relative_path)[0]
         out_path = os.path.join(options.output_dir, stem + ".ga")

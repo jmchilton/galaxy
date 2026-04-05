@@ -29,6 +29,7 @@ from gxformat2.linting import LintContext
 from gxformat2.yaml import ordered_load_path
 from ._cli_common import (
     setup_tool_info,
+    StrictOptions,
     ToolCacheOptions,
 )
 from ._report_models import (
@@ -46,6 +47,7 @@ from .stale_keys import (
     StaleKeyPolicy,
 )
 from .validate import (
+    _check_strict_encoding,
     format_text,
     validate_workflow_cli,
 )
@@ -56,8 +58,7 @@ log = logging.getLogger(__name__)
 # -- Options model --
 
 
-class _LintStatefulCommonOptions(ToolCacheOptions):
-    strict: bool = False
+class _LintStatefulCommonOptions(ToolCacheOptions, StrictOptions):
     summary: bool = False
     connections: bool = False
     skip_best_practices: bool = False
@@ -219,6 +220,14 @@ def run_lint_stateful(options: LintStatefulOptions) -> int:
         print(f"Error: Failed to parse {options.workflow_path}", file=sys.stderr)
         return EXIT_CODE_FILE_PARSE_FAILED
 
+    if options.strict_encoding:
+        enc_errors = _check_strict_encoding(workflow_dict)
+        if enc_errors:
+            print("Error: strict-encoding:", file=sys.stderr)
+            for e in enc_errors:
+                print(f"  {e}", file=sys.stderr)
+            return 2
+
     # Phase 1: structural lint
     lint_context = run_structural_lint(
         workflow_dict,
@@ -238,6 +247,9 @@ def run_lint_stateful(options: LintStatefulOptions) -> int:
     if precheck and not precheck.can_process:
         print(format_lint_header(lint_context))
         print(f"\nState validation skipped: {precheck.detail}", file=sys.stderr)
+        if options.strict_state:
+            print(f"Error: strict-state: cannot process: {precheck.detail}", file=sys.stderr)
+            return 2
         return _lint_context_exit_code(lint_context)
 
     # Emit combined results
@@ -261,7 +273,7 @@ def run_lint_stateful(options: LintStatefulOptions) -> int:
         stderr_summary=format_text(results, summary_only=True),
     )
 
-    exit_code = _combined_exit_code(lint_context, results, options.strict)
+    exit_code = _combined_exit_code(lint_context, results, options.strict_state)
     if conn_report and not conn_report.valid:
         exit_code = max(exit_code, 1)
 
@@ -280,7 +292,7 @@ def _lint_context_exit_code(lint_context: LintContext) -> int:
 def _combined_exit_code(
     lint_context: LintContext,
     results: List[ValidationStepResult],
-    strict: bool,
+    strict_state: bool,
 ) -> int:
     """Derive exit code from both structural lint and stateful validation."""
     has_lint_errors = bool(lint_context.error_messages)
@@ -289,7 +301,7 @@ def _combined_exit_code(
 
     if has_lint_errors or has_failures:
         return 1
-    if has_skips and strict:
+    if has_skips and strict_state:
         return 2
     if lint_context.warn_messages:
         return EXIT_CODE_LINT_FAILED
@@ -381,6 +393,10 @@ def run_lint_stateful_tree(options: LintStatefulTreeOptions) -> int:
     from .workflow_tree import WorkflowInfo
 
     def process_one(info: WorkflowInfo, wf_dict: dict, get_tool_info):
+        if options.strict_encoding:
+            enc_errors = _check_strict_encoding(wf_dict)
+            if enc_errors:
+                raise RuntimeError("strict-encoding: " + "; ".join(enc_errors))
         lint_context = run_structural_lint(
             wf_dict,
             skip_best_practices=options.skip_best_practices,
@@ -395,6 +411,8 @@ def run_lint_stateful_tree(options: LintStatefulTreeOptions) -> int:
         )
 
         if precheck and not precheck.can_process:
+            if options.strict_state:
+                raise RuntimeError(f"strict-state: cannot process: {precheck.detail}")
             skip_workflow(f"state validation skipped: {precheck.detail}")
 
         return {
@@ -444,7 +462,7 @@ def run_lint_stateful_tree(options: LintStatefulTreeOptions) -> int:
         s = report.summary
         if s["lint_errors"] > 0 or s["state_fail"] > 0 or s["errors"] > 0:
             return 1
-        if s["state_skip"] > 0 and options.strict:
+        if s["state_skip"] > 0 and options.strict_state:
             return 2
         if s["lint_warnings"] > 0:
             return EXIT_CODE_LINT_FAILED
