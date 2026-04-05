@@ -4,7 +4,10 @@ Covers:
 - ``_report_templates.render_report`` / ``make_markdown_renderer`` (Step 2).
 - ``connection_section.md.j2`` parity vs ``format_connection_markdown`` (Step 3).
 - ``_macros.md.j2`` individual macros (Step 3).
+- Per-CLI tree templates vs checked-in markdown goldens (Step 4).
 """
+
+import os
 
 from jinja2 import Environment
 
@@ -19,7 +22,19 @@ from galaxy.tool_util.workflow_state._report_templates import (
     make_markdown_renderer,
     render_report,
 )
+from galaxy.tool_util.workflow_state.export_format2 import (
+    ExportTreeReport,
+    WorkflowExportResult,
+)
 from galaxy.tool_util.workflow_state.validate import format_connection_markdown
+
+GOLDENS_DIR = os.path.join(os.path.dirname(__file__), "report_markdown_goldens")
+
+
+def _load_golden(name: str) -> str:
+    with open(os.path.join(GOLDENS_DIR, name)) as fh:
+        return fh.read()
+
 
 # -- rendering module smoke (Step 2) -----------------------------------------
 
@@ -134,3 +149,49 @@ def test_macros_render_all_branches() -> None:
     assert sections[3] == "- | - | - | - | SKIPPED: legacy_encoding"
     assert sections[4] == "- | - | - | - | ERROR: parse failed"
     assert sections[5] == "4 | 3 | 1 | 0 |"
+
+
+# -- export_tree.md.j2 golden (Step 4) ---------------------------------------
+
+
+def _export_tree_fixture() -> ExportTreeReport:
+    return ExportTreeReport(
+        root="/tmp/workflows",
+        output_dir="/tmp/out",
+        results=[
+            WorkflowExportResult(
+                path="/tmp/workflows/catA/wf_ok.ga",
+                relative_path="catA/wf_ok.ga",
+                category="catA",
+                ok=True,
+                steps_converted=4,
+                steps_fallback=0,
+            ),
+            WorkflowExportResult(
+                path="/tmp/workflows/catA/wf_partial.ga",
+                relative_path="catA/wf_partial.ga",
+                category="catA",
+                ok=False,
+                steps_converted=3,
+                steps_fallback=2,
+            ),
+            WorkflowExportResult(
+                path="/tmp/workflows/catB/wf_err.ga",
+                relative_path="catB/wf_err.ga",
+                category="catB",
+                error="export failed",
+            ),
+            WorkflowExportResult(
+                path="/tmp/workflows/catB/wf_skip.ga",
+                relative_path="catB/wf_skip.ga",
+                category="catB",
+                skipped_reason="legacy encoding",
+            ),
+        ],
+    )
+
+
+def test_export_tree_matches_golden() -> None:
+    expected = _load_golden("export_tree.md").rstrip() + "\n"
+    actual = render_report("export_tree.md.j2", _export_tree_fixture()).rstrip() + "\n"
+    assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
