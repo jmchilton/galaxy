@@ -26,6 +26,10 @@ from galaxy.tool_util.workflow_state.export_format2 import (
     ExportTreeReport,
     WorkflowExportResult,
 )
+from galaxy.tool_util.workflow_state.to_native_stateful import (
+    ToNativeTreeReport,
+    WorkflowToNativeResult,
+)
 from galaxy.tool_util.workflow_state.validate import format_connection_markdown
 
 GOLDENS_DIR = os.path.join(os.path.dirname(__file__), "report_markdown_goldens")
@@ -194,4 +198,50 @@ def _export_tree_fixture() -> ExportTreeReport:
 def test_export_tree_matches_golden() -> None:
     expected = _load_golden("export_tree.md").rstrip() + "\n"
     actual = render_report("export_tree.md.j2", _export_tree_fixture()).rstrip() + "\n"
+    assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
+
+
+# -- to_native_tree.md.j2 golden (Step 4) ------------------------------------
+
+
+def _to_native_tree_fixture() -> ToNativeTreeReport:
+    return ToNativeTreeReport(
+        root="/tmp/workflows",
+        output_dir="/tmp/out",
+        results=[
+            WorkflowToNativeResult(
+                path="/tmp/workflows/catA/wf_ok.ga",
+                relative_path="catA/wf_ok.ga",
+                category="catA",
+                ok=True,
+                steps_encoded=4,
+                steps_fallback=0,
+            ),
+            WorkflowToNativeResult(
+                path="/tmp/workflows/catA/wf_partial.ga",
+                relative_path="catA/wf_partial.ga",
+                category="catA",
+                ok=False,
+                steps_encoded=3,
+                steps_fallback=2,
+            ),
+            WorkflowToNativeResult(
+                path="/tmp/workflows/catB/wf_err.ga",
+                relative_path="catB/wf_err.ga",
+                category="catB",
+                error="conversion failed",
+            ),
+            WorkflowToNativeResult(
+                path="/tmp/workflows/catB/wf_skip.ga",
+                relative_path="catB/wf_skip.ga",
+                category="catB",
+                skipped_reason="native format (not format2)",
+            ),
+        ],
+    )
+
+
+def test_to_native_tree_matches_golden() -> None:
+    expected = _load_golden("to_native_tree.md").rstrip() + "\n"
+    actual = render_report("to_native_tree.md.j2", _to_native_tree_fixture()).rstrip() + "\n"
     assert actual == expected, f"\n--- expected ---\n{expected}\n--- actual ---\n{actual}"
