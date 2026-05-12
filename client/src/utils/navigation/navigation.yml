@@ -1070,9 +1070,12 @@ workflow_extract:
     create_button: '[data-description="create-workflow-button"]'
     no_workflow_message: '[data-description="no-workflow-message"]'
     tool_card: '[data-step-type="tool"]'
+    mapped_tool_card: '[data-step-kind="mapped-tool"]'
     tool_card_checkbox: '[data-step-type="tool"] input[id^="g-card-select-"]'
     tool_card_checkbox_checked: '[data-step-type="tool"] input[id^="g-card-select-"]:checked'
     card_checkbox_by_job_id: '[data-job-id="${job_id}"] input[id^="g-card-select-"]'
+    card_by_icj_id: '[data-icj-id="${icj_id}"]'
+    mapped_badge: '[id^="g-card-badge-mapped-tool-"]'
     all_card_checkboxes_checked: '[data-description="workflow-extraction-form"] input[id^="g-card-select-"]:checked'
 
 invocations:

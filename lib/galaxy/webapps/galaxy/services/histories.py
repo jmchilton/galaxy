@@ -19,6 +19,7 @@ from sqlalchemy import (
     select,
     true,
 )
+from sqlalchemy.orm import selectinload
 
 from galaxy import (
     exceptions as glx_exceptions,
@@ -45,6 +46,8 @@ from galaxy.managers.users import UserManager
 from galaxy.model import (
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
+    ImplicitCollectionJobs,
+    ImplicitCollectionJobsJobAssociation,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.model.store import payload_to_source_uri
@@ -807,6 +810,21 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
     ) -> WorkflowExtractionSummary:
         history = self.manager.get_accessible(history_id, trans.user, current_history=trans.history)
         jobs, warnings = summarize(trans, history)
+        representative_job_ids = [job.id for job in jobs if isinstance(job, model.Job)]
+        icj_assoc_by_job_id = {}
+        if representative_job_ids:
+            stmt = (
+                select(ImplicitCollectionJobsJobAssociation)
+                .options(
+                    selectinload(ImplicitCollectionJobsJobAssociation.implicit_collection_jobs).selectinload(
+                        ImplicitCollectionJobs.jobs
+                    )
+                )
+                .where(ImplicitCollectionJobsJobAssociation.job_id.in_(representative_job_ids))
+            )
+            icj_assoc_by_job_id = {
+                icj_assoc.job_id: icj_assoc for icj_assoc in trans.sa_session.scalars(stmt).unique().all()
+            }
 
         def serialize_output(content) -> WorkflowExtractionOutput:
             return WorkflowExtractionOutput.model_validate(
@@ -897,6 +915,8 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                         if tool.version != job.tool_version
                         else None
                     )
+                    icj_assoc = icj_assoc_by_job_id.get(job.id)
+                    implicit_collection_jobs = icj_assoc.implicit_collection_jobs if icj_assoc is not None else None
                     jobs_list.append(
                         WorkflowExtractionJob(
                             id=job.id,
@@ -908,6 +928,12 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                             tool_version_warning=tool_version_warning,
                             outputs=outputs,
                             invalid=None,
+                            implicit_collection_jobs_id=(
+                                icj_assoc.implicit_collection_jobs_id if icj_assoc is not None else None
+                            ),
+                            implicit_collection_jobs_size=(
+                                len(implicit_collection_jobs.jobs) if implicit_collection_jobs is not None else None
+                            ),
                         )
                     )
 

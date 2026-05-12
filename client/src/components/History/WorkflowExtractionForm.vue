@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faCheck } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert } from "bootstrap-vue";
 import { computed, ref } from "vue";
@@ -15,7 +15,12 @@ import { useToast } from "@/composables/toast";
 import { useHistoryStore } from "@/stores/historyStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { isWorkflowExtractionInput, type WorkflowExtractionInput } from "./WorkflowExtraction/types";
+import {
+    isMappedTool,
+    isWorkflowExtractionInput,
+    type WorkflowExtractionInput,
+    type WorkflowExtractionRow,
+} from "./WorkflowExtraction/types";
 
 import GFormInput from "../BaseComponents/Form/GFormInput.vue";
 import GButton from "../BaseComponents/GButton.vue";
@@ -49,8 +54,9 @@ const breadcrumbItems = computed(() => [
 ]);
 
 const loading = ref(true);
+const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
-const jobsList = ref<(WorkflowExtractionInput | WorkflowExtractionJob)[]>([]);
+const jobsList = ref<WorkflowExtractionRow[]>([]);
 const workflowName = ref("");
 const renameIndex = ref<number | null>(null);
 const warnings = ref<string[]>([]);
@@ -70,7 +76,7 @@ const toRenameInput = computed(() => {
 });
 
 const submissionDisabled = computed(
-    () => hasUnnamedSelectedInputs.value || !workflowName.value.trim() || hasNoSelectedSteps.value,
+    () => submitting.value || hasUnnamedSelectedInputs.value || !workflowName.value.trim() || hasNoSelectedSteps.value,
 );
 
 const submissionDisabledMsg = computed(() => {
@@ -86,15 +92,29 @@ const submissionDisabledMsg = computed(() => {
     return "";
 });
 
-/** Selected job ids for workflow steps (not inputs) */
-const selectedJobIds = computed<Array<string>>(() => {
+/** Selected tool jobs partitioned by ICJ membership. Mapped jobs collapse to
+ *  their implicit_collection_jobs_id (deduped); non-mapped jobs stay as job_ids. */
+const selectedJobBuckets = computed<{ job_ids: string[]; implicit_collection_jobs_ids: string[] }>(() => {
     if (!jobsList.value?.length) {
-        return [];
+        return { job_ids: [], implicit_collection_jobs_ids: [] };
     }
-    return jobsList.value
-        .filter((job) => job.checked && job.step_type === "tool")
-        .map((job) => job.id)
-        .filter((id): id is string => Boolean(id));
+    const job_ids: string[] = [];
+    const icj_ids: string[] = [];
+    const seen_icj = new Set<string>();
+    for (const job of jobsList.value) {
+        if (!job.checked || job.step_type !== "tool" || !job.id) {
+            continue;
+        }
+        if (isMappedTool(job)) {
+            if (!seen_icj.has(job.implicit_collection_jobs_id)) {
+                seen_icj.add(job.implicit_collection_jobs_id);
+                icj_ids.push(job.implicit_collection_jobs_id);
+            }
+        } else {
+            job_ids.push(job.id);
+        }
+    }
+    return { job_ids, implicit_collection_jobs_ids: icj_ids };
 });
 
 /**
@@ -136,7 +156,25 @@ const hasUnnamedSelectedInputs = computed(() => {
 
 extractWorkflow();
 
-function getInputName(job: WorkflowExtractionInput): string | undefined {
+function toWorkflowExtractionRow(job: WorkflowExtractionJob): WorkflowExtractionRow {
+    const checked = job.checked ?? false;
+    if (job.step_type === "tool") {
+        return {
+            ...job,
+            checked,
+            step_type: "tool",
+        };
+    } else {
+        return {
+            ...job,
+            checked,
+            step_type: job.step_type,
+            newName: getInputName(job) || "",
+        };
+    }
+}
+
+function getInputName(job: WorkflowExtractionJob): string | undefined {
     if (job.outputs?.length && job.outputs[0]) {
         const output = job.outputs[0];
         return output.name || `Input ${output.hid}`;
@@ -157,15 +195,7 @@ async function extractWorkflow() {
     try {
         const result = await extractWorkflowFromHistory(props.historyId);
         if (result.jobs) {
-            jobsList.value = result.jobs.map((job) => {
-                return {
-                    ...job,
-                    checked: job.checked ?? false,
-                    ...(isWorkflowExtractionInput(job) && {
-                        newName: getInputName(job) || "",
-                    }),
-                };
-            });
+            jobsList.value = result.jobs.map(toWorkflowExtractionRow);
         }
 
         warnings.value = result.warnings || [];
@@ -222,7 +252,8 @@ async function submitWorkflow() {
             Toast.error(submissionDisabledMsg.value || "Cannot submit workflow extraction", "Submission Disabled");
             return;
         }
-        loading.value = true;
+        errorMessage.value = null;
+        submitting.value = true;
 
         const selectedDatasets = getSelectedInputs("dataset");
         const selectedDatasetCollections = getSelectedInputs("dataset_collection");
@@ -230,7 +261,8 @@ async function submitWorkflow() {
         const payload: WorkflowExtractionByIdsPayload = {
             workflow_name: workflowName.value.trim(),
             from_history_id: props.historyId,
-            job_ids: selectedJobIds.value,
+            job_ids: selectedJobBuckets.value.job_ids,
+            implicit_collection_jobs_ids: selectedJobBuckets.value.implicit_collection_jobs_ids,
             hda_ids: selectedDatasets.ids,
             hdca_ids: selectedDatasetCollections.ids,
             dataset_names: selectedDatasets.names,
@@ -245,8 +277,15 @@ async function submitWorkflow() {
     } catch (error) {
         errorMessage.value = errorMessageAsString(error);
     } finally {
-        loading.value = false;
+        submitting.value = false;
     }
+}
+
+function stepKind(job: WorkflowExtractionRow): string {
+    if (isMappedTool(job)) {
+        return "mapped-tool";
+    }
+    return job.step_type.replace("_", "-");
 }
 </script>
 
@@ -256,15 +295,16 @@ async function submitWorkflow() {
             <BreadcrumbHeading :items="breadcrumbItems" />
 
             <BAlert v-if="errorMessage" variant="danger" show>{{ errorMessage }}</BAlert>
-            <BAlert v-else-if="loading" variant="info" show>
+            <BAlert v-if="loading" variant="info" show>
                 <LoadingSpan message="Extracting workflow from history" />
             </BAlert>
-            <div v-else-if="jobsList.length" class="d-flex flex-column flex-gapy-1">
+            <div v-if="!loading && jobsList.length" class="d-flex flex-column flex-gapy-1">
                 <div class="workflow-extraction-actions">
                     <GFormInput
                         v-model="workflowName"
                         data-description="workflow-name-input"
                         placeholder="Please provide a name for the workflow"
+                        :disabled="submitting"
                         @keydown.enter.prevent="submitWorkflow" />
 
                     <GButton
@@ -275,13 +315,17 @@ async function submitWorkflow() {
                         :disabled="submissionDisabled"
                         :disabled-title="submissionDisabledMsg"
                         @click="submitWorkflow">
-                        <FontAwesomeIcon :icon="faCheck" fixed-width />
-                        Create Workflow
+                        <FontAwesomeIcon :icon="submitting ? faSpinner : faCheck" :spin="submitting" fixed-width />
+                        {{ submitting ? "Creating..." : "Create Workflow" }}
                     </GButton>
                 </div>
                 <WorkflowExtractionMessages :warnings="warnings" />
             </div>
-            <BAlert v-else data-description="no-workflow-message" variant="info" show>
+            <BAlert
+                v-if="!loading && !errorMessage && !jobsList.length"
+                data-description="no-workflow-message"
+                variant="info"
+                show>
                 No workflow could be extracted from this history.
             </BAlert>
         </div>
@@ -294,6 +338,8 @@ async function submitWorkflow() {
                 :job="job"
                 :data-step-type="job.step_type"
                 :data-job-id="job.id || undefined"
+                :data-icj-id="isMappedTool(job) ? job.implicit_collection_jobs_id : undefined"
+                :data-step-kind="stepKind(job)"
                 @rename="onJobRename(index)"
                 @select="onJobSelect(index)"
                 @view-job="onViewJob" />

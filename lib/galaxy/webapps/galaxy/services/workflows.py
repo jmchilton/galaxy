@@ -6,6 +6,7 @@ from typing import (
 )
 
 from pydantic import UUID4
+from sqlalchemy import select
 
 from galaxy import (
     exceptions,
@@ -24,6 +25,8 @@ from galaxy.managers.workflows import (
     WorkflowsManager,
 )
 from galaxy.model import (
+    HistoryDatasetCollectionAssociation,
+    ImplicitCollectionJobs,
     LandingRequestToWorkflowInvocationAssociation,
     StoredWorkflow,
     WorkflowInvocation,
@@ -236,18 +239,70 @@ class WorkflowsService(ServiceBase):
     ) -> WorkflowExtractionResult:
         if trans.user is None:
             raise exceptions.AuthenticationRequired("Workflow extraction requires an authenticated user.")
+        self._validate_extract_by_ids_payload(trans, payload)
         stored_workflow = extract_workflow_by_ids(
             trans,
             user=trans.user,
             workflow_name=payload.workflow_name,
             job_manager=self._job_manager,
             job_ids=payload.job_ids,
+            implicit_collection_jobs_ids=payload.implicit_collection_jobs_ids,
             hda_ids=payload.hda_ids,
             hdca_ids=payload.hdca_ids,
             dataset_names=payload.dataset_names,
             dataset_collection_names=payload.dataset_collection_names,
         )
         return _to_extraction_result(stored_workflow)
+
+    def _validate_extract_by_ids_payload(
+        self,
+        trans: ProvidesHistoryContext,
+        payload: WorkflowExtractionByIdsPayload,
+    ) -> None:
+        """Cross-payload checks that need DB access. Pydantic handles per-field
+        shape; this enforces semantic rules across job_ids /
+        implicit_collection_jobs_ids that depend on the loaded Job / ICJ rows
+        so extract_workflow_by_ids can trust its input.
+        """
+        if len(set(payload.job_ids)) != len(payload.job_ids):
+            raise exceptions.RequestParameterInvalidException("job_ids contains duplicates")
+        if len(set(payload.implicit_collection_jobs_ids)) != len(payload.implicit_collection_jobs_ids):
+            raise exceptions.RequestParameterInvalidException("implicit_collection_jobs_ids contains duplicates")
+
+        for job_id in payload.job_ids:
+            job = self._job_manager.get_accessible_job(trans, job_id)
+            icj_assoc = job.implicit_collection_jobs_association
+            if icj_assoc is not None:
+                raise exceptions.RequestParameterInvalidException(
+                    f"job_ids[{job_id}] is part of implicit collection jobs "
+                    f"{icj_assoc.implicit_collection_jobs_id} - pass via "
+                    "implicit_collection_jobs_ids instead."
+                )
+
+        sa_session = trans.sa_session
+        dataset_collection_manager = trans.app.dataset_collection_manager
+        for icj_id in payload.implicit_collection_jobs_ids:
+            icj = sa_session.get(ImplicitCollectionJobs, icj_id)
+            if icj is None:
+                raise exceptions.ObjectNotFound(f"ImplicitCollectionJobs {icj_id} not found")
+            if icj.populated_state != ImplicitCollectionJobs.populated_states.OK:
+                raise exceptions.RequestParameterInvalidException(
+                    f"ImplicitCollectionJobs {icj_id} is in populated_state "
+                    f"{icj.populated_state!r}; only 'ok' is extractable"
+                )
+            output_hdcas = list(
+                sa_session.scalars(
+                    select(HistoryDatasetCollectionAssociation).where(
+                        HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == icj_id
+                    )
+                )
+            )
+            if not output_hdcas:
+                raise exceptions.RequestParameterInvalidException(
+                    f"ImplicitCollectionJobs {icj_id} has no output collections to extract"
+                )
+            for hdca in output_hdcas:
+                dataset_collection_manager.get_dataset_collection_instance(trans, "history", hdca.id)
 
     def delete(self, trans, workflow_id):
         workflow_to_delete = self._workflows_manager.get_stored_workflow(trans, workflow_id)

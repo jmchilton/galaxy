@@ -520,6 +520,7 @@ def extract_workflow_by_ids(
     workflow_name: str,
     job_manager: JobManager,
     job_ids: Optional[list[int]] = None,
+    implicit_collection_jobs_ids: Optional[list[int]] = None,
     hda_ids: Optional[list[int]] = None,
     hdca_ids: Optional[list[int]] = None,
     dataset_names: Optional[list[str]] = None,
@@ -530,6 +531,7 @@ def extract_workflow_by_ids(
         trans,
         job_manager=job_manager,
         job_ids=job_ids,
+        implicit_collection_jobs_ids=implicit_collection_jobs_ids,
         hda_ids=hda_ids,
         hdca_ids=hdca_ids,
         dataset_names=dataset_names,
@@ -546,6 +548,7 @@ def extract_steps_by_ids(
     trans: ProvidesHistoryContext,
     job_manager: Optional[JobManager] = None,
     job_ids: Optional[list[int]] = None,
+    implicit_collection_jobs_ids: Optional[list[int]] = None,
     hda_ids: Optional[list[int]] = None,
     hdca_ids: Optional[list[int]] = None,
     dataset_names: Optional[list[str]] = None,
@@ -558,10 +561,15 @@ def extract_steps_by_ids(
     ``(content_type, db_id)`` of the resolved *original* HDA/HDCA so that
     copied datasets and cross-history items map deterministically.
 
+    Mapped (map-over) steps are passed as ``implicit_collection_jobs_ids``;
+    each ICJ becomes a single workflow step whose inputs are wired to the
+    pre-map input HDCA(s) via ``ImplicitlyCreatedDatasetCollectionInput``.
+
     ``job_manager`` may be omitted only when ``job_ids`` is empty (kept
     Optional for unit-test ergonomics).
     """
     job_ids = list(job_ids or [])
+    implicit_collection_jobs_ids = list(implicit_collection_jobs_ids or [])
     hda_ids = list(hda_ids or [])
     hdca_ids = list(hdca_ids or [])
 
@@ -605,49 +613,48 @@ def extract_steps_by_ids(
         original_hdca = _original_hdca(hdca)
         id_to_output_pair[("collection", original_hdca.id)] = (step, "output")
 
-    # Resolve and dedup jobs. Implicit-map participants collapse to a single
-    # representative job per ImplicitCollectionJobs id.
-    seen_icj_ids: set[int] = set()
-    resolved_jobs: list[Job] = []
+    # Build the list of work items: each tuple is (representative_job,
+    # output_hdcas). For plain jobs output_hdcas is empty; for ICJs it
+    # contains the ICJ's output HDCAs (used both for access checks and to
+    # drive input/output wiring without inferring map/over from job state).
+    # Service-layer validator ensures no job in job_ids has an ICJ
+    # association, so this branch handles only true plain jobs.
+    work_items: list[tuple[Job, list[HistoryDatasetCollectionAssociation]]] = []
+
     for job_id in job_ids:
         assert job_manager is not None, "job_manager required when job_ids supplied"
         job = job_manager.get_accessible_job(trans, job_id)
-        icj_assoc = job.implicit_collection_jobs_association
-        if icj_assoc is not None:
-            icj_id = icj_assoc.implicit_collection_jobs_id
-            if icj_id in seen_icj_ids:
-                continue
-            seen_icj_ids.add(icj_id)
-            representative = sa_session.execute(
-                select(Job)
-                .join(ImplicitCollectionJobsJobAssociation, ImplicitCollectionJobsJobAssociation.job_id == Job.id)
-                .where(ImplicitCollectionJobsJobAssociation.implicit_collection_jobs_id == icj_id)
-                .order_by(Job.id)
-                .limit(1)
-            ).scalar_one()
-            resolved_jobs.append(representative)
-        else:
-            resolved_jobs.append(job)
+        work_items.append((job, []))
 
-    # Process jobs in dependency order. Job.id is monotonically assigned at
-    # submission, so a job that consumes another's output always has the
-    # larger id; sorting by id is sufficient to ensure each downstream job's
-    # inputs are already registered in id_to_output_pair when we wire it.
-    resolved_jobs.sort(key=lambda j: j.id)
-
-    for job in resolved_jobs:
-        icj_assoc = job.implicit_collection_jobs_association
-        output_hdcas: list[HistoryDatasetCollectionAssociation] = []
-        if icj_assoc is not None:
-            output_hdcas = list(
-                sa_session.scalars(
-                    select(HistoryDatasetCollectionAssociation).where(
-                        HistoryDatasetCollectionAssociation.implicit_collection_jobs_id
-                        == icj_assoc.implicit_collection_jobs_id
-                    )
+    # FIXME: representative-job param read is the only remaining HID-style
+    # inference here. Swap step_inputs_by_id for a Job.tool_state /
+    # ToolRequest.request_state reader once that exists; see
+    # docs/research/Problem - YAML Tool Post-Hoc State Divergence.md.
+    for icj_id in implicit_collection_jobs_ids:
+        # Service-layer validator already checked existence, populated_state,
+        # output-HDCA presence, and per-HDCA accessibility.
+        output_hdcas_for_icj = list(
+            sa_session.scalars(
+                select(HistoryDatasetCollectionAssociation).where(
+                    HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == icj_id
                 )
             )
+        )
+        representative = sa_session.scalars(
+            select(Job)
+            .join(ImplicitCollectionJobsJobAssociation, ImplicitCollectionJobsJobAssociation.job_id == Job.id)
+            .where(ImplicitCollectionJobsJobAssociation.implicit_collection_jobs_id == icj_id)
+            .order_by(ImplicitCollectionJobsJobAssociation.order_index, Job.id)
+            .limit(1)
+        ).one()
+        work_items.append((representative, output_hdcas_for_icj))
 
+    # Job.id is monotonically assigned at submission, so sorting by it
+    # produces dependency order: a downstream job always has a larger id
+    # than the jobs whose outputs it consumes.
+    work_items.sort(key=lambda item: item[0].id)
+
+    for job, output_hdcas in work_items:
         tool_inputs, associations = step_inputs_by_id(trans, job)
         step = model.WorkflowStep()
         step.type = "tool"
@@ -655,15 +662,15 @@ def extract_steps_by_ids(
         step.tool_version = job.tool_version
         step.tool_inputs = tool_inputs
 
+        mapped_inputs: dict[str, HistoryDatasetCollectionAssociation] = {}
+        if output_hdcas:
+            for icol in output_hdcas[0].implicit_input_collections:
+                if icol.name and icol.input_dataset_collection is not None:
+                    mapped_inputs[icol.name] = _original_hdca(icol.input_dataset_collection)
+
         for key, input_name in associations:
-            if output_hdcas:
-                # Implicit-map: rewrite per-job inputs to the input HDCA the
-                # mapping consumed (find_implicit_input_collection on any
-                # output HDCA returns the same answer).
-                input_collection = output_hdcas[0].find_implicit_input_collection(input_name)
-                if input_collection is not None:
-                    original_input = _original_hdca(input_collection)
-                    key = ("collection", original_input.id)
+            if input_name in mapped_inputs:
+                key = ("collection", mapped_inputs[input_name].id)
             if key in id_to_output_pair:
                 step_input = step.get_or_add_input(input_name)
                 other_step, other_name = id_to_output_pair[key]
@@ -673,12 +680,7 @@ def extract_steps_by_ids(
                 conn.output_name = other_name
         steps.append(step)
 
-        # Register outputs so downstream jobs can wire into them.
         if output_hdcas:
-            # Implicit-map: register each unique implicit output HDCA so downstream
-            # steps consume the collection (not its per-job leaves). Per-job HDAs
-            # on job.output_datasets are intentionally not registered here —
-            # downstream wiring resolves the collection via find_implicit_input_collection.
             seen_names: dict[str, HistoryDatasetCollectionAssociation] = {}
             for output_hdca in output_hdcas:
                 output_name = output_hdca.implicit_output_name
