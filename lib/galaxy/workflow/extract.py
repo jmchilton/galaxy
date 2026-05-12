@@ -675,11 +675,10 @@ def extract_steps_by_ids(
 
         # Register outputs so downstream jobs can wire into them.
         if output_hdcas:
-            # Implicit-map: each output_name maps to one HDCA. Per-output `<filter>`
-            # evaluating True under mapping can leave per-job HDAs on
-            # `job.output_datasets` with no enclosing implicit HDCA — those go
-            # unregistered here. The legacy HID path raised in that case; we
-            # silently drop, which is functionally equivalent for downstream wiring.
+            # Implicit-map: register each unique implicit output HDCA so downstream
+            # steps consume the collection (not its per-job leaves). Per-job HDAs
+            # on job.output_datasets are intentionally not registered here —
+            # downstream wiring resolves the collection via find_implicit_input_collection.
             seen_names: dict[str, HistoryDatasetCollectionAssociation] = {}
             for output_hdca in output_hdcas:
                 output_name = output_hdca.implicit_output_name

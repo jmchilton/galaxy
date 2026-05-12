@@ -39,6 +39,8 @@ class _ExtractionHelpersMixin:
 
         def _post(self, *args: Any, **kwds: Any) -> "Response": ...
 
+        def _get(self, *args: Any, **kwds: Any) -> "Response": ...
+
         def _assert_status_code_is(self, response: "Response", expected_status_code: int) -> None: ...
 
     def _run_tool_get_collection_and_job_id(self, history_id, tool_id, inputs):
@@ -74,6 +76,18 @@ class _ExtractionHelpersMixin:
         response = self._post(f"histories/{history_id}/contents/dataset_collections", payload, json=True)
         self._assert_status_code_is(response, 200)
         return response.json()
+
+    def _history_contents(self, history_id):
+        return self._get(f"histories/{history_id}/contents").json()
+
+    def _job_for_tool(self, jobs, tool_id):
+        tool_jobs = [j for j in jobs if j["tool_id"] == tool_id]
+        if not tool_jobs:
+            raise ValueError(f"Failed to find job for tool {tool_id}")
+        return tool_jobs[-1]
+
+    def _job_id_for_tool(self, jobs, tool_id):
+        return self._job_for_tool(jobs, tool_id)["id"]
 
 
 class TestWorkflowExtractionApi(_ExtractionHelpersMixin, BaseWorkflowsApiTestCase, WorkflowStructureAssertions):
@@ -546,17 +560,6 @@ test_data:
             tool_ids=tool_ids,
         )
 
-    def _job_id_for_tool(self, jobs, tool_id):
-        return self._job_for_tool(jobs, tool_id)["id"]
-
-    def _job_for_tool(self, jobs, tool_id):
-        tool_jobs = [j for j in jobs if j["tool_id"] == tool_id]
-        if not tool_jobs:
-            raise ValueError(f"Failed to find job for tool {tool_id}")
-        # if len( tool_jobs ) > 1:
-        #     assert False, "Found multiple jobs for tool %s" % tool_id
-        return tool_jobs[-1]
-
     def __run_random_lines_mapped_over_singleton(self, history_id):
         hdca = self.dataset_collection_populator.create_list_in_history(history_id, contents=["1 2 3\n4 5 6"]).json()
         hdca_id = hdca["id"]
@@ -565,9 +568,6 @@ test_data:
         inputs2 = {"input": {"batch": True, "values": [{"src": "hdca", "id": implicit_hdca1["id"]}]}, "num_lines": 1}
         _, job_id2 = self._run_tool_get_collection_and_job_id(history_id, "random_lines1", inputs2)
         return hdca, job_id1, job_id2
-
-    def _history_contents(self, history_id: str):
-        return self._get(f"histories/{history_id}/contents").json()
 
     def _jobs_by_tool(self, history_id, tool_id):
         return [j["id"] for j in self.dataset_populator.history_jobs(history_id) if j["tool_id"] == tool_id]
@@ -752,6 +752,56 @@ class TestWorkflowExtractionByIdsApi(_ExtractionHelpersMixin, BaseWorkflowsApiTe
             job_ids=[job_id1, job_id2],
         )
         self.assert_randomlines_mapping_workflow_structure(downloaded)
+
+    @skip_without_tool("cat_collection")
+    @summarize_instance_history_on_error
+    def test_subcollection_mapping_by_ids(self, history_id):
+        """ID-path equivalent of HID test_subcollection_mapping. Exercises
+        a tool consuming a paired sub-collection element of a list:paired;
+        wiring goes through find_implicit_input_collection so the workflow
+        sees a single list:paired input rather than per-job leaves."""
+        jobs_summary = self._run_workflow(
+            """
+class: GalaxyWorkflow
+inputs:
+  text_input1: collection
+steps:
+  - label: noop
+    tool_id: cat1
+    state:
+      input1:
+        $link: text_input1
+  - tool_id: cat_collection
+    state:
+      input1:
+        $link: noop/out_file1
+test_data:
+  text_input1:
+    collection_type: "list:paired"
+""",
+            history_id,
+        )
+        job1_id = self._job_id_for_tool(jobs_summary.jobs, "cat1")
+        job2_id = self._job_id_for_tool(jobs_summary.jobs, "cat_collection")
+        input_hdca = next(
+            c for c in self._history_contents(history_id) if c["history_content_type"] == "dataset_collection"
+        )
+        downloaded = self._extract_and_download_workflow_by_ids(
+            from_history_id=history_id,
+            hdca_ids=[input_hdca["id"]],
+            job_ids=[job1_id, job2_id],
+        )
+        self.check_workflow(
+            downloaded,
+            step_count=3,
+            verify_connected=True,
+            data_input_count=0,
+            data_collection_input_count=1,
+            tool_ids=["cat_collection", "cat1"],
+        )
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        collection_step_state = loads(collection_step["tool_state"])
+        assert collection_step_state["collection_type"] == "list:paired"
 
     @skip_without_tool("cat1")
     @summarize_instance_history_on_error
