@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { faFile, faFolder } from "@fortawesome/free-regular-svg-icons";
-import { faExclamationTriangle, faExternalLinkAlt, faPencilAlt, faWrench } from "@fortawesome/free-solid-svg-icons";
+import {
+    faExclamationTriangle,
+    faExternalLinkAlt,
+    faLayerGroup,
+    faPencilAlt,
+    faWrench,
+} from "@fortawesome/free-solid-svg-icons";
 import { computed } from "vue";
 
-import type { WorkflowExtractionJob } from "@/api/histories";
 import type { CardBadge, TitleIcon } from "@/components/Common/GCard.types";
 
-import { isWorkflowExtractionInput, type WorkflowExtractionInput } from "./types";
+import { isMappedTool, isWorkflowExtractionInput, type WorkflowExtractionRow } from "./types";
 
 import GCard from "@/components/Common/GCard.vue";
 import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
@@ -34,8 +39,19 @@ const STEP_TYPE_META: Record<
     },
 };
 
+function mappedBadge(size: number | null | undefined): CardBadge {
+    return {
+        id: "mapped-tool",
+        label: typeof size === "number" ? `Mapped over ${size} items` : "Mapped",
+        icon: faLayerGroup,
+        title: "This row represents a mapped tool step backed by an implicit collection job.",
+        class: "unselectable",
+        variant: "info",
+    };
+}
+
 const props = defineProps<{
-    job: WorkflowExtractionInput | WorkflowExtractionJob;
+    job: WorkflowExtractionRow;
 }>();
 
 const emit = defineEmits<{
@@ -68,6 +84,9 @@ const badges = computed<CardBadge[]>(() => {
                 class: "unselectable",
                 variant: "warning",
             });
+        }
+        if (isMappedTool(props.job)) {
+            badges.push(mappedBadge(props.job.implicit_collection_jobs_size));
         }
     } else {
         badges.push(INPUT_IS_RENAMABLE_BADGE);
