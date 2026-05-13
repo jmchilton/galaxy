@@ -25677,6 +25677,11 @@ export interface components {
              */
             hdca_ids?: string[];
             /**
+             * Implicit Collection Jobs IDs
+             * @description Decoded IDs of ImplicitCollectionJobs (map-over job groups) to include as mapped workflow steps. Use this for steps that ran with a map/over instead of passing a constituent job id in job_ids.
+             */
+            implicit_collection_jobs_ids?: string[];
+            /**
              * Job IDs
              * @description Decoded IDs of compatible tool jobs to include as workflow steps.
              */
