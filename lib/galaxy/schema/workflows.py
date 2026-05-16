@@ -466,11 +466,6 @@ class WorkflowExtractionByIdsPayload(Model):
         title="Workflow Name",
         description="The name for the extracted workflow.",
     )
-    from_history_id: Optional[DecodedDatabaseIdField] = Field(
-        None,
-        title="From History ID",
-        description="Optional history context (UI hint). Access decisions use per-item permission checks; not required for cross-history extraction.",
-    )
     job_ids: list[DecodedDatabaseIdField] = Field(
         default_factory=list,
         title="Job IDs",

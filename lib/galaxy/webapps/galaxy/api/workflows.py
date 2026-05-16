@@ -1105,8 +1105,7 @@ class FastAPIWorkflows:
         """ID-based workflow extraction.
 
         Per-item permission checks make this history-optional and allow
-        cross-history extraction. ``from_history_id`` in the body is UI
-        context only.
+        cross-history extraction.
         """
         return self.service.extract_by_ids(trans, payload)
 

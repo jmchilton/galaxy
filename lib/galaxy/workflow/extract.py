@@ -11,8 +11,6 @@ from typing import (
     Optional,
 )
 
-from sqlalchemy import select
-
 from galaxy import (
     exceptions,
     model,
@@ -24,7 +22,7 @@ from galaxy.model import (
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
     HistoryItem,
-    ImplicitCollectionJobsJobAssociation,
+    ImplicitCollectionJobs,
     Job,
     StoredWorkflow,
     User,
@@ -64,6 +62,17 @@ def _skip_output_assoc_name(name: str) -> bool:
     outputs (named-collection-part placeholders and discovered-primary-file
     rows). Both extraction paths skip these."""
     return ToolOutputCollectionPart.is_named_collection_part_name(name) or name.startswith("__new_primary_file")
+
+
+def _connect(step: WorkflowStep, input_name: str, source: tuple[WorkflowStep, str]) -> None:
+    """Wire ``step``'s ``input_name`` to ``source`` (output_step, output_name).
+    The source is always an earlier step - a job only consumes outputs of jobs
+    that ran before it. Shared by both extraction paths."""
+    source_step, source_name = source
+    conn = model.WorkflowStepConnection()
+    conn.input_step_input = step.get_or_add_input(input_name)
+    conn.output_step = source_step
+    conn.output_name = source_name
 
 
 def extract_workflow(
@@ -196,13 +205,7 @@ def extract_steps(
                 else:
                     log.info(f"Cannot find implicit input collection for {input_name}")
             if other_hid in hid_to_output_pair:
-                step_input = step.get_or_add_input(input_name)
-                other_step, other_name = hid_to_output_pair[other_hid]
-                conn = model.WorkflowStepConnection()
-                conn.input_step_input = step_input
-                # Should always be connected to an earlier step
-                conn.output_step = other_step
-                conn.output_name = other_name
+                _connect(step, input_name, hid_to_output_pair[other_hid])
         steps.append(step)
         # Store created dataset hids
         for assoc in job.output_datasets + job.output_dataset_collection_instances:
@@ -573,11 +576,6 @@ def extract_steps_by_ids(
     hda_ids = list(hda_ids or [])
     hdca_ids = list(hdca_ids or [])
 
-    if len(set(hda_ids)) != len(hda_ids):
-        raise exceptions.RequestParameterInvalidException("hda_ids contains duplicates")
-    if len(set(hdca_ids)) != len(hdca_ids):
-        raise exceptions.RequestParameterInvalidException("hdca_ids contains duplicates")
-
     user = getattr(trans, "user", None)
     sa_session = trans.sa_session
     hda_manager = trans.app.hda_manager
@@ -633,21 +631,9 @@ def extract_steps_by_ids(
     for icj_id in implicit_collection_jobs_ids:
         # Service-layer validator already checked existence, populated_state,
         # output-HDCA presence, and per-HDCA accessibility.
-        output_hdcas_for_icj = list(
-            sa_session.scalars(
-                select(HistoryDatasetCollectionAssociation).where(
-                    HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == icj_id
-                )
-            )
-        )
-        representative = sa_session.scalars(
-            select(Job)
-            .join(ImplicitCollectionJobsJobAssociation, ImplicitCollectionJobsJobAssociation.job_id == Job.id)
-            .where(ImplicitCollectionJobsJobAssociation.implicit_collection_jobs_id == icj_id)
-            .order_by(ImplicitCollectionJobsJobAssociation.order_index, Job.id)
-            .limit(1)
-        ).one()
-        work_items.append((representative, output_hdcas_for_icj))
+        icj = sa_session.get(ImplicitCollectionJobs, icj_id)
+        assert icj is not None, f"ImplicitCollectionJobs {icj_id} not found"
+        work_items.append((icj.representative_job, icj.output_dataset_collection_instances))
 
     # Job.id is monotonically assigned at submission, so sorting by it
     # produces dependency order: a downstream job always has a larger id
@@ -672,12 +658,7 @@ def extract_steps_by_ids(
             if input_name in mapped_inputs:
                 key = ("collection", mapped_inputs[input_name].id)
             if key in id_to_output_pair:
-                step_input = step.get_or_add_input(input_name)
-                other_step, other_name = id_to_output_pair[key]
-                conn = model.WorkflowStepConnection()
-                conn.input_step_input = step_input
-                conn.output_step = other_step
-                conn.output_name = other_name
+                _connect(step, input_name, id_to_output_pair[key])
         steps.append(step)
 
         if output_hdcas:

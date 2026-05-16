@@ -231,7 +231,7 @@ class TestWorkflowExtractionApi(_ExtractionHelpersMixin, BaseWorkflowsApiTestCas
         downloaded_workflow = self._extract_and_download_workflow(
             history_id,
             reimport_as="test_extract_with_copied_inputs",
-            reimport_jobs_ids=lambda nh: self._jobs_by_tool(nh, "cat1"),
+            reimport_jobs_ids=lambda nh: [j["id"] for j in self.dataset_populator.history_jobs_for_tool(nh, "cat1")],
             dataset_ids=input_hids,
         )
         self.assert_cat1_workflow_structure(downloaded_workflow)
@@ -275,7 +275,7 @@ class TestWorkflowExtractionApi(_ExtractionHelpersMixin, BaseWorkflowsApiTestCas
             self._copy_content_to_history(history_id, old_content)
 
         def reimport_jobs_ids(new_history_id):
-            rval = self._jobs_by_tool(new_history_id, "random_lines1")
+            rval = [j["id"] for j in self.dataset_populator.history_jobs_for_tool(new_history_id, "random_lines1")]
             assert len(rval) == 2
             return rval
 
@@ -596,9 +596,6 @@ test_data:
         _, job_id2 = self._run_tool_get_collection_and_job_id(history_id, "random_lines1", inputs2)
         return hdca, job_id1, job_id2
 
-    def _jobs_by_tool(self, history_id, tool_id):
-        return [j["id"] for j in self.dataset_populator.history_jobs(history_id) if j["tool_id"] == tool_id]
-
     def __setup_and_run_cat1_workflow(self, history_id):
         workflow = self.workflow_populator.load_workflow(name="test_for_extract")
         workflow_request, history_id, workflow_id = self._setup_workflow_run(workflow, history_id=history_id)
@@ -762,7 +759,6 @@ class TestWorkflowExtractionByIdsApi(_ExtractionHelpersMixin, BaseWorkflowsApiTe
     def test_extract_with_hda_ids(self, history_id):
         d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="1 2 3\n", c2="4 5 6\n")
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hda_ids=[d1["id"], d2["id"]],
             job_ids=[cat1_job_id],
         )
@@ -776,7 +772,6 @@ class TestWorkflowExtractionByIdsApi(_ExtractionHelpersMixin, BaseWorkflowsApiTe
         icj_id1 = self._icj_id_for_hdca(history_id, implicit_hdca1_id)
         icj_id2 = self._icj_id_for_hdca(history_id, implicit_hdca2_id)
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hdca_ids=[hdca["id"]],
             implicit_collection_jobs_ids=[icj_id1, icj_id2],
         )
@@ -818,7 +813,6 @@ test_data:
         icj_id1 = self._icj_id_for_job_in_history(history_id, job1_id)
         icj_id2 = self._icj_id_for_job_in_history(history_id, job2_id)
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hdca_ids=[input_hdca["id"]],
             implicit_collection_jobs_ids=[icj_id1, icj_id2],
         )
@@ -844,7 +838,6 @@ test_data:
         d1_copy = self._copy_hda_to_history(history_id, d1)
         d2_copy = self._copy_hda_to_history(history_id, d2)
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hda_ids=[d1_copy["id"], d2_copy["id"]],
             job_ids=[cat1_job_id],
         )
@@ -855,7 +848,7 @@ test_data:
     def test_extract_with_copied_inputs_pre_copy_ids(self, history_id):
         """User passes pre-copy HDA ids (in original history) plus the
         original job id; copies exist in `history_id` but are not referenced.
-        Cross-history extraction — `from_history_id` not required."""
+        Cross-history extraction — no history context supplied or required."""
         original_history_id = self.dataset_populator.new_history()
         d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(original_history_id, c1="1 2 3\n", c2="4 5 6\n")
         downloaded = self._extract_and_download_workflow_by_ids(
@@ -985,7 +978,6 @@ test_data:
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         cat1_job_id = run["jobs"][0]["id"]
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hda_ids=[forward_hda_id],
             job_ids=[cat1_job_id],
         )
@@ -1009,7 +1001,6 @@ test_data:
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         cat1_job_id = run["jobs"][0]["id"]
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hda_ids=[d_b["id"]],
             job_ids=[cat1_job_id],
         )
@@ -1039,7 +1030,6 @@ test_data:
         cat1_job_id = cached_run["jobs"][0]["id"]
 
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hda_ids=[d_b["id"], d2_b["id"]],
             job_ids=[cat1_job_id],
         )
@@ -1052,7 +1042,6 @@ test_data:
         fresh history, and assert it produces an output."""
         d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
         workflow_id = self._extract_workflow_id_by_ids(
-            from_history_id=history_id,
             hda_ids=[d1["id"], d2["id"]],
             job_ids=[cat1_job_id],
         )
@@ -1095,7 +1084,6 @@ test_data:
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         icj_id1 = self._icj_id_for_hdca(history_id, implicit_hdca1["id"])
         downloaded = self._extract_and_download_workflow_by_ids(
-            from_history_id=history_id,
             hdca_ids=[hdca["id"]],
             implicit_collection_jobs_ids=[icj_id1],
             job_ids=[job_id2],
@@ -1120,13 +1108,11 @@ test_data:
 
         wf_a = self._extract_and_download_workflow_by_ids(
             workflow_name="ordering A",
-            from_history_id=history_id,
             hda_ids=[d1["id"], d2["id"]],
             job_ids=[cat1_job_id],
         )
         wf_b = self._extract_and_download_workflow_by_ids(
             workflow_name="ordering B",
-            from_history_id=history_id,
             hda_ids=[d2["id"], d1["id"]],
             job_ids=[cat1_job_id],
         )

@@ -6354,8 +6354,7 @@ export interface paths {
          * @description ID-based workflow extraction.
          *
          *     Per-item permission checks make this history-optional and allow
-         *     cross-history extraction. ``from_history_id`` in the body is UI
-         *     context only.
+         *     cross-history extraction.
          */
         post: operations["extract_by_ids_api_workflows_extract_post"];
         delete?: never;
@@ -25661,11 +25660,6 @@ export interface components {
              * @description Names for the input datasets, parallel to hda_ids.
              */
             dataset_names?: string[];
-            /**
-             * From History ID
-             * @description Optional history context (UI hint). Access decisions use per-item permission checks; not required for cross-history extraction.
-             */
-            from_history_id?: string | null;
             /**
              * HDA IDs
              * @description Decoded IDs of HistoryDatasetAssociations to treat as workflow inputs.

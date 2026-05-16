@@ -260,7 +260,6 @@ async function submitWorkflow() {
 
         const payload: WorkflowExtractionByIdsPayload = {
             workflow_name: workflowName.value.trim(),
-            from_history_id: props.historyId,
             job_ids: selectedJobBuckets.value.job_ids,
             implicit_collection_jobs_ids: selectedJobBuckets.value.implicit_collection_jobs_ids,
             hda_ids: selectedDatasets.ids,
