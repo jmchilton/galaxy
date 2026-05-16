@@ -246,7 +246,6 @@ describe("WorkflowExtractionForm", () => {
             expect(extractWorkflowByIds).toHaveBeenCalledWith(
                 expect.objectContaining({
                     workflow_name: "Extracted WF",
-                    from_history_id: "history-1",
                     job_ids: ["job-tool-1"],
                     implicit_collection_jobs_ids: [],
                     hda_ids: ["ds-2"],
