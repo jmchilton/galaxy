@@ -3,7 +3,12 @@ import { shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { extractWorkflowByIds, extractWorkflowFromHistory, type WorkflowExtractionSummary } from "@/api/histories";
+import {
+    extractWorkflowByIds,
+    extractWorkflowFromHistory,
+    type WorkflowExtractionJob,
+    type WorkflowExtractionSummary,
+} from "@/api/histories";
 import { Toast } from "@/composables/toast";
 
 import GFormInput from "../BaseComponents/Form/GFormInput.vue";
@@ -42,66 +47,50 @@ vi.mock("@/stores/historyStore", () => ({
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-const TOOL_JOB = {
+const TOOL_JOB: WorkflowExtractionJob = {
     id: "job-tool-1",
     tool_id: "cat1",
     tool_name: "Concatenate",
     tool_version: "1.0",
-    step_type: "tool" as const,
+    step_type: "tool",
     checked: true,
     tool_version_warning: null,
-    outputs: [
-        { id: "ds-1", hid: 1, name: "output1", history_content_type: "dataset" as const, state: "ok", deleted: false },
-    ],
+    outputs: [{ id: "ds-1", hid: 1, name: "output1", history_content_type: "dataset", state: "ok", deleted: false }],
 };
 
-const MAPPED_TOOL_JOB = {
+const MAPPED_TOOL_JOB: WorkflowExtractionJob = {
     ...TOOL_JOB,
     id: "job-tool-2",
     implicit_collection_jobs_id: "icj-1",
     implicit_collection_jobs_size: 4,
 };
 
-const MAPPED_TOOL_JOB_2 = {
+const MAPPED_TOOL_JOB_2: WorkflowExtractionJob = {
     ...MAPPED_TOOL_JOB,
     id: "job-tool-3",
 };
 
-const INPUT_JOB = {
+const INPUT_JOB: WorkflowExtractionJob = {
     id: null,
     tool_id: null,
     tool_name: "Input Dataset",
     tool_version: null,
-    step_type: "input_dataset" as const,
+    step_type: "input_dataset",
     checked: true,
     tool_version_warning: null,
-    outputs: [
-        {
-            id: "ds-2",
-            hid: 2,
-            name: "myfile.txt",
-            history_content_type: "dataset" as const,
-            state: "ok",
-            deleted: false,
-        },
-    ],
+    outputs: [{ id: "ds-2", hid: 2, name: "myfile.txt", history_content_type: "dataset", state: "ok", deleted: false }],
 };
 
-const SUMMARY_WITH_JOBS = { jobs: [TOOL_JOB, INPUT_JOB], warnings: [] } as unknown as WorkflowExtractionSummary;
-const SUMMARY_WITH_MAPPED_JOB = { jobs: [MAPPED_TOOL_JOB], warnings: [] } as unknown as WorkflowExtractionSummary;
-const SUMMARY_WITH_DUPLICATE_MAPPED_JOBS = {
-    jobs: [MAPPED_TOOL_JOB, MAPPED_TOOL_JOB_2],
-    warnings: [],
-} as unknown as WorkflowExtractionSummary;
-const SUMMARY_WITH_PLAIN_AND_MAPPED_JOBS = {
-    jobs: [TOOL_JOB, MAPPED_TOOL_JOB],
-    warnings: [],
-} as unknown as WorkflowExtractionSummary;
-const SUMMARY_EMPTY = { jobs: [], warnings: [] } as unknown as WorkflowExtractionSummary;
-const SUMMARY_WITH_WARNINGS = {
-    jobs: [TOOL_JOB],
-    warnings: ["Tool version mismatch"],
-} as unknown as WorkflowExtractionSummary;
+function summary(jobs: WorkflowExtractionJob[], warnings: string[] = []): WorkflowExtractionSummary {
+    return { history_id: "history-1", jobs, warnings };
+}
+
+const SUMMARY_WITH_JOBS = summary([TOOL_JOB, INPUT_JOB]);
+const SUMMARY_WITH_MAPPED_JOB = summary([MAPPED_TOOL_JOB]);
+const SUMMARY_WITH_DUPLICATE_MAPPED_JOBS = summary([MAPPED_TOOL_JOB, MAPPED_TOOL_JOB_2]);
+const SUMMARY_WITH_PLAIN_AND_MAPPED_JOBS = summary([TOOL_JOB, MAPPED_TOOL_JOB]);
+const SUMMARY_EMPTY = summary([]);
+const SUMMARY_WITH_WARNINGS = summary([TOOL_JOB], ["Tool version mismatch"]);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
