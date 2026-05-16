@@ -6,7 +6,6 @@ from typing import (
 )
 
 from pydantic import UUID4
-from sqlalchemy import select
 
 from galaxy import (
     exceptions,
@@ -25,7 +24,6 @@ from galaxy.managers.workflows import (
     WorkflowsManager,
 )
 from galaxy.model import (
-    HistoryDatasetCollectionAssociation,
     ImplicitCollectionJobs,
     LandingRequestToWorkflowInvocationAssociation,
     StoredWorkflow,
@@ -264,10 +262,10 @@ class WorkflowsService(ServiceBase):
         implicit_collection_jobs_ids that depend on the loaded Job / ICJ rows
         so extract_workflow_by_ids can trust its input.
         """
-        if len(set(payload.job_ids)) != len(payload.job_ids):
-            raise exceptions.RequestParameterInvalidException("job_ids contains duplicates")
-        if len(set(payload.implicit_collection_jobs_ids)) != len(payload.implicit_collection_jobs_ids):
-            raise exceptions.RequestParameterInvalidException("implicit_collection_jobs_ids contains duplicates")
+        for field in ("job_ids", "implicit_collection_jobs_ids", "hda_ids", "hdca_ids"):
+            ids = getattr(payload, field)
+            if len(set(ids)) != len(ids):
+                raise exceptions.RequestParameterInvalidException(f"{field} contains duplicates")
 
         for job_id in payload.job_ids:
             job = self._job_manager.get_accessible_job(trans, job_id)
@@ -290,13 +288,7 @@ class WorkflowsService(ServiceBase):
                     f"ImplicitCollectionJobs {icj_id} is in populated_state "
                     f"{icj.populated_state!r}; only 'ok' is extractable"
                 )
-            output_hdcas = list(
-                sa_session.scalars(
-                    select(HistoryDatasetCollectionAssociation).where(
-                        HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == icj_id
-                    )
-                )
-            )
+            output_hdcas = icj.output_dataset_collection_instances
             if not output_hdcas:
                 raise exceptions.RequestParameterInvalidException(
                     f"ImplicitCollectionJobs {icj_id} has no output collections to extract"

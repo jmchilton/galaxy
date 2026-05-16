@@ -2961,6 +2961,34 @@ class ImplicitCollectionJobs(Base, Serializable):
         )
         return session.execute(stmt)
 
+    @property
+    def representative_job(self) -> "Job":
+        """Lowest-order constituent job, used as the stand-in when this ICJ is
+        treated as a single mapped step. Ordered by association order_index
+        then job id so the choice is deterministic."""
+        return (
+            required_object_session(self)
+            .scalars(
+                select(Job)
+                .join(ImplicitCollectionJobsJobAssociation, ImplicitCollectionJobsJobAssociation.job_id == Job.id)
+                .where(ImplicitCollectionJobsJobAssociation.implicit_collection_jobs_id == self.id)
+                .order_by(ImplicitCollectionJobsJobAssociation.order_index, Job.id)
+                .limit(1)
+            )
+            .one()
+        )
+
+    @property
+    def output_dataset_collection_instances(self) -> list["HistoryDatasetCollectionAssociation"]:
+        """HDCAs produced by this implicit map (one per mapped tool output)."""
+        return list(
+            required_object_session(self).scalars(
+                select(HistoryDatasetCollectionAssociation).where(
+                    HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == self.id
+                )
+            )
+        )
+
     def _serialize(self, id_encoder, serialization_options):
         rval = dict_for(
             self,
