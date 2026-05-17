@@ -57,6 +57,7 @@ from .state import (
     RequestInternalToolState,
     RequestToolState,
     TestCaseToolState,
+    WorkflowStepLinkedToolState,
 )
 from .visitor import (
     Callback,
@@ -78,6 +79,12 @@ AdaptDatasets = Callable[[JsonTestDatasetDefDict], DataRequestHda]
 AdaptCollections = Callable[[JsonTestCollectionDefDict], DataCollectionRequest]
 
 OPENAPI_REF_TEMPLATE = "#/components/schemas/{model}"
+CONNECTED_VALUE = {"__class__": "ConnectedValue"}
+CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE = "cross-product map-over is not modeled by workflow extraction"
+
+
+class RequestInternalToWorkflowStateError(ValueError):
+    """Raised when request_internal state cannot be represented as workflow state."""
 
 
 def cwl_runtime_model(input_models: ToolParameterBundle):
@@ -269,6 +276,54 @@ def dereference(
     request_state = RequestInternalDereferencedToolState(request_state_dict)
     request_state.validate(input_models)
     return request_state
+
+
+def to_workflow_step_state(
+    internal_state: RequestInternalToolState,
+    input_models: ToolParameterBundle,
+) -> WorkflowStepLinkedToolState:
+    """Convert persisted request_internal state to linked workflow step state.
+
+    Data and collection references are represented in workflows by input
+    connections, so their literal database references are replaced with
+    ConnectedValue markers. Scalar parameters are preserved unchanged.
+    """
+
+    def workflowify_data_element(element: dict) -> dict:
+        if element.get("__class__") == "Batch":
+            if element.get("linked") is False:
+                raise RequestInternalToWorkflowStateError(CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE)
+            values = element.get("values")
+            if not isinstance(values, list) or len(values) != 1:
+                raise RequestInternalToWorkflowStateError("Batch map-over inputs must contain exactly one value")
+        return CONNECTED_VALUE.copy()
+
+    def workflow_step_callback(parameter: ToolParameterT, value: Any):
+        if isinstance(parameter, DataParameterModel):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            if parameter.multiple and isinstance(value, list):
+                if value:
+                    return workflowify_data_element(cast(dict, value[0]))
+                return VISITOR_NO_REPLACEMENT
+            assert isinstance(value, dict), str(value)
+            return workflowify_data_element(value)
+        elif isinstance(parameter, DataCollectionParameterModel):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            assert isinstance(value, dict), str(value)
+            return workflowify_data_element(value)
+        else:
+            return VISITOR_NO_REPLACEMENT
+
+    workflow_state_dict = visit_input_values(
+        input_models,
+        internal_state,
+        workflow_step_callback,
+    )
+    workflow_state = WorkflowStepLinkedToolState(workflow_state_dict)
+    workflow_state.validate(input_models)
+    return workflow_state
 
 
 def encode_test(

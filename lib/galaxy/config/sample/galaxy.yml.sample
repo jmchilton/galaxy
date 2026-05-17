@@ -2316,6 +2316,13 @@ galaxy:
   # or 'format2'.
   #default_workflow_export_format: ga
 
+  # Allow workflow extraction to fall back to legacy Job parameter state
+  # when a selected step has no unambiguous ToolRequest. This default is
+  # intended for a long deprecation period for jobs created before
+  # ToolRequest state was recorded; a future release may default this to
+  # false.
+  #workflow_extraction_fallback_to_legacy_state: true
+
   # If multiple job handlers are enabled, allow Galaxy to schedule
   # workflow invocations in multiple handlers simultaneously. This is
   # discouraged because it results in a less predictable order of

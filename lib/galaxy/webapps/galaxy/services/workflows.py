@@ -43,6 +43,7 @@ from galaxy.schema.workflows import (
     WorkflowExtractionPayload,
     WorkflowExtractionResult,
 )
+from galaxy.tool_util.parameters import RequestInternalToWorkflowStateError
 from galaxy.util.tool_shed.tool_shed_registry import Registry
 from galaxy.webapps.galaxy.services.base import ServiceBase
 from galaxy.webapps.galaxy.services.notifications import NotificationService
@@ -238,18 +239,21 @@ class WorkflowsService(ServiceBase):
         if trans.user is None:
             raise exceptions.AuthenticationRequired("Workflow extraction requires an authenticated user.")
         self._validate_extract_by_ids_payload(trans, payload)
-        stored_workflow = extract_workflow_by_ids(
-            trans,
-            user=trans.user,
-            workflow_name=payload.workflow_name,
-            job_manager=self._job_manager,
-            job_ids=payload.job_ids,
-            implicit_collection_jobs_ids=payload.implicit_collection_jobs_ids,
-            hda_ids=payload.hda_ids,
-            hdca_ids=payload.hdca_ids,
-            dataset_names=payload.dataset_names,
-            dataset_collection_names=payload.dataset_collection_names,
-        )
+        try:
+            stored_workflow = extract_workflow_by_ids(
+                trans,
+                user=trans.user,
+                workflow_name=payload.workflow_name,
+                job_manager=self._job_manager,
+                job_ids=payload.job_ids,
+                implicit_collection_jobs_ids=payload.implicit_collection_jobs_ids,
+                hda_ids=payload.hda_ids,
+                hdca_ids=payload.hdca_ids,
+                dataset_names=payload.dataset_names,
+                dataset_collection_names=payload.dataset_collection_names,
+            )
+        except RequestInternalToWorkflowStateError as e:
+            raise exceptions.RequestParameterInvalidException(str(e)) from e
         return _to_extraction_result(stored_workflow)
 
     def _validate_extract_by_ids_payload(
