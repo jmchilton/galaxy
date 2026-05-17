@@ -1532,6 +1532,18 @@ gx_data_multiple:
    - parameter: {src: hda, id: 5}
    - parameter: null
    - {}
+  workflow_step_valid:
+   - {}
+  workflow_step_invalid:
+   - parameter: {__class__: 'ConnectedValue'}
+   - parameter: [{__class__: 'ConnectedValue'}]
+   - parameter: {src: hda, id: 5}
+  workflow_step_linked_valid:
+   - parameter: {__class__: 'ConnectedValue'}
+  workflow_step_linked_invalid:
+   - {}
+   - parameter: [{__class__: 'ConnectedValue'}]
+   - parameter: {src: hda, id: 5}
 
 gx_data_multiple_optional:
   request_valid:
@@ -1585,6 +1597,18 @@ gx_data_multiple_optional:
   job_runtime_invalid:
    - parameter: {src: hda, id: 5}
    - {}
+  workflow_step_valid:
+   - {}
+  workflow_step_invalid:
+   - parameter: {__class__: 'ConnectedValue'}
+   - parameter: [{__class__: 'ConnectedValue'}]
+   - parameter: {src: hda, id: 5}
+  workflow_step_linked_valid:
+   - {}
+   - parameter: {__class__: 'ConnectedValue'}
+  workflow_step_linked_invalid:
+   - parameter: [{__class__: 'ConnectedValue'}]
+   - parameter: {src: hda, id: 5}
 
 gx_data_collection:
   request_valid:
@@ -2167,6 +2191,21 @@ gx_repeat_data:
     - parameter: {}
     - parameter:
        - { data_parameter: {src: url, url: "https://raw.githubusercontent.com/galaxyproject/planemo/7be1bf5b3971a43eaa73f483125bfb8cabf1c440/tests/data/hello.txt", ext: "txt"} }
+  workflow_step_valid:
+    - {}
+    - parameter: []
+  workflow_step_invalid:
+    - parameter:
+      - { data_parameter: {__class__: 'ConnectedValue'} }
+  workflow_step_linked_valid:
+    - {}
+    - parameter: []
+    - parameter:
+      - { data_parameter: {__class__: 'ConnectedValue'} }
+  workflow_step_linked_invalid:
+    - parameter: 5
+    - parameter:
+      - { data_parameter: { src: hda, id: 5 } }
 
 gx_repeat_data_min:
   request_valid:
@@ -2954,6 +2993,16 @@ gx_data_collection_sample_sheet_y:
             nameext: ".txt"
             format: "txt"
             size: 100
+  workflow_step_valid:
+    - {}
+  workflow_step_invalid:
+    - parameter: {__class__: 'ConnectedValue'}
+    - parameter: {src: hdca, id: 5}
+  workflow_step_linked_valid:
+    - parameter: {__class__: 'ConnectedValue'}
+  workflow_step_linked_invalid:
+    - {}
+    - parameter: {src: hdca, id: 5}
 
 gx_data_collection_paired_or_unpaired_y:
   request_valid:
