@@ -13,7 +13,6 @@ from typing import (
     Union,
 )
 
-from boltons.iterutils import remap
 from sqlalchemy import (
     Select,
     select,
@@ -43,9 +42,9 @@ from galaxy.schema.history_graph import (
     HistoryGraphResponse,
     TruncationInfo,
 )
-from galaxy.schema.schema import DataItemSourceType
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.structured_app import MinimalManagerApp
+from galaxy.tool_util.parameters.request import request_internal_input_refs
 from galaxy.tool_util.toolbox import AbstractToolBox
 
 log = logging.getLogger(__name__)
@@ -405,22 +404,7 @@ class HistoryGraphBuilder:
         Payload shape is trusted to be Pydantic-validated upstream when
         the tool_request was accepted; no explicit depth or ref caps are
         applied here by design."""
-        refs: set[tuple[str, int]] = set()
-
-        def visit(path, key, value):
-            if key == "id" and isinstance(value, int) and not isinstance(value, bool):
-                parent = payload
-                for step in path:
-                    parent = parent[step]
-                if isinstance(parent, dict):
-                    src = parent.get("src")
-                    if src == DataItemSourceType.hda:
-                        refs.add(("dataset", value))
-                    elif src == DataItemSourceType.hdca:
-                        refs.add(("collection", value))
-            return key, value
-
-        remap(payload, visit=visit)
+        refs = {(ref.content_type, ref.id) for ref in request_internal_input_refs(payload, {"hda", "hdca"})}
         return self._normalize_refs(refs)
 
     def _normalize_refs(self, refs: set[tuple[str, int]]) -> set[tuple[str, int]]:

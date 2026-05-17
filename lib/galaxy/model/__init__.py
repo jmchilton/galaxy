@@ -2962,6 +2962,30 @@ class ImplicitCollectionJobs(Base, Serializable):
         return session.execute(stmt)
 
     @property
+    def tool_request_ids(self) -> set[int]:
+        """Distinct ToolRequest ids across constituent jobs."""
+        return {row.tool_request_id for row in self.get_job_attributes(["tool_request_id"]) if row.tool_request_id}
+
+    @property
+    def has_ambiguous_tool_request(self) -> bool:
+        return len(self.tool_request_ids) > 1
+
+    @property
+    def tool_request(self) -> Optional["ToolRequest"]:
+        """The single ToolRequest for this ICJ, if one exists unambiguously."""
+        tool_request_ids = self.tool_request_ids
+        if len(tool_request_ids) == 1:
+            return required_object_session(self).get(ToolRequest, next(iter(tool_request_ids)))
+        if len(tool_request_ids) > 1:
+            log.warning(
+                "ImplicitCollectionJobs %s has multiple tool_request_id values %s; "
+                "workflow extraction will use legacy state fallback",
+                self.id,
+                sorted(tool_request_ids),
+            )
+        return None
+
+    @property
     def representative_job(self) -> "Job":
         """Lowest-order constituent job, used as the stand-in when this ICJ is
         treated as a single mapped step. Ordered by association order_index

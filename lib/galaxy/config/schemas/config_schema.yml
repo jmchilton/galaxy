@@ -3052,6 +3052,17 @@ mapping:
           Default format for the export of workflows. Possible values are 'ga'
           or 'format2'.
 
+      workflow_extraction_fallback_to_legacy_state:
+        type: bool
+        default: true
+        required: false
+        desc: |
+          Allow workflow extraction to fall back to legacy Job parameter state
+          when a selected step has no unambiguous ToolRequest. This default is
+          intended for a long deprecation period for jobs created before
+          ToolRequest state was recorded; a future release may default this to
+          false.
+
       parallelize_workflow_scheduling_within_histories:
         type: bool
         default: false
