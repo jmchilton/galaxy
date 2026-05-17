@@ -490,6 +490,16 @@ class WorkflowExtractionByIdsPayload(Model):
             "constituent job id in job_ids."
         ),
     )
+    tool_request_ids: list[DecodedDatabaseIdField] = Field(
+        default_factory=list,
+        title="Tool Request IDs",
+        description=(
+            "Decoded IDs of ToolRequests to include as workflow steps. Selecting an execution "
+            "by its tool request sources the step from the validated request rather than from a "
+            "job, so executions with zero jobs (e.g. a map-over of an empty collection) still "
+            "extract a structurally-complete step."
+        ),
+    )
     dataset_names: list[str] = Field(
         default_factory=list,
         title="Dataset Names",
@@ -503,8 +513,12 @@ class WorkflowExtractionByIdsPayload(Model):
 
     @model_validator(mode="after")
     def _at_least_one_input(self):
-        if not (self.hda_ids or self.hdca_ids or self.job_ids or self.implicit_collection_jobs_ids):
-            raise ValueError("At least one of hda_ids, hdca_ids, job_ids, implicit_collection_jobs_ids required")
+        if not (
+            self.hda_ids or self.hdca_ids or self.job_ids or self.implicit_collection_jobs_ids or self.tool_request_ids
+        ):
+            raise ValueError(
+                "At least one of hda_ids, hdca_ids, job_ids, implicit_collection_jobs_ids, tool_request_ids required"
+            )
         return self
 
 
