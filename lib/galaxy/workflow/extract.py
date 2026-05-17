@@ -630,9 +630,15 @@ def _tool_from_request(trans: ProvidesHistoryContext, tool_request: ToolRequest)
     )
 
 
-def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolRequest) -> _WorkItem:
+def _tool_request_work_item(
+    trans: ProvidesHistoryContext, tool_request: ToolRequest, sort_key: Optional[int] = None
+) -> _WorkItem:
+    # sort_key defaults to the tool request id; an ICJ-sourced caller whose
+    # constituent jobs exist passes the representative job id instead so the
+    # item stays in the job id-space for dependency ordering alongside any
+    # classic (non-tool-request) ICJs selected in the same payload.
     return _WorkItem(
-        sort_key=tool_request.id,
+        sort_key=tool_request.id if sort_key is None else sort_key,
         request_payload=_tool_request_payload(tool_request),
         tool=_tool_from_request(trans, tool_request),
         job=None,
@@ -778,7 +784,22 @@ def extract_steps_by_ids(
         icj = sa_session.get(ImplicitCollectionJobs, icj_id)
         assert icj is not None, f"ImplicitCollectionJobs {icj_id} not found"
         output_hdcas = icj.output_dataset_collection_instances
-        if icj.jobs:
+        tool_request = next(
+            (o.tool_request_association.tool_request for o in output_hdcas if o.tool_request_association is not None),
+            None,
+        )
+        if tool_request is not None:
+            # Tool-request-backed ICJ: source the step from the validated
+            # request + persisted tool_source (provenance parity with the
+            # direct tool_request_ids path) whether or not constituent jobs
+            # exist -- so a still-grey execution selected by its ICJ extracts
+            # the same way an empty (jobless) one does. Keep the
+            # representative job id as the ordering key when jobs exist.
+            sort_key = icj.representative_job.id if icj.jobs else None
+            work_items.append(_tool_request_work_item(trans, tool_request, sort_key=sort_key))
+        elif icj.jobs:
+            # Classic (non-tool-request) map-over: derive structured state
+            # from the representative constituent job.
             representative_job = icj.representative_job
             request_payload = _structured_request_payload(icj=icj)
             work_items.append(
@@ -791,22 +812,9 @@ def extract_steps_by_ids(
                 )
             )
         else:
-            # Jobless map-over (e.g. an empty collection): there is no
-            # representative job -- source the step from the tool request
-            # reached via the output HDCA rather than crashing.
-            tool_request = next(
-                (
-                    o.tool_request_association.tool_request
-                    for o in output_hdcas
-                    if o.tool_request_association is not None
-                ),
-                None,
+            raise exceptions.RequestParameterInvalidException(
+                f"ImplicitCollectionJobs {icj_id} has no jobs and no tool request to extract from"
             )
-            if tool_request is None:
-                raise exceptions.RequestParameterInvalidException(
-                    f"ImplicitCollectionJobs {icj_id} has no jobs and no tool request to extract from"
-                )
-            work_items.append(_tool_request_work_item(trans, tool_request))
 
     for tool_request_id in tool_request_ids:
         tool_request = sa_session.get(ToolRequest, tool_request_id)

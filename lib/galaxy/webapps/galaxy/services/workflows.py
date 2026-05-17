@@ -334,11 +334,24 @@ class WorkflowsService(ServiceBase):
                 if resolved_request is not None:
                     self._error_unless_tool_request_accessible(trans, resolved_request)
 
+        # A 'new' (validated but not yet celery-materialized) tool request has
+        # no implicit_collections, so its step extracts but registers no
+        # outputs. That is fine for a lone single-step extraction, but in any
+        # multi-selection it would be a silently un-wireable producer -- reject
+        # rather than emit a structurally-incomplete workflow.
+        single_request_only = len(payload.tool_request_ids) == 1 and not (
+            payload.hda_ids or payload.hdca_ids or payload.job_ids or payload.implicit_collection_jobs_ids
+        )
         for tool_request_id in payload.tool_request_ids:
             tool_request = sa_session.get(ToolRequest, tool_request_id)
             if tool_request is None:
                 raise exceptions.ObjectNotFound(f"ToolRequest {tool_request_id} not found")
             self._error_unless_tool_request_accessible(trans, tool_request)
+            if tool_request.state == ToolRequest.states.NEW and not single_request_only:
+                raise exceptions.RequestParameterInvalidException(
+                    f"ToolRequest {tool_request_id} is not yet materialized (state 'new'); "
+                    "extract it as a single-step workflow on its own, or retry once it is 'submitted'."
+                )
 
     def _error_unless_tool_request_accessible(self, trans: ProvidesHistoryContext, tool_request: ToolRequest) -> None:
         # Auth parity with job- / ICJ-sourced selection above (accessible

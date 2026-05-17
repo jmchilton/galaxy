@@ -132,6 +132,20 @@ class _ExtractionHelpersMixin:
         self.dataset_populator.wait_for_jobs(jobs, assert_ok=True)
         return self.dataset_populator.get_tool_request(tool_request_id), jobs, run_response
 
+    def _submit_tool_request_wait_submitted(self, history_id, tool_id, inputs):
+        # Like _run_tool_request_get_request_and_jobs but stops once the
+        # ToolRequest is 'submitted': jobs are materialized but left in
+        # flight (not waited to ok), so a caller can extract a still-grey
+        # execution (#7003).
+        run = self.dataset_populator.tool_request_raw(tool_id, inputs, history_id)
+        self._assert_status_code_is(run, 200)
+        run_response = run.json()
+        tool_request_id = run_response["tool_request_id"]
+        self.dataset_populator.wait_on_task_object(run_response["task_result"])
+        assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+        jobs = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+        return self.dataset_populator.get_tool_request(tool_request_id), jobs, run_response
+
     def _tool_state_without_metadata(self, step):
         state = loads(step["tool_state"])
         state.pop("__page__", None)
@@ -1424,6 +1438,147 @@ test_data:
         assert self._tool_state_without_metadata(downstream_step) == {"input1": {"__class__": "ConnectedValue"}}
         assert upstream_step["input_connections"]["input1"]["id"] == collection_step["id"]
         assert downstream_step["input_connections"]["input1"]["id"] == upstream_step["id"]
+
+    @skip_without_tool("cat_data_and_sleep")
+    @summarize_instance_history_on_error
+    def test_extract_queued_tool_request_state_by_ids(self, history_id):
+        """#7003: a tool-request execution whose jobs are still grey
+        (queued/running, not ok) has no completed job to trace, but the
+        ToolRequest is the validated abstract step description independent
+        of job state. Selecting it by tool_request_ids must extract the
+        structurally-complete workflow while the jobs are in flight. Scope:
+        tool-request path only (classic queued jobs deferred)."""
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=["alpha\n", "beta\n"], wait=True
+        ).json()["outputs"][0]
+        # cat finishes fast but the job is not 'ok' until the 60s sleep
+        # ends, so the in-flight window is deterministic (no runner race).
+        tool_request, jobs, run_response = self._submit_tool_request_wait_submitted(
+            history_id,
+            "cat_data_and_sleep",
+            {
+                "input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": hdca["id"]}]},
+                "sleep_time": 60,
+            },
+        )
+        assert len(jobs) == 2, jobs
+        states = {self.dataset_populator.get_job_details(j["id"]).json()["state"] for j in jobs}
+        assert states <= {"new", "queued", "running"}, states
+        assert tool_request["implicit_collections"], tool_request
+
+        downloaded = self._extract_and_download_workflow_by_ids(tool_request_ids=[run_response["tool_request_id"]])
+
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        assert loads(collection_step["tool_state"])["collection_type"] == "list"
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert tool_step["tool_id"] == "cat_data_and_sleep"
+        # input1 (Batch over the collection) becomes a connected input; the
+        # static sleep_time scalar is preserved structurally. The omitted
+        # empty `queries` repeat is absent (not synthesized).
+        assert self._tool_state_without_metadata(tool_step) == {
+            "input1": {"__class__": "ConnectedValue"},
+            "sleep_time": "60",
+        }
+        assert tool_step["input_connections"]["input1"]["id"] == collection_step["id"]
+
+    @skip_without_tool("cat_data_and_sleep")
+    @summarize_instance_history_on_error
+    def test_extract_chained_queued_tool_requests_by_ids(self, history_id):
+        """#7003 structure preserved in full while in flight: two chained
+        tool requests whose jobs are all still grey. The downstream request
+        maps over the upstream's (grey) implicit output collection; selecting
+        both by tool_request_ids must yield the 3-step workflow with the
+        downstream wired to the upstream producer -- no step ran a job."""
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=["alpha\n", "beta\n"], wait=True
+        ).json()["outputs"][0]
+        tr1, jobs1, run1 = self._submit_tool_request_wait_submitted(
+            history_id,
+            "cat_data_and_sleep",
+            {
+                "input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": hdca["id"]}]},
+                "sleep_time": 60,
+            },
+        )
+        assert len(jobs1) == 2, jobs1
+        upstream_output_hdca_id = tr1["implicit_collections"][0]["id"]
+        tr2, jobs2, run2 = self._submit_tool_request_wait_submitted(
+            history_id,
+            "cat_data_and_sleep",
+            {
+                "input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": upstream_output_hdca_id}]},
+                "sleep_time": 60,
+            },
+        )
+        assert len(jobs2) == 2, jobs2
+        grey = {"new", "queued", "running"}
+        states = {self.dataset_populator.get_job_details(j["id"]).json()["state"] for j in (jobs1 + jobs2)}
+        assert states <= grey, states
+
+        downloaded = self._extract_and_download_workflow_by_ids(
+            tool_request_ids=[run1["tool_request_id"], run2["tool_request_id"]]
+        )
+
+        assert len(downloaded["steps"]) == 3, downloaded["steps"]
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        assert loads(collection_step["tool_state"])["collection_type"] == "list"
+        upstream_step, downstream_step = self.assert_steps_of_type(downloaded, "tool", expected_len=2)
+        assert upstream_step["tool_id"] == "cat_data_and_sleep"
+        assert downstream_step["tool_id"] == "cat_data_and_sleep"
+        assert self._tool_state_without_metadata(downstream_step) == {
+            "input1": {"__class__": "ConnectedValue"},
+            "sleep_time": "60",
+        }
+        assert upstream_step["input_connections"]["input1"]["id"] == collection_step["id"]
+        assert downstream_step["input_connections"]["input1"]["id"] == upstream_step["id"]
+
+    @skip_without_tool("cat_data_and_sleep")
+    @summarize_instance_history_on_error
+    def test_extract_queued_tool_request_via_icj_by_ids(self, history_id):
+        """#7003 QUEUED_ICJ_PARITY: a still-grey tool-request execution
+        selected by its ImplicitCollectionJobs (icj.jobs non-empty but
+        non-terminal) must source the step from the validated request +
+        persisted tool_source -- parity with tool_request_ids -- not the
+        representative-job path, and must not require a completed job."""
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=["alpha\n", "beta\n"], wait=True
+        ).json()["outputs"][0]
+        tool_request, jobs, _ = self._submit_tool_request_wait_submitted(
+            history_id,
+            "cat_data_and_sleep",
+            {
+                "input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": hdca["id"]}]},
+                "sleep_time": 60,
+            },
+        )
+        assert len(jobs) == 2, jobs
+        states = {self.dataset_populator.get_job_details(j["id"]).json()["state"] for j in jobs}
+        assert states <= {"new", "queued", "running"}, states
+        implicit_collections = tool_request["implicit_collections"]
+        assert len(implicit_collections) == 1, tool_request
+        # wait=False: the implicit collection carries its ICJ id while still
+        # grey; the default _icj_id_for_hdca waits for completion (defeats
+        # the in-flight intent).
+        implicit_details = self.dataset_populator.get_history_collection_details(
+            history_id, content_id=implicit_collections[0]["id"], wait=False
+        )
+        icj_id = implicit_details.get("implicit_collection_jobs_id")
+        assert icj_id, implicit_details
+
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hdca_ids=[hdca["id"]],
+            implicit_collection_jobs_ids=[icj_id],
+        )
+
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        assert loads(collection_step["tool_state"])["collection_type"] == "list"
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert tool_step["tool_id"] == "cat_data_and_sleep"
+        assert self._tool_state_without_metadata(tool_step) == {
+            "input1": {"__class__": "ConnectedValue"},
+            "sleep_time": "60",
+        }
+        assert tool_step["input_connections"]["input1"]["id"] == collection_step["id"]
 
     @skip_without_tool("cat1")
     @summarize_instance_history_on_error
