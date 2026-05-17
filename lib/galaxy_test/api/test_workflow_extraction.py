@@ -1338,6 +1338,94 @@ test_data:
         assert tool_step["input_connections"]["input1"]["id"] == collection_step["id"]
 
     @skip_without_tool("cat1")
+    @skip_without_tool("empty_list")
+    @summarize_instance_history_on_error
+    def test_extract_empty_map_over_tool_request_state_by_ids(self, history_id):
+        """#21788: a Batch map-over of cat1 over a genuinely empty list
+        expands to zero jobs, so there is no representative job to source the
+        step from. The ToolRequest *is* the abstract step description that
+        exists with zero jobs; selecting it by tool_request_ids must still
+        extract the structurally-complete 2-step workflow (collection input
+        wired to a connected cat1 param) rather than crashing / dropping the
+        step. Scope: tool-request path only (no workflow invocation)."""
+        seed = self.dataset_populator.new_dataset(history_id, content="seed\n")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        empty_run = self.dataset_populator.run_tool(
+            "empty_list", {"input1": {"src": "hda", "id": seed["id"]}}, history_id
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        empty_hdca = empty_run["output_collections"][0]
+        empty_details = self.dataset_populator.get_history_collection_details(
+            history_id, content_id=empty_hdca["id"], wait=False
+        )
+        assert empty_details["collection_type"] == "list", empty_details
+        assert empty_details["elements"] == [], empty_details
+
+        tool_request, jobs, run_response = self._run_tool_request_get_request_and_jobs(
+            history_id,
+            "cat1",
+            {"input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": empty_hdca["id"]}]}},
+        )
+        # The #21788 condition, reproduced on the tool-request path: a valid
+        # ToolRequest with zero jobs.
+        assert jobs == [], jobs
+        tool_request_id = run_response["tool_request_id"]
+
+        downloaded = self._extract_and_download_workflow_by_ids(tool_request_ids=[tool_request_id])
+
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        assert loads(collection_step["tool_state"])["collection_type"] == "list"
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert tool_step["tool_id"] == "cat1"
+        assert self._tool_state_without_metadata(tool_step) == {"input1": {"__class__": "ConnectedValue"}}
+        assert tool_step["input_connections"]["input1"]["id"] == collection_step["id"]
+
+    @skip_without_tool("cat1")
+    @skip_without_tool("empty_list")
+    @summarize_instance_history_on_error
+    def test_extract_chained_empty_map_over_tool_requests_by_ids(self, history_id):
+        """#21788 structure preserved in full: two chained jobless map-overs
+        selected by tool_request_ids. The downstream step must connect to the
+        upstream empty producer's output (not become a dangling input), so the
+        whole sub-graph survives even though no step ran a single job."""
+        seed = self.dataset_populator.new_dataset(history_id, content="seed\n")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        empty_run = self.dataset_populator.run_tool(
+            "empty_list", {"input1": {"src": "hda", "id": seed["id"]}}, history_id
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        empty_hdca = empty_run["output_collections"][0]
+
+        tr1, jobs1, run1 = self._run_tool_request_get_request_and_jobs(
+            history_id,
+            "cat1",
+            {"input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": empty_hdca["id"]}]}},
+        )
+        assert jobs1 == [], jobs1
+        upstream_output_hdca_id = tr1["implicit_collections"][0]["id"]
+        tr2, jobs2, run2 = self._run_tool_request_get_request_and_jobs(
+            history_id,
+            "cat1",
+            {"input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": upstream_output_hdca_id}]}},
+        )
+        assert jobs2 == [], jobs2
+
+        downloaded = self._extract_and_download_workflow_by_ids(
+            tool_request_ids=[run1["tool_request_id"], run2["tool_request_id"]]
+        )
+
+        assert len(downloaded["steps"]) == 3, downloaded["steps"]
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        assert loads(collection_step["tool_state"])["collection_type"] == "list"
+        # Sorted by id: upstream (consumes the input collection) then
+        # downstream (consumes upstream's output).
+        upstream_step, downstream_step = self.assert_steps_of_type(downloaded, "tool", expected_len=2)
+        assert upstream_step["tool_id"] == "cat1" and downstream_step["tool_id"] == "cat1"
+        assert self._tool_state_without_metadata(downstream_step) == {"input1": {"__class__": "ConnectedValue"}}
+        assert upstream_step["input_connections"]["input1"]["id"] == collection_step["id"]
+        assert downstream_step["input_connections"]["input1"]["id"] == upstream_step["id"]
+
+    @skip_without_tool("cat1")
     @summarize_instance_history_on_error
     def test_extract_cross_product_batch_rejected_by_ids(self, history_id):
         """linked:false (cross-product map-over) is not modeled by workflow

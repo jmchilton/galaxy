@@ -5,6 +5,10 @@ histories.
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import (
+    dataclass,
+    field,
+)
 from typing import (
     Any,
     cast,
@@ -34,16 +38,17 @@ from galaxy.model.base import ensure_object_added_to_session
 from galaxy.tool_util.parameters import (
     RequestInternalToolState,
     RequestInternalToWorkflowStateError,
-    ToolParameterBundleModel,
     to_workflow_step_state,
+    ToolParameterBundleModel,
 )
 from galaxy.tool_util.parameters.request import (
-    RequestInputRef,
-    RequestUrlInputRef,
     request_internal_input_refs,
     request_internal_url_inputs,
+    RequestInputRef,
+    RequestUrlInputRef,
 )
 from galaxy.tool_util.parser import ToolOutputCollectionPart
+from galaxy.tools import create_tool_from_representation
 from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
     DataToolParameter,
@@ -540,6 +545,7 @@ def extract_workflow_by_ids(
     implicit_collection_jobs_ids: Optional[list[int]] = None,
     hda_ids: Optional[list[int]] = None,
     hdca_ids: Optional[list[int]] = None,
+    tool_request_ids: Optional[list[int]] = None,
     dataset_names: Optional[list[str]] = None,
     dataset_collection_names: Optional[list[str]] = None,
 ) -> StoredWorkflow:
@@ -551,6 +557,7 @@ def extract_workflow_by_ids(
         implicit_collection_jobs_ids=implicit_collection_jobs_ids,
         hda_ids=hda_ids,
         hdca_ids=hdca_ids,
+        tool_request_ids=tool_request_ids,
         dataset_names=dataset_names,
         dataset_collection_names=dataset_collection_names,
     )
@@ -561,6 +568,122 @@ IdKey = tuple[Literal["dataset", "collection"], int]
 IdAssociations = list[tuple[IdKey, str]]
 
 
+@dataclass
+class _WorkItem:
+    """One tool step to extract. ``job`` is ``None`` for a tool-request
+    sourced step (e.g. an empty map-over that expanded to zero jobs); such a
+    step is described entirely by ``request_payload`` + ``tool`` + the tool
+    request's implicit output collections. ``sort_key`` orders producers
+    before consumers (job id, or tool request id when jobless).
+    """
+
+    sort_key: int
+    request_payload: Optional[dict]
+    tool: Optional[Any]  # resolved Tool; None only on the legacy-fallback job path
+    job: Optional[Job] = None
+    output_hdcas: list[HistoryDatasetCollectionAssociation] = field(default_factory=list)
+    tool_request: Optional[ToolRequest] = None  # set => tool-request sourced (possibly jobless)
+
+
+def _data_input_step(name: str, step_labels: set[str]) -> WorkflowStep:
+    step = model.WorkflowStep()
+    step.type = "data_input"
+    if name not in step_labels:
+        step.label = name
+        step_labels.add(name)
+    step.tool_inputs = dict(name=name)
+    return step
+
+
+def _data_collection_input_step(name: str, collection_type: str, step_labels: set[str]) -> WorkflowStep:
+    step = model.WorkflowStep()
+    step.type = "data_collection_input"
+    if name not in step_labels:
+        step.label = name
+        step_labels.add(name)
+    step.tool_inputs = dict(name=name, collection_type=collection_type)
+    return step
+
+
+def _tool_for_job(trans: ProvidesHistoryContext, job: Job):
+    tool = trans.app.toolbox.get_tool(job.tool_id, tool_version=job.tool_version)
+    assert tool is not None, f"Tool {job.tool_id} (version {job.tool_version}) not found"
+    return tool
+
+
+def _tool_from_request(trans: ProvidesHistoryContext, tool_request: ToolRequest):
+    """Rebuild the tool from the request's persisted ToolSource blob via the
+    same reconstruction function the celery queue_jobs task uses (no toolbox,
+    no job), so a jobless tool request still yields the parameter model
+    extraction needs. The persisted ToolSource carries only source +
+    source_class -- tool_dir/guid (which celery passes from the live tool at
+    request time) are unavailable here; sufficient for built-in tools, the
+    installed-tool/macro edge is a documented deferred follow-up.
+    """
+    tool_source = tool_request.tool_source
+    return create_tool_from_representation(
+        trans.app,
+        tool_source.source,
+        tool_dir=None,
+        tool_source_class=tool_source.source_class,
+        guid=None,
+    )
+
+
+def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolRequest) -> _WorkItem:
+    return _WorkItem(
+        sort_key=tool_request.id,
+        request_payload=_tool_request_payload(tool_request),
+        tool=_tool_from_request(trans, tool_request),
+        job=None,
+        output_hdcas=[a.dataset_collection for a in tool_request.implicit_collections],
+        tool_request=tool_request,
+    )
+
+
+def _synthesize_request_input_steps(
+    trans: ProvidesHistoryContext,
+    request_payload: dict,
+    step_labels: set[str],
+    id_to_output_pair: dict[IdKey, tuple[WorkflowStep, str]],
+) -> list[WorkflowStep]:
+    """For a tool-request sourced step, inputs the request references that are
+    not produced by another selected step become workflow inputs. Mirrors
+    :func:`_url_input_steps_for_request` ({src:url}) for {src:hda|hdca|dce}.
+    Keys are computed exactly as :func:`_association_for_request_ref` so the
+    synthesized input and the association connect to the same node.
+    """
+    sa_session = trans.sa_session
+    created: list[WorkflowStep] = []
+    for ref in request_internal_input_refs(request_payload):
+        if ref.content_type == "collection":
+            hdca = sa_session.get(HistoryDatasetCollectionAssociation, ref.id)
+            if hdca is None:
+                continue
+            original_hdca = _original_hdca(hdca)
+            key: IdKey = ("collection", original_hdca.id)
+            if key in id_to_output_pair:
+                continue
+            step = _data_collection_input_step(ref.input_name, original_hdca.collection.collection_type, step_labels)
+        else:
+            if ref.content_type == "dataset_collection_element":
+                dce = sa_session.get(model.DatasetCollectionElement, ref.id)
+                leaf = (dce.hda or dce.first_dataset_instance()) if dce is not None else None
+                hda = leaf if isinstance(leaf, HistoryDatasetAssociation) else None
+            else:
+                hda = sa_session.get(HistoryDatasetAssociation, ref.id)
+            if hda is None:
+                continue
+            original_hda = _original_hda(hda)
+            key = ("dataset", original_hda.id)
+            if key in id_to_output_pair:
+                continue
+            step = _data_input_step(ref.input_name, step_labels)
+        id_to_output_pair[key] = (step, "output")
+        created.append(step)
+    return created
+
+
 def extract_steps_by_ids(
     trans: ProvidesHistoryContext,
     job_manager: Optional[JobManager] = None,
@@ -568,6 +691,7 @@ def extract_steps_by_ids(
     implicit_collection_jobs_ids: Optional[list[int]] = None,
     hda_ids: Optional[list[int]] = None,
     hdca_ids: Optional[list[int]] = None,
+    tool_request_ids: Optional[list[int]] = None,
     dataset_names: Optional[list[str]] = None,
     dataset_collection_names: Optional[list[str]] = None,
 ) -> list[WorkflowStep]:
@@ -582,6 +706,11 @@ def extract_steps_by_ids(
     each ICJ becomes a single workflow step whose inputs are wired to the
     pre-map input HDCA(s) via ``ImplicitlyCreatedDatasetCollectionInput``.
 
+    ``tool_request_ids`` sources a step from its (validated) tool request
+    rather than a job, so an execution with zero jobs -- e.g. a map-over of
+    an empty collection (#21788) -- still extracts a structurally-complete
+    step; inputs the request references become workflow inputs.
+
     ``job_manager`` may be omitted only when ``job_ids`` is empty (kept
     Optional for unit-test ergonomics).
     """
@@ -589,6 +718,7 @@ def extract_steps_by_ids(
     implicit_collection_jobs_ids = list(implicit_collection_jobs_ids or [])
     hda_ids = list(hda_ids or [])
     hdca_ids = list(hdca_ids or [])
+    tool_request_ids = list(tool_request_ids or [])
 
     user = getattr(trans, "user", None)
     sa_session = trans.sa_session
@@ -601,46 +731,41 @@ def extract_steps_by_ids(
 
     for i, hda_id in enumerate(hda_ids):
         hda = hda_manager.get_accessible(hda_id, user)
-        step = model.WorkflowStep()
-        step.type = "data_input"
         name = dataset_names[i] if dataset_names else "Input Dataset"
-        if name not in step_labels:
-            step.label = name
-            step_labels.add(name)
-        step.tool_inputs = dict(name=name)
+        step = _data_input_step(name, step_labels)
         steps.append(step)
         original = _original_hda(hda)
         id_to_output_pair[("dataset", original.id)] = (step, "output")
 
     for i, hdca_id in enumerate(hdca_ids):
         hdca = dataset_collection_manager.get_dataset_collection_instance(trans, "history", hdca_id)
-        step = model.WorkflowStep()
-        step.type = "data_collection_input"
         name = dataset_collection_names[i] if dataset_collection_names else "Input Dataset Collection"
-        if name not in step_labels:
-            step.label = name
-            step_labels.add(name)
-        step.tool_inputs = dict(name=name, collection_type=hdca.collection.collection_type)
+        step = _data_collection_input_step(name, hdca.collection.collection_type, step_labels)
         steps.append(step)
         original_hdca = _original_hdca(hdca)
         id_to_output_pair[("collection", original_hdca.id)] = (step, "output")
 
-    # Build the list of work items: each tuple is (representative_job,
-    # output_hdcas, request_payload). For plain jobs output_hdcas is empty;
-    # for ICJs it contains the ICJ's output HDCAs (used both for access
-    # checks and to drive input/output wiring without inferring map/over
-    # from job state). request_payload is the structured request_internal
+    # Each work item is one tool step to extract. The tool is resolved here
+    # (caller-side): from the toolbox for job/ICJ items, rebuilt from the
+    # persisted ToolSource for tool-request items -- the structured helpers
+    # below stay job-free. request_payload is the structured request_internal
     # state when the execution has an unambiguous tool request, else None
-    # (legacy fallback). Resolution happens once, here, via the single
-    # _structured_request_payload seam.
-    # Service-layer validator ensures no job in job_ids has an ICJ
-    # association, so this branch handles only true plain jobs.
-    work_items: list[tuple[Job, list[HistoryDatasetCollectionAssociation], Optional[dict]]] = []
+    # (legacy fallback). Service-layer validator ensures no job in job_ids
+    # has an ICJ association, so that branch handles only true plain jobs.
+    work_items: list[_WorkItem] = []
 
     for job_id in job_ids:
         assert job_manager is not None, "job_manager required when job_ids supplied"
         job = job_manager.get_accessible_job(trans, job_id)
-        work_items.append((job, [], _structured_request_payload(job)))
+        request_payload = _structured_request_payload(job)
+        work_items.append(
+            _WorkItem(
+                sort_key=job.id,
+                request_payload=request_payload,
+                tool=_tool_for_job(trans, job) if request_payload is not None else None,
+                job=job,
+            )
+        )
 
     # NOTE: executions without a structured request still read parameters
     # via the legacy representative-job param walk in
@@ -652,39 +777,89 @@ def extract_steps_by_ids(
         # output-HDCA presence, and per-HDCA accessibility.
         icj = sa_session.get(ImplicitCollectionJobs, icj_id)
         assert icj is not None, f"ImplicitCollectionJobs {icj_id} not found"
-        work_items.append(
-            (icj.representative_job, icj.output_dataset_collection_instances, _structured_request_payload(icj=icj))
-        )
+        output_hdcas = icj.output_dataset_collection_instances
+        if icj.jobs:
+            representative_job = icj.representative_job
+            request_payload = _structured_request_payload(icj=icj)
+            work_items.append(
+                _WorkItem(
+                    sort_key=representative_job.id,
+                    request_payload=request_payload,
+                    tool=_tool_for_job(trans, representative_job) if request_payload is not None else None,
+                    job=representative_job,
+                    output_hdcas=output_hdcas,
+                )
+            )
+        else:
+            # Jobless map-over (e.g. an empty collection): there is no
+            # representative job -- source the step from the tool request
+            # reached via the output HDCA rather than crashing.
+            tool_request = next(
+                (
+                    o.tool_request_association.tool_request
+                    for o in output_hdcas
+                    if o.tool_request_association is not None
+                ),
+                None,
+            )
+            if tool_request is None:
+                raise exceptions.RequestParameterInvalidException(
+                    f"ImplicitCollectionJobs {icj_id} has no jobs and no tool request to extract from"
+                )
+            work_items.append(_tool_request_work_item(trans, tool_request))
 
-    # Job.id is monotonically assigned at submission, so sorting by it
-    # produces dependency order: a downstream job always has a larger id
-    # than the jobs whose outputs it consumes.
-    work_items.sort(key=lambda item: item[0].id)
+    for tool_request_id in tool_request_ids:
+        tool_request = sa_session.get(ToolRequest, tool_request_id)
+        assert tool_request is not None, f"ToolRequest {tool_request_id} not found"
+        work_items.append(_tool_request_work_item(trans, tool_request))
+
+    # Within a single id space, ids are monotonically assigned, so sorting by
+    # sort_key produces dependency order: a downstream step always has a
+    # larger key than the steps whose outputs it consumes. Job-sourced and
+    # tool-request-sourced items use different id spaces (Job.id vs
+    # ToolRequest.id) and are NOT comparable -- the service-layer validator
+    # rejects payloads that mix them, so every item here shares one space.
+    work_items.sort(key=lambda item: item.sort_key)
     fallback_to_legacy_state = getattr(
         getattr(trans.app, "config", None), "workflow_extraction_fallback_to_legacy_state", True
     )
 
-    for job, output_hdcas, request_payload in work_items:
+    for item in work_items:
+        job = item.job
+        request_payload = item.request_payload
         tool_inputs, associations = step_inputs_by_id(
             trans,
             job,
             request_payload=request_payload,
             fallback_to_legacy_state=fallback_to_legacy_state,
+            tool=item.tool,
         )
         step = model.WorkflowStep()
         step.type = "tool"
-        step.tool_id = job.tool_id
-        step.tool_version = job.tool_version
+        if job is not None:
+            step.tool_id = job.tool_id
+            step.tool_version = job.tool_version
+        else:
+            assert item.tool is not None
+            step.tool_id = item.tool.id
+            step.tool_version = item.tool.version
         step.tool_inputs = tool_inputs
 
         if request_payload is not None:
             for input_name, url_step in _url_input_steps_for_request(trans, request_payload, step_labels):
                 steps.append(url_step)
                 _connect(step, input_name, (url_step, "output"))
+            if item.tool_request is not None:
+                # Tool-request sourced: referenced inputs not produced by
+                # another selected step become workflow inputs.
+                for input_step in _synthesize_request_input_steps(
+                    trans, request_payload, step_labels, id_to_output_pair
+                ):
+                    steps.append(input_step)
 
         mapped_inputs: dict[str, HistoryDatasetCollectionAssociation] = {}
-        if output_hdcas:
-            for icol in output_hdcas[0].implicit_input_collections:
+        if item.output_hdcas:
+            for icol in item.output_hdcas[0].implicit_input_collections:
                 if icol.name and icol.input_dataset_collection is not None:
                     mapped_inputs[icol.name] = _original_hdca(icol.input_dataset_collection)
 
@@ -695,9 +870,16 @@ def extract_steps_by_ids(
                 _connect(step, input_name, id_to_output_pair[key])
         steps.append(step)
 
-        if output_hdcas:
+        if item.tool_request is not None:
+            for assoc in item.tool_request.implicit_collections:
+                output_hdca = assoc.dataset_collection
+                if output_hdca is None:
+                    continue
+                original_output = _original_hdca(output_hdca)
+                id_to_output_pair[("collection", original_output.id)] = (step, assoc.output_name)
+        elif item.output_hdcas:
             seen_names: dict[str, HistoryDatasetCollectionAssociation] = {}
-            for output_hdca in output_hdcas:
+            for output_hdca in item.output_hdcas:
                 output_name = output_hdca.implicit_output_name
                 if output_name and output_name not in seen_names:
                     seen_names[output_name] = output_hdca
@@ -705,6 +887,7 @@ def extract_steps_by_ids(
                 original_output = _original_hdca(output_hdca)
                 id_to_output_pair[("collection", original_output.id)] = (step, output_name)
         else:
+            assert job is not None
             for hda_assoc in job.output_datasets:
                 hda_assoc_name = hda_assoc.name
                 if _skip_output_assoc_name(hda_assoc_name):
@@ -720,9 +903,10 @@ def extract_steps_by_ids(
 
 def step_inputs_by_id(
     trans: ProvidesHistoryContext,
-    job: Job,
+    job: Optional[Job] = None,
     request_payload: Optional[dict] = None,
     fallback_to_legacy_state: bool = True,
+    tool: Optional[Any] = None,
 ) -> tuple[ToolInputs, IdAssociations]:
     """ID-based variant of :func:`step_inputs`.
 
@@ -733,6 +917,11 @@ def step_inputs_by_id(
     ``ToolRequest`` object, so a future resolver can supply the same payload
     from another backing store without changing this contract.
 
+    ``tool`` is resolved by the caller (toolbox for job/ICJ items, rebuilt
+    from the persisted ToolSource for tool-request items) so the structured
+    path carries no job dependency -- ``job`` is ``None`` for a tool-request
+    sourced (possibly jobless) step. The legacy fallback still needs a job.
+
     Returns associations keyed by ``(content_type, db_id)`` tuples (against
     the *original* HDA/HDCA after walking ``copied_from_*``). Collection
     and DCE inputs come from ``Job.input_dataset_collections`` /
@@ -741,7 +930,9 @@ def step_inputs_by_id(
     leaf HDAs and prevents duplicate emission for DCE-as-data-param.
     """
     if request_payload is not None:
-        return _structured_step_inputs_by_id(trans, job, request_payload)
+        assert tool is not None, "structured workflow extraction requires the caller-resolved tool"
+        return _structured_step_inputs_by_id(trans, tool, request_payload)
+    assert job is not None, "legacy workflow extraction state requires a job"
     if not fallback_to_legacy_state:
         raise exceptions.RequestParameterInvalidException(
             f"Job {job.id} has no unambiguous tool request; legacy workflow extraction state fallback is disabled"
@@ -771,13 +962,11 @@ def _legacy_step_inputs_by_id(trans: ProvidesHistoryContext, job: Job) -> tuple[
 
 def _structured_step_inputs_by_id(
     trans: ProvidesHistoryContext,
-    job: Job,
+    tool: Any,
     request_payload: dict,
 ) -> tuple[ToolInputs, IdAssociations]:
-    tool = trans.app.toolbox.get_tool(job.tool_id, tool_version=job.tool_version)
-    assert tool is not None, f"Tool {job.tool_id} (version {job.tool_version}) not found"
     if tool.parameters is None:
-        raise RequestInternalToWorkflowStateError(f"Tool {job.tool_id} has no parameter model for workflow extraction")
+        raise RequestInternalToWorkflowStateError(f"Tool {tool.id} has no parameter model for workflow extraction")
     parameter_bundle = ToolParameterBundleModel(parameters=tool.parameters)
     request_internal_state = RequestInternalToolState(request_payload)
     request_internal_state.validate(parameter_bundle, f"{tool.id} (request internal model)")

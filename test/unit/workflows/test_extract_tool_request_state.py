@@ -3,10 +3,19 @@ from unittest.mock import Mock
 
 import pytest
 
-from galaxy import exceptions
-from galaxy import model
-from galaxy.tool_util.parameters import RequestInternalToWorkflowStateError
+from galaxy import (
+    exceptions,
+    model,
+)
+from galaxy.app_unittest_utils.tools_support import mock_app_for_tool_support
+from galaxy.tool_util.parameters import (
+    RequestInternalToolState,
+    RequestInternalToWorkflowStateError,
+    to_workflow_step_state,
+    ToolParameterBundleModel,
+)
 from galaxy.tool_util.parameters.request import RequestInputRef
+from galaxy.tools import create_tool_from_representation
 from galaxy.workflow import extract
 
 
@@ -24,7 +33,7 @@ def test_step_inputs_by_id_structured_error_does_not_fallback(monkeypatch):
     # MUST NOT silently degrade to the legacy path.
     legacy = Mock()
 
-    def fail_structured(trans, job, request_payload):
+    def fail_structured(trans, tool, request_payload):
         raise RequestInternalToWorkflowStateError("broken structured state")
 
     monkeypatch.setattr(extract, "_legacy_step_inputs_by_id", legacy)
@@ -34,7 +43,11 @@ def test_step_inputs_by_id_structured_error_does_not_fallback(monkeypatch):
 
     with pytest.raises(RequestInternalToWorkflowStateError, match="broken structured state"):
         extract.step_inputs_by_id(
-            trans, job, request_payload={"parameter": {"src": "hda", "id": 1}}, fallback_to_legacy_state=True
+            trans,
+            job,
+            request_payload={"parameter": {"src": "hda", "id": 1}},
+            fallback_to_legacy_state=True,
+            tool=SimpleNamespace(id="some_tool"),
         )
 
     legacy.assert_not_called()
@@ -107,3 +120,50 @@ def test_url_input_steps_for_request_annotates_original_url_request():
     assert step.type == "data_input"
     assert step.tool_inputs == {"name": "input1"}
     assert step.annotations[0].annotation == '{"ext": "txt", "src": "url", "url": "https://example.org/data.txt"}'
+
+
+# A cat1-shaped built-in (matches tools/filters/catWrapper.xml: id "cat1",
+# single "input1" data param). Profile 24.2 so the structured parameter model
+# is generated.
+CAT1_XML = """<tool id="cat1" name="Concatenate datasets" version="1.0.0" profile="24.2">
+    <command><![CDATA[cat '$input1' > '$out_file1']]></command>
+    <inputs>
+        <param name="input1" format="data" type="data" label="Concatenate Dataset"/>
+    </inputs>
+    <outputs>
+        <data name="out_file1" format_source="input1"/>
+    </outputs>
+</tool>
+"""
+
+
+def test_tool_from_persisted_source_drives_workflow_step_state():
+    # Pins TOOL_FROM_SOURCE: a ToolRequest persists only `source` +
+    # `source_class` (model ToolSource has no tool_dir/tool_id). At extraction
+    # time the tool must be rebuilt from that blob alone -- no toolbox, no
+    # job, tool_dir=None, guid=None -- and still yield a `.parameters` model
+    # that drives the exact pipeline _structured_step_inputs_by_id runs.
+    app = mock_app_for_tool_support()
+    original = create_tool_from_representation(app, CAT1_XML, tool_source_class="XmlToolSource")
+
+    # Mirror services/jobs.py: only these two are stored on the ToolRequest.
+    persisted_source = original.tool_source.to_string()
+    persisted_class = type(original.tool_source).__name__
+
+    rebuilt = create_tool_from_representation(
+        app,
+        persisted_source,
+        tool_dir=None,
+        tool_source_class=persisted_class,
+        guid=None,
+    )
+    assert rebuilt.id == "cat1"
+    assert rebuilt.version == "1.0.0"
+    assert rebuilt.parameters is not None
+
+    parameter_bundle = ToolParameterBundleModel(parameters=rebuilt.parameters)
+    request_internal_state = RequestInternalToolState({"input1": {"src": "hda", "id": 1}})
+    request_internal_state.validate(parameter_bundle, f"{rebuilt.id} (request internal model)")
+    workflow_state = to_workflow_step_state(request_internal_state, parameter_bundle)
+
+    assert workflow_state.input_state == {"input1": {"__class__": "ConnectedValue"}}

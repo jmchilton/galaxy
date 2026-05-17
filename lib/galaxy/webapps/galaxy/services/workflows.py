@@ -27,6 +27,7 @@ from galaxy.model import (
     ImplicitCollectionJobs,
     LandingRequestToWorkflowInvocationAssociation,
     StoredWorkflow,
+    ToolRequest,
     WorkflowInvocation,
     WorkflowLandingRequest,
 )
@@ -249,6 +250,7 @@ class WorkflowsService(ServiceBase):
                 implicit_collection_jobs_ids=payload.implicit_collection_jobs_ids,
                 hda_ids=payload.hda_ids,
                 hdca_ids=payload.hdca_ids,
+                tool_request_ids=payload.tool_request_ids,
                 dataset_names=payload.dataset_names,
                 dataset_collection_names=payload.dataset_collection_names,
             )
@@ -263,13 +265,30 @@ class WorkflowsService(ServiceBase):
     ) -> None:
         """Cross-payload checks that need DB access. Pydantic handles per-field
         shape; this enforces semantic rules across job_ids /
-        implicit_collection_jobs_ids that depend on the loaded Job / ICJ rows
-        so extract_workflow_by_ids can trust its input.
+        implicit_collection_jobs_ids / tool_request_ids that depend on the
+        loaded Job / ICJ / ToolRequest rows so extract_workflow_by_ids can
+        trust its input.
+
+        Tool-request-sourced selections are validated structured state by
+        construction, so the populated_state / output-collection gates below
+        (which guard job- and ICJ-sourced selections) intentionally do not
+        apply to them -- a tool request with zero jobs / no non-empty outputs
+        is still extractable.
         """
-        for field in ("job_ids", "implicit_collection_jobs_ids", "hda_ids", "hdca_ids"):
+        for field in ("job_ids", "implicit_collection_jobs_ids", "hda_ids", "hdca_ids", "tool_request_ids"):
             ids = getattr(payload, field)
             if len(set(ids)) != len(ids):
                 raise exceptions.RequestParameterInvalidException(f"{field} contains duplicates")
+
+        # Tool-request-sourced and job/ICJ-sourced steps order by different id
+        # spaces (ToolRequest.id vs Job.id), so a single payload mixing them
+        # cannot be reliably dependency-ordered yet (dedupe/ordering rule TBD).
+        # Reject rather than risk a silently mis-wired workflow.
+        if payload.tool_request_ids and (payload.job_ids or payload.implicit_collection_jobs_ids):
+            raise exceptions.RequestParameterInvalidException(
+                "tool_request_ids cannot currently be combined with job_ids or "
+                "implicit_collection_jobs_ids in a single extraction request"
+            )
 
         for job_id in payload.job_ids:
             job = self._job_manager.get_accessible_job(trans, job_id)
@@ -299,6 +318,33 @@ class WorkflowsService(ServiceBase):
                 )
             for hdca in output_hdcas:
                 dataset_collection_manager.get_dataset_collection_instance(trans, "history", hdca.id)
+            if not icj.jobs:
+                # Jobless map-over (e.g. empty collection): extract_steps_by_ids
+                # will source the step from the tool request reached via the
+                # output HDCA, so gate it exactly like a direct tool_request_ids
+                # item (parity with the accessibility check above).
+                resolved_request = next(
+                    (
+                        o.tool_request_association.tool_request
+                        for o in output_hdcas
+                        if o.tool_request_association is not None
+                    ),
+                    None,
+                )
+                if resolved_request is not None:
+                    self._error_unless_tool_request_accessible(trans, resolved_request)
+
+        for tool_request_id in payload.tool_request_ids:
+            tool_request = sa_session.get(ToolRequest, tool_request_id)
+            if tool_request is None:
+                raise exceptions.ObjectNotFound(f"ToolRequest {tool_request_id} not found")
+            self._error_unless_tool_request_accessible(trans, tool_request)
+
+    def _error_unless_tool_request_accessible(self, trans: ProvidesHistoryContext, tool_request: ToolRequest) -> None:
+        # Auth parity with job- / ICJ-sourced selection above (accessible
+        # histories, incl. shared/published, qualify); applied consistently to
+        # both the direct tool_request_ids path and the jobless-ICJ resolution.
+        trans.app.history_manager.error_unless_accessible(tool_request.history, trans.user)
 
     def delete(self, trans, workflow_id):
         workflow_to_delete = self._workflows_manager.get_stored_workflow(trans, workflow_id)
