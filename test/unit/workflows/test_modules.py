@@ -529,3 +529,120 @@ def __mock_tool(
 
 def _to_json(*args, **kwargs):
     return "{}"
+
+
+# _mapped_inputs_from_collection_info: reduce a MatchingCollections to
+# source-neutral per-input map-over descriptors. Workflow path is always
+# linked=True.
+
+
+def test_mapped_inputs_from_collection_info_none_or_empty():
+    assert modules._mapped_inputs_from_collection_info(None) == {}
+    assert modules._mapped_inputs_from_collection_info(bunch.Bunch(collections={})) == {}
+
+
+def test_mapped_inputs_from_collection_info_hdca_no_subcollection():
+    collection_info = bunch.Bunch(collections={"a": bunch.Bunch(id=7)}, subcollection_types={})
+
+    mapped = modules._mapped_inputs_from_collection_info(collection_info)
+
+    assert set(mapped) == {"a"}
+    descriptor = mapped["a"]
+    assert descriptor.src == "hdca"
+    assert descriptor.id == 7
+    assert descriptor.map_over_type is None
+    assert descriptor.linked is True
+
+
+def test_mapped_inputs_from_collection_info_subcollection_map_over_type():
+    collection_info = bunch.Bunch(
+        collections={"a": bunch.Bunch(id=7)},
+        subcollection_types={"a": bunch.Bunch(collection_type="paired")},
+    )
+
+    mapped = modules._mapped_inputs_from_collection_info(collection_info)
+
+    assert mapped["a"].map_over_type == "paired"
+
+
+def test_mapped_inputs_from_collection_info_dce_src():
+    dce = mock.MagicMock(spec=model.DatasetCollectionElement)
+    dce.id = 9
+    collection_info = bunch.Bunch(collections={"a": dce}, subcollection_types={})
+
+    mapped = modules._mapped_inputs_from_collection_info(collection_info)
+
+    assert mapped["a"].src == "dce"
+    assert mapped["a"].id == 9
+
+
+# _capture_workflow_tool_request_state outcome taxonomy: the request_state enum
+# is consumed by Phase 2, so a skipped step and an unexpected capture bug must
+# not masquerade as the same "validation_failed" a real meta-model rejection
+# produces. trans/step are unused by capture; collection_info=None -> no
+# mapped inputs; resolve raises before any downstream is reached.
+
+
+class _CaptureFakeTool:
+    id = "test_tool"
+    profile = "21.09"
+    parameters: list = []
+
+
+def _capture(resolve):
+    return modules._capture_workflow_tool_request_state(None, _CaptureFakeTool(), None, None, resolve, [])
+
+
+def test_capture_skipped_conditional_step_is_not_validated():
+    """A falsy `when` raises SkipWorkflowStepEvaluation: not a failure."""
+
+    def resolve(iteration_elements):
+        raise modules.SkipWorkflowStepEvaluation
+
+    template, combos, state = _capture(resolve)
+
+    assert (template, combos) == (None, None)
+    assert state is modules.ToolExecutionStateValidity.NOT_VALIDATED
+
+
+def test_capture_converter_guard_is_validation_failed_quietly():
+    """The converter's cross-product guard is expected: quiet, not loud."""
+
+    def resolve(iteration_elements):
+        raise modules.RequestInternalToWorkflowStateError("cross-product")
+
+    with mock.patch.object(modules, "log") as log:
+        _, _, state = _capture(resolve)
+
+    assert state is modules.ToolExecutionStateValidity.VALIDATION_FAILED
+    log.debug.assert_called_once()
+    log.warning.assert_not_called()
+
+
+def test_capture_invalid_state_is_validation_failed_quietly():
+    """Meta-model rejection is expected (workflow ran invalid state): quiet."""
+
+    def resolve(iteration_elements):
+        raise modules.exceptions.RequestParameterInvalidException("bad state")
+
+    with mock.patch.object(modules, "log") as log:
+        template, combos, state = _capture(resolve)
+
+    assert (template, combos) == (None, None)
+    assert state is modules.ToolExecutionStateValidity.VALIDATION_FAILED
+    log.debug.assert_called_once()
+    log.warning.assert_not_called()
+
+
+def test_capture_unexpected_error_is_validation_failed_loudly():
+    """An unexpected error is a capture-code defect: surfaced at warning."""
+
+    def resolve(iteration_elements):
+        raise RuntimeError("capture bug")
+
+    with mock.patch.object(modules, "log") as log:
+        template, combos, state = _capture(resolve)
+
+    assert (template, combos) == (None, None)
+    assert state is modules.ToolExecutionStateValidity.VALIDATION_FAILED
+    log.warning.assert_called_once()

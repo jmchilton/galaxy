@@ -2,6 +2,7 @@
 
 import logging
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
@@ -324,6 +325,68 @@ def to_workflow_step_state(
     workflow_state = WorkflowStepLinkedToolState(workflow_state_dict)
     workflow_state.validate(input_models)
     return workflow_state
+
+
+@dataclass
+class MappedCollectionInput:
+    """Source-neutral description of a collection an input was mapped over.
+
+    The workflow execute site carries map-over as live collection objects on a
+    MatchingCollections instance. Reducing each mapped input to this small
+    record at the call site keeps the converter free of SQLAlchemy objects and
+    unit testable. ``src`` is "hdca" for a direct collection map-over or "dce"
+    for subcollection mapping; ``map_over_type`` mirrors the subcollection type
+    description; ``linked`` is always True on the workflow path.
+    """
+
+    src: str
+    id: int
+    map_over_type: Optional[str] = None
+    linked: bool = True
+
+
+def from_workflow_execution_state(
+    resolved_tool_state: Dict[str, Any],
+    mapped_inputs: Dict[str, MappedCollectionInput],
+    input_models: ToolParameterBundle,
+) -> RequestInternalToolState:
+    """Synthesize request_internal from a resolved workflow tool-step execution.
+
+    ``resolved_tool_state`` is the *whole-step* resolved input state - every
+    connection already resolved to its concrete upstream ``{src, id}`` and
+    scalars to their values - **not** a per-job expansion or a representative
+    sliced combination (rederiving from the step is the point; a representative
+    job would reintroduce post-hoc lossiness). Inputs the step mapped over are
+    replaced with their parent collection reference wrapped in a length-1 Batch
+    (so the forward ``to_workflow_step_state`` never trips its "exactly one
+    value" guard); every other value passes through unchanged. ``linked=False``
+    (cross-product) is never produced by the workflow path and is rejected to
+    stay symmetric with ``to_workflow_step_state``.
+    """
+
+    def batch_for(mapped: MappedCollectionInput) -> dict:
+        if mapped.linked is False:
+            raise RequestInternalToWorkflowStateError(CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE)
+        value: Dict[str, Any] = {"src": mapped.src, "id": mapped.id}
+        if mapped.map_over_type is not None:
+            value["map_over_type"] = mapped.map_over_type
+        return {"__class__": "Batch", "values": [value], "linked": mapped.linked}
+
+    def request_internal_callback(parameter: ToolParameterT, value: Any):
+        if isinstance(parameter, (DataParameterModel, DataCollectionParameterModel)):
+            mapped = mapped_inputs.get(parameter.name)
+            if mapped is not None:
+                return batch_for(mapped)
+        return VISITOR_NO_REPLACEMENT
+
+    request_internal_dict = visit_input_values(
+        input_models,
+        JobInternalToolState(resolved_tool_state),
+        request_internal_callback,
+    )
+    internal_state = RequestInternalToolState(request_internal_dict)
+    internal_state.validate(input_models)
+    return internal_state
 
 
 def encode_test(

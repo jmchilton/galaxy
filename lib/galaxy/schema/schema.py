@@ -4214,6 +4214,19 @@ class ToolRequestState(str, Enum):
     FAILED = "failed"
 
 
+class ToolExecutionStateValidity(str, Enum):
+    """Validity of the request_internal payload captured on ToolExecutionState.
+
+    Persisted as the ``state`` column on ``tool_execution_state``; distinct
+    from ``ToolRequest.state`` (command lifecycle) and
+    ``WorkflowInvocationStep.state`` (invocation-step lifecycle).
+    """
+
+    NOT_VALIDATED = "not_validated"
+    VALIDATED = "validated"
+    VALIDATION_FAILED = "validation_failed"
+
+
 class ToolRequestStateMessage(Model):
     err_msg: str
     err_data: Optional[dict[str, Any]] = None

@@ -15,10 +15,12 @@ from galaxy.tool_util.parameters import (
     dereference,
     encode,
     fill_static_defaults,
+    from_workflow_execution_state,
     input_models_for_tool_source,
     landing_decode,
     landing_encode,
     LandingRequestToolState,
+    MappedCollectionInput,
     RelaxedRequestToolState,
     RequestInternalToWorkflowStateError,
     RequestInternalDereferencedToolState,
@@ -117,6 +119,151 @@ def test_to_workflow_step_state_cross_product_batch_fails():
 
     with pytest.raises(RequestInternalToWorkflowStateError, match="cross-product map-over"):
         to_workflow_step_state(internal_state, bundle)
+
+
+# ---------------------------------------------------------------------------
+# from_workflow_execution_state: synthesize request_internal from the *whole
+# step's* resolved input state (connections resolved to concrete {src,id},
+# scalars to values) plus the map-over descriptors carried out of collection
+# matching. Rederived from the step - never a representative sliced job.
+#
+#   from_workflow_execution_state(
+#       resolved_tool_state: dict,                        # whole-step resolved, {src,id}/scalar leaves
+#       mapped_inputs: dict[str, MappedCollectionInput],  # source-neutral map-over descriptors
+#       input_models,
+#   ) -> RequestInternalToolState
+#
+# A mapped input is emitted as a length-1 Batch carrying the *parent*
+# collection ref (so the forward to_workflow_step_state never trips its
+# "exactly one value" guard). Non-mapped inputs pass their resolved value
+# straight through. linked is always True on the workflow path; linked=False
+# is rejected defensively to stay symmetric with to_workflow_step_state.
+# ---------------------------------------------------------------------------
+
+
+def test_from_workflow_execution_state_data_passthrough():
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+
+    internal_state = from_workflow_execution_state(
+        {"parameter": {"src": "hda", "id": EXAMPLE_ID_1}},
+        {},
+        bundle,
+    )
+
+    assert isinstance(internal_state, RequestInternalToolState)
+    assert internal_state.input_state == {"parameter": {"src": "hda", "id": EXAMPLE_ID_1}}
+
+
+def test_from_workflow_execution_state_collection_passthrough():
+    tool_source = tool_source_for("parameters/gx_data_collection")
+    bundle = input_models_for_tool_source(tool_source)
+
+    internal_state = from_workflow_execution_state(
+        {"parameter": {"src": "hdca", "id": EXAMPLE_ID_1}},
+        {},
+        bundle,
+    )
+
+    assert internal_state.input_state == {"parameter": {"src": "hdca", "id": EXAMPLE_ID_1}}
+
+
+def test_from_workflow_execution_state_matched_batch_single_input():
+    """A data input mapped over a list collection -> length-1 linked Batch.
+
+    Whatever concrete value sits at a mapped input ({src:hda,id:99} here) is
+    ignored; the converter emits the *parent* collection ref from the map-over
+    descriptor.
+    """
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+
+    internal_state = from_workflow_execution_state(
+        {"parameter": {"src": "hda", "id": 99}},
+        {"parameter": MappedCollectionInput(src="hdca", id=EXAMPLE_ID_1, linked=True)},
+        bundle,
+    )
+
+    assert internal_state.input_state == {
+        "parameter": {"__class__": "Batch", "values": [{"src": "hdca", "id": EXAMPLE_ID_1}], "linked": True}
+    }
+
+
+def test_from_workflow_execution_state_nested_list_paired_subcollection():
+    """list:paired subcollection map-over -> Batch value carries map_over_type."""
+    tool_source = tool_source_for("parameters/gx_data_collection_list_paired_y")
+    bundle = input_models_for_tool_source(tool_source)
+
+    internal_state = from_workflow_execution_state(
+        {"parameter": {"src": "dce", "id": 99}},
+        {"parameter": MappedCollectionInput(src="hdca", id=EXAMPLE_ID_1, map_over_type="paired", linked=True)},
+        bundle,
+    )
+
+    assert internal_state.input_state == {
+        "parameter": {
+            "__class__": "Batch",
+            "values": [{"src": "hdca", "id": EXAMPLE_ID_1, "map_over_type": "paired"}],
+            "linked": True,
+        }
+    }
+
+
+def test_from_workflow_execution_state_multi_input_matched_batch():
+    """>=2 batched inputs, all linked:true -> each its own length-1 Batch.
+
+    The per-input descriptors are independent; collection matching keys them
+    by input name, so each mapped input synthesizes separately.
+    """
+    tool_source = tool_source_for("expression_pick_larger_file")
+    bundle = input_models_for_tool_source(tool_source)
+
+    internal_state = from_workflow_execution_state(
+        {"input1": {"src": "hda", "id": 90}, "input2": {"src": "hda", "id": 91}},
+        {
+            "input1": MappedCollectionInput(src="hdca", id=EXAMPLE_ID_1, linked=True),
+            "input2": MappedCollectionInput(src="hdca", id=EXAMPLE_ID_2, linked=True),
+        },
+        bundle,
+    )
+
+    assert internal_state.input_state == {
+        "input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": EXAMPLE_ID_1}], "linked": True},
+        "input2": {"__class__": "Batch", "values": [{"src": "hdca", "id": EXAMPLE_ID_2}], "linked": True},
+    }
+
+
+def test_from_workflow_execution_state_cross_product_hard_fail():
+    """linked=False is never produced by the workflow path; reject defensively."""
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+
+    with pytest.raises(RequestInternalToWorkflowStateError, match="cross-product map-over"):
+        from_workflow_execution_state(
+            {"parameter": {"src": "hda", "id": 99}},
+            {"parameter": MappedCollectionInput(src="hdca", id=EXAMPLE_ID_1, linked=False)},
+            bundle,
+        )
+
+
+def test_from_workflow_execution_state_roundtrips_through_to_workflow_step_state():
+    """Synthesized matched Batch must survive the forward converter.
+
+    Closes the loop: the length-1 Batch post-condition means
+    to_workflow_step_state does not raise "exactly one value" and yields a
+    ConnectedValue.
+    """
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+
+    internal_state = from_workflow_execution_state(
+        {"parameter": {"src": "hda", "id": 99}},
+        {"parameter": MappedCollectionInput(src="hdca", id=EXAMPLE_ID_1, linked=True)},
+        bundle,
+    )
+
+    workflow_state = to_workflow_step_state(internal_state, bundle)
+    assert workflow_state.input_state == {"parameter": {"__class__": "ConnectedValue"}}
 
 
 def test_request_internal_input_refs_preserve_workflow_input_names():

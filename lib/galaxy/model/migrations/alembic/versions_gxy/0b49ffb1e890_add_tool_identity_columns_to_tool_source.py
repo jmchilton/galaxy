@@ -1,7 +1,7 @@
 """add tool identity columns to tool_source
 
 Revision ID: 0b49ffb1e890
-Revises: b8d5e2f9a1c7
+Revises: 6925fe4c8a17
 Create Date: 2026-05-19 11:07:21.550126
 
 """
@@ -24,7 +24,7 @@ from galaxy.model.migrations.util import (
 
 # revision identifiers, used by Alembic.
 revision = "0b49ffb1e890"
-down_revision = "b8d5e2f9a1c7"
+down_revision = "6925fe4c8a17"
 branch_labels = None
 depends_on = None
 

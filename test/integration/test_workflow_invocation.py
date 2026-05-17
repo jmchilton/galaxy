@@ -1,12 +1,16 @@
 """Integration tests for workflow syncing."""
 
 import time
+from unittest.mock import patch
 
 from sqlalchemy import select
 
 from galaxy.model import (
     Dataset,
     HistoryDatasetAssociation,
+    Job,
+    ToolExecutionState,
+    WorkflowInvocationStep,
 )
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
@@ -71,6 +75,21 @@ steps:
       input1: input_collection
 """
 
+SIMPLE_CAT_WORKFLOW = """
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: data
+steps:
+  cat1:
+    tool_id: cat1
+    in:
+      input1: input1
+outputs:
+  out:
+    outputSource: cat1/out_file1
+"""
+
 
 class TestWorkflowInvocation(integration_util.IntegrationTestCase, UsesShedApi):
     dataset_populator: DatasetPopulator
@@ -95,6 +114,72 @@ class TestWorkflowInvocation(integration_util.IntegrationTestCase, UsesShedApi):
             for step in invocation_details["steps"]:
                 if step["workflow_step_label"] == "cat1":
                     assert sum(1 for j in step["jobs"] if j["state"] == "skipped") == 1
+
+    def test_workflow_tool_step_persists_validated_job_tool_state(self) -> None:
+        # Per-job leg: a workflow tool-step execution feeds validated
+        # job_internal into MappingParameters so execute.py persists it onto
+        # Job.tool_state - the same column the async tool-request path fills.
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                SIMPLE_CAT_WORKFLOW,
+                test_data={"input1": {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
+            jobs = self.workflow_populator.get_invocation_jobs(summary.invocation_id)
+            cat_jobs = [j for j in jobs if j["tool_id"] == "cat1"]
+            assert len(cat_jobs) == 1, jobs
+            decoded_id = self._app.security.decode_id(cat_jobs[0]["id"])
+            job = self.sa_session.get(Job, decoded_id)
+            assert job is not None
+            tool_state = job.tool_state
+            assert tool_state, f"empty Job.tool_state for workflow tool step: {tool_state!r}"
+            assert tool_state.get("input1", {}).get("src") == "hda", tool_state
+
+    def test_workflow_tool_step_persists_tool_execution_state(self) -> None:
+        # The execute-time capture mints one ToolExecutionState row per step
+        # execution and links both the WorkflowInvocationStep and every
+        # validated-capture-spawned Job at it; the row carries the
+        # request_internal payload plus the validity enum (the EXEC_STATE
+        # uniform walk Job -> ToolExecutionState).
+        enqueued_tool_execution_state_ids = []
+        original_enqueue = self._app.job_manager.enqueue
+
+        def assert_tool_execution_state_linked_before_enqueue(job, *args, **kwargs):
+            if job.tool_id == "cat1":
+                assert job.tool_execution_state is not None, "Job.tool_execution_state was not linked before enqueue"
+                assert (
+                    job.tool_execution_state_id is not None
+                ), "Job.tool_execution_state_id was not flushed before enqueue"
+                enqueued_tool_execution_state_ids.append(job.tool_execution_state_id)
+            return original_enqueue(job, *args, **kwargs)
+
+        with self.dataset_populator.test_history() as history_id:
+            with patch.object(
+                self._app.job_manager, "enqueue", side_effect=assert_tool_execution_state_linked_before_enqueue
+            ):
+                summary = self.workflow_populator.run_workflow(
+                    SIMPLE_CAT_WORKFLOW,
+                    test_data={"input1": {"value": "1.bed", "type": "File"}},
+                    history_id=history_id,
+                )
+            jobs = self.workflow_populator.get_invocation_jobs(summary.invocation_id)
+            cat_jobs = [j for j in jobs if j["tool_id"] == "cat1"]
+            assert len(cat_jobs) == 1, jobs
+            job_id = self._app.security.decode_id(cat_jobs[0]["id"])
+            job = self.sa_session.get(Job, job_id)
+            assert job is not None
+            wis = self.sa_session.scalars(
+                select(WorkflowInvocationStep).where(WorkflowInvocationStep.job_id == job_id)
+            ).one()
+            tes = job.tool_execution_state
+            assert tes is not None, "Job.tool_execution_state was not linked"
+            assert (
+                tes is wis.tool_execution_state
+            ), "WorkflowInvocationStep and its Job must share the minted ToolExecutionState row"
+            assert tes.state == ToolExecutionState.states.VALIDATED.value, tes.state
+            assert tes.request, f"empty ToolExecutionState.request: {tes.request!r}"
+            assert tes.request.get("input1", {}).get("src") == "hda", tes.request
+            assert tes.id in enqueued_tool_execution_state_ids
 
     def test_pick_value_preserves_datatype_and_inheritance_chain(self):
         self.install_repository("iuc", "pick_value", "b19e21af9c52")

@@ -10,7 +10,10 @@ from galaxy.managers.collections import DatasetCollectionManager
 from galaxy.managers.datasets import DatasetManager
 from galaxy.managers.hdas import HDAManager
 from galaxy.managers.histories import HistoryManager
-from galaxy.managers.history_graph import HistoryGraphManager
+from galaxy.managers.history_graph import (
+    HistoryGraphManager,
+    TOOL_EXECUTION_STATE_ENCODE_KIND,
+)
 from galaxy.schema.history_graph import NodeRef
 from .base import (
     BaseTestCase,
@@ -1154,6 +1157,160 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         # The rest of the original items are still in scope
         for hda in original[1:]:
             assert self._encode("d", hda.id) in ids2
+
+    # ── WorkflowInvocationStep-produced parity ──
+    #
+    # Workflow tool steps never mint a ToolRequest; their producing jobs
+    # have ``tool_request_id IS NULL``. The captured request_internal lives
+    # on the WorkflowInvocationStep instead. These cases assert the graph
+    # surfaces such producers/inputs via the shared resolver, that the
+    # producer node ref is namespaced so it cannot collide with a
+    # ToolRequest of the same integer pk, and that the wire shape (node
+    # srcs / edge types) is unchanged.
+
+    def _attach_tool_execution_state(self, request, state="validated", job=None, icj=None):
+        """Mint a ToolExecutionState row and link it to its producing Job
+        (plain executions) or every job in an ImplicitCollectionJobs (mapped
+        executions). Mirrors what ToolModule.execute does for workflow tool
+        steps under EXEC_STATE; the WIS row is not load-bearing for the
+        resolver, so the test omits it."""
+        tes = model.ToolExecutionState(request=request, state=state)
+        self.trans.sa_session.add(tes)
+        self.trans.sa_session.flush()
+        if icj is not None:
+            for member in icj.job_list:
+                member.tool_execution_state = tes
+        elif job is not None:
+            job.tool_execution_state = tes
+        self.trans.sa_session.flush()
+        return tes
+
+    def _tes_producer_node_id(self, tes):
+        return NodeRef(
+            src="tool_request",
+            id=self.app.security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND),
+        )
+
+    def test_tes_produced_hda_gets_producer_and_input_edges(self):
+        history, _ = self._create_history()
+        input_hda = self._create_hda(history, name="in.fastq", extension="fastq")
+        output_hda = self._create_hda(history, name="out.bam", extension="bam")
+        job = self._create_job(tool_id="wf_tool")  # tool_request_id IS NULL
+        self._link_job_input_hda(job, input_hda)
+        self._link_job_output_hda(job, output_hda)
+        tes = self._attach_tool_execution_state({"inputs": [{"src": "hda", "id": input_hda.id}]}, job=job)
+
+        graph = self._build_graph(history)
+
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        assert len(producer_nodes) == 1
+        prod = producer_nodes[0]
+        assert prod.ref == self._tes_producer_node_id(tes)
+        assert prod.tool_id == "wf_tool"
+
+        edges = {(e.type, e.source, e.target) for e in graph.edges}
+        assert ("dataset_input", self._encode("d", input_hda.id), prod.ref) in edges
+        assert ("dataset_output", prod.ref, self._encode("d", output_hda.id)) in edges
+
+    def test_tes_producer_id_namespaced_no_toolrequest_collision(self):
+        """The producer node ref uses the TES id under a distinct cipher
+        kind; the default-kind (historical ToolRequest fallback) encoding
+        of the SAME integer differs, so equal pks across the two
+        structured-request id spaces cannot merge onto one node."""
+        history, _ = self._create_history()
+        out_hda = self._create_hda(history, name="out")
+        job = self._create_job(tool_id="wf_tool")
+        self._link_job_output_hda(job, out_hda)
+        tes = self._attach_tool_execution_state({"inputs": []}, job=job)
+
+        graph = self._build_graph(history)
+
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        assert len(producer_nodes) == 1
+        node_ref = producer_nodes[0].ref
+        assert node_ref == NodeRef(
+            src="tool_request", id=self.app.security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
+        )
+        assert node_ref != NodeRef(src="tool_request", id=self.app.security.encode_id(tes.id))
+
+    def test_tes_not_validated_degrades_no_producer_edge(self):
+        """ToolExecutionState.state != 'validated' -> resolver returns
+        nothing -> item is a plain node with no producer/input edges and
+        the historical ToolRequest fallback never fires for this job."""
+        history, _ = self._create_history()
+        input_hda = self._create_hda(history, name="in")
+        output_hda = self._create_hda(history, name="out")
+        job = self._create_job(tool_id="wf_tool")
+        self._link_job_input_hda(job, input_hda)
+        self._link_job_output_hda(job, output_hda)
+        self._attach_tool_execution_state(
+            {"inputs": [{"src": "hda", "id": input_hda.id}]},
+            state="validation_failed",
+            job=job,
+        )
+
+        graph = self._build_graph(history)
+
+        assert [n for n in graph.nodes if n.src == "tool_request"] == []
+        assert graph.edges == []
+        assert self._encode("d", output_hda.id) in {n.ref for n in graph.nodes}
+
+    def test_tes_produced_mapped_hdca_via_icj(self):
+        history, _ = self._create_history()
+        in_hda = self._create_hda(history, name="in")
+        el = self._create_hda(history, name="el")
+        hdca = self.collection_manager.create(
+            self.trans, history, "out list", "list", element_identifiers=self.build_element_identifiers([el])
+        )
+        job = self._create_job(tool_id="map_tool")  # constituent, tool_request_id IS NULL
+        self._link_job_output_hdca(job, hdca)
+        icj = model.ImplicitCollectionJobs(populated_state="ok")
+        self.trans.sa_session.add(icj)
+        self.trans.sa_session.flush()
+        icja = model.ImplicitCollectionJobsJobAssociation()
+        icja.implicit_collection_jobs_id = icj.id
+        icja.job_id = job.id
+        icja.order_index = 0
+        self.trans.sa_session.add(icja)
+        self.trans.sa_session.flush()
+        tes = self._attach_tool_execution_state({"inputs": [{"src": "hda", "id": in_hda.id}]}, icj=icj)
+
+        graph = self._build_graph(history)
+
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        assert len(producer_nodes) == 1
+        prod_ref = producer_nodes[0].ref
+        assert prod_ref == self._tes_producer_node_id(tes)
+        edges = {(e.type, e.source, e.target) for e in graph.edges}
+        assert ("collection_output", prod_ref, self._encode("c", hdca.id)) in edges
+        assert ("dataset_input", self._encode("d", in_hda.id), prod_ref) in edges
+
+    def test_tes_dce_input_dropped_wire_shape_unchanged(self):
+        """A ``src: dce`` input in the TES payload contributes no edge/node
+        (consistent with the historical ToolRequest path); only hda/hdca
+        refs surface and the edge-type set stays within the frozen literal."""
+        history, _ = self._create_history()
+        in_hda = self._create_hda(history, name="in")
+        out_hda = self._create_hda(history, name="out")
+        job = self._create_job(tool_id="wf_tool")
+        self._link_job_input_hda(job, in_hda)
+        self._link_job_output_hda(job, out_hda)
+        self._attach_tool_execution_state(
+            {"inputs": [{"src": "hda", "id": in_hda.id}, {"src": "dce", "id": 999999}]},
+            job=job,
+        )
+
+        graph = self._build_graph(history)
+
+        input_edges = [e for e in graph.edges if e.type == "dataset_input"]
+        assert len(input_edges) == 1
+        assert {e.type for e in graph.edges} <= {
+            "dataset_input",
+            "dataset_output",
+            "collection_input",
+            "collection_output",
+        }
+        assert {n.src for n in graph.nodes} <= {"hda", "hdca", "tool_request"}
 
 
 # ── Scalability / Boundedness Tests ──

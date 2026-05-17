@@ -33,6 +33,7 @@ from galaxy.managers.jobs import (
 from galaxy.managers.tools import ToolRunReference
 from galaxy.model import (
     Job,
+    ToolExecutionState,
     ToolRequest,
     ToolSource as ToolSourceModel,
 )
@@ -276,8 +277,14 @@ class JobsService(ServiceBase):
         tool_request.tool_source = tool_source_model
         tool_request.state = ToolRequest.states.NEW
         tool_request.history = target_history
+        tool_execution_state = ToolExecutionState(
+            request=request_internal_state.input_state,
+            state=ToolExecutionState.states.VALIDATED.value,
+        )
+        tool_request.tool_execution_state = tool_execution_state
         sa_session = trans.sa_session
         sa_session.add(tool_source_model)
+        sa_session.add(tool_execution_state)
         sa_session.add(tool_request)
         sa_session.commit()
         tool_request_id = tool_request.id

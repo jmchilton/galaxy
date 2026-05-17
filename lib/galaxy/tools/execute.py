@@ -213,6 +213,7 @@ def _execute(
             trans, tool, mapping_params, collection_info, invocation_step, completed_jobs=completed_jobs
         )
     execution_cache = ToolExecutionCache(trans)
+    tool_execution_state = _tool_execution_state_for_jobs(tool_request, invocation_step)
 
     def execute_single_job(execution_slice: "ExecutionSlice", completed_job: Optional[model.Job], skip: bool = False):
         job_timer = tool.app.execution_timer_factory.get_timer(
@@ -255,6 +256,8 @@ def _execute(
         if job:
             if tool_request:
                 job.tool_request = tool_request
+            if tool_execution_state is not None:
+                job.tool_execution_state = tool_execution_state
             if execution_slice.validated_param_combination:
                 tool_state = execution_slice.validated_param_combination.input_state
                 job.tool_state = tool_state
@@ -361,6 +364,18 @@ def _execute(
 
     log.debug(all_jobs_timer.to_str(job_count=job_count, tool_id=tool.id))
     return execution_tracker
+
+
+def _tool_execution_state_for_jobs(
+    tool_request: Optional[ToolRequest], invocation_step: Optional[model.WorkflowInvocationStep]
+) -> Optional[model.ToolExecutionState]:
+    if tool_request is not None and tool_request.tool_execution_state is not None:
+        return tool_request.tool_execution_state
+    if invocation_step is not None and invocation_step.tool_execution_state is not None:
+        workflow_tool_execution_state = invocation_step.tool_execution_state
+        if workflow_tool_execution_state.state == model.ToolExecutionState.states.VALIDATED.value:
+            return workflow_tool_execution_state
+    return None
 
 
 class ExecutionSlice:

@@ -22,6 +22,10 @@ from galaxy import (
 )
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.jobs import JobManager
+from galaxy.managers.workflow_request_state import (
+    resolve_structured_request_payload,
+    tool_request_payload,
+)
 from galaxy.model import (
     History,
     HistoryDatasetAssociation,
@@ -642,7 +646,7 @@ def _tool_request_work_item(
     # classic (non-tool-request) ICJs selected in the same payload.
     return _WorkItem(
         sort_key=tool_request.id if sort_key is None else sort_key,
-        request_payload=_tool_request_payload(tool_request),
+        request_payload=tool_request_payload(tool_request),
         tool=_tool_from_request(trans, tool_request),
         job=None,
         output_hdcas=[a.dataset_collection for a in tool_request.implicit_collections],
@@ -758,15 +762,18 @@ def extract_steps_by_ids(
     # (caller-side): from the toolbox for job/ICJ items, rebuilt from the
     # persisted ToolSource for tool-request items -- the structured helpers
     # below stay job-free. request_payload is the structured request_internal
-    # state when the execution has an unambiguous tool request, else None
-    # (legacy fallback). Service-layer validator ensures no job in job_ids
-    # has an ICJ association, so that branch handles only true plain jobs.
+    # state when the execution has an unambiguous validated structured request
+    # (ToolRequest or WorkflowInvocationStep source), else None (legacy
+    # fallback). Resolution happens once, here, via the single
+    # resolve_structured_request_payload seam. Service-layer validator ensures
+    # no job in job_ids has an ICJ association, so that branch handles only
+    # true plain jobs.
     work_items: list[_WorkItem] = []
 
     for job_id in job_ids:
         assert job_manager is not None, "job_manager required when job_ids supplied"
         job = job_manager.get_accessible_job(trans, job_id)
-        request_payload = _structured_request_payload(job)
+        request_payload = resolve_structured_request_payload(job=job)
         work_items.append(
             _WorkItem(
                 sort_key=job.id,
@@ -804,7 +811,7 @@ def extract_steps_by_ids(
             # Classic (non-tool-request) map-over: derive structured state
             # from the representative constituent job.
             representative_job = icj.representative_job
-            request_payload = _structured_request_payload(icj=icj)
+            request_payload = resolve_structured_request_payload(icj=icj)
             work_items.append(
                 _WorkItem(
                     sort_key=representative_job.id,
@@ -927,11 +934,13 @@ def step_inputs_by_id(
     """ID-based variant of :func:`step_inputs`.
 
     ``request_payload`` is the structured request_internal state for this
-    execution (resolved by the caller via :func:`_structured_request_payload`)
-    or ``None`` when the execution has no unambiguous structured request. The
-    seam is source-neutral by design: it is a payload dict, not a
-    ``ToolRequest`` object, so a future resolver can supply the same payload
-    from another backing store without changing this contract.
+    execution (resolved by the caller via
+    :func:`galaxy.managers.workflow_request_state.resolve_structured_request_payload`)
+    or ``None`` when the execution has no unambiguous validated structured
+    request. The seam is source-neutral by design: it is a payload dict, not
+    a ``ToolRequest`` object, so the resolver can supply the same payload from
+    either backing store (ToolRequest or WorkflowInvocationStep) without
+    changing this contract.
 
     ``tool`` is resolved by the caller (toolbox for job/ICJ items, rebuilt
     from the persisted ToolSource for tool-request items) so the structured
@@ -989,32 +998,6 @@ def _structured_step_inputs_by_id(
     workflow_state = to_workflow_step_state(request_internal_state, parameter_bundle)
     associations = _structured_request_associations_by_id(trans, request_payload)
     return workflow_state.input_state, associations
-
-
-def _structured_request_payload(
-    job: Optional[Job] = None,
-    icj: Optional[ImplicitCollectionJobs] = None,
-) -> Optional[dict]:
-    """Resolve the structured request_internal payload for a step execution.
-
-    Single seam mapping an execution unit to its validated structured state.
-    Returns the request_internal dict when the execution has an unambiguous
-    tool request, else ``None`` (caller falls back to legacy state). Returning
-    a payload rather than a ``ToolRequest`` object keeps every downstream
-    consumer source-neutral: a future resolver can source the same payload
-    from another backing store by extending only this function.
-    """
-    tool_request = icj.tool_request if icj is not None else (job.tool_request if job is not None else None)
-    if tool_request is None:
-        return None
-    return _tool_request_payload(tool_request)
-
-
-def _tool_request_payload(tool_request: ToolRequest) -> dict:
-    payload = json.loads(tool_request.request) if isinstance(tool_request.request, str) else tool_request.request
-    if not isinstance(payload, dict):
-        raise RequestInternalToWorkflowStateError(f"ToolRequest {tool_request.id} has malformed request payload")
-    return payload
 
 
 def _structured_request_associations_by_id(trans: ProvidesHistoryContext, request_payload: dict) -> IdAssociations:

@@ -184,6 +184,7 @@ from galaxy.schema.schema import (
     DatasetValidatedState,
     InvocationsStateCounts,
     JobState,
+    ToolExecutionStateValidity,
     ToolRequestState,
 )
 from galaxy.schema.workflow.comments import WorkflowCommentModel
@@ -1424,12 +1425,49 @@ class ToolRequest(Base, Dictifiable, RepresentById):
     request: Mapped[dict] = mapped_column(JSONType)
     state: Mapped[Optional[str]] = mapped_column(TrimmedString(32), index=True)
     state_message: Mapped[Optional[str]] = mapped_column(JSONType, index=True)
+    tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
 
     tool_source: Mapped["ToolSource"] = relationship()
     history: Mapped[Optional["History"]] = relationship(back_populates="tool_requests")
     jobs: Mapped[list["Job"]] = relationship(back_populates="tool_request", order_by=lambda: asc(Job.id))
     implicit_collections: Mapped[list["ToolRequestImplicitCollectionAssociation"]] = relationship(
         back_populates="tool_request"
+    )
+    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="tool_requests")
+
+
+class ToolExecutionState(Base, RepresentById):
+    """Value-object table holding a tool execution's validated request payload.
+
+    One row per execution event (a tool-request mint, or a workflow tool-step
+    execution). ``ToolRequest``, ``Job`` and ``WorkflowInvocationStep`` each
+    carry a nullable FK at it so consumers (History Graph, structured
+    workflow extraction) walk one source-neutral seam: ``Job ->
+    tool_execution_state``.
+
+    ``state`` is the validity of the capture (``ToolExecutionStateValidity``),
+    deliberately distinct from ``ToolRequest.state`` (command lifecycle) and
+    ``WorkflowInvocationStep.state`` (invocation-step lifecycle). A row is
+    always minted at execution time; ``request`` is the validated
+    ``request_internal`` payload when ``state == 'validated'`` and ``None``
+    otherwise (the row exists as a diagnostic record that capture was
+    attempted but did not produce a trustworthy payload).
+    """
+
+    __tablename__ = "tool_execution_state"
+
+    states: TypeAlias = ToolExecutionStateValidity
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
+    update_time: Mapped[datetime] = mapped_column(default=now, onupdate=now, nullable=True)
+    request: Mapped[Optional[dict]] = mapped_column(JSONType)
+    state: Mapped[Optional[str]] = mapped_column(TrimmedString(32), index=True)
+
+    tool_requests: Mapped[list["ToolRequest"]] = relationship(back_populates="tool_execution_state")
+    jobs: Mapped[list["Job"]] = relationship(back_populates="tool_execution_state")
+    workflow_invocation_steps: Mapped[list["WorkflowInvocationStep"]] = relationship(
+        back_populates="tool_execution_state"
     )
 
 
@@ -1643,10 +1681,12 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     preferred_object_store_id: Mapped[Optional[str]] = mapped_column(String(255))
     object_store_id_overrides: Mapped[Optional[dict[str, Optional[str]]]] = mapped_column(JSONType)
     tool_request_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_request.id"), index=True)
+    tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
     tool_state: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
 
     dynamic_tool: Mapped[Optional["DynamicTool"]] = relationship()
     tool_request: Mapped[Optional["ToolRequest"]] = relationship(back_populates="jobs")
+    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="jobs")
     user: Mapped[Optional["User"]] = relationship()
     galaxy_session: Mapped[Optional["GalaxySession"]] = relationship()
     history: Mapped[Optional["History"]] = relationship()
@@ -2967,26 +3007,30 @@ class ImplicitCollectionJobs(Base, Serializable):
         return session.execute(stmt)
 
     @property
-    def tool_request_ids(self) -> set[int]:
-        """Distinct ToolRequest ids across constituent jobs."""
+    def structured_request_ids(self) -> set[int]:
+        """Distinct ToolRequest ids across constituent jobs (the tool-request
+        source of structured request state; the WorkflowInvocationStep source
+        is resolved separately by the workflow_request_state resolver)."""
         return {row.tool_request_id for row in self.get_job_attributes(["tool_request_id"]) if row.tool_request_id}
 
     @property
-    def has_ambiguous_tool_request(self) -> bool:
-        return len(self.tool_request_ids) > 1
+    def has_ambiguous_structured_request(self) -> bool:
+        return len(self.structured_request_ids) > 1
 
     @property
-    def tool_request(self) -> Optional["ToolRequest"]:
-        """The single ToolRequest for this ICJ, if one exists unambiguously."""
-        tool_request_ids = self.tool_request_ids
-        if len(tool_request_ids) == 1:
-            return required_object_session(self).get(ToolRequest, next(iter(tool_request_ids)))
-        if len(tool_request_ids) > 1:
+    def structured_request(self) -> Optional["ToolRequest"]:
+        """The single ToolRequest backing this ICJ, if one exists
+        unambiguously. None when zero or ambiguous - the caller may still
+        resolve a WorkflowInvocationStep source before degrading to legacy
+        state, so this does not predict the final fallback."""
+        structured_request_ids = self.structured_request_ids
+        if len(structured_request_ids) == 1:
+            return required_object_session(self).get(ToolRequest, next(iter(structured_request_ids)))
+        if len(structured_request_ids) > 1:
             log.warning(
-                "ImplicitCollectionJobs %s has multiple tool_request_id values %s; "
-                "workflow extraction will use legacy state fallback",
+                "ImplicitCollectionJobs %s spans multiple tool requests %s; no single tool-request structured state",
                 self.id,
-                sorted(tool_request_ids),
+                sorted(structured_request_ids),
             )
         return None
 
@@ -10640,9 +10684,13 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
         ForeignKey("implicit_collection_jobs.id"), index=True
     )
     action: Mapped[Optional[bytes]] = mapped_column(MutableJSONType)
+    tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
 
     workflow_step: Mapped[WorkflowStep] = relationship("WorkflowStep")
     job: Mapped[Optional["Job"]] = relationship(back_populates="workflow_invocation_step", uselist=False)
+    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
+        back_populates="workflow_invocation_steps"
+    )
     implicit_collection_jobs = relationship("ImplicitCollectionJobs", uselist=False)
     output_dataset_collections = relationship(
         "WorkflowInvocationStepOutputDatasetCollectionAssociation",

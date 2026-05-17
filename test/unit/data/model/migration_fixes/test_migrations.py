@@ -1,3 +1,4 @@
+import json
 from collections.abc import Generator
 from typing import (
     TYPE_CHECKING,
@@ -398,3 +399,131 @@ def test_25b092f7938b(monkeypatch, session, make_group, make_role, make_group_ro
     # Verify clean data
     all_associations = session.execute(select(GroupRoleAssociation)).all()
     assert len(all_associations) == 1
+
+
+def test_28885b317f78(monkeypatch, session, make_user, make_history):
+    """EXEC_STATE backfill: every existing tool_request row gets a matching
+    tool_execution_state row at the same id, and joined jobs get linked.
+
+    Pre-migration state is seeded via raw SQL because the post-migration
+    tool_execution_state_id column doesn't exist yet on tool_request / job;
+    using the ORM at downgraded schema would emit INSERTs against the
+    missing column."""
+    # Initialize db and migration environment
+    dburl = str(session.bind.url)
+    monkeypatch.setenv("GALAXY_CONFIG_OVERRIDE_DATABASE_CONNECTION", dburl)
+    monkeypatch.setenv("GALAXY_INSTALL_CONFIG_OVERRIDE_INSTALL_DATABASE_CONNECTION", dburl)
+    run_command(f"{COMMAND} init")
+
+    # STEP 0: Downgrade to the migration just before EXEC_STATE.
+    run_command(f"{COMMAND} downgrade 0b49ffb1e890")
+
+    # STEP 1: Seed pre-migration state.
+    user = make_user()
+    history = make_history(user=user)
+
+    # ToolSource (FK target of ToolRequest). Inserted via SQL to avoid the
+    # ORM emitting columns that may have been added later than the
+    # downgrade target.
+    session.execute(
+        text("INSERT INTO tool_source (id, source, source_class, hash) VALUES (1, :src, 'XmlToolSource', 'h')"),
+        {"src": '{"xml": "<tool/>"}'},
+    )
+
+    # Three tool_request rows covering all three lifecycle states (the
+    # backfill should treat all three as state='validated' since the
+    # request payload itself was validated at API ingestion regardless
+    # of where the command lifecycle landed) + a defensive guard case
+    # (TR 99 with NULL request - skipped by backfill; its joined job
+    # must stay unlinked rather than acquire a dangling FK).
+    payloads = {
+        1: '{"input1": {"src": "hda", "id": 7}}',
+        2: '{"input2": {"src": "hdca", "id": 12}}',
+        5: '{"input3": "x"}',
+    }
+    for tr_id, payload in payloads.items():
+        session.execute(
+            text(
+                "INSERT INTO tool_request (id, tool_source_id, history_id, request, state) "
+                "VALUES (:i, 1, :h, :r, :s)"
+            ),
+            {
+                "i": tr_id,
+                "h": history.id,
+                "r": payload,
+                "s": {1: "new", 2: "submitted", 5: "failed"}[tr_id],
+            },
+        )
+    session.execute(
+        text(
+            "INSERT INTO tool_request (id, tool_source_id, history_id, request, state) "
+            "VALUES (99, 1, :h, NULL, 'failed')"
+        ),
+        {"h": history.id},
+    )
+
+    # Jobs - some linked to tool_requests, one workflow-produced (NULL),
+    # one ICJ-shaped (two jobs sharing a TR), one linked to the NULL-
+    # request TR (must stay unlinked post-backfill, no dangling FK).
+    for jid, trid in [(10, 1), (11, 1), (12, 2), (20, None), (21, 99)]:
+        session.execute(
+            text("INSERT INTO job (id, tool_request_id) VALUES (:i, :t)"),
+            {"i": jid, "t": trid},
+        )
+    session.commit()
+
+    # STEP 2: Run the EXEC_STATE migration.
+    run_command(f"{COMMAND} upgrade 28885b317f78")
+    session.expire_all()
+
+    # STEP 3: Verify backfill.
+    tes_rows = list(session.execute(text("SELECT id, state, request FROM tool_execution_state ORDER BY id")))
+    assert len(tes_rows) == 3, tes_rows
+
+    # 1:1 backfill mapping: TES.id == TR.id.
+    tes_ids = {r.id for r in tes_rows}
+    assert tes_ids == {1, 2, 5}
+
+    # Every backfilled row marked validated regardless of TR.state.
+    assert {r.state for r in tes_rows} == {"validated"}
+
+    # Payloads preserved bit-for-bit. JSONType only deserializes via the
+    # ORM; reading through raw text() yields the stored JSON string, so
+    # decode here before comparing.
+    def _payload(raw):
+        return json.loads(raw) if isinstance(raw, str) else raw
+
+    requests_by_id = {r.id: _payload(r.request) for r in tes_rows}
+    assert requests_by_id[1] == {"input1": {"src": "hda", "id": 7}}
+    assert requests_by_id[2] == {"input2": {"src": "hdca", "id": 12}}
+    assert requests_by_id[5] == {"input3": "x"}
+
+    # tool_request.tool_execution_state_id is the new FK. The NULL-request
+    # row (99) is skipped by the defensive guard, so its FK stays NULL.
+    tr_links = {
+        r.id: r.tool_execution_state_id
+        for r in session.execute(text("SELECT id, tool_execution_state_id FROM tool_request ORDER BY id"))
+    }
+    assert tr_links == {1: 1, 2: 2, 5: 5, 99: None}
+
+    # Jobs joined to a backfilled TR get the corresponding TES; workflow-
+    # produced job (tool_request_id IS NULL) stays unlinked; job linked
+    # to the NULL-request TR also stays unlinked (no dangling FK).
+    job_links = {
+        r.id: r.tool_execution_state_id
+        for r in session.execute(text("SELECT id, tool_request_id, tool_execution_state_id FROM job ORDER BY id"))
+    }
+    assert job_links == {10: 1, 11: 1, 12: 2, 20: None, 21: None}
+
+    # No dangling Job FKs.
+    orphans = list(
+        session.execute(
+            text(
+                "SELECT j.id FROM job j "
+                "LEFT JOIN tool_execution_state tes ON tes.id = j.tool_execution_state_id "
+                "WHERE j.tool_execution_state_id IS NOT NULL AND tes.id IS NULL"
+            )
+        )
+    )
+    assert orphans == [], orphans
+    session.close()  # Release locks before the autouse clear_database teardown.

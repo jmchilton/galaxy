@@ -7,7 +7,10 @@ import logging
 import math
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import (
+    Callable,
+    Iterable,
+)
 from typing import (
     Any,
     cast,
@@ -35,6 +38,7 @@ from galaxy.model import (
     HistoryDatasetCollectionAssociation,
     Job,
     PostJobAction,
+    ToolExecutionState,
     Workflow,
     WorkflowInvocationStep,
     WorkflowStep,
@@ -63,7 +67,18 @@ from galaxy.schema.invocation import (
     InvocationFailureWhenNotBoolean,
     InvocationFailureWorkflowParameterInvalid,
 )
+from galaxy.schema.schema import ToolExecutionStateValidity
 from galaxy.tool_util.cwl.util import set_basename_and_derived_properties
+from galaxy.tool_util.parameters import (
+    fill_static_defaults,
+    from_workflow_execution_state,
+    JobInternalToolState,
+    MappedCollectionInput,
+    RequestInternalDereferencedToolState,
+    RequestInternalToolState,
+    RequestInternalToWorkflowStateError,
+    ToolParameterBundleModel,
+)
 from galaxy.tool_util.parser import get_input_source
 from galaxy.tool_util.parser.output_objects import (
     ToolExpressionOutput,
@@ -111,6 +126,7 @@ from galaxy.tools.parameters.grouping import (
     ConditionalWhen,
     Repeat,
 )
+from galaxy.tools.parameters.meta import to_decoded_json
 from galaxy.tools.parameters.options import ParameterOption
 from galaxy.tools.parameters.populate_model import populate_model
 from galaxy.tools.parameters.workflow_utils import (
@@ -2280,6 +2296,145 @@ class PickValueModule(WorkflowModule):
         )
 
 
+def _mapped_inputs_from_collection_info(collection_info) -> dict[str, MappedCollectionInput]:
+    """Reduce a MatchingCollections to source-neutral per-input map-over descriptors.
+
+    The workflow path only ever links collections (linked=True); cross-product
+    map-over is not produced here.
+    """
+    mapped: dict[str, MappedCollectionInput] = {}
+    collections = getattr(collection_info, "collections", None)
+    if not collections:
+        return mapped
+    subcollection_types = getattr(collection_info, "subcollection_types", None) or {}
+    for input_name, item in collections.items():
+        src = "dce" if isinstance(item, model.DatasetCollectionElement) else "hdca"
+        subcollection_type = subcollection_types.get(input_name)
+        map_over_type = getattr(subcollection_type, "collection_type", None)
+        mapped[input_name] = MappedCollectionInput(
+            src=src,
+            id=item.id,
+            map_over_type=map_over_type,
+            linked=True,
+        )
+    return mapped
+
+
+def _capture_workflow_tool_request_state(
+    trans,
+    tool,
+    step,
+    collection_info,
+    resolve_execution_state: Callable[[Any], Any],
+    param_combinations: list[dict[str, Any]],
+) -> tuple[
+    Optional[RequestInternalDereferencedToolState],
+    Optional[list[JobInternalToolState]],
+    ToolExecutionStateValidity,
+]:
+    """Synthesize + validate request_internal for a workflow tool step.
+
+    Best-effort and execution-neutral: any failure degrades to
+    ``(None, None, <state>)`` so the existing per-job persistence in
+    ``execute.py`` simply does not fire. Never raises - workflows legitimately
+    execute effective state a tool-request validator would reject.
+
+    Outcome taxonomy (the resolver in workflow_request_state only trusts a
+    payload whose request_state == validated, so this must not record false
+    failures):
+      - skipped conditional step -> NOT_VALIDATED (no request to capture)
+      - converter guard or meta-model rejection -> VALIDATION_FAILED, quiet
+        (expected; the workflow ran state a tool-request validator rejects)
+      - anything else -> VALIDATION_FAILED, log.warning (a capture-code defect,
+        surfaced rather than silently swallowed)
+    converter-vs-meta is deliberately not a separate enum member: no consumer
+    distinguishes them (both -> no usable payload), so the meaningful axis is
+    expected-vs-defect, expressed via log severity not enum width.
+    """
+    parameters = getattr(tool, "parameters", None)
+    if parameters is None:
+        return None, None, ToolExecutionStateValidity.NOT_VALIDATED
+    try:
+        parameter_bundle = ToolParameterBundleModel(parameters=parameters)
+        mapped_inputs = _mapped_inputs_from_collection_info(collection_info)
+
+        # Whole-step request template: resolve every connection once with no
+        # map-over slicing (rederived from the step, never a representative
+        # job). Mapped inputs are overwritten by the converter from
+        # collection_info, so their resolved value is irrelevant - null them
+        # before projection so a parent collection sitting at a data parameter
+        # does not trip state serialization.
+        resolved_state, _, _ = resolve_execution_state(None)
+        template_inputs = resolved_state.inputs
+        for input_name in mapped_inputs:
+            if input_name in template_inputs:
+                template_inputs[input_name] = None
+        # to_decoded_json maps resolved model objects -> {src, id} (the same
+        # projection expand_meta_parameters_async uses to build job_internal);
+        # params_to_json_internal would emit the legacy value_to_basic shape.
+        template_json = to_decoded_json(template_inputs)
+        template_json.pop("__when_value__", None)
+        request_internal: RequestInternalToolState = from_workflow_execution_state(
+            template_json, mapped_inputs, parameter_bundle
+        )
+        validated_template = RequestInternalDereferencedToolState(request_internal.input_state)
+        validated_template.validate(parameter_bundle, f"{tool.id} (request internal model)")
+
+        # Per-job leg, in lockstep with the workflow's own param_combinations
+        # (zipped by position in execute.py); no re-expansion.
+        validated_combinations: list[JobInternalToolState] = []
+        for param_combination in param_combinations:
+            job_json = to_decoded_json(param_combination)
+            job_json.pop("__when_value__", None)
+            job_json = fill_static_defaults(job_json, parameter_bundle, tool.profile)
+            job_internal = JobInternalToolState(job_json)
+            job_internal.validate(parameter_bundle, f"{tool.id} (job internal model)")
+            validated_combinations.append(job_internal)
+    except SkipWorkflowStepEvaluation:
+        # Conditional step whose `when` resolved falsy: the step does not
+        # execute, so there is no request to capture. Not a failure.
+        return None, None, ToolExecutionStateValidity.NOT_VALIDATED
+    except (RequestInternalToWorkflowStateError, exceptions.RequestParameterInvalidException) as e:
+        # Expected: the workflow's effective state is something a tool-request
+        # validator legitimately rejects (the cross-product converter guard, or
+        # a meta-model rejection). Workflows may run such state - record it,
+        # never block, stay quiet since this is normal rather than a defect.
+        log.debug(
+            "Workflow tool request state invalid for tool %s: %s",
+            getattr(tool, "id", "?"),
+            unicodify(e),
+        )
+        return None, None, ToolExecutionStateValidity.VALIDATION_FAILED
+    except Exception as e:
+        # Unexpected: a capture-code defect, not workflow-invalid state. Still
+        # non-blocking, but loud enough to surface in production.
+        log.warning(
+            "Unexpected error capturing workflow tool request state for tool %s: %s",
+            getattr(tool, "id", "?"),
+            unicodify(e),
+            exc_info=True,
+        )
+        return None, None, ToolExecutionStateValidity.VALIDATION_FAILED
+    return validated_template, validated_combinations, ToolExecutionStateValidity.VALIDATED
+
+
+def _log_workflow_tool_request_state(
+    trans, tool, step, collection_info, request_state: ToolExecutionStateValidity
+) -> None:
+    mapped_over = bool(getattr(collection_info, "collections", None))
+    log.info(
+        "workflow tool request state: tool_id=%s step=%s mapped_over=%s state=%s",
+        getattr(tool, "id", "?"),
+        getattr(step, "order_index", "?"),
+        mapped_over,
+        request_state.value,
+    )
+    execution_timer_factory = getattr(trans.app, "execution_timer_factory", None)
+    statsd_client = getattr(execution_timer_factory, "galaxy_statsd_client", None)
+    if statsd_client is not None:
+        statsd_client.incr(f"galaxy.workflow_tool_request_state.{request_state.value}")
+
+
 class ToolModule(WorkflowModule):
     type = "tool"
     name = "Tool"
@@ -2779,7 +2934,15 @@ class ToolModule(WorkflowModule):
             iteration_elements_iter = [(None, progress.when_values[0] if progress.when_values else None)]
 
         resource_parameters = invocation.resource_parameters
-        for iteration_elements, when_value in iteration_elements_iter:
+
+        def _resolve_execution_state(iteration_elements):
+            """Resolve one execution state from the step.
+
+            ``iteration_elements`` is a map-over slice, or ``None`` to resolve
+            the whole step unexpanded (every connection -> its full upstream
+            object). Behavior for a slice is identical to the prior inline
+            loop body.
+            """
             execution_state = tool_state.copy()
             # TODO: Move next step into copy()
             execution_state.inputs = make_dict_copy(execution_state.inputs)
@@ -2794,17 +2957,17 @@ class ToolModule(WorkflowModule):
                 replacement: Union[model.Dataset, NoReplacement, PromoteCollectionElementToCollectionAdapter] = (
                     NO_REPLACEMENT
                 )
-                if iteration_elements and prefixed_name in iteration_elements:  # noqa: B023
-                    replacement = iteration_elements[prefixed_name]  # noqa: B023
+                if iteration_elements and prefixed_name in iteration_elements:
+                    replacement = iteration_elements[prefixed_name]
                     # When mapping flat collections over paired_or_unpaired via
                     # single_datasets, wrap each element in an adapter so the
                     # tool sees a paired_or_unpaired collection.
                     if (
-                        collection_info  # noqa: B023
+                        collection_info
                         and isinstance(replacement, model.DatasetCollectionElement)
                         and not replacement.child_collection
                     ):
-                        mapping_type = collection_info.subcollection_mapping_type(prefixed_name)  # noqa: B023
+                        mapping_type = collection_info.subcollection_mapping_type(prefixed_name)
                         if (
                             hasattr(mapping_type, "collection_type")
                             and mapping_type.collection_type == "single_datasets"
@@ -2824,7 +2987,7 @@ class ToolModule(WorkflowModule):
                         if dataset_instance and dataset_instance.extension == "expression.json":
                             with open(dataset_instance.get_file_name()) as f:
                                 replacement = json.load(f)
-                    found_replacement_keys.add(prefixed_name)  # noqa: B023
+                    found_replacement_keys.add(prefixed_name)
 
                     # bool cast should be fine, can only have true/false on ConditionalStepWhen
                     # also terrible of course and it's not needed for API requests
@@ -2845,6 +3008,12 @@ class ToolModule(WorkflowModule):
             except KeyError as k:
                 message = f"Error due to input mapping of '{unicodify(k)}' in tool '{tool.id}'.  A common cause of this is conditional outputs that cannot be determined until runtime, please review workflow step {step.order_index + 1}."
                 raise exceptions.MessageException(message)
+            return execution_state, found_replacement_keys, expected_replacement_keys
+
+        for iteration_elements, when_value in iteration_elements_iter:
+            execution_state, found_replacement_keys, expected_replacement_keys = _resolve_execution_state(
+                iteration_elements
+            )
 
             if step.when_expression and when_value is not False:
                 extra_step_state = {}
@@ -2884,6 +3053,29 @@ class ToolModule(WorkflowModule):
 
             param_combinations.append(execution_state.inputs)
 
+        (
+            validated_param_template,
+            validated_param_combinations,
+            request_state,
+        ) = _capture_workflow_tool_request_state(
+            trans, tool, step, collection_info, _resolve_execution_state, param_combinations
+        )
+        _log_workflow_tool_request_state(trans, tool, step, collection_info, request_state)
+        # One row per step execution (the whole map-over, Batch form), never
+        # per-iteration. The payload is the request_internal dict mirroring
+        # ToolRequest.request; only a validated capture yields a trustworthy
+        # one, so store it just then while always recording the enum so the
+        # resolver can distinguish "we tried, capture didn't validate" from
+        # "no capture attempted." The WIS link is a failure-diagnostic hook
+        # (the resolver walks Job.tool_execution_state, not WIS); execute.py
+        # copies validated capture rows onto produced jobs before enqueue.
+        tool_execution_state = ToolExecutionState(
+            request=validated_param_template.input_state if validated_param_template is not None else None,
+            state=request_state.value,
+        )
+        invocation_step.tool_execution_state = tool_execution_state
+        trans.sa_session.add(tool_execution_state)
+
         complete = False
         completed_jobs: dict[int, Optional[Job]] = tool.completed_jobs(
             trans,
@@ -2891,7 +3083,12 @@ class ToolModule(WorkflowModule):
             param_combinations,
         )
         try:
-            mapping_params = MappingParameters(tool_state.inputs, param_combinations)
+            mapping_params = MappingParameters(
+                tool_state.inputs,
+                param_combinations,
+                validated_param_template,
+                validated_param_combinations,
+            )
             if use_cached_job:
                 mapping_params.param_template["__use_cached_job__"] = use_cached_job
             max_num_jobs = progress.maximum_jobs_to_schedule_or_none

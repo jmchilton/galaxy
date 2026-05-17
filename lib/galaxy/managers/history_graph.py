@@ -1,11 +1,11 @@
 """Bounded user-action provenance graph for Galaxy histories.
 
 For each selected top-level history item, resolves its producing
-tool_request and that tool_request's declared inputs from the
-submission payload, one hop out from the seed.
+structured request via the unified ``resolve_structured_request`` seam
+and that producer's declared inputs from the submission payload, one
+hop out from the seed.
 """
 
-import json
 import logging
 from typing import (
     Literal,
@@ -25,6 +25,10 @@ from galaxy.exceptions import (
     MessageException,
     RequestParameterInvalidException,
 )
+from galaxy.managers.workflow_request_state import (
+    resolve_structured_request,
+    ResolvedStructuredRequest,
+)
 from galaxy.model import (
     Dataset,
     DatasetCollection,
@@ -34,7 +38,6 @@ from galaxy.model import (
     Job,
     JobToOutputDatasetAssociation,
     JobToOutputDatasetCollectionAssociation,
-    ToolRequest,
 )
 from galaxy.schema.history_graph import (
     GraphEdge,
@@ -45,6 +48,7 @@ from galaxy.schema.history_graph import (
 )
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.structured_app import MinimalManagerApp
+from galaxy.tool_util.parameters import RequestInternalToWorkflowStateError
 from galaxy.tool_util.parameters.request import request_internal_input_refs
 from galaxy.tool_util.toolbox import AbstractToolBox
 
@@ -56,6 +60,10 @@ EDGE_TYPE_RANK = {"dataset_input": 0, "dataset_output": 1, "collection_input": 2
 # ("dataset"/"collection") stay because they mirror request payload
 # content_type; only the wire boundary speaks src.
 NODE_SRC: dict[str, str] = {"dataset": "hda", "collection": "hdca", "tool_request": "tool_request"}
+# Distinct id-cipher namespace for ToolExecutionState-backed producer
+# nodes so they cannot collide with same-pk historical ToolRequest nodes.
+# Must stay < 15 chars (IdEncodingHelper kind-length guard).
+TOOL_EXECUTION_STATE_ENCODE_KIND = "tool_exec_st"
 MAX_LIMIT = 1000
 
 
@@ -96,12 +104,15 @@ class HistoryGraphBuilder:
       to Job.
     - HDCA producer edges come from JobToOutputDatasetCollectionAssociation
       joined to Job.
-    - Input edges come from the tool_request.request submission payload.
-    - When an item resolves to more than one distinct producing
-      tool_request, the item is kept as a node and the producer edge is
-      skipped with a debug log.
-    - Malformed payloads are logged at debug level and the item becomes
-      a node with no input edges.
+    - Input edges come from the resolved structured-request payload
+      (ToolExecutionState for new executions, ToolRequest for historical
+      pre-EXEC_STATE rows), reached uniformly via
+      ``resolve_structured_request``.
+    - When an item resolves to more than one distinct producer (keyed by
+      ``(source, source_id)``), the item is kept as a node and the
+      producer edge is skipped with a debug log.
+    - Resolver-side malformed payloads are logged at debug level and the
+      item becomes a node with no input edges.
     - Hidden HDAs that belong to a collection are filtered before
       producer lookup and surfaced via their parent HDCA instead.
     - ``limit`` is clamped to ``MAX_LIMIT`` to keep per-request work
@@ -150,38 +161,38 @@ class HistoryGraphBuilder:
         # 2. Remove hidden collection elements.
         dataset_ids = self._remove_hidden_elements(dataset_ids)
 
-        # 3. Producer lookup + payload input resolution.
+        # 3. Single producer pass: every selected item resolves its producer
+        #    via the unified seam. Two source kinds reach the wire:
+        #    'tool_execution_state' (the EXEC_STATE walk, new executions) and
+        #    'tool_request' (transitional historical fallback). Both render
+        #    as wire src "tool_request" - the source-kind distinction lives
+        #    in the cipher kind, so same-pk rows in the two tables never
+        #    collide.
         edges: list[GraphEdge] = []
-        tr_nodes: dict[int, Optional[str]] = {}  # tr_id -> tool_id
         closure_dataset_ids: set[int] = set()
         closure_collection_ids: set[int] = set()
 
-        hda_producers = self._hda_producers(dataset_ids)
-        hdca_producers = self._hdca_producers(collection_ids)
-        all_producers = {**hda_producers, **hdca_producers}
-
-        # Emit output edges and collect tr_ids.
-        for item_key, (tr_id, tool_id) in all_producers.items():
+        producers, producer_meta, payloads = self._producers(dataset_ids, collection_ids)
+        for item_key, producer_id in producers.items():
             item_type, item_id = item_key
-            tr_nodes[tr_id] = tool_id
-            source = self._ref("tool_request", tr_id)
-            target = self._ref(item_type, item_id)
             etype = "dataset_output" if item_type == "dataset" else "collection_output"
-            edges.append(GraphEdge(source=source, target=target, type=etype))
-
-        # Batch-fetch all payloads, parse inputs, emit input edges.
-        payloads = self._fetch_payloads(set(tr_nodes.keys()))
-        for tr_id, payload in payloads.items():
-            input_refs = self._extract_inputs(payload)
-            for ref_type, ref_id in input_refs:
-                source = self._ref(ref_type, ref_id)
-                target = self._ref("tool_request", tr_id)
-                etype = "dataset_input" if ref_type == "dataset" else "collection_input"
-                edges.append(GraphEdge(source=source, target=target, type=etype))
-                if ref_type == "dataset" and ref_id not in dataset_ids:
-                    closure_dataset_ids.add(ref_id)
-                elif ref_type == "collection" and ref_id not in collection_ids:
-                    closure_collection_ids.add(ref_id)
+            edges.append(
+                GraphEdge(
+                    source=self._producer_ref(*producer_id),
+                    target=self._ref(item_type, item_id),
+                    type=etype,
+                )
+            )
+        for producer_id, payload in payloads.items():
+            self._emit_input_edges(
+                self._producer_ref(*producer_id),
+                payload,
+                dataset_ids,
+                collection_ids,
+                edges,
+                closure_dataset_ids,
+                closure_collection_ids,
+            )
 
         # 4. Filter closure items by the same deleted policy as seed selection.
         if not self.include_deleted and (closure_dataset_ids or closure_collection_ids):
@@ -196,7 +207,7 @@ class HistoryGraphBuilder:
         nodes: list[GraphNode] = []
         nodes.extend(self._dataset_nodes(all_dataset_ids))
         nodes.extend(self._collection_nodes(all_collection_ids))
-        nodes.extend(self._tr_nodes(tr_nodes))
+        nodes.extend(self._producer_nodes(producer_meta))
 
         # Invariant: every edge endpoint must be a node. Edges were emitted
         # before closure deletion filtering, so drop any that now reference
@@ -301,94 +312,118 @@ class HistoryGraphBuilder:
 
     # ── Producer lookup ──
 
-    def _hda_producers(self, dataset_ids: set[int]) -> dict[tuple[str, int], tuple[int, str]]:
-        """Resolve each HDA's producing (tool_request_id, tool_id) by
-        joining JobToOutputDatasetAssociation to Job. Only HDAs with
-        exactly one distinct producing tool_request are returned;
-        ambiguous ones are logged at debug level."""
-        if not dataset_ids:
-            return {}
-        stmt = (
-            select(
-                JobToOutputDatasetAssociation.dataset_id.label("hda_id"),
-                Job.tool_request_id,
-                Job.tool_id,
-            )
-            .join(Job, Job.id == JobToOutputDatasetAssociation.job_id)
-            .where(
-                JobToOutputDatasetAssociation.dataset_id.in_(dataset_ids),
-                Job.tool_request_id.isnot(None),
-                Job.tool_id.isnot(None),
-                Job.tool_id != "__DATA_FETCH__",
-            )
-        )
-        candidates: dict[int, dict[int, str]] = {}  # hda_id -> {tr_id: tool_id}
-        for row in self.sa_session.execute(stmt):
-            candidates.setdefault(row.hda_id, {})[row.tool_request_id] = row.tool_id
+    def _producers(
+        self,
+        dataset_ids: set[int],
+        collection_ids: set[int],
+    ) -> tuple[
+        dict[tuple[str, int], tuple[str, int]],
+        dict[tuple[str, int], Optional[str]],
+        dict[tuple[str, int], dict],
+    ]:
+        """One pass: every producer Job -> structured request via the seam.
 
-        result: dict[tuple[str, int], tuple[int, str]] = {}
-        for hda_id, tr_map in candidates.items():
-            if len(tr_map) == 1:
-                tr_id, tool_id = next(iter(tr_map.items()))
-                result[("dataset", hda_id)] = (tr_id, tool_id)
+        Returns:
+        - ``producers``: ``item_key -> (source, source_id)`` for items with
+          exactly one distinct producing structured-request source. Items
+          resolving to >1 distinct producer are dropped (and logged) -
+          they remain as nodes without a producer edge.
+        - ``producer_meta``: ``(source, source_id) -> tool_id`` for node
+          construction.
+        - ``payloads``: ``(source, source_id) -> dict`` for input-edge
+          emission, sourced from the resolver (no per-source SQL).
+
+        ``source`` is ``"tool_execution_state"`` (the EXEC_STATE walk) or
+        ``"tool_request"`` (the transitional historical fallback for jobs
+        whose TES is NULL). Jobs whose resolver returns ``None`` (no
+        validated capture, no historical TR) contribute no producer.
+        """
+        producers: dict[tuple[str, int], tuple[str, int]] = {}
+        producer_meta: dict[tuple[str, int], Optional[str]] = {}
+        payloads: dict[tuple[str, int], dict] = {}
+        if not dataset_ids and not collection_ids:
+            return producers, producer_meta, payloads
+
+        item_jobs: list[tuple[tuple[str, int], int, Optional[str]]] = []
+        job_ids: set[int] = set()
+        if dataset_ids:
+            stmt = (
+                select(
+                    JobToOutputDatasetAssociation.dataset_id.label("item_id"),
+                    Job.id.label("job_id"),
+                    Job.tool_id,
+                )
+                .join(Job, Job.id == JobToOutputDatasetAssociation.job_id)
+                .where(
+                    JobToOutputDatasetAssociation.dataset_id.in_(dataset_ids),
+                    Job.tool_id.isnot(None),
+                    Job.tool_id != "__DATA_FETCH__",
+                )
+            )
+            for row in self.sa_session.execute(stmt):
+                item_jobs.append((("dataset", row.item_id), row.job_id, row.tool_id))
+                job_ids.add(row.job_id)
+        if collection_ids:
+            stmt = (
+                select(
+                    JobToOutputDatasetCollectionAssociation.dataset_collection_id.label("item_id"),
+                    Job.id.label("job_id"),
+                    Job.tool_id,
+                )
+                .join(Job, Job.id == JobToOutputDatasetCollectionAssociation.job_id)
+                .where(
+                    JobToOutputDatasetCollectionAssociation.dataset_collection_id.in_(collection_ids),
+                    Job.tool_id.isnot(None),
+                    Job.tool_id != "__DATA_FETCH__",
+                )
+            )
+            for row in self.sa_session.execute(stmt):
+                item_jobs.append((("collection", row.item_id), row.job_id, row.tool_id))
+                job_ids.add(row.job_id)
+        if not job_ids:
+            return producers, producer_meta, payloads
+
+        jobs = {j.id: j for j in self.sa_session.scalars(select(Job).where(Job.id.in_(job_ids)))}
+        resolved_by_job: dict[int, Optional[ResolvedStructuredRequest]] = {}
+        for job_id in job_ids:
+            job = jobs.get(job_id)
+            if job is None:
+                resolved_by_job[job_id] = None
+                continue
+            icj_assoc = job.implicit_collection_jobs_association
+            icj = icj_assoc.implicit_collection_jobs if icj_assoc is not None else None
+            try:
+                resolved = (
+                    resolve_structured_request(icj=icj) if icj is not None else resolve_structured_request(job=job)
+                )
+            except RequestInternalToWorkflowStateError:
+                log.debug("history_graph: malformed structured request for job %d", job_id)
+                resolved = None
+            resolved_by_job[job_id] = resolved
+
+        # item_key -> {(source, source_id): tool_id}; ambiguity rule = >1 distinct.
+        candidates: dict[tuple[str, int], dict[tuple[str, int], Optional[str]]] = {}
+        for item_key, job_id, tool_id in item_jobs:
+            resolved = resolved_by_job.get(job_id)
+            if resolved is None:
+                continue
+            producer_id = (resolved.source, resolved.source_id)
+            candidates.setdefault(item_key, {})[producer_id] = tool_id
+            payloads.setdefault(producer_id, resolved.payload)
+        for item_key, producer_map in candidates.items():
+            if len(producer_map) == 1:
+                producer_id, tool_id = next(iter(producer_map.items()))
+                producers[item_key] = producer_id
+                producer_meta[producer_id] = tool_id
             else:
-                log.debug("history_graph: skipping HDA %d — ambiguous producer (%s)", hda_id, set(tr_map.keys()))
-        return result
-
-    def _hdca_producers(self, collection_ids: set[int]) -> dict[tuple[str, int], tuple[int, str]]:
-        """Resolve each HDCA's producing (tool_request_id, tool_id) by
-        joining JobToOutputDatasetCollectionAssociation to Job. Only
-        HDCAs with exactly one distinct producing tool_request are
-        returned; ambiguous ones are logged at debug level."""
-        if not collection_ids:
-            return {}
-        stmt = (
-            select(
-                JobToOutputDatasetCollectionAssociation.dataset_collection_id.label("hdca_id"),
-                Job.tool_request_id,
-                Job.tool_id,
-            )
-            .join(Job, Job.id == JobToOutputDatasetCollectionAssociation.job_id)
-            .where(
-                JobToOutputDatasetCollectionAssociation.dataset_collection_id.in_(collection_ids),
-                Job.tool_request_id.isnot(None),
-                Job.tool_id.isnot(None),
-                Job.tool_id != "__DATA_FETCH__",
-            )
-        )
-        candidates: dict[int, dict[int, str]] = {}
-        for row in self.sa_session.execute(stmt):
-            candidates.setdefault(row.hdca_id, {})[row.tool_request_id] = row.tool_id
-
-        result: dict[tuple[str, int], tuple[int, str]] = {}
-        for hdca_id, tr_map in candidates.items():
-            if len(tr_map) == 1:
-                tr_id, tool_id = next(iter(tr_map.items()))
-                result[("collection", hdca_id)] = (tr_id, tool_id)
-            else:
-                log.debug("history_graph: skipping HDCA %d — ambiguous producer (%s)", hdca_id, set(tr_map.keys()))
-        return result
+                log.debug(
+                    "history_graph: skipping %s — ambiguous producer (%s)",
+                    item_key,
+                    set(producer_map.keys()),
+                )
+        return producers, producer_meta, payloads
 
     # ── Payload input resolution ──
-
-    def _fetch_payloads(self, tr_ids: set[int]) -> dict[int, dict]:
-        """Return raw ``tool_request.request`` payloads keyed by tool
-        request id. Rows whose ``request`` field is not a dict (after
-        decoding a JSON string form) are silently dropped with a debug
-        log, on the assumption that a malformed payload contributes no
-        usable input refs."""
-        if not tr_ids:
-            return {}
-        stmt = select(ToolRequest.id, ToolRequest.request).where(ToolRequest.id.in_(tr_ids))
-        result: dict[int, dict] = {}
-        for row in self.sa_session.execute(stmt):
-            try:
-                payload = json.loads(row.request) if isinstance(row.request, str) else row.request
-                if isinstance(payload, dict):
-                    result[row.id] = payload
-            except (json.JSONDecodeError, TypeError):
-                log.debug("history_graph: malformed payload for tool_request %d", row.id)
-        return result
 
     def _extract_inputs(self, payload: dict) -> set[tuple[str, int]]:
         """Sole payload entry point inside the builder. Walks a single
@@ -445,6 +480,28 @@ class HistoryGraphBuilder:
             else:
                 result.add((ref_type, ref_id))
         return result
+
+    def _emit_input_edges(
+        self,
+        producer_ref: NodeRef,
+        payload: dict,
+        dataset_ids: set[int],
+        collection_ids: set[int],
+        edges: list[GraphEdge],
+        closure_dataset_ids: set[int],
+        closure_collection_ids: set[int],
+    ) -> None:
+        """Emit ``*_input`` edges from a resolved request payload into the
+        given producer node, collecting any out-of-scope refs as closure.
+        Source-neutral: the producer may be a ToolRequest or a
+        WorkflowInvocationStep; only its already-encoded node ref matters."""
+        for ref_type, ref_id in self._extract_inputs(payload):
+            etype = "dataset_input" if ref_type == "dataset" else "collection_input"
+            edges.append(GraphEdge(source=self._ref(ref_type, ref_id), target=producer_ref, type=etype))
+            if ref_type == "dataset" and ref_id not in dataset_ids:
+                closure_dataset_ids.add(ref_id)
+            elif ref_type == "collection" and ref_id not in collection_ids:
+                closure_collection_ids.add(ref_id)
 
     # ── Node construction ──
 
@@ -509,8 +566,20 @@ class HistoryGraphBuilder:
             for row in self.sa_session.execute(stmt)
         ]
 
-    def _tr_nodes(self, tr_map: dict[int, Optional[str]]) -> list[GraphNode]:
-        return [self._node("tool_request", tr_id, tool_id=tool_id) for tr_id, tool_id in tr_map.items()]
+    def _producer_nodes(self, producer_meta: dict[tuple[str, int], Optional[str]]) -> list[GraphNode]:
+        """Producer nodes for both structured-request sources. Wire ``src``
+        is "tool_request" uniformly; the cipher kind embedded in the id
+        distinguishes ToolExecutionState-backed producers from historical
+        ToolRequest ones so same-pk rows in the two tables never collide.
+        """
+        return [
+            GraphNode(
+                src="tool_request",
+                id=self._producer_ref(source, source_id).id,
+                tool_id=tool_id,
+            )
+            for (source, source_id), tool_id in producer_meta.items()
+        ]
 
     def _resolve_tool_names(self, nodes: list[GraphNode]) -> None:
         toolbox = self.toolbox
@@ -581,6 +650,22 @@ class HistoryGraphBuilder:
     def _ref(self, node_type: str, db_id: int) -> NodeRef:
         ref = NodeRef(src=NODE_SRC[node_type], id=self.security.encode_id(db_id))
         self._sort_keys[ref] = (TYPE_RANK[node_type], db_id)
+        return ref
+
+    def _producer_ref(self, source: str, source_id: int) -> NodeRef:
+        """Encode a producer node for either structured-request source.
+
+        Wire ``src`` is "tool_request" uniformly (renaming the producer
+        concept is an EXEC_STATE follow-up). The cipher kind differs per
+        source so a ToolExecutionState and a historical ToolRequest with
+        the same integer pk never encode to the same node ref.
+        """
+        if source == "tool_execution_state":
+            encoded = self.security.encode_id(source_id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
+        else:
+            encoded = self.security.encode_id(source_id)
+        ref = NodeRef(src="tool_request", id=encoded)
+        self._sort_keys[ref] = (TYPE_RANK["tool_request"], source_id)
         return ref
 
     def _node(self, node_type: str, db_id: int, **fields) -> GraphNode:
