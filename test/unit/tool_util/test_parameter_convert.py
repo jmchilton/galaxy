@@ -4,6 +4,8 @@ from typing import (
     Optional,
 )
 
+import pytest
+
 from galaxy.tool_util.parameters import (
     DataRequestCollectionUri,
     DataRequestInternalHda,
@@ -18,10 +20,18 @@ from galaxy.tool_util.parameters import (
     landing_encode,
     LandingRequestToolState,
     RelaxedRequestToolState,
+    RequestInternalToWorkflowStateError,
     RequestInternalDereferencedToolState,
     RequestInternalToolState,
     RequestToolState,
     strictify,
+    to_workflow_step_state,
+)
+from galaxy.tool_util.parameters.request import (
+    RequestInputRef,
+    RequestUrlInputRef,
+    request_internal_input_refs,
+    request_internal_url_inputs,
 )
 from galaxy.tool_util.parser.util import parse_profile_version
 from .test_parameter_test_cases import tool_source_for
@@ -57,6 +67,110 @@ def test_decode_data_batch():
     decoded_state = decode(request_state, bundle, _fake_decode)
     assert decoded_state.input_state["parameter"]["values"][0]["src"] == "hda"
     assert decoded_state.input_state["parameter"]["values"][0]["id"] == EXAMPLE_ID_1
+
+
+def test_to_workflow_step_state_data():
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+    internal_state = RequestInternalToolState({"parameter": {"src": "hda", "id": EXAMPLE_ID_1}})
+
+    workflow_state = to_workflow_step_state(internal_state, bundle)
+
+    assert workflow_state.input_state == {"parameter": {"__class__": "ConnectedValue"}}
+
+
+def test_to_workflow_step_state_data_batch():
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+    internal_state = RequestInternalToolState(
+        {"parameter": {"__class__": "Batch", "values": [{"src": "hdca", "id": EXAMPLE_ID_1}], "linked": True}}
+    )
+
+    workflow_state = to_workflow_step_state(internal_state, bundle)
+
+    assert workflow_state.input_state == {"parameter": {"__class__": "ConnectedValue"}}
+
+
+def test_to_workflow_step_state_multiple_data():
+    tool_source = tool_source_for("parameters/gx_data_multiple")
+    bundle = input_models_for_tool_source(tool_source)
+    internal_state = RequestInternalToolState(
+        {
+            "parameter": [
+                {"src": "hda", "id": EXAMPLE_ID_1},
+                {"src": "hda", "id": EXAMPLE_ID_2},
+            ]
+        }
+    )
+
+    workflow_state = to_workflow_step_state(internal_state, bundle)
+
+    assert workflow_state.input_state == {"parameter": {"__class__": "ConnectedValue"}}
+
+
+def test_to_workflow_step_state_cross_product_batch_fails():
+    tool_source = tool_source_for("parameters/gx_data")
+    bundle = input_models_for_tool_source(tool_source)
+    internal_state = RequestInternalToolState(
+        {"parameter": {"__class__": "Batch", "values": [{"src": "hdca", "id": EXAMPLE_ID_1}], "linked": False}}
+    )
+
+    with pytest.raises(RequestInternalToWorkflowStateError, match="cross-product map-over"):
+        to_workflow_step_state(internal_state, bundle)
+
+
+def test_request_internal_input_refs_preserve_workflow_input_names():
+    refs = request_internal_input_refs(
+        {
+            "queries": [
+                {"input2": {"src": "hda", "id": EXAMPLE_ID_1}},
+                {"input2": {"__class__": "Batch", "values": [{"src": "hdca", "id": EXAMPLE_ID_2}]}},
+            ]
+        }
+    )
+
+    assert RequestInputRef("dataset", EXAMPLE_ID_1, "queries_0|input2", "hda") in refs
+    assert RequestInputRef("collection", EXAMPLE_ID_2, "queries_1|input2", "hdca") in refs
+
+
+def test_request_internal_input_refs_multiple_data_use_formal_input_name():
+    refs = request_internal_input_refs(
+        {
+            "parameter": [
+                {"src": "hda", "id": EXAMPLE_ID_1},
+                {"src": "hda", "id": EXAMPLE_ID_2},
+            ]
+        }
+    )
+
+    assert refs == [
+        RequestInputRef("dataset", EXAMPLE_ID_1, "parameter", "hda"),
+        RequestInputRef("dataset", EXAMPLE_ID_2, "parameter", "hda"),
+    ]
+
+
+def test_request_internal_url_inputs_preserve_workflow_input_names():
+    refs = request_internal_url_inputs(
+        {
+            "queries": [
+                {
+                    "input2": {
+                        "src": "url",
+                        "url": "https://example.org/data.txt",
+                        "ext": "txt",
+                    }
+                }
+            ]
+        }
+    )
+
+    assert refs == [
+        RequestUrlInputRef(
+            "queries_0|input2",
+            "https://example.org/data.txt",
+            {"src": "url", "url": "https://example.org/data.txt", "ext": "txt"},
+        )
+    ]
 
 
 def test_decode_collection():

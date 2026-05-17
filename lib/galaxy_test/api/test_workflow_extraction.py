@@ -116,6 +116,28 @@ class _ExtractionHelpersMixin:
                 return icj_id
         raise AssertionError(f"No ICJ in history {history_id} contains job {job_id}")
 
+    def _run_tool_request_get_request_and_job(self, history_id, tool_id, inputs):
+        tool_request, jobs, _ = self._run_tool_request_get_request_and_jobs(history_id, tool_id, inputs)
+        assert len(jobs) == 1, jobs
+        return tool_request, jobs[0]
+
+    def _run_tool_request_get_request_and_jobs(self, history_id, tool_id, inputs):
+        run = self.dataset_populator.tool_request_raw(tool_id, inputs, history_id)
+        self._assert_status_code_is(run, 200)
+        run_response = run.json()
+        tool_request_id = run_response["tool_request_id"]
+        self.dataset_populator.wait_on_task_object(run_response["task_result"])
+        assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+        jobs = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+        self.dataset_populator.wait_for_jobs(jobs, assert_ok=True)
+        return self.dataset_populator.get_tool_request(tool_request_id), jobs, run_response
+
+    def _tool_state_without_metadata(self, step):
+        state = loads(step["tool_state"])
+        state.pop("__page__", None)
+        state.pop("__rerun_remap_job_id__", None)
+        return state
+
 
 class TestWorkflowExtractionApi(_ExtractionHelpersMixin, BaseWorkflowsApiTestCase, WorkflowStructureAssertions):
     @skip_without_tool("cat1")
@@ -983,6 +1005,69 @@ test_data:
         )
         self._assert_single_input_single_tool(downloaded)
 
+    @skip_without_tool("multi_data_param")
+    @summarize_instance_history_on_error
+    def test_extract_multiple_data_param_by_ids(self, history_id):
+        d1 = self.dataset_populator.new_dataset(history_id, content="alpha\n")
+        d2 = self.dataset_populator.new_dataset(history_id, content="beta\n")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        run = self.dataset_populator.tool_request_raw(
+            "multi_data_param",
+            {
+                "f1": [
+                    {"src": "hda", "id": d1["id"]},
+                    {"src": "hda", "id": d2["id"]},
+                ],
+                "f2": [{"src": "hda", "id": d1["id"]}],
+            },
+            history_id,
+        )
+        self._assert_status_code_is(run, 200)
+        run_response = run.json()
+        tool_request_id = run_response["tool_request_id"]
+        self.dataset_populator.wait_on_task_object(run_response["task_result"])
+        assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+        jobs = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+        assert len(jobs) == 1, jobs
+        self.dataset_populator.wait_for_jobs(jobs, assert_ok=True)
+
+        downloaded = self._extract_and_download_workflow_by_ids(hda_ids=[d1["id"], d2["id"]], job_ids=[jobs[0]["id"]])
+
+        input_steps = self.assert_steps_of_type(downloaded, "data_input", expected_len=2)
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        tool_state = loads(tool_step["tool_state"])
+        assert tool_state["f1"] == {"__class__": "ConnectedValue"}
+        f1_connections = tool_step["input_connections"]["f1"]
+        assert isinstance(f1_connections, list)
+        assert sorted(connection["id"] for connection in f1_connections) == sorted(
+            input_step["id"] for input_step in input_steps
+        )
+
+    @skip_without_tool("gx_data")
+    @summarize_instance_history_on_error
+    def test_extract_src_url_as_annotated_data_input_by_ids(self, history_id):
+        url = "base64://SGVsbG8gV29ybGQhCg=="
+        url_request = {"src": "url", "url": url, "ext": "txt"}
+        run = self.dataset_populator.tool_request_raw("gx_data", {"parameter": url_request}, history_id)
+        self._assert_status_code_is(run, 200)
+        run_response = run.json()
+        tool_request_id = run_response["tool_request_id"]
+        self.dataset_populator.wait_on_task_object(run_response["task_result"])
+        assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+        jobs = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+        assert len(jobs) == 1, jobs
+        self.dataset_populator.wait_for_jobs(jobs, assert_ok=True)
+
+        downloaded = self._extract_and_download_workflow_by_ids(job_ids=[jobs[0]["id"]])
+
+        input_step = self.assert_steps_of_type(downloaded, "data_input", expected_len=1)[0]
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert input_step["label"] == "parameter"
+        assert loads(input_step["annotation"]) == url_request
+        assert input_step["inputs"][0]["name"] == "parameter"
+        assert loads(input_step["inputs"][0]["description"]) == url_request
+        assert tool_step["input_connections"]["parameter"]["id"] == input_step["id"]
+
     @skip_without_tool("cat1")
     @summarize_instance_history_on_error
     def test_extract_after_copy_no_foreign_jobs(self, history_id):
@@ -1061,6 +1146,235 @@ test_data:
         )
         content = self.dataset_populator.get_history_dataset_content(new_history_id, hid=3)
         assert "gamma" in content and "delta" in content, content
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_roundtrip_structured_request_state_by_ids(self, history_id):
+        d1 = self.dataset_populator.new_dataset(history_id, content="alpha\n")
+        d2 = self.dataset_populator.new_dataset(history_id, content="beta\n")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        _, original_job = self._run_tool_request_get_request_and_job(
+            history_id,
+            "cat1",
+            {
+                "input1": {"src": "hda", "id": d1["id"]},
+                "queries": [{"input2": {"src": "hda", "id": d2["id"]}}],
+            },
+        )
+        workflow_id = self._extract_workflow_id_by_ids(
+            hda_ids=[d1["id"], d2["id"]],
+            job_ids=[original_job["id"]],
+        )
+        downloaded = self.workflow_populator.download_workflow(workflow_id)
+        self.assert_cat1_workflow_structure(downloaded)
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {
+            "input1": {"__class__": "ConnectedValue"},
+            "queries": [{"__index__": 0, "input2": {"__class__": "ConnectedValue"}}],
+        }
+
+        new_history_id = self.dataset_populator.new_history()
+        n1 = self.dataset_populator.new_dataset(new_history_id, content="gamma\n")
+        n2 = self.dataset_populator.new_dataset(new_history_id, content="delta\n")
+        self.dataset_populator.wait_for_history(new_history_id, assert_ok=True)
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id,
+            history_id=new_history_id,
+            inputs={"0": {"src": "hda", "id": n1["id"]}, "1": {"src": "hda", "id": n2["id"]}},
+            inputs_by="step_index",
+        )
+        self.workflow_populator.wait_for_invocation_and_jobs(
+            history_id=new_history_id, workflow_id=workflow_id, invocation_id=invocation_id
+        )
+        content = self.dataset_populator.get_history_dataset_content(new_history_id, hid=3)
+        assert "gamma" in content and "delta" in content, content
+
+    @skip_without_tool("gx_boolean_user")
+    @summarize_instance_history_on_error
+    def test_roundtrip_user_tool_structured_state_by_ids(self, history_id):
+        _, original_job = self._run_tool_request_get_request_and_job(
+            history_id,
+            "gx_boolean_user",
+            {"parameter": True},
+        )
+        workflow_id = self._extract_workflow_id_by_ids(job_ids=[original_job["id"]])
+        downloaded = self.workflow_populator.download_workflow(workflow_id)
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {"parameter": True}
+
+        new_history_id = self.dataset_populator.new_history()
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(workflow_id, history_id=new_history_id)
+        self.workflow_populator.wait_for_invocation_and_jobs(
+            history_id=new_history_id, workflow_id=workflow_id, invocation_id=invocation_id
+        )
+        content = self.dataset_populator.get_history_dataset_content(new_history_id)
+        assert "true" in content, content
+
+    @skip_without_tool("gx_data_multiple_user")
+    @summarize_instance_history_on_error
+    def test_roundtrip_user_tool_multiple_data_structured_state_by_ids(self, history_id):
+        d1 = self.dataset_populator.new_dataset(history_id, content="alpha\n")
+        d2 = self.dataset_populator.new_dataset(history_id, content="beta\n")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        _, original_job = self._run_tool_request_get_request_and_job(
+            history_id,
+            "gx_data_multiple_user",
+            {
+                "parameter": [
+                    {"src": "hda", "id": d1["id"]},
+                    {"src": "hda", "id": d2["id"]},
+                ],
+            },
+        )
+        workflow_id = self._extract_workflow_id_by_ids(hda_ids=[d1["id"], d2["id"]], job_ids=[original_job["id"]])
+        downloaded = self.workflow_populator.download_workflow(workflow_id)
+
+        input_steps = self.assert_steps_of_type(downloaded, "data_input", expected_len=2)
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {"parameter": {"__class__": "ConnectedValue"}}
+        parameter_connections = tool_step["input_connections"]["parameter"]
+        assert isinstance(parameter_connections, list)
+        assert sorted(connection["id"] for connection in parameter_connections) == sorted(
+            input_step["id"] for input_step in input_steps
+        )
+
+        new_history_id = self.dataset_populator.new_history()
+        n1 = self.dataset_populator.new_dataset(new_history_id, content="gamma\n")
+        n2 = self.dataset_populator.new_dataset(new_history_id, content="delta\n")
+        self.dataset_populator.wait_for_history(new_history_id, assert_ok=True)
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id,
+            history_id=new_history_id,
+            inputs={"0": {"src": "hda", "id": n1["id"]}, "1": {"src": "hda", "id": n2["id"]}},
+            inputs_by="step_index",
+        )
+        self.workflow_populator.wait_for_invocation_and_jobs(
+            history_id=new_history_id, workflow_id=workflow_id, invocation_id=invocation_id
+        )
+        content = self.dataset_populator.get_history_dataset_content(new_history_id)
+        assert "gamma" in content and "delta" in content, content
+
+    @skip_without_tool("gx_data_collection_sample_sheet_y")
+    @summarize_instance_history_on_error
+    def test_extract_user_tool_sample_sheet_collection_structured_state_by_ids(self, history_id):
+        create_response = self.dataset_collection_populator.create_sample_sheet(
+            history_id,
+            contents=[("sample1", "alpha\n"), ("sample2", "beta\n")],
+            column_definitions=[
+                {"type": "int", "name": "replicate", "optional": False},
+                {"type": "string", "name": "treatment", "optional": False},
+            ],
+            rows={"sample1": [1, "control"], "sample2": [2, "treated"]},
+        )
+        self._assert_status_code_is(create_response, 200)
+        sample_sheet = create_response.json()
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        _, original_job = self._run_tool_request_get_request_and_job(
+            history_id,
+            "gx_data_collection_sample_sheet_y",
+            {"parameter": {"src": "hdca", "id": sample_sheet["id"]}},
+        )
+        workflow_id = self._extract_workflow_id_by_ids(hdca_ids=[sample_sheet["id"]], job_ids=[original_job["id"]])
+        downloaded = self.workflow_populator.download_workflow(workflow_id)
+
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        collection_state = loads(collection_step["tool_state"])
+        assert collection_state["collection_type"] == "sample_sheet"
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {"parameter": {"__class__": "ConnectedValue"}}
+        assert tool_step["input_connections"]["parameter"]["id"] == collection_step["id"]
+
+    @skip_without_tool("collection_paired_test_y")
+    @summarize_instance_history_on_error
+    def test_extract_yaml_tool_collection_structured_state_by_ids(self, history_id):
+        hdca = self.dataset_collection_populator.create_pair_in_history(
+            history_id, contents=["alpha\n", "beta\n"], wait=True
+        ).json()["outputs"][0]
+        _, original_job = self._run_tool_request_get_request_and_job(
+            history_id,
+            "collection_paired_test_y",
+            {"f1": {"src": "hdca", "id": hdca["id"]}},
+        )
+        workflow_id = self._extract_workflow_id_by_ids(hdca_ids=[hdca["id"]], job_ids=[original_job["id"]])
+        downloaded = self.workflow_populator.download_workflow(workflow_id)
+
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        collection_state = loads(collection_step["tool_state"])
+        assert collection_state["collection_type"] == "paired"
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {"f1": {"__class__": "ConnectedValue"}}
+        assert tool_step["input_connections"]["f1"]["id"] == collection_step["id"]
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_matched_batch_tool_request_state_by_ids(self, history_id):
+        hdca1 = self.dataset_collection_populator.create_pair_in_history(
+            history_id, contents=["alpha\n", "beta\n"], wait=True
+        ).json()["outputs"][0]
+        hdca2 = self.dataset_collection_populator.create_pair_in_history(
+            history_id, contents=["gamma\n", "delta\n"], wait=True
+        ).json()["outputs"][0]
+        tool_request, jobs, _ = self._run_tool_request_get_request_and_jobs(
+            history_id,
+            "cat1",
+            {
+                "input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": hdca1["id"]}]},
+                "queries": [
+                    {"input2": {"__class__": "Batch", "values": [{"src": "hdca", "id": hdca2["id"]}]}},
+                ],
+            },
+        )
+        assert len(jobs) == 2, jobs
+        implicit_collections = tool_request["implicit_collections"]
+        assert len(implicit_collections) == 1, tool_request
+        icj_id = self._icj_id_for_hdca(history_id, implicit_collections[0]["id"])
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hdca_ids=[hdca1["id"], hdca2["id"]],
+            implicit_collection_jobs_ids=[icj_id],
+        )
+
+        collection_steps = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=2)
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {
+            "input1": {"__class__": "ConnectedValue"},
+            "queries": [{"__index__": 0, "input2": {"__class__": "ConnectedValue"}}],
+        }
+        assert tool_step["input_connections"]["input1"]["id"] == collection_steps[0]["id"]
+        assert tool_step["input_connections"]["queries_0|input2"]["id"] == collection_steps[1]["id"]
+
+    @skip_without_tool("collection_paired_structured_like")
+    @summarize_instance_history_on_error
+    def test_extract_list_paired_batch_tool_request_state_by_ids(self, history_id):
+        hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+        tool_request, jobs, _ = self._run_tool_request_get_request_and_jobs(
+            history_id,
+            "collection_paired_structured_like",
+            {
+                "input1": {
+                    "__class__": "Batch",
+                    "values": [{"map_over_type": "paired", "src": "hdca", "id": hdca_id}],
+                },
+            },
+        )
+        assert len(jobs) == 2, jobs
+        implicit_collections = tool_request["implicit_collections"]
+        assert len(implicit_collections) == 1, tool_request
+        implicit_details = self.dataset_populator.get_history_collection_details(
+            history_id, content_id=implicit_collections[0]["id"], wait=False
+        )
+        icj_id = implicit_details.get("implicit_collection_jobs_id")
+        assert icj_id, implicit_details
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hdca_ids=[hdca_id],
+            implicit_collection_jobs_ids=[icj_id],
+        )
+
+        collection_step = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)[0]
+        collection_state = loads(collection_step["tool_state"])
+        assert collection_state["collection_type"] == "list:paired"
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert self._tool_state_without_metadata(tool_step) == {"input1": {"__class__": "ConnectedValue"}}
+        assert tool_step["input_connections"]["input1"]["id"] == collection_step["id"]
 
     @skip_without_tool("random_lines1")
     @skip_without_tool("multi_data_param")

@@ -41,6 +41,7 @@ from .case import (
     validate_test_cases_for_tool_source,
 )
 from .convert import (
+    CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE,
     decode,
     dereference,
     encode,
@@ -48,7 +49,9 @@ from .convert import (
     fill_static_defaults,
     landing_decode,
     landing_encode,
+    RequestInternalToWorkflowStateError,
     strictify,
+    to_workflow_step_state,
 )
 from .factory import (
     from_input_source,
@@ -184,6 +187,9 @@ __all__ = (
     "landing_encode",
     "dereference",
     "strictify",
+    "to_workflow_step_state",
+    "RequestInternalToWorkflowStateError",
+    "CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE",
     "WorkflowStepToolState",
     "WorkflowStepLinkedToolState",
 )
