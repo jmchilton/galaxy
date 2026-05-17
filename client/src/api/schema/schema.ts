@@ -25681,6 +25681,11 @@ export interface components {
              */
             job_ids?: string[];
             /**
+             * Tool Request IDs
+             * @description Decoded IDs of ToolRequests to include as workflow steps. Selecting an execution by its tool request sources the step from the validated request rather than from a job, so executions with zero jobs (e.g. a map-over of an empty collection) still extract a structurally-complete step.
+             */
+            tool_request_ids?: string[];
+            /**
              * Workflow Name
              * @description The name for the extracted workflow.
              */
