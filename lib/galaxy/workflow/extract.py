@@ -557,7 +557,6 @@ def extract_workflow_by_ids(
 
 IdKey = tuple[Literal["dataset", "collection"], int]
 IdAssociations = list[tuple[IdKey, str]]
-_TOOL_REQUEST_UNSET = object()
 
 
 def extract_steps_by_ids(
@@ -625,28 +624,35 @@ def extract_steps_by_ids(
         id_to_output_pair[("collection", original_hdca.id)] = (step, "output")
 
     # Build the list of work items: each tuple is (representative_job,
-    # output_hdcas). For plain jobs output_hdcas is empty; for ICJs it
-    # contains the ICJ's output HDCAs (used both for access checks and to
-    # drive input/output wiring without inferring map/over from job state).
+    # output_hdcas, request_payload). For plain jobs output_hdcas is empty;
+    # for ICJs it contains the ICJ's output HDCAs (used both for access
+    # checks and to drive input/output wiring without inferring map/over
+    # from job state). request_payload is the structured request_internal
+    # state when the execution has an unambiguous tool request, else None
+    # (legacy fallback). Resolution happens once, here, via the single
+    # _structured_request_payload seam.
     # Service-layer validator ensures no job in job_ids has an ICJ
     # association, so this branch handles only true plain jobs.
-    work_items: list[tuple[Job, list[HistoryDatasetCollectionAssociation], Optional[ToolRequest]]] = []
+    work_items: list[tuple[Job, list[HistoryDatasetCollectionAssociation], Optional[dict]]] = []
 
     for job_id in job_ids:
         assert job_manager is not None, "job_manager required when job_ids supplied"
         job = job_manager.get_accessible_job(trans, job_id)
-        work_items.append((job, [], job.tool_request))
+        work_items.append((job, [], _structured_request_payload(job)))
 
-    # FIXME: representative-job param read is the only remaining HID-style
-    # inference here. Swap step_inputs_by_id for a Job.tool_state /
-    # ToolRequest.request_state reader once that exists; see
-    # docs/research/Problem - YAML Tool Post-Hoc State Divergence.md.
+    # NOTE: executions without a structured request still read parameters
+    # via the legacy representative-job param walk in
+    # _legacy_step_inputs_by_id; that path remains lossy for YAML / user-
+    # defined tools and is gated behind
+    # workflow_extraction_fallback_to_legacy_state.
     for icj_id in implicit_collection_jobs_ids:
         # Service-layer validator already checked existence, populated_state,
         # output-HDCA presence, and per-HDCA accessibility.
         icj = sa_session.get(ImplicitCollectionJobs, icj_id)
         assert icj is not None, f"ImplicitCollectionJobs {icj_id} not found"
-        work_items.append((icj.representative_job, icj.output_dataset_collection_instances, icj.tool_request))
+        work_items.append(
+            (icj.representative_job, icj.output_dataset_collection_instances, _structured_request_payload(icj=icj))
+        )
 
     # Job.id is monotonically assigned at submission, so sorting by it
     # produces dependency order: a downstream job always has a larger id
@@ -656,11 +662,11 @@ def extract_steps_by_ids(
         getattr(trans.app, "config", None), "workflow_extraction_fallback_to_legacy_state", True
     )
 
-    for job, output_hdcas, tool_request in work_items:
+    for job, output_hdcas, request_payload in work_items:
         tool_inputs, associations = step_inputs_by_id(
             trans,
             job,
-            tool_request=tool_request,
+            request_payload=request_payload,
             fallback_to_legacy_state=fallback_to_legacy_state,
         )
         step = model.WorkflowStep()
@@ -669,8 +675,8 @@ def extract_steps_by_ids(
         step.tool_version = job.tool_version
         step.tool_inputs = tool_inputs
 
-        if tool_request is not None:
-            for input_name, url_step in _url_input_steps_for_request(trans, tool_request, step_labels):
+        if request_payload is not None:
+            for input_name, url_step in _url_input_steps_for_request(trans, request_payload, step_labels):
                 steps.append(url_step)
                 _connect(step, input_name, (url_step, "output"))
 
@@ -713,10 +719,17 @@ def extract_steps_by_ids(
 def step_inputs_by_id(
     trans: ProvidesHistoryContext,
     job: Job,
-    tool_request: Any = _TOOL_REQUEST_UNSET,
+    request_payload: Optional[dict] = None,
     fallback_to_legacy_state: bool = True,
 ) -> tuple[ToolInputs, IdAssociations]:
     """ID-based variant of :func:`step_inputs`.
+
+    ``request_payload`` is the structured request_internal state for this
+    execution (resolved by the caller via :func:`_structured_request_payload`)
+    or ``None`` when the execution has no unambiguous structured request. The
+    seam is source-neutral by design: it is a payload dict, not a
+    ``ToolRequest`` object, so a future resolver can supply the same payload
+    from another backing store without changing this contract.
 
     Returns associations keyed by ``(content_type, db_id)`` tuples (against
     the *original* HDA/HDCA after walking ``copied_from_*``). Collection
@@ -725,10 +738,8 @@ def step_inputs_by_id(
     param-value walk, which avoids the HID path's flattening of HDCAs to
     leaf HDAs and prevents duplicate emission for DCE-as-data-param.
     """
-    if tool_request is _TOOL_REQUEST_UNSET:
-        tool_request = job.tool_request
-    if tool_request is not None:
-        return _structured_step_inputs_by_id(trans, job, tool_request)
+    if request_payload is not None:
+        return _structured_step_inputs_by_id(trans, job, request_payload)
     if not fallback_to_legacy_state:
         raise exceptions.RequestParameterInvalidException(
             f"Job {job.id} has no unambiguous tool request; legacy workflow extraction state fallback is disabled"
@@ -759,19 +770,37 @@ def _legacy_step_inputs_by_id(trans: ProvidesHistoryContext, job: Job) -> tuple[
 def _structured_step_inputs_by_id(
     trans: ProvidesHistoryContext,
     job: Job,
-    tool_request: ToolRequest,
+    request_payload: dict,
 ) -> tuple[ToolInputs, IdAssociations]:
     tool = trans.app.toolbox.get_tool(job.tool_id, tool_version=job.tool_version)
     assert tool is not None, f"Tool {job.tool_id} (version {job.tool_version}) not found"
     if tool.parameters is None:
         raise RequestInternalToWorkflowStateError(f"Tool {job.tool_id} has no parameter model for workflow extraction")
-    request_payload = _tool_request_payload(tool_request)
     parameter_bundle = ToolParameterBundleModel(parameters=tool.parameters)
     request_internal_state = RequestInternalToolState(request_payload)
     request_internal_state.validate(parameter_bundle, f"{tool.id} (request internal model)")
     workflow_state = to_workflow_step_state(request_internal_state, parameter_bundle)
     associations = _structured_request_associations_by_id(trans, request_payload)
     return workflow_state.input_state, associations
+
+
+def _structured_request_payload(
+    job: Optional[Job] = None,
+    icj: Optional[ImplicitCollectionJobs] = None,
+) -> Optional[dict]:
+    """Resolve the structured request_internal payload for a step execution.
+
+    Single seam mapping an execution unit to its validated structured state.
+    Returns the request_internal dict when the execution has an unambiguous
+    tool request, else ``None`` (caller falls back to legacy state). Returning
+    a payload rather than a ``ToolRequest`` object keeps every downstream
+    consumer source-neutral: a future resolver can source the same payload
+    from another backing store by extending only this function.
+    """
+    tool_request = icj.tool_request if icj is not None else (job.tool_request if job is not None else None)
+    if tool_request is None:
+        return None
+    return _tool_request_payload(tool_request)
 
 
 def _tool_request_payload(tool_request: ToolRequest) -> dict:
@@ -792,10 +821,9 @@ def _structured_request_associations_by_id(trans: ProvidesHistoryContext, reques
 
 def _url_input_steps_for_request(
     trans: ProvidesHistoryContext,
-    tool_request: ToolRequest,
+    request_payload: dict,
     step_labels: set[str],
 ) -> list[tuple[str, WorkflowStep]]:
-    request_payload = _tool_request_payload(tool_request)
     return [
         (_url_input.input_name, _url_input_step(trans, _url_input, step_labels))
         for _url_input in request_internal_url_inputs(request_payload)
