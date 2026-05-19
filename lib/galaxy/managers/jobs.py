@@ -63,7 +63,6 @@ from galaxy.managers.histories import HistoryManager
 from galaxy.managers.lddas import LDDAManager
 from galaxy.managers.users import UserManager
 from galaxy.model import (
-    DynamicTool,
     ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
     Job,
@@ -2235,11 +2234,10 @@ class JobSubmitter:
             new_hdas,
         )
 
-    def queue_jobs(self, tool: Tool, request: QueueJobs) -> None:
-        tool_request: ToolRequest = self._tool_request(request.tool_request_id)
+    def queue_jobs(self, tool: Tool, request: QueueJobs, tool_request: ToolRequest) -> None:
         sa_session = self.app.model.context
-        if request.dynamic_tool_id:
-            tool.dynamic_tool = sa_session.get(DynamicTool, request.dynamic_tool_id)
+        if tool_request.tool_source.dynamic_tool:
+            tool.dynamic_tool = tool_request.tool_source.dynamic_tool
         try:
             request_context = self._context(tool_request, request)
             target_history = request_context.history

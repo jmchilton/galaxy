@@ -1254,13 +1254,23 @@ class BaseDatasetPopulator(BasePopulator):
         payload = self.run_tool_payload(tool_id, inputs, history_id, **kwds)
         return self.tools_post(payload)
 
-    def tool_request_raw(self, tool_id: str, inputs: dict[str, Any], history_id: str, strict: bool = True) -> Response:
-        payload = {
-            "tool_id": tool_id,
+    def tool_request_raw(
+        self,
+        tool_id: Optional[str] = None,
+        inputs: Optional[dict[str, Any]] = None,
+        history_id: Optional[str] = None,
+        strict: bool = True,
+        tool_uuid: Optional[str] = None,
+    ) -> Response:
+        payload: dict[str, Any] = {
             "history_id": history_id,
-            "inputs": inputs,
+            "inputs": inputs or {},
             "strict": strict,
         }
+        if tool_id is not None:
+            payload["tool_id"] = tool_id
+        if tool_uuid is not None:
+            payload["tool_uuid"] = tool_uuid
         response = self._post("jobs", data=payload, json=True)
         return response
 

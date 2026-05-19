@@ -154,6 +154,33 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
                 rerun_response = self.dataset_populator._get(f"jobs/{job_id}/build_for_rerun")
                 assert rerun_response.status_code == 403, rerun_response.text
 
+    def test_tool_request_for_dynamic_tool(self):
+        # Exercises the async tool-request path (POST /api/jobs -> celery queue_jobs)
+        # for a user/dynamic tool: the DynamicTool link is recovered off the persisted
+        # ToolSource row rather than a transient message field.
+        with (
+            self.dataset_populator.test_history() as history_id,
+            self.dataset_populator.user_tool_execute_permissions(),
+        ):
+            dynamic_tool = self.dataset_populator.create_unprivileged_tool(UserToolSource(**TOOL_WITH_SHELL_COMMAND))
+            dataset = self.dataset_populator.new_dataset(history_id=history_id, content="abc")
+            response = self.dataset_populator.tool_request_raw(
+                inputs={"input": {"src": "hda", "id": dataset["id"]}},
+                history_id=history_id,
+                tool_uuid=dynamic_tool["uuid"],
+                strict=False,
+            )
+            assert response.status_code == 200, response.text
+            response_json = response.json()
+            tool_request_id = response_json.get("tool_request_id")
+            self.dataset_populator.wait_on_task_object(response_json["task_result"])
+            state = self.dataset_populator.wait_on_tool_request(tool_request_id)
+            assert state, str(self.dataset_populator.get_tool_request(tool_request_id))
+            jobs = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+            self.dataset_populator.wait_for_jobs(jobs, assert_ok=True)
+            output_content = self.dataset_populator.get_history_dataset_content(history_id)
+            assert output_content == "abc\n"
+
     def test_deactivate(self):
         with self.dataset_populator.user_tool_execute_permissions():
             # Create a new dynamic tool.
