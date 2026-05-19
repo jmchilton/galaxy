@@ -615,19 +615,22 @@ def _tool_from_request(trans: ProvidesHistoryContext, tool_request: ToolRequest)
     """Rebuild the tool from the request's persisted ToolSource blob via the
     same reconstruction function the celery queue_jobs task uses (no toolbox,
     no job), so a jobless tool request still yields the parameter model
-    extraction needs. The persisted ToolSource carries only source +
-    source_class -- tool_dir/guid (which celery passes from the live tool at
-    request time) are unavailable here; sufficient for built-in tools, the
-    installed-tool/macro edge is a documented deferred follow-up.
+    extraction needs. The tool's namespaced guid (`tool_id`) and the
+    DynamicTool link are recovered off the persisted ToolSource; `tool_dir`
+    is runtime-only and unavailable here, so tool_dir-dependent
+    reconstruction edges remain a documented follow-up.
     """
     tool_source = tool_request.tool_source
-    return create_tool_from_representation(
+    tool = create_tool_from_representation(
         trans.app,
         tool_source.source,
         tool_dir=None,
         tool_source_class=tool_source.source_class,
-        guid=None,
+        guid=tool_source.tool_id,
     )
+    if tool_source.dynamic_tool:
+        tool.dynamic_tool = tool_source.dynamic_tool
+    return tool
 
 
 def _tool_request_work_item(
@@ -826,7 +829,10 @@ def extract_steps_by_ids(
     # larger key than the steps whose outputs it consumes. Job-sourced and
     # tool-request-sourced items use different id spaces (Job.id vs
     # ToolRequest.id) and are NOT comparable -- the service-layer validator
-    # rejects payloads that mix them, so every item here shares one space.
+    # rejects the two mix shapes that would cross spaces: tool_request_ids
+    # combined with job_ids/implicit_collection_jobs_ids, AND Job-keyed ICJs
+    # combined with jobless tool-request-backed ICJs. Every item here therefore
+    # shares one space.
     work_items.sort(key=lambda item: item.sort_key)
     fallback_to_legacy_state = getattr(
         getattr(trans.app, "config", None), "workflow_extraction_fallback_to_legacy_state", True
@@ -851,6 +857,8 @@ def extract_steps_by_ids(
             assert item.tool is not None
             step.tool_id = item.tool.id
             step.tool_version = item.tool.version
+            if item.tool.dynamic_tool:
+                step.dynamic_tool_id = item.tool.dynamic_tool.id
         step.tool_inputs = tool_inputs
 
         if request_payload is not None:
