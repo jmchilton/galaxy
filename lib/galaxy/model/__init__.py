@@ -1406,6 +1406,11 @@ class ToolSource(Base, Dictifiable, RepresentById):
     hash: Mapped[Optional[str]] = mapped_column(Unicode(255))
     source: Mapped[dict] = mapped_column(JSONType)
     source_class: Mapped[str] = mapped_column(TrimmedString(255))
+    tool_id: Mapped[Optional[str]] = mapped_column(Unicode(255), index=True)
+    tool_version: Mapped[Optional[str]] = mapped_column(Unicode(255))
+    dynamic_tool_id: Mapped[Optional[int]] = mapped_column(ForeignKey("dynamic_tool.id"), index=True)
+
+    dynamic_tool: Mapped[Optional["DynamicTool"]] = relationship()
 
 
 class ToolRequest(Base, Dictifiable, RepresentById):

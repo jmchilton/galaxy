@@ -268,6 +268,9 @@ class JobsService(ServiceBase):
             source=tool.tool_source.to_string(),
             source_class=type(tool.tool_source).__name__,
             hash="TODO",
+            tool_id=tool.id,
+            tool_version=tool.version,
+            dynamic_tool_id=tool.dynamic_tool.id if tool.dynamic_tool else None,
         )
         tool_request.request = request_internal_state.input_state
         tool_request.tool_source = tool_source_model
@@ -279,10 +282,7 @@ class JobsService(ServiceBase):
         sa_session.commit()
         tool_request_id = tool_request.id
         tool_source = ToolSource(
-            raw_tool_source=tool_source_model.source,
             tool_dir=tool.tool_dir,
-            tool_source_class=tool_source_model.source_class,
-            tool_id=tool.id,
         )
         task_request = QueueJobs(
             user=trans.async_request_user,
@@ -296,7 +296,6 @@ class JobsService(ServiceBase):
             data_manager_mode=job_request.data_manager_mode,
             send_email_notification=job_request.send_email_notification,
             credentials_context=job_request.credentials_context,
-            dynamic_tool_id=tool.dynamic_tool.id if tool.dynamic_tool else None,
         )
         result = queue_jobs.delay(request=task_request)
         return JobCreateResponse(
