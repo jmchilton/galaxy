@@ -1861,10 +1861,11 @@ class DrillDownSelectToolParameter(SelectToolParameter):
 
 def _carried_state_label(value) -> str:
     """Reason a rerun input cannot be naturally selected in this history.
-    Stable string surfaced to the client as the entry name prefix. The
-    ``"not in current history"`` fallback also covers the rare case of a
-    live in-history HDA whose matcher failed (e.g. format mismatch) — that
-    label is mildly misleading there, but preserves the legacy contract.
+    Stable string surfaced to the client as the entry name prefix.
+    ``"not in current history"`` is the default for anything not deleted or
+    hidden, including the edge case of an in-history HDA whose matcher
+    failed (e.g. format mismatch) — clients only render the prefix, so the
+    slight imprecision there is harmless.
     """
     if value.deleted:
         return "deleted"
@@ -2491,7 +2492,8 @@ class DataToolParameter(BaseDataToolParameter):
         # values (HDAs, HDCAs, DCEs, LDDAs). Track them as we walk pages so
         # the survivors land in `pinned` (live HDAs outside the page) or
         # carry-over `options` entries (deleted/hidden/foreign-history items,
-        # DCEs, LDDAs) — the legacy contract relied on by job-rerun tests.
+        # DCEs, LDDAs) — clients rely on this to pre-select the rerun input
+        # regardless of pagination state.
         job_input_values = util.listify(other_values.get(self.name))
 
         job_input_values = self._page_hda_matches(
@@ -2618,9 +2620,9 @@ class DataToolParameter(BaseDataToolParameter):
         """Anything left over from the rerun input list has no live HDA match
         (deleted/hidden/wrong-history, or HDCA/DCE/LDDA from the original
         job). Carry each forward as an ``options.X`` entry with
-        ``keep=True`` and a state-prefixed name — the legacy contract relied
-        on by job-rerun tests (e.g.
-        ``test_jobs.py::test_job_build_for_rerun_hdca_value_in_options``).
+        ``keep=True`` and a state-prefixed name so the client can re-select
+        the original input even though it no longer matches the current
+        history view.
         """
         for value in unresolved:
             if isinstance(value, HistoryDatasetCollectionAssociation):
@@ -2869,12 +2871,9 @@ class DataCollectionToolParameter(BaseDataToolParameter):
     ) -> None:
         """Emit one page of matching HDCAs into ``builder.options['hdca']``.
 
-        Walks all active HDCAs (incl. hidden) in HID-desc order — the legacy
-        non-paginated code applied ``active_dataset_collections`` (includes
-        hidden) to direct matches and ``active_visible_*`` to multirun
-        matches, then merged-sorted by HID. We reproduce that ordering with
-        a single HID-desc query plus a classifier that demotes hidden HDCAs
-        to direct-only.
+        Walks all active HDCAs (incl. hidden) in HID-desc order; the
+        classifier in :meth:`_classify_hdca` demotes hidden HDCAs to
+        direct-only so they cannot appear as multirun (map-over) entries.
         """
         _offset, _limit, hdca_search = builder.page("hdca")
         history_query = self._history_query(trans)
@@ -2906,12 +2905,10 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         Both ``direct_match`` and ``can_map_over`` can fire for the same HDCA
         when the parameter accepts multiple collection types (e.g.,
         ``list,list:list`` with a ``list:list`` HDCA matches ``list:list``
-        directly AND can be mapped over to feed ``list``). The legacy
-        pre-pagination code emitted both — preserve that by returning a list.
-        Direct entries come first so the stable HID-desc sort places them
-        above the multirun entry. Hidden HDCAs may appear only via direct
-        match (matches the legacy ``active_dataset_collections`` vs
-        ``active_visible_*`` split).
+        directly AND can be mapped over to feed ``list``); both entries are
+        emitted in that case. Direct entries come first so the stable
+        HID-desc sort places them above the multirun entry. Hidden HDCAs
+        emit only the direct-match entry — they are excluded from multirun.
         """
         match = dataset_collection_matcher.hdca_match(hdca)
         if not match:

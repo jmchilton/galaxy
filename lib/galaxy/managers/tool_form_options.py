@@ -1,11 +1,5 @@
 """Helpers shared by data/data_collection tool parameters when paginating
 their option lists in ``to_dict``.
-
-These live in the manager layer rather than alongside the parameter classes
-because they are application-level pagination orchestration — building pages
-out of DB chunks and a Python predicate — rather than parameter definition
-logic. Keeping them here also lets future schemes (cursor-based, prefetched)
-slot in without further bloating ``basic.py``.
 """
 
 from collections.abc import (
@@ -71,9 +65,8 @@ def accumulate_with_filter(
     matches for the same row. Multi-match supports the case where a single
     HDCA satisfies both ``direct_match`` AND ``can_map_over`` for a parameter
     that accepts multiple collection types (e.g., ``list,list:list`` with a
-    ``list:list`` HDCA) — the legacy non-paginated code emitted both entries
-    and we preserve that. Returns ``(matches, pre_filter_total, has_more)``
-    where:
+    ``list:list`` HDCA), in which case both entries are emitted.
+    Returns ``(matches, pre_filter_total, has_more)`` where:
 
     - ``matches`` is up to ``limit`` filter results starting from the
       ``post_filter_offset``-th match;
@@ -137,17 +130,6 @@ def accumulate_with_filter(
     return matches, pre_filter_total, has_more
 
 
-# --- Entry shapes -----------------------------------------------------------
-#
-# The four ``src`` flavors below produce the option dicts the tool form
-# consumes. Each ``src`` has its own stable field set, so a single
-# parameterized factory would mostly be conditionals — keeping them separate
-# documents the schema. The only divergence worth flagging: HDA/HDCA entries
-# may carry ``keep`` (set ``True`` for entries pinned outside the page window),
-# while DCE/LDDA entries always set ``keep=True`` because they are exclusively
-# the rerun-carried path.
-
-
 def _tag_strings(obj) -> list[str]:
     return [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in obj.tags]
 
@@ -161,8 +143,8 @@ def make_hda_entry(
 ) -> dict[str, Any]:
     """Build an ``options.hda`` / ``pinned.hda`` entry.
 
-    ``hid`` defaults to -1 for HDAs carried over from a rerun that no longer
-    live in the active history (legacy contract relied upon by form tests).
+    ``hid`` falls back to -1 when the HDA has none — e.g. a rerun input that
+    no longer lives in the active history.
     """
     entry: dict[str, Any] = {
         "id": security.encode_id(hda.id),
@@ -186,12 +168,11 @@ def make_hdca_entry(
 ) -> dict[str, Any]:
     """Build an ``options.hdca`` / ``pinned.hdca`` entry.
 
-    ``keep`` is emitted only when explicitly passed (True/False).
-    ``DataToolParameter`` always passes a bool (matches its legacy shape);
-    ``DataCollectionToolParameter`` omits it (its legacy shape has no
-    ``keep`` field). ``subcollection_type`` flags multirun (map-over)
-    matches. ``include_column_definitions`` adds ``column_definitions``
-    for the ``DataCollectionToolParameter`` form, where the client gates
+    ``keep`` is emitted only when explicitly passed; ``DataToolParameter``
+    entries carry it, ``DataCollectionToolParameter`` entries do not.
+    ``subcollection_type`` flags multirun (map-over) matches.
+    ``include_column_definitions`` adds ``column_definitions`` for the
+    ``DataCollectionToolParameter`` form, where the client gates
     sample-sheet-aware UI on it.
     """
     entry: dict[str, Any] = {
@@ -229,9 +210,6 @@ def make_ldda_entry(security, ldda) -> dict[str, Any]:
         "tags": [],
         "keep": True,
     }
-
-
-# --- Builder ---------------------------------------------------------------
 
 
 class DataOptionsBuilder:
