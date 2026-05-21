@@ -2845,7 +2845,10 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         dataset_collection_matcher = dataset_matcher_factory.dataset_collection_matcher(dataset_matcher)
 
         # Pin a selected DCE rerun input (collection elements never paginate
-        # through the listing path; they're always carried).
+        # through the listing path; they're always carried). Bypasses
+        # ``make_dce_entry`` deliberately: that factory sets ``keep=True`` for
+        # the carry-forward callers, but the legacy pinned-DCE shape has no
+        # ``keep`` field and adding one is a client-visible JSON diff.
         if isinstance(other_values.get(self.name), DatasetCollectionElement):
             dce = other_values[self.name]
             builder.pinned["dce"].append(
