@@ -245,11 +245,20 @@ class DataOptionsBuilder:
         self.options: dict[str, list[dict[str, Any]]] = {s: [] for s in self._sources}
         self.pinned: dict[str, list[dict[str, Any]]] = {s: [] for s in self._sources}
         self.options_meta: dict[str, dict[str, Any]] = {}
+        self._page_cache: dict[str, tuple[int, int, Optional[str]]] = {}
 
     def page(self, src: str) -> tuple[int, int, Optional[str]]:
         """Return the ``(offset, limit, search)`` triple for ``src`` per the
-        request's pagination spec (clamped + defaulted)."""
-        return normalize_pagination(self._pagination, src)
+        request's pagination spec (clamped + defaulted). Memoized so callers
+        and ``paginate()`` see the same normalized values even if
+        ``normalize_pagination`` ever becomes non-pure.
+        """
+        cached = self._page_cache.get(src)
+        if cached is not None:
+            return cached
+        triple = normalize_pagination(self._pagination, src)
+        self._page_cache[src] = triple
+        return triple
 
     def paginate(
         self,
