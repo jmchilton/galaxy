@@ -28,7 +28,7 @@ from webob.compat import cgi_FieldStorage
 from galaxy import util
 from galaxy.files import ProvidesFileSourcesUserContext
 from galaxy.managers.dbkeys import read_dbnames
-from galaxy.managers.tool_form_options import (
+from galaxy.tools.parameters.pagination import (
     DataOptionsBuilder,
     make_dce_entry,
     make_hda_entry,

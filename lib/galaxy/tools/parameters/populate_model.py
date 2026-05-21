@@ -3,9 +3,9 @@ from typing import (
     Optional,
 )
 
-from galaxy.managers.tool_form_options import OptionsPaginationT
 from galaxy.util.expressions import ExpressionContext
 from .basic import ImplicitConversionRequired
+from .pagination import OptionsPaginationT
 
 
 def populate_model(

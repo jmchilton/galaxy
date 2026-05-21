@@ -40,8 +40,8 @@ from galaxy.managers.context import (
 from galaxy.managers.hdas import HDAManager
 from galaxy.managers.histories import HistoryManager
 from galaxy.managers.landing import LandingRequestManager
-from galaxy.managers.tool_form_options import OptionsPaginationT
 from galaxy.managers.tools import ToolRunReference
+from galaxy.tools.parameters.pagination import OptionsPaginationT
 from galaxy.model import ToolRequest
 from galaxy.model.dataset_collections.workbook_util import workbook_to_bytes
 from galaxy.schema.fetch_data import (
