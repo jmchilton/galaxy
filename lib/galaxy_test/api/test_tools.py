@@ -518,6 +518,163 @@ class TestToolsApi(ApiTestCase, TestsTools):
             # not include it. Search by "1" must surface it.
             assert 1 in returned_hids, returned_hids
 
+    def _collection_paired_test_build(self, history_id, options_pagination=None):
+        """Helper: POST to ``tools/collection_paired_test/build`` and return
+        the ``f1`` (data_collection) parameter dict."""
+        payload: dict[str, Any] = {"history_id": history_id}
+        if options_pagination is not None:
+            payload["options_pagination"] = options_pagination
+        response = self.dataset_populator._post("tools/collection_paired_test/build", data=payload, json=True)
+        response.raise_for_status()
+        build = response.json()
+        return next(i for i in build["inputs"] if i["name"] == "f1")
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_interleaves_direct_and_multirun_by_hid(self):
+        """Direct matches (``paired`` collections) and multirun matches
+        (``list:paired`` collections that can be mapped over to feed a paired
+        param) must be returned merged in HID-desc order — the legacy
+        pre-pagination behavior was to ``sorted([direct + multirun], reverse=True)``.
+        Multirun entries must carry a ``map_over_type`` while direct entries
+        must not."""
+        with self.dataset_populator.test_history() as history_id:
+            kinds: list[tuple[str, str]] = []
+            # Alternate paired (direct) and list:paired (multirun) so the
+            # expected HID order interleaves both kinds. Build order = HID
+            # ascending; the dropdown returns HID descending.
+            for _ in range(4):
+                pair = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True).json()[
+                    "outputs"
+                ][0]
+                kinds.append(("direct", pair["id"]))
+                lop = self.dataset_collection_populator.create_list_of_pairs_in_history(history_id, wait=True).json()[
+                    "outputs"
+                ][0]
+                kinds.append(("multirun", lop["id"]))
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            expected_descending = [(kind, hdca_id) for kind, hdca_id in reversed(kinds)]
+
+            f1 = self._collection_paired_test_build(history_id, {"f1": {"hdca": {"limit": 100}}})
+            returned = f1["options"]["hdca"]
+            assert len(returned) == len(kinds), returned
+
+            # Returned HIDs are strictly descending.
+            hids = [entry["hid"] for entry in returned]
+            assert hids == sorted(hids, reverse=True), hids
+
+            # Direct/multirun interleave exactly matches the construction order.
+            for (expected_kind, expected_id), entry in zip(expected_descending, returned):
+                assert entry["id"] == expected_id, (entry, expected_id)
+                if expected_kind == "direct":
+                    assert "map_over_type" not in entry, entry
+                else:
+                    assert entry.get("map_over_type") == "paired", entry
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_pagination_preserves_interleaved_order(self):
+        """Pagination must return contiguous slices of the same merged
+        HID-desc ordering: page 0 + page 1 reconstruct the unpaginated list
+        without losing or reshuffling either kind across the page boundary."""
+        with self.dataset_populator.test_history() as history_id:
+            for _ in range(3):
+                self.dataset_collection_populator.create_pair_in_history(history_id, wait=True)
+                self.dataset_collection_populator.create_list_of_pairs_in_history(history_id, wait=True)
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+
+            full = self._collection_paired_test_build(history_id, {"f1": {"hdca": {"limit": 100}}})["options"]["hdca"]
+            assert len(full) == 6, full
+
+            page0 = self._collection_paired_test_build(history_id, {"f1": {"hdca": {"offset": 0, "limit": 3}}})
+            page1 = self._collection_paired_test_build(history_id, {"f1": {"hdca": {"offset": 3, "limit": 3}}})
+
+            assert page0["options_meta"]["hdca"]["has_more"] is True
+            assert page0["options_meta"]["hdca"]["total_estimate"] == 6
+            assert page1["options_meta"]["hdca"]["has_more"] is False
+
+            paginated_ids = [e["id"] for e in page0["options"]["hdca"] + page1["options"]["hdca"]]
+            full_ids = [e["id"] for e in full]
+            assert paginated_ids == full_ids, (paginated_ids, full_ids)
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_hidden_direct_match_included(self):
+        """A hidden ``paired`` collection still appears under direct match
+        — preserves legacy ``active_dataset_collections`` semantics (which
+        included hidden) for the direct-match path."""
+        with self.dataset_populator.test_history() as history_id:
+            hidden_pair = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True).json()[
+                "outputs"
+            ][0]
+            self.dataset_populator.hide_dataset_collection(hidden_pair["id"])
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+
+            f1 = self._collection_paired_test_build(history_id)
+            returned_ids = [e["id"] for e in f1["options"]["hdca"]]
+            assert hidden_pair["id"] in returned_ids, returned_ids
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_hidden_multirun_excluded(self):
+        """A hidden ``list:paired`` collection must NOT appear as a multirun
+        match — preserves legacy ``active_visible_dataset_collections``
+        semantics (visible-only) for the subcollection-mapping path."""
+        with self.dataset_populator.test_history() as history_id:
+            hidden_lop = self.dataset_collection_populator.create_list_of_pairs_in_history(
+                history_id, wait=True
+            ).json()["outputs"][0]
+            visible_pair = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True).json()[
+                "outputs"
+            ][0]
+            self.dataset_populator.hide_dataset_collection(hidden_lop["id"])
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+
+            f1 = self._collection_paired_test_build(history_id)
+            returned_ids = [e["id"] for e in f1["options"]["hdca"]]
+            assert hidden_lop["id"] not in returned_ids, returned_ids
+            assert visible_pair["id"] in returned_ids, returned_ids
+
+    @skip_without_tool("collection_list_or_nested_list_input")
+    def test_build_collection_options_multi_typed_emits_direct_and_multirun(self):
+        """Pinned against release_26.0 (pre-pagination): a parameter that
+        accepts multiple collection types (``list,list:list``) given a single
+        ``list:list`` HDCA must emit **two** dropdown entries with the same
+        HID — one direct (no ``map_over_type``) and one multirun
+        (``map_over_type="list"``) — because ``direct_match`` and
+        ``can_map_over`` are not mutually exclusive across the CTD list.
+        """
+        with self.dataset_populator.test_history() as history_id:
+            ll = self.dataset_collection_populator.create_list_of_list_in_history(history_id, wait=True).json()
+            ll_id = ll["id"]
+            response = self.dataset_populator._post(
+                f"tools/collection_list_or_nested_list_input/build?history_id={history_id}"
+            )
+            response.raise_for_status()
+            build = response.json()
+            f1 = next(i for i in build["inputs"] if i["name"] == "f1")
+            matching = [e for e in f1["options"]["hdca"] if e["id"] == ll_id]
+            assert len(matching) == 2, matching
+            assert all(e["hid"] == ll["hid"] for e in matching), matching
+            direct = [e for e in matching if "map_over_type" not in e]
+            multirun = [e for e in matching if "map_over_type" in e]
+            assert len(direct) == 1 and len(multirun) == 1, matching
+            assert multirun[0]["map_over_type"] == "list", multirun[0]
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_unmappable_excluded(self):
+        """A plain ``list`` collection neither directly matches a ``paired``
+        param nor can be mapped over to one, so it must not appear."""
+        with self.dataset_populator.test_history() as history_id:
+            plain_list_id = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=["a", "b"], wait=True
+            ).json()["outputs"][0]["id"]
+            pair_id = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True).json()["outputs"][
+                0
+            ]["id"]
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+
+            f1 = self._collection_paired_test_build(history_id)
+            returned_ids = [e["id"] for e in f1["options"]["hdca"]]
+            assert plain_list_id not in returned_ids, returned_ids
+            assert pair_id in returned_ids, returned_ids
+
     @skip_without_tool("cheetah_problem_unbound_var_input")
     def test_legacy_biotools_xref_injection(self):
         url = self._api_url("tools/cheetah_problem_unbound_var_input")

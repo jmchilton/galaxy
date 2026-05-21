@@ -2863,100 +2863,76 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         history_query = self._history_query(trans)
 
         def hdca_query(*, offset, limit):
-            # Match the legacy ``history_dataset_collections`` semantics
-            # (``active_dataset_collections`` includes hidden), so use
-            # ``visible_only=False`` for the direct-match path.
+            # Walk all active HDCAs (incl. hidden) in HID-desc order. The
+            # legacy two-pass code applied ``active_dataset_collections``
+            # (includes hidden) to direct matches and ``active_visible_*``
+            # to multirun matches, then merged-sorted by HID. We reproduce
+            # that ordering by streaming a single HID-desc query and
+            # demoting hidden HDCAs to direct-only inside the filter.
             return history.paginated_active_dataset_collections(
                 visible_only=False, search=hdca_search, offset=offset, limit=limit
             )
 
-        def direct_match_filter(hdca):
-            if not history_query.direct_match(hdca):
-                return None
+        def hdca_filter(hdca):
+            # Both ``direct_match`` and ``can_map_over`` can fire for the
+            # same HDCA when the parameter accepts multiple collection types
+            # (e.g., ``list,list:list``: a ``list:list`` HDCA directly matches
+            # ``list:list`` AND can be mapped over to feed ``list``). The
+            # legacy pre-pagination code emitted both entries — preserve that
+            # by returning a list of matches. Direct entries come first so
+            # stable HID-desc sort places them above the multirun entry.
+            # Hidden HDCAs may appear only via direct match (matches legacy
+            # ``active_dataset_collections`` vs ``active_visible_*`` split).
+            entries = []
             match = dataset_collection_matcher.hdca_match(hdca)
             if not match:
                 return None
-            if self._column_definitions:
-                collection_cols = hdca.collection.column_definitions
-                if not column_definitions_compatible(collection_cols, self._column_definitions):
-                    return None
-            return (hdca, match.implicit_conversion)
+            if history_query.direct_match(hdca):
+                column_definitions_ok = True
+                if self._column_definitions:
+                    collection_cols = hdca.collection.column_definitions
+                    column_definitions_ok = column_definitions_compatible(collection_cols, self._column_definitions)
+                if column_definitions_ok:
+                    entries.append(("direct", hdca, match.implicit_conversion, None))
+            if hdca.visible:
+                can_map = history_query.can_map_over(hdca)
+                if can_map:
+                    subcollection_type = can_map.collection_type
+                    collection_type = hdca.collection.collection_type
+                    if subcollection_type == "paired_or_unpaired" and not collection_type.endswith(
+                        "paired_or_unpaired"
+                    ):
+                        if collection_type.endswith("paired"):
+                            subcollection_type = "paired"
+                        else:
+                            subcollection_type = "single_datasets"
+                    entries.append(("multirun", hdca, match.implicit_conversion, subcollection_type))
+            return entries or None
 
-        direct_matches, direct_total, direct_has_more = accumulate_with_filter(
-            hdca_query, direct_match_filter, hdca_offset, hdca_limit
+        hdca_matches, hdca_total, hdca_has_more = accumulate_with_filter(
+            hdca_query, hdca_filter, hdca_offset, hdca_limit
         )
-        for hdca, implicit_conversion in direct_matches:
+        for kind, hdca, implicit_conversion, subcollection_type in hdca_matches:
             name = hdca.name
             if implicit_conversion:
                 name = f"{name} (with implicit datatype conversion)"
-            d["options"]["hdca"].append(
-                {
-                    "id": trans.security.encode_id(hdca.id),
-                    "hid": hdca.hid,
-                    "name": name,
-                    "src": "hdca",
-                    "tags": [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in hdca.tags],
-                    "column_definitions": hdca.collection.column_definitions,
-                }
-            )
-
-        # If the direct-match page didn't fill the limit, attempt to fill it
-        # with subcollection-mapping matches (multirun) starting at offset 0.
-        # This means subcollection matches always paginate as a continuation
-        # of the direct-match list — simpler than two separate paginators.
-        remaining = hdca_limit - len(direct_matches)
-        multirun_total = 0
-        multirun_has_more = False
-        if remaining > 0 and not direct_has_more:
-
-            def multirun_query(*, offset, limit):
-                return history.paginated_active_dataset_collections(
-                    visible_only=True, search=hdca_search, offset=offset, limit=limit
-                )
-
-            def multirun_filter(hdca):
-                if not history_query.can_map_over(hdca):
-                    return None
-                match = dataset_collection_matcher.hdca_match(hdca)
-                if not match:
-                    return None
-                return (hdca, match.implicit_conversion)
-
-            # The first ``len(direct_matches)`` of multirun results are skipped
-            # in the rare case the same HDCA matched both — but they're keyed
-            # differently (subcollection_type), so collisions are not a concern.
-            multirun_post_offset = max(0, hdca_offset - direct_total)
-            multirun_matches, multirun_total, multirun_has_more = accumulate_with_filter(
-                multirun_query, multirun_filter, multirun_post_offset, remaining
-            )
-            for hdca, implicit_conversion in multirun_matches:
-                subcollection_type = history_query.can_map_over(hdca).collection_type
-                collection_type = hdca.collection.collection_type
-                if subcollection_type == "paired_or_unpaired" and not collection_type.endswith("paired_or_unpaired"):
-                    if collection_type.endswith("paired"):
-                        subcollection_type = "paired"
-                    else:
-                        subcollection_type = "single_datasets"
-                name = hdca.name
-                if implicit_conversion:
-                    name = f"{name} (with implicit datatype conversion)"
-                d["options"]["hdca"].append(
-                    {
-                        "id": trans.security.encode_id(hdca.id),
-                        "hid": hdca.hid,
-                        "map_over_type": subcollection_type,
-                        "name": name,
-                        "src": "hdca",
-                        "tags": [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in hdca.tags],
-                        "column_definitions": hdca.collection.column_definitions,
-                    }
-                )
+            entry: dict[str, Any] = {
+                "id": trans.security.encode_id(hdca.id),
+                "hid": hdca.hid,
+                "name": name,
+                "src": "hdca",
+                "tags": [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in hdca.tags],
+                "column_definitions": hdca.collection.column_definitions,
+            }
+            if kind == "multirun":
+                entry["map_over_type"] = subcollection_type
+            d["options"]["hdca"].append(entry)
 
         d["options_meta"]["hdca"] = {
             "offset": hdca_offset,
             "limit": hdca_limit,
-            "total_estimate": direct_total + multirun_total,
-            "has_more": direct_has_more or multirun_has_more,
+            "total_estimate": hdca_total,
+            "has_more": hdca_has_more,
         }
 
         # sort

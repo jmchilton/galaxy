@@ -11,11 +11,13 @@ slot in without further bloating ``basic.py``.
 from collections.abc import (
     Callable,
     Mapping,
+    Sequence,
 )
 from typing import (
     Any,
     Optional,
     TypeVar,
+    Union,
 )
 
 DEFAULT_OPTIONS_PAGE_SIZE = 50
@@ -57,15 +59,21 @@ def normalize_pagination(pagination: Optional[ParameterPaginationT], src: str) -
 
 def accumulate_with_filter(
     query_fn: Callable[..., tuple[list, int]],
-    filter_fn: Callable[[Any], Optional[T]],
+    filter_fn: Callable[[Any], Union[None, T, Sequence[T]]],
     post_filter_offset: int,
     limit: int,
     chunk_size: Optional[int] = None,
 ) -> tuple[list[T], int, bool]:
     """Walk DB chunks via ``query_fn(offset=, limit=)`` and apply ``filter_fn``.
 
-    ``filter_fn`` returns falsy to drop a row, or any truthy value (the "match")
-    to keep it. Returns ``(matches, pre_filter_total, has_more)`` where:
+    ``filter_fn`` returns falsy to drop a row, a single truthy value (typically
+    a tuple) to emit one match, or a ``list`` of values to emit multiple
+    matches for the same row. Multi-match supports the case where a single
+    HDCA satisfies both ``direct_match`` AND ``can_map_over`` for a parameter
+    that accepts multiple collection types (e.g., ``list,list:list`` with a
+    ``list:list`` HDCA) — the legacy non-paginated code emitted both entries
+    and we preserve that. Returns ``(matches, pre_filter_total, has_more)``
+    where:
 
     - ``matches`` is up to ``limit`` filter results starting from the
       ``post_filter_offset``-th match;
@@ -92,17 +100,35 @@ def accumulate_with_filter(
             initialized = True
         if not rows:
             return matches, pre_filter_total, False
+        rows_consumed = 0
+        hit_limit = False
         for row in rows:
+            rows_consumed += 1
             result = filter_fn(row)
             if not result:
                 continue
-            if skipped < post_filter_offset:
-                skipped += 1
-                continue
-            matches.append(result)
-            if len(matches) >= limit:
+            # A ``list`` filter result emits multiple matches per row (kept
+            # adjacent so a multi-emitting row never straddles a page boundary
+            # in a half-emitted state). Anything else truthy is a single
+            # match — note we deliberately do NOT unpack tuples here, because
+            # existing callers return tuples as a single composite match.
+            emitted = result if isinstance(result, list) else (result,)
+            for entry in emitted:
+                if skipped < post_filter_offset:
+                    skipped += 1
+                    continue
+                matches.append(entry)
+                if len(matches) >= limit:
+                    hit_limit = True
+                    break
+            if hit_limit:
                 break
-        db_offset += len(rows)
+        # ``rows_consumed`` (not ``len(rows)``) is the right cursor advance:
+        # when we break out of the inner loop at the limit, the trailing rows
+        # in this chunk are unseen and may still be matches, so leaving them
+        # past ``db_offset`` preserves the deliberate over-estimate of
+        # ``has_more`` documented above.
+        db_offset += rows_consumed
         if len(matches) >= limit:
             break
         if db_offset >= pre_filter_total:
