@@ -135,3 +135,202 @@ def accumulate_with_filter(
             return matches, pre_filter_total, False
     has_more = db_offset < pre_filter_total
     return matches, pre_filter_total, has_more
+
+
+# --- Entry shapes -----------------------------------------------------------
+#
+# The four ``src`` flavors below produce the option dicts the tool form
+# consumes. Each ``src`` has its own stable field set, so a single
+# parameterized factory would mostly be conditionals — keeping them separate
+# documents the schema. The only divergence worth flagging: HDA/HDCA entries
+# may carry ``keep`` (set ``True`` for entries pinned outside the page window),
+# while DCE/LDDA entries always set ``keep=True`` because they are exclusively
+# the rerun-carried path.
+
+
+def _tag_strings(obj) -> list[str]:
+    return [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in obj.tags]
+
+
+def make_hda_entry(
+    security,
+    hda,
+    name: str,
+    *,
+    keep: bool = False,
+) -> dict[str, Any]:
+    """Build an ``options.hda`` / ``pinned.hda`` entry.
+
+    ``hid`` defaults to -1 for HDAs carried over from a rerun that no longer
+    live in the active history (legacy contract relied upon by form tests).
+    """
+    entry: dict[str, Any] = {
+        "id": security.encode_id(hda.id),
+        "hid": hda.hid if hda.hid is not None else -1,
+        "name": name,
+        "tags": _tag_strings(hda),
+        "src": "hda",
+        "keep": keep,
+    }
+    return entry
+
+
+def make_hdca_entry(
+    security,
+    hdca,
+    name: str,
+    *,
+    keep: Optional[bool] = None,
+    subcollection_type: Optional[str] = None,
+    include_column_definitions: bool = False,
+) -> dict[str, Any]:
+    """Build an ``options.hdca`` / ``pinned.hdca`` entry.
+
+    ``keep`` is emitted only when explicitly passed (True/False).
+    ``DataToolParameter`` always passes a bool (matches its legacy shape);
+    ``DataCollectionToolParameter`` omits it (its legacy shape has no
+    ``keep`` field). ``subcollection_type`` flags multirun (map-over)
+    matches. ``include_column_definitions`` adds ``column_definitions``
+    for the ``DataCollectionToolParameter`` form, where the client gates
+    sample-sheet-aware UI on it.
+    """
+    entry: dict[str, Any] = {
+        "id": security.encode_id(hdca.id),
+        "hid": hdca.hid if hdca.hid is not None else -1,
+        "name": name,
+        "src": "hdca",
+        "tags": _tag_strings(hdca),
+    }
+    if keep is not None:
+        entry["keep"] = keep
+    if subcollection_type:
+        entry["map_over_type"] = subcollection_type
+    if include_column_definitions:
+        entry["column_definitions"] = hdca.collection.column_definitions
+    return entry
+
+
+def make_dce_entry(security, dce) -> dict[str, Any]:
+    return {
+        "id": security.encode_id(dce.id),
+        "name": dce.element_identifier,
+        "is_dataset": dce.hda is not None,
+        "src": "dce",
+        "tags": [],
+        "keep": True,
+    }
+
+
+def make_ldda_entry(security, ldda) -> dict[str, Any]:
+    return {
+        "id": security.encode_id(ldda.id),
+        "name": ldda.name,
+        "src": "ldda",
+        "tags": [],
+        "keep": True,
+    }
+
+
+# --- Builder ---------------------------------------------------------------
+
+
+class DataOptionsBuilder:
+    """Owns the ``options`` / ``options_meta`` / ``pinned`` shape returned by
+    ``DataToolParameter.to_dict`` and ``DataCollectionToolParameter.to_dict``.
+
+    A single instance covers one ``to_dict`` response. The per-source
+    pagination plumbing — ``normalize_pagination``, ``accumulate_with_filter``,
+    and the ``options_meta`` record — collapses into one ``paginate`` call so
+    the parameter classes can focus on classification (which HDCAs are
+    direct-match vs multirun) instead of cursor bookkeeping.
+
+    Callers emit entries via the public ``options`` / ``pinned`` dicts using
+    the ``make_*_entry`` factories above, and finalize with ``sort_by_hid``
+    and ``write_into``.
+    """
+
+    SOURCES: tuple[str, ...] = ("dce", "ldda", "hda", "hdca")
+
+    def __init__(
+        self,
+        security,
+        pagination: Optional[ParameterPaginationT] = None,
+        sources: Optional[tuple[str, ...]] = None,
+    ):
+        """``sources`` overrides which keys appear in ``options``/``pinned`` —
+        ``DataCollectionToolParameter`` historically omits ``ldda``, so its
+        response dict must match. Defaults to all four standard sources.
+        """
+        self.security = security
+        self._pagination = pagination
+        self._sources = sources or self.SOURCES
+        self.options: dict[str, list[dict[str, Any]]] = {s: [] for s in self._sources}
+        self.pinned: dict[str, list[dict[str, Any]]] = {s: [] for s in self._sources}
+        self.options_meta: dict[str, dict[str, Any]] = {}
+
+    def page(self, src: str) -> tuple[int, int, Optional[str]]:
+        """Return the ``(offset, limit, search)`` triple for ``src`` per the
+        request's pagination spec (clamped + defaulted)."""
+        return normalize_pagination(self._pagination, src)
+
+    def paginate(
+        self,
+        src: str,
+        *,
+        query: Callable[..., tuple[Sequence[Any], int]],
+        filter: Callable[[Any], Union[None, T, Sequence[T]]],
+        chunked: bool = True,
+    ) -> tuple[list[T], int, bool]:
+        """Run a paginated query+filter for ``src`` and record its
+        ``options_meta`` entry. Returns ``(matches, total, has_more)`` so the
+        caller can convert matches into option dicts (including any
+        cross-row dedup logic that does not belong in the per-row filter).
+
+        ``chunked=True`` uses :func:`accumulate_with_filter` — the right
+        choice when the filter is a Python predicate that may drop rows.
+        ``chunked=False`` issues a single SQL slice and lets the filter act
+        as a one-row classifier; the caller is responsible for any
+        side-effects of unfiltered totals (e.g. ``has_more`` accuracy when
+        almost everything filters out).
+        """
+        offset, limit, _search = self.page(src)
+        if chunked:
+            matches, total, has_more = accumulate_with_filter(query, filter, offset, limit)
+        else:
+            rows, total = query(offset=offset, limit=limit)
+            matches = []
+            for row in rows:
+                result = filter(row)
+                if not result:
+                    continue
+                if isinstance(result, list):
+                    matches.extend(result)
+                else:
+                    matches.append(result)
+            has_more = (offset + len(rows)) < total
+        self.options_meta[src] = {
+            "offset": offset,
+            "limit": limit,
+            "total_estimate": total,
+            "has_more": has_more,
+        }
+        return matches, total, has_more
+
+    def sort_by_hid(self, *srcs: str) -> None:
+        """Sort ``options[src]`` and ``pinned[src]`` by HID descending.
+
+        Defaults to sorting every source that carries an ``hid`` field
+        (``hda``, ``hdca``). Pass explicit ``srcs`` to override.
+        """
+        srcs = srcs or ("hda", "hdca")
+        for src in srcs:
+            if src in self.options:
+                self.options[src].sort(key=lambda k: k.get("hid", -1), reverse=True)
+            if src in self.pinned:
+                self.pinned[src].sort(key=lambda k: k.get("hid", -1), reverse=True)
+
+    def write_into(self, d: dict[str, Any]) -> None:
+        """Install the builder's containers onto a response dict."""
+        d["options"] = self.options
+        d["pinned"] = self.pinned
+        d["options_meta"] = self.options_meta

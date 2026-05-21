@@ -29,9 +29,12 @@ from galaxy import util
 from galaxy.files import ProvidesFileSourcesUserContext
 from galaxy.managers.dbkeys import read_dbnames
 from galaxy.managers.tool_form_options import (
-    accumulate_with_filter,
+    DataOptionsBuilder,
+    make_dce_entry,
+    make_hda_entry,
+    make_hdca_entry,
+    make_ldda_entry,
     MAX_OPTIONS_PAGE_SIZE,
-    normalize_pagination,
     ParameterPaginationT,
 )
 from galaxy.model import (
@@ -1856,6 +1859,20 @@ class DrillDownSelectToolParameter(SelectToolParameter):
         return d
 
 
+def _carried_state_label(value) -> str:
+    """Reason a rerun input cannot be naturally selected in this history.
+    Stable string surfaced to the client as the entry name prefix. The
+    ``"not in current history"`` fallback also covers the rare case of a
+    live in-history HDA whose matcher failed (e.g. format mismatch) — that
+    label is mildly misleading there, but preserves the legacy contract.
+    """
+    if value.deleted:
+        return "deleted"
+    if not value.visible:
+        return "hidden"
+    return "not in current history"
+
+
 class BaseDataToolParameter(ToolParameter):
     multiple: bool
 
@@ -2457,81 +2474,75 @@ class DataToolParameter(BaseDataToolParameter):
 
     def to_dict(self, trans, other_values=None, pagination: Optional[ParameterPaginationT] = None):
         other_values = other_values or {}
-        hda_offset, hda_limit, hda_search = normalize_pagination(pagination, "hda")
-        hdca_offset, hdca_limit, hdca_search = normalize_pagination(pagination, "hdca")
-        # create dictionary and fill default parameters
         d = super().to_dict(trans)
+        self._fill_to_dict_static(d)
+
+        builder = DataOptionsBuilder(trans.security, pagination)
+        builder.write_into(d)
+
+        history = trans.history
+        if history is None or trans.workflow_building_mode is workflow_building_modes.ENABLED:
+            return d
+
+        dataset_matcher_factory = get_dataset_matcher_factory(trans)
+        dataset_matcher = dataset_matcher_factory.dataset_matcher(self, other_values)
+
+        # When rerunning a job, other_values carries the original job's input
+        # values (HDAs, HDCAs, DCEs, LDDAs). Track them as we walk pages so
+        # the survivors land in `pinned` (live HDAs outside the page) or
+        # carry-over `options` entries (deleted/hidden/foreign-history items,
+        # DCEs, LDDAs) — the legacy contract relied on by job-rerun tests.
+        job_input_values = util.listify(other_values.get(self.name))
+
+        job_input_values = self._page_hda_matches(
+            builder, history, dataset_matcher, dataset_matcher_factory, job_input_values
+        )
+        unresolved = self._pin_live_hda_inputs(builder, history, dataset_matcher, job_input_values)
+        self._carry_unresolved_inputs(builder, history, unresolved)
+        self._page_hdca_matches(
+            builder,
+            trans,
+            history,
+            dataset_matcher_factory.dataset_collection_matcher(dataset_matcher),
+        )
+
+        builder.sort_by_hid()
+        return d
+
+    def _fill_to_dict_static(self, d: dict) -> None:
+        """Populate the non-history-dependent fields of the ``to_dict`` response
+        (extensions, EDAM mapping, multiplicity bounds, tag)."""
         extensions = self.extensions
         all_edam_formats = (
             self.datatypes_registry.edam_formats if hasattr(self.datatypes_registry, "edam_formats") else {}
         )
         all_edam_data = self.datatypes_registry.edam_data if hasattr(self.datatypes_registry, "edam_formats") else {}
-        edam_formats = [all_edam_formats.get(ext, None) for ext in extensions]
-        edam_data = [all_edam_data.get(ext, None) for ext in extensions]
-
         d["extensions"] = extensions
-        d["edam"] = {"edam_formats": edam_formats, "edam_data": edam_data}
+        d["edam"] = {
+            "edam_formats": [all_edam_formats.get(ext, None) for ext in extensions],
+            "edam_data": [all_edam_data.get(ext, None) for ext in extensions],
+        }
         d["multiple"] = self.multiple
         if self.multiple:
             # For consistency, should these just always be in the dict?
             d["min"] = self.min
             d["max"] = self.max
-        d["options"] = {"dce": [], "ldda": [], "hda": [], "hdca": []}
-        d["options_meta"] = {}
-        d["pinned"] = {"dce": [], "ldda": [], "hda": [], "hdca": []}
         d["tag"] = self.tag
 
-        # return dictionary without options if context is unavailable
-        history = trans.history
-        if history is None or trans.workflow_building_mode is workflow_building_modes.ENABLED:
-            return d
+    def _page_hda_matches(
+        self,
+        builder: DataOptionsBuilder,
+        history,
+        dataset_matcher,
+        dataset_matcher_factory,
+        job_input_values: list,
+    ) -> list:
+        """Emit one page of matching HDAs into ``builder.options['hda']``.
 
-        # prepare dataset/collection matching
-        dataset_matcher_factory = get_dataset_matcher_factory(trans)
-        dataset_matcher = dataset_matcher_factory.dataset_matcher(self, other_values)
-        multiple = self.multiple
-
-        def make_entry(hda, name, src, keep=False, subcollection_type=None):
-            value = {
-                "id": trans.security.encode_id(hda.id),
-                "hid": hda.hid if hda.hid is not None else -1,
-                "name": name,
-                "tags": [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in hda.tags],
-                "src": src,
-                "keep": keep,
-            }
-            if subcollection_type:
-                value["map_over_type"] = subcollection_type
-            return value
-
-        def make_dce_entry(dce):
-            return {
-                "id": trans.security.encode_id(dce.id),
-                "name": dce.element_identifier,
-                "is_dataset": dce.hda is not None,
-                "src": "dce",
-                "tags": [],
-                "keep": True,
-            }
-
-        def make_ldda_entry(ldda):
-            return {
-                "id": trans.security.encode_id(ldda.id),
-                "name": ldda.name,
-                "src": "ldda",
-                "tags": [],
-                "keep": True,
-            }
-
-        # When rerunning a job, other_values contains the original job's input
-        # values which may be HDAs, HDCAs, DCEs, or LDDAs. We carry the ones
-        # that aren't naturally in the current page through `pinned` so the
-        # client can pre-select them regardless of pagination state.
-        job_input_values = util.listify(other_values.get(self.name))
-
-        # Page HDA matches. Pure-SQL path filters by extension+state in the DB;
-        # chunked path falls back to walking DB chunks for tools that need
-        # per-row Python filtering (options_filter_attribute, data_destination).
+        Returns ``job_input_values`` with the matched HDAs removed so the
+        caller does not double-add them via the pinned/carried paths.
+        """
+        _hda_offset, _hda_limit, hda_search = builder.page("hda")
         acceptable_extensions = self._acceptable_extensions()
         valid_states = dataset_matcher_factory.valid_input_states
 
@@ -2544,23 +2555,18 @@ class DataToolParameter(BaseDataToolParameter):
                 limit=limit,
             )
 
-        if self._uses_python_options_filter():
-            page_matches, hda_total, hda_has_more = accumulate_with_filter(
-                hda_query, dataset_matcher.hda_match, hda_offset, hda_limit
-            )
-        else:
-            rows, hda_total = hda_query(offset=hda_offset, limit=hda_limit)
-            page_matches = []
-            for hda in rows:
-                match = dataset_matcher.hda_match(hda)
-                if match:
-                    page_matches.append(match)
-            hda_has_more = (hda_offset + len(rows)) < hda_total
+        # Pure-SQL path skips chunked iteration when the predicate is fully
+        # captured by the DB filter; chunked path covers tools that need
+        # per-row Python filtering (options_filter_attribute, data_destination).
+        chunked = self._uses_python_options_filter()
+        page_matches, _total, _has_more = builder.paginate(
+            "hda", query=hda_query, filter=dataset_matcher.hda_match, chunked=chunked
+        )
 
-        # Build matches_by_hid (for dedupe of implicit conversions). Also
-        # remove matched HDAs from job_input_values so they aren't double-added
-        # via pinned. ``HdaDirectMatch`` has no ``original_hda``; ``getattr``
-        # falls back to the matched HDA itself for direct matches.
+        # Dedup implicit conversions by HID; also consume matched HDAs from
+        # ``job_input_values`` so they aren't double-added via pinned.
+        # ``HdaDirectMatch`` has no ``original_hda``; ``getattr`` falls back
+        # to the matched HDA itself for direct matches.
         matches_by_hid: dict[int, list] = {}
         for match in page_matches:
             m = match.hda
@@ -2571,23 +2577,24 @@ class DataToolParameter(BaseDataToolParameter):
         for matches in matches_by_hid.values():
             match = matches[0]
             if len(matches) > 1:
-                # If there are multiple matches for the same hid, use the original HDA and skip the implicit conversions
+                # Multiple matches for the same hid → prefer the original HDA and skip implicit conversions.
                 match = next((m for m in matches if len(m.hda.implicitly_converted_parent_datasets) == 0), match)
             m_name = (
                 f"{match.original_hda.name} (as {match.target_ext})" if match.implicit_conversion else match.hda.name
             )
-            d["options"]["hda"].append(make_entry(match.hda, m_name, "hda"))
+            builder.options["hda"].append(make_hda_entry(builder.security, match.hda, m_name))
 
-        d["options_meta"]["hda"] = {
-            "offset": hda_offset,
-            "limit": hda_limit,
-            "total_estimate": hda_total,
-            "has_more": hda_has_more,
-        }
+        return job_input_values
 
-        # Pin selected HDAs that are still valid in this history but landed
-        # outside the current page window.
-        unresolved_inputs = []
+    def _pin_live_hda_inputs(
+        self, builder: DataOptionsBuilder, history, dataset_matcher, job_input_values: list
+    ) -> list:
+        """Pin selected HDAs that still live in this history but landed
+        outside the current page window. Returns the inputs that did not pin
+        (deleted/hidden/foreign-history HDAs, plus all non-HDA values) for
+        the carry-forward step.
+        """
+        unresolved: list = []
         for value in job_input_values:
             if (
                 isinstance(value, HistoryDatasetAssociation)
@@ -2602,42 +2609,50 @@ class DataToolParameter(BaseDataToolParameter):
                         if match.implicit_conversion
                         else match.hda.name
                     )
-                    d["pinned"]["hda"].append(make_entry(match.hda, name, "hda", keep=True))
+                    builder.pinned["hda"].append(make_hda_entry(builder.security, match.hda, name, keep=True))
                     continue
-            unresolved_inputs.append(value)
+            unresolved.append(value)
+        return unresolved
 
-        # Anything left has no live HDA match (deleted/hidden/wrong-history,
-        # or HDCA/DCE/LDDA inputs from the rerun). Carry them forward as
-        # ``options.X`` entries with ``keep=True`` and a state-prefixed name —
-        # that's the legacy contract relied upon by job-rerun tests
-        # (e.g. test_jobs.py::test_job_build_for_rerun_hdca_value_in_options
-        # checks for hidden HDCAs in ``options.hdca``).
-        for value in unresolved_inputs:
+    def _carry_unresolved_inputs(self, builder: DataOptionsBuilder, history, unresolved: list) -> None:
+        """Anything left over from the rerun input list has no live HDA match
+        (deleted/hidden/wrong-history, or HDCA/DCE/LDDA from the original
+        job). Carry each forward as an ``options.X`` entry with
+        ``keep=True`` and a state-prefixed name — the legacy contract relied
+        on by job-rerun tests (e.g.
+        ``test_jobs.py::test_job_build_for_rerun_hdca_value_in_options``).
+        """
+        for value in unresolved:
             if isinstance(value, HistoryDatasetCollectionAssociation):
                 if value.deleted or not value.visible or value.history != history:
-                    if value.deleted:
-                        state = "deleted"
-                    elif not value.visible:
-                        state = "hidden"
-                    else:
-                        state = "not in current history"
-                    d["options"]["hdca"].append(make_entry(value, f"({state}) {value.name}", "hdca", True))
+                    state = _carried_state_label(value)
+                    builder.options["hdca"].append(
+                        make_hdca_entry(builder.security, value, f"({state}) {value.name}", keep=True)
+                    )
             elif isinstance(value, HistoryDatasetAssociation):
-                if value.deleted:
-                    state = "deleted"
-                elif not value.visible:
-                    state = "hidden"
-                else:
-                    state = "not in current history"
-                d["options"]["hda"].append(make_entry(value, f"({state}) {value.name}", "hda", True))
+                state = _carried_state_label(value)
+                builder.options["hda"].append(
+                    make_hda_entry(builder.security, value, f"({state}) {value.name}", keep=True)
+                )
             elif isinstance(value, DatasetCollectionElement):
-                d["options"]["dce"].append(make_dce_entry(value))
+                builder.options["dce"].append(make_dce_entry(builder.security, value))
             elif isinstance(value, LibraryDatasetDatasetAssociation):
-                d["options"]["ldda"].append(make_ldda_entry(value))
+                builder.options["ldda"].append(make_ldda_entry(builder.security, value))
 
-        # Page HDCA matches via chunked pagination — collection matching needs
-        # per-row Python inspection (subcollection mapping, implicit conversion).
-        dataset_collection_matcher = dataset_matcher_factory.dataset_collection_matcher(dataset_matcher)
+    def _page_hdca_matches(
+        self,
+        builder: DataOptionsBuilder,
+        trans,
+        history,
+        dataset_collection_matcher,
+    ) -> None:
+        """Emit one page of matching HDCAs into ``builder.options['hdca']``.
+
+        Collection matching needs per-row Python inspection (subcollection
+        mapping, implicit conversion), so this always uses chunked pagination.
+        """
+        multiple = self.multiple
+        _offset, _limit, hdca_search = builder.page("hdca")
 
         def hdca_query(*, offset, limit):
             return history.paginated_active_dataset_collections(
@@ -2657,30 +2672,14 @@ class DataToolParameter(BaseDataToolParameter):
                     return None
             return (hdca, match, subcollection_type)
 
-        hdca_matches, hdca_total, hdca_has_more = accumulate_with_filter(
-            hdca_query, hdca_filter, hdca_offset, hdca_limit
-        )
-        for hdca, match, subcollection_type in hdca_matches:
+        matches, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=hdca_filter)
+        for hdca, match, subcollection_type in matches:
             name = hdca.name
             if match.implicit_conversion:
                 name = f"{name} (with implicit datatype conversion)"
-            d["options"]["hdca"].append(make_entry(hdca, name, "hdca", subcollection_type=subcollection_type))
-
-        d["options_meta"]["hdca"] = {
-            "offset": hdca_offset,
-            "limit": hdca_limit,
-            "total_estimate": hdca_total,
-            "has_more": hdca_has_more,
-        }
-
-        # sort both lists
-        d["options"]["hda"] = sorted(d["options"]["hda"], key=lambda k: k.get("hid", -1), reverse=True)
-        d["options"]["hdca"] = sorted(d["options"]["hdca"], key=lambda k: k.get("hid", -1), reverse=True)
-        d["pinned"]["hda"] = sorted(d["pinned"]["hda"], key=lambda k: k.get("hid", -1), reverse=True)
-        d["pinned"]["hdca"] = sorted(d["pinned"]["hdca"], key=lambda k: k.get("hid", -1), reverse=True)
-
-        # return final dictionary
-        return d
+            builder.options["hdca"].append(
+                make_hdca_entry(builder.security, hdca, name, keep=False, subcollection_type=subcollection_type)
+            )
 
     def _history_query(self, trans):
         assert self.multiple
@@ -2823,34 +2822,31 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         return display_text
 
     def to_dict(self, trans, other_values=None, pagination: Optional[ParameterPaginationT] = None):
-        # create dictionary and fill default parameters
         other_values = other_values or {}
-        hdca_offset, hdca_limit, hdca_search = normalize_pagination(pagination, "hdca")
         d = super().to_dict(trans)
         d["collection_types"] = self.collection_types
         d["fields"] = self._fields
         d["column_definitions"] = self._column_definitions
         d["extensions"] = self.extensions
         d["multiple"] = self.multiple
-        d["options"] = {"hda": [], "hdca": [], "dce": []}
-        d["options_meta"] = {}
-        d["pinned"] = {"hda": [], "hdca": [], "dce": []}
         d["tag"] = self.tag
 
-        # return dictionary without options if context is unavailable
+        builder = DataOptionsBuilder(trans.security, pagination, sources=("hda", "hdca", "dce"))
+        builder.write_into(d)
+
         history = trans.history
         if history is None or trans.workflow_building_mode is workflow_building_modes.ENABLED:
             return d
 
-        # prepare dataset/collection matching
         dataset_matcher_factory = get_dataset_matcher_factory(trans)
         dataset_matcher = dataset_matcher_factory.dataset_matcher(self, other_values)
         dataset_collection_matcher = dataset_matcher_factory.dataset_collection_matcher(dataset_matcher)
 
-        # append DCE pinned (selected DCE re-run input)
+        # Pin a selected DCE rerun input (collection elements never paginate
+        # through the listing path; they're always carried).
         if isinstance(other_values.get(self.name), DatasetCollectionElement):
             dce = other_values[self.name]
-            d["pinned"]["dce"].append(
+            builder.pinned["dce"].append(
                 {
                     "id": trans.security.encode_id(dce.id),
                     "hid": -1,
@@ -2860,86 +2856,86 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                 }
             )
 
+        self._page_hdca_matches(builder, trans, history, dataset_collection_matcher)
+        builder.sort_by_hid("hdca")
+        return d
+
+    def _page_hdca_matches(
+        self,
+        builder: DataOptionsBuilder,
+        trans,
+        history,
+        dataset_collection_matcher,
+    ) -> None:
+        """Emit one page of matching HDCAs into ``builder.options['hdca']``.
+
+        Walks all active HDCAs (incl. hidden) in HID-desc order — the legacy
+        non-paginated code applied ``active_dataset_collections`` (includes
+        hidden) to direct matches and ``active_visible_*`` to multirun
+        matches, then merged-sorted by HID. We reproduce that ordering with
+        a single HID-desc query plus a classifier that demotes hidden HDCAs
+        to direct-only.
+        """
+        _offset, _limit, hdca_search = builder.page("hdca")
         history_query = self._history_query(trans)
 
         def hdca_query(*, offset, limit):
-            # Walk all active HDCAs (incl. hidden) in HID-desc order. The
-            # legacy two-pass code applied ``active_dataset_collections``
-            # (includes hidden) to direct matches and ``active_visible_*``
-            # to multirun matches, then merged-sorted by HID. We reproduce
-            # that ordering by streaming a single HID-desc query and
-            # demoting hidden HDCAs to direct-only inside the filter.
             return history.paginated_active_dataset_collections(
                 visible_only=False, search=hdca_search, offset=offset, limit=limit
             )
 
         def hdca_filter(hdca):
-            # Both ``direct_match`` and ``can_map_over`` can fire for the
-            # same HDCA when the parameter accepts multiple collection types
-            # (e.g., ``list,list:list``: a ``list:list`` HDCA directly matches
-            # ``list:list`` AND can be mapped over to feed ``list``). The
-            # legacy pre-pagination code emitted both entries — preserve that
-            # by returning a list of matches. Direct entries come first so
-            # stable HID-desc sort places them above the multirun entry.
-            # Hidden HDCAs may appear only via direct match (matches legacy
-            # ``active_dataset_collections`` vs ``active_visible_*`` split).
-            entries = []
-            match = dataset_collection_matcher.hdca_match(hdca)
-            if not match:
-                return None
-            if history_query.direct_match(hdca):
-                column_definitions_ok = True
-                if self._column_definitions:
-                    collection_cols = hdca.collection.column_definitions
-                    column_definitions_ok = column_definitions_compatible(collection_cols, self._column_definitions)
-                if column_definitions_ok:
-                    entries.append(("direct", hdca, match.implicit_conversion, None))
-            if hdca.visible:
-                can_map = history_query.can_map_over(hdca)
-                if can_map:
-                    subcollection_type = can_map.collection_type
-                    collection_type = hdca.collection.collection_type
-                    if subcollection_type == "paired_or_unpaired" and not collection_type.endswith(
-                        "paired_or_unpaired"
-                    ):
-                        if collection_type.endswith("paired"):
-                            subcollection_type = "paired"
-                        else:
-                            subcollection_type = "single_datasets"
-                    entries.append(("multirun", hdca, match.implicit_conversion, subcollection_type))
-            return entries or None
+            return self._classify_hdca(hdca, dataset_collection_matcher, history_query)
 
-        hdca_matches, hdca_total, hdca_has_more = accumulate_with_filter(
-            hdca_query, hdca_filter, hdca_offset, hdca_limit
-        )
-        for kind, hdca, implicit_conversion, subcollection_type in hdca_matches:
-            name = hdca.name
-            if implicit_conversion:
-                name = f"{name} (with implicit datatype conversion)"
-            entry: dict[str, Any] = {
-                "id": trans.security.encode_id(hdca.id),
-                "hid": hdca.hid,
-                "name": name,
-                "src": "hdca",
-                "tags": [t.user_tname if not t.value else f"{t.user_tname}:{t.value}" for t in hdca.tags],
-                "column_definitions": hdca.collection.column_definitions,
-            }
-            if kind == "multirun":
-                entry["map_over_type"] = subcollection_type
-            d["options"]["hdca"].append(entry)
+        matches, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=hdca_filter)
+        for kind, hdca, implicit_conversion, subcollection_type in matches:
+            name = f"{hdca.name} (with implicit datatype conversion)" if implicit_conversion else hdca.name
+            builder.options["hdca"].append(
+                make_hdca_entry(
+                    builder.security,
+                    hdca,
+                    name,
+                    subcollection_type=subcollection_type if kind == "multirun" else None,
+                    include_column_definitions=True,
+                )
+            )
 
-        d["options_meta"]["hdca"] = {
-            "offset": hdca_offset,
-            "limit": hdca_limit,
-            "total_estimate": hdca_total,
-            "has_more": hdca_has_more,
-        }
+    def _classify_hdca(self, hdca, dataset_collection_matcher, history_query):
+        """Per-HDCA classifier returning 0, 1, or 2 match entries.
 
-        # sort
-        d["options"]["hdca"] = sorted(d["options"]["hdca"], key=lambda k: k.get("hid", -1), reverse=True)
-
-        # return final dictionary
-        return d
+        Both ``direct_match`` and ``can_map_over`` can fire for the same HDCA
+        when the parameter accepts multiple collection types (e.g.,
+        ``list,list:list`` with a ``list:list`` HDCA matches ``list:list``
+        directly AND can be mapped over to feed ``list``). The legacy
+        pre-pagination code emitted both — preserve that by returning a list.
+        Direct entries come first so the stable HID-desc sort places them
+        above the multirun entry. Hidden HDCAs may appear only via direct
+        match (matches the legacy ``active_dataset_collections`` vs
+        ``active_visible_*`` split).
+        """
+        match = dataset_collection_matcher.hdca_match(hdca)
+        if not match:
+            return None
+        entries: list = []
+        if history_query.direct_match(hdca):
+            column_definitions_ok = True
+            if self._column_definitions:
+                collection_cols = hdca.collection.column_definitions
+                column_definitions_ok = column_definitions_compatible(collection_cols, self._column_definitions)
+            if column_definitions_ok:
+                entries.append(("direct", hdca, match.implicit_conversion, None))
+        if hdca.visible:
+            can_map = history_query.can_map_over(hdca)
+            if can_map:
+                subcollection_type = can_map.collection_type
+                collection_type = hdca.collection.collection_type
+                if subcollection_type == "paired_or_unpaired" and not collection_type.endswith("paired_or_unpaired"):
+                    if collection_type.endswith("paired"):
+                        subcollection_type = "paired"
+                    else:
+                        subcollection_type = "single_datasets"
+                entries.append(("multirun", hdca, match.implicit_conversion, subcollection_type))
+        return entries or None
 
 
 class HiddenDataToolParameter(HiddenToolParameter, DataToolParameter):
