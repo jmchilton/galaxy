@@ -1,10 +1,7 @@
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 
-/** A labeled port on a graph node (input or output connector) */
-export interface GraphNodePort {
-    name: string;
-    label: string;
-}
+/** Connector visual variant — "multiple" renders larger (used to mark collections). */
+export type ConnectorVariant = "single" | "multiple";
 
 /** A positioned node after layout */
 export interface GraphNode {
@@ -17,10 +14,12 @@ export interface GraphNode {
     icon: IconDefinition;
     badge?: string | null;
     cssClass?: string;
-    /** Input ports displayed in the node body */
-    inputs?: GraphNodePort[];
-    /** Output ports displayed in the node body */
-    outputs?: GraphNodePort[];
+    /** Connector straddling the node's input (left) edge when it has incoming edges. */
+    inputConnector?: ConnectorVariant | null;
+    /** Connector straddling the node's output (right) edge when it has outgoing edges. */
+    outputConnector?: ConnectorVariant | null;
+    /** Measured Y offset (px from node top) of the merged connectors. */
+    connectorY?: number;
     /** Arbitrary domain data attached by the mapper */
     data?: Record<string, unknown>;
 }
@@ -31,13 +30,12 @@ export interface GraphEdge {
     source: string;
     target: string;
     cssClass?: string;
-    /** Render as a collection ribbon (multiple parallel lines) */
-    isCollection?: boolean;
+    /** Connector variant at the source end — "multiple" spreads the edge into a ribbon. */
+    sourceVariant?: ConnectorVariant;
+    /** Connector variant at the target end — "multiple" spreads the edge into a ribbon. */
+    targetVariant?: ConnectorVariant;
     points: { x: number; y: number }[];
 }
-
-/** Edge rendering style */
-export type EdgeStyle = "orthogonal" | "curved";
 
 /** Complete layout result ready for rendering */
 export interface GraphLayout {
