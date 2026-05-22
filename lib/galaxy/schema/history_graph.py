@@ -46,7 +46,13 @@ class GraphNode(BaseModel):
 class GraphEdge(BaseModel):
     source: NodeRef
     target: NodeRef
-    type: Literal["dataset_input", "dataset_output", "collection_input", "collection_output"]
+    type: Literal[
+        "dataset_input",
+        "dataset_output",
+        "collection_input",
+        "collection_output",
+        "dataset_element",
+    ]
 
 
 class TruncationInfo(BaseModel):
