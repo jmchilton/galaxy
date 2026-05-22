@@ -75,7 +75,8 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
     def _create_tool_source(self):
         ts = model.ToolSource()
-        ts.hash = "abc123"
+        # Unique per call — tool_source has a UNIQUE(hash, source_class) constraint.
+        ts.hash = uuid4().hex
         ts.source = {"xml": "<tool/>"}
         ts.source_class = "XmlToolSource"
         session = self.trans.sa_session
@@ -1155,6 +1156,34 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         for hda in original[1:]:
             assert self._encode("d", hda.id) in ids2
 
+    def test_validation_failed_request_still_surfaces_payload(self):
+        """A ToolRequest with ``request_state == 'validation_failed'`` keeps
+        its producer/input edges. The History Graph consumer uses structure
+        (input refs + Batch wrapping), not validation outcome — type-strict
+        rejection by the request validator should not erase usable lineage.
+        Extraction gates on ``validated`` independently at the consumer
+        site."""
+        history, _ = self._create_history()
+        input_hda = self._create_hda(history, name="in")
+        output_hda = self._create_hda(history, name="out")
+        tr = self._create_tool_request(history)
+        tr.request_state = "validation_failed"
+        self.trans.sa_session.flush()
+        job = self._create_job(tool_request=tr, tool_id="wf_tool")
+        self._link_job_input_hda(job, input_hda)
+        self._link_job_output_hda(job, output_hda)
+
+        graph = self._build_graph(history)
+
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        assert len(producer_nodes) == 1
+        prod_ref = producer_nodes[0].ref
+        assert prod_ref == self._encode("r", tr.id)
+
+        edges = {(e.type, e.source, e.target) for e in graph.edges}
+        assert ("dataset_input", self._encode("d", input_hda.id), prod_ref) in edges
+        assert ("dataset_output", prod_ref, self._encode("d", output_hda.id)) in edges
+
 
 # ── Scalability / Boundedness Tests ──
 
@@ -1206,7 +1235,8 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
 
     def _create_tool_source(self):
         ts = model.ToolSource()
-        ts.hash = "abc123"
+        # Unique per call — tool_source has a UNIQUE(hash, source_class) constraint.
+        ts.hash = uuid4().hex
         ts.source = {"xml": "<tool/>"}
         ts.source_class = "XmlToolSource"
         session = self.trans.sa_session
