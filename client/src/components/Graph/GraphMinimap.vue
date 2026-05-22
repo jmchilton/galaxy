@@ -2,14 +2,14 @@
 import type { Ref } from "vue";
 import { computed, onMounted, ref, toRef, watch } from "vue";
 
-import type { GraphLayout } from "@/components/Graph/types";
 import { useAnimationFrame } from "@/composables/sensors/animationFrame";
 import { useMinimapInteraction } from "@/composables/useMinimapInteraction";
 import { AxisAlignedBoundingBox } from "@/utils/geometry";
 
+import type { GraphLayout, GraphNode } from "./types";
+
 // Colors resolved once at mount from CSS custom properties on the canvas element.
-// Uses brand-primary for nodes (set via SCSS in the scoped style block).
-let nodeColor = "#000";
+let defaultNodeColor = "#000";
 let viewColor = "rgba(0, 0, 0, 0.2)";
 let viewOutlineColor = "#000";
 
@@ -18,11 +18,14 @@ const props = withDefaults(
         layout: GraphLayout | null;
         viewportBoundingBox: AxisAlignedBoundingBox;
         selectedNodeId?: string | null;
+        /** Per-node fill color; a falsy result falls back to the default color. */
+        nodeColor?: (node: GraphNode) => string | null | undefined;
         parentRight: number;
         parentBottom: number;
     }>(),
     {
         selectedNodeId: null,
+        nodeColor: undefined,
     },
 );
 
@@ -87,7 +90,7 @@ const { getCanvasTransform, recomputeTransform, minimapSize } = useMinimapIntera
 onMounted(() => {
     if (canvas.value) {
         const style = getComputedStyle(canvas.value);
-        nodeColor = style.getPropertyValue("--node-color").trim() || nodeColor;
+        defaultNodeColor = style.getPropertyValue("--node-color").trim() || defaultNodeColor;
         viewColor = style.getPropertyValue("--view-color").trim() || viewColor;
         viewOutlineColor = style.getPropertyValue("--view-outline-color").trim() || viewOutlineColor;
     }
@@ -146,13 +149,25 @@ function renderMinimap() {
 
     canvasTransform.applyToContext(ctx);
 
-    // Draw nodes
-    ctx.fillStyle = nodeColor;
-    ctx.beginPath();
+    // Draw nodes, grouped by fill color for fewer canvas fills
+    const nodesByColor = new Map<string, GraphNode[]>();
     for (const node of props.layout.nodes) {
-        ctx.rect(node.x, node.y, node.width, node.height);
+        const color = props.nodeColor?.(node) || defaultNodeColor;
+        const list = nodesByColor.get(color);
+        if (list) {
+            list.push(node);
+        } else {
+            nodesByColor.set(color, [node]);
+        }
     }
-    ctx.fill();
+    for (const [color, nodes] of nodesByColor) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (const node of nodes) {
+            ctx.rect(node.x, node.y, node.width, node.height);
+        }
+        ctx.fill();
+    }
 
     // Draw selected node outline
     if (props.selectedNodeId) {
@@ -160,7 +175,7 @@ function renderMinimap() {
         if (selected) {
             const edge = 2 / canvasTransform.scaleX;
             ctx.beginPath();
-            ctx.strokeStyle = nodeColor;
+            ctx.strokeStyle = defaultNodeColor;
             ctx.lineWidth = edge;
             ctx.rect(selected.x - edge, selected.y - edge, selected.width + edge * 2, selected.height + edge * 2);
             ctx.stroke();
