@@ -1,23 +1,28 @@
 <script setup lang="ts">
-import { BAlert } from "bootstrap-vue";
+import { BAlert, BCard, BCardBody, BCardHeader } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
 import type { GraphNode } from "@/components/Graph/types";
 
-import Heading from "@/components/Common/Heading.vue";
 import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
 import JobInformation from "@/components/JobInformation/JobInformation.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
 interface Props {
-    node: GraphNode;
+    /** The selected graph node, or null when nothing is selected. */
+    node: GraphNode | null;
+    /** Empty-state message shown when no node is selected. */
+    emptyText?: string;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+    emptyText: "Click on a node in the graph above to view its details.",
+});
 
 const nodeSrc = computed(() => (props.node?.data?.src as string) ?? null);
 const itemId = computed(() => (props.node?.data?.itemId as string) ?? null);
+const typeLabel = computed(() => (props.node?.data?.typeLabel as string) ?? "Item");
 
 /** src GenericHistoryItem expects, for the item node kinds it can render */
 const itemSrc = computed(() => {
@@ -63,31 +68,22 @@ watch(
 </script>
 
 <template>
-    <div class="history-graph-details border-left bg-white">
-        <div class="details-body">
-            <!-- Dataset or Collection -->
-            <div v-if="itemSrc && itemId" :key="itemId" class="p-2">
-                <Heading h1 separator inline size="md">
-                    {{ nodeSrc === "hda" ? "Dataset Information" : "Collection Information" }}
-                </Heading>
+    <BAlert v-if="!node" show variant="info" class="mb-0">{{ emptyText }}</BAlert>
+    <BCard v-else class="history-graph-node-card" no-body>
+        <BCardHeader class="d-flex align-items-center flex-gapx-1">
+            <span class="font-weight-bold">{{ typeLabel }}</span>
+            <span class="text-truncate text-muted">{{ node.label }}</span>
+        </BCardHeader>
+        <BCardBody body-class="p-2">
+            <div v-if="itemSrc && itemId" :key="itemId">
                 <GenericHistoryItem :item-id="itemId" :item-src="itemSrc" />
             </div>
-
-            <!-- Tool request / Job details -->
-            <div v-else-if="nodeSrc === 'tool_request'" class="p-2">
+            <div v-else-if="nodeSrc === 'tool_request'">
                 <LoadingSpan v-if="jobLoading" message="Loading job details" />
                 <BAlert v-else-if="jobError" variant="info" show class="mb-0">{{ jobError }}</BAlert>
                 <JobInformation v-else-if="jobId" :job-id="jobId" :include-times="true" />
             </div>
-        </div>
-    </div>
+            <BAlert v-else show variant="info" class="mb-0">No details available for this node.</BAlert>
+        </BCardBody>
+    </BCard>
 </template>
-
-<style lang="scss" scoped>
-.history-graph-details {
-    flex-shrink: 0;
-    width: 320px;
-    height: 100%;
-    overflow-y: auto;
-}
-</style>
