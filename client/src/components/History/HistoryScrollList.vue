@@ -22,6 +22,10 @@ type PinnedHistory = { id: string };
 interface Props {
     multiple?: boolean;
     selectedHistories?: PinnedHistory[];
+    /** Id of the row to mark as `current` (the Invocations-style highlight).
+     *  Undefined falls back to the store's currentHistoryId; pass `null` to
+     *  suppress the highlight entirely. */
+    currentItemId?: string | null;
     additionalOptions?: AdditionalOptions[];
     showModal?: boolean;
     inModal?: boolean;
@@ -32,6 +36,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
     multiple: false,
     selectedHistories: () => [],
+    currentItemId: undefined,
     additionalOptions: () => [],
     showModal: false,
     inModal: false,
@@ -51,6 +56,10 @@ const busy = ref(false);
 const historyStore = useHistoryStore();
 const { currentHistoryId, histories, totalHistoryCount, pinnedHistories } = storeToRefs(historyStore);
 const { currentUser } = storeToRefs(useUserStore());
+
+const effectiveCurrentId = computed(() =>
+    props.currentItemId === undefined ? currentHistoryId.value : props.currentItemId,
+);
 
 const hasNoResults = computed(() => props.filter && filtered.value.length == 0);
 const validFilter = computed(() => props.filter && props.filter.length > 2);
@@ -293,7 +302,7 @@ function getHistoryTitleBadges(history: HistorySummary) {
                 :id="`history-${history.id}`"
                 :data-pk="history.id"
                 button
-                :current="!(props.multiple && !isMultiviewPanel) && history.id === currentHistoryId"
+                :current="!(props.multiple && !isMultiviewPanel) && history.id === effectiveCurrentId"
                 clickable
                 :active="isActiveItem(history)"
                 :selectable="props.multiple"

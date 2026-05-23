@@ -21,11 +21,10 @@ const loading = ref(false);
 const { historiesLoading } = storeToRefs(useHistoryStore());
 
 // Highlight the row whose graph is currently open in the centre panel — the
-// route's `historyId` param when sitting on /histories/:historyId/graph.
-const selectedHistories = computed(() => {
-    const id = route.params.historyId as string | undefined;
-    return id ? [{ id }] : [];
-});
+// route's `historyId` param when sitting on /histories/:historyId/graph. Pass
+// `null` (no match) when off that route so no row is highlighted, instead of
+// falling back to the store's currentHistoryId.
+const highlightId = computed(() => (route.params.historyId as string | undefined) ?? null);
 
 function setFilter(newFilter: string, newValue: string) {
     filter.value = HistoriesFilters.setFilterValue(filter.value, newFilter, newValue);
@@ -51,7 +50,7 @@ function openGraph(history: HistorySummary) {
             v-show="!showAdvanced"
             :filter="filter"
             :loading.sync="loading"
-            :selected-histories="selectedHistories"
+            :current-item-id="highlightId"
             @setFilter="setFilter"
             @selectHistory="openGraph" />
     </ActivityPanel>
