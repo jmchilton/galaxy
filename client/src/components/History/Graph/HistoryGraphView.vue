@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { faClock } from "@fortawesome/free-regular-svg-icons";
-import { faBezierCurve } from "@fortawesome/free-solid-svg-icons";
+import { faBezierCurve, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BNav, BNavItem } from "bootstrap-vue";
+import { storeToRefs } from "pinia";
 import { computed, ref, toRef } from "vue";
 
 import type { GraphNode } from "@/components/Graph/types";
@@ -15,6 +16,7 @@ import { useHistoryGraphData } from "./useHistoryGraphData";
 import HistoryGraphOverview from "./HistoryGraphOverview.vue";
 import HistoryGraphReport from "./HistoryGraphReport.vue";
 import HistoryGraphToolRequests from "./HistoryGraphToolRequests.vue";
+import GButton from "@/components/BaseComponents/GButton.vue";
 import NavigationTitle from "@/components/Common/NavigationTitle.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import UtcDate from "@/components/UtcDate.vue";
@@ -31,8 +33,15 @@ const props = defineProps<Props>();
 
 // History summary — feeds the title and the collapsible info block.
 const historyStore = useHistoryStore();
+const { currentHistoryId } = storeToRefs(historyStore);
 const history = computed(() => historyStore.getHistoryById(props.historyId));
 const historyName = computed(() => history.value?.name ?? "...");
+
+// Whether this is the user's current history — drives the Switch to / Current button.
+const isCurrent = computed(() => currentHistoryId.value === props.historyId);
+async function switchHistory() {
+    await historyStore.setCurrentHistory(props.historyId);
+}
 
 // Collapsible header info block.
 const { toggled: headerCollapsed, toggle: toggleHeaderCollapse } = usePersistentToggle(
@@ -88,6 +97,27 @@ const toolRequestNodes = computed<GraphNode[]>(() =>
                 collapsible
                 :collapsed="headerCollapsed"
                 @toggle="toggleHeaderCollapse">
+                <template v-slot:actions>
+                    <GButton
+                        v-if="isCurrent"
+                        disabled
+                        size="small"
+                        color="blue"
+                        tooltip
+                        title="This history is your current history">
+                        Current
+                    </GButton>
+                    <GButton
+                        v-else
+                        size="small"
+                        color="blue"
+                        tooltip
+                        title="Set as current history"
+                        @click="switchHistory">
+                        <FontAwesomeIcon :icon="faExchangeAlt" fixed-width />
+                        Set as Current
+                    </GButton>
+                </template>
                 <template v-slot:collapsible>
                     <div v-if="history" class="history-graph-info px-2 py-1 small text-muted">
                         <i data-description="history graph time info">
