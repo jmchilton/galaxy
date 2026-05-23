@@ -4214,6 +4214,12 @@ class ToolRequestState(str, Enum):
     FAILED = "failed"
 
 
+# Distinct id-cipher namespace for ToolExecutionState-backed producer nodes so
+# they cannot collide with same-pk historical ToolRequest nodes. Must stay
+# under the IdEncodingHelper kind-length guard.
+TOOL_EXECUTION_STATE_ENCODE_KIND = "tool_exec_st"
+
+
 class ToolExecutionStateValidity(str, Enum):
     """Validity of the request_internal payload captured on ToolExecutionState.
 
@@ -4253,6 +4259,20 @@ class ToolRequestImplicitCollectionReference(Model):
 class ToolRequestDetailedModel(ToolRequestModel):
     jobs: list[ToolRequestJobReference] = Field(default=[])
     implicit_collections: list[ToolRequestImplicitCollectionReference] = Field(default=[])
+
+
+class ToolExecutionModel(Model):
+    """Read-only projection of a ``ToolExecutionState`` row for the
+    ``/api/tool_executions/{id}`` surface — the captured request_internal
+    payload of a tool execution event. Source-neutral over async-API tool
+    requests and workflow tool-step captures."""
+
+    id: str = Field(title="ID", description="Encoded ID of the tool execution state")
+    create_time: Optional[datetime] = None
+    update_time: Optional[datetime] = None
+    request: Optional[dict[str, Any]] = None
+    state: Optional[ToolExecutionStateValidity] = None
+    jobs: list[ToolRequestJobReference] = Field(default=[])
 
 
 class AsyncFile(Model):

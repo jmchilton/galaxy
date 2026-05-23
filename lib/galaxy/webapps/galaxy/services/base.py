@@ -10,6 +10,7 @@ from typing import (
 from galaxy.exceptions import (
     AuthenticationRequired,
     ConfigDoesNotAllowException,
+    InconsistentDatabase,
 )
 from galaxy.managers.base import (
     decode_with_security,
@@ -21,6 +22,7 @@ from galaxy.managers.base import (
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.model_stores import create_objects_from_store
 from galaxy.model import (
+    ToolExecutionState,
     ToolRequest,
     User,
 )
@@ -30,6 +32,8 @@ from galaxy.model.store import (
 )
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
+    TOOL_EXECUTION_STATE_ENCODE_KIND,
+    ToolExecutionModel,
     ToolRequestDetailedModel,
     ToolRequestModel,
 )
@@ -44,6 +48,7 @@ from galaxy.tool_util.parameters import (
 )
 from galaxy.tool_util.parameters.state import RequestInternalToolState
 from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.toolbox import AbstractToolBox
 from galaxy.util import ready_name_for_url
 
 
@@ -182,22 +187,47 @@ class ConsumesModelStores:
         )
 
 
-def _encode_tool_request(tool_request: ToolRequest, security: IdEncodingHelper) -> dict[str, Any]:
-    """Encode request IDs using strongly-typed parameter walking."""
-    tool_source_model = tool_request.tool_source
-    raw_tool_source = cast(str, tool_source_model.source)
-    parsed_tool_source = get_tool_source(
-        tool_source_class=tool_source_model.source_class,
-        raw_tool_source=raw_tool_source,
-    )
+def _encode_request_payload(payload: dict, parsed_tool_source, security: IdEncodingHelper) -> dict[str, Any]:
+    """Encode HDA/HDCA ids in a request_internal payload using strongly-typed
+    parameter walking. ``parsed_tool_source`` is a tool-parser instance (the
+    parameter bundle is derived from it)."""
     parameter_bundle = input_models_for_tool_source(parsed_tool_source)
-    internal_state = RequestInternalToolState(tool_request.request)
+    internal_state = RequestInternalToolState(payload or {})
     encoded_state = encode_request(internal_state, parameter_bundle, security.encode_id)
     return encoded_state.input_state
 
 
+def _parsed_tool_source_from_row(tool_source_model) -> Any:
+    """Parse a persisted ``ToolSource`` row into a tool-parser instance."""
+    raw_tool_source = cast(str, tool_source_model.source)
+    return get_tool_source(
+        tool_source_class=tool_source_model.source_class,
+        raw_tool_source=raw_tool_source,
+    )
+
+
+def _parsed_tool_source_for_tes(tes: ToolExecutionState, toolbox: Optional[AbstractToolBox]) -> Any:
+    """Resolve the tool-parser instance for a ``ToolExecutionState``.
+
+    Two paths: an async-API mint links a ``ToolSource`` row via its
+    ``ToolRequest`` (the parser is reconstructable from the persisted
+    source string); a workflow tool-step capture has no ``ToolRequest``,
+    so the parser is fetched off the live toolbox via the associated
+    ``Job.tool_id`` / ``tool_version``."""
+    if tes.tool_requests:
+        return _parsed_tool_source_from_row(tes.tool_requests[0].tool_source)
+    if toolbox is not None:
+        for job in tes.jobs:
+            if job.tool_id:
+                tool = toolbox.get_tool(job.tool_id, tool_version=job.tool_version)
+                if tool is not None:
+                    return tool.tool_source
+    raise InconsistentDatabase(f"Cannot determine tool source for tool_execution_state id={tes.id}")
+
+
 def tool_request_to_model(tool_request: ToolRequest, security: IdEncodingHelper) -> ToolRequestModel:
-    encoded_request = _encode_tool_request(tool_request, security)
+    parsed = _parsed_tool_source_from_row(tool_request.tool_source)
+    encoded_request = _encode_request_payload(tool_request.request, parsed, security)
     as_dict = {
         "id": tool_request.id,
         "request": encoded_request,
@@ -208,7 +238,8 @@ def tool_request_to_model(tool_request: ToolRequest, security: IdEncodingHelper)
 
 
 def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodingHelper) -> ToolRequestDetailedModel:
-    encoded_request = _encode_tool_request(tool_request, security)
+    parsed = _parsed_tool_source_from_row(tool_request.tool_source)
+    encoded_request = _encode_request_payload(tool_request.request, parsed, security)
     jobs = [{"src": "job", "id": job.id} for job in tool_request.jobs]
     implicit_collections = [
         {"src": "hdca", "id": assoc.dataset_collection.id, "output_name": assoc.output_name}
@@ -224,3 +255,29 @@ def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodi
     }
     model = ToolRequestDetailedModel.model_validate(as_dict)
     return model
+
+
+def tool_execution_to_model(
+    tes: ToolExecutionState,
+    security: IdEncodingHelper,
+    toolbox: Optional[AbstractToolBox],
+) -> ToolExecutionModel:
+    """Serialize a ``ToolExecutionState`` for the read-only
+    ``/api/tool_executions/{id}`` surface. Source-neutral: encodes the
+    captured payload regardless of whether the row was minted by the
+    async tool-request API or by workflow tool-step capture."""
+    if tes.request:
+        parsed = _parsed_tool_source_for_tes(tes, toolbox)
+        encoded_request = _encode_request_payload(tes.request, parsed, security)
+    else:
+        encoded_request = None
+    jobs = [{"src": "job", "id": job.id} for job in tes.jobs]
+    as_dict = {
+        "id": security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND),
+        "create_time": tes.create_time,
+        "update_time": tes.update_time,
+        "request": encoded_request,
+        "state": tes.state,
+        "jobs": jobs,
+    }
+    return ToolExecutionModel.model_validate(as_dict)

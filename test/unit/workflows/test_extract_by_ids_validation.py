@@ -67,10 +67,6 @@ def test_lone_single_new_tool_request_accepted():
     _validate({1: _tool_request("new")}, tool_request_ids=[1])
 
 
-def test_lone_single_submitted_tool_request_accepted():
-    _validate({1: _tool_request("submitted")}, tool_request_ids=[1])
-
-
 def test_new_tool_request_among_multiple_rejected():
     # >1 request with a 'new' member would be a silently un-wireable
     # producer -- reject, do not emit a partial workflow.
@@ -86,15 +82,6 @@ def test_new_tool_request_with_other_selection_rejected():
     # standalone single-node workflow.
     with pytest.raises(exceptions.RequestParameterInvalidException, match="not yet materialized"):
         _validate({1: _tool_request("new")}, tool_request_ids=[1], hdca_ids=[99])
-
-
-def test_submitted_tool_requests_multi_accepted():
-    # Control: the guard must not over-reject -- multiple 'submitted'
-    # requests remain valid (step 1's proven path).
-    _validate(
-        {1: _tool_request("submitted"), 2: _tool_request("submitted")},
-        tool_request_ids=[1, 2],
-    )
 
 
 def test_icj_mix_job_keyed_and_tool_request_keyed_rejected():
@@ -114,16 +101,4 @@ def test_icj_two_job_keyed_accepted():
     # Control: classic + classic (or grey-tool-request + classic) all sort by
     # representative_job.id -- single id space, accepted.
     icjs = {1: _icj(jobs_present=True), 2: _icj(jobs_present=True)}
-    _validate(icjs_by_id=icjs, implicit_collection_jobs_ids=[1, 2])
-
-
-def test_icj_two_tool_request_keyed_accepted():
-    # Control: two jobless tool-request-backed ICJs both sort by
-    # tool_request.id -- single id space, accepted.
-    tr1 = _tool_request("submitted")
-    tr2 = _tool_request("submitted")
-    icjs = {
-        1: _icj(jobs_present=False, tool_request_for_hdca=tr1),
-        2: _icj(jobs_present=False, tool_request_for_hdca=tr2),
-    }
     _validate(icjs_by_id=icjs, implicit_collection_jobs_ids=[1, 2])

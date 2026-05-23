@@ -41,7 +41,10 @@ from galaxy.managers.hdas import HDAManager
 from galaxy.managers.histories import HistoryManager
 from galaxy.managers.landing import LandingRequestManager
 from galaxy.managers.tools import ToolRunReference
-from galaxy.model import ToolRequest
+from galaxy.model import (
+    ToolExecutionState,
+    ToolRequest,
+)
 from galaxy.model.dataset_collections.workbook_util import workbook_to_bytes
 from galaxy.schema.fetch_data import (
     CreateDataLandingPayload,
@@ -53,6 +56,8 @@ from galaxy.schema.fields import DecodedDatabaseIdField
 from galaxy.schema.schema import (
     ClaimLandingPayload,
     CreateToolLandingRequestPayload,
+    TOOL_EXECUTION_STATE_ENCODE_KIND,
+    ToolExecutionModel,
     ToolLandingRequest,
     ToolRequestDetailedModel,
 )
@@ -92,7 +97,10 @@ from galaxy.web import (
 from galaxy.webapps.base.controller import UsesVisualizationMixin
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
 from galaxy.webapps.galaxy.api.common import serve_workbook
-from galaxy.webapps.galaxy.services.base import tool_request_detailed_to_model
+from galaxy.webapps.galaxy.services.base import (
+    tool_execution_to_model,
+    tool_request_detailed_to_model,
+)
 from galaxy.webapps.galaxy.services.tools import ToolsService
 from . import (
     APIContentTypeRoute,
@@ -341,6 +349,45 @@ class FetchTools:
         if tool_request is None:
             raise exceptions.ObjectNotFound()
         return tool_request
+
+    @router.get(
+        "/api/tool_executions/{id}",
+        summary="Get the captured request state of a tool execution.",
+    )
+    def get_tool_execution(
+        self,
+        id: str = Path(..., title="ID", description="Encoded ID of the tool execution state."),
+        trans: ProvidesHistoryContext = DependsOnTrans,
+    ) -> ToolExecutionModel:
+        tes = self._get_tool_execution_or_raise_not_found(trans, id)
+        self._error_unless_tool_execution_accessible(trans, tes)
+        return tool_execution_to_model(tes, trans.security, trans.app.toolbox)
+
+    def _get_tool_execution_or_raise_not_found(self, trans: ProvidesHistoryContext, id: str) -> ToolExecutionState:
+        decoded_id = trans.security.decode_id(id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
+        tes = trans.app.model.context.get(ToolExecutionState, decoded_id)
+        if tes is None:
+            raise exceptions.ObjectNotFound()
+        return tes
+
+    def _error_unless_tool_execution_accessible(self, trans: ProvidesHistoryContext, tes: ToolExecutionState) -> None:
+        histories = [tool_request.history for tool_request in tes.tool_requests if tool_request.history is not None]
+        histories.extend(job.history for job in tes.jobs if job.history is not None)
+        histories.extend(
+            workflow_invocation.history
+            for step in tes.workflow_invocation_steps
+            if (workflow_invocation := step.workflow_invocation) is not None and workflow_invocation.history is not None
+        )
+        if not histories:
+            raise exceptions.ObjectNotFound()
+        last_error: Optional[exceptions.ItemAccessibilityException] = None
+        for history in histories:
+            try:
+                trans.app.history_manager.error_unless_accessible(history, trans.user, current_history=trans.history)
+                return
+            except exceptions.ItemAccessibilityException as e:
+                last_error = e
+        raise last_error or exceptions.ItemAccessibilityException("Tool execution is not accessible by user")
 
     @router.post("/api/tool_landings", public=True, allow_cors=True)
     def create_landing(

@@ -1299,6 +1299,50 @@ class TestHistoryGraphApi(ApiTestCase, BaseHistories):
         assert body["truncated"]["scope_type"] == "seed_centered"
         assert ("hda", dataset["id"]) in {(n["src"], n["id"]) for n in body["nodes"]}
 
+    @skip_without_tool("cat1")
+    @skip_without_tool("empty_list")
+    def test_jobless_tool_request_output_collection_has_producer(self):
+        """An empty map-over mints a ToolRequest + TRICA output collection but
+        zero jobs. The history graph should still expose the producer edge and
+        request payload input edge through the API response."""
+        history_id = self.dataset_populator.new_history()
+        seed = self.dataset_populator.new_dataset(history_id, content="seed\n", wait=True)
+        empty_run = self.dataset_populator.run_tool(
+            "empty_list", {"input1": {"src": "hda", "id": seed["id"]}}, history_id
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        empty_hdca_id = empty_run["output_collections"][0]["id"]
+
+        response = self.dataset_populator.tool_request_raw(
+            "cat1",
+            {"input1": {"__class__": "Batch", "values": [{"src": "hdca", "id": empty_hdca_id}]}},
+            history_id,
+        )
+        self._assert_status_code_is_ok(response)
+        run_response = response.json()
+        tool_request_id = run_response["tool_request_id"]
+        self.dataset_populator.wait_on_task_object(run_response["task_result"])
+        assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+        assert self.galaxy_interactor.jobs_for_tool_request(tool_request_id) == []
+        tool_request = self.dataset_populator.get_tool_request(tool_request_id)
+        output_hdca_id = tool_request["implicit_collections"][0]["id"]
+
+        body = self.dataset_populator.get_history_graph(history_id)
+
+        assert ("tool_execution", tool_request_id) in {(n["src"], n["id"]) for n in body["nodes"]}
+        edges = {
+            (
+                edge["type"],
+                edge["source"]["src"],
+                edge["source"]["id"],
+                edge["target"]["src"],
+                edge["target"]["id"],
+            )
+            for edge in body["edges"]
+        }
+        assert ("collection_output", "tool_execution", tool_request_id, "hdca", output_hdca_id) in edges
+        assert ("collection_input", "hdca", empty_hdca_id, "tool_execution", tool_request_id) in edges
+
     # ── query-parameter validation (API-layer regex and bounds) ──
 
     @pytest.mark.parametrize(

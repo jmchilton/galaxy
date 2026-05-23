@@ -14,6 +14,7 @@ from typing import (
 )
 
 from sqlalchemy import (
+    or_,
     Select,
     select,
     union_all,
@@ -28,6 +29,7 @@ from galaxy.exceptions import (
 from galaxy.managers.workflow_request_state import (
     resolve_structured_request,
     ResolvedStructuredRequest,
+    tool_request_payload,
 )
 from galaxy.model import (
     Dataset,
@@ -38,6 +40,9 @@ from galaxy.model import (
     Job,
     JobToOutputDatasetAssociation,
     JobToOutputDatasetCollectionAssociation,
+    ToolRequest,
+    ToolRequestImplicitCollectionAssociation,
+    ToolSource,
 )
 from galaxy.schema.history_graph import (
     GraphEdge,
@@ -46,6 +51,7 @@ from galaxy.schema.history_graph import (
     NodeRef,
     TruncationInfo,
 )
+from galaxy.schema.schema import TOOL_EXECUTION_STATE_ENCODE_KIND
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.structured_app import MinimalManagerApp
 from galaxy.tool_util.parameters import RequestInternalToWorkflowStateError
@@ -54,17 +60,24 @@ from galaxy.tool_util.toolbox import AbstractToolBox
 
 log = logging.getLogger(__name__)
 
-TYPE_RANK = {"dataset": 0, "collection": 1, "tool_request": 2}
-EDGE_TYPE_RANK = {"dataset_input": 0, "dataset_output": 1, "collection_input": 2, "collection_output": 3}
+TYPE_RANK = {"dataset": 0, "collection": 1, "tool_execution": 2}
+EDGE_TYPE_RANK = {
+    "dataset_input": 0,
+    "dataset_output": 1,
+    "collection_input": 2,
+    "collection_output": 3,
+    "dataset_element": 4,
+}
 # Internal node-type token -> public src value. The internal tokens
 # ("dataset"/"collection") stay because they mirror request payload
 # content_type; only the wire boundary speaks src.
-NODE_SRC: dict[str, str] = {"dataset": "hda", "collection": "hdca", "tool_request": "tool_request"}
-# Distinct id-cipher namespace for ToolExecutionState-backed producer
-# nodes so they cannot collide with same-pk historical ToolRequest nodes.
-# Must stay < 15 chars (IdEncodingHelper kind-length guard).
-TOOL_EXECUTION_STATE_ENCODE_KIND = "tool_exec_st"
+NODE_SRC: dict[str, str] = {"dataset": "hda", "collection": "hdca", "tool_execution": "tool_execution"}
 MAX_LIMIT = 1000
+
+# Tool ids that represent infrastructure operations (uploads, metadata setting,
+# etc.) rather than user-level lineage steps. Jobs with these tool_ids are
+# excluded from producer lookups so they do not appear as nodes or edges.
+SYNTHETIC_TOOL_IDS: tuple[str, ...] = ("__DATA_FETCH__",)
 
 
 class HistoryGraphManager:
@@ -103,7 +116,8 @@ class HistoryGraphBuilder:
     - HDA producer edges come from JobToOutputDatasetAssociation joined
       to Job.
     - HDCA producer edges come from JobToOutputDatasetCollectionAssociation
-      joined to Job.
+      joined to Job, plus ToolRequestImplicitCollectionAssociation for
+      jobless tool-request-backed collection outputs.
     - Input edges come from the resolved structured-request payload
       (ToolExecutionState for new executions, ToolRequest for historical
       pre-EXEC_STATE rows), reached uniformly via
@@ -165,7 +179,7 @@ class HistoryGraphBuilder:
         #    via the unified seam. Two source kinds reach the wire:
         #    'tool_execution_state' (the EXEC_STATE walk, new executions) and
         #    'tool_request' (transitional historical fallback). Both render
-        #    as wire src "tool_request" - the source-kind distinction lives
+        #    as wire src "tool_execution" - the source-kind distinction lives
         #    in the cipher kind, so same-pk rows in the two tables never
         #    collide.
         edges: list[GraphEdge] = []
@@ -193,6 +207,23 @@ class HistoryGraphBuilder:
                 closure_dataset_ids,
                 closure_collection_ids,
             )
+
+        # Collection element membership: each visible HDA that is (transitively)
+        # an element of a seed HDCA gets a ``dataset_element`` edge to that
+        # HDCA, surfacing the build-collection-from-datasets step that has
+        # no producer of its own. Scoped to seed ``collection_ids``, not the
+        # payload-pulled closure HDCAs — bounds the walk to the user-visible
+        # selection window.
+        for hda_id, hdca_id in self._collection_element_edges(collection_ids):
+            edges.append(
+                GraphEdge(
+                    source=self._ref("dataset", hda_id),
+                    target=self._ref("collection", hdca_id),
+                    type="dataset_element",
+                )
+            )
+            if hda_id not in dataset_ids:
+                closure_dataset_ids.add(hda_id)
 
         # 4. Filter closure items by the same deleted policy as seed selection.
         if not self.include_deleted and (closure_dataset_ids or closure_collection_ids):
@@ -321,7 +352,7 @@ class HistoryGraphBuilder:
         dict[tuple[str, int], Optional[str]],
         dict[tuple[str, int], dict],
     ]:
-        """One pass: every producer Job -> structured request via the seam.
+        """One pass: every producer execution -> structured request via the seam.
 
         Returns:
         - ``producers``: ``item_key -> (source, source_id)`` for items with
@@ -345,7 +376,9 @@ class HistoryGraphBuilder:
             return producers, producer_meta, payloads
 
         item_jobs: list[tuple[tuple[str, int], int, Optional[str]]] = []
+        item_tool_requests: list[tuple[tuple[str, int], int, Optional[str]]] = []
         job_ids: set[int] = set()
+        tool_request_ids: set[int] = set()
         if dataset_ids:
             stmt = (
                 select(
@@ -357,7 +390,7 @@ class HistoryGraphBuilder:
                 .where(
                     JobToOutputDatasetAssociation.dataset_id.in_(dataset_ids),
                     Job.tool_id.isnot(None),
-                    Job.tool_id != "__DATA_FETCH__",
+                    Job.tool_id.notin_(SYNTHETIC_TOOL_IDS),
                 )
             )
             for row in self.sa_session.execute(stmt):
@@ -374,16 +407,32 @@ class HistoryGraphBuilder:
                 .where(
                     JobToOutputDatasetCollectionAssociation.dataset_collection_id.in_(collection_ids),
                     Job.tool_id.isnot(None),
-                    Job.tool_id != "__DATA_FETCH__",
+                    Job.tool_id.notin_(SYNTHETIC_TOOL_IDS),
                 )
             )
             for row in self.sa_session.execute(stmt):
                 item_jobs.append((("collection", row.item_id), row.job_id, row.tool_id))
                 job_ids.add(row.job_id)
-        if not job_ids:
+            stmt = (
+                select(
+                    ToolRequestImplicitCollectionAssociation.dataset_collection_id.label("item_id"),
+                    ToolRequest.id.label("tool_request_id"),
+                    ToolSource.tool_id,
+                )
+                .join(ToolRequest, ToolRequest.id == ToolRequestImplicitCollectionAssociation.tool_request_id)
+                .join(ToolSource, ToolSource.id == ToolRequest.tool_source_id)
+                .where(
+                    ToolRequestImplicitCollectionAssociation.dataset_collection_id.in_(collection_ids),
+                    or_(ToolSource.tool_id.is_(None), ToolSource.tool_id.notin_(SYNTHETIC_TOOL_IDS)),
+                )
+            )
+            for row in self.sa_session.execute(stmt):
+                item_tool_requests.append((("collection", row.item_id), row.tool_request_id, row.tool_id))
+                tool_request_ids.add(row.tool_request_id)
+        if not job_ids and not tool_request_ids:
             return producers, producer_meta, payloads
 
-        jobs = {j.id: j for j in self.sa_session.scalars(select(Job).where(Job.id.in_(job_ids)))}
+        jobs = {j.id: j for j in self.sa_session.scalars(select(Job).where(Job.id.in_(job_ids)))} if job_ids else {}
         resolved_by_job: dict[int, Optional[ResolvedStructuredRequest]] = {}
         for job_id in job_ids:
             job = jobs.get(job_id)
@@ -401,10 +450,42 @@ class HistoryGraphBuilder:
                 resolved = None
             resolved_by_job[job_id] = resolved
 
+        tool_requests = (
+            {
+                tr.id: tr
+                for tr in self.sa_session.scalars(select(ToolRequest).where(ToolRequest.id.in_(tool_request_ids)))
+            }
+            if tool_request_ids
+            else {}
+        )
+        resolved_by_tool_request: dict[int, Optional[ResolvedStructuredRequest]] = {}
+        for tool_request_id in tool_request_ids:
+            tool_request = tool_requests.get(tool_request_id)
+            if tool_request is None:
+                resolved_by_tool_request[tool_request_id] = None
+                continue
+            try:
+                resolved = ResolvedStructuredRequest(
+                    "tool_request",
+                    tool_request.id,
+                    tool_request_payload(tool_request),
+                )
+            except RequestInternalToWorkflowStateError:
+                log.debug("history_graph: malformed structured request for tool_request %d", tool_request_id)
+                resolved = None
+            resolved_by_tool_request[tool_request_id] = resolved
+
         # item_key -> {(source, source_id): tool_id}; ambiguity rule = >1 distinct.
         candidates: dict[tuple[str, int], dict[tuple[str, int], Optional[str]]] = {}
         for item_key, job_id, tool_id in item_jobs:
             resolved = resolved_by_job.get(job_id)
+            if resolved is None:
+                continue
+            producer_id = (resolved.source, resolved.source_id)
+            candidates.setdefault(item_key, {})[producer_id] = tool_id
+            payloads.setdefault(producer_id, resolved.payload)
+        for item_key, tool_request_id, tool_id in item_tool_requests:
+            resolved = resolved_by_tool_request.get(tool_request_id)
             if resolved is None:
                 continue
             producer_id = (resolved.source, resolved.source_id)
@@ -480,6 +561,59 @@ class HistoryGraphBuilder:
             else:
                 result.add((ref_type, ref_id))
         return result
+
+    def _collection_element_edges(self, hdca_ids: set[int]) -> set[tuple[int, int]]:
+        """Walk each HDCA's collection tree and return ``(hda_id, hdca_id)``
+        pairs for every visible leaf HDA element. Hidden elements are
+        suppressed, mirroring ``_remove_hidden_elements``. Nested collections
+        are traversed transparently: intermediate ``child_collection``s do not
+        get HDCA nodes, so leaf HDAs wire directly to the top-level HDCA they
+        belong to."""
+        if not hdca_ids:
+            return set()
+
+        root_stmt = select(
+            HistoryDatasetCollectionAssociation.id,
+            HistoryDatasetCollectionAssociation.collection_id,
+        ).where(HistoryDatasetCollectionAssociation.id.in_(hdca_ids))
+        roots = {row.collection_id: row.id for row in self.sa_session.execute(root_stmt)}
+        if not roots:
+            return set()
+
+        edges: set[tuple[int, int]] = set()
+        dc_to_root: dict[int, int] = dict(roots)
+        frontier: set[int] = set(roots.keys())
+        seen: set[int] = set()
+        while frontier:
+            stmt = select(
+                DatasetCollectionElement.dataset_collection_id,
+                DatasetCollectionElement.hda_id,
+                DatasetCollectionElement.child_collection_id,
+            ).where(DatasetCollectionElement.dataset_collection_id.in_(frontier))
+            next_frontier: set[int] = set()
+            for row in self.sa_session.execute(stmt):
+                root_hdca = dc_to_root[row.dataset_collection_id]
+                if row.hda_id is not None:
+                    edges.add((row.hda_id, root_hdca))
+                elif row.child_collection_id is not None and row.child_collection_id not in seen:
+                    dc_to_root[row.child_collection_id] = root_hdca
+                    next_frontier.add(row.child_collection_id)
+            seen |= frontier
+            frontier = next_frontier - seen
+
+        # Suppress hidden elements: a tool-produced collection's internal
+        # element HDAs are hidden and must not surface as dataset nodes —
+        # mirrors ``_remove_hidden_elements``, without which the closure
+        # would re-add them.
+        if not edges:
+            return edges
+        leaf_hda_ids = {hda_id for hda_id, _ in edges}
+        visible_stmt = select(HistoryDatasetAssociation.id).where(
+            HistoryDatasetAssociation.id.in_(leaf_hda_ids),
+            HistoryDatasetAssociation.visible == True,  # noqa: E712
+        )
+        visible_ids = {row.id for row in self.sa_session.execute(visible_stmt)}
+        return {(hda_id, hdca_id) for hda_id, hdca_id in edges if hda_id in visible_ids}
 
     def _emit_input_edges(
         self,
@@ -568,13 +702,13 @@ class HistoryGraphBuilder:
 
     def _producer_nodes(self, producer_meta: dict[tuple[str, int], Optional[str]]) -> list[GraphNode]:
         """Producer nodes for both structured-request sources. Wire ``src``
-        is "tool_request" uniformly; the cipher kind embedded in the id
+        is "tool_execution" uniformly; the cipher kind embedded in the id
         distinguishes ToolExecutionState-backed producers from historical
         ToolRequest ones so same-pk rows in the two tables never collide.
         """
         return [
             GraphNode(
-                src="tool_request",
+                src="tool_execution",
                 id=self._producer_ref(source, source_id).id,
                 tool_id=tool_id,
             )
@@ -585,7 +719,7 @@ class HistoryGraphBuilder:
         toolbox = self.toolbox
         if toolbox is None:
             return
-        tool_ids = {n.tool_id for n in nodes if n.src == "tool_request" and n.tool_id}
+        tool_ids = {n.tool_id for n in nodes if n.src == "tool_execution" and n.tool_id}
         name_map: dict[str, str] = {}
         for tool_id in tool_ids:
             try:
@@ -595,7 +729,7 @@ class HistoryGraphBuilder:
             except MessageException:
                 pass
         for node in nodes:
-            if node.src == "tool_request" and node.tool_id and node.tool_id in name_map:
+            if node.src == "tool_execution" and node.tool_id and node.tool_id in name_map:
                 node.tool_name = name_map[node.tool_id]
 
     # ── Seed subgraph filter (in-memory only) ──
@@ -655,17 +789,16 @@ class HistoryGraphBuilder:
     def _producer_ref(self, source: str, source_id: int) -> NodeRef:
         """Encode a producer node for either structured-request source.
 
-        Wire ``src`` is "tool_request" uniformly (renaming the producer
-        concept is an EXEC_STATE follow-up). The cipher kind differs per
-        source so a ToolExecutionState and a historical ToolRequest with
-        the same integer pk never encode to the same node ref.
+        Wire ``src`` is "tool_execution" uniformly. The cipher kind differs
+        per source so a ToolExecutionState and a historical ToolRequest
+        with the same integer pk never encode to the same node ref.
         """
         if source == "tool_execution_state":
             encoded = self.security.encode_id(source_id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
         else:
             encoded = self.security.encode_id(source_id)
-        ref = NodeRef(src="tool_request", id=encoded)
-        self._sort_keys[ref] = (TYPE_RANK["tool_request"], source_id)
+        ref = NodeRef(src="tool_execution", id=encoded)
+        self._sort_keys[ref] = (TYPE_RANK["tool_execution"], source_id)
         return ref
 
     def _node(self, node_type: str, db_id: int, **fields) -> GraphNode:

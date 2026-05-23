@@ -10,9 +10,12 @@ from pydantic import (
 
 # Graph-local src vocabulary. Scoped to this context exactly as src is
 # scoped elsewhere in Galaxy (DataItemSourceType, src: Literal["job"],
-# etc.). "hda"/"hdca" align with the rest of the codebase; "tool_request"
-# is the graph's tool-execution node.
-NodeSrc = Literal["hda", "hdca", "tool_request"]
+# etc.). "hda"/"hdca" align with the rest of the codebase; "tool_execution"
+# is the graph's tool-execution producer node — sourced from a
+# ``ToolExecutionState`` row (or, for historical pre-EXEC_STATE rows, a
+# ``ToolRequest`` row) via the resolver. Distinct from the on-wire
+# ``ToolRequestModel`` async-submission resource at ``/api/tool_requests``.
+NodeSrc = Literal["hda", "hdca", "tool_execution"]
 
 
 class NodeRef(BaseModel):
@@ -46,7 +49,13 @@ class GraphNode(BaseModel):
 class GraphEdge(BaseModel):
     source: NodeRef
     target: NodeRef
-    type: Literal["dataset_input", "dataset_output", "collection_input", "collection_output"]
+    type: Literal[
+        "dataset_input",
+        "dataset_output",
+        "collection_input",
+        "collection_output",
+        "dataset_element",
+    ]
 
 
 class TruncationInfo(BaseModel):

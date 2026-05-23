@@ -5332,6 +5332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tool_executions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the captured request state of a tool execution. */
+        get: operations["get_tool_execution_api_tool_executions__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tool_landings": {
         parameters: {
             query?: never;
@@ -13524,7 +13541,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "dataset_input" | "dataset_output" | "collection_input" | "collection_output";
+            type: "dataset_input" | "dataset_output" | "collection_input" | "collection_output" | "dataset_element";
         };
         /** GraphNode */
         GraphNode: {
@@ -13544,7 +13561,7 @@ export interface components {
              * Src
              * @enum {string}
              */
-            src: "hda" | "hdca" | "tool_request";
+            src: "hda" | "hdca" | "tool_execution";
             /** State */
             state?: string | null;
             /** Tool Id */
@@ -19403,7 +19420,7 @@ export interface components {
              * Src
              * @enum {string}
              */
-            src: "hda" | "hdca" | "tool_request";
+            src: "hda" | "hdca" | "tool_execution";
         };
         /**
          * NotificationBroadcastUpdateRequest
@@ -24145,6 +24162,45 @@ export interface components {
              */
             values: string;
         };
+        /**
+         * ToolExecutionModel
+         * @description Read-only projection of a ``ToolExecutionState`` row for the
+         *     ``/api/tool_executions/{id}`` surface — the captured request_internal
+         *     payload of a tool execution event. Source-neutral over async-API tool
+         *     requests and workflow tool-step captures.
+         */
+        ToolExecutionModel: {
+            /** Create Time */
+            create_time?: string | null;
+            /**
+             * ID
+             * @description Encoded ID of the role
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * Jobs
+             * @default []
+             */
+            jobs: components["schemas"]["ToolRequestJobReference"][];
+            /** Request */
+            request?: {
+                [key: string]: unknown;
+            } | null;
+            state?: components["schemas"]["ToolExecutionStateValidity"] | null;
+            /** Update Time */
+            update_time?: string | null;
+        };
+        /**
+         * ToolExecutionStateValidity
+         * @description Validity of the request_internal payload captured on ToolExecutionState.
+         *
+         *     Persisted as the ``state`` column on ``tool_execution_state``; distinct
+         *     from ``ToolRequest.state`` (command lifecycle) and
+         *     ``WorkflowInvocationStep.state`` (invocation-step lifecycle).
+         * @enum {string}
+         */
+        ToolExecutionStateValidity: "not_validated" | "validated" | "validation_failed";
         /** ToolLandingRequest */
         ToolLandingRequest: {
             /** Origin */
@@ -40442,7 +40498,7 @@ export interface operations {
                 /** @description Include deleted datasets and collections. */
                 include_deleted?: boolean;
                 /** @description Optional: src of the node to focus the subgraph on. Provide with seed_id. */
-                seed_src?: ("hda" | "hdca" | "tool_request") | null;
+                seed_src?: ("hda" | "hdca" | "tool_execution") | null;
                 /** @description Optional: encoded id of the node to focus the subgraph on. Provide with seed_src. */
                 seed_id?: string | null;
                 /** @description Direction for seed-based subgraph extraction. */
@@ -47727,6 +47783,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToolDataDetails"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    get_tool_execution_api_tool_executions__id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description Encoded ID of the tool execution state. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolExecutionModel"];
                 };
             };
             /** @description Request Error */

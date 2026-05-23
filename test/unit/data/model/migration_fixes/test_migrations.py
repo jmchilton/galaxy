@@ -527,3 +527,81 @@ def test_28885b317f78(monkeypatch, session, make_user, make_history):
     )
     assert orphans == [], orphans
     session.close()  # Release locks before the autouse clear_database teardown.
+
+
+def test_29fe58dda936(monkeypatch, session, make_user, make_history):
+    """ToolSource dedupe preserves distinct execution identities."""
+    dburl = str(session.bind.url)
+    monkeypatch.setenv("GALAXY_CONFIG_OVERRIDE_DATABASE_CONNECTION", dburl)
+    monkeypatch.setenv("GALAXY_INSTALL_CONFIG_OVERRIDE_INSTALL_DATABASE_CONNECTION", dburl)
+    run_command(f"{COMMAND} init")
+    run_command(f"{COMMAND} downgrade 28885b317f78")
+
+    user = make_user()
+    history = make_history(user=user)
+
+    session.execute(text("INSERT INTO dynamic_tool (id) VALUES (10)"))
+    session.execute(text("INSERT INTO dynamic_tool (id) VALUES (11)"))
+    source_rows = [
+        # Same content + same static identity: collapse 2 into 1.
+        (1, "h", "XmlToolSource", "static_tool", "1.0", None),
+        (2, "h", "XmlToolSource", "static_tool", "1.0", None),
+        # Same content + different static version: keep separate.
+        (3, "h", "XmlToolSource", "static_tool", "2.0", None),
+        # Same content + different dynamic_tool rows: keep separate.
+        (4, "h", "XmlToolSource", "dynamic_tool", "1.0", 10),
+        (5, "h", "XmlToolSource", "dynamic_tool", "1.0", 11),
+        # Same content + same dynamic_tool row: collapse 6 into 4.
+        (6, "h", "XmlToolSource", "dynamic_tool", "1.0", 10),
+    ]
+    for source_id, source_hash, source_class, tool_id, tool_version, dynamic_tool_id in source_rows:
+        session.execute(
+            text(
+                "INSERT INTO tool_source "
+                "(id, source, source_class, hash, tool_id, tool_version, dynamic_tool_id) "
+                "VALUES (:id, :source, :source_class, :hash, :tool_id, :tool_version, :dynamic_tool_id)"
+            ),
+            {
+                "id": source_id,
+                "source": '{"xml": "<tool/>"}',
+                "source_class": source_class,
+                "hash": source_hash,
+                "tool_id": tool_id,
+                "tool_version": tool_version,
+                "dynamic_tool_id": dynamic_tool_id,
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO tool_request (id, tool_source_id, history_id, request, state) "
+                "VALUES (:id, :source_id, :history_id, '{}', 'submitted')"
+            ),
+            {"id": 100 + source_id, "source_id": source_id, "history_id": history.id},
+        )
+    session.commit()
+
+    run_command(f"{COMMAND} upgrade 29fe58dda936")
+    session.expire_all()
+
+    remaining_sources = {
+        r["id"]: r
+        for r in session.execute(
+            text("SELECT id, identity_hash, dynamic_tool_id FROM tool_source ORDER BY id")
+        ).mappings()
+    }
+    assert set(remaining_sources) == {1, 3, 4, 5}
+    assert all(r["identity_hash"] for r in remaining_sources.values())
+    assert remaining_sources[4]["identity_hash"] != remaining_sources[5]["identity_hash"]
+
+    request_links = {
+        r.id: r.tool_source_id for r in session.execute(text("SELECT id, tool_source_id FROM tool_request ORDER BY id"))
+    }
+    assert request_links == {
+        101: 1,
+        102: 1,
+        103: 3,
+        104: 4,
+        105: 5,
+        106: 4,
+    }
+    session.close()

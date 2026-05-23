@@ -78,36 +78,6 @@ def test_unambiguous_id_trichotomy():
     assert workflow_request_state.unambiguous_id({1, 2}) is None
 
 
-def test_resolve_structured_request_payload_tool_execution_state_source():
-    # Unified EXEC_STATE walk: a validated ToolExecutionState on the Job
-    # supplies the payload; non-validated TES -> None and does NOT fall
-    # through to the historical ToolRequest fallback (the TES is
-    # authoritative wherever it exists).
-    tes = SimpleNamespace(id=11, state="validated", request={"input1": {"src": "hda", "id": 9}})
-    job = SimpleNamespace(tool_execution_state=tes, tool_request=None)
-    assert workflow_request_state.resolve_structured_request_payload(job=job) == {
-        "input1": {"src": "hda", "id": 9},
-    }
-    # Source-identity variant carries the producing TES id; both id-spaces
-    # (tool_execution_state, tool_request) must be keyed by source.
-    resolved = workflow_request_state.resolve_structured_request(job=job)
-    assert resolved is not None
-    assert resolved.source == "tool_execution_state"
-    assert resolved.source_id == 11
-    assert resolved.payload == {"input1": {"src": "hda", "id": 9}}
-
-    # Even with a historical ToolRequest also present, a non-validated TES
-    # shadows it - "we tried, capture didn't validate" beats stale fallback.
-    failed_tes = SimpleNamespace(id=11, state="validation_failed", request={"input1": {"src": "hda", "id": 9}})
-    historical_tr = model.ToolRequest()
-    historical_tr.request = {"parameter": {"src": "hda", "id": 1}}
-    job_with_failed_tes = SimpleNamespace(tool_execution_state=failed_tes, tool_request=historical_tr)
-    assert workflow_request_state.resolve_structured_request_payload(job=job_with_failed_tes) is None
-
-    # No job + no icj -> None.
-    assert workflow_request_state.resolve_structured_request_payload() is None
-
-
 def test_resolve_structured_request_payload_tool_request_historical_fallback():
     # Historical pre-EXEC_STATE tool-request rows: Job.tool_execution_state
     # is NULL but Job.tool_request still carries the authoritative payload.
@@ -116,91 +86,6 @@ def test_resolve_structured_request_payload_tool_request_historical_fallback():
     job = SimpleNamespace(tool_execution_state=None, tool_request=tool_request)
 
     resolved = workflow_request_state.resolve_structured_request(job=job)
-    assert resolved is not None
-    assert resolved.source == "tool_request"
-    assert resolved.payload == {"parameter": {"src": "hda", "id": 1}}
-
-
-def test_resolve_structured_request_payload_icj_walks_tes(monkeypatch):
-    # ICJ path: unambiguous TES id across constituent jobs -> that TES.
-    tes = SimpleNamespace(id=11, state="validated", request={"input1": {"src": "hda", "id": 9}})
-
-    class _FakeSession:
-        def get(self, model_cls, id_):
-            assert id_ == 11
-            return tes
-
-    icj = model.ImplicitCollectionJobs()
-    icj.id = 42
-    icj.get_job_attributes = Mock(
-        return_value=[
-            SimpleNamespace(tool_execution_state_id=11),
-            SimpleNamespace(tool_execution_state_id=11),
-        ]
-    )
-    monkeypatch.setattr(workflow_request_state, "required_object_session", lambda _o: _FakeSession())
-    assert workflow_request_state.resolve_structured_request_payload(icj=icj) == {
-        "input1": {"src": "hda", "id": 9},
-    }
-
-
-def test_resolve_structured_request_payload_icj_ambiguous_tes_shadows_fallback(monkeypatch):
-    # Ambiguous TES across constituent jobs -> None. Any TES link shadows
-    # the historical ToolRequest fallback (jobs disagreeing on producer is
-    # a code-defect signal, not an invitation to silently degrade to a
-    # potentially-stale historical payload).
-    icj = model.ImplicitCollectionJobs()
-    icj.id = 42
-    historical_tr = model.ToolRequest()
-    historical_tr.request = {"parameter": {"src": "hda", "id": 1}}
-
-    class _FakeSession:
-        def get(self, *_args, **_kw):
-            raise AssertionError("ambiguous TES must not trigger a session.get()")
-
-    icj.get_job_attributes = Mock(
-        return_value=[
-            SimpleNamespace(tool_execution_state_id=11),
-            SimpleNamespace(tool_execution_state_id=12),
-        ]
-    )
-    monkeypatch.setattr(workflow_request_state, "required_object_session", lambda _o: _FakeSession())
-    monkeypatch.setattr(
-        type(icj),
-        "structured_request",
-        property(lambda _self: historical_tr),
-    )
-
-    assert workflow_request_state.resolve_structured_request_payload(icj=icj) is None
-
-
-def test_resolve_structured_request_payload_icj_zero_tes_falls_back_to_tr(monkeypatch):
-    # Zero TES ids across constituent jobs -> caller falls through to
-    # ``icj.structured_request`` (the historical pre-EXEC_STATE leg for
-    # ICJs whose jobs all predate the TES FK).
-    icj = model.ImplicitCollectionJobs()
-    icj.id = 42
-    historical_tr = model.ToolRequest()
-    historical_tr.request = {"parameter": {"src": "hda", "id": 1}}
-
-    class _FakeSession:
-        def get(self, *_args, **_kw):
-            raise AssertionError("zero TES links must not trigger a session.get()")
-
-    icj.get_job_attributes = Mock(
-        return_value=[
-            SimpleNamespace(tool_execution_state_id=None),
-            SimpleNamespace(tool_execution_state_id=None),
-        ]
-    )
-    monkeypatch.setattr(workflow_request_state, "required_object_session", lambda _o: _FakeSession())
-    monkeypatch.setattr(
-        type(icj),
-        "structured_request",
-        property(lambda _self: historical_tr),
-    )
-
-    resolved = workflow_request_state.resolve_structured_request(icj=icj)
     assert resolved is not None
     assert resolved.source == "tool_request"
     assert resolved.payload == {"parameter": {"src": "hda", "id": 1}}

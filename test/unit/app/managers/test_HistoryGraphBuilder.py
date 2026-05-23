@@ -62,7 +62,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         )
 
     def _encode(self, prefix, db_id):
-        src = {"d": "hda", "c": "hdca", "r": "tool_request"}[prefix]
+        src = {"d": "hda", "c": "hdca", "r": "tool_execution"}[prefix]
         return NodeRef(src=src, id=self.app.security.encode_id(db_id))
 
     def _create_history(self):
@@ -76,18 +76,23 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         self.trans.sa_session.flush()
         return hda
 
-    def _create_tool_source(self):
+    def _create_tool_source(self, tool_id="test_tool", tool_version="1.0"):
         ts = model.ToolSource()
-        ts.hash = "abc123"
+        ts.hash = uuid4().hex
+        ts.identity_hash = uuid4().hex
         ts.source = {"xml": "<tool/>"}
         ts.source_class = "XmlToolSource"
+        ts.tool_id = tool_id
+        ts.tool_version = tool_version
         session = self.trans.sa_session
         session.add(ts)
         session.flush()
         return ts
 
-    def _create_tool_request(self, history, request_data=None, state="submitted"):
-        ts = self._create_tool_source()
+    def _create_tool_request(
+        self, history, request_data=None, state="submitted", tool_id="test_tool", tool_version="1.0"
+    ):
+        ts = self._create_tool_source(tool_id=tool_id, tool_version=tool_version)
         tr = model.ToolRequest()
         tr.tool_source_id = ts.id
         tr.history_id = history.id
@@ -222,7 +227,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         assert len(graph.edges) == 2  # dataset_input + dataset_output
 
         types = {n.src for n in graph.nodes}
-        assert types == {"hda", "tool_request"}
+        assert types == {"hda", "tool_execution"}
 
         edge_types = {e.type for e in graph.edges}
         assert edge_types == {"dataset_input", "dataset_output"}
@@ -260,7 +265,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         self._create_job(tool_request=tr, tool_id="__DATA_FETCH__")
 
         graph = self._build_graph(history)
-        tr_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        tr_nodes = [n for n in graph.nodes if n.src == "tool_execution"]
         assert len(tr_nodes) == 0
 
     def test_collection_node(self):
@@ -280,6 +285,76 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         collection_nodes = [n for n in graph.nodes if n.src == "hdca"]
         assert len(collection_nodes) == 1
         assert collection_nodes[0].collection_type == "list"
+
+    def test_dataset_element_edge_visible_hda(self):
+        """A visible HDA grouped into an HDCA gets a ``dataset_element`` edge."""
+        history, _ = self._create_history()
+        hda1 = self._create_hda(history, name="el1")
+        hda2 = self._create_hda(history, name="el2")
+        element_identifiers = self.build_element_identifiers([hda1, hda2])
+        hdca = self.collection_manager.create(
+            self.trans, history, "grouped", "list", element_identifiers=element_identifiers
+        )
+
+        graph = self._build_graph(history)
+        element_edges = [e for e in graph.edges if e.type == "dataset_element"]
+        hdca_ref = self._encode("c", hdca.id)
+        sources = {e.source for e in element_edges}
+        assert sources == {self._encode("d", hda1.id), self._encode("d", hda2.id)}
+        assert all(e.target == hdca_ref for e in element_edges)
+
+    def test_dataset_element_edge_hidden_hda_absent(self):
+        """Hidden element HDAs do not surface ``dataset_element`` edges."""
+        history, _ = self._create_history()
+        hda1 = self._create_hda(history, name="hidden_el")
+        element_identifiers = self.build_element_identifiers([hda1])
+        self.collection_manager.create(
+            self.trans, history, "hidden-elements", "list", element_identifiers=element_identifiers
+        )
+        hda1.visible = False
+        self.trans.sa_session.flush()
+
+        graph = self._build_graph(history)
+        element_edges = [e for e in graph.edges if e.type == "dataset_element"]
+        assert element_edges == []
+
+    def test_dataset_element_edge_nested_wires_to_top_level(self):
+        """Leaf HDA inside a nested child collection wires to the top-level HDCA."""
+        history, _ = self._create_history()
+        leaf = self._create_hda(history, name="leaf")
+        leaf.visible = True
+        session = self.trans.sa_session
+
+        inner = model.DatasetCollection(collection_type="list")
+        session.add(inner)
+        session.flush()
+        inner_element = model.DatasetCollectionElement(
+            collection=inner,
+            element=leaf,
+            element_index=0,
+            element_identifier="leaf",
+        )
+        session.add(inner_element)
+        outer = model.DatasetCollection(collection_type="list:list")
+        session.add(outer)
+        session.flush()
+        outer_element = model.DatasetCollectionElement(
+            collection=outer,
+            element=inner,
+            element_index=0,
+            element_identifier="inner",
+        )
+        session.add(outer_element)
+        hdca = model.HistoryDatasetCollectionAssociation(name="nested", collection=outer)
+        hdca.history = history
+        session.add(hdca)
+        session.flush()
+
+        graph = self._build_graph(history)
+        element_edges = [e for e in graph.edges if e.type == "dataset_element"]
+        assert len(element_edges) == 1
+        assert element_edges[0].source == self._encode("d", leaf.id)
+        assert element_edges[0].target == self._encode("c", hdca.id)
 
     def test_element_input_resolves_to_top_level_item(self):
         """When a tool consumes an element HDA that is also a top-level history
@@ -558,7 +633,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         # pull in the other side so the tool_request is complete.
         graph = self._build_graph(history, limit=1)
 
-        tr_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        tr_nodes = [n for n in graph.nodes if n.src == "tool_execution"]
         assert len(tr_nodes) == 1
         assert graph.truncated.item_count_capped is True
 
@@ -977,6 +1052,32 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
             "HDCA producer edge must come from JobToOutputDatasetCollectionAssociation even when HDCA.job_id is None"
         )
 
+    def test_jobless_trica_only_hdca_has_producer_and_input_edges(self):
+        """A jobless tool-request-backed output collection, such as empty
+        map-over, only has a TRICA row and still needs producer provenance.
+        """
+        history, _ = self._create_history()
+        input_hda = self._create_hda(history, name="input")
+        hdca = self.collection_manager.create(self.trans, history, "empty mapped out", "list", element_identifiers=[])
+        assert hdca.job_id is None
+
+        tr = self._create_tool_request(
+            history,
+            request_data={"inputs": [{"src": "hda", "id": input_hda.id}]},
+            tool_id="empty_map_tool",
+        )
+        self._link_implicit_collection(tr, hdca)
+
+        graph = self._build_graph(history)
+
+        tr_enc = self._encode("r", tr.id)
+        edges = {(e.type, e.source, e.target) for e in graph.edges}
+        assert ("collection_output", tr_enc, self._encode("c", hdca.id)) in edges
+        assert ("dataset_input", self._encode("d", input_hda.id), tr_enc) in edges
+        producer_nodes = [n for n in graph.nodes if n.ref == tr_enc]
+        assert len(producer_nodes) == 1
+        assert producer_nodes[0].tool_id == "empty_map_tool"
+
     def test_n2_ambiguous_hdca_producer_has_node_but_no_edge(self):
         """Rule N2 dedupe fallback: when an HDCA resolves to ≥2 distinct
         producer tool_request_ids across the UNION branches, the builder
@@ -1111,7 +1212,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         graph = self._build_graph(history, seed_scope_hid=middle_hda.hid, limit=1)
 
         node_ids = {n.ref for n in graph.nodes}
-        tr_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        tr_nodes = [n for n in graph.nodes if n.src == "tool_execution"]
         assert len(tr_nodes) >= 1, "Expected at least one tool_request via closure"
 
         # For each tool_request in the graph, all its incident edges
@@ -1187,7 +1288,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
     def _tes_producer_node_id(self, tes):
         return NodeRef(
-            src="tool_request",
+            src="tool_execution",
             id=self.app.security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND),
         )
 
@@ -1202,7 +1303,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_execution"]
         assert len(producer_nodes) == 1
         prod = producer_nodes[0]
         assert prod.ref == self._tes_producer_node_id(tes)
@@ -1225,13 +1326,13 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_execution"]
         assert len(producer_nodes) == 1
         node_ref = producer_nodes[0].ref
         assert node_ref == NodeRef(
-            src="tool_request", id=self.app.security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
+            src="tool_execution", id=self.app.security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
         )
-        assert node_ref != NodeRef(src="tool_request", id=self.app.security.encode_id(tes.id))
+        assert node_ref != NodeRef(src="tool_execution", id=self.app.security.encode_id(tes.id))
 
     def test_tes_not_validated_degrades_no_producer_edge(self):
         """ToolExecutionState.state != 'validated' -> resolver returns
@@ -1251,7 +1352,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        assert [n for n in graph.nodes if n.src == "tool_request"] == []
+        assert [n for n in graph.nodes if n.src == "tool_execution"] == []
         assert graph.edges == []
         assert self._encode("d", output_hda.id) in {n.ref for n in graph.nodes}
 
@@ -1277,7 +1378,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        producer_nodes = [n for n in graph.nodes if n.src == "tool_request"]
+        producer_nodes = [n for n in graph.nodes if n.src == "tool_execution"]
         assert len(producer_nodes) == 1
         prod_ref = producer_nodes[0].ref
         assert prod_ref == self._tes_producer_node_id(tes)
@@ -1310,7 +1411,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
             "collection_input",
             "collection_output",
         }
-        assert {n.src for n in graph.nodes} <= {"hda", "hdca", "tool_request"}
+        assert {n.src for n in graph.nodes} <= {"hda", "hdca", "tool_execution"}
 
 
 # ── Scalability / Boundedness Tests ──
@@ -1347,7 +1448,7 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
         )
 
     def _encode(self, prefix, db_id):
-        src = {"d": "hda", "c": "hdca", "r": "tool_request"}[prefix]
+        src = {"d": "hda", "c": "hdca", "r": "tool_execution"}[prefix]
         return NodeRef(src=src, id=self.app.security.encode_id(db_id))
 
     def _create_history(self):
@@ -1363,7 +1464,8 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
 
     def _create_tool_source(self):
         ts = model.ToolSource()
-        ts.hash = "abc123"
+        ts.hash = uuid4().hex
+        ts.identity_hash = uuid4().hex
         ts.source = {"xml": "<tool/>"}
         ts.source_class = "XmlToolSource"
         session = self.trans.sa_session
@@ -1481,8 +1583,8 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
 
         # Items bounded by limit + closure (payload-driven closure can pull
         # in at most one extra input per representable TR).
-        item_nodes = [nd for nd in graph.nodes if nd.src != "tool_request"]
-        tr_nodes = [nd for nd in graph.nodes if nd.src == "tool_request"]
+        item_nodes = [nd for nd in graph.nodes if nd.src != "tool_execution"]
+        tr_nodes = [nd for nd in graph.nodes if nd.src == "tool_execution"]
         assert len(item_nodes) <= limit + len(tr_nodes)
 
         # Each TR has at least one edge
@@ -1563,7 +1665,7 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
         ), f"Element explosion: {len(dataset_nodes)} dataset nodes from {total_hidden_elements} hidden elements"
 
         # Collection-level edges present on representable TRs
-        tr_nodes = [nd for nd in graph.nodes if nd.src == "tool_request"]
+        tr_nodes = [nd for nd in graph.nodes if nd.src == "tool_execution"]
         for tr_node in tr_nodes:
             input_edges = [e for e in graph.edges if e.target == tr_node.ref]
             output_edges = [e for e in graph.edges if e.source == tr_node.ref]

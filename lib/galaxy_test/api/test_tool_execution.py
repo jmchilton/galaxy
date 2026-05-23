@@ -233,6 +233,42 @@ class TestToolExecution(ApiTestCase):
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset=job_output["dataset"])
             assert content == "Hello World!\nIt is me - a collection!\n"
 
+    @skip_without_tool("gx_int")
+    def test_tool_execution_endpoint_response_id_round_trips_and_enforces_history_access(self):
+        """Run an async tool_request, find its ``tool_execution`` node in the
+        history graph, then ``GET /api/tool_executions/{id}`` and assert the
+        captured payload + state come back with a round-trippable id. A
+        different user must not be able to fetch the same captured request."""
+        with self.dataset_populator.test_history() as history_id:
+            response = self._run("gx_int", history_id, {"parameter": 7})
+            assert_status_code_is_ok(response)
+            response_json = response.json()
+            tool_request_id = response_json.get("tool_request_id")
+            task_result = response_json["task_result"]
+            self.dataset_populator.wait_on_task_object(task_result)
+            self.dataset_populator.wait_on_tool_request(tool_request_id)
+            jobs = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+            self.dataset_populator.wait_for_jobs(jobs, assert_ok=True)
+
+            graph_resp = self._get(f"histories/{history_id}/graph")
+            assert_status_code_is_ok(graph_resp)
+            graph = graph_resp.json()
+            execution_nodes = [n for n in graph["nodes"] if n["src"] == "tool_execution"]
+            assert execution_nodes, f"expected a tool_execution node in {graph['nodes']}"
+            execution_id = execution_nodes[0]["id"]
+
+            tes_resp = self._get(f"tool_executions/{execution_id}")
+            assert_status_code_is_ok(tes_resp)
+            payload = tes_resp.json()
+            assert payload["id"] == execution_id
+            assert payload["state"] == "validated"
+            assert payload["request"]["parameter"] == 7
+            assert payload["jobs"] and payload["jobs"][0]["src"] == "job"
+
+            with self._different_user():
+                forbidden = self._get(f"tool_executions/{execution_id}")
+            self._assert_status_code_is(forbidden, 403)
+
     def _assert_request_validates(self, tool_id: str, history_id: str, inputs: dict[str, Any]):
         response = self._run(tool_id, history_id, inputs)
         assert response.status_code == 200
