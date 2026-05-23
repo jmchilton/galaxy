@@ -15,7 +15,7 @@ import { useHistoryGraphData } from "./useHistoryGraphData";
 
 import HistoryGraphOverview from "./HistoryGraphOverview.vue";
 import HistoryGraphReport from "./HistoryGraphReport.vue";
-import HistoryGraphToolRequests from "./HistoryGraphToolRequests.vue";
+import HistoryGraphToolExecutions from "./HistoryGraphToolExecutions.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
 import NavigationTitle from "@/components/Common/NavigationTitle.vue";
 import HistoryDatasetsBadge from "@/components/History/HistoryDatasetsBadge.vue";
@@ -73,8 +73,8 @@ const isTruncated = computed(() => graphData.value?.truncated?.item_count_capped
 // `tab` undefined means the Overview tab.
 const onOverviewTab = computed(() => !props.tab);
 
-// Tool request nodes feed the "Tool Executions" tab.
-const toolRequestNodes = computed<GraphNode[]>(() =>
+// Tool-execution nodes (backend node src is still `tool_request`) feed the Tool Executions tab.
+const toolExecutionNodes = computed<GraphNode[]>(() =>
     graphNodes.value.filter((node) => (node.data?.src as string) === "tool_request"),
 );
 </script>
@@ -86,7 +86,7 @@ const toolRequestNodes = computed<GraphNode[]>(() =>
         <BAlert v-else-if="graphNodes.length === 0" show variant="info" class="m-3">
             This history is empty. Add datasets or run tools to populate it.
         </BAlert>
-        <BAlert v-else-if="toolRequestNodes.length === 0" show variant="info" class="m-3">
+        <BAlert v-else-if="toolExecutionNodes.length === 0" show variant="info" class="m-3">
             No History Graph available. Please ensure that the History contains tool executions, and note that
             Galaxy started capturing the required tool execution data with release 26.1.
         </BAlert>
@@ -157,7 +157,7 @@ const toolRequestNodes = computed<GraphNode[]>(() =>
                     :edges="graphEdges"
                     :focus-node-id="focusNodeId"
                     :truncated="isTruncated" />
-                <HistoryGraphToolRequests v-else-if="props.tab === 'tool-requests'" :nodes="toolRequestNodes" />
+                <HistoryGraphToolExecutions v-else-if="props.tab === 'tool-requests'" :nodes="toolExecutionNodes" />
                 <HistoryGraphReport v-else-if="props.tab === 'report'" :history-id="historyId" />
             </div>
         </template>
