@@ -51,6 +51,7 @@ function openGraph(history: HistorySummary) {
             :filter="filter"
             :loading.sync="loading"
             :current-item-id="highlightId"
+            hide-deleted
             @setFilter="setFilter"
             @selectHistory="openGraph" />
     </ActivityPanel>

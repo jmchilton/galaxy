@@ -26,6 +26,8 @@ interface Props {
      *  Undefined falls back to the store's currentHistoryId; pass `null` to
      *  suppress the highlight entirely. */
     currentItemId?: string | null;
+    /** When true, drop deleted and purged histories from the rendered list. */
+    hideDeleted?: boolean;
     additionalOptions?: AdditionalOptions[];
     showModal?: boolean;
     inModal?: boolean;
@@ -37,6 +39,7 @@ const props = withDefaults(defineProps<Props>(), {
     multiple: false,
     selectedHistories: () => [],
     currentItemId: undefined,
+    hideDeleted: false,
     additionalOptions: () => [],
     showModal: false,
     inModal: false,
@@ -112,6 +115,9 @@ const filtered = computed<HistorySummary[]>(() => {
             }
             return true;
         });
+    }
+    if (props.hideDeleted) {
+        filteredHistories = filteredHistories.filter((h) => !h.deleted && !h.purged);
     }
     return filteredHistories.sort((a, b) => {
         if (!isMultiviewPanel.value && a.id == currentHistoryId.value) {
