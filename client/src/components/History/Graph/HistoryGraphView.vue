@@ -73,6 +73,13 @@ const toolRequestNodes = computed<GraphNode[]>(() =>
     <div class="history-graph-view">
         <BAlert v-if="error" variant="danger" show>{{ error }}</BAlert>
         <LoadingSpan v-else-if="loading" message="Loading history graph" />
+        <BAlert v-else-if="graphNodes.length === 0" show variant="info" class="m-3">
+            This history is empty. Add datasets or run tools to populate it.
+        </BAlert>
+        <BAlert v-else-if="toolRequestNodes.length === 0" show variant="info" class="m-3">
+            No History Graph available. Please ensure that the History contains tool executions, and note that
+            Galaxy started capturing the required tool execution data with release 26.1.
+        </BAlert>
         <template v-else>
             <NavigationTitle
                 :icon="faBezierCurve"

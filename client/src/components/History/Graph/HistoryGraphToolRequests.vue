@@ -37,7 +37,7 @@ function setExpanded(id: string, value: boolean) {
 <template>
     <div class="history-graph-tool-executions p-2">
         <BAlert v-if="nodes.length === 0" show variant="info" class="mb-0">
-            No tool executions found in this history graph.
+            No tool executions to show. Galaxy started capturing tool execution data with release 26.1.
         </BAlert>
         <template v-else>
             <FormCard
