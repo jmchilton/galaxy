@@ -18,6 +18,7 @@ import HistoryGraphReport from "./HistoryGraphReport.vue";
 import HistoryGraphToolRequests from "./HistoryGraphToolRequests.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
 import NavigationTitle from "@/components/Common/NavigationTitle.vue";
+import HistoryDatasetsBadge from "@/components/History/HistoryDatasetsBadge.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import UtcDate from "@/components/UtcDate.vue";
 
@@ -119,13 +120,15 @@ const toolRequestNodes = computed<GraphNode[]>(() =>
                     </GButton>
                 </template>
                 <template v-slot:collapsible>
-                    <div v-if="history" class="history-graph-info px-2 py-1 small text-muted">
+                    <div
+                        v-if="history"
+                        class="history-graph-info px-2 py-1 text-muted d-flex justify-content-between align-items-center">
+                        <HistoryDatasetsBadge :history-id="historyId" :count="history.count" />
                         <i data-description="history graph time info">
                             <FontAwesomeIcon :icon="faClock" class="mr-1" />
                             <span v-localize>updated</span>
                             <UtcDate :date="history.update_time" mode="elapsed" />
                         </i>
-                        <span class="ml-3">{{ history.count }} items</span>
                     </div>
                 </template>
             </NavigationTitle>
