@@ -63,7 +63,7 @@ const isTruncated = computed(() => graphData.value?.truncated?.item_count_capped
 // `tab` undefined means the Overview tab.
 const onOverviewTab = computed(() => !props.tab);
 
-// Tool request nodes feed the "Tool Requests" tab.
+// Tool request nodes feed the "Tool Executions" tab.
 const toolRequestNodes = computed<GraphNode[]>(() =>
     graphNodes.value.filter((node) => (node.data?.src as string) === "tool_request"),
 );
@@ -98,10 +98,10 @@ const toolRequestNodes = computed<GraphNode[]>(() =>
                     Overview
                 </BNavItem>
                 <BNavItem
-                    title="Tool Requests"
+                    title="Tool Executions"
                     :active="props.tab === 'tool-requests'"
                     :to="`/histories/${historyId}/graph/tool-requests`">
-                    Tool Requests
+                    Tool Executions
                 </BNavItem>
                 <BNavItem
                     title="AI Summary"
