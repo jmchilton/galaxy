@@ -22,13 +22,25 @@ const typeLabel = computed(() => (props.node?.data?.typeLabel as string) ?? "Ite
 
 <template>
     <BAlert v-if="!node" show variant="info" class="mb-0">{{ emptyText }}</BAlert>
-    <BCard v-else class="history-graph-node-card" no-body>
+    <BCard v-else class="history-graph-node-card h-100 d-flex flex-column" no-body>
         <BCardHeader class="d-flex align-items-center flex-gapx-1">
             <span class="font-weight-bold">{{ typeLabel }}</span>
             <span class="text-truncate text-muted">{{ node.label }}</span>
         </BCardHeader>
-        <BCardBody body-class="p-2">
+        <BCardBody body-class="p-2 graph-node-scroll-body">
             <HistoryGraphNodeBody :node="node" />
         </BCardBody>
     </BCard>
 </template>
+
+<style lang="scss" scoped>
+// Confine vertical scrolling to the card body so the header stays pinned and
+// nothing scrolls horizontally; :deep reaches through bootstrap-vue's
+// rendered .card-body element.
+:deep(.graph-node-scroll-body) {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+</style>

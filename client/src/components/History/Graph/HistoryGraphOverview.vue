@@ -68,26 +68,38 @@ function onNodeSelected(node: GraphNode | null) {
         <BAlert v-if="truncated" variant="warning" show class="mt-2 mb-0 py-1 text-center flex-shrink-0">
             Showing a partial graph. Not all connections are visible.
         </BAlert>
-        <HistoryGraphNodeDetails class="mt-2 flex-shrink-0" :node="selectedNode" />
+        <div class="details-pane mt-2">
+            <HistoryGraphNodeDetails :node="selectedNode" />
+        </div>
     </div>
 </template>
 
 <style lang="scss" scoped>
 @import "@/style/scss/theme/blue.scss";
 
-// Fill the tab container as a flex column so the graph pane absorbs exactly
-// the space left by the details card — no fixed height that overflows slightly.
+// Fixed 70/30 split: graph on top, details below. `overflow: hidden` on the
+// container keeps internal overflow from pushing the page, and `min-height: 0`
+// on the flex items lets them honour their flex-basis instead of stretching.
 .history-graph-overview {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    overflow: hidden;
 }
 
 .graph-pane {
     display: flex;
-    flex: 1;
-    min-height: 400px;
+    flex: 0 0 50%;
+    min-height: 0;
+}
+
+.details-pane {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 /* Tool request nodes use the primary header colour (no dataset state). */
