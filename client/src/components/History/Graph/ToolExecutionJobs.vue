@@ -19,8 +19,6 @@ interface Props {
     infoTitle?: string;
     /** Custom icon for the Information tab title (forwarded to JobDetailsTabs). */
     infoIcon?: IconDefinition;
-    /** Inline style for the Information tab title (forwarded to JobDetailsTabs). */
-    infoStyle?: { backgroundColor?: string; color?: string } | null;
 }
 
 const props = defineProps<Props>();
@@ -103,8 +101,7 @@ watch(
                 <JobDetailsTabs
                     :job-id="currentJob.id"
                     :info-title="props.infoTitle"
-                    :info-icon="props.infoIcon"
-                    :info-style="props.infoStyle" />
+                    :info-icon="props.infoIcon" />
             </GTabs>
         </template>
     </div>
