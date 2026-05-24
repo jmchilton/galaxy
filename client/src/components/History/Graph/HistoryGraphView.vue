@@ -207,18 +207,18 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                     Overview
                 </BNavItem>
                 <BNavItem
-                    title="Tool Executions"
+                    title="Executions"
                     :active="activeTab === 'tool-requests'"
                     href="#"
                     @click.prevent="activeTab = 'tool-requests'">
-                    Tool Executions
+                    Executions
                 </BNavItem>
                 <BNavItem
-                    title="AI Summary"
+                    title="Summary"
                     :active="activeTab === 'report'"
                     href="#"
                     @click.prevent="activeTab = 'report'">
-                    AI Summary
+                    Summary
                 </BNavItem>
             </BNav>
             <div class="tab-content-container d-flex flex-column overflow-auto">
