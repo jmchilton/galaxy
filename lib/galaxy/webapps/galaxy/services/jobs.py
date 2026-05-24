@@ -266,7 +266,6 @@ class JobsService(ServiceBase):
         sa_session = trans.sa_session
         tool_source_model = get_or_create_tool_source(sa_session, tool)
         tool_request = ToolRequest()
-        tool_request.request = request_internal_state.input_state
         tool_request.tool_source = tool_source_model
         tool_request.state = ToolRequest.states.NEW
         tool_request.history = target_history

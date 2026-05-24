@@ -1428,7 +1428,6 @@ class ToolRequest(Base, Dictifiable, RepresentById):
     id: Mapped[int] = mapped_column(primary_key=True)
     tool_source_id: Mapped[int] = mapped_column(ForeignKey("tool_source.id"), index=True)
     history_id: Mapped[int] = mapped_column(ForeignKey("history.id"), index=True, nullable=False)
-    request: Mapped[dict] = mapped_column(JSONType)
     state: Mapped[Optional[str]] = mapped_column(TrimmedString(32), index=True)
     state_message: Mapped[Optional[str]] = mapped_column(JSONType, index=True)
     tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
@@ -1473,6 +1472,9 @@ class ToolExecutionState(Base, RepresentById):
     tool_requests: Mapped[list["ToolRequest"]] = relationship(back_populates="tool_execution_state")
     jobs: Mapped[list["Job"]] = relationship(back_populates="tool_execution_state")
     workflow_invocation_steps: Mapped[list["WorkflowInvocationStep"]] = relationship(
+        back_populates="tool_execution_state"
+    )
+    implicit_collection_jobs: Mapped[list["ImplicitCollectionJobs"]] = relationship(
         back_populates="tool_execution_state"
     )
 
@@ -1762,6 +1764,16 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         return session.execute(
             select(WorkflowInvocationStep).where(WorkflowInvocationStep.implicit_collection_jobs_id == icj_id)
         ).scalar_one_or_none()
+
+    def __strict_check_before_flush__(self):
+        """A Job that lives under an ICJ must NOT carry a direct
+        tool_execution_state_id — the ICJ holds the canonical link.
+        Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
+        if self.implicit_collection_jobs_association is not None and self.tool_execution_state_id is not None:
+            raise Exception(
+                f"Job {self.id} under an ImplicitCollectionJobs also carries "
+                "tool_execution_state_id; only the ICJ should"
+            )
 
     dict_collection_visible_keys = [
         "id",
@@ -2981,7 +2993,14 @@ class ImplicitCollectionJobs(Base, Serializable):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     populated_state: Mapped[str] = mapped_column(TrimmedString(64), default="new")
+    tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
     jobs: Mapped[list["ImplicitCollectionJobsJobAssociation"]] = relationship(back_populates="implicit_collection_jobs")
+    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
+        back_populates="implicit_collection_jobs"
+    )
+    workflow_invocation_step: Mapped[Optional["WorkflowInvocationStep"]] = relationship(
+        back_populates="implicit_collection_jobs", uselist=False
+    )
 
     class populated_states(str, Enum):
         NEW = "new"  # New implicit jobs object, unpopulated job associations
@@ -3012,33 +3031,19 @@ class ImplicitCollectionJobs(Base, Serializable):
         )
         return session.execute(stmt)
 
-    @property
-    def structured_request_ids(self) -> set[int]:
-        """Distinct ToolRequest ids across constituent jobs (the tool-request
-        source of structured request state; the WorkflowInvocationStep source
-        is resolved separately by the workflow_request_state resolver)."""
-        return {row.tool_request_id for row in self.get_job_attributes(["tool_request_id"]) if row.tool_request_id}
-
-    @property
-    def has_ambiguous_structured_request(self) -> bool:
-        return len(self.structured_request_ids) > 1
-
-    @property
-    def structured_request(self) -> Optional["ToolRequest"]:
-        """The single ToolRequest backing this ICJ, if one exists
-        unambiguously. None when zero or ambiguous - the caller may still
-        resolve a WorkflowInvocationStep source before degrading to legacy
-        state, so this does not predict the final fallback."""
-        structured_request_ids = self.structured_request_ids
-        if len(structured_request_ids) == 1:
-            return required_object_session(self).get(ToolRequest, next(iter(structured_request_ids)))
-        if len(structured_request_ids) > 1:
-            log.warning(
-                "ImplicitCollectionJobs %s spans multiple tool requests %s; no single tool-request structured state",
-                self.id,
-                sorted(structured_request_ids),
-            )
-        return None
+    def __strict_check_before_flush__(self):
+        """When the ICJ holds a TES link directly, no constituent Job may
+        also carry one — the ICJ is the canonical anchor for the mapped
+        execution event. Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
+        if self.tool_execution_state_id is None:
+            return
+        for assoc in self.jobs:
+            job = assoc.job
+            if job is not None and job.tool_execution_state_id is not None:
+                raise Exception(
+                    f"ImplicitCollectionJobs {self.id} carries tool_execution_state_id "
+                    f"but constituent Job {job.id} also carries one; only the ICJ should"
+                )
 
     @property
     def representative_job(self) -> "Job":
@@ -10697,7 +10702,9 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
     tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
         back_populates="workflow_invocation_steps"
     )
-    implicit_collection_jobs = relationship("ImplicitCollectionJobs", uselist=False)
+    implicit_collection_jobs = relationship(
+        "ImplicitCollectionJobs", back_populates="workflow_invocation_step", uselist=False
+    )
     output_dataset_collections = relationship(
         "WorkflowInvocationStepOutputDatasetCollectionAssociation",
         back_populates="workflow_invocation_step",
@@ -10753,6 +10760,17 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
     ]
 
     states = InvocationStepState
+
+    def __strict_check_before_flush__(self):
+        """A WIS that already points at an ICJ must NOT carry a direct
+        tool_execution_state_id — the ICJ holds the canonical link.
+        Failure-capture rows (no ICJ) may carry the link directly.
+        Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
+        if self.implicit_collection_jobs_id is not None and self.tool_execution_state_id is not None:
+            raise Exception(
+                f"WorkflowInvocationStep {self.id} has implicit_collection_jobs_id and also "
+                "tool_execution_state_id; only the ICJ should"
+            )
 
     @property
     def is_new(self):

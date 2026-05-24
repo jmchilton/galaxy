@@ -54,41 +54,55 @@ def test_step_inputs_by_id_structured_error_does_not_fallback(monkeypatch):
     legacy.assert_not_called()
 
 
-def test_icj_ambiguous_structured_request_returns_none_and_logs(caplog):
+def test_resolve_structured_request_via_icj_direct_link():
+    # ICJ carries the canonical TES link for mapped executions; resolver
+    # reads through it directly with no per-job aggregation.
+    tes = model.ToolExecutionState(
+        request={"parameter": {"src": "hda", "id": 1}},
+        state=workflow_request_state.VALIDATED_REQUEST_STATE,
+    )
+    tes.id = 42
     icj = model.ImplicitCollectionJobs()
     icj.id = 123
-    icj.get_job_attributes = Mock(
-        return_value=[
-            SimpleNamespace(tool_request_id=1),
-            SimpleNamespace(tool_request_id=2),
-            SimpleNamespace(tool_request_id=2),
-        ]
-    )
+    icj.tool_execution_state = tes
 
-    assert icj.has_ambiguous_structured_request
-    assert icj.structured_request is None
-    assert "spans multiple tool requests" in caplog.text
-
-
-def test_unambiguous_id_trichotomy():
-    # The shared rule both structured-request sources apply: exactly one ->
-    # that id; none or ambiguous -> None (caller degrades to legacy).
-    assert workflow_request_state.unambiguous_id({7}) == 7
-    assert workflow_request_state.unambiguous_id(set()) is None
-    assert workflow_request_state.unambiguous_id({1, 2}) is None
-
-
-def test_resolve_structured_request_payload_tool_request_historical_fallback():
-    # Historical pre-EXEC_STATE tool-request rows: Job.tool_execution_state
-    # is NULL but Job.tool_request still carries the authoritative payload.
-    tool_request = model.ToolRequest()
-    tool_request.request = {"parameter": {"src": "hda", "id": 1}}
-    job = SimpleNamespace(tool_execution_state=None, tool_request=tool_request)
-
-    resolved = workflow_request_state.resolve_structured_request(job=job)
+    resolved = workflow_request_state.resolve_structured_request(icj=icj)
     assert resolved is not None
-    assert resolved.source == "tool_request"
+    assert resolved.source_id == 42
     assert resolved.payload == {"parameter": {"src": "hda", "id": 1}}
+
+
+def test_resolve_structured_request_via_tool_request_link():
+    # Tool-request mint anchors the TES on the ToolRequest; resolver
+    # reads through tool_request.tool_execution_state.
+    tes = model.ToolExecutionState(
+        request={"parameter": {"src": "hda", "id": 7}},
+        state=workflow_request_state.VALIDATED_REQUEST_STATE,
+    )
+    tes.id = 99
+    tool_request = model.ToolRequest()
+    tool_request.tool_execution_state = tes
+
+    resolved = workflow_request_state.resolve_structured_request(tool_request=tool_request)
+    assert resolved is not None
+    assert resolved.source_id == 99
+    assert resolved.payload == {"parameter": {"src": "hda", "id": 7}}
+
+
+def test_resolve_structured_request_returns_none_when_tes_not_validated():
+    tes = model.ToolExecutionState(request={"x": 1}, state="not_validated")
+    tes.id = 5
+    icj = model.ImplicitCollectionJobs()
+    icj.tool_execution_state = tes
+
+    assert workflow_request_state.resolve_structured_request(icj=icj) is None
+
+
+def test_resolve_structured_request_returns_none_when_tes_absent():
+    icj = model.ImplicitCollectionJobs()
+    icj.tool_execution_state = None
+
+    assert workflow_request_state.resolve_structured_request(icj=icj) is None
 
 
 def test_association_for_request_ref_dce_resolves_to_leaf_hda(monkeypatch):

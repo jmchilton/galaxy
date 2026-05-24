@@ -225,9 +225,20 @@ def _parsed_tool_source_for_tes(tes: ToolExecutionState, toolbox: Optional[Abstr
     raise InconsistentDatabase(f"Cannot determine tool source for tool_execution_state id={tes.id}")
 
 
+def _tool_request_payload_or_empty(tool_request: ToolRequest) -> dict:
+    """Tolerant payload read for serialization: legacy NULL-request rows
+    (preserved by the migration's defensive guard) have no TES and yield
+    {}. The strict resolver path uses tool_request_payload() which
+    raises on missing TES."""
+    tes = tool_request.tool_execution_state
+    if tes is None or not isinstance(tes.request, dict):
+        return {}
+    return tes.request
+
+
 def tool_request_to_model(tool_request: ToolRequest, security: IdEncodingHelper) -> ToolRequestModel:
     parsed = _parsed_tool_source_from_row(tool_request.tool_source)
-    encoded_request = _encode_request_payload(tool_request.request, parsed, security)
+    encoded_request = _encode_request_payload(_tool_request_payload_or_empty(tool_request), parsed, security)
     as_dict = {
         "id": tool_request.id,
         "request": encoded_request,
@@ -239,7 +250,7 @@ def tool_request_to_model(tool_request: ToolRequest, security: IdEncodingHelper)
 
 def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodingHelper) -> ToolRequestDetailedModel:
     parsed = _parsed_tool_source_from_row(tool_request.tool_source)
-    encoded_request = _encode_request_payload(tool_request.request, parsed, security)
+    encoded_request = _encode_request_payload(_tool_request_payload_or_empty(tool_request), parsed, security)
     jobs = [{"src": "job", "id": job.id} for job in tool_request.jobs]
     implicit_collections = [
         {"src": "hdca", "id": assoc.dataset_collection.id, "output_name": assoc.output_name}

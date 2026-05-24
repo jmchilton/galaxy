@@ -63,7 +63,12 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
     def _encode(self, prefix, db_id):
         src = {"d": "hda", "c": "hdca", "r": "tool_execution"}[prefix]
+        if prefix == "r":
+            return NodeRef(src=src, id=self.app.security.encode_id(db_id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND))
         return NodeRef(src=src, id=self.app.security.encode_id(db_id))
+
+    def _tes_ref(self, tool_request):
+        return self._encode("r", tool_request.tool_execution_state.id)
 
     def _create_history(self):
         user = self.user_manager.create(**_next_user_data())
@@ -96,9 +101,11 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         tr = model.ToolRequest()
         tr.tool_source_id = ts.id
         tr.history_id = history.id
-        tr.request = request_data or {}
         tr.state = state
+        tes = model.ToolExecutionState(request=request_data or {}, state="validated")
+        tr.tool_execution_state = tes
         session = self.trans.sa_session
+        session.add(tes)
         session.add(tr)
         session.flush()
         return tr
@@ -109,6 +116,8 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         job.tool_version = tool_version
         if tool_request:
             job.tool_request_id = tool_request.id
+            if tool_request.tool_execution_state is not None:
+                job.tool_execution_state = tool_request.tool_execution_state
         session = self.trans.sa_session
         session.add(job)
         session.flush()
@@ -118,13 +127,13 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         if job.tool_request_id is None:
             return
         tr = self.trans.sa_session.get(model.ToolRequest, job.tool_request_id)
-        if tr is None:
+        if tr is None or tr.tool_execution_state is None:
             return
-        payload = dict(tr.request) if isinstance(tr.request, dict) else {}
+        payload = dict(tr.tool_execution_state.request or {})
         inputs = list(payload.get("inputs", []))
         inputs.append(ref)
         payload["inputs"] = inputs
-        tr.request = payload
+        tr.tool_execution_state.request = payload
 
     def _link_job_input_hda(self, job, hda, name="input"):
         assoc = model.JobToInputDatasetAssociation(name=name, dataset=hda)
@@ -535,7 +544,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         # Consumer edges: selected element items → execution
         input_edges = [e for e in graph.edges if e.target == tr_enc and "input" in e.type]
         assert len(input_edges) == 2  # one per element
@@ -557,7 +566,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         # Producer edges: execution → each output element
         output_edges = [e for e in graph.edges if e.source == tr_enc and "output" in e.type]
         assert len(output_edges) == 2
@@ -642,7 +651,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         assert self._encode("d", output_hda.id) in node_ids
 
         # The tool_request has BOTH input and output edges.
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         in_edges = [e for e in graph.edges if e.target == tr_enc and e.type == "dataset_input"]
         out_edges = [e for e in graph.edges if e.source == tr_enc and e.type == "dataset_output"]
         assert len(in_edges) == 1, "tool_request must have its top-level input edge after closure"
@@ -713,7 +722,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         fwd_enc = self._encode("d", fwd.id)
         rev_enc = self._encode("d", rev.id)
         coll_enc = self._encode("c", output_hdca.id)
@@ -757,7 +766,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         coll_enc = self._encode("c", input_hdca.id)
         out1_enc = self._encode("d", out1.id)
         out2_enc = self._encode("d", out2.id)
@@ -812,7 +821,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         out1_enc = self._encode("d", out1.id)
         out2_enc = self._encode("d", out2.id)
 
@@ -845,7 +854,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         graph = self._build_graph(history)
 
         coll_enc = self._encode("c", hdca.id)
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
 
         # Collection input edge exists
         input_edges = [e for e in graph.edges if e.target == tr_enc and e.type == "collection_input"]
@@ -887,7 +896,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         # 1 collection + 1 output + 1 tool_request = 3, but the element HDAs
         # are visible top-level items too, so they may appear. The key invariant
         # is that edge count stays bounded — one collection_input, not 100 dataset_inputs.
-        input_edges = [e for e in graph.edges if e.target == self._encode("r", tr.id) and "input" in e.type]
+        input_edges = [e for e in graph.edges if e.target == self._tes_ref(tr) and "input" in e.type]
         assert len(input_edges) == 1
         assert input_edges[0].type == "collection_input"
 
@@ -955,7 +964,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         # The tool_request must have an input edge — and it should be a
         # collection_input edge to the parent paired collection, not a
         # dataset_input edge to the hidden forward element (which N3
@@ -1005,7 +1014,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         out_edges = [e for e in graph.edges if e.source == tr_enc and e.type == "dataset_output"]
         unwrapped_enc = self._encode("d", unwrapped.id)
         assert any(e.target == unwrapped_enc for e in out_edges), (
@@ -1042,7 +1051,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         hdca_enc = self._encode("c", hdca.id)
         producer_edges = {(e.source, e.target) for e in graph.edges if e.type == "collection_output"}
         assert (
@@ -1070,7 +1079,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
         graph = self._build_graph(history)
 
-        tr_enc = self._encode("r", tr.id)
+        tr_enc = self._tes_ref(tr)
         edges = {(e.type, e.source, e.target) for e in graph.edges}
         assert ("collection_output", tr_enc, self._encode("c", hdca.id)) in edges
         assert ("dataset_input", self._encode("d", input_hda.id), tr_enc) in edges
@@ -1270,17 +1279,14 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
     # srcs / edge types) is unchanged.
 
     def _attach_tool_execution_state(self, request, state="validated", job=None, icj=None):
-        """Mint a ToolExecutionState row and link it to its producing Job
-        (plain executions) or every job in an ImplicitCollectionJobs (mapped
-        executions). Mirrors what ToolModule.execute does for workflow tool
-        steps under EXEC_STATE; the WIS row is not load-bearing for the
-        resolver, so the test omits it."""
+        """Mint a ToolExecutionState row and link it to the canonical
+        anchor: the ICJ for mapped executions, or the Job for plain ones.
+        Mirrors what ToolModule.execute / execute.py do under EXEC_STATE."""
         tes = model.ToolExecutionState(request=request, state=state)
         self.trans.sa_session.add(tes)
         self.trans.sa_session.flush()
         if icj is not None:
-            for member in icj.job_list:
-                member.tool_execution_state = tes
+            icj.tool_execution_state = tes
         elif job is not None:
             job.tool_execution_state = tes
         self.trans.sa_session.flush()
@@ -1313,11 +1319,11 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         assert ("dataset_input", self._encode("d", input_hda.id), prod.ref) in edges
         assert ("dataset_output", prod.ref, self._encode("d", output_hda.id)) in edges
 
-    def test_tes_producer_id_namespaced_no_toolrequest_collision(self):
-        """The producer node ref uses the TES id under a distinct cipher
-        kind; the default-kind (historical ToolRequest fallback) encoding
-        of the SAME integer differs, so equal pks across the two
-        structured-request id spaces cannot merge onto one node."""
+    def test_tes_producer_id_uses_tes_cipher_kind(self):
+        """The producer node ref uses the TES id encoded under the
+        TES cipher kind; the default-kind encoding of the SAME integer
+        differs, asserting we never accidentally collapse onto the
+        default id space."""
         history, _ = self._create_history()
         out_hda = self._create_hda(history, name="out")
         job = self._create_job(tool_id="wf_tool")
@@ -1449,7 +1455,12 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
 
     def _encode(self, prefix, db_id):
         src = {"d": "hda", "c": "hdca", "r": "tool_execution"}[prefix]
+        if prefix == "r":
+            return NodeRef(src=src, id=self.app.security.encode_id(db_id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND))
         return NodeRef(src=src, id=self.app.security.encode_id(db_id))
+
+    def _tes_ref(self, tool_request):
+        return self._encode("r", tool_request.tool_execution_state.id)
 
     def _create_history(self):
         user = self.user_manager.create(**_next_user_data())
@@ -1478,9 +1489,11 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
         tr = model.ToolRequest()
         tr.tool_source_id = ts.id
         tr.history_id = history.id
-        tr.request = {}
         tr.state = "submitted"
+        tes = model.ToolExecutionState(request={}, state="validated")
+        tr.tool_execution_state = tes
         session = self.trans.sa_session
+        session.add(tes)
         session.add(tr)
         session.flush()
         return tr
@@ -1490,6 +1503,8 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
         job.tool_id = tool_id
         job.tool_version = "1.0"
         job.tool_request_id = tool_request.id
+        if tool_request.tool_execution_state is not None:
+            job.tool_execution_state = tool_request.tool_execution_state
         session = self.trans.sa_session
         session.add(job)
         session.flush()
@@ -1499,13 +1514,13 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
         if job.tool_request_id is None:
             return
         tr = self.trans.sa_session.get(model.ToolRequest, job.tool_request_id)
-        if tr is None:
+        if tr is None or tr.tool_execution_state is None:
             return
-        payload = dict(tr.request) if isinstance(tr.request, dict) else {}
+        payload = dict(tr.tool_execution_state.request or {})
         inputs = list(payload.get("inputs", []))
         inputs.append(ref)
         payload["inputs"] = inputs
-        tr.request = payload
+        tr.tool_execution_state.request = payload
 
     def _link_job_input_hda(self, job, hda, name="input"):
         assoc = model.JobToInputDatasetAssociation(name=name, dataset=hda)

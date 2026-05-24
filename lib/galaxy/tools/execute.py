@@ -256,7 +256,9 @@ def _execute(
         if job:
             if tool_request:
                 job.tool_request = tool_request
-            if tool_execution_state is not None:
+            # ICJ is the canonical anchor for mapped executions; stamp on
+            # the Job only when there is no ICJ.
+            if tool_execution_state is not None and execution_tracker.collection_info is None:
                 job.tool_execution_state = tool_execution_state
             if execution_slice.validated_param_combination:
                 tool_state = execution_slice.validated_param_combination.input_state
@@ -288,7 +290,9 @@ def _execute(
             except ToolInputsNotOKException as e:
                 execution_tracker.record_error(e)
 
-    execution_tracker.ensure_implicit_collections_populated(history, mapping_params.param_template, tool_request)
+    execution_tracker.ensure_implicit_collections_populated(
+        history, mapping_params.param_template, tool_request, tool_execution_state
+    )
     job_count = len(execution_tracker.param_combinations)
 
     jobs_executed = 0
@@ -606,15 +610,27 @@ class ExecutionTracker:
         mapped_output_structure = mapping_structure.multiply(output_structure)
         return mapped_output_structure
 
-    def ensure_implicit_collections_populated(self, history, params, tool_request: Optional[ToolRequest]):
+    def ensure_implicit_collections_populated(
+        self,
+        history,
+        params,
+        tool_request: Optional[ToolRequest],
+        tool_execution_state: Optional[model.ToolExecutionState] = None,
+    ):
         if not self.collection_info:
             return
 
         history = history or self.tool.get_default_history_by_trans(self.trans)
         # params = param_combinations[0] if param_combinations else mapping_params.param_template
-        self.precreate_output_collections(history, params, tool_request)
+        self.precreate_output_collections(history, params, tool_request, tool_execution_state)
 
-    def precreate_output_collections(self, history, params, tool_request: Optional[ToolRequest]):
+    def precreate_output_collections(
+        self,
+        history,
+        params,
+        tool_request: Optional[ToolRequest],
+        tool_execution_state: Optional[model.ToolExecutionState] = None,
+    ):
         # params is just one sample tool param execution with parallelized
         # collection replaced with a specific dataset. Need to replace this
         # with the collection and wrap everything up so can evaluate output
@@ -628,6 +644,8 @@ class ExecutionTracker:
         implicit_inputs = self.implicit_inputs
 
         implicit_collection_jobs = model.ImplicitCollectionJobs()
+        if tool_execution_state is not None:
+            implicit_collection_jobs.tool_execution_state = tool_execution_state
 
         # trying to guess these filters at the collection levell is tricky because
         # the filter condition could vary from element to element. Just do best we
@@ -882,13 +900,19 @@ class WorkflowStepExecutionTracker(ExecutionTracker):
 
             yield ExecutionSlice(job_index, param_combination, validated_param_combination, dataset_collection_elements)
 
-    def ensure_implicit_collections_populated(self, history, params, tool_request: Optional[ToolRequest]):
+    def ensure_implicit_collections_populated(
+        self,
+        history,
+        params,
+        tool_request: Optional[ToolRequest],
+        tool_execution_state: Optional[model.ToolExecutionState] = None,
+    ):
         if not self.collection_info:
             return
 
         history = history or self.tool.get_default_history_by_trans(self.trans)
         if self.invocation_step.is_new:
-            self.precreate_output_collections(history, params, tool_request)
+            self.precreate_output_collections(history, params, tool_request, tool_execution_state)
             for output_name, implicit_collection in self.implicit_collections.items():
                 self.invocation_step.add_output(output_name, implicit_collection)
         else:
@@ -899,6 +923,12 @@ class WorkflowStepExecutionTracker(ExecutionTracker):
                 collections[output_assoc.output_name] = output_assoc.dataset_collection
             self.implicit_collections = collections
         self.invocation_step.implicit_collection_jobs = self.implicit_collection_jobs
+        # ICJ is the canonical TES anchor for a mapped step; clear the
+        # WIS link so the "exactly one path" invariant holds.
+        if self.invocation_step.tool_execution_state is not None and self.implicit_collection_jobs is not None:
+            if self.implicit_collection_jobs.tool_execution_state is None:
+                self.implicit_collection_jobs.tool_execution_state = self.invocation_step.tool_execution_state
+            self.invocation_step.tool_execution_state = None
 
 
 __all__ = ("execute",)

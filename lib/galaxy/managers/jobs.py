@@ -62,6 +62,7 @@ from galaxy.managers.hdas import (
 from galaxy.managers.histories import HistoryManager
 from galaxy.managers.lddas import LDDAManager
 from galaxy.managers.users import UserManager
+from galaxy.managers.workflow_request_state import tool_request_payload
 from galaxy.model import (
     ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
@@ -2225,7 +2226,7 @@ class JobSubmitter:
             new_hdas.append(DereferencedDatasetPair(hda, data_request))
             return DataRequestInternalHda(id=hda.id, src="hda")
 
-        tool_state = RequestInternalToolState(tool_request.request)
+        tool_state = RequestInternalToolState(tool_request_payload(tool_request))
         if tool.parameters is None:
             raise RequestParameterInvalidException(f"Tool {tool.id} has no parameters defined")
         parameter_bundle = ToolParameterBundleModel(parameters=tool.parameters)
@@ -2252,7 +2253,7 @@ class JobSubmitter:
                 # and avoid extra and confusing input copies
                 self.hda_manager.materialize(materialize_request, sa_session(), in_place=True)
             if request.data_manager_mode:
-                tool_request.request["__data_manager_mode"] = request.data_manager_mode
+                tool_request.tool_execution_state.request["__data_manager_mode"] = request.data_manager_mode
             credentials_context = (
                 CredentialsContext(root=cast(Any, request.credentials_context)) if request.credentials_context else None
             )

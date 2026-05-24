@@ -526,7 +526,72 @@ def test_28885b317f78(monkeypatch, session, make_user, make_history):
         )
     )
     assert orphans == [], orphans
+
+    # tool_request.request column was dropped — payload now lives on
+    # tool_execution_state.request only.
+    cols = session.execute(text("SELECT * FROM tool_request LIMIT 0")).keys()
+    assert "request" not in cols, cols
     session.close()  # Release locks before the autouse clear_database teardown.
+
+
+def test_28885b317f78_icj_backfill(monkeypatch, session, make_user, make_history):
+    """ICJ branch of the EXEC_STATE backfill: when constituent jobs share
+    a single TES via the tool-request join, the ICJ acquires the FK and
+    the redundant Job FKs are cleared (so the "exactly one path"
+    invariant holds post-upgrade)."""
+    dburl = str(session.bind.url)
+    monkeypatch.setenv("GALAXY_CONFIG_OVERRIDE_DATABASE_CONNECTION", dburl)
+    monkeypatch.setenv("GALAXY_INSTALL_CONFIG_OVERRIDE_INSTALL_DATABASE_CONNECTION", dburl)
+    run_command(f"{COMMAND} init")
+    run_command(f"{COMMAND} downgrade 0b49ffb1e890")
+
+    user = make_user()
+    history = make_history(user=user)
+    session.execute(
+        text("INSERT INTO tool_source (id, source, source_class, hash) VALUES (1, :src, 'XmlToolSource', 'h')"),
+        {"src": '{"xml": "<tool/>"}'},
+    )
+    session.execute(
+        text(
+            "INSERT INTO tool_request (id, tool_source_id, history_id, request, state) "
+            "VALUES (1, 1, :h, :r, 'submitted')"
+        ),
+        {"h": history.id, "r": '{"input1": {"src": "hda", "id": 7}}'},
+    )
+    # Two jobs joined to TR 1, grouped under an ICJ — the canonical
+    # tool-request map-over shape.
+    session.execute(text("INSERT INTO implicit_collection_jobs (id, populated_state) VALUES (50, 'ok')"))
+    for jid in (10, 11):
+        session.execute(
+            text("INSERT INTO job (id, tool_request_id) VALUES (:i, 1)"),
+            {"i": jid},
+        )
+        session.execute(
+            text(
+                "INSERT INTO implicit_collection_jobs_job_association "
+                "(implicit_collection_jobs_id, job_id, order_index) VALUES (50, :j, :o)"
+            ),
+            {"j": jid, "o": jid - 10},
+        )
+    session.commit()
+
+    run_command(f"{COMMAND} upgrade 28885b317f78")
+    session.expire_all()
+
+    # ICJ acquires the FK.
+    icj_link = session.execute(
+        text("SELECT tool_execution_state_id FROM implicit_collection_jobs WHERE id = 50")
+    ).scalar()
+    assert icj_link == 1
+
+    # Constituent Jobs no longer carry a direct FK (ICJ is canonical).
+    job_links = {
+        r.id: r.tool_execution_state_id
+        for r in session.execute(text("SELECT id, tool_execution_state_id FROM job ORDER BY id"))
+    }
+    assert job_links == {10: None, 11: None}
+
+    session.close()
 
 
 def test_29fe58dda936(monkeypatch, session, make_user, make_history):

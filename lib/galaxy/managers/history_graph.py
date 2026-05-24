@@ -29,7 +29,6 @@ from galaxy.exceptions import (
 from galaxy.managers.workflow_request_state import (
     resolve_structured_request,
     ResolvedStructuredRequest,
-    tool_request_payload,
 )
 from galaxy.model import (
     Dataset,
@@ -175,13 +174,9 @@ class HistoryGraphBuilder:
         # 2. Remove hidden collection elements.
         dataset_ids = self._remove_hidden_elements(dataset_ids)
 
-        # 3. Single producer pass: every selected item resolves its producer
-        #    via the unified seam. Two source kinds reach the wire:
-        #    'tool_execution_state' (the EXEC_STATE walk, new executions) and
-        #    'tool_request' (transitional historical fallback). Both render
-        #    as wire src "tool_execution" - the source-kind distinction lives
-        #    in the cipher kind, so same-pk rows in the two tables never
-        #    collide.
+        # 3. Single producer pass: every selected item resolves its
+        #    producer ToolExecutionState via the unified seam, rendered as
+        #    wire src "tool_execution".
         edges: list[GraphEdge] = []
         closure_dataset_ids: set[int] = set()
         closure_collection_ids: set[int] = set()
@@ -192,14 +187,14 @@ class HistoryGraphBuilder:
             etype = "dataset_output" if item_type == "dataset" else "collection_output"
             edges.append(
                 GraphEdge(
-                    source=self._producer_ref(*producer_id),
+                    source=self._producer_ref(producer_id),
                     target=self._ref(item_type, item_id),
                     type=etype,
                 )
             )
         for producer_id, payload in payloads.items():
             self._emit_input_edges(
-                self._producer_ref(*producer_id),
+                self._producer_ref(producer_id),
                 payload,
                 dataset_ids,
                 collection_ids,
@@ -355,23 +350,20 @@ class HistoryGraphBuilder:
         """One pass: every producer execution -> structured request via the seam.
 
         Returns:
-        - ``producers``: ``item_key -> (source, source_id)`` for items with
-          exactly one distinct producing structured-request source. Items
-          resolving to >1 distinct producer are dropped (and logged) -
-          they remain as nodes without a producer edge.
-        - ``producer_meta``: ``(source, source_id) -> tool_id`` for node
-          construction.
-        - ``payloads``: ``(source, source_id) -> dict`` for input-edge
-          emission, sourced from the resolver (no per-source SQL).
+        - ``producers``: ``item_key -> tes_id`` for items with exactly one
+          distinct producing TES. Items resolving to >1 distinct producer
+          are dropped (and logged) - they remain as nodes without a
+          producer edge.
+        - ``producer_meta``: ``tes_id -> tool_id`` for node construction.
+        - ``payloads``: ``tes_id -> dict`` for input-edge emission,
+          sourced from the resolver (no per-source SQL).
 
-        ``source`` is ``"tool_execution_state"`` (the EXEC_STATE walk) or
-        ``"tool_request"`` (the transitional historical fallback for jobs
-        whose TES is NULL). Jobs whose resolver returns ``None`` (no
-        validated capture, no historical TR) contribute no producer.
+        Jobs whose resolver returns ``None`` (no validated TES capture)
+        contribute no producer.
         """
-        producers: dict[tuple[str, int], tuple[str, int]] = {}
-        producer_meta: dict[tuple[str, int], Optional[str]] = {}
-        payloads: dict[tuple[str, int], dict] = {}
+        producers: dict[tuple[str, int], int] = {}
+        producer_meta: dict[int, Optional[str]] = {}
+        payloads: dict[int, dict] = {}
         if not dataset_ids and not collection_ids:
             return producers, producer_meta, payloads
 
@@ -439,12 +431,8 @@ class HistoryGraphBuilder:
             if job is None:
                 resolved_by_job[job_id] = None
                 continue
-            icj_assoc = job.implicit_collection_jobs_association
-            icj = icj_assoc.implicit_collection_jobs if icj_assoc is not None else None
             try:
-                resolved = (
-                    resolve_structured_request(icj=icj) if icj is not None else resolve_structured_request(job=job)
-                )
+                resolved = resolve_structured_request(job=job)
             except RequestInternalToWorkflowStateError:
                 log.debug("history_graph: malformed structured request for job %d", job_id)
                 resolved = None
@@ -465,32 +453,25 @@ class HistoryGraphBuilder:
                 resolved_by_tool_request[tool_request_id] = None
                 continue
             try:
-                resolved = ResolvedStructuredRequest(
-                    "tool_request",
-                    tool_request.id,
-                    tool_request_payload(tool_request),
-                )
+                resolved = resolve_structured_request(tool_request=tool_request)
             except RequestInternalToWorkflowStateError:
                 log.debug("history_graph: malformed structured request for tool_request %d", tool_request_id)
                 resolved = None
             resolved_by_tool_request[tool_request_id] = resolved
 
-        # item_key -> {(source, source_id): tool_id}; ambiguity rule = >1 distinct.
-        candidates: dict[tuple[str, int], dict[tuple[str, int], Optional[str]]] = {}
+        candidates: dict[tuple[str, int], dict[int, Optional[str]]] = {}
         for item_key, job_id, tool_id in item_jobs:
             resolved = resolved_by_job.get(job_id)
             if resolved is None:
                 continue
-            producer_id = (resolved.source, resolved.source_id)
-            candidates.setdefault(item_key, {})[producer_id] = tool_id
-            payloads.setdefault(producer_id, resolved.payload)
+            candidates.setdefault(item_key, {})[resolved.source_id] = tool_id
+            payloads.setdefault(resolved.source_id, resolved.payload)
         for item_key, tool_request_id, tool_id in item_tool_requests:
             resolved = resolved_by_tool_request.get(tool_request_id)
             if resolved is None:
                 continue
-            producer_id = (resolved.source, resolved.source_id)
-            candidates.setdefault(item_key, {})[producer_id] = tool_id
-            payloads.setdefault(producer_id, resolved.payload)
+            candidates.setdefault(item_key, {})[resolved.source_id] = tool_id
+            payloads.setdefault(resolved.source_id, resolved.payload)
         for item_key, producer_map in candidates.items():
             if len(producer_map) == 1:
                 producer_id, tool_id = next(iter(producer_map.items()))
@@ -700,19 +681,17 @@ class HistoryGraphBuilder:
             for row in self.sa_session.execute(stmt)
         ]
 
-    def _producer_nodes(self, producer_meta: dict[tuple[str, int], Optional[str]]) -> list[GraphNode]:
-        """Producer nodes for both structured-request sources. Wire ``src``
-        is "tool_execution" uniformly; the cipher kind embedded in the id
-        distinguishes ToolExecutionState-backed producers from historical
-        ToolRequest ones so same-pk rows in the two tables never collide.
+    def _producer_nodes(self, producer_meta: dict[int, Optional[str]]) -> list[GraphNode]:
+        """Producer nodes keyed by ToolExecutionState.id. Wire ``src`` is
+        "tool_execution"; the cipher kind tags the id space.
         """
         return [
             GraphNode(
                 src="tool_execution",
-                id=self._producer_ref(source, source_id).id,
+                id=self._producer_ref(source_id).id,
                 tool_id=tool_id,
             )
-            for (source, source_id), tool_id in producer_meta.items()
+            for source_id, tool_id in producer_meta.items()
         ]
 
     def _resolve_tool_names(self, nodes: list[GraphNode]) -> None:
@@ -786,17 +765,9 @@ class HistoryGraphBuilder:
         self._sort_keys[ref] = (TYPE_RANK[node_type], db_id)
         return ref
 
-    def _producer_ref(self, source: str, source_id: int) -> NodeRef:
-        """Encode a producer node for either structured-request source.
-
-        Wire ``src`` is "tool_execution" uniformly. The cipher kind differs
-        per source so a ToolExecutionState and a historical ToolRequest
-        with the same integer pk never encode to the same node ref.
-        """
-        if source == "tool_execution_state":
-            encoded = self.security.encode_id(source_id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
-        else:
-            encoded = self.security.encode_id(source_id)
+    def _producer_ref(self, source_id: int) -> NodeRef:
+        """Encode a producer node keyed by ToolExecutionState.id."""
+        encoded = self.security.encode_id(source_id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)
         ref = NodeRef(src="tool_execution", id=encoded)
         self._sort_keys[ref] = (TYPE_RANK["tool_execution"], source_id)
         return ref

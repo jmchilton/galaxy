@@ -50,6 +50,7 @@ from galaxy.job_execution.output_collect import (
     PermissionProvider,
 )
 from galaxy.managers.credentials import build_credentials_context_response
+from galaxy.managers.workflow_request_state import tool_request_payload
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.model import (
     History,
@@ -2368,7 +2369,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         )
         self.handle_incoming_errors(all_errors)
 
-        mapping_params = MappingParameters(tool_request.request, all_params, tool_state, job_tool_states)
+        mapping_params = MappingParameters(tool_request_payload(tool_request), all_params, tool_state, job_tool_states)
         completed_jobs: dict[int, Optional[model.Job]] = self.completed_jobs(
             request_context, use_cached_job, all_params
         )

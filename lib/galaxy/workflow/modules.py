@@ -3062,13 +3062,11 @@ class ToolModule(WorkflowModule):
         )
         _log_workflow_tool_request_state(trans, tool, step, collection_info, request_state)
         # One row per step execution (the whole map-over, Batch form), never
-        # per-iteration. The payload is the request_internal dict mirroring
-        # ToolRequest.request; only a validated capture yields a trustworthy
-        # one, so store it just then while always recording the enum so the
-        # resolver can distinguish "we tried, capture didn't validate" from
-        # "no capture attempted." The WIS link is a failure-diagnostic hook
-        # (the resolver walks Job.tool_execution_state, not WIS); execute.py
-        # copies validated capture rows onto produced jobs before enqueue.
+        # per-iteration. Always recorded so the resolver can distinguish
+        # "we tried, capture didn't validate" from "no capture attempted."
+        # WIS holds the link initially; once an ICJ is produced for a
+        # mapped step, execute.py moves the link to the ICJ (the canonical
+        # anchor for mapped executions).
         tool_execution_state = ToolExecutionState(
             request=validated_param_template.input_state if validated_param_template is not None else None,
             state=request_state.value,

@@ -378,6 +378,12 @@ class FetchTools:
             for step in tes.workflow_invocation_steps
             if (workflow_invocation := step.workflow_invocation) is not None and workflow_invocation.history is not None
         )
+        # Mapped executions anchor the TES on the ICJ; reach histories
+        # via the ICJ's constituent jobs.
+        for icj in tes.implicit_collection_jobs:
+            histories.extend(
+                assoc.job.history for assoc in icj.jobs if assoc.job is not None and assoc.job.history is not None
+            )
         if not histories:
             raise exceptions.ObjectNotFound()
         last_error: Optional[exceptions.ItemAccessibilityException] = None
