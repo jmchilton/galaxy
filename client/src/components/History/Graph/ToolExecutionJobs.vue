@@ -128,21 +128,33 @@ watch(
                         <FontAwesomeIcon :icon="faInfoCircle" />
                         <span>Information</span>
                     </template>
-                    <JobInformation :job-id="currentJob.id" :include-title="false" :include-times="true" />
+                    <JobInformation
+                        :key="currentJob.id"
+                        :job-id="currentJob.id"
+                        :include-title="false"
+                        :include-times="true" />
                 </GTab>
                 <GTab lazy>
                     <template v-slot:title>
                         <FontAwesomeIcon :icon="faSlidersH" />
                         <span>Parameters</span>
                     </template>
-                    <JobParameters :job-id="currentJob.id" :include-title="false" :include-outputs="false" />
+                    <JobParameters
+                        :key="currentJob.id"
+                        :job-id="currentJob.id"
+                        :include-title="false"
+                        :include-outputs="false" />
                 </GTab>
                 <GTab lazy>
                     <template v-slot:title>
                         <FontAwesomeIcon :icon="faSignOutAlt" />
                         <span>Outputs</span>
                     </template>
-                    <JobOutputs v-if="hasOutputs" :job-outputs="paramsDisplay?.outputs" paginate />
+                    <JobOutputs
+                        v-if="hasOutputs"
+                        :key="currentJob.id"
+                        :job-outputs="paramsDisplay?.outputs"
+                        paginate />
                     <BAlert v-else show variant="info" class="mb-0">No outputs.</BAlert>
                 </GTab>
             </GTabs>
