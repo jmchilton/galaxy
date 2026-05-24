@@ -55,20 +55,19 @@ function onNodeSelected(node: GraphNode | null) {
 
 <template>
     <div class="history-graph-overview">
-        <div class="graph-pane rounded border">
+        <div class="graph-pane rounded border" :class="{ 'with-details': !!selectedNode }">
             <GraphView
                 :nodes="nodes"
                 :edges="edges"
                 :focus-node-id="focusNodeId"
                 :node-color="historyNodeColor"
-                center-on-select
                 show-scroll-overlays
                 @nodeSelected="onNodeSelected" />
         </div>
         <BAlert v-if="truncated" variant="warning" show class="mt-2 mb-0 py-1 text-center flex-shrink-0">
             Showing a partial graph. Not all connections are visible.
         </BAlert>
-        <div class="details-pane mt-2">
+        <div v-if="selectedNode" class="details-pane mt-2">
             <HistoryGraphNodeDetails :node="selectedNode" />
         </div>
     </div>
@@ -90,8 +89,14 @@ function onNodeSelected(node: GraphNode | null) {
 
 .graph-pane {
     display: flex;
-    flex: 0 0 50%;
+    flex: 1 1 0;
     min-height: 0;
+}
+
+// Fixed 50% only when the details pane is open; otherwise the graph absorbs
+// the whole tab area.
+.graph-pane.with-details {
+    flex: 0 0 50%;
 }
 
 .details-pane {
