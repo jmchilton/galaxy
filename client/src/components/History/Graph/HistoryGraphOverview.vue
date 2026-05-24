@@ -16,7 +16,7 @@ interface Props {
     truncated?: boolean;
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
     focusNodeId: null,
     truncated: false,
 });
@@ -24,7 +24,31 @@ withDefaults(defineProps<Props>(), {
 // Selected graph node — its details render in the card below the graph.
 const selectedNode = ref<GraphNode | null>(null);
 
+function findProducerToolRequestNode(nodeKey: string): GraphNode | null {
+    // Rendered edges carry `source` / `target` as `"src:id"` keys; the
+    // producer of an HDCA is whichever `tool_request:*` node has an edge
+    // pointing at it.
+    for (const edge of props.edges) {
+        if (edge.target === nodeKey && edge.source.startsWith("tool_request:")) {
+            return props.nodes.find((n) => n.id === edge.source) ?? null;
+        }
+    }
+    return null;
+}
+
 function onNodeSelected(node: GraphNode | null) {
+    // HDCAs are "the batch unit" — clicking one means "show the tool
+    // execution that produced this collection," with all sibling jobs
+    // reachable via pagination. Redirect to the producing tool_request
+    // node when one is in the graph; fall through if not (NodeBody's own
+    // job_source_id lookup handles single-job collections).
+    if (node?.data?.src === "hdca") {
+        const producer = findProducerToolRequestNode(node.id);
+        if (producer) {
+            selectedNode.value = producer;
+            return;
+        }
+    }
     selectedNode.value = node;
 }
 </script>
