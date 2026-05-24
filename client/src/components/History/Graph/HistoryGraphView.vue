@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { faClock } from "@fortawesome/free-regular-svg-icons";
-import { faBezierCurve, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
+import { faBezierCurve, faBolt, faExchangeAlt, faMagic, faMap } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BNav, BNavItem } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
@@ -204,6 +204,7 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                     :active="activeTab === 'overview'"
                     href="#"
                     @click.prevent="activeTab = 'overview'">
+                    <FontAwesomeIcon :icon="faMap" class="mr-1" />
                     Overview
                 </BNavItem>
                 <BNavItem
@@ -211,6 +212,7 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                     :active="activeTab === 'tool-requests'"
                     href="#"
                     @click.prevent="activeTab = 'tool-requests'">
+                    <FontAwesomeIcon :icon="faBolt" class="mr-1" />
                     Executions
                 </BNavItem>
                 <BNavItem
@@ -218,6 +220,7 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                     :active="activeTab === 'report'"
                     href="#"
                     @click.prevent="activeTab = 'report'">
+                    <FontAwesomeIcon :icon="faMagic" class="mr-1" />
                     Summary
                 </BNavItem>
             </BNav>

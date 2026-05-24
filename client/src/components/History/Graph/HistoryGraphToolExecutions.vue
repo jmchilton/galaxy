@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
+import { faBolt, faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert } from "bootstrap-vue";
 import { ref } from "vue";
@@ -48,7 +48,10 @@ function isExpanded(id: string): boolean {
                     tabindex="0"
                     @keyup.enter="toggle(node.id)"
                     @click="toggle(node.id)">
-                    <span class="portlet-title-text">Execution {{ node.label }}</span>
+                    <span class="portlet-title-text">
+                        <FontAwesomeIcon :icon="faBolt" class="mr-1" />
+                        {{ node.label }}
+                    </span>
                     <FontAwesomeIcon class="ml-auto" :icon="isExpanded(node.id) ? faChevronUp : faChevronDown" />
                 </div>
                 <div v-if="isExpanded(node.id)" class="portlet-content">
