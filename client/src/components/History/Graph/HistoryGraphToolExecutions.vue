@@ -41,7 +41,7 @@ function isExpanded(id: string): boolean {
             No tool executions to show. Galaxy started capturing tool execution data with release 26.1.
         </BAlert>
         <template v-else>
-            <div v-for="(node, index) in nodes" :key="node.id" class="ui-portlet-section mb-2">
+            <div v-for="node in nodes" :key="node.id" class="ui-portlet-section mb-2">
                 <div
                     class="portlet-header portlet-operations cursor-pointer unselectable d-flex align-items-center"
                     role="button"
@@ -55,10 +55,7 @@ function isExpanded(id: string): boolean {
                     <FontAwesomeIcon class="ml-auto" :icon="isExpanded(node.id) ? faChevronUp : faChevronDown" />
                 </div>
                 <div v-if="isExpanded(node.id)" class="portlet-content">
-                    <ToolExecutionJobs
-                        v-if="node.data?.itemId"
-                        class="p-2"
-                        :tool-execution-id="node.data.itemId" />
+                    <ToolExecutionJobs v-if="node.data?.itemId" class="p-2" :tool-execution-id="node.data.itemId" />
                 </div>
             </div>
         </template>

@@ -7,9 +7,10 @@ import type { GraphNode } from "@/components/Graph/types";
 import { useJobBasic } from "@/composables/useJobBasic";
 import { getAppRoot } from "@/onload/loadConfig";
 
-import GTabs from "@/components/BaseComponents/GTabs.vue";
 import JobDetailsTabs from "./JobDetailsTabs.vue";
 import ToolExecutionJobs from "./ToolExecutionJobs.vue";
+
+import GTabs from "@/components/BaseComponents/GTabs.vue";
 import RerunJobButton from "@/components/JobInformation/RerunJobButton.vue";
 import JobState from "@/components/JobStates/JobState.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
@@ -73,7 +74,6 @@ watch(
     },
     { immediate: true },
 );
-
 </script>
 
 <template>

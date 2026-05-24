@@ -29,10 +29,8 @@ const informationIcon = computed(() => props.infoIcon || faInfoCircle);
 // parameters_display drives the Outputs tab; JobInformation/JobParameters
 // fetch their own data via the job-id prop.
 const jobParametersStore = useJobParametersStore();
-const paramsDisplay = computed(() => (props.jobId ? jobParametersStore.getJobParameters(props.jobId) ?? null : null));
-const hasOutputs = computed(
-    () => paramsDisplay.value?.outputs && Object.keys(paramsDisplay.value.outputs).length > 0,
-);
+const paramsDisplay = computed(() => (props.jobId ? (jobParametersStore.getJobParameters(props.jobId) ?? null) : null));
+const hasOutputs = computed(() => paramsDisplay.value?.outputs && Object.keys(paramsDisplay.value.outputs).length > 0);
 
 watch(
     () => props.jobId,
@@ -74,4 +72,3 @@ watch(
         </GTab>
     </div>
 </template>
-

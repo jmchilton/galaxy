@@ -52,6 +52,7 @@ const reportHtml = computed(() => (report.value ? renderMarkdown(report.value) :
         <BAlert v-else-if="reportError" variant="danger" show class="mb-0">
             Failed to generate the AI summary: {{ reportError }}
         </BAlert>
+        <!-- eslint-disable-next-line vue/no-v-html — markdown is sanitised by useMarkdown -->
         <div v-else-if="report" class="report-text" v-html="reportHtml" />
     </div>
 </template>

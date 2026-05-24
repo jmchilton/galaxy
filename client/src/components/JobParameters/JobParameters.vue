@@ -73,9 +73,6 @@ export default {
         JobOutputs,
         JobParametersArrayValue,
     },
-    setup() {
-        return { jobParametersStore: useJobParametersStore() };
-    },
     props: {
         jobId: {
             type: String,
@@ -103,6 +100,9 @@ export default {
             type: Boolean,
             default: true,
         },
+    },
+    setup() {
+        return { jobParametersStore: useJobParametersStore() };
     },
     data() {
         return {

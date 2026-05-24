@@ -6,8 +6,9 @@ import { computed, ref, watch } from "vue";
 import { GalaxyApi } from "@/api";
 import { useJobBasic } from "@/composables/useJobBasic";
 
-import GTabs from "@/components/BaseComponents/GTabs.vue";
 import JobDetailsTabs from "./JobDetailsTabs.vue";
+
+import GTabs from "@/components/BaseComponents/GTabs.vue";
 import RerunJobButton from "@/components/JobInformation/RerunJobButton.vue";
 import JobState from "@/components/JobStates/JobState.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
@@ -74,7 +75,6 @@ watch(
     },
     { immediate: true },
 );
-
 </script>
 
 <template>
@@ -98,10 +98,7 @@ watch(
                         class="mb-0 mr-2" />
                     <RerunJobButton v-if="job" :job-id="currentJob.id" outline />
                 </template>
-                <JobDetailsTabs
-                    :job-id="currentJob.id"
-                    :info-title="props.infoTitle"
-                    :info-icon="props.infoIcon" />
+                <JobDetailsTabs :job-id="currentJob.id" :info-title="props.infoTitle" :info-icon="props.infoIcon" />
             </GTabs>
         </template>
     </div>

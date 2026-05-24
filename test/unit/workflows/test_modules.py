@@ -622,9 +622,7 @@ class _CaptureFakeTool:
 def _capture(resolve):
     # history=None means the mint path is unreachable in these unit cases;
     # every exercised branch returns before touching it.
-    return modules._capture_workflow_tool_request_state(
-        None, _CaptureFakeTool(), None, None, None, resolve, []
-    )
+    return modules._capture_workflow_tool_request_state(None, _CaptureFakeTool(), None, None, None, resolve, [])
 
 
 def test_capture_skipped_conditional_step_returns_none():

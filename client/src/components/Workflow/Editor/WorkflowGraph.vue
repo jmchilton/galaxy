@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia";
 import { computed, type PropType, provide, reactive, type Ref, ref, watch, watchEffect } from "vue";
 
 import { DatatypesMapperModel } from "@/components/Datatypes/model";
+import { useFocusedNodes } from "@/components/Graph/composables/useFocusedNodes";
 import { useD3Zoom } from "@/composables/d3Zoom";
 import { useViewportBoundingBox } from "@/composables/viewportBoundingBox";
 import { useWorkflowStores } from "@/composables/workflowStores";
@@ -12,7 +13,6 @@ import type { Step } from "@/stores/workflowStepStore";
 import { assertDefined } from "@/utils/assertions";
 import type { Vector } from "@/utils/geometry";
 
-import { useFocusedNodes } from "@/components/Graph/composables/useFocusedNodes";
 import { useWorkflowBoundingBox } from "./composables/workflowBoundingBox";
 import type { OutputTerminals } from "./modules/terminals";
 import { maxZoom, minZoom } from "./modules/zoomLevels";

@@ -7,7 +7,7 @@
 import { defineStore } from "pinia";
 
 import { GalaxyApi } from "@/api";
-import { type JobDisplayParametersSummary } from "@/api/jobs";
+import type { JobDisplayParametersSummary } from "@/api/jobs";
 import { type FetchParams, useKeyedCache } from "@/composables/keyedCache";
 import { rethrowSimpleWithStatus } from "@/utils/simple-error";
 

@@ -53,7 +53,5 @@ def get_or_create_tool_source(session, tool) -> ToolSource:
 
 def _lookup(session, content_hash: str, source_class: str):
     return session.scalars(
-        select(ToolSource)
-        .where(ToolSource.hash == content_hash, ToolSource.source_class == source_class)
-        .limit(1)
+        select(ToolSource).where(ToolSource.hash == content_hash, ToolSource.source_class == source_class).limit(1)
     ).first()
