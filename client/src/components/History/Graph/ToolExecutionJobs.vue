@@ -12,13 +12,16 @@ import { BAlert, BButton, BButtonGroup } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
+import type { JobBaseModel } from "@/api/jobs";
 import { getAppRoot } from "@/onload/loadConfig";
 
 import GTab from "@/components/BaseComponents/GTab.vue";
 import GTabs from "@/components/BaseComponents/GTabs.vue";
 import JobInformation from "@/components/JobInformation/JobInformation.vue";
 import JobOutputs from "@/components/JobInformation/JobOutputs.vue";
+import RerunJobButton from "@/components/JobInformation/RerunJobButton.vue";
 import JobParameters from "@/components/JobParameters/JobParameters.vue";
+import JobState from "@/components/JobStates/JobState.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
 interface Props {
@@ -33,12 +36,9 @@ const currentIndex = ref(0);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
-// parameters_display payload for the currently-selected job — drives the
-// Outputs tab (its `outputs` field is the {name: JobOutput[]} shape that
-// JobOutputs expects, with proper label/value pairs). The Parameters tab
-// uses JobParameters which fetches the same endpoint internally; that
-// duplicate is cheaper than refactoring JobParameters to accept pre-fetched
-// data.
+// Currently-selected job, fetched on navigation. `job` drives the state badge
+// in the tab nav-end; `paramsDisplay` drives the Outputs tab.
+const job = ref<JobBaseModel | null>(null);
 const paramsDisplay = ref<{ outputs?: Record<string, unknown[]> } | null>(null);
 
 const currentJob = computed(() => jobs.value[currentIndex.value] ?? null);
@@ -77,20 +77,23 @@ watch(
     { immediate: true },
 );
 
-// Fetch parameters_display for the Outputs tab whenever the user navigates
-// to a different job.
 watch(
     () => currentJob.value?.id,
     async (id) => {
+        job.value = null;
         paramsDisplay.value = null;
         if (!id) {
             return;
         }
         try {
-            const { data } = await axios.get(`${getAppRoot()}api/jobs/${id}/parameters_display`);
-            paramsDisplay.value = data;
+            const [{ data: jobData }, { data: paramsData }] = await Promise.all([
+                axios.get(`${getAppRoot()}api/jobs/${id}`),
+                axios.get(`${getAppRoot()}api/jobs/${id}/parameters_display`),
+            ]);
+            job.value = jobData;
+            paramsDisplay.value = paramsData;
         } catch (e) {
-            // Graceful — Outputs tab falls through to its empty state.
+            // Graceful — tabs/badges fall through to their empty states.
         }
     },
     { immediate: true },
@@ -114,18 +117,25 @@ function next() {
         <LoadingSpan v-if="loading" message="Loading job details" />
         <BAlert v-else-if="error" variant="info" show class="mb-0">{{ error }}</BAlert>
         <template v-else-if="currentJob">
-            <div v-if="hasMany" class="d-flex align-items-center mb-2">
-                <span class="font-weight-bold">Job {{ currentIndex + 1 }} of {{ jobs.length }}</span>
-                <BButtonGroup size="sm" class="ml-auto">
-                    <BButton :disabled="currentIndex === 0" variant="outline-secondary" @click="prev">
-                        <FontAwesomeIcon :icon="faChevronLeft" fixed-width />
-                    </BButton>
-                    <BButton :disabled="currentIndex >= jobs.length - 1" variant="outline-secondary" @click="next">
-                        <FontAwesomeIcon :icon="faChevronRight" fixed-width />
-                    </BButton>
-                </BButtonGroup>
-            </div>
             <GTabs>
+                <template v-slot:nav-end>
+                    <template v-if="hasMany">
+                        <span class="font-weight-bold mr-2">Job {{ currentIndex + 1 }} of {{ jobs.length }}</span>
+                        <BButtonGroup size="sm" class="mr-2">
+                            <BButton :disabled="currentIndex === 0" variant="outline-secondary" @click="prev">
+                                <FontAwesomeIcon :icon="faChevronLeft" fixed-width />
+                            </BButton>
+                            <BButton
+                                :disabled="currentIndex >= jobs.length - 1"
+                                variant="outline-secondary"
+                                @click="next">
+                                <FontAwesomeIcon :icon="faChevronRight" fixed-width />
+                            </BButton>
+                        </BButtonGroup>
+                    </template>
+                    <JobState v-if="job" :job="job" class="mr-2" />
+                    <RerunJobButton v-if="job" :job-id="currentJob.id" outline />
+                </template>
                 <GTab>
                     <template v-slot:title>
                         <FontAwesomeIcon :icon="faInfoCircle" />
