@@ -3,9 +3,9 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faInfoCircle, faSignOutAlt, faSlidersH } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert } from "bootstrap-vue";
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 
-import { GalaxyApi } from "@/api";
+import { useJobParametersStore } from "@/stores/jobParametersStore";
 
 import GTab from "@/components/BaseComponents/GTab.vue";
 import JobInformation from "@/components/JobInformation/JobInformation.vue";
@@ -28,28 +28,17 @@ const informationIcon = computed(() => props.infoIcon || faInfoCircle);
 
 // parameters_display drives the Outputs tab; JobInformation/JobParameters
 // fetch their own data via the job-id prop.
-const paramsDisplay = ref<{ outputs?: Record<string, unknown[]> } | null>(null);
+const jobParametersStore = useJobParametersStore();
+const paramsDisplay = computed(() => (props.jobId ? jobParametersStore.getJobParameters(props.jobId) ?? null : null));
 const hasOutputs = computed(
     () => paramsDisplay.value?.outputs && Object.keys(paramsDisplay.value.outputs).length > 0,
 );
 
 watch(
     () => props.jobId,
-    async (id) => {
-        paramsDisplay.value = null;
-        if (!id) {
-            return;
-        }
-        try {
-            const { data, error } = await GalaxyApi().GET("/api/jobs/{job_id}/parameters_display", {
-                params: { path: { job_id: id } },
-            });
-            // Drop out-of-order responses.
-            if (props.jobId === id && !error) {
-                paramsDisplay.value = data ?? null;
-            }
-        } catch (e) {
-            // Graceful — Outputs tab falls through to its empty state.
+    (id) => {
+        if (id) {
+            jobParametersStore.fetchJobParameters({ id });
         }
     },
     { immediate: true },
