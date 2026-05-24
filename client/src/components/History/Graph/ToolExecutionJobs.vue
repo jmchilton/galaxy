@@ -82,9 +82,9 @@ watch(
 watch(
     () => currentJob.value?.id,
     async (id) => {
-        job.value = null;
-        paramsDisplay.value = null;
         if (!id) {
+            job.value = null;
+            paramsDisplay.value = null;
             return;
         }
         try {
