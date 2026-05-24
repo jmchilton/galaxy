@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from "vue";
 
 import { GalaxyApi } from "@/api";
 import { useMarkdown } from "@/composables/markdown";
+import { errorMessageAsString } from "@/utils/simple-error";
 
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
@@ -29,12 +30,12 @@ async function loadReport() {
             body: { history_id: props.historyId },
         });
         if (error) {
-            reportError.value = error.err_msg ?? "Failed to generate report.";
+            reportError.value = errorMessageAsString(error, "Failed to generate report.");
         } else {
             report.value = data?.content ?? "";
         }
     } catch (e) {
-        reportError.value = e instanceof Error ? e.message : "Failed to generate report.";
+        reportError.value = errorMessageAsString(e, "Failed to generate report.");
     } finally {
         reportLoading.value = false;
     }
@@ -48,7 +49,9 @@ const reportHtml = computed(() => (report.value ? renderMarkdown(report.value) :
 <template>
     <div class="history-graph-report p-2">
         <LoadingSpan v-if="reportLoading" message="Generating analysis report" />
-        <BAlert v-else-if="reportError" variant="info" show class="mb-0">{{ reportError }}</BAlert>
+        <BAlert v-else-if="reportError" variant="danger" show class="mb-0">
+            Failed to generate the AI summary: {{ reportError }}
+        </BAlert>
         <div v-else-if="report" class="report-text" v-html="reportHtml" />
     </div>
 </template>
