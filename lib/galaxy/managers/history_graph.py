@@ -434,7 +434,9 @@ class HistoryGraphBuilder:
         Payload shape is trusted to be Pydantic-validated upstream when
         the tool_request was accepted; no explicit depth or ref caps are
         applied here by design."""
-        refs = {(ref.content_type, ref.id) for ref in request_internal_input_refs(payload, {"hda", "hdca"})}
+        refs: set[tuple[str, int]] = {
+            (ref.content_type, ref.id) for ref in request_internal_input_refs(payload, {"hda", "hdca"})
+        }
         return self._normalize_refs(refs)
 
     def _normalize_refs(self, refs: set[tuple[str, int]]) -> set[tuple[str, int]]:

@@ -152,8 +152,8 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
             This history is empty. Add datasets or run tools to populate it.
         </BAlert>
         <BAlert v-else-if="toolExecutionNodes.length === 0" show variant="info" class="m-3">
-            No History Graph available. Please ensure that the History contains tool executions, and note that
-            Galaxy started capturing the required tool execution data with release 26.1.
+            No History Graph available. Please ensure that the History contains tool executions, and note that Galaxy
+            started capturing the required tool execution data with release 26.1.
         </BAlert>
         <template v-else>
             <NavigationTitle
@@ -228,13 +228,8 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                     :edges="graphEdges"
                     :focus-node-id="focusNodeId"
                     :truncated="isTruncated" />
-                <HistoryGraphToolExecutions
-                    v-show="activeTab === 'tool-requests'"
-                    :nodes="toolExecutionNodes" />
-                <HistoryGraphReport
-                    v-if="reportEverActive"
-                    v-show="activeTab === 'report'"
-                    :history-id="historyId" />
+                <HistoryGraphToolExecutions v-show="activeTab === 'tool-requests'" :nodes="toolExecutionNodes" />
+                <HistoryGraphReport v-if="reportEverActive" v-show="activeTab === 'report'" :history-id="historyId" />
             </div>
         </template>
     </div>

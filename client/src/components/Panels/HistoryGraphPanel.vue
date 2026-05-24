@@ -7,9 +7,9 @@ import type { HistorySummary } from "@/api";
 import { HistoriesFilters } from "@/components/History/HistoriesFilters";
 import { useHistoryStore } from "@/stores/historyStore";
 
+import ActivityPanel from "./ActivityPanel.vue";
 import FilterMenu from "@/components/Common/FilterMenu.vue";
 import HistoryScrollList from "@/components/History/HistoryScrollList.vue";
-import ActivityPanel from "./ActivityPanel.vue";
 
 const route = useRoute();
 const router = useRouter();

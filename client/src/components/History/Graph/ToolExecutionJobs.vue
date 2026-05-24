@@ -37,9 +37,7 @@ const paramsDisplay = ref<{ outputs?: Record<string, unknown[]> } | null>(null);
 
 const currentJob = computed(() => jobs.value[currentIndex.value] ?? null);
 const hasMany = computed(() => jobs.value.length > 1);
-const hasOutputs = computed(
-    () => paramsDisplay.value?.outputs && Object.keys(paramsDisplay.value.outputs).length > 0,
-);
+const hasOutputs = computed(() => paramsDisplay.value?.outputs && Object.keys(paramsDisplay.value.outputs).length > 0);
 
 // BPagination is 1-indexed; bridge to the 0-indexed currentIndex.
 const paginationPage = computed<number>({
@@ -150,11 +148,7 @@ watch(
                         <FontAwesomeIcon :icon="faSignOutAlt" />
                         <span>Outputs</span>
                     </template>
-                    <JobOutputs
-                        v-if="hasOutputs"
-                        :key="currentJob.id"
-                        :job-outputs="paramsDisplay?.outputs"
-                        paginate />
+                    <JobOutputs v-if="hasOutputs" :key="currentJob.id" :job-outputs="paramsDisplay?.outputs" paginate />
                     <BAlert v-else show variant="info" class="mb-0">No outputs.</BAlert>
                 </GTab>
             </GTabs>

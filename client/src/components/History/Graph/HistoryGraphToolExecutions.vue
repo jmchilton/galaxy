@@ -49,9 +49,7 @@ function isExpanded(id: string): boolean {
                     @keyup.enter="toggle(node.id)"
                     @click="toggle(node.id)">
                     <span class="portlet-title-text">Execution {{ index + 1 }}: {{ node.label }}</span>
-                    <FontAwesomeIcon
-                        class="ml-auto"
-                        :icon="isExpanded(node.id) ? faChevronUp : faChevronDown" />
+                    <FontAwesomeIcon class="ml-auto" :icon="isExpanded(node.id) ? faChevronUp : faChevronDown" />
                 </div>
                 <div v-if="isExpanded(node.id)" class="portlet-content">
                     <HistoryGraphNodeBody class="p-2" :node="node" />

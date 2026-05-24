@@ -4,8 +4,8 @@ import { computed } from "vue";
 
 import type { GraphNode } from "@/components/Graph/types";
 
-import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
 import ToolExecutionJobs from "./ToolExecutionJobs.vue";
+import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
 
 interface Props {
     /** The graph node to render details for. */
