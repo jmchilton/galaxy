@@ -48,7 +48,7 @@ const reportHtml = computed(() => (report.value ? renderMarkdown(report.value) :
 
 <template>
     <div class="history-graph-report p-2">
-        <LoadingSpan v-if="reportLoading" message="Generating analysis report" />
+        <LoadingSpan v-if="reportLoading" message="Generating history summary" />
         <BAlert v-else-if="reportError" variant="danger" show class="mb-0">
             Failed to generate the AI summary: {{ reportError }}
         </BAlert>
