@@ -6,7 +6,7 @@ import { ref } from "vue";
 
 import type { GraphNode } from "@/components/Graph/types";
 
-import HistoryGraphNodeBody from "./HistoryGraphNodeBody.vue";
+import ToolExecutionJobs from "./ToolExecutionJobs.vue";
 
 interface Props {
     /** Tool-execution graph nodes to list, in display order. */
@@ -52,7 +52,10 @@ function isExpanded(id: string): boolean {
                     <FontAwesomeIcon class="ml-auto" :icon="isExpanded(node.id) ? faChevronUp : faChevronDown" />
                 </div>
                 <div v-if="isExpanded(node.id)" class="portlet-content">
-                    <HistoryGraphNodeBody class="p-2" :node="node" />
+                    <ToolExecutionJobs
+                        v-if="node.data?.itemId"
+                        class="p-2"
+                        :tool-execution-id="node.data.itemId" />
                 </div>
             </div>
         </template>
