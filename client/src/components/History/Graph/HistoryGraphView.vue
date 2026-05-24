@@ -122,13 +122,13 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                 <template v-slot:collapsible>
                     <div
                         v-if="history"
-                        class="history-graph-info px-2 py-1 text-muted d-flex justify-content-between align-items-center">
-                        <HistoryDatasetsBadge :history-id="historyId" :count="history.count" />
+                        class="history-graph-info px-2 py-1 mt-1 text-muted d-flex justify-content-between align-items-center">
                         <i data-description="history graph time info">
                             <FontAwesomeIcon :icon="faClock" class="mr-1" />
                             <span v-localize>updated</span>
                             <UtcDate :date="history.update_time" mode="elapsed" />
                         </i>
+                        <HistoryDatasetsBadge :history-id="historyId" :count="history.count" />
                     </div>
                 </template>
             </NavigationTitle>
