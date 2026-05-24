@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { BAlert, BPagination } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
@@ -14,6 +15,10 @@ import LoadingSpan from "@/components/LoadingSpan.vue";
 interface Props {
     /** Encoded tool-execution (tool_request) id whose jobs should be listed. */
     toolExecutionId: string;
+    /** Custom text for the Information tab title (forwarded to JobDetailsTabs). */
+    infoTitle?: string;
+    /** Custom icon for the Information tab title (forwarded to JobDetailsTabs). */
+    infoIcon?: IconDefinition;
 }
 
 const props = defineProps<Props>();
@@ -93,7 +98,10 @@ watch(
                         class="mb-0 mr-2" />
                     <RerunJobButton v-if="job" :job-id="currentJob.id" outline />
                 </template>
-                <JobDetailsTabs :job-id="currentJob.id" />
+                <JobDetailsTabs
+                    :job-id="currentJob.id"
+                    :info-title="props.infoTitle"
+                    :info-icon="props.infoIcon" />
             </GTabs>
         </template>
     </div>

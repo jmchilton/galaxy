@@ -25,6 +25,10 @@ const nodeSrc = computed(() => (props.node.data?.src as string) ?? null);
 const itemId = computed(() => (props.node.data?.itemId as string) ?? null);
 const isDatasetLike = computed(() => nodeSrc.value === "hda" || nodeSrc.value === "hdca");
 
+// Used to label the Information tab now that the BCard header is gone.
+const infoTitle = computed(() => (props.node?.label as string) ?? undefined);
+const infoIcon = computed(() => props.node?.icon);
+
 // For dataset/collection nodes, resolve the creating job + fetch its basic
 // details so the same JobState badge / RerunJobButton chrome the tool
 // execution view shows can render in the GTabs nav-end.
@@ -73,7 +77,11 @@ watch(
 </script>
 
 <template>
-    <ToolExecutionJobs v-if="nodeSrc === 'tool_request' && itemId" :tool-execution-id="itemId" />
+    <ToolExecutionJobs
+        v-if="nodeSrc === 'tool_request' && itemId"
+        :tool-execution-id="itemId"
+        :info-title="infoTitle"
+        :info-icon="infoIcon" />
     <LoadingSpan v-else-if="isDatasetLike && lookupLoading" message="Loading job details" />
     <BAlert v-else-if="isDatasetLike && lookupError" variant="info" show class="mb-0">{{ lookupError }}</BAlert>
     <GTabs v-else-if="isDatasetLike && creatingJobId">
@@ -81,7 +89,11 @@ watch(
             <JobState v-if="job" :job="job" class="mr-2" />
             <RerunJobButton v-if="job" :job-id="creatingJobId" outline />
         </template>
-        <JobDetailsTabs :key="creatingJobId" :job-id="creatingJobId" />
+        <JobDetailsTabs
+            :key="creatingJobId"
+            :job-id="creatingJobId"
+            :info-title="infoTitle"
+            :info-icon="infoIcon" />
     </GTabs>
     <BAlert v-else show variant="info" class="mb-0">No details available for this node.</BAlert>
 </template>

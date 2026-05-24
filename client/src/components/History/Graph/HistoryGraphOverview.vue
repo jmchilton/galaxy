@@ -102,6 +102,30 @@ function onNodeSelected(node: GraphNode | null) {
     overflow: hidden;
 }
 
+// Push the scroll boundary all the way down to GTabs's `.tab-content`. Each
+// level in between needs `min-height: 0` so flex sizing wins over content size
+// and the scroll kicks in instead of the parent overflowing.
+.details-pane > :deep(*) {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.details-pane :deep(.tabs) {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.details-pane :deep(.tab-content) {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 /* Tool request nodes use the primary header colour (no dataset state). */
 :deep(.node-tool-request) .graph-node-header {
     background: $brand-primary;

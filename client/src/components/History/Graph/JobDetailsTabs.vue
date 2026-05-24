@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faInfoCircle, faSignOutAlt, faSlidersH } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import axios from "axios";
@@ -15,9 +16,16 @@ import JobParameters from "@/components/JobParameters/JobParameters.vue";
 interface Props {
     /** Encoded id of the job to display tabs for. */
     jobId: string;
+    /** Custom text for the Information tab title. Defaults to "Information". */
+    infoTitle?: string;
+    /** Custom icon for the Information tab title. Defaults to faInfoCircle. */
+    infoIcon?: IconDefinition;
 }
 
 const props = defineProps<Props>();
+
+const informationTitle = computed(() => props.infoTitle || "Information");
+const informationIcon = computed(() => props.infoIcon || faInfoCircle);
 
 // parameters_display drives the Outputs tab; JobInformation/JobParameters
 // fetch their own data via the job-id prop.
@@ -51,8 +59,8 @@ watch(
     <div>
         <GTab>
             <template v-slot:title>
-                <FontAwesomeIcon :icon="faInfoCircle" />
-                <span>Information</span>
+                <FontAwesomeIcon :icon="informationIcon" />
+                <span>{{ informationTitle }}</span>
             </template>
             <JobInformation :key="jobId" :job-id="jobId" :include-title="false" :include-times="true" />
         </GTab>
