@@ -57,6 +57,7 @@ import BootstrapVue from "bootstrap-vue";
 import Vue from "vue";
 
 import { getAppRoot } from "@/onload/loadConfig";
+import { useJobParametersStore } from "@/stores/jobParametersStore";
 
 import Heading from "../Common/Heading.vue";
 import JobOutputs from "../JobInformation/JobOutputs.vue";
@@ -71,6 +72,9 @@ export default {
         Heading,
         JobOutputs,
         JobParametersArrayValue,
+    },
+    setup() {
+        return { jobParametersStore: useJobParametersStore() };
     },
     props: {
         jobId: {
@@ -138,15 +142,22 @@ export default {
         isRequestJson(parameter) {
             return parameter.text == "request_json" && typeof parameter.value == "string";
         },
-        initJob() {
-            let url;
-            if (this.jobId) {
-                url = `${getAppRoot()}api/jobs/${this.jobId}/parameters_display`;
-            } else {
-                url = `${getAppRoot()}api/datasets/${this.datasetId}/parameters_display?hda_ldda=${this.datasetType}`;
-            }
-            this.ajaxCall(url);
+        async initJob() {
             this.isSingleParam = this.param !== undefined && this.param !== "undefined";
+            if (this.jobId) {
+                try {
+                    await this.jobParametersStore.fetchJobParameters({ id: this.jobId });
+                    const data = this.jobParametersStore.getJobParameters(this.jobId);
+                    if (data) {
+                        this.applyData(data);
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            } else if (this.datasetId) {
+                const url = `${getAppRoot()}api/datasets/${this.datasetId}/parameters_display?hda_ldda=${this.datasetType}`;
+                this.ajaxCall(url);
+            }
         },
         appRoot: function () {
             return getAppRoot();
@@ -155,14 +166,15 @@ export default {
             axios
                 .get(url)
                 .then((response) => response.data)
-                .then((data) => {
-                    this.hasParameterErrors = data.has_parameter_errors;
-                    this.parameters = data.parameters;
-                    this.outputs = data.outputs || {};
-                })
+                .then((data) => this.applyData(data))
                 .catch((e) => {
                     console.error(e);
                 });
+        },
+        applyData(data) {
+            this.hasParameterErrors = data.has_parameter_errors;
+            this.parameters = data.parameters;
+            this.outputs = data.outputs || {};
         },
     },
 };
