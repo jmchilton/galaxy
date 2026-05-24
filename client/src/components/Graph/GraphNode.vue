@@ -9,6 +9,8 @@ import GraphConnector from "./GraphConnector.vue";
 interface Props {
     node: GraphNode;
     selected: boolean;
+    /** Dim the node when another node's lineage is in focus and this one isn't. */
+    outOfFocus?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -72,7 +74,7 @@ const iconSpin = computed(() => Boolean(props.node.data?.stateSpin));
     <div
         ref="root"
         class="graph-node"
-        :class="[node.cssClass, { 'node-highlight': selected }]"
+        :class="[node.cssClass, { 'node-highlight': selected, 'node-out-of-focus': outOfFocus }]"
         :style="nodeStyle"
         @click.stop="emit('select', node.id)">
         <div class="graph-node-header unselectable" :data-state="node.data?.state ?? undefined">
@@ -124,7 +126,12 @@ const iconSpin = computed(() => Boolean(props.node.data?.stateSpin));
     user-select: none;
     transition:
         border-color 0.15s,
-        box-shadow 0.15s;
+        box-shadow 0.15s,
+        opacity 0.2s ease;
+}
+
+.node-out-of-focus {
+    opacity: 0.35;
 }
 
 .node-highlight {

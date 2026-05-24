@@ -5,13 +5,15 @@ import type { GraphEdge } from "./types";
 
 interface Props {
     edges: GraphEdge[];
-    selectedNodeId?: string | null;
+    /** Lineage of the selected node. Edges where either endpoint isn't in this
+     *  set are dimmed. Null means no filtering (nothing dimmed). */
+    focusedNodeIds?: Set<string> | null;
     width: number;
     height: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    selectedNodeId: null,
+    focusedNodeIds: null,
 });
 
 /** Ribbon margin for collection edges — the gap between parallel ribbon strands. */
@@ -48,11 +50,11 @@ function edgePaths(edge: GraphEdge): string[] {
 }
 
 function edgeClass(edge: GraphEdge): Record<string, boolean> {
-    const isConnected =
-        !props.selectedNodeId || edge.source === props.selectedNodeId || edge.target === props.selectedNodeId;
+    const inFocus =
+        !props.focusedNodeIds || (props.focusedNodeIds.has(edge.source) && props.focusedNodeIds.has(edge.target));
     return {
         [edge.cssClass ?? "edge-default"]: true,
-        "edge-dimmed": !isConnected,
+        "edge-dimmed": !inFocus,
     };
 }
 </script>

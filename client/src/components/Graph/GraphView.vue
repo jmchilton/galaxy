@@ -8,6 +8,7 @@ import { useD3Zoom } from "@/composables/d3Zoom";
 import { useViewportBoundingBox } from "@/composables/viewportBoundingBox";
 import { maxZoom, minZoom } from "@/utils/zoomLevels";
 
+import { useFocusedNodes } from "./composables/useFocusedNodes";
 import { layoutGraph } from "./layoutGraph";
 import type { GraphEdge, GraphLayout, GraphNode } from "./types";
 
@@ -155,6 +156,12 @@ function fitView() {
 // ── Selection ────────────────────────────────────────────────────────
 const selectedNodeId = ref<string | null>(null);
 
+// Lineage of the selected node — drives the dimming of out-of-focus nodes/edges.
+const { focusedNodeIds } = useFocusedNodes(selectedNodeId, {
+    upstream: (id) => props.edges.filter((e) => e.target === id).map((e) => e.source),
+    downstream: (id) => props.edges.filter((e) => e.source === id).map((e) => e.target),
+});
+
 function onNodeSelect(nodeId: string) {
     if (selectedNodeId.value === nodeId) {
         selectedNodeId.value = null;
@@ -211,7 +218,7 @@ const renderNodes = computed<GraphNode[]>(() => {
                 <GraphEdges
                     v-if="layout"
                     :edges="layout.edges"
-                    :selected-node-id="selectedNodeId"
+                    :focused-node-ids="focusedNodeIds"
                     :width="layout.width + 200"
                     :height="layout.height + 200" />
                 <GraphNodeComponent
@@ -219,6 +226,7 @@ const renderNodes = computed<GraphNode[]>(() => {
                     :key="node.id"
                     :node="node"
                     :selected="node.id === selectedNodeId"
+                    :out-of-focus="focusedNodeIds !== null && !focusedNodeIds.has(node.id)"
                     @select="onNodeSelect"
                     @resize="onNodeResize" />
             </div>
