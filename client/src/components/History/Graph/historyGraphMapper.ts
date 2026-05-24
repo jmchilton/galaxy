@@ -1,4 +1,4 @@
-import { faFile, faLayerGroup, faWrench } from "@fortawesome/free-solid-svg-icons";
+import { faBolt, faFile, faLayerGroup } from "@fortawesome/free-solid-svg-icons";
 
 import type { components } from "@/api/schema";
 import type { ConnectorVariant, GraphEdge, GraphNode } from "@/components/Graph/types";
@@ -21,7 +21,7 @@ export const NODE_TYPE_LABELS: Record<string, string> = {
 const NODE_ICONS: Record<string, typeof faFile> = {
     hda: faFile,
     hdca: faLayerGroup,
-    tool_request: faWrench,
+    tool_request: faBolt,
 };
 
 const NODE_CSS_CLASS: Record<string, string> = {
