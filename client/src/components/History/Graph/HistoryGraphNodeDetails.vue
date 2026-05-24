@@ -27,17 +27,33 @@ const typeLabel = computed(() => (props.node?.data?.typeLabel as string) ?? "Ite
             <span class="font-weight-bold">{{ typeLabel }}</span>
             <span class="text-truncate text-muted">{{ node.label }}</span>
         </BCardHeader>
-        <BCardBody body-class="p-2 graph-node-scroll-body">
+        <BCardBody body-class="p-2 d-flex flex-column flex-grow-1 graph-node-card-body">
             <HistoryGraphNodeBody :node="node" />
         </BCardBody>
     </BCard>
 </template>
 
 <style lang="scss" scoped>
-// Confine vertical scrolling to the card body so the header stays pinned and
-// nothing scrolls horizontally; :deep reaches through bootstrap-vue's
-// rendered .card-body element.
-:deep(.graph-node-scroll-body) {
+// Pin the BCard header *and* the GTabs nav row by pushing the scroll boundary
+// all the way to GTabs's `.tab-content`. Each flex level needs `min-height: 0`
+// so children can shrink below their content size — without it the scroll
+// never kicks in and the parent overflows instead.
+:deep(.graph-node-card-body) {
+    min-height: 0;
+}
+:deep(.graph-node-card-body > *) {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+:deep(.tabs) {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+:deep(.tab-content) {
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
