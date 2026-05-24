@@ -60,7 +60,7 @@ watch(
         <GTab>
             <template v-slot:title>
                 <FontAwesomeIcon :icon="informationIcon" />
-                <span class="font-weight-bold">{{ informationTitle }}</span>
+                <span class="font-weight-bold text-break">{{ informationTitle }}</span>
             </template>
             <JobInformation :key="jobId" :job-id="jobId" :include-title="false" :include-times="true" />
         </GTab>

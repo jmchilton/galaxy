@@ -82,18 +82,20 @@ watch(
         :tool-execution-id="itemId"
         :info-title="infoTitle"
         :info-icon="infoIcon" />
-    <LoadingSpan v-else-if="isDatasetLike && lookupLoading" message="Loading job details" />
-    <BAlert v-else-if="isDatasetLike && lookupError" variant="info" show class="mb-0">{{ lookupError }}</BAlert>
-    <GTabs v-else-if="isDatasetLike && creatingJobId">
-        <template v-slot:nav-end>
-            <JobState v-if="job" :job="job" class="mr-2" />
-            <RerunJobButton v-if="job" :job-id="creatingJobId" outline />
-        </template>
-        <JobDetailsTabs
-            :key="creatingJobId"
-            :job-id="creatingJobId"
-            :info-title="infoTitle"
-            :info-icon="infoIcon" />
-    </GTabs>
-    <BAlert v-else show variant="info" class="mb-0">No details available for this node.</BAlert>
+    <div v-else>
+        <LoadingSpan v-if="isDatasetLike && lookupLoading" message="Loading job details" />
+        <BAlert v-else-if="isDatasetLike && lookupError" variant="info" show class="mb-0">{{ lookupError }}</BAlert>
+        <GTabs v-else-if="isDatasetLike && creatingJobId">
+            <template v-slot:nav-end>
+                <JobState v-if="job" :job="job" class="mr-2" />
+                <RerunJobButton v-if="job" :job-id="creatingJobId" outline />
+            </template>
+            <JobDetailsTabs
+                :key="creatingJobId"
+                :job-id="creatingJobId"
+                :info-title="infoTitle"
+                :info-icon="infoIcon" />
+        </GTabs>
+        <BAlert v-else show variant="info" class="mb-0">No details available for this node.</BAlert>
+    </div>
 </template>
