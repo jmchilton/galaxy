@@ -20,12 +20,28 @@ interface Props {
     infoTitle?: string;
     /** Custom icon for the Information tab title. Defaults to faInfoCircle. */
     infoIcon?: IconDefinition;
+    /** Inline style for the Information tab title — typically the matching node-header colours. */
+    infoStyle?: { backgroundColor?: string; color?: string } | null;
 }
 
 const props = defineProps<Props>();
 
 const informationTitle = computed(() => props.infoTitle || "Information");
 const informationIcon = computed(() => props.infoIcon || faInfoCircle);
+
+// Render the colour pair as an inline style on the nav-link itself (via
+// GTab's `titleLinkAttributes` passthrough) so the whole tab — icon, text,
+// rounded corners — picks up the node-header colour.
+const informationLinkAttributes = computed<Record<string, string> | undefined>(() => {
+    if (!props.infoStyle?.backgroundColor) {
+        return undefined;
+    }
+    const parts = [`background-color: ${props.infoStyle.backgroundColor}`];
+    if (props.infoStyle.color) {
+        parts.push(`color: ${props.infoStyle.color}`);
+    }
+    return { style: parts.join("; ") };
+});
 
 // parameters_display drives the Outputs tab; JobInformation/JobParameters
 // fetch their own data via the job-id prop.
@@ -57,10 +73,10 @@ watch(
          doesn't support multi-root templates). GTab children still register
          via inject with the outer GTabs context — the wrapper is layout-neutral. -->
     <div>
-        <GTab>
+        <GTab :title-link-attributes="informationLinkAttributes">
             <template v-slot:title>
                 <FontAwesomeIcon :icon="informationIcon" />
-                <span>{{ informationTitle }}</span>
+                <span class="font-weight-bold">{{ informationTitle }}</span>
             </template>
             <JobInformation :key="jobId" :job-id="jobId" :include-title="false" :include-times="true" />
         </GTab>
@@ -81,3 +97,4 @@ watch(
         </GTab>
     </div>
 </template>
+

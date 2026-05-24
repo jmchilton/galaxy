@@ -7,6 +7,8 @@ import type { GraphNode } from "@/components/Graph/types";
 import { useJobBasic } from "@/composables/useJobBasic";
 import { getAppRoot } from "@/onload/loadConfig";
 
+import { nodeHeaderColor } from "./historyNodeColor";
+
 import GTabs from "@/components/BaseComponents/GTabs.vue";
 import JobDetailsTabs from "./JobDetailsTabs.vue";
 import ToolExecutionJobs from "./ToolExecutionJobs.vue";
@@ -28,6 +30,7 @@ const isDatasetLike = computed(() => nodeSrc.value === "hda" || nodeSrc.value ==
 // Used to label the Information tab now that the BCard header is gone.
 const infoTitle = computed(() => (props.node?.label as string) ?? undefined);
 const infoIcon = computed(() => props.node?.icon);
+const infoStyle = computed(() => (props.node ? nodeHeaderColor(props.node) : null));
 
 // For dataset/collection nodes, resolve the creating job + fetch its basic
 // details so the same JobState badge / RerunJobButton chrome the tool
@@ -81,7 +84,8 @@ watch(
         v-if="nodeSrc === 'tool_request' && itemId"
         :tool-execution-id="itemId"
         :info-title="infoTitle"
-        :info-icon="infoIcon" />
+        :info-icon="infoIcon"
+        :info-style="infoStyle" />
     <LoadingSpan v-else-if="isDatasetLike && lookupLoading" message="Loading job details" />
     <BAlert v-else-if="isDatasetLike && lookupError" variant="info" show class="mb-0">{{ lookupError }}</BAlert>
     <GTabs v-else-if="isDatasetLike && creatingJobId">
@@ -93,7 +97,8 @@ watch(
             :key="creatingJobId"
             :job-id="creatingJobId"
             :info-title="infoTitle"
-            :info-icon="infoIcon" />
+            :info-icon="infoIcon"
+            :info-style="infoStyle" />
     </GTabs>
     <BAlert v-else show variant="info" class="mb-0">No details available for this node.</BAlert>
 </template>
