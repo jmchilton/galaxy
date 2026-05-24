@@ -110,7 +110,6 @@ watch(
             <GTabs>
                 <template v-slot:nav-end>
                     <JobState v-if="job" :job="job" class="mr-2" />
-                    <RerunJobButton v-if="job" :job-id="currentJob.id" outline />
                     <BPagination
                         v-if="hasMany"
                         v-model="paginationPage"
@@ -121,7 +120,8 @@ watch(
                         first-number
                         last-number
                         hide-goto-end-buttons
-                        class="mb-0 ml-2" />
+                        class="mb-0 mr-2" />
+                    <RerunJobButton v-if="job" :job-id="currentJob.id" outline />
                 </template>
                 <GTab>
                     <template v-slot:title>
