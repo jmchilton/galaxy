@@ -1,14 +1,8 @@
 <script setup lang="ts">
-import {
-    faChevronLeft,
-    faChevronRight,
-    faInfoCircle,
-    faSignOutAlt,
-    faSlidersH,
-} from "@fortawesome/free-solid-svg-icons";
+import { faInfoCircle, faSignOutAlt, faSlidersH } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import axios from "axios";
-import { BAlert, BButton, BButtonGroup } from "bootstrap-vue";
+import { BAlert, BPagination } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
@@ -46,6 +40,14 @@ const hasMany = computed(() => jobs.value.length > 1);
 const hasOutputs = computed(
     () => paramsDisplay.value?.outputs && Object.keys(paramsDisplay.value.outputs).length > 0,
 );
+
+// BPagination is 1-indexed; bridge to the 0-indexed currentIndex.
+const paginationPage = computed<number>({
+    get: () => currentIndex.value + 1,
+    set: (val: number) => {
+        currentIndex.value = val - 1;
+    },
+});
 
 watch(
     () => props.toolExecutionId,
@@ -98,18 +100,6 @@ watch(
     },
     { immediate: true },
 );
-
-function prev() {
-    if (currentIndex.value > 0) {
-        currentIndex.value -= 1;
-    }
-}
-
-function next() {
-    if (currentIndex.value < jobs.value.length - 1) {
-        currentIndex.value += 1;
-    }
-}
 </script>
 
 <template>
@@ -119,22 +109,19 @@ function next() {
         <template v-else-if="currentJob">
             <GTabs>
                 <template v-slot:nav-end>
-                    <template v-if="hasMany">
-                        <span class="font-weight-bold mr-2">Job {{ currentIndex + 1 }} of {{ jobs.length }}</span>
-                        <BButtonGroup size="sm" class="mr-2">
-                            <BButton :disabled="currentIndex === 0" variant="outline-secondary" @click="prev">
-                                <FontAwesomeIcon :icon="faChevronLeft" fixed-width />
-                            </BButton>
-                            <BButton
-                                :disabled="currentIndex >= jobs.length - 1"
-                                variant="outline-secondary"
-                                @click="next">
-                                <FontAwesomeIcon :icon="faChevronRight" fixed-width />
-                            </BButton>
-                        </BButtonGroup>
-                    </template>
                     <JobState v-if="job" :job="job" class="mr-2" />
                     <RerunJobButton v-if="job" :job-id="currentJob.id" outline />
+                    <BPagination
+                        v-if="hasMany"
+                        v-model="paginationPage"
+                        :total-rows="jobs.length"
+                        :per-page="1"
+                        size="sm"
+                        :limit="3"
+                        first-number
+                        last-number
+                        hide-goto-end-buttons
+                        class="mb-0 ml-2" />
                 </template>
                 <GTab>
                     <template v-slot:title>

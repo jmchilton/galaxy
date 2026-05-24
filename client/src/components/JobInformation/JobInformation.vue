@@ -158,15 +158,8 @@ watch(
             :stderr_position="stderr_position"
             :stderr_length="stderr_length"
             @update:result="updateConsoleOutputs" />
-        <div class="d-flex justify-content-between flex-gapx-1">
-            <Heading
-                v-if="props.includeTitle"
-                id="job-information-heading"
-                class="flex-grow-1"
-                h1
-                separator
-                inline
-                size="md">
+        <div v-if="props.includeTitle" class="d-flex justify-content-between flex-gapx-1">
+            <Heading id="job-information-heading" class="flex-grow-1" h1 separator inline size="md">
                 Job Information
                 <JobState v-if="job" class="job-information-state-badge" :job="job" />
             </Heading>
