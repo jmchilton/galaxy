@@ -63,5 +63,5 @@ export function useHistoryGraphData(
     }
     watch(watchSources, () => fetchGraph(), { immediate: true });
 
-    return { graphData, loading, error };
+    return { graphData, loading, error, refetch: fetchGraph };
 }
