@@ -37,15 +37,17 @@ function nodeKey(ref: { src: string; id: string }): string {
 
 // ── Label resolution ──
 
-function resolveNodeLabel(node: ApiGraphNode): string {
+function resolveNodeLabel(node: ApiGraphNode, executionIndex?: number): string {
     const hid = node.hid ? `${node.hid}: ` : "";
     switch (node.src) {
         case "hda":
             return `${hid}${node.name ?? node.extension ?? "Dataset"}`;
         case "hdca":
             return `${hid}${node.name ?? node.collection_type ?? "Collection"}`;
-        case "tool_request":
-            return node.tool_name ?? shortenToolId(node.tool_id);
+        case "tool_request": {
+            const idx = executionIndex ? `${executionIndex}: ` : "";
+            return `${idx}${node.tool_name ?? shortenToolId(node.tool_id)}`;
+        }
     }
 }
 
@@ -137,9 +139,23 @@ export function mapNodes(apiNodes: ApiGraphNode[], apiEdges: ApiGraphEdge[]): Gr
         outputVariants.get(sourceKey)!.push(edgeEndVariant(edge.source, edge));
     }
 
+    // Position-based execution index for tool_request nodes. The graph response
+    // is sorted by db_id (creation order), so the n-th tool_request here is
+    // the n-th execution in the response — stable when the graph covers the
+    // whole history, drifts when truncated or seed-filtered.
+    const executionIndices = new Map<string, number>();
+    let execCounter = 0;
+    for (const node of apiNodes) {
+        if (node.src === "tool_request") {
+            execCounter += 1;
+            executionIndices.set(node.id, execCounter);
+        }
+    }
+
     return apiNodes.map((node) => {
         const key = nodeKey(node);
         const isToolRequest = node.src === "tool_request";
+        const executionIndex = isToolRequest ? executionIndices.get(node.id) : undefined;
         const inputs = inputVariants.get(key) ?? [];
         const outputs = outputVariants.get(key) ?? [];
 
@@ -161,7 +177,7 @@ export function mapNodes(apiNodes: ApiGraphNode[], apiEdges: ApiGraphEdge[]): Gr
             y: 0,
             width: NODE_WIDTH,
             height: 0,
-            label: resolveNodeLabel(node),
+            label: resolveNodeLabel(node, executionIndex),
             icon: stateRep?.icon ?? NODE_ICONS[node.src] ?? faFile,
             badge: resolveNodeBadge(node),
             cssClass: NODE_CSS_CLASS[node.src],
@@ -173,6 +189,7 @@ export function mapNodes(apiNodes: ApiGraphNode[], apiEdges: ApiGraphEdge[]): Gr
                 /** Encoded id of the underlying item (no prefix). */
                 itemId: node.id,
                 toolId: isToolRequest ? node.tool_id : null,
+                executionIndex,
                 inputCount: inputs.length,
                 outputCount: outputs.length,
                 state: displayState,
