@@ -2,11 +2,10 @@
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faInfoCircle, faSignOutAlt, faSlidersH } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import axios from "axios";
 import { BAlert } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
-import { getAppRoot } from "@/onload/loadConfig";
+import { GalaxyApi } from "@/api";
 
 import GTab from "@/components/BaseComponents/GTab.vue";
 import JobInformation from "@/components/JobInformation/JobInformation.vue";
@@ -37,13 +36,18 @@ const hasOutputs = computed(
 watch(
     () => props.jobId,
     async (id) => {
+        paramsDisplay.value = null;
         if (!id) {
-            paramsDisplay.value = null;
             return;
         }
         try {
-            const { data } = await axios.get(`${getAppRoot()}api/jobs/${id}/parameters_display`);
-            paramsDisplay.value = data;
+            const { data, error } = await GalaxyApi().GET("/api/jobs/{job_id}/parameters_display", {
+                params: { path: { job_id: id } },
+            });
+            // Drop out-of-order responses.
+            if (props.jobId === id && !error) {
+                paramsDisplay.value = data ?? null;
+            }
         } catch (e) {
             // Graceful — Outputs tab falls through to its empty state.
         }
