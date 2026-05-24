@@ -3,8 +3,8 @@ import {
     faChevronLeft,
     faChevronRight,
     faInfoCircle,
-    faSignInAlt,
     faSignOutAlt,
+    faSlidersH,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import axios from "axios";
@@ -131,14 +131,14 @@ function next() {
                         <FontAwesomeIcon :icon="faInfoCircle" />
                         <span>Information</span>
                     </template>
-                    <JobInformation :job-id="currentJob.id" :include-times="true" />
+                    <JobInformation :job-id="currentJob.id" :include-title="false" :include-times="true" />
                 </GTab>
                 <GTab lazy>
                     <template v-slot:title>
-                        <FontAwesomeIcon :icon="faSignInAlt" />
-                        <span>Inputs</span>
+                        <FontAwesomeIcon :icon="faSlidersH" />
+                        <span>Parameters</span>
                     </template>
-                    <JobParameters :job-id="currentJob.id" :include-outputs="false" />
+                    <JobParameters :job-id="currentJob.id" :include-title="false" :include-outputs="false" />
                 </GTab>
                 <GTab lazy>
                     <template v-slot:title>

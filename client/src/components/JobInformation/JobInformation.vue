@@ -18,13 +18,18 @@ import CopyToClipboard from "@/components/CopyToClipboard.vue";
 import HelpText from "@/components/Help/HelpText.vue";
 import UtcDate from "@/components/UtcDate.vue";
 
-const props = defineProps<{
-    jobId: string;
-    /** If `true`, the job's update and create times, as well as time to finish are shown. */
-    includeTimes?: boolean;
-    /** If provided, this component will skip fetching the invocation ID for the job. */
-    invocationId?: string;
-}>();
+const props = withDefaults(
+    defineProps<{
+        jobId: string;
+        /** If `true`, the job's update and create times, as well as time to finish are shown. */
+        includeTimes?: boolean;
+        /** If `true`, the title is shown. */
+        includeTitle?: boolean;
+        /** If provided, this component will skip fetching the invocation ID for the job. */
+        invocationId?: string;
+    }>(),
+    { includeTitle: true },
+);
 
 const job = ref<ShowFullJobResponse | null>(null);
 const fetchedInvocationId = ref<string | null | undefined>(props.invocationId);
@@ -154,7 +159,14 @@ watch(
             :stderr_length="stderr_length"
             @update:result="updateConsoleOutputs" />
         <div class="d-flex justify-content-between flex-gapx-1">
-            <Heading id="job-information-heading" class="flex-grow-1" h1 separator inline size="md">
+            <Heading
+                v-if="props.includeTitle"
+                id="job-information-heading"
+                class="flex-grow-1"
+                h1
+                separator
+                inline
+                size="md">
                 Job Information
                 <JobState v-if="job" class="job-information-state-badge" :job="job" />
             </Heading>
