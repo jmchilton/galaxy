@@ -4,7 +4,7 @@ import { faBezierCurve, faExchangeAlt } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BNav, BNavItem } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
-import { computed, ref, toRef } from "vue";
+import { computed, ref, toRef, watch } from "vue";
 
 import type { GraphNode } from "@/components/Graph/types";
 import { usePersistentToggle } from "@/composables/persistentToggle";
@@ -70,8 +70,24 @@ const graphEdges = computed(() => (graphData.value ? mapEdges(graphData.value.ed
 
 const isTruncated = computed(() => graphData.value?.truncated?.item_count_capped ?? false);
 
-// `tab` undefined means the Overview tab.
-const onOverviewTab = computed(() => !props.tab);
+// Tab state is internal — driven by clicks, not by URL changes — so switching
+// tabs doesn't change `$route.fullPath` and therefore doesn't trip the
+// `<router-view :key="$route.fullPath">` remount in Analysis.vue. The URL's
+// `:tab?` param is only used as the initial selection (deep-link entry).
+type TabKey = "overview" | "tool-requests" | "report";
+const activeTab = ref<TabKey>(
+    props.tab === "tool-requests" ? "tool-requests" : props.tab === "report" ? "report" : "overview",
+);
+
+// AI Summary calls an LLM on mount, so keep it lazy until the user actually
+// visits the tab at least once. After that it stays mounted (v-show) so the
+// fetched report persists across tab switches.
+const reportEverActive = ref(activeTab.value === "report");
+watch(activeTab, (val) => {
+    if (val === "report") {
+        reportEverActive.value = true;
+    }
+});
 
 // Tool-execution nodes (backend node src is still `tool_request`) feed the Tool Executions tab.
 const toolExecutionNodes = computed<GraphNode[]>(() =>
@@ -134,31 +150,42 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
             </NavigationTitle>
 
             <BNav pills class="mb-2 mt-2 p-2 bg-light border-bottom">
-                <BNavItem title="Overview" :active="onOverviewTab" :to="`/histories/${historyId}/graph`">
+                <BNavItem
+                    title="Overview"
+                    :active="activeTab === 'overview'"
+                    href="#"
+                    @click.prevent="activeTab = 'overview'">
                     Overview
                 </BNavItem>
                 <BNavItem
                     title="Tool Executions"
-                    :active="props.tab === 'tool-requests'"
-                    :to="`/histories/${historyId}/graph/tool-requests`">
+                    :active="activeTab === 'tool-requests'"
+                    href="#"
+                    @click.prevent="activeTab = 'tool-requests'">
                     Tool Executions
                 </BNavItem>
                 <BNavItem
                     title="AI Summary"
-                    :active="props.tab === 'report'"
-                    :to="`/histories/${historyId}/graph/report`">
+                    :active="activeTab === 'report'"
+                    href="#"
+                    @click.prevent="activeTab = 'report'">
                     AI Summary
                 </BNavItem>
             </BNav>
             <div class="tab-content-container d-flex flex-column overflow-auto">
                 <HistoryGraphOverview
-                    v-if="onOverviewTab"
+                    v-show="activeTab === 'overview'"
                     :nodes="graphNodes"
                     :edges="graphEdges"
                     :focus-node-id="focusNodeId"
                     :truncated="isTruncated" />
-                <HistoryGraphToolExecutions v-else-if="props.tab === 'tool-requests'" :nodes="toolExecutionNodes" />
-                <HistoryGraphReport v-else-if="props.tab === 'report'" :history-id="historyId" />
+                <HistoryGraphToolExecutions
+                    v-show="activeTab === 'tool-requests'"
+                    :nodes="toolExecutionNodes" />
+                <HistoryGraphReport
+                    v-if="reportEverActive"
+                    v-show="activeTab === 'report'"
+                    :history-id="historyId" />
             </div>
         </template>
     </div>
