@@ -130,7 +130,7 @@ const iconSpin = computed(() => Boolean(props.node.data?.stateSpin));
 .node-highlight {
     z-index: 1001;
     border-color: $white;
-    box-shadow: 0 0 0 2px $brand-primary;
+    box-shadow: 0 0 0 5px $brand-warning;
 }
 
 .graph-node-header {
