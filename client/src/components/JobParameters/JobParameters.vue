@@ -44,8 +44,10 @@
                 {{ singleParam }}
             </td>
         </div>
-        <br />
-        <JobOutputs :job-outputs="outputs" paginate :title="`Job Outputs`" />
+        <template v-if="includeOutputs">
+            <br />
+            <JobOutputs :job-outputs="outputs" paginate :title="`Job Outputs`" />
+        </template>
     </div>
 </template>
 
@@ -88,6 +90,12 @@ export default {
             default: undefined,
         },
         includeTitle: {
+            type: Boolean,
+            default: true,
+        },
+        /** Append the JobOutputs table at the bottom (set false when callers
+         *  already render outputs in a separate UI surface). */
+        includeOutputs: {
             type: Boolean,
             default: true,
         },
