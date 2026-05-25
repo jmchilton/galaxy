@@ -16,7 +16,11 @@ export function useHistoryGraphSummary(historyId: string) {
         loading.value = true;
         error.value = null;
         try {
-            const { data, error: apiError, response } = await GalaxyApi().POST("/api/ai/agents/history-summary", {
+            const {
+                data,
+                error: apiError,
+                response,
+            } = await GalaxyApi().POST("/api/ai/agents/history-summary", {
                 body: { history_id: historyId },
             });
             if (!response.ok) {

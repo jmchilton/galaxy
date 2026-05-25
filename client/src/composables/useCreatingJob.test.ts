@@ -91,7 +91,7 @@ describe("useCreatingJob", () => {
             collections["c1"] = { job_source_type: "ImplicitCollectionJobs" } as HDCASummary;
             const { jobId, error } = useCreatingJob(ref("c1"), ref("hdca"));
             expect(jobId.value).toBeNull();
-            expect(error.value).toMatch(/batch run or workflow/i);
+            expect(error.value).toMatch(/not produced by a specific identifiable job/i);
         });
 
         it("propagates the store error when the collection fetch fails", () => {

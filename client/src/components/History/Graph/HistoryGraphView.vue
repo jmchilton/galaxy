@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { faClock } from "@fortawesome/free-regular-svg-icons";
-import { faBezierCurve, faBolt, faExchangeAlt, faExclamationTriangle, faMagic, faMap } from "@fortawesome/free-solid-svg-icons";
+import {
+    faBezierCurve,
+    faBolt,
+    faExchangeAlt,
+    faExclamationTriangle,
+    faMagic,
+    faMap,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BNav, BNavItem } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
@@ -157,8 +164,7 @@ watch(activeTab, (val) => {
                     v-show="activeTab === 'overview'"
                     :nodes="graphNodes"
                     :edges="graphEdges"
-                    :focus-node-id="focusNodeId"
-                    />
+                    :focus-node-id="focusNodeId" />
                 <HistoryGraphToolExecutions v-show="activeTab === 'tool-requests'" :nodes="toolExecutionNodes" />
                 <HistoryGraphReport v-if="reportEverActive" v-show="activeTab === 'report'" :history-id="historyId" />
             </div>

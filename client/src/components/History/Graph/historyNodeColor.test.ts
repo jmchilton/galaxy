@@ -12,9 +12,20 @@ function node(data: Partial<HistoryGraphNodeData>): HistoryGraphNode {
         height: 0,
         label: "",
         icon: {} as HistoryGraphNode["icon"],
-        data: { src: "hda", typeLabel: "", itemId: "", toolId: null, executionIndex: undefined,
-                inputCount: 0, outputCount: 0, state: null, stateText: null,
-                stateDisplayName: null, stateSpin: false, ...data },
+        data: {
+            src: "hda",
+            typeLabel: "",
+            itemId: "",
+            toolId: null,
+            executionIndex: undefined,
+            inputCount: 0,
+            outputCount: 0,
+            state: null,
+            stateText: null,
+            stateDisplayName: null,
+            stateSpin: false,
+            ...data,
+        },
     };
 }
 
@@ -30,10 +41,10 @@ describe("historyNodeColor", () => {
                         name === "--state-color-ok"
                             ? " #00ff00 "
                             : name === "--state-color-error"
-                                ? "#ff0000"
-                                : name === "--state-color-running"
-                                    ? "#0000ff"
-                                    : "",
+                              ? "#ff0000"
+                              : name === "--state-color-running"
+                                ? "#0000ff"
+                                : "",
                 }) as CSSStyleDeclaration,
         );
     });

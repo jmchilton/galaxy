@@ -65,7 +65,7 @@ export function useCreatingJob(itemId: Ref<string | null>, itemSrc: Ref<string |
                 return errorMessageAsString(collectionError.value);
             }
             if (collection.value && collection.value.job_source_type !== "Job") {
-                return "This collection wasn't produced by a single job (batch run or workflow). Open an element to see its job.";
+                return "This collection was not produced by a specific identifiable job.";
             }
             return null;
         }
