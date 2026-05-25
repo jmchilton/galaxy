@@ -26,14 +26,14 @@ async function loadReport() {
     reportLoading.value = true;
     reportError.value = null;
     try {
-        const { data, error } = await GalaxyApi().POST("/api/ai/agents/history-summary", {
+        const { data, error, response } = await GalaxyApi().POST("/api/ai/agents/history-summary", {
             body: { history_id: props.historyId },
         });
-        if (error) {
-            reportError.value = errorMessageAsString(error, "Failed to generate report.");
-        } else {
-            report.value = data?.content ?? "";
+        if (!response.ok) {
+            reportError.value = errorMessageAsString(error, `Request failed with status ${response.status}.`);
+            return;
         }
+        report.value = data?.content ?? "";
     } catch (e) {
         reportError.value = errorMessageAsString(e, "Failed to generate report.");
     } finally {
@@ -54,6 +54,7 @@ const reportHtml = computed(() => (report.value ? renderMarkdown(report.value) :
         </BAlert>
         <!-- eslint-disable-next-line vue/no-v-html — markdown is sanitised by useMarkdown -->
         <div v-else-if="report" class="report-text" v-html="reportHtml" />
+        <BAlert v-else show variant="info" class="mb-0">No summary available.</BAlert>
     </div>
 </template>
 
