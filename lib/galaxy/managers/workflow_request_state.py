@@ -49,15 +49,20 @@ class ResolvedStructuredRequest(NamedTuple):
 
     ``state`` is always set. ``source_id`` is the ``ToolExecutionState.id``
     when ``state != MISSING``; ``payload`` is the validated
-    ``request_internal`` dict only when ``state == VALIDATED``. Callers
-    that only want the validated payload can use
-    :func:`resolve_structured_request_payload` for parity with the prior
-    ``Optional[dict]`` shape.
+    ``request_internal`` dict only when ``state == VALIDATED``;
+    ``tool_execution_state`` is the producing TES row whenever
+    ``state != MISSING`` so consumers can route it straight to
+    :func:`galaxy.managers.tool_execution.tool_for_execution` without a
+    second lookup. The TES field is a live SQLA row, valid only for the
+    lifetime of the session that produced it. Callers that only want the
+    validated payload can use :func:`resolve_structured_request_payload`
+    for parity with the prior ``Optional[dict]`` shape.
     """
 
     state: ResolutionState
     source_id: Optional[int] = None
     payload: Optional[dict] = None
+    tool_execution_state: Optional[ToolExecutionState] = None
 
 
 def _tes_from_job(job: Optional[Job]) -> Optional[ToolExecutionState]:
@@ -105,7 +110,7 @@ def _resolved_from_tes(tes: Optional[ToolExecutionState]) -> ResolvedStructuredR
         log.warning("ToolExecutionState %s has unrecognized state %r; treating as VALIDATION_FAILED", tes.id, raw_state)
         state = ResolutionState.VALIDATION_FAILED
     if state != ResolutionState.VALIDATED:
-        return ResolvedStructuredRequest(state=state, source_id=tes.id)
+        return ResolvedStructuredRequest(state=state, source_id=tes.id, tool_execution_state=tes)
     payload = tes.request
     # Data-model invariant: TES.state == 'validated' implies a dict payload.
     # Crash here rather than silently degrade: a non-dict payload at this
@@ -114,7 +119,7 @@ def _resolved_from_tes(tes: Optional[ToolExecutionState]) -> ResolvedStructuredR
     assert isinstance(
         payload, dict
     ), f"ToolExecutionState {tes.id} state is 'validated' but payload is {type(payload).__name__}"
-    return ResolvedStructuredRequest(state=state, source_id=tes.id, payload=payload)
+    return ResolvedStructuredRequest(state=state, source_id=tes.id, payload=payload, tool_execution_state=tes)
 
 
 def resolve_structured_request(
@@ -135,7 +140,9 @@ def resolve_structured_request(
         tes = _tes_from_tool_request(tool_request)
     else:
         tes = _tes_from_job(job)
-    return _resolved_from_tes(tes)
+    resolved = _resolved_from_tes(tes)
+    assert (resolved.tool_execution_state is None) == (resolved.state == ResolutionState.MISSING)
+    return resolved
 
 
 def resolve_structured_request_payload(

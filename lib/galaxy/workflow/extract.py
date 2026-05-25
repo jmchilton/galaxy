@@ -629,7 +629,10 @@ def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolReq
         sort_key=(1, resolved.source_id),
         request_payload=tool_request_payload(tool_request),
         tool=tool_for_execution(
-            trans.app, trans.app.toolbox, tool_source=tool_request.tool_execution_state.tool_source
+            trans.app,
+            trans.app.toolbox,
+            tool_execution_state=tool_request.tool_execution_state,
+            strategy="rebuild",
         ),
         job=None,
         output_hdcas=[a.dataset_collection for a in tool_request.implicit_collections],
@@ -761,7 +764,12 @@ def extract_steps_by_ids(
         if resolved.state == ResolutionState.VALIDATED:
             sort_key = (1, resolved.source_id)
             request_payload: Optional[dict] = resolved.payload
-            tool = tool_for_execution(trans.app, trans.app.toolbox, tool_id=job.tool_id, tool_version=job.tool_version)
+            tool = tool_for_execution(
+                trans.app,
+                trans.app.toolbox,
+                tool_execution_state=resolved.tool_execution_state,
+                strategy="toolbox",
+            )
             assert tool is not None, f"Tool {job.tool_id} (version {job.tool_version}) not found in toolbox"
         else:
             log.debug(
@@ -808,8 +816,8 @@ def extract_steps_by_ids(
                 tool = tool_for_execution(
                     trans.app,
                     trans.app.toolbox,
-                    tool_id=representative_job.tool_id,
-                    tool_version=representative_job.tool_version,
+                    tool_execution_state=resolved.tool_execution_state,
+                    strategy="toolbox",
                 )
                 assert (
                     tool is not None

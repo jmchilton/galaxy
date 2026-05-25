@@ -27,7 +27,7 @@ def test_tool_from_request_recovers_guid_from_tool_source():
         dynamic_tool=None,
     )
 
-    tool = tool_for_execution(_app(), toolbox=None, tool_source=tool_source)
+    tool = tool_for_execution(_app(), toolbox=None, strategy="rebuild", tool_source=tool_source)
 
     assert tool is not None
     assert tool.id == guid
@@ -47,7 +47,7 @@ def test_tool_from_request_attaches_dynamic_tool_from_tool_source():
         dynamic_tool=dynamic_tool_mock,
     )
 
-    tool = tool_for_execution(_app(), toolbox=None, tool_source=tool_source)
+    tool = tool_for_execution(_app(), toolbox=None, strategy="rebuild", tool_source=tool_source)
 
     assert tool is not None
     assert tool.dynamic_tool is dynamic_tool_mock
@@ -63,7 +63,7 @@ def test_tool_from_request_no_identity_falls_back_to_short_id():
         dynamic_tool=None,
     )
 
-    tool = tool_for_execution(_app(), toolbox=None, tool_source=tool_source)
+    tool = tool_for_execution(_app(), toolbox=None, strategy="rebuild", tool_source=tool_source)
 
     assert tool is not None
     assert tool.id == "cat"

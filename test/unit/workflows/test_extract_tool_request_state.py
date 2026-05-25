@@ -70,6 +70,7 @@ def test_resolve_structured_request_via_icj_direct_link():
     assert resolved.state == workflow_request_state.ResolutionState.VALIDATED
     assert resolved.source_id == 42
     assert resolved.payload == {"parameter": {"src": "hda", "id": 1}}
+    assert resolved.tool_execution_state is tes
 
 
 def test_resolve_structured_request_via_tool_request_link():
@@ -87,6 +88,7 @@ def test_resolve_structured_request_via_tool_request_link():
     assert resolved.state == workflow_request_state.ResolutionState.VALIDATED
     assert resolved.source_id == 99
     assert resolved.payload == {"parameter": {"src": "hda", "id": 7}}
+    assert resolved.tool_execution_state is tes
 
 
 def test_resolve_structured_request_not_validated_keeps_source_id():
@@ -101,6 +103,7 @@ def test_resolve_structured_request_not_validated_keeps_source_id():
     assert resolved.state == workflow_request_state.ResolutionState.NOT_VALIDATED
     assert resolved.source_id == 5
     assert resolved.payload is None
+    assert resolved.tool_execution_state is tes
 
 
 def test_resolve_structured_request_validation_failed_keeps_source_id():
@@ -113,6 +116,7 @@ def test_resolve_structured_request_validation_failed_keeps_source_id():
     assert resolved.state == workflow_request_state.ResolutionState.VALIDATION_FAILED
     assert resolved.source_id == 7
     assert resolved.payload is None
+    assert resolved.tool_execution_state is tes
 
 
 def test_resolve_structured_request_missing_when_tes_absent():
@@ -123,6 +127,7 @@ def test_resolve_structured_request_missing_when_tes_absent():
     assert resolved.state == workflow_request_state.ResolutionState.MISSING
     assert resolved.source_id is None
     assert resolved.payload is None
+    assert resolved.tool_execution_state is None
 
 
 def test_resolve_structured_request_job_walks_to_workflow_invocation_step_tes():

@@ -703,7 +703,7 @@ class HistoryGraphBuilder:
         tool_ids = {n.tool_id for n in nodes if n.src == "tool_execution" and n.tool_id}
         name_map: dict[str, str] = {}
         for tool_id in tool_ids:
-            tool = tool_for_execution(None, toolbox, tool_id=tool_id)
+            tool = tool_for_execution(None, toolbox, strategy="toolbox", tool_id=tool_id)
             if tool and tool.name:
                 name_map[tool_id] = tool.name
         for node in nodes:
