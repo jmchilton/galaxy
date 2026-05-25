@@ -760,6 +760,7 @@ def extract_steps_by_ids(
             sort_key = (1, resolved.source_id)
             request_payload: Optional[dict] = resolved.payload
             tool = tool_for_execution(trans.app, trans.app.toolbox, tool_id=job.tool_id, tool_version=job.tool_version)
+            assert tool is not None, f"Tool {job.tool_id} (version {job.tool_version}) not found in toolbox"
         else:
             log.debug(
                 "extract: job %d has no validated structured payload (resolver state=%s); falling back to legacy",
@@ -808,6 +809,9 @@ def extract_steps_by_ids(
                     tool_id=representative_job.tool_id,
                     tool_version=representative_job.tool_version,
                 )
+                assert (
+                    tool is not None
+                ), f"Tool {representative_job.tool_id} (version {representative_job.tool_version}) not found in toolbox"
             else:
                 log.debug(
                     "extract: ICJ %d has no validated structured payload (resolver state=%s); falling back to legacy",

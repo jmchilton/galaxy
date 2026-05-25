@@ -61,12 +61,30 @@ class ResolvedStructuredRequest(NamedTuple):
 
 
 def _tes_from_job(job: Optional[Job]) -> Optional[ToolExecutionState]:
+    """Walk a Job to its canonical TES via the ICJ-supersedes rule.
+
+    Order of precedence:
+    - Job under an ICJ: read through the ICJ (the canonical anchor for
+      mapped executions; the per-Job FK is intentionally NULL).
+    - Job with a direct FK: read it (tool-request-sourced standalone jobs).
+    - Otherwise walk to the workflow_invocation_step's TES: a workflow tool
+      step always mints a WIS-side TES (per workflow/modules.py), but
+      execute.py only propagates the link to the Job when the capture
+      validated. Reading through the WIS recovers the source TES for
+      NOT_VALIDATED / VALIDATION_FAILED workflow tool executions so they
+      stay orderable by TES.id rather than dropping to legacy Job.id space.
+    """
     if job is None:
         return None
     icj_assoc = job.implicit_collection_jobs_association
     if icj_assoc is not None and icj_assoc.implicit_collection_jobs is not None:
         return icj_assoc.implicit_collection_jobs.tool_execution_state
-    return job.tool_execution_state
+    if job.tool_execution_state is not None:
+        return job.tool_execution_state
+    wis = job.workflow_invocation_step
+    if wis is not None:
+        return wis.tool_execution_state
+    return None
 
 
 def _tes_from_icj(icj: ImplicitCollectionJobs) -> Optional[ToolExecutionState]:

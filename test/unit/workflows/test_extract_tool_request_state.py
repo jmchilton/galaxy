@@ -125,6 +125,48 @@ def test_resolve_structured_request_missing_when_tes_absent():
     assert resolved.payload is None
 
 
+def test_resolve_structured_request_job_walks_to_workflow_invocation_step_tes():
+    # Workflow tool steps always mint a WIS-side TES (validated or not), but
+    # execute.py only propagates the link to the Job for VALIDATED captures.
+    # The resolver must walk Job -> WIS -> TES for non-VALIDATED captures so
+    # the producer stays orderable by TES.id rather than dropping to legacy
+    # Job.id space (which would mis-wire post-rollout workflows mixing
+    # validated and validation-failed steps).
+    tes = model.ToolExecutionState(request=None, state="validation_failed")
+    tes.id = 77
+    wis = model.WorkflowInvocationStep()
+    wis.tool_execution_state = tes
+    job = SimpleNamespace(
+        implicit_collection_jobs_association=None,
+        tool_execution_state=None,
+        workflow_invocation_step=wis,
+    )
+
+    resolved = workflow_request_state.resolve_structured_request(job=job)
+    assert resolved.state == workflow_request_state.ResolutionState.VALIDATION_FAILED
+    assert resolved.source_id == 77
+    assert resolved.payload is None
+
+
+def test_resolve_structured_request_job_direct_link_preferred_over_wis():
+    # When a Job carries its own TES link (tool-request-sourced standalone
+    # job), the resolver uses it directly without consulting the WIS path.
+    direct = model.ToolExecutionState(request={"x": 1}, state=workflow_request_state.VALIDATED_REQUEST_STATE)
+    direct.id = 1
+    wis_tes = model.ToolExecutionState(request=None, state="validation_failed")
+    wis_tes.id = 2
+    wis = model.WorkflowInvocationStep()
+    wis.tool_execution_state = wis_tes
+    job = SimpleNamespace(
+        implicit_collection_jobs_association=None,
+        tool_execution_state=direct,
+        workflow_invocation_step=wis,
+    )
+
+    resolved = workflow_request_state.resolve_structured_request(job=job)
+    assert resolved.source_id == 1  # direct link, not the WIS link
+
+
 def test_resolve_structured_request_validated_with_non_dict_payload_asserts():
     # Data-model invariant: a 'validated' TES carries a dict payload. A
     # non-dict at this point is a write-side bug and the resolver crashes.
