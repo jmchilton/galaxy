@@ -15,12 +15,10 @@ interface Props {
     nodes: GraphNode[];
     edges: GraphEdge[];
     focusNodeId?: string | null;
-    truncated?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     focusNodeId: null,
-    truncated: false,
 });
 
 // Selected graph node — its details render in the card below the graph.
@@ -66,9 +64,6 @@ function onNodeSelected(node: GraphNode | null) {
                 show-scroll-overlays
                 @nodeSelected="onNodeSelected" />
         </div>
-        <BAlert v-if="truncated" variant="warning" show class="mt-2 mb-0 py-1 text-center flex-shrink-0">
-            Showing a partial graph. Not all connections are visible.
-        </BAlert>
         <div v-if="selectedNode" class="details-pane mt-2">
             <HistoryGraphNodeDetails :node="selectedNode" />
         </div>

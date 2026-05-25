@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { faClock } from "@fortawesome/free-regular-svg-icons";
-import { faBezierCurve, faBolt, faExchangeAlt, faMagic, faMap } from "@fortawesome/free-solid-svg-icons";
+import { faBezierCurve, faBolt, faExchangeAlt, faExclamationTriangle, faMagic, faMap } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BNav, BNavItem } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
@@ -198,6 +198,15 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                 </template>
             </NavigationTitle>
 
+            <BAlert
+                v-if="isTruncated && toolExecutionNodes.length > 0"
+                show
+                variant="warning"
+                class="mt-2 mb-0 py-1 flex-shrink-0">
+                <FontAwesomeIcon :icon="faExclamationTriangle" class="mr-1" />
+                Only considering first {{ toolExecutionNodes.length }} executions.
+            </BAlert>
+
             <BNav pills class="mb-2 mt-2 p-2 bg-light border-bottom">
                 <BNavItem
                     title="Overview"
@@ -230,7 +239,7 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
                     :nodes="graphNodes"
                     :edges="graphEdges"
                     :focus-node-id="focusNodeId"
-                    :truncated="isTruncated" />
+                    />
                 <HistoryGraphToolExecutions v-show="activeTab === 'tool-requests'" :nodes="toolExecutionNodes" />
                 <HistoryGraphReport v-if="reportEverActive" v-show="activeTab === 'report'" :history-id="historyId" />
             </div>
