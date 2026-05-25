@@ -2,14 +2,16 @@ import { storeToRefs } from "pinia";
 import { computed, type Ref, ref, watch } from "vue";
 
 import { userOwnsHistory } from "@/api";
-import type { GraphNode } from "@/components/Graph/types";
 import { useConfig } from "@/composables/config";
 import { useExtendedHistory } from "@/composables/detailedHistory";
 import { addHistoryViewerSubscription, removeHistoryViewerSubscription } from "@/composables/useNotificationSSE";
 import { useUserStore } from "@/stores/userStore";
 
-import { mapEdges, mapNodes, nodeKey } from "./historyGraphMapper";
+import { type HistoryGraphNode, mapEdges, mapNodes, nodeKey } from "./historyGraphMapper";
 import { useHistoryGraphData } from "./useHistoryGraphData";
+
+/** Upper bound passed to the graph API's `?limit=` param. */
+const FETCH_LIMIT = 500;
 
 /**
  * Reactive history graph: initial fetch, update_time-driven refetch,
@@ -25,8 +27,7 @@ export function useHistoryGraph(
     const { config } = useConfig();
     const { history } = useExtendedHistory(historyId.value);
 
-    // Fetch params — product decisions owned here.
-    const limit = ref(500);
+    const limit = ref(FETCH_LIMIT);
 
     const { graphData, loading, error, refetch } = useHistoryGraphData(historyId, limit, seedSrc, seedId);
 
@@ -74,7 +75,7 @@ export function useHistoryGraph(
     );
 
     // Graph structure for the renderer — GraphView measures and positions it.
-    const graphNodes = computed<GraphNode[]>(() =>
+    const graphNodes = computed<HistoryGraphNode[]>(() =>
         graphData.value ? mapNodes(graphData.value.nodes, graphData.value.edges) : [],
     );
     const graphEdges = computed(() => (graphData.value ? mapEdges(graphData.value.edges) : []));
@@ -82,8 +83,8 @@ export function useHistoryGraph(
     const isTruncated = computed(() => graphData.value?.truncated?.item_count_capped ?? false);
 
     // Backend node src is still `tool_request`; this feeds the Tool Executions tab.
-    const toolExecutionNodes = computed<GraphNode[]>(() =>
-        graphNodes.value.filter((node) => (node.data?.src as string) === "tool_request"),
+    const toolExecutionNodes = computed<HistoryGraphNode[]>(() =>
+        graphNodes.value.filter((node) => node.data?.src === "tool_request"),
     );
 
     return {

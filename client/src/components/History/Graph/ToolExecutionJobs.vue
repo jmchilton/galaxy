@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { BAlert, BPagination } from "bootstrap-vue";
-import { computed, ref, watch } from "vue";
+import { computed, ref, toRef } from "vue";
 
-import { GalaxyApi } from "@/api";
 import { useJobBasic } from "@/composables/useJobBasic";
+
+import { useToolExecutionJobs } from "./useToolExecutionJobs";
 
 import JobDetailsTabs from "./JobDetailsTabs.vue";
 import GTabs from "@/components/BaseComponents/GTabs.vue";
@@ -23,11 +24,9 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const jobs = ref<{ id: string }[]>([]);
-const currentIndex = ref(0);
-const loading = ref(false);
-const error = ref<string | null>(null);
+const { jobs, loading, error } = useToolExecutionJobs(toRef(props, "toolExecutionId"));
 
+const currentIndex = ref(0);
 const currentJob = computed(() => jobs.value[currentIndex.value] ?? null);
 
 // Job details for the state badge in the tab nav-end, via the shared
@@ -44,36 +43,6 @@ const paginationPage = computed<number>({
         currentIndex.value = val - 1;
     },
 });
-
-watch(
-    () => props.toolExecutionId,
-    async (id) => {
-        jobs.value = [];
-        currentIndex.value = 0;
-        error.value = null;
-        if (!id) {
-            return;
-        }
-        loading.value = true;
-        try {
-            const { data, error: apiError } = await GalaxyApi().GET("/api/tool_requests/{id}", {
-                params: { path: { id } },
-            });
-            if (apiError) {
-                error.value = "Failed to load tool execution details.";
-            } else if (data.jobs && data.jobs.length > 0) {
-                jobs.value = data.jobs;
-            } else {
-                error.value = "No job associated with this tool execution.";
-            }
-        } catch (e) {
-            error.value = "Failed to load tool execution details.";
-        } finally {
-            loading.value = false;
-        }
-    },
-    { immediate: true },
-);
 </script>
 
 <template>

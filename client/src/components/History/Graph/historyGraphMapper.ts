@@ -8,6 +8,26 @@ type ApiGraphNode = components["schemas"]["GraphNode"];
 type ApiGraphEdge = components["schemas"]["GraphEdge"];
 export type HistoryGraphResponse = components["schemas"]["HistoryGraphResponse"];
 
+/** Domain payload that the mapper attaches to every `GraphNode.data`.
+ *  Extends `Record<string, unknown>` so a typed `HistoryGraphNode` remains
+ *  assignable to the generic `GraphNode` consumed by the renderer. */
+export interface HistoryGraphNodeData extends Record<string, unknown> {
+    src: ApiGraphNode["src"];
+    typeLabel: string;
+    /** Encoded id of the underlying item (no prefix). */
+    itemId: string;
+    toolId: string | null | undefined;
+    executionIndex: number | undefined;
+    inputCount: number;
+    outputCount: number;
+    state: string | null | undefined;
+    stateText: string | null;
+    stateDisplayName: string | null;
+    stateSpin: boolean;
+}
+
+export type HistoryGraphNode = GraphNode<HistoryGraphNodeData>;
+
 /** Fixed node width — uniform across all node types. */
 const NODE_WIDTH = 200;
 
@@ -121,7 +141,7 @@ function toolConnectionSummary(inputCount: number, outputCount: number): string 
  * GraphView measures each node's rendered height, then positions everything
  * with ELK.
  */
-export function mapNodes(apiNodes: ApiGraphNode[], apiEdges: ApiGraphEdge[]): GraphNode[] {
+export function mapNodes(apiNodes: ApiGraphNode[], apiEdges: ApiGraphEdge[]): HistoryGraphNode[] {
     // Per node, the connector variant of each incoming / outgoing edge end —
     // used to derive the merged connector variant and the connection counts.
     const inputVariants = new Map<string, ConnectorVariant[]>();

@@ -17,15 +17,20 @@ import GraphMinimap from "./GraphMinimap.vue";
 import GraphNodeComponent from "./GraphNode.vue";
 import ZoomControl from "./ZoomControl.vue";
 
+// `GraphNode<any>` here — the view doesn't know (or care) about the domain
+// payload on `data`; callers parameterise that on their side. Vue 2.7 doesn't
+// support `<script setup generic>` so we widen explicitly.
+type AnyGraphNode = GraphNode<any>;
+
 interface Props {
     /** Graph structure — each node carries its content and a fixed width; the
      *  view measures the rendered height, then positions everything with ELK. */
-    nodes: GraphNode[];
+    nodes: AnyGraphNode[];
     edges: GraphEdge[];
     focusNodeId?: string | null;
     showZoomControls?: boolean;
     showMinimap?: boolean;
-    nodeColor?: (node: GraphNode) => string | null | undefined;
+    nodeColor?: (node: AnyGraphNode) => string | null | undefined;
     centerOnSelect?: boolean;
     showScrollOverlays?: boolean;
 }
@@ -39,7 +44,7 @@ const props = withDefaults(defineProps<Props>(), {
     showScrollOverlays: false,
 });
 
-const emit = defineEmits<{ (e: "nodeSelected", node: GraphNode | null): void }>();
+const emit = defineEmits<{ (e: "nodeSelected", node: AnyGraphNode | null): void }>();
 
 interface NodeSize {
     width: number;

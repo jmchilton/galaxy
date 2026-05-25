@@ -1,4 +1,4 @@
-import type { GraphNode } from "@/components/Graph/types";
+import type { HistoryGraphNode } from "./historyGraphMapper";
 
 // State colors resolved lazily from the global `--state-color-*` custom
 // properties defined in base.scss.
@@ -17,10 +17,10 @@ function stateColor(state: string): string {
  * Minimap fill color for a history graph node. Dataset/collection nodes use
  * their state color; tool nodes return null so the minimap applies its default.
  */
-export function historyNodeColor(node: GraphNode): string | null {
-    if ((node.data?.src as string) === "tool_request") {
+export function historyNodeColor(node: HistoryGraphNode): string | null {
+    if (node.data?.src === "tool_request") {
         return null;
     }
-    const state = node.data?.state as string | undefined;
+    const state = node.data?.state;
     return (state && stateColor(state)) || null;
 }

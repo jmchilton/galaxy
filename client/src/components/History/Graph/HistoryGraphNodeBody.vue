@@ -2,9 +2,10 @@
 import { BAlert } from "bootstrap-vue";
 import { computed } from "vue";
 
-import type { GraphNode } from "@/components/Graph/types";
 import { useCreatingJob } from "@/composables/useCreatingJob";
 import { useJobBasic } from "@/composables/useJobBasic";
+
+import type { HistoryGraphNode } from "./historyGraphMapper";
 
 import JobDetailsTabs from "./JobDetailsTabs.vue";
 import ToolExecutionJobs from "./ToolExecutionJobs.vue";
@@ -15,13 +16,13 @@ import LoadingSpan from "@/components/LoadingSpan.vue";
 
 interface Props {
     /** The graph node to render details for. */
-    node: GraphNode;
+    node: HistoryGraphNode;
 }
 
 const props = defineProps<Props>();
 
-const nodeSrc = computed(() => (props.node.data?.src as string) ?? null);
-const itemId = computed(() => (props.node.data?.itemId as string) ?? null);
+const nodeSrc = computed(() => props.node.data?.src ?? null);
+const itemId = computed(() => props.node.data?.itemId ?? null);
 const isDatasetLike = computed(() => nodeSrc.value === "hda" || nodeSrc.value === "hdca");
 
 // Labels for the Information tab now that the BCard header is gone.

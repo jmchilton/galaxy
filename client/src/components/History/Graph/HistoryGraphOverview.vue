@@ -2,17 +2,18 @@
 import { faInfoCircle } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert } from "bootstrap-vue";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
-import type { GraphEdge, GraphNode } from "@/components/Graph/types";
+import type { GraphEdge } from "@/components/Graph/types";
 
+import type { HistoryGraphNode } from "./historyGraphMapper";
 import { historyNodeColor } from "./historyNodeColor";
 
 import HistoryGraphNodeDetails from "./HistoryGraphNodeDetails.vue";
 import GraphView from "@/components/Graph/GraphView.vue";
 
 interface Props {
-    nodes: GraphNode[];
+    nodes: HistoryGraphNode[];
     edges: GraphEdge[];
     focusNodeId?: string | null;
 }
@@ -22,9 +23,11 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 // Selected graph node — its details render in the card below the graph.
-const selectedNode = ref<GraphNode | null>(null);
+const selectedNode = ref<HistoryGraphNode | null>(null);
 
-function findProducerToolRequestNode(targetKey: string): GraphNode | null {
+const nodesById = computed(() => new Map(props.nodes.map((n) => [n.id, n])));
+
+function findProducerToolRequestNode(targetKey: string): HistoryGraphNode | null {
     // The producer of an HDCA is whichever tool_request node has an edge
     // pointing at it. Look up the source node and check its semantic type
     // — avoids any assumption about how the renderer encodes node keys.
@@ -32,7 +35,7 @@ function findProducerToolRequestNode(targetKey: string): GraphNode | null {
         if (edge.target !== targetKey) {
             continue;
         }
-        const sourceNode = props.nodes.find((n) => n.id === edge.source);
+        const sourceNode = nodesById.value.get(edge.source);
         if (sourceNode?.data?.src === "tool_request") {
             return sourceNode;
         }
@@ -40,7 +43,7 @@ function findProducerToolRequestNode(targetKey: string): GraphNode | null {
     return null;
 }
 
-function onNodeSelected(node: GraphNode | null) {
+function onNodeSelected(node: HistoryGraphNode | null) {
     // HDCAs are "the batch unit" — clicking one means "show the tool
     // execution that produced this collection," with all sibling jobs
     // reachable via pagination. Redirect to the producing tool_request

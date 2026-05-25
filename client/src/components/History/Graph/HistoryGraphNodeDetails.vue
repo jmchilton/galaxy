@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { BAlert } from "bootstrap-vue";
 
-import type { GraphNode } from "@/components/Graph/types";
+import type { HistoryGraphNode } from "./historyGraphMapper";
 
 import HistoryGraphNodeBody from "./HistoryGraphNodeBody.vue";
 
 interface Props {
     /** The selected graph node, or null when nothing is selected. */
-    node: GraphNode | null;
+    node: HistoryGraphNode | null;
     /** Empty-state message shown when no node is selected. */
     emptyText?: string;
 }

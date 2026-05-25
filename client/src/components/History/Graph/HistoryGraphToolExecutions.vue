@@ -4,13 +4,13 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert } from "bootstrap-vue";
 import { ref } from "vue";
 
-import type { GraphNode } from "@/components/Graph/types";
+import type { HistoryGraphNode } from "./historyGraphMapper";
 
 import ToolExecutionJobs from "./ToolExecutionJobs.vue";
 
 interface Props {
     /** Tool-execution graph nodes to list, in display order. */
-    nodes: GraphNode[];
+    nodes: HistoryGraphNode[];
 }
 
 defineProps<Props>();
