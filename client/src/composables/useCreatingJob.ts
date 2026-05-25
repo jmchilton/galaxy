@@ -1,6 +1,6 @@
 import { computed, type Ref } from "vue";
 
-import { useCollectionElementsStore } from "@/stores/collectionElementsStore";
+import { useDatasetCollectionStore } from "@/stores/datasetCollectionStore";
 import { useDatasetStore } from "@/stores/datasetStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
@@ -12,10 +12,12 @@ import { errorMessageAsString } from "@/utils/simple-error";
  *
  * For HDCAs, only collections produced by a single Job have a resolvable
  * creating job; batch / workflow collections surface a friendly explanation.
+ * `job_source_id` / `job_source_type` are on the HDCA summary, so a cached
+ * summary suffices — no detail upgrade is forced here.
  */
 export function useCreatingJob(itemId: Ref<string | null>, itemSrc: Ref<string | null>) {
     const datasetStore = useDatasetStore();
-    const collectionStore = useCollectionElementsStore();
+    const collectionStore = useDatasetCollectionStore();
 
     const isHda = computed(() => itemSrc.value === "hda" && !!itemId.value);
     const isHdca = computed(() => itemSrc.value === "hdca" && !!itemId.value);
@@ -23,14 +25,10 @@ export function useCreatingJob(itemId: Ref<string | null>, itemSrc: Ref<string |
     // Reading through these accessors triggers an on-demand fetch on first
     // access and stays reactive as the store updates.
     const dataset = computed(() => (isHda.value ? datasetStore.getDataset(itemId.value!) : null));
-    const collection = computed(() =>
-        isHdca.value ? collectionStore.getDetailedCollectionById(itemId.value!) : null,
-    );
+    const collection = computed(() => (isHdca.value ? collectionStore.getCollection(itemId.value!) : null));
 
     const datasetError = computed(() => (isHda.value ? datasetStore.getDatasetError(itemId.value!) : null));
-    const collectionError = computed(() =>
-        isHdca.value ? collectionStore.loadingCollectionElementsErrors[itemId.value!] ?? null : null,
-    );
+    const collectionError = computed(() => (isHdca.value ? collectionStore.getCollectionError(itemId.value!) : null));
 
     const jobId = computed<string | null>(() => {
         if (isHda.value) {
