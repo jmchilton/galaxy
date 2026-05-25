@@ -123,10 +123,18 @@ const isTruncated = computed(() => graphData.value?.truncated?.item_count_capped
 // tabs doesn't change `$route.fullPath` and therefore doesn't trip the
 // `<router-view :key="$route.fullPath">` remount in Analysis.vue. The URL's
 // `:tab?` param is only used as the initial selection (deep-link entry).
-type TabKey = "overview" | "tool-requests" | "report";
-const activeTab = ref<TabKey>(
-    props.tab === "tool-requests" ? "tool-requests" : props.tab === "report" ? "report" : "overview",
-);
+const TABS = [
+    { key: "overview", icon: faMap, label: "Overview" },
+    { key: "tool-requests", icon: faBolt, label: "Executions" },
+    { key: "report", icon: faMagic, label: "Summary" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
+function parseTabKey(tab?: string): TabKey {
+    return TABS.some((t) => t.key === tab) ? (tab as TabKey) : "overview";
+}
+
+const activeTab = ref<TabKey>(parseTabKey(props.tab));
 
 // AI Summary calls an LLM on mount, so keep it lazy until the user actually
 // visits the tab at least once. After that it stays mounted (v-show) so the
@@ -209,28 +217,14 @@ const toolExecutionNodes = computed<GraphNode[]>(() =>
 
             <BNav pills class="mb-2 mt-2 p-2 bg-light border-bottom">
                 <BNavItem
-                    title="Overview"
-                    :active="activeTab === 'overview'"
+                    v-for="t in TABS"
+                    :key="t.key"
+                    :title="t.label"
+                    :active="activeTab === t.key"
                     href="#"
-                    @click.prevent="activeTab = 'overview'">
-                    <FontAwesomeIcon :icon="faMap" class="mr-1" />
-                    Overview
-                </BNavItem>
-                <BNavItem
-                    title="Executions"
-                    :active="activeTab === 'tool-requests'"
-                    href="#"
-                    @click.prevent="activeTab = 'tool-requests'">
-                    <FontAwesomeIcon :icon="faBolt" class="mr-1" />
-                    Executions
-                </BNavItem>
-                <BNavItem
-                    title="Summary"
-                    :active="activeTab === 'report'"
-                    href="#"
-                    @click.prevent="activeTab = 'report'">
-                    <FontAwesomeIcon :icon="faMagic" class="mr-1" />
-                    Summary
+                    @click.prevent="activeTab = t.key">
+                    <FontAwesomeIcon :icon="t.icon" class="mr-1" />
+                    {{ t.label }}
                 </BNavItem>
             </BNav>
             <div class="tab-content-container d-flex flex-column overflow-auto">
