@@ -6,17 +6,10 @@ import { BAlert, BNav, BNavItem } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, ref, toRef, watch } from "vue";
 
-import { userOwnsHistory } from "@/api";
-import type { GraphNode } from "@/components/Graph/types";
-import { useConfig } from "@/composables/config";
-import { useExtendedHistory } from "@/composables/detailedHistory";
 import { usePersistentToggle } from "@/composables/persistentToggle";
-import { addHistoryViewerSubscription, removeHistoryViewerSubscription } from "@/composables/useNotificationSSE";
 import { useHistoryStore } from "@/stores/historyStore";
-import { useUserStore } from "@/stores/userStore";
 
-import { mapEdges, mapNodes, nodeKey } from "./historyGraphMapper";
-import { useHistoryGraphData } from "./useHistoryGraphData";
+import { useHistoryGraph } from "./useHistoryGraph";
 
 import HistoryGraphOverview from "./HistoryGraphOverview.vue";
 import HistoryGraphReport from "./HistoryGraphReport.vue";
@@ -37,17 +30,15 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// History summary — feeds the title and the collapsible info block.
-// useExtendedHistory loads the history with size/count details if missing and
-// stays reactive when the store updates it (via SSE pushes or polling).
-const historyStore = useHistoryStore();
-const { currentHistoryId } = storeToRefs(historyStore);
-const { currentUser } = storeToRefs(useUserStore());
-const { config } = useConfig();
-const { history } = useExtendedHistory(props.historyId);
+// Data-freshness, projections, SSE subscription — owned by the composable.
+const { history, loading, error, focusNodeId, graphNodes, graphEdges, isTruncated, toolExecutionNodes } =
+    useHistoryGraph(toRef(props, "historyId"), toRef(props, "seedSrc"), toRef(props, "seedId"));
+
 const historyName = computed(() => history.value?.name ?? "...");
 
 // Whether this is the user's current history — drives the Switch to / Current button.
+const historyStore = useHistoryStore();
+const { currentHistoryId } = storeToRefs(historyStore);
 const isCurrent = computed(() => currentHistoryId.value === props.historyId);
 async function switchHistory() {
     await historyStore.setCurrentHistory(props.historyId);
@@ -57,68 +48,6 @@ async function switchHistory() {
 const { toggled: headerCollapsed, toggle: toggleHeaderCollapse } = usePersistentToggle(
     "history-graph-header-collapsed",
 );
-
-// Fetch params — product decisions owned here
-const limit = ref(500);
-
-const { graphData, loading, error, refetch } = useHistoryGraphData(
-    toRef(props, "historyId"),
-    limit,
-    toRef(props, "seedSrc"),
-    toRef(props, "seedId"),
-);
-
-// Refresh the graph whenever the underlying history's update_time changes.
-// The store keeps that fresh via SSE push (for the current history, owned
-// histories, and any history we've subscribed to below) or via the polling
-// fallback when SSE is off. Skip the initial transition (undefined → first
-// value) since useHistoryGraphData already fires `immediate: true`.
-watch(
-    () => history.value?.update_time,
-    (newT, oldT) => {
-        if (newT && oldT && newT !== oldT) {
-            refetch();
-        }
-    },
-);
-
-// Mirror the History Multiview pattern: in SSE mode, register a per-history
-// viewer subscription so the server pushes events for histories the current
-// user doesn't own. Owned histories already get pushes via the general
-// channel. In polling mode this is skipped (no SSE channel to push to).
-const needsViewerSubscription = computed(() => {
-    if (!config.value?.enable_sse_updates) {
-        return false;
-    }
-    if (!history.value || !currentUser.value) {
-        return false;
-    }
-    return !userOwnsHistory(currentUser.value, history.value);
-});
-
-watch(
-    [needsViewerSubscription, () => props.historyId],
-    ([subscribe, id], _previous, onCleanup) => {
-        if (!subscribe || !id) {
-            return;
-        }
-        addHistoryViewerSubscription(id);
-        onCleanup(() => removeHistoryViewerSubscription(id));
-    },
-    { immediate: true },
-);
-
-const focusNodeId = computed(() =>
-    props.seedSrc && props.seedId ? nodeKey({ src: props.seedSrc, id: props.seedId }) : null,
-);
-
-// Graph structure for the renderer — GraphView measures and positions it.
-const graphNodes = computed<GraphNode[]>(() =>
-    graphData.value ? mapNodes(graphData.value.nodes, graphData.value.edges) : [],
-);
-const graphEdges = computed(() => (graphData.value ? mapEdges(graphData.value.edges) : []));
-
-const isTruncated = computed(() => graphData.value?.truncated?.item_count_capped ?? false);
 
 // Tab state is internal — driven by clicks, not by URL changes — so switching
 // tabs doesn't change `$route.fullPath` and therefore doesn't trip the
@@ -146,11 +75,6 @@ watch(activeTab, (val) => {
         reportEverActive.value = true;
     }
 });
-
-// Tool-execution nodes (backend node src is still `tool_request`) feed the Tool Executions tab.
-const toolExecutionNodes = computed<GraphNode[]>(() =>
-    graphNodes.value.filter((node) => (node.data?.src as string) === "tool_request"),
-);
 </script>
 
 <template>
