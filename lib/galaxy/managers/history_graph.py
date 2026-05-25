@@ -28,6 +28,7 @@ from galaxy.exceptions import (
 from galaxy.managers.tool_execution import tool_for_execution
 from galaxy.managers.workflow_request_state import (
     resolve_structured_request,
+    ResolutionState,
     ResolvedStructuredRequest,
 )
 from galaxy.model import (
@@ -53,7 +54,6 @@ from galaxy.schema.history_graph import (
 from galaxy.schema.schema import TOOL_EXECUTION_STATE_ENCODE_KIND
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.structured_app import MinimalManagerApp
-from galaxy.tool_util.parameters import RequestInternalToWorkflowStateError
 from galaxy.tool_util.parameters.request import request_internal_input_refs
 from galaxy.tool_util.toolbox import AbstractToolBox
 
@@ -431,11 +431,9 @@ class HistoryGraphBuilder:
             if job is None:
                 resolved_by_job[job_id] = None
                 continue
-            try:
-                resolved = resolve_structured_request(job=job)
-            except RequestInternalToWorkflowStateError:
-                log.debug("history_graph: malformed structured request for job %d", job_id)
-                resolved = None
+            resolved = resolve_structured_request(job=job)
+            if resolved.state != ResolutionState.VALIDATED:
+                log.debug("history_graph: job %d has no validated payload (state=%s)", job_id, resolved.state.value)
             resolved_by_job[job_id] = resolved
 
         tool_requests = (
@@ -452,23 +450,25 @@ class HistoryGraphBuilder:
             if tool_request is None:
                 resolved_by_tool_request[tool_request_id] = None
                 continue
-            try:
-                resolved = resolve_structured_request(tool_request=tool_request)
-            except RequestInternalToWorkflowStateError:
-                log.debug("history_graph: malformed structured request for tool_request %d", tool_request_id)
-                resolved = None
+            resolved = resolve_structured_request(tool_request=tool_request)
+            if resolved.state != ResolutionState.VALIDATED:
+                log.debug(
+                    "history_graph: tool_request %d has no validated payload (state=%s)",
+                    tool_request_id,
+                    resolved.state.value,
+                )
             resolved_by_tool_request[tool_request_id] = resolved
 
         candidates: dict[tuple[str, int], dict[int, Optional[str]]] = {}
         for item_key, job_id, tool_id in item_jobs:
             resolved = resolved_by_job.get(job_id)
-            if resolved is None:
+            if resolved is None or resolved.state != ResolutionState.VALIDATED:
                 continue
             candidates.setdefault(item_key, {})[resolved.source_id] = tool_id
             payloads.setdefault(resolved.source_id, resolved.payload)
         for item_key, tool_request_id, tool_id in item_tool_requests:
             resolved = resolved_by_tool_request.get(tool_request_id)
-            if resolved is None:
+            if resolved is None or resolved.state != ResolutionState.VALIDATED:
                 continue
             candidates.setdefault(item_key, {})[resolved.source_id] = tool_id
             payloads.setdefault(resolved.source_id, resolved.payload)

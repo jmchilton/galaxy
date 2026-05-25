@@ -67,7 +67,7 @@ def test_resolve_structured_request_via_icj_direct_link():
     icj.tool_execution_state = tes
 
     resolved = workflow_request_state.resolve_structured_request(icj=icj)
-    assert resolved is not None
+    assert resolved.state == workflow_request_state.ResolutionState.VALIDATED
     assert resolved.source_id == 42
     assert resolved.payload == {"parameter": {"src": "hda", "id": 1}}
 
@@ -84,25 +84,57 @@ def test_resolve_structured_request_via_tool_request_link():
     tool_request.tool_execution_state = tes
 
     resolved = workflow_request_state.resolve_structured_request(tool_request=tool_request)
-    assert resolved is not None
+    assert resolved.state == workflow_request_state.ResolutionState.VALIDATED
     assert resolved.source_id == 99
     assert resolved.payload == {"parameter": {"src": "hda", "id": 7}}
 
 
-def test_resolve_structured_request_returns_none_when_tes_not_validated():
+def test_resolve_structured_request_not_validated_keeps_source_id():
+    # The non-VALIDATED branch still carries TES.id so consumers can name
+    # the producer for diagnostics; payload remains None.
     tes = model.ToolExecutionState(request={"x": 1}, state="not_validated")
     tes.id = 5
     icj = model.ImplicitCollectionJobs()
     icj.tool_execution_state = tes
 
-    assert workflow_request_state.resolve_structured_request(icj=icj) is None
+    resolved = workflow_request_state.resolve_structured_request(icj=icj)
+    assert resolved.state == workflow_request_state.ResolutionState.NOT_VALIDATED
+    assert resolved.source_id == 5
+    assert resolved.payload is None
 
 
-def test_resolve_structured_request_returns_none_when_tes_absent():
+def test_resolve_structured_request_validation_failed_keeps_source_id():
+    tes = model.ToolExecutionState(request=None, state="validation_failed")
+    tes.id = 7
+    icj = model.ImplicitCollectionJobs()
+    icj.tool_execution_state = tes
+
+    resolved = workflow_request_state.resolve_structured_request(icj=icj)
+    assert resolved.state == workflow_request_state.ResolutionState.VALIDATION_FAILED
+    assert resolved.source_id == 7
+    assert resolved.payload is None
+
+
+def test_resolve_structured_request_missing_when_tes_absent():
     icj = model.ImplicitCollectionJobs()
     icj.tool_execution_state = None
 
-    assert workflow_request_state.resolve_structured_request(icj=icj) is None
+    resolved = workflow_request_state.resolve_structured_request(icj=icj)
+    assert resolved.state == workflow_request_state.ResolutionState.MISSING
+    assert resolved.source_id is None
+    assert resolved.payload is None
+
+
+def test_resolve_structured_request_validated_with_non_dict_payload_asserts():
+    # Data-model invariant: a 'validated' TES carries a dict payload. A
+    # non-dict at this point is a write-side bug and the resolver crashes.
+    tes = model.ToolExecutionState(request="not a dict", state=workflow_request_state.VALIDATED_REQUEST_STATE)
+    tes.id = 1
+    icj = model.ImplicitCollectionJobs()
+    icj.tool_execution_state = tes
+
+    with pytest.raises(AssertionError, match="validated"):
+        workflow_request_state.resolve_structured_request(icj=icj)
 
 
 def test_association_for_request_ref_dce_resolves_to_leaf_hda(monkeypatch):

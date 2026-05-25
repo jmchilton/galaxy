@@ -25,6 +25,7 @@ from galaxy.managers.jobs import JobManager
 from galaxy.managers.tool_execution import tool_for_execution
 from galaxy.managers.workflow_request_state import (
     resolve_structured_request,
+    ResolutionState,
     tool_request_payload,
 )
 from galaxy.model import (
@@ -621,7 +622,9 @@ def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolReq
     # collapses to tier-1 keyed by tes.id -- comparable across job- and TR-
     # sourced payload mixes.
     resolved = resolve_structured_request(tool_request=tool_request)
-    assert resolved is not None, f"ToolRequest {tool_request.id} has no validated tool_execution_state"
+    assert (
+        resolved.state == ResolutionState.VALIDATED
+    ), f"ToolRequest {tool_request.id} has no validated tool_execution_state (got state={resolved.state.value})"
     return _WorkItem(
         sort_key=(1, resolved.source_id),
         request_payload=tool_request_payload(tool_request),
@@ -753,11 +756,16 @@ def extract_steps_by_ids(
         assert job_manager is not None, "job_manager required when job_ids supplied"
         job = job_manager.get_accessible_job(trans, job_id)
         resolved = resolve_structured_request(job=job)
-        if resolved is not None:
+        if resolved.state == ResolutionState.VALIDATED:
             sort_key = (1, resolved.source_id)
             request_payload: Optional[dict] = resolved.payload
             tool = tool_for_execution(trans.app, trans.app.toolbox, tool_id=job.tool_id, tool_version=job.tool_version)
         else:
+            log.debug(
+                "extract: job %d has no validated structured payload (resolver state=%s); falling back to legacy",
+                job.id,
+                resolved.state.value,
+            )
             sort_key = (0, job.id)
             request_payload = None
             tool = None
@@ -791,7 +799,7 @@ def extract_steps_by_ids(
             # from the representative constituent job.
             representative_job = icj.representative_job
             resolved = resolve_structured_request(icj=icj)
-            if resolved is not None:
+            if resolved.state == ResolutionState.VALIDATED:
                 sort_key = (1, resolved.source_id)
                 request_payload = resolved.payload
                 tool = tool_for_execution(
@@ -801,6 +809,11 @@ def extract_steps_by_ids(
                     tool_version=representative_job.tool_version,
                 )
             else:
+                log.debug(
+                    "extract: ICJ %d has no validated structured payload (resolver state=%s); falling back to legacy",
+                    icj.id,
+                    resolved.state.value,
+                )
                 sort_key = (0, representative_job.id)
                 request_payload = None
                 tool = None

@@ -4,11 +4,15 @@ A tool execution's validated request_internal state lives on a
 ``ToolExecutionState`` row. This module is the single seam mapping an
 execution unit (``Job`` / ``ImplicitCollectionJobs`` / ``ToolRequest``)
 to that payload, so workflow extraction and the History Graph share
-one resolution path. Returning a plain dict rather than a backing
-object keeps every consumer source-neutral.
+one resolution path. ``resolve_structured_request`` always returns a
+``ResolvedStructuredRequest`` whose ``state`` field discriminates the
+failure modes (no TES row, validation-skipped, validation-failed) so
+consumers can react with state-specific diagnostics rather than
+collapsing every "no payload" case into a single ``None``.
 """
 
 import logging
+from enum import Enum
 from typing import (
     NamedTuple,
     Optional,
@@ -28,16 +32,32 @@ log = logging.getLogger(__name__)
 VALIDATED_REQUEST_STATE = ToolExecutionStateValidity.VALIDATED.value
 
 
-class ResolvedStructuredRequest(NamedTuple):
-    """A resolved structured request_internal payload plus the
-    ``ToolExecutionState.id`` it came from. Consumers that only need the
-    payload use :func:`resolve_structured_request_payload`; consumers
-    that also need a stable per-producer identity (e.g. the History
-    Graph producer node) use :func:`resolve_structured_request`.
+class ResolutionState(str, Enum):
+    """Discriminator on the resolver outcome. The first three values
+    mirror ``ToolExecutionStateValidity``; ``MISSING`` covers the no-TES
+    case (pre-structured-capture historical executions).
     """
 
-    source_id: int
-    payload: dict
+    VALIDATED = ToolExecutionStateValidity.VALIDATED.value
+    NOT_VALIDATED = ToolExecutionStateValidity.NOT_VALIDATED.value
+    VALIDATION_FAILED = ToolExecutionStateValidity.VALIDATION_FAILED.value
+    MISSING = "missing"
+
+
+class ResolvedStructuredRequest(NamedTuple):
+    """Discriminated resolver outcome.
+
+    ``state`` is always set. ``source_id`` is the ``ToolExecutionState.id``
+    when ``state != MISSING``; ``payload`` is the validated
+    ``request_internal`` dict only when ``state == VALIDATED``. Callers
+    that only want the validated payload can use
+    :func:`resolve_structured_request_payload` for parity with the prior
+    ``Optional[dict]`` shape.
+    """
+
+    state: ResolutionState
+    source_id: Optional[int] = None
+    payload: Optional[dict] = None
 
 
 def _tes_from_job(job: Optional[Job]) -> Optional[ToolExecutionState]:
@@ -57,26 +77,39 @@ def _tes_from_tool_request(tool_request: ToolRequest) -> Optional[ToolExecutionS
     return tool_request.tool_execution_state
 
 
-def _resolved_from_tes(tes: Optional[ToolExecutionState]) -> Optional[ResolvedStructuredRequest]:
-    if tes is None or tes.state != VALIDATED_REQUEST_STATE:
-        return None
+def _resolved_from_tes(tes: Optional[ToolExecutionState]) -> ResolvedStructuredRequest:
+    if tes is None:
+        return ResolvedStructuredRequest(state=ResolutionState.MISSING)
+    raw_state = tes.state
+    try:
+        state = ResolutionState(raw_state)
+    except ValueError:
+        log.warning("ToolExecutionState %s has unrecognized state %r; treating as VALIDATION_FAILED", tes.id, raw_state)
+        state = ResolutionState.VALIDATION_FAILED
+    if state != ResolutionState.VALIDATED:
+        return ResolvedStructuredRequest(state=state, source_id=tes.id)
     payload = tes.request
-    if not isinstance(payload, dict):
-        return None
-    return ResolvedStructuredRequest(tes.id, payload)
+    # Data-model invariant: TES.state == 'validated' implies a dict payload.
+    # Crash here rather than silently degrade: a non-dict payload at this
+    # point indicates a write-side bug that needs investigation, not a
+    # case the consumer should paper over.
+    assert isinstance(
+        payload, dict
+    ), f"ToolExecutionState {tes.id} state is 'validated' but payload is {type(payload).__name__}"
+    return ResolvedStructuredRequest(state=state, source_id=tes.id, payload=payload)
 
 
 def resolve_structured_request(
     job: Optional[Job] = None,
     icj: Optional[ImplicitCollectionJobs] = None,
     tool_request: Optional[ToolRequest] = None,
-) -> Optional[ResolvedStructuredRequest]:
-    """Resolve the structured request_internal payload + the
-    ToolExecutionState.id it came from for an execution unit.
+) -> ResolvedStructuredRequest:
+    """Resolve the structured request_internal payload for an execution unit.
 
     For a Job under an ICJ, the ICJ holds the canonical TES link; for a
-    standalone Job, the Job's direct TES link is used. A non-validated
-    TES, missing TES link, or malformed payload returns None.
+    standalone Job, the Job's direct TES link is used. The returned
+    ``ResolvedStructuredRequest`` always carries a ``state``; only
+    ``state == VALIDATED`` has a populated ``payload``.
     """
     if icj is not None:
         tes = _tes_from_icj(icj)
@@ -97,7 +130,7 @@ def resolve_structured_request_payload(
     the caller then degrades to the legacy state walk.
     """
     resolved = resolve_structured_request(job=job, icj=icj, tool_request=tool_request)
-    return resolved.payload if resolved is not None else None
+    return resolved.payload if resolved.state == ResolutionState.VALIDATED else None
 
 
 def tool_request_payload(tool_request: ToolRequest) -> dict:
