@@ -31,7 +31,7 @@ const NODE_CSS_CLASS: Record<string, string> = {
 };
 
 /** Stable string key for the generic renderer, derived from the (src, id) ref. */
-function nodeKey(ref: { src: string; id: string }): string {
+export function nodeKey(ref: { src: string; id: string }): string {
     return `${ref.src}:${ref.id}`;
 }
 
@@ -45,7 +45,7 @@ function resolveNodeLabel(node: ApiGraphNode, executionIndex?: number): string {
         case "hdca":
             return `${hid}${node.name ?? node.collection_type ?? "Collection"}`;
         case "tool_request": {
-            const idx = executionIndex ? `${executionIndex}: ` : "";
+            const idx = executionIndex !== undefined ? `${executionIndex}: ` : "";
             return `${idx}${node.tool_name ?? shortenToolId(node.tool_id)}`;
         }
     }

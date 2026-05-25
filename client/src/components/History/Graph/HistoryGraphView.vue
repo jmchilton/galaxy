@@ -15,7 +15,7 @@ import { addHistoryViewerSubscription, removeHistoryViewerSubscription } from "@
 import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 
-import { mapEdges, mapNodes } from "./historyGraphMapper";
+import { mapEdges, mapNodes, nodeKey } from "./historyGraphMapper";
 import { useHistoryGraphData } from "./useHistoryGraphData";
 
 import HistoryGraphOverview from "./HistoryGraphOverview.vue";
@@ -108,8 +108,9 @@ watch(
     { immediate: true },
 );
 
-// Renderer focus key mirrors the mapper's `${src}:${id}` node key.
-const focusNodeId = computed(() => (props.seedSrc && props.seedId ? `${props.seedSrc}:${props.seedId}` : null));
+const focusNodeId = computed(() =>
+    props.seedSrc && props.seedId ? nodeKey({ src: props.seedSrc, id: props.seedId }) : null,
+);
 
 // Graph structure for the renderer — GraphView measures and positions it.
 const graphNodes = computed<GraphNode[]>(() =>

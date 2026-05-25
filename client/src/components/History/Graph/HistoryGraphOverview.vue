@@ -24,13 +24,17 @@ const props = withDefaults(defineProps<Props>(), {
 // Selected graph node — its details render in the card below the graph.
 const selectedNode = ref<GraphNode | null>(null);
 
-function findProducerToolRequestNode(nodeKey: string): GraphNode | null {
-    // Rendered edges carry `source` / `target` as `"src:id"` keys; the
-    // producer of an HDCA is whichever `tool_request:*` node has an edge
-    // pointing at it.
+function findProducerToolRequestNode(targetKey: string): GraphNode | null {
+    // The producer of an HDCA is whichever tool_request node has an edge
+    // pointing at it. Look up the source node and check its semantic type
+    // — avoids any assumption about how the renderer encodes node keys.
     for (const edge of props.edges) {
-        if (edge.target === nodeKey && edge.source.startsWith("tool_request:")) {
-            return props.nodes.find((n) => n.id === edge.source) ?? null;
+        if (edge.target !== targetKey) {
+            continue;
+        }
+        const sourceNode = props.nodes.find((n) => n.id === edge.source);
+        if (sourceNode?.data?.src === "tool_request") {
+            return sourceNode;
         }
     }
     return null;
