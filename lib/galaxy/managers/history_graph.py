@@ -23,9 +23,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import literal_column
 
 from galaxy.exceptions import (
-    MessageException,
     RequestParameterInvalidException,
 )
+from galaxy.managers.tool_execution import tool_for_execution
 from galaxy.managers.workflow_request_state import (
     resolve_structured_request,
     ResolvedStructuredRequest,
@@ -701,12 +701,9 @@ class HistoryGraphBuilder:
         tool_ids = {n.tool_id for n in nodes if n.src == "tool_execution" and n.tool_id}
         name_map: dict[str, str] = {}
         for tool_id in tool_ids:
-            try:
-                tool = toolbox.get_tool(tool_id)
-                if tool and tool.name:
-                    name_map[tool_id] = tool.name
-            except MessageException:
-                pass
+            tool = tool_for_execution(None, toolbox, tool_id=tool_id)
+            if tool and tool.name:
+                name_map[tool_id] = tool.name
         for node in nodes:
             if node.src == "tool_execution" and node.tool_id and node.tool_id in name_map:
                 node.tool_name = name_map[node.tool_id]

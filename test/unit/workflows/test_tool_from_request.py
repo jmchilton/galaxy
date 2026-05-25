@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from galaxy.app_unittest_utils.tools_support import mock_app_for_tool_support
-from galaxy.workflow import extract
+from galaxy.managers.tool_execution import tool_for_execution
 
 CAT_XML = """<tool id="cat" name="cat" version="1.0">
     <command>cat $input1 > $output1</command>
@@ -11,8 +11,8 @@ CAT_XML = """<tool id="cat" name="cat" version="1.0">
 </tool>"""
 
 
-def _trans():
-    return SimpleNamespace(app=mock_app_for_tool_support())
+def _app():
+    return mock_app_for_tool_support()
 
 
 def test_tool_from_request_recovers_guid_from_tool_source():
@@ -26,10 +26,10 @@ def test_tool_from_request_recovers_guid_from_tool_source():
         tool_id=guid,
         dynamic_tool=None,
     )
-    tool_request = SimpleNamespace(tool_source=tool_source)
 
-    tool = extract._tool_from_request(_trans(), tool_request)
+    tool = tool_for_execution(_app(), toolbox=None, tool_source=tool_source)
 
+    assert tool is not None
     assert tool.id == guid
 
 
@@ -46,10 +46,10 @@ def test_tool_from_request_attaches_dynamic_tool_from_tool_source():
         tool_id=None,
         dynamic_tool=dynamic_tool_mock,
     )
-    tool_request = SimpleNamespace(tool_source=tool_source)
 
-    tool = extract._tool_from_request(_trans(), tool_request)
+    tool = tool_for_execution(_app(), toolbox=None, tool_source=tool_source)
 
+    assert tool is not None
     assert tool.dynamic_tool is dynamic_tool_mock
 
 
@@ -62,9 +62,9 @@ def test_tool_from_request_no_identity_falls_back_to_short_id():
         tool_id=None,
         dynamic_tool=None,
     )
-    tool_request = SimpleNamespace(tool_source=tool_source)
 
-    tool = extract._tool_from_request(_trans(), tool_request)
+    tool = tool_for_execution(_app(), toolbox=None, tool_source=tool_source)
 
+    assert tool is not None
     assert tool.id == "cat"
     assert tool.dynamic_tool is None

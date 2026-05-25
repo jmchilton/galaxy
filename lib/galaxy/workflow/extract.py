@@ -22,6 +22,7 @@ from galaxy import (
 )
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.jobs import JobManager
+from galaxy.managers.tool_execution import tool_for_execution
 from galaxy.managers.workflow_request_state import (
     resolve_structured_request_payload,
     tool_request_payload,
@@ -52,7 +53,6 @@ from galaxy.tool_util.parameters.request import (
     RequestUrlInputRef,
 )
 from galaxy.tool_util.parser import ToolOutputCollectionPart
-from galaxy.tools import create_tool_from_representation
 from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
     DataToolParameter,
@@ -609,34 +609,6 @@ def _data_collection_input_step(name: str, collection_type: str, step_labels: se
     return step
 
 
-def _tool_for_job(trans: ProvidesHistoryContext, job: Job):
-    tool = trans.app.toolbox.get_tool(job.tool_id, tool_version=job.tool_version)
-    assert tool is not None, f"Tool {job.tool_id} (version {job.tool_version}) not found"
-    return tool
-
-
-def _tool_from_request(trans: ProvidesHistoryContext, tool_request: ToolRequest):
-    """Rebuild the tool from the request's persisted ToolSource blob via the
-    same reconstruction function the celery queue_jobs task uses (no toolbox,
-    no job), so a jobless tool request still yields the parameter model
-    extraction needs. The tool's namespaced guid (`tool_id`) and the
-    DynamicTool link are recovered off the persisted ToolSource; `tool_dir`
-    is runtime-only and unavailable here, so tool_dir-dependent
-    reconstruction edges remain a documented follow-up.
-    """
-    tool_source = tool_request.tool_source
-    tool = create_tool_from_representation(
-        trans.app,
-        tool_source.source,
-        tool_dir=None,
-        tool_source_class=tool_source.source_class,
-        guid=tool_source.tool_id,
-    )
-    if tool_source.dynamic_tool:
-        tool.dynamic_tool = tool_source.dynamic_tool
-    return tool
-
-
 def _tool_request_work_item(
     trans: ProvidesHistoryContext, tool_request: ToolRequest, sort_key: Optional[int] = None
 ) -> _WorkItem:
@@ -647,7 +619,7 @@ def _tool_request_work_item(
     return _WorkItem(
         sort_key=tool_request.id if sort_key is None else sort_key,
         request_payload=tool_request_payload(tool_request),
-        tool=_tool_from_request(trans, tool_request),
+        tool=tool_for_execution(trans.app, trans.app.toolbox, tool_source=tool_request.tool_source),
         job=None,
         output_hdcas=[a.dataset_collection for a in tool_request.implicit_collections],
         tool_request=tool_request,
@@ -778,7 +750,11 @@ def extract_steps_by_ids(
             _WorkItem(
                 sort_key=job.id,
                 request_payload=request_payload,
-                tool=_tool_for_job(trans, job) if request_payload is not None else None,
+                tool=(
+                    tool_for_execution(trans.app, trans.app.toolbox, tool_id=job.tool_id, tool_version=job.tool_version)
+                    if request_payload is not None
+                    else None
+                ),
                 job=job,
             )
         )
@@ -816,7 +792,16 @@ def extract_steps_by_ids(
                 _WorkItem(
                     sort_key=representative_job.id,
                     request_payload=request_payload,
-                    tool=_tool_for_job(trans, representative_job) if request_payload is not None else None,
+                    tool=(
+                        tool_for_execution(
+                            trans.app,
+                            trans.app.toolbox,
+                            tool_id=representative_job.tool_id,
+                            tool_version=representative_job.tool_version,
+                        )
+                        if request_payload is not None
+                        else None
+                    ),
                     job=representative_job,
                     output_hdcas=output_hdcas,
                 )
