@@ -280,16 +280,6 @@ class WorkflowsService(ServiceBase):
             if len(set(ids)) != len(ids):
                 raise exceptions.RequestParameterInvalidException(f"{field} contains duplicates")
 
-        # Tool-request-sourced and job/ICJ-sourced steps order by different id
-        # spaces (ToolRequest.id vs Job.id), so a single payload mixing them
-        # cannot be reliably dependency-ordered yet (dedupe/ordering rule TBD).
-        # Reject rather than risk a silently mis-wired workflow.
-        if payload.tool_request_ids and (payload.job_ids or payload.implicit_collection_jobs_ids):
-            raise exceptions.RequestParameterInvalidException(
-                "tool_request_ids cannot currently be combined with job_ids or "
-                "implicit_collection_jobs_ids in a single extraction request"
-            )
-
         for job_id in payload.job_ids:
             job = self._job_manager.get_accessible_job(trans, job_id)
             icj_assoc = job.implicit_collection_jobs_association
@@ -302,8 +292,6 @@ class WorkflowsService(ServiceBase):
 
         sa_session = trans.sa_session
         dataset_collection_manager = trans.app.dataset_collection_manager
-        job_keyed_icj_ids: list[int] = []
-        tool_request_keyed_icj_ids: list[int] = []
         for icj_id in payload.implicit_collection_jobs_ids:
             icj = sa_session.get(ImplicitCollectionJobs, icj_id)
             if icj is None:
@@ -335,32 +323,12 @@ class WorkflowsService(ServiceBase):
                 )
                 if resolved_request is not None:
                     self._error_unless_tool_request_accessible(trans, resolved_request)
-                    tool_request_keyed_icj_ids.append(icj_id)
-            else:
-                # Either a classic ICJ or a grey tool-request-backed ICJ -- both
-                # sort by representative_job.id, i.e. the Job id space.
-                job_keyed_icj_ids.append(icj_id)
-
-        # A jobless tool-request-backed ICJ orders by ToolRequest.id while a
-        # Job-keyed ICJ orders by Job.id; mixing them in one payload cannot be
-        # reliably dependency-ordered (mirrors the tool_request_ids-vs-job/ICJ
-        # mix-guard above).
-        if job_keyed_icj_ids and tool_request_keyed_icj_ids:
-            raise exceptions.RequestParameterInvalidException(
-                f"implicit_collection_jobs_ids cannot mix Job-keyed ICJs "
-                f"{job_keyed_icj_ids} with jobless tool-request-backed ICJs "
-                f"{tool_request_keyed_icj_ids} -- they use different id spaces "
-                "and cannot be dependency-ordered"
-            )
 
         # A 'new' (validated but not yet celery-materialized) tool request has
         # no implicit_collections, so its step extracts but registers no
         # outputs. That is fine for a lone single-step extraction, but in any
         # multi-selection it would be a silently un-wireable producer -- reject
         # rather than emit a structurally-incomplete workflow.
-        # tool_request_ids cannot coexist with job_ids/implicit_collection_jobs_ids
-        # (rejected by the mix-guard above), so we only need to gate against the
-        # dataset/HDCA companions here.
         single_request_only = len(payload.tool_request_ids) == 1 and not (payload.hda_ids or payload.hdca_ids)
         for tool_request_id in payload.tool_request_ids:
             tool_request = sa_session.get(ToolRequest, tool_request_id)

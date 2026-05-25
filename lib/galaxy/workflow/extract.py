@@ -24,7 +24,7 @@ from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.jobs import JobManager
 from galaxy.managers.tool_execution import tool_for_execution
 from galaxy.managers.workflow_request_state import (
-    resolve_structured_request_payload,
+    resolve_structured_request,
     tool_request_payload,
 )
 from galaxy.model import (
@@ -577,11 +577,17 @@ class _WorkItem:
     """One tool step to extract. ``job`` is ``None`` for a tool-request
     sourced step (e.g. an empty map-over that expanded to zero jobs); such a
     step is described entirely by ``request_payload`` + ``tool`` + the tool
-    request's implicit output collections. ``sort_key`` orders producers
-    before consumers (job id, or tool request id when jobless).
+    request's implicit output collections.
+
+    ``sort_key`` orders producers before consumers. It is a 2-tuple
+    ``(tier, primary)``: tier 0 is legacy/TES-less items keyed by
+    ``Job.id``, tier 1 is items with a captured ``ToolExecutionState``
+    keyed by ``ToolExecutionState.id``. Tuple sort runs tier 0 first
+    (pre-TES historical executions, older), then tier 1 (TES-having,
+    newer), each within a single comparable id space.
     """
 
-    sort_key: int
+    sort_key: tuple[int, int]
     request_payload: Optional[dict]
     tool: Optional[Any]  # resolved Tool; None only on the legacy-fallback job path
     job: Optional[Job] = None
@@ -609,15 +615,15 @@ def _data_collection_input_step(name: str, collection_type: str, step_labels: se
     return step
 
 
-def _tool_request_work_item(
-    trans: ProvidesHistoryContext, tool_request: ToolRequest, sort_key: Optional[int] = None
-) -> _WorkItem:
-    # sort_key defaults to the tool request id; an ICJ-sourced caller whose
-    # constituent jobs exist passes the representative job id instead so the
-    # item stays in the job id-space for dependency ordering alongside any
-    # classic (non-tool-request) ICJs selected in the same payload.
+def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolRequest) -> _WorkItem:
+    # A ToolRequest always carries a validated TES (minted at request creation
+    # and read by tool_request_payload below), so the sort key always
+    # collapses to tier-1 keyed by tes.id -- comparable across job- and TR-
+    # sourced payload mixes.
+    resolved = resolve_structured_request(tool_request=tool_request)
+    assert resolved is not None, f"ToolRequest {tool_request.id} has no validated tool_execution_state"
     return _WorkItem(
-        sort_key=tool_request.id if sort_key is None else sort_key,
+        sort_key=(1, resolved.source_id),
         request_payload=tool_request_payload(tool_request),
         tool=tool_for_execution(trans.app, trans.app.toolbox, tool_source=tool_request.tool_source),
         job=None,
@@ -737,27 +743,25 @@ def extract_steps_by_ids(
     # state when the execution has an unambiguous validated structured request
     # (ToolRequest or WorkflowInvocationStep source), else None (legacy
     # fallback). Resolution happens once, here, via the single
-    # resolve_structured_request_payload seam. Service-layer validator ensures
-    # no job in job_ids has an ICJ association, so that branch handles only
-    # true plain jobs.
+    # resolve_structured_request seam, which also surfaces the
+    # ToolExecutionState.id used as the tier-1 sort key. Service-layer
+    # validator ensures no job in job_ids has an ICJ association, so that
+    # branch handles only true plain jobs.
     work_items: list[_WorkItem] = []
 
     for job_id in job_ids:
         assert job_manager is not None, "job_manager required when job_ids supplied"
         job = job_manager.get_accessible_job(trans, job_id)
-        request_payload = resolve_structured_request_payload(job=job)
-        work_items.append(
-            _WorkItem(
-                sort_key=job.id,
-                request_payload=request_payload,
-                tool=(
-                    tool_for_execution(trans.app, trans.app.toolbox, tool_id=job.tool_id, tool_version=job.tool_version)
-                    if request_payload is not None
-                    else None
-                ),
-                job=job,
-            )
-        )
+        resolved = resolve_structured_request(job=job)
+        if resolved is not None:
+            sort_key = (1, resolved.source_id)
+            request_payload: Optional[dict] = resolved.payload
+            tool = tool_for_execution(trans.app, trans.app.toolbox, tool_id=job.tool_id, tool_version=job.tool_version)
+        else:
+            sort_key = (0, job.id)
+            request_payload = None
+            tool = None
+        work_items.append(_WorkItem(sort_key=sort_key, request_payload=request_payload, tool=tool, job=job))
 
     # NOTE: executions without a structured request still read parameters
     # via the legacy representative-job param walk in
@@ -779,29 +783,32 @@ def extract_steps_by_ids(
             # request + persisted tool_source (provenance parity with the
             # direct tool_request_ids path) whether or not constituent jobs
             # exist -- so a still-grey execution selected by its ICJ extracts
-            # the same way an empty (jobless) one does. Keep the
-            # representative job id as the ordering key when jobs exist.
-            sort_key = icj.representative_job.id if icj.jobs else None
-            work_items.append(_tool_request_work_item(trans, tool_request, sort_key=sort_key))
+            # the same way an empty (jobless) one does. _tool_request_work_item
+            # keys by TES.id internally; constituent jobs share the same TES.
+            work_items.append(_tool_request_work_item(trans, tool_request))
         elif icj.jobs:
             # Classic (non-tool-request) map-over: derive structured state
             # from the representative constituent job.
             representative_job = icj.representative_job
-            request_payload = resolve_structured_request_payload(icj=icj)
+            resolved = resolve_structured_request(icj=icj)
+            if resolved is not None:
+                sort_key = (1, resolved.source_id)
+                request_payload = resolved.payload
+                tool = tool_for_execution(
+                    trans.app,
+                    trans.app.toolbox,
+                    tool_id=representative_job.tool_id,
+                    tool_version=representative_job.tool_version,
+                )
+            else:
+                sort_key = (0, representative_job.id)
+                request_payload = None
+                tool = None
             work_items.append(
                 _WorkItem(
-                    sort_key=representative_job.id,
+                    sort_key=sort_key,
                     request_payload=request_payload,
-                    tool=(
-                        tool_for_execution(
-                            trans.app,
-                            trans.app.toolbox,
-                            tool_id=representative_job.tool_id,
-                            tool_version=representative_job.tool_version,
-                        )
-                        if request_payload is not None
-                        else None
-                    ),
+                    tool=tool,
                     job=representative_job,
                     output_hdcas=output_hdcas,
                 )
@@ -816,15 +823,13 @@ def extract_steps_by_ids(
         assert tool_request is not None, f"ToolRequest {tool_request_id} not found"
         work_items.append(_tool_request_work_item(trans, tool_request))
 
-    # Within a single id space, ids are monotonically assigned, so sorting by
-    # sort_key produces dependency order: a downstream step always has a
-    # larger key than the steps whose outputs it consumes. Job-sourced and
-    # tool-request-sourced items use different id spaces (Job.id vs
-    # ToolRequest.id) and are NOT comparable -- the service-layer validator
-    # rejects the two mix shapes that would cross spaces: tool_request_ids
-    # combined with job_ids/implicit_collection_jobs_ids, AND Job-keyed ICJs
-    # combined with jobless tool-request-backed ICJs. Every item here therefore
-    # shares one space.
+    # Tuple sort: tier 0 (TES-less / pre-structured-capture historical) first,
+    # ordered by Job.id; tier 1 (TES-having) second, ordered by TES.id. Within
+    # each tier ids are monotonically assigned, so sorting produces dependency
+    # order: a downstream step always has a larger key than the steps whose
+    # outputs it consumes. Across tiers, tier-0 items are by definition
+    # pre-rollout and thus older than any tier-1 item, so tier-0-first
+    # preserves dependency order at the boundary.
     work_items.sort(key=lambda item: item.sort_key)
     fallback_to_legacy_state = getattr(
         getattr(trans.app, "config", None), "workflow_extraction_fallback_to_legacy_state", True
@@ -920,7 +925,7 @@ def step_inputs_by_id(
 
     ``request_payload`` is the structured request_internal state for this
     execution (resolved by the caller via
-    :func:`galaxy.managers.workflow_request_state.resolve_structured_request_payload`)
+    :func:`galaxy.managers.workflow_request_state.resolve_structured_request`)
     or ``None`` when the execution has no unambiguous validated structured
     request. The seam is source-neutral by design: it is a payload dict, not
     a ``ToolRequest`` object, so the resolver can supply the same payload from

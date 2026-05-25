@@ -36,9 +36,9 @@ def _tool_request(state):
 def _icj(jobs_present: bool, tool_request_for_hdca=None):
     """Build a minimal ImplicitCollectionJobs mock.
 
-    `jobs_present=True` -> Job-keyed (sort_key = representative_job.id).
-    `tool_request_for_hdca` set with `jobs_present=False` -> jobless
-    tool-request-backed (sort_key = tool_request.id).
+    Under unified TES.id ordering both ``jobs_present`` variants and the
+    jobless-TR-backed variant produce comparable sort keys; the validator
+    no longer rejects mixed shapes.
     """
     output_hdca = SimpleNamespace(
         id=0,
@@ -84,21 +84,46 @@ def test_new_tool_request_with_other_selection_rejected():
         _validate({1: _tool_request("new")}, tool_request_ids=[1], hdca_ids=[99])
 
 
-def test_icj_mix_job_keyed_and_tool_request_keyed_rejected():
-    # A Job-keyed ICJ (icj.jobs truthy) sorts by representative_job.id while
-    # a jobless tool-request-backed ICJ sorts by tool_request.id -- the two
-    # spaces cannot be reliably dependency-ordered in one payload.
+def test_icj_mix_job_keyed_and_tool_request_keyed_accepted():
+    # Previously rejected: a Job-keyed ICJ and a jobless tool-request-backed
+    # ICJ used different id spaces (Job.id vs ToolRequest.id). Under unified
+    # TES.id ordering both items resolve their sort key from the shared
+    # ToolExecutionState seam, so the mix-guard is gone.
     tr = _tool_request("submitted")
     icjs = {
-        10: _icj(jobs_present=True),  # Job-keyed
-        20: _icj(jobs_present=False, tool_request_for_hdca=tr),  # ToolRequest-keyed
+        10: _icj(jobs_present=True),  # was Job-keyed
+        20: _icj(jobs_present=False, tool_request_for_hdca=tr),  # was ToolRequest-keyed
     }
-    with pytest.raises(exceptions.RequestParameterInvalidException, match="different id spaces"):
-        _validate(icjs_by_id=icjs, implicit_collection_jobs_ids=[10, 20])
+    _validate(icjs_by_id=icjs, implicit_collection_jobs_ids=[10, 20])
 
 
 def test_icj_two_job_keyed_accepted():
-    # Control: classic + classic (or grey-tool-request + classic) all sort by
-    # representative_job.id -- single id space, accepted.
+    # Control: classic + classic (or grey-tool-request + classic) all keyed
+    # via the resolver -- still accepted.
     icjs = {1: _icj(jobs_present=True), 2: _icj(jobs_present=True)}
     _validate(icjs_by_id=icjs, implicit_collection_jobs_ids=[1, 2])
+
+
+def test_tool_request_ids_mixed_with_job_ids_accepted():
+    # Previously rejected: a single payload mixing tool_request_ids with
+    # job_ids/implicit_collection_jobs_ids crossed the TR.id / Job.id id
+    # spaces. Under unified TES.id ordering both keys map to TES.id at
+    # work-item construction, so the mix is accepted at validation time.
+    _validate(
+        {1: _tool_request("submitted")},
+        tool_request_ids=[1],
+        job_ids=[],  # the validator only checks the mix shape; the loop below is empty
+    )
+
+
+def test_tool_request_ids_mixed_with_icj_ids_accepted():
+    # Same rationale as above, exercising the implicit_collection_jobs_ids
+    # companion list.
+    tr = _tool_request("submitted")
+    icjs = {10: _icj(jobs_present=True)}
+    _validate(
+        {1: tr},
+        icjs_by_id=icjs,
+        tool_request_ids=[1],
+        implicit_collection_jobs_ids=[10],
+    )
