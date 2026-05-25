@@ -7,7 +7,6 @@ import { GalaxyApi } from "@/api";
 import { useJobBasic } from "@/composables/useJobBasic";
 
 import JobDetailsTabs from "./JobDetailsTabs.vue";
-
 import GTabs from "@/components/BaseComponents/GTabs.vue";
 import RerunJobButton from "@/components/JobInformation/RerunJobButton.vue";
 import JobState from "@/components/JobStates/JobState.vue";
