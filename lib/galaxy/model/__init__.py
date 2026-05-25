@@ -1445,10 +1445,16 @@ class ToolExecutionState(Base, RepresentById):
     """Value-object table holding a tool execution's validated request payload.
 
     One row per execution event (a tool-request mint, or a workflow tool-step
-    execution). ``ToolRequest``, ``Job`` and ``WorkflowInvocationStep`` each
-    carry a nullable FK at it so consumers (History Graph, structured
-    workflow extraction) walk one source-neutral seam: ``Job ->
-    tool_execution_state``.
+    execution). ``ToolRequest``, ``Job``, ``ImplicitCollectionJobs`` and
+    ``WorkflowInvocationStep`` each carry a nullable FK at it. The FKs are
+    not mutually exclusive — ``ToolRequest`` and the Jobs/ICJ it produced
+    legitimately point at the same row (request side + materialized side).
+    The single invariant is that an ICJ supersedes its child ``Job`` and
+    ``WorkflowInvocationStep`` rows: when the ICJ carries the link, the
+    constituents must not. Consumers (History Graph, structured workflow
+    extraction) should not read the per-row attribute directly; they go
+    through :func:`galaxy.managers.workflow_request_state.resolve_structured_request`,
+    which encodes the supersession rule.
 
     ``state`` is the validity of the capture (``ToolExecutionStateValidity``),
     deliberately distinct from ``ToolRequest.state`` (command lifecycle) and
@@ -1694,6 +1700,9 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
 
     dynamic_tool: Mapped[Optional["DynamicTool"]] = relationship()
     tool_request: Mapped[Optional["ToolRequest"]] = relationship(back_populates="jobs")
+    # NULL for jobs under an ICJ (the ICJ carries the canonical link). Read via
+    # galaxy.managers.workflow_request_state.resolve_structured_request, not
+    # this attribute directly.
     tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="jobs")
     user: Mapped[Optional["User"]] = relationship()
     galaxy_session: Mapped[Optional["GalaxySession"]] = relationship()
@@ -1766,9 +1775,11 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         ).scalar_one_or_none()
 
     def __strict_check_before_flush__(self):
-        """A Job that lives under an ICJ must NOT carry a direct
-        tool_execution_state_id — the ICJ holds the canonical link.
-        Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
+        """Enforce the ICJ-supersedes-child invariant: a Job under an ICJ
+        must not carry a direct tool_execution_state_id, because the ICJ
+        is the canonical anchor for the mapped execution event. TR/Job
+        co-pointing at the same TES is fine — only ICJ vs. child Job is
+        forbidden. Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
         if self.implicit_collection_jobs_association is not None and self.tool_execution_state_id is not None:
             raise Exception(
                 f"Job {self.id} under an ImplicitCollectionJobs also carries "
@@ -2995,6 +3006,9 @@ class ImplicitCollectionJobs(Base, Serializable):
     populated_state: Mapped[str] = mapped_column(TrimmedString(64), default="new")
     tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
     jobs: Mapped[list["ImplicitCollectionJobsJobAssociation"]] = relationship(back_populates="implicit_collection_jobs")
+    # When set, supersedes the constituent Job/WIS TES links. Read via
+    # galaxy.managers.workflow_request_state.resolve_structured_request, not
+    # this attribute directly.
     tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
         back_populates="implicit_collection_jobs"
     )
@@ -3032,9 +3046,10 @@ class ImplicitCollectionJobs(Base, Serializable):
         return session.execute(stmt)
 
     def __strict_check_before_flush__(self):
-        """When the ICJ holds a TES link directly, no constituent Job may
-        also carry one — the ICJ is the canonical anchor for the mapped
-        execution event. Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
+        """Enforce the ICJ-supersedes-child invariant: when this ICJ carries
+        a TES link, no constituent Job may carry one too. The ICJ is the
+        canonical anchor for the mapped execution event; constituents
+        defer. Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
         if self.tool_execution_state_id is None:
             return
         for assoc in self.jobs:
@@ -10699,6 +10714,9 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
 
     workflow_step: Mapped[WorkflowStep] = relationship("WorkflowStep")
     job: Mapped[Optional["Job"]] = relationship(back_populates="workflow_invocation_step", uselist=False)
+    # Transitional: once a mapped step produces an ICJ, the ICJ holds the
+    # link. Read via galaxy.managers.workflow_request_state.resolve_structured_request,
+    # not this attribute directly.
     tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
         back_populates="workflow_invocation_steps"
     )
@@ -10762,10 +10780,10 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
     states = InvocationStepState
 
     def __strict_check_before_flush__(self):
-        """A WIS that already points at an ICJ must NOT carry a direct
-        tool_execution_state_id — the ICJ holds the canonical link.
-        Failure-capture rows (no ICJ) may carry the link directly.
-        Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
+        """Enforce the ICJ-supersedes-child invariant: a WIS that points at
+        an ICJ must not carry a direct tool_execution_state_id — the ICJ
+        is the canonical anchor. Failure-capture rows (no ICJ) carry the
+        link directly. Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
         if self.implicit_collection_jobs_id is not None and self.tool_execution_state_id is not None:
             raise Exception(
                 f"WorkflowInvocationStep {self.id} has implicit_collection_jobs_id and also "

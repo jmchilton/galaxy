@@ -1,11 +1,13 @@
-"""Red-green tests for the "exactly one path to ToolExecutionState"
-invariant enforced by ``__strict_check_before_flush__`` on
-``Job``, ``WorkflowInvocationStep``, and ``ImplicitCollectionJobs``.
+"""Red-green tests for the "ICJ supersedes child Job/WIS" invariant
+enforced by ``__strict_check_before_flush__`` on ``Job``,
+``WorkflowInvocationStep``, and ``ImplicitCollectionJobs``.
 
-The invariant: for a given execution event reached via an ICJ, the ICJ
-carries the canonical ``tool_execution_state_id``; constituent Jobs and
-the parent WIS do NOT carry their own direct TES FK. Outside the ICJ
-case (single Job, single WIS without ICJ), the direct FK is canonical.
+The invariant: when an ICJ carries a ``tool_execution_state_id``, its
+constituent Jobs and parent WIS must NOT carry their own direct TES
+FK — the ICJ is the canonical anchor for the mapped execution event.
+Outside the ICJ case (standalone Job, WIS without ICJ), the direct FK
+is canonical. ToolRequest and Job co-pointing at the same TES is fine
+and not the subject of this invariant.
 
 These tests call the strict-check methods directly to keep the
 assertions deterministic without an SA session, mirroring how the

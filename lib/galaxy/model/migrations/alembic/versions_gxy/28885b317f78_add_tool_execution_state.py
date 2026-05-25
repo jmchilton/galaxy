@@ -29,9 +29,11 @@ the TES row is now the only payload carrier and the dual-write was
 purely transitional.
 
 The Job-side TES FK is canonical only for jobs not under an ICJ; for
-mapped executions the ICJ carries the link. The strict-check
-invariant in lib/galaxy/model/__init__.py enforces "exactly one path"
-in tests.
+mapped executions the ICJ supersedes its child Job and
+WorkflowInvocationStep rows. The strict-check invariants in
+lib/galaxy/model/__init__.py enforce this supersession rule in tests
+(TR and Job co-pointing at the same TES is fine — the rule is only
+about ICJ vs. its children).
 
 Revision ID: 28885b317f78
 Revises: 0b49ffb1e890
