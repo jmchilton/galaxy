@@ -69,8 +69,8 @@ const emit = defineEmits<{
         transform 0.25s ease;
 }
 
-// TODO(vue3): rename .navigation-title-collapse-enter to .navigation-title-collapse-enter-from
 .navigation-title-collapse-enter,
+.navigation-title-collapse-enter-from,
 .navigation-title-collapse-leave-to {
     max-height: 0;
     opacity: 0;
