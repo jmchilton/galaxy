@@ -98,11 +98,11 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         self, history, request_data=None, state="submitted", tool_id="test_tool", tool_version="1.0"
     ):
         ts = self._create_tool_source(tool_id=tool_id, tool_version=tool_version)
+        tes = model.ToolExecutionState(request=request_data or {}, state="validated")
+        tes.tool_source = ts
         tr = model.ToolRequest()
-        tr.tool_source_id = ts.id
         tr.history_id = history.id
         tr.state = state
-        tes = model.ToolExecutionState(request=request_data or {}, state="validated")
         tr.tool_execution_state = tes
         session = self.trans.sa_session
         session.add(tes)
@@ -1283,6 +1283,7 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         anchor: the ICJ for mapped executions, or the Job for plain ones.
         Mirrors what ToolModule.execute / execute.py do under EXEC_STATE."""
         tes = model.ToolExecutionState(request=request, state=state)
+        tes.tool_source = self._create_tool_source()
         self.trans.sa_session.add(tes)
         self.trans.sa_session.flush()
         if icj is not None:
@@ -1486,11 +1487,11 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
 
     def _create_tool_request(self, history):
         ts = self._create_tool_source()
+        tes = model.ToolExecutionState(request={}, state="validated")
+        tes.tool_source = ts
         tr = model.ToolRequest()
-        tr.tool_source_id = ts.id
         tr.history_id = history.id
         tr.state = "submitted"
-        tes = model.ToolExecutionState(request={}, state="validated")
         tr.tool_execution_state = tes
         session = self.trans.sa_session
         session.add(tes)

@@ -33,6 +33,7 @@ from galaxy.exceptions import (
 from galaxy.job_execution.actions.post import ActionBox
 from galaxy.job_execution.compute_environment import ComputeEnvironment
 from galaxy.managers.credentials import _build_user_credentials_query
+from galaxy.managers.tool_source import get_or_create_tool_source
 from galaxy.model import (
     DatasetInstance,
     HistoryDatasetCollectionAssociation,
@@ -3071,6 +3072,7 @@ class ToolModule(WorkflowModule):
             request=validated_param_template.input_state if validated_param_template is not None else None,
             state=request_state.value,
         )
+        tool_execution_state.tool_source = get_or_create_tool_source(trans.sa_session, tool)
         invocation_step.tool_execution_state = tool_execution_state
         trans.sa_session.add(tool_execution_state)
 

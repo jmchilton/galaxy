@@ -10,7 +10,6 @@ from typing import (
 from galaxy.exceptions import (
     AuthenticationRequired,
     ConfigDoesNotAllowException,
-    InconsistentDatabase,
 )
 from galaxy.managers.base import (
     decode_with_security,
@@ -48,7 +47,6 @@ from galaxy.tool_util.parameters import (
 )
 from galaxy.tool_util.parameters.state import RequestInternalToolState
 from galaxy.tool_util.parser import get_tool_source
-from galaxy.tool_util.toolbox import AbstractToolBox
 from galaxy.util import ready_name_for_url
 
 
@@ -206,25 +204,6 @@ def _parsed_tool_source_from_row(tool_source_model) -> Any:
     )
 
 
-def _parsed_tool_source_for_tes(tes: ToolExecutionState, toolbox: Optional[AbstractToolBox]) -> Any:
-    """Resolve the tool-parser instance for a ``ToolExecutionState``.
-
-    Two paths: an async-API mint links a ``ToolSource`` row via its
-    ``ToolRequest`` (the parser is reconstructable from the persisted
-    source string); a workflow tool-step capture has no ``ToolRequest``,
-    so the parser is fetched off the live toolbox via the associated
-    ``Job.tool_id`` / ``tool_version``."""
-    if tes.tool_requests:
-        return _parsed_tool_source_from_row(tes.tool_requests[0].tool_source)
-    if toolbox is not None:
-        for job in tes.jobs:
-            if job.tool_id:
-                tool = toolbox.get_tool(job.tool_id, tool_version=job.tool_version)
-                if tool is not None:
-                    return tool.tool_source
-    raise InconsistentDatabase(f"Cannot determine tool source for tool_execution_state id={tes.id}")
-
-
 def _tool_request_payload_or_empty(tool_request: ToolRequest) -> dict:
     """Tolerant payload read for serialization: legacy NULL-request rows
     (preserved by the migration's defensive guard) have no TES and yield
@@ -237,7 +216,7 @@ def _tool_request_payload_or_empty(tool_request: ToolRequest) -> dict:
 
 
 def tool_request_to_model(tool_request: ToolRequest, security: IdEncodingHelper) -> ToolRequestModel:
-    parsed = _parsed_tool_source_from_row(tool_request.tool_source)
+    parsed = _parsed_tool_source_from_row(tool_request.tool_execution_state.tool_source)
     encoded_request = _encode_request_payload(_tool_request_payload_or_empty(tool_request), parsed, security)
     as_dict = {
         "id": tool_request.id,
@@ -249,7 +228,7 @@ def tool_request_to_model(tool_request: ToolRequest, security: IdEncodingHelper)
 
 
 def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodingHelper) -> ToolRequestDetailedModel:
-    parsed = _parsed_tool_source_from_row(tool_request.tool_source)
+    parsed = _parsed_tool_source_from_row(tool_request.tool_execution_state.tool_source)
     encoded_request = _encode_request_payload(_tool_request_payload_or_empty(tool_request), parsed, security)
     jobs = [{"src": "job", "id": job.id} for job in tool_request.jobs]
     implicit_collections = [
@@ -271,14 +250,13 @@ def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodi
 def tool_execution_to_model(
     tes: ToolExecutionState,
     security: IdEncodingHelper,
-    toolbox: Optional[AbstractToolBox],
 ) -> ToolExecutionModel:
     """Serialize a ``ToolExecutionState`` for the read-only
     ``/api/tool_executions/{id}`` surface. Source-neutral: encodes the
     captured payload regardless of whether the row was minted by the
     async tool-request API or by workflow tool-step capture."""
     if tes.request:
-        parsed = _parsed_tool_source_for_tes(tes, toolbox)
+        parsed = _parsed_tool_source_from_row(tes.tool_source)
         encoded_request = _encode_request_payload(tes.request, parsed, security)
     else:
         encoded_request = None

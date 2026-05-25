@@ -2237,8 +2237,9 @@ class JobSubmitter:
 
     def queue_jobs(self, tool: Tool, request: QueueJobs, tool_request: ToolRequest) -> None:
         sa_session = self.app.model.context
-        if tool_request.tool_source.dynamic_tool:
-            tool.dynamic_tool = tool_request.tool_source.dynamic_tool
+        tool_source_model = tool_request.tool_execution_state.tool_source
+        if tool_source_model is not None and tool_source_model.dynamic_tool:
+            tool.dynamic_tool = tool_source_model.dynamic_tool
         try:
             request_context = self._context(tool_request, request)
             target_history = request_context.history

@@ -361,7 +361,7 @@ class FetchTools:
     ) -> ToolExecutionModel:
         tes = self._get_tool_execution_or_raise_not_found(trans, id)
         self._error_unless_tool_execution_accessible(trans, tes)
-        return tool_execution_to_model(tes, trans.security, trans.app.toolbox)
+        return tool_execution_to_model(tes, trans.security)
 
     def _get_tool_execution_or_raise_not_found(self, trans: ProvidesHistoryContext, id: str) -> ToolExecutionState:
         decoded_id = trans.security.decode_id(id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND)

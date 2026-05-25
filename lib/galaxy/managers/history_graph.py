@@ -40,6 +40,7 @@ from galaxy.model import (
     Job,
     JobToOutputDatasetAssociation,
     JobToOutputDatasetCollectionAssociation,
+    ToolExecutionState,
     ToolRequest,
     ToolRequestImplicitCollectionAssociation,
     ToolSource,
@@ -412,7 +413,8 @@ class HistoryGraphBuilder:
                     ToolSource.tool_id,
                 )
                 .join(ToolRequest, ToolRequest.id == ToolRequestImplicitCollectionAssociation.tool_request_id)
-                .join(ToolSource, ToolSource.id == ToolRequest.tool_source_id)
+                .join(ToolExecutionState, ToolExecutionState.id == ToolRequest.tool_execution_state_id)
+                .join(ToolSource, ToolSource.id == ToolExecutionState.tool_source_id)
                 .where(
                     ToolRequestImplicitCollectionAssociation.dataset_collection_id.in_(collection_ids),
                     or_(ToolSource.tool_id.is_(None), ToolSource.tool_id.notin_(SYNTHETIC_TOOL_IDS)),

@@ -628,7 +628,9 @@ def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolReq
     return _WorkItem(
         sort_key=(1, resolved.source_id),
         request_payload=tool_request_payload(tool_request),
-        tool=tool_for_execution(trans.app, trans.app.toolbox, tool_source=tool_request.tool_source),
+        tool=tool_for_execution(
+            trans.app, trans.app.toolbox, tool_source=tool_request.tool_execution_state.tool_source
+        ),
         job=None,
         output_hdcas=[a.dataset_collection for a in tool_request.implicit_collections],
         tool_request=tool_request,

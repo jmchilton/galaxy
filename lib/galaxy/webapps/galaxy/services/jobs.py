@@ -265,14 +265,14 @@ class JobsService(ServiceBase):
         request_internal_state = decode(request_state, parameter_bundle, trans.security.decode_id)
         sa_session = trans.sa_session
         tool_source_model = get_or_create_tool_source(sa_session, tool)
-        tool_request = ToolRequest()
-        tool_request.tool_source = tool_source_model
-        tool_request.state = ToolRequest.states.NEW
-        tool_request.history = target_history
         tool_execution_state = ToolExecutionState(
             request=request_internal_state.input_state,
             state=ToolExecutionState.states.VALIDATED.value,
         )
+        tool_execution_state.tool_source = tool_source_model
+        tool_request = ToolRequest()
+        tool_request.state = ToolRequest.states.NEW
+        tool_request.history = target_history
         tool_request.tool_execution_state = tool_execution_state
         sa_session.add(tool_execution_state)
         sa_session.add(tool_request)

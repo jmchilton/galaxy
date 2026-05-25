@@ -1426,13 +1426,11 @@ class ToolRequest(Base, Dictifiable, RepresentById):
     states: TypeAlias = ToolRequestState
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    tool_source_id: Mapped[int] = mapped_column(ForeignKey("tool_source.id"), index=True)
     history_id: Mapped[int] = mapped_column(ForeignKey("history.id"), index=True, nullable=False)
     state: Mapped[Optional[str]] = mapped_column(TrimmedString(32), index=True)
     state_message: Mapped[Optional[str]] = mapped_column(JSONType, index=True)
     tool_execution_state_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool_execution_state.id"), index=True)
 
-    tool_source: Mapped["ToolSource"] = relationship()
     history: Mapped[Optional["History"]] = relationship(back_populates="tool_requests")
     jobs: Mapped[list["Job"]] = relationship(back_populates="tool_request", order_by=lambda: asc(Job.id))
     implicit_collections: Mapped[list["ToolRequestImplicitCollectionAssociation"]] = relationship(
@@ -1463,6 +1461,10 @@ class ToolExecutionState(Base, RepresentById):
     ``request_internal`` payload when ``state == 'validated'`` and ``None``
     otherwise (the row exists as a diagnostic record that capture was
     attempted but did not produce a trustworthy payload).
+
+    ``tool_source`` carries the persisted tool identity (the parsed source +
+    ``tool_id`` / ``tool_version`` / ``dynamic_tool``) used to rebuild a Tool
+    at read time. Every row carries one — writers always populate it.
     """
 
     __tablename__ = "tool_execution_state"
@@ -1474,7 +1476,9 @@ class ToolExecutionState(Base, RepresentById):
     update_time: Mapped[datetime] = mapped_column(default=now, onupdate=now, nullable=True)
     request: Mapped[Optional[dict]] = mapped_column(JSONType)
     state: Mapped[Optional[str]] = mapped_column(TrimmedString(32), index=True)
+    tool_source_id: Mapped[int] = mapped_column(ForeignKey("tool_source.id"), index=True)
 
+    tool_source: Mapped["ToolSource"] = relationship()
     tool_requests: Mapped[list["ToolRequest"]] = relationship(back_populates="tool_execution_state")
     jobs: Mapped[list["Job"]] = relationship(back_populates="tool_execution_state")
     workflow_invocation_steps: Mapped[list["WorkflowInvocationStep"]] = relationship(

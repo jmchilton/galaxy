@@ -532,7 +532,7 @@ def fetch_data(
 @galaxy_task(action="queuing up submitted jobs")
 def queue_jobs(request: QueueJobs, app: MinimalManagerApp, job_submitter: JobSubmitter):
     tool_request = job_submitter._tool_request(request.tool_request_id)
-    tool_source_model = tool_request.tool_source
+    tool_source_model = tool_request.tool_execution_state.tool_source
     tool = cached_create_tool_from_representation(
         app=app,
         raw_tool_source=cast(str, tool_source_model.source),
