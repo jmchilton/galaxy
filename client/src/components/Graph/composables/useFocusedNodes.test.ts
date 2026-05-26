@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ref } from "vue";
+import { shallowRef } from "vue";
 
 import { type FocusAdjacency, useFocusedNodes } from "./useFocusedNodes";
 
@@ -16,7 +16,7 @@ function adjacencyFor<T>(edges: [T, T][]): FocusAdjacency<T> {
 }
 
 function focused<T>(activeNodeId: T | null, edges: [T, T][]): Set<T> | null {
-    const { focusedNodeIds } = useFocusedNodes(ref<T | null>(activeNodeId), adjacencyFor(edges));
+    const { focusedNodeIds } = useFocusedNodes(shallowRef<T | null>(activeNodeId), adjacencyFor(edges));
     return focusedNodeIds.value;
 }
 
