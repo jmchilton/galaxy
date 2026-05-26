@@ -10718,9 +10718,9 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
 
     workflow_step: Mapped[WorkflowStep] = relationship("WorkflowStep")
     job: Mapped[Optional["Job"]] = relationship(back_populates="workflow_invocation_step", uselist=False)
-    # Transitional: once a mapped step produces an ICJ, the ICJ holds the
-    # link. Read via galaxy.managers.workflow_request_state.resolve_structured_request,
-    # not this attribute directly.
+    # WIS co-points with Job (simple) or ICJ (mapped) at the same TES row.
+    # Consumers should read via galaxy.managers.workflow_request_state.resolve_structured_request,
+    # which prefers ICJ/Job over WIS for the validated case.
     tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
         back_populates="workflow_invocation_steps"
     )
@@ -10782,17 +10782,6 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
     ]
 
     states = InvocationStepState
-
-    def __strict_check_before_flush__(self):
-        """Enforce the ICJ-supersedes-child invariant: a WIS that points at
-        an ICJ must not carry a direct tool_execution_state_id — the ICJ
-        is the canonical anchor. Failure-capture rows (no ICJ) carry the
-        link directly. Gated by GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA."""
-        if self.implicit_collection_jobs_id is not None and self.tool_execution_state_id is not None:
-            raise Exception(
-                f"WorkflowInvocationStep {self.id} has implicit_collection_jobs_id and also "
-                "tool_execution_state_id; only the ICJ should"
-            )
 
     @property
     def is_new(self):

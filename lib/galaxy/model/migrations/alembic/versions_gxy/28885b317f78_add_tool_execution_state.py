@@ -156,21 +156,16 @@ def _backfill_from_tool_request() -> None:
         "  HAVING COUNT(DISTINCT j.tool_execution_state_id) = 1"
         ")"
     )
-    # Drop the now-redundant Job FK for jobs under an ICJ.
+    # ICJ supersedes its constituent Jobs as the TES anchor: drop the
+    # redundant Job FK when the ICJ already carries the link. WIS may
+    # co-point with either side (Job or ICJ) at the same TES row, so
+    # WIS-side FKs are left intact.
     op.execute(
         "UPDATE job SET tool_execution_state_id = NULL "
         "WHERE id IN ("
         "  SELECT a.job_id FROM implicit_collection_jobs_job_association a "
         "  JOIN implicit_collection_jobs icj ON icj.id = a.implicit_collection_jobs_id "
         "  WHERE icj.tool_execution_state_id IS NOT NULL"
-        ")"
-    )
-    # Drop the redundant WIS FK when the WIS has a mapped ICJ that
-    # already carries the TES link.
-    op.execute(
-        "UPDATE workflow_invocation_step SET tool_execution_state_id = NULL "
-        "WHERE implicit_collection_jobs_id IN ("
-        "  SELECT id FROM implicit_collection_jobs WHERE tool_execution_state_id IS NOT NULL"
         ")"
     )
     if op.get_bind().dialect.name == "postgresql":

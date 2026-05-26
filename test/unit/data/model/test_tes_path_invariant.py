@@ -1,13 +1,12 @@
-"""Red-green tests for the "ICJ supersedes child Job/WIS" invariant
-enforced by ``__strict_check_before_flush__`` on ``Job``,
-``WorkflowInvocationStep``, and ``ImplicitCollectionJobs``.
+"""Red-green tests for the "ICJ supersedes constituent Job" invariant
+enforced by ``__strict_check_before_flush__`` on ``Job`` and
+``ImplicitCollectionJobs``.
 
 The invariant: when an ICJ carries a ``tool_execution_state_id``, its
-constituent Jobs and parent WIS must NOT carry their own direct TES
-FK — the ICJ is the canonical anchor for the mapped execution event.
-Outside the ICJ case (standalone Job, WIS without ICJ), the direct FK
-is canonical. ToolRequest and Job co-pointing at the same TES is fine
-and not the subject of this invariant.
+constituent Jobs must NOT carry their own direct TES FK — the ICJ is
+the canonical anchor for the mapped execution event. WIS and TR are
+explicitly allowed to co-point at the same TES row (request side +
+materialized side); only Job-vs-ICJ is the forbidden duplication.
 
 These tests call the strict-check methods directly to keep the
 assertions deterministic without an SA session, mirroring how the
@@ -46,29 +45,13 @@ def test_standalone_job_with_tes_fk_passes():
     job.__strict_check_before_flush__()
 
 
-def test_wis_with_icj_and_tes_fk_raises():
+def test_wis_has_no_strict_check():
+    """WIS may freely co-point at the same TES as its Job (simple) or
+    ICJ (mapped). The class deliberately defines no
+    ``__strict_check_before_flush__`` — the model's flush guard skips
+    objects without one."""
     wis = model.WorkflowInvocationStep()
-    wis.implicit_collection_jobs_id = 3
-    wis.tool_execution_state_id = 7
-
-    with pytest.raises(Exception, match="implicit_collection_jobs_id and also"):
-        wis.__strict_check_before_flush__()
-
-
-def test_wis_with_icj_without_tes_fk_passes():
-    wis = model.WorkflowInvocationStep()
-    wis.implicit_collection_jobs_id = 3
-
-    wis.__strict_check_before_flush__()
-
-
-def test_wis_without_icj_with_tes_fk_passes():
-    """Failure-capture or non-mapped step: no ICJ, WIS carries TES
-    directly. Allowed."""
-    wis = model.WorkflowInvocationStep()
-    wis.tool_execution_state_id = 7
-
-    wis.__strict_check_before_flush__()
+    assert not hasattr(wis, "__strict_check_before_flush__")
 
 
 def test_icj_with_tes_and_constituent_job_with_tes_raises():

@@ -923,12 +923,12 @@ class WorkflowStepExecutionTracker(ExecutionTracker):
                 collections[output_assoc.output_name] = output_assoc.dataset_collection
             self.implicit_collections = collections
         self.invocation_step.implicit_collection_jobs = self.implicit_collection_jobs
-        # ICJ is the canonical TES anchor for a mapped step; clear the
-        # WIS link so the "exactly one path" invariant holds.
-        if self.invocation_step.tool_execution_state is not None and self.implicit_collection_jobs is not None:
-            if self.implicit_collection_jobs.tool_execution_state is None:
-                self.implicit_collection_jobs.tool_execution_state = self.invocation_step.tool_execution_state
-            self.invocation_step.tool_execution_state = None
+        if (
+            self.invocation_step.tool_execution_state is not None
+            and self.implicit_collection_jobs is not None
+            and self.implicit_collection_jobs.tool_execution_state is None
+        ):
+            self.implicit_collection_jobs.tool_execution_state = self.invocation_step.tool_execution_state
 
 
 __all__ = ("execute",)
