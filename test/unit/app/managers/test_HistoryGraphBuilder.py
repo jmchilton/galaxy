@@ -176,11 +176,15 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         return assoc
 
     def _link_implicit_collection(self, tool_request, hdca, output_name="output"):
-        assoc = model.ToolRequestImplicitCollectionAssociation()
-        assoc.tool_request_id = tool_request.id
-        assoc.dataset_collection_id = hdca.id
-        assoc.output_name = output_name
+        """Wire an HDCA as an execution-backed implicit output collection by
+        writing a TEICA row keyed on the TR's TES. Mirrors execute.py."""
         session = self.trans.sa_session
+        tes = tool_request.tool_execution_state
+        assert tes is not None, "_link_implicit_collection requires the TR to have a TES"
+        assoc = model.ToolExecutionImplicitCollectionAssociation()
+        assoc.tool_execution_state = tes
+        assoc.dataset_collection = hdca
+        assoc.output_name = output_name
         session.add(assoc)
         session.flush()
         return assoc
@@ -1061,9 +1065,9 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
             "HDCA producer edge must come from JobToOutputDatasetCollectionAssociation even when HDCA.job_id is None"
         )
 
-    def test_jobless_trica_only_hdca_has_producer_and_input_edges(self):
+    def test_jobless_teica_only_hdca_has_producer_and_input_edges(self):
         """A jobless tool-request-backed output collection, such as empty
-        map-over, only has a TRICA row and still needs producer provenance.
+        map-over, only has a TEICA row and still needs producer provenance.
         """
         history, _ = self._create_history()
         input_hda = self._create_hda(history, name="input")
@@ -1086,6 +1090,40 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
         producer_nodes = [n for n in graph.nodes if n.ref == tr_enc]
         assert len(producer_nodes) == 1
         assert producer_nodes[0].tool_id == "empty_map_tool"
+
+    def test_hdca_copy_does_not_get_producer_edge(self):
+        """A copy of a tool-produced HDCA must not inherit the original's
+        producer edge: HDCA.copy() carries ``implicit_collection_jobs_id``
+        but does not write a TEICA row, so the producer join excludes it.
+        """
+        history_a, _ = self._create_history()
+        history_b, _ = self._create_history()
+        input_hda = self._create_hda(history_a, name="input")
+        original = self.collection_manager.create(self.trans, history_a, "produced", "list", element_identifiers=[])
+        tr = self._create_tool_request(
+            history_a,
+            request_data={"inputs": [{"src": "hda", "id": input_hda.id}]},
+            tool_id="producer_tool",
+        )
+        self._link_implicit_collection(tr, original)
+
+        copy = model.HistoryDatasetCollectionAssociation(
+            hid=original.hid,
+            collection=original.collection,
+            name=original.name,
+            copied_from_history_dataset_collection_association=original,
+        )
+        copy.history = history_b
+        self.trans.sa_session.add(copy)
+        self.trans.sa_session.flush()
+
+        graph_b = self._build_graph(history_b)
+        tr_enc = self._tes_ref(tr)
+        copy_enc = self._encode("c", copy.id)
+        producer_edges = {(e.source, e.target) for e in graph_b.edges if e.type == "collection_output"}
+        assert (tr_enc, copy_enc) not in producer_edges
+        # The TR node from history_a must not even surface in history_b's graph.
+        assert tr_enc not in {n.ref for n in graph_b.nodes}
 
     def test_n2_ambiguous_hdca_producer_has_node_but_no_edge(self):
         """Rule N2 dedupe fallback: when an HDCA resolves to ≥2 distinct
@@ -1550,12 +1588,15 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
         self.trans.sa_session.flush()
 
     def _link_implicit_collection(self, tool_request, hdca):
-        assoc = model.ToolRequestImplicitCollectionAssociation()
-        assoc.tool_request_id = tool_request.id
-        assoc.dataset_collection_id = hdca.id
+        session = self.trans.sa_session
+        tes = tool_request.tool_execution_state
+        assert tes is not None
+        assoc = model.ToolExecutionImplicitCollectionAssociation()
+        assoc.tool_execution_state = tes
+        assoc.dataset_collection = hdca
         assoc.output_name = "output"
-        self.trans.sa_session.add(assoc)
-        self.trans.sa_session.flush()
+        session.add(assoc)
+        session.flush()
 
     # ── Test cases ──
 

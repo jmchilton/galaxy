@@ -98,3 +98,12 @@ def test_icj_without_tes_does_not_check_constituents():
     icj.jobs = [assoc]
 
     icj.__strict_check_before_flush__()
+
+
+def test_tes_back_pops_are_scalar():
+    """A TES row is a per-execution-event payload; every back-pop is
+    1..[0,1]. Catch accidental reversion to ``list[...]`` relationships."""
+    relationships = model.ToolExecutionState.__mapper__.relationships
+    for name in ("tool_request", "job", "implicit_collection_jobs", "workflow_invocation_step"):
+        rel = relationships[name]
+        assert rel.uselist is False, f"ToolExecutionState.{name} must be scalar (uselist=False)"

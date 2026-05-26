@@ -635,7 +635,7 @@ def _tool_request_work_item(trans: ProvidesHistoryContext, tool_request: ToolReq
             strategy="rebuild",
         ),
         job=None,
-        output_hdcas=[a.dataset_collection for a in tool_request.implicit_collections],
+        output_hdcas=tool_request.output_collections,
         tool_request=tool_request,
     )
 
@@ -789,23 +789,13 @@ def extract_steps_by_ids(
     # workflow_extraction_fallback_to_legacy_state.
     for icj_id in implicit_collection_jobs_ids:
         # Service-layer validator already checked existence, populated_state,
-        # output-HDCA presence, and per-HDCA accessibility.
+        # output-HDCA presence, per-HDCA accessibility, and -- crucially --
+        # routed TR-backed ICJs into ``tool_request_ids`` so we never see one
+        # here. This branch handles only classic (non-tool-request) map-overs.
         icj = sa_session.get(ImplicitCollectionJobs, icj_id)
         assert icj is not None, f"ImplicitCollectionJobs {icj_id} not found"
         output_hdcas = icj.output_dataset_collection_instances
-        tool_request = next(
-            (o.tool_request_association.tool_request for o in output_hdcas if o.tool_request_association is not None),
-            None,
-        )
-        if tool_request is not None:
-            # Tool-request-backed ICJ: source the step from the validated
-            # request + persisted tool_source (provenance parity with the
-            # direct tool_request_ids path) whether or not constituent jobs
-            # exist -- so a still-grey execution selected by its ICJ extracts
-            # the same way an empty (jobless) one does. _tool_request_work_item
-            # keys by TES.id internally; constituent jobs share the same TES.
-            work_items.append(_tool_request_work_item(trans, tool_request))
-        elif icj.jobs:
+        if icj.jobs:
             # Classic (non-tool-request) map-over: derive structured state
             # from the representative constituent job.
             representative_job = icj.representative_job
@@ -910,14 +900,7 @@ def extract_steps_by_ids(
                 _connect(step, input_name, id_to_output_pair[key])
         steps.append(step)
 
-        if item.tool_request is not None:
-            for assoc in item.tool_request.implicit_collections:
-                output_hdca = assoc.dataset_collection
-                if output_hdca is None:
-                    continue
-                original_output = _original_hdca(output_hdca)
-                id_to_output_pair[("collection", original_output.id)] = (step, assoc.output_name)
-        elif item.output_hdcas:
+        if item.output_hdcas:
             seen_names: dict[str, HistoryDatasetCollectionAssociation] = {}
             for output_hdca in item.output_hdcas:
                 output_name = output_hdca.implicit_output_name

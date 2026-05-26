@@ -231,9 +231,10 @@ def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodi
     parsed = _parsed_tool_source_from_row(tool_request.tool_execution_state.tool_source)
     encoded_request = _encode_request_payload(_tool_request_payload_or_empty(tool_request), parsed, security)
     jobs = [{"src": "job", "id": job.id} for job in tool_request.jobs]
+    tes = tool_request.tool_execution_state
+    associations = tes.implicit_collection_associations if tes is not None else []
     implicit_collections = [
-        {"src": "hdca", "id": assoc.dataset_collection.id, "output_name": assoc.output_name}
-        for assoc in tool_request.implicit_collections
+        {"src": "hdca", "id": assoc.dataset_collection_id, "output_name": assoc.output_name} for assoc in associations
     ]
     as_dict = {
         "id": tool_request.id,
@@ -260,7 +261,7 @@ def tool_execution_to_model(
         encoded_request = _encode_request_payload(tes.request, parsed, security)
     else:
         encoded_request = None
-    jobs = [{"src": "job", "id": job.id} for job in tes.jobs]
+    jobs = [{"src": "job", "id": tes.job.id}] if tes.job is not None else []
     as_dict = {
         "id": security.encode_id(tes.id, kind=TOOL_EXECUTION_STATE_ENCODE_KIND),
         "create_time": tes.create_time,

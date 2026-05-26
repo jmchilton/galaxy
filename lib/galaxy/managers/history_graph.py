@@ -40,9 +40,9 @@ from galaxy.model import (
     Job,
     JobToOutputDatasetAssociation,
     JobToOutputDatasetCollectionAssociation,
+    ToolExecutionImplicitCollectionAssociation,
     ToolExecutionState,
     ToolRequest,
-    ToolRequestImplicitCollectionAssociation,
     ToolSource,
 )
 from galaxy.schema.history_graph import (
@@ -116,8 +116,10 @@ class HistoryGraphBuilder:
     - HDA producer edges come from JobToOutputDatasetAssociation joined
       to Job.
     - HDCA producer edges come from JobToOutputDatasetCollectionAssociation
-      joined to Job, plus ToolRequestImplicitCollectionAssociation for
-      jobless tool-request-backed collection outputs.
+      joined to Job, plus an HDCA -> ToolExecutionImplicitCollectionAssociation
+      -> ToolExecutionState -> ToolRequest walk for jobless tool-request-backed
+      collection outputs. Copies of tool-produced HDCAs do not carry a TEICA
+      row, so the walk naturally excludes them.
     - Input edges come from the resolved structured-request payload
       (ToolExecutionState for new executions, ToolRequest for historical
       pre-EXEC_STATE rows), reached uniformly via
@@ -408,15 +410,23 @@ class HistoryGraphBuilder:
                 job_ids.add(row.job_id)
             stmt = (
                 select(
-                    ToolRequestImplicitCollectionAssociation.dataset_collection_id.label("item_id"),
+                    HistoryDatasetCollectionAssociation.id.label("item_id"),
                     ToolRequest.id.label("tool_request_id"),
                     ToolSource.tool_id,
                 )
-                .join(ToolRequest, ToolRequest.id == ToolRequestImplicitCollectionAssociation.tool_request_id)
-                .join(ToolExecutionState, ToolExecutionState.id == ToolRequest.tool_execution_state_id)
+                .join(
+                    ToolExecutionImplicitCollectionAssociation,
+                    ToolExecutionImplicitCollectionAssociation.dataset_collection_id
+                    == HistoryDatasetCollectionAssociation.id,
+                )
+                .join(
+                    ToolExecutionState,
+                    ToolExecutionState.id == ToolExecutionImplicitCollectionAssociation.tool_execution_state_id,
+                )
+                .join(ToolRequest, ToolRequest.tool_execution_state_id == ToolExecutionState.id)
                 .join(ToolSource, ToolSource.id == ToolExecutionState.tool_source_id)
                 .where(
-                    ToolRequestImplicitCollectionAssociation.dataset_collection_id.in_(collection_ids),
+                    HistoryDatasetCollectionAssociation.id.in_(collection_ids),
                     or_(ToolSource.tool_id.is_(None), ToolSource.tool_id.notin_(SYNTHETIC_TOOL_IDS)),
                 )
             )

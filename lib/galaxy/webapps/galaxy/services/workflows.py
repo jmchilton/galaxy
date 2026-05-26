@@ -239,7 +239,7 @@ class WorkflowsService(ServiceBase):
     ) -> WorkflowExtractionResult:
         if trans.user is None:
             raise exceptions.AuthenticationRequired("Workflow extraction requires an authenticated user.")
-        self._validate_extract_by_ids_payload(trans, payload)
+        tool_request_ids, implicit_collection_jobs_ids = self._validate_extract_by_ids_payload(trans, payload)
         try:
             stored_workflow = extract_workflow_by_ids(
                 trans,
@@ -247,10 +247,10 @@ class WorkflowsService(ServiceBase):
                 workflow_name=payload.workflow_name,
                 job_manager=self._job_manager,
                 job_ids=payload.job_ids,
-                implicit_collection_jobs_ids=payload.implicit_collection_jobs_ids,
+                implicit_collection_jobs_ids=implicit_collection_jobs_ids,
                 hda_ids=payload.hda_ids,
                 hdca_ids=payload.hdca_ids,
-                tool_request_ids=payload.tool_request_ids,
+                tool_request_ids=tool_request_ids,
                 dataset_names=payload.dataset_names,
                 dataset_collection_names=payload.dataset_collection_names,
             )
@@ -262,7 +262,7 @@ class WorkflowsService(ServiceBase):
         self,
         trans: ProvidesHistoryContext,
         payload: WorkflowExtractionByIdsPayload,
-    ) -> None:
+    ) -> tuple[list[int], list[int]]:
         """Cross-payload checks that need DB access. Pydantic handles per-field
         shape; this enforces semantic rules across job_ids /
         implicit_collection_jobs_ids / tool_request_ids that depend on the
@@ -274,6 +274,11 @@ class WorkflowsService(ServiceBase):
         (which guard job- and ICJ-sourced selections) intentionally do not
         apply to them -- a tool request with zero jobs / no non-empty outputs
         is still extractable.
+
+        Returns ``(tool_request_ids, implicit_collection_jobs_ids)`` with
+        TR-backed ICJs lifted into ``tool_request_ids`` so downstream gates
+        (NEW-state, single-step) see the final TR bucket and extract sees a
+        clean TR/ICJ split.
         """
         for field in ("job_ids", "implicit_collection_jobs_ids", "hda_ids", "hdca_ids", "tool_request_ids"):
             ids = getattr(payload, field)
@@ -292,6 +297,12 @@ class WorkflowsService(ServiceBase):
 
         sa_session = trans.sa_session
         dataset_collection_manager = trans.app.dataset_collection_manager
+        # A TR-backed ICJ extracts via its TR (jobless map-over, or a still-grey
+        # execution selected by its ICJ) so the step sources from the validated
+        # request + persisted tool source. Lift those TRs here so NEW-state /
+        # single-step gates below see the final TR bucket.
+        tool_requests_by_id: dict[int, ToolRequest] = {}
+        implicit_collection_jobs_ids: list[int] = []
         for icj_id in payload.implicit_collection_jobs_ids:
             icj = sa_session.get(ImplicitCollectionJobs, icj_id)
             if icj is None:
@@ -308,38 +319,36 @@ class WorkflowsService(ServiceBase):
                 )
             for hdca in output_hdcas:
                 dataset_collection_manager.get_dataset_collection_instance(trans, "history", hdca.id)
-            if not icj.jobs:
-                # Jobless map-over (e.g. empty collection): extract_steps_by_ids
-                # will source the step from the tool request reached via the
-                # output HDCA, so gate it exactly like a direct tool_request_ids
-                # item (parity with the accessibility check above).
-                resolved_request = next(
-                    (
-                        o.tool_request_association.tool_request
-                        for o in output_hdcas
-                        if o.tool_request_association is not None
-                    ),
-                    None,
-                )
-                if resolved_request is not None:
-                    self._error_unless_tool_request_accessible(trans, resolved_request)
+            tes = icj.tool_execution_state
+            tr_backed = tes.tool_request if tes is not None else None
+            if tr_backed is not None:
+                tool_requests_by_id.setdefault(tr_backed.id, tr_backed)
+            else:
+                implicit_collection_jobs_ids.append(icj_id)
+
+        for tool_request_id in payload.tool_request_ids:
+            if tool_request_id in tool_requests_by_id:
+                continue
+            tool_request = sa_session.get(ToolRequest, tool_request_id)
+            if tool_request is None:
+                raise exceptions.ObjectNotFound(f"ToolRequest {tool_request_id} not found")
+            tool_requests_by_id[tool_request_id] = tool_request
 
         # A 'new' (validated but not yet celery-materialized) tool request has
         # no implicit_collections, so its step extracts but registers no
         # outputs. That is fine for a lone single-step extraction, but in any
         # multi-selection it would be a silently un-wireable producer -- reject
         # rather than emit a structurally-incomplete workflow.
-        single_request_only = len(payload.tool_request_ids) == 1 and not (payload.hda_ids or payload.hdca_ids)
-        for tool_request_id in payload.tool_request_ids:
-            tool_request = sa_session.get(ToolRequest, tool_request_id)
-            if tool_request is None:
-                raise exceptions.ObjectNotFound(f"ToolRequest {tool_request_id} not found")
+        single_request_only = len(tool_requests_by_id) == 1 and not (payload.hda_ids or payload.hdca_ids)
+        for tool_request in tool_requests_by_id.values():
             self._error_unless_tool_request_accessible(trans, tool_request)
             if tool_request.state == ToolRequest.states.NEW and not single_request_only:
                 raise exceptions.RequestParameterInvalidException(
-                    f"ToolRequest {tool_request_id} is not yet materialized (state 'new'); "
+                    f"ToolRequest {tool_request.id} is not yet materialized (state 'new'); "
                     "extract it as a single-step workflow on its own, or retry once it is 'submitted'."
                 )
+
+        return list(tool_requests_by_id.keys()), implicit_collection_jobs_ids
 
     def _error_unless_tool_request_accessible(self, trans: ProvidesHistoryContext, tool_request: ToolRequest) -> None:
         # Auth parity with job- / ICJ-sourced selection above (accessible

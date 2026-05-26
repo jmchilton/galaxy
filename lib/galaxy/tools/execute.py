@@ -677,12 +677,12 @@ class ExecutionTracker:
             )
             collection_instance.implicit_collection_jobs = implicit_collection_jobs
             collection_instances[output_name] = collection_instance
-            if tool_request:
-                assoc = model.ToolRequestImplicitCollectionAssociation()
-                assoc.tool_request = tool_request
+            if tool_request is not None and tool_execution_state is not None:
+                assoc = model.ToolExecutionImplicitCollectionAssociation()
+                assoc.tool_execution_state = tool_execution_state
                 assoc.dataset_collection = collection_instance
                 assoc.output_name = output_name
-                tool_request.implicit_collections.append(assoc)
+                trans.sa_session.add(assoc)
             trans.sa_session.add(collection_instance)
         # Needed to flush the association created just above with
         # job.add_output_dataset_collection.

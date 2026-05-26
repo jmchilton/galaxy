@@ -1433,10 +1433,12 @@ class ToolRequest(Base, Dictifiable, RepresentById):
 
     history: Mapped[Optional["History"]] = relationship(back_populates="tool_requests")
     jobs: Mapped[list["Job"]] = relationship(back_populates="tool_request", order_by=lambda: asc(Job.id))
-    implicit_collections: Mapped[list["ToolRequestImplicitCollectionAssociation"]] = relationship(
-        back_populates="tool_request"
-    )
-    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="tool_requests")
+    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="tool_request")
+
+    @property
+    def output_collections(self) -> list["HistoryDatasetCollectionAssociation"]:
+        tes = self.tool_execution_state
+        return tes.output_collections if tes is not None else []
 
 
 class ToolExecutionState(Base, RepresentById):
@@ -1479,32 +1481,49 @@ class ToolExecutionState(Base, RepresentById):
     tool_source_id: Mapped[int] = mapped_column(ForeignKey("tool_source.id"), index=True)
 
     tool_source: Mapped["ToolSource"] = relationship()
-    tool_requests: Mapped[list["ToolRequest"]] = relationship(back_populates="tool_execution_state")
-    jobs: Mapped[list["Job"]] = relationship(back_populates="tool_execution_state")
-    workflow_invocation_steps: Mapped[list["WorkflowInvocationStep"]] = relationship(
-        back_populates="tool_execution_state"
+    tool_request: Mapped[Optional["ToolRequest"]] = relationship(back_populates="tool_execution_state", uselist=False)
+    job: Mapped[Optional["Job"]] = relationship(back_populates="tool_execution_state", uselist=False)
+    workflow_invocation_step: Mapped[Optional["WorkflowInvocationStep"]] = relationship(
+        back_populates="tool_execution_state", uselist=False
     )
-    implicit_collection_jobs: Mapped[list["ImplicitCollectionJobs"]] = relationship(
-        back_populates="tool_execution_state"
+    implicit_collection_jobs: Mapped[Optional["ImplicitCollectionJobs"]] = relationship(
+        back_populates="tool_execution_state", uselist=False
+    )
+    implicit_collection_associations: Mapped[list["ToolExecutionImplicitCollectionAssociation"]] = relationship(
+        back_populates="tool_execution_state",
+        order_by=lambda: ToolExecutionImplicitCollectionAssociation.id,
     )
 
+    @property
+    def output_collections(self) -> list["HistoryDatasetCollectionAssociation"]:
+        return [assoc.dataset_collection for assoc in self.implicit_collection_associations]
 
-class ToolRequestImplicitCollectionAssociation(Base, Dictifiable, RepresentById):
-    __tablename__ = "tool_request_implicit_collection_association"
+
+class ToolExecutionImplicitCollectionAssociation(Base, Dictifiable, RepresentById):
+    """Originals produced by a single tool execution.
+
+    Written once at execute time alongside the HDCA mint. Copies do not
+    carry rows, so the table answers \"what did this execution produce?\"
+    without relying on copy-implementation invariants.
+    """
+
+    __tablename__ = "tool_execution_implicit_collection_association"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    tool_request_id: Mapped[int] = mapped_column(ForeignKey("tool_request.id", name="fk_trica_tri"), index=True)
+    tool_execution_state_id: Mapped[int] = mapped_column(
+        ForeignKey("tool_execution_state.id", name="fk_teica_tesi"), index=True
+    )
     dataset_collection_id: Mapped[int] = mapped_column(
-        ForeignKey("history_dataset_collection_association.id", name="fk_trica_dci"), index=True
+        ForeignKey("history_dataset_collection_association.id", name="fk_teica_dci"), index=True
     )
     output_name: Mapped[str] = mapped_column(String(255))
 
-    tool_request: Mapped["ToolRequest"] = relationship(back_populates="implicit_collections")
+    tool_execution_state: Mapped["ToolExecutionState"] = relationship(back_populates="implicit_collection_associations")
     dataset_collection: Mapped["HistoryDatasetCollectionAssociation"] = relationship(
-        back_populates="tool_request_association", uselist=False
+        back_populates="tool_execution_association", uselist=False
     )
 
-    dict_collection_visible_keys = ["id", "tool_request_id", "dataset_collection_id", "output_name"]
+    dict_collection_visible_keys = ["id", "tool_execution_state_id", "dataset_collection_id", "output_name"]
 
 
 class UserDynamicToolAssociation(Base, Dictifiable, RepresentById):
@@ -1707,7 +1726,7 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     # NULL for jobs under an ICJ (the ICJ carries the canonical link). Read via
     # galaxy.managers.workflow_request_state.resolve_structured_request, not
     # this attribute directly.
-    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="jobs")
+    tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(back_populates="job")
     user: Mapped[Optional["User"]] = relationship()
     galaxy_session: Mapped[Optional["GalaxySession"]] = relationship()
     history: Mapped[Optional["History"]] = relationship()
@@ -3086,9 +3105,9 @@ class ImplicitCollectionJobs(Base, Serializable):
         """HDCAs produced by this implicit map (one per mapped tool output)."""
         return list(
             required_object_session(self).scalars(
-                select(HistoryDatasetCollectionAssociation).where(
-                    HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == self.id
-                )
+                select(HistoryDatasetCollectionAssociation)
+                .where(HistoryDatasetCollectionAssociation.implicit_collection_jobs_id == self.id)
+                .order_by(HistoryDatasetCollectionAssociation.id)
             )
         )
 
@@ -8177,8 +8196,8 @@ class HistoryDatasetCollectionAssociation(
         back_populates="dataset_collection",
     )
     creating_job_associations: Mapped[list["JobToOutputDatasetCollectionAssociation"]] = relationship(viewonly=True)
-    tool_request_association: Mapped[Optional["ToolRequestImplicitCollectionAssociation"]] = relationship(
-        back_populates="dataset_collection"
+    tool_execution_association: Mapped[Optional["ToolExecutionImplicitCollectionAssociation"]] = relationship(
+        back_populates="dataset_collection", uselist=False
     )
 
     dict_dbkeysandextensions_visible_keys = ["dbkeys", "extensions"]
@@ -10722,7 +10741,7 @@ class WorkflowInvocationStep(Base, Dictifiable, Serializable):
     # Consumers should read via galaxy.managers.workflow_request_state.resolve_structured_request,
     # which prefers ICJ/Job over WIS for the validated case.
     tool_execution_state: Mapped[Optional["ToolExecutionState"]] = relationship(
-        back_populates="workflow_invocation_steps"
+        back_populates="workflow_invocation_step"
     )
     implicit_collection_jobs = relationship(
         "ImplicitCollectionJobs", back_populates="workflow_invocation_step", uselist=False

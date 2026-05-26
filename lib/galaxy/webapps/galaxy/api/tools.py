@@ -371,18 +371,22 @@ class FetchTools:
         return tes
 
     def _error_unless_tool_execution_accessible(self, trans: ProvidesHistoryContext, tes: ToolExecutionState) -> None:
-        histories = [tool_request.history for tool_request in tes.tool_requests if tool_request.history is not None]
-        histories.extend(job.history for job in tes.jobs if job.history is not None)
-        histories.extend(
-            workflow_invocation.history
-            for step in tes.workflow_invocation_steps
-            if (workflow_invocation := step.workflow_invocation) is not None and workflow_invocation.history is not None
-        )
+        histories: list = []
+        if tes.tool_request is not None and tes.tool_request.history is not None:
+            histories.append(tes.tool_request.history)
+        if tes.job is not None and tes.job.history is not None:
+            histories.append(tes.job.history)
+        if tes.workflow_invocation_step is not None:
+            workflow_invocation = tes.workflow_invocation_step.workflow_invocation
+            if workflow_invocation is not None and workflow_invocation.history is not None:
+                histories.append(workflow_invocation.history)
         # Mapped executions anchor the TES on the ICJ; reach histories
         # via the ICJ's constituent jobs.
-        for icj in tes.implicit_collection_jobs:
+        if tes.implicit_collection_jobs is not None:
             histories.extend(
-                assoc.job.history for assoc in icj.jobs if assoc.job is not None and assoc.job.history is not None
+                assoc.job.history
+                for assoc in tes.implicit_collection_jobs.jobs
+                if assoc.job is not None and assoc.job.history is not None
             )
         if not histories:
             raise exceptions.ObjectNotFound()

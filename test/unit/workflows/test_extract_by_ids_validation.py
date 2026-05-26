@@ -29,8 +29,13 @@ def _trans(tool_requests_by_id=None, icjs_by_id=None):
     return SimpleNamespace(sa_session=sa_session, app=app, user=SimpleNamespace())
 
 
+_next_tool_request_id = 1000
+
+
 def _tool_request(state):
-    return SimpleNamespace(state=state, history=SimpleNamespace())
+    global _next_tool_request_id
+    _next_tool_request_id += 1
+    return SimpleNamespace(id=_next_tool_request_id, state=state, history=SimpleNamespace())
 
 
 def _icj(jobs_present: bool, tool_request_for_hdca=None):
@@ -38,18 +43,16 @@ def _icj(jobs_present: bool, tool_request_for_hdca=None):
 
     Under unified TES.id ordering both ``jobs_present`` variants and the
     jobless-TR-backed variant produce comparable sort keys; the validator
-    no longer rejects mixed shapes.
+    no longer rejects mixed shapes. A TR-backed ICJ is wired via its
+    ``tool_execution_state.tool_request`` (the canonical post-TRICA path).
     """
-    output_hdca = SimpleNamespace(
-        id=0,
-        tool_request_association=(
-            SimpleNamespace(tool_request=tool_request_for_hdca) if tool_request_for_hdca is not None else None
-        ),
-    )
+    output_hdca = SimpleNamespace(id=0)
+    tes = SimpleNamespace(tool_request=tool_request_for_hdca) if tool_request_for_hdca is not None else None
     return SimpleNamespace(
         populated_state="ok",
         output_dataset_collection_instances=[output_hdca],
         jobs=[SimpleNamespace()] if jobs_present else [],
+        tool_execution_state=tes,
     )
 
 
