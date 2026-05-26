@@ -15,7 +15,6 @@ Create Date: 2026-05-21 12:30:00.000000
 
 """
 
-from alembic import op
 from sqlalchemy import (
     Column,
     String,
@@ -23,7 +22,9 @@ from sqlalchemy import (
 
 from galaxy.model.migrations.util import (
     add_column,
+    create_unique_constraint,
     drop_column,
+    drop_constraint,
     transaction,
 )
 
@@ -33,12 +34,18 @@ down_revision = "6925fe4c8a17"
 branch_labels = None
 depends_on = None
 
+# Matches what the model's naming convention (`%(table_name)s_%(column_0_name)s_key`)
+# auto-generates for the ToolSource UniqueConstraint at definition time, so an
+# init-from-model schema and a migration-built schema name the constraint the
+# same way and downgrade can locate it.
+tool_source_unique_constraint_name = "tool_source_hash_key"
+
 
 def upgrade():
     with transaction():
         add_column("tool_request", Column("request_state", String(32)))
-        op.create_unique_constraint(
-            "uq_tool_source_hash_source_class",
+        create_unique_constraint(
+            tool_source_unique_constraint_name,
             "tool_source",
             ["hash", "source_class"],
         )
@@ -46,5 +53,5 @@ def upgrade():
 
 def downgrade():
     with transaction():
-        op.drop_constraint("uq_tool_source_hash_source_class", "tool_source", type_="unique")
+        drop_constraint(tool_source_unique_constraint_name, "tool_source")
         drop_column("tool_request", "request_state")
