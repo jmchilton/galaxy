@@ -75,10 +75,11 @@ class TestHistoryGraphBuilder(BaseTestCase, CreatesCollectionsMixin):
 
     def _create_tool_source(self):
         ts = model.ToolSource()
-        # Unique per call — tool_source has a UNIQUE(hash, source_class) constraint.
+        # Unique per call — tool_source has a UNIQUE(hash, source_class, identity_hash) constraint.
         ts.hash = uuid4().hex
         ts.source = {"xml": "<tool/>"}
         ts.source_class = "XmlToolSource"
+        ts.identity_hash = uuid4().hex
         session = self.trans.sa_session
         session.add(ts)
         session.flush()
@@ -1235,10 +1236,11 @@ class TestHistoryGraphBuilderBoundedness(BaseTestCase, CreatesCollectionsMixin):
 
     def _create_tool_source(self):
         ts = model.ToolSource()
-        # Unique per call — tool_source has a UNIQUE(hash, source_class) constraint.
+        # Unique per call — tool_source has a UNIQUE(hash, source_class, identity_hash) constraint.
         ts.hash = uuid4().hex
         ts.source = {"xml": "<tool/>"}
         ts.source_class = "XmlToolSource"
+        ts.identity_hash = uuid4().hex
         session = self.trans.sa_session
         session.add(ts)
         session.flush()

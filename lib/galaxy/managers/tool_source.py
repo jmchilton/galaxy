@@ -63,6 +63,7 @@ def get_or_create_tool_source(session: Session, tool) -> ToolSource:
 
 def tool_source_identity_hash(tool: Any) -> str:
     dynamic_tool = getattr(tool, "dynamic_tool", None)
+    identity: tuple[str, ...]
     if dynamic_tool is not None and dynamic_tool.id is not None:
         identity = ("dynamic", str(dynamic_tool.id))
     else:
