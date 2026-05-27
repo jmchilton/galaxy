@@ -1401,12 +1401,18 @@ class PasswordResetToken(Base):
 
 class ToolSource(Base, Dictifiable, RepresentById):
     __tablename__ = "tool_source"
-    __table_args__ = (UniqueConstraint("hash", "source_class"),)
+    __table_args__ = (UniqueConstraint("hash", "source_class", "identity_hash"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     hash: Mapped[Optional[str]] = mapped_column(Unicode(255))
     source: Mapped[dict] = mapped_column(JSONType)
     source_class: Mapped[str] = mapped_column(TrimmedString(255))
+    tool_id: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    tool_version: Mapped[Optional[str]] = mapped_column(String(255))
+    dynamic_tool_id: Mapped[Optional[int]] = mapped_column(ForeignKey("dynamic_tool.id"), index=True)
+    identity_hash: Mapped[str] = mapped_column(String(255))
+
+    dynamic_tool: Mapped[Optional["DynamicTool"]] = relationship()
 
 
 class ToolRequest(Base, Dictifiable, RepresentById):
