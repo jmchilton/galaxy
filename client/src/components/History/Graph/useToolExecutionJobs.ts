@@ -1,10 +1,9 @@
 import { type Ref, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
+import type { components } from "@/api/schema";
 
-interface ExecutionJob {
-    id: string;
-}
+type ExecutionJob = components["schemas"]["ToolRequestJobReference"];
 
 /**
  * Loads the jobs produced by a single tool execution (tool_request).
