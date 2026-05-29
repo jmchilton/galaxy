@@ -91,6 +91,31 @@ describe("useHistoryGraphData", () => {
         expect(graphData.value).not.toBeNull();
     });
 
+    it("keeps loading false on refetch when data is already loaded", async () => {
+        // The HistoryGraphView template swaps the entire graph subtree for a
+        // spinner whenever `loading` is true, which unmounts GraphView and
+        // resets pan/zoom. A background refetch must not flip `loading` so
+        // the existing view survives until fresh data arrives.
+        const { loading, refetch } = useHistoryGraphData(ref("h1"), ref(100));
+        await flushPromises();
+        expect(loading.value).toBe(false);
+
+        let loadingDuringRefetch = false;
+        const stopWatch = vi.fn(() => {
+            if (loading.value) {
+                loadingDuringRefetch = true;
+            }
+        });
+        // Snapshot the ref via a synchronous tick around refetch().
+        const promise = refetch();
+        stopWatch();
+        await promise;
+        await flushPromises();
+
+        expect(loadingDuringRefetch).toBe(false);
+        expect(loading.value).toBe(false);
+    });
+
     it("sets error and clears graphData when the API replies with an error", async () => {
         server.use(
             http.get("/api/histories/{history_id}/graph", ({ response }) =>
