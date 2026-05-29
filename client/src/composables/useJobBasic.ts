@@ -1,4 +1,4 @@
-import { computed, type Ref, watch } from "vue";
+import { computed, type Ref } from "vue";
 
 import { useJobStore } from "@/stores/jobStore";
 
@@ -9,18 +9,6 @@ import { useJobStore } from "@/stores/jobStore";
  */
 export function useJobBasic(jobId: Ref<string | null | undefined>) {
     const jobStore = useJobStore();
-
-    watch(
-        jobId,
-        async (id) => {
-            if (id) {
-                await jobStore.fetchJob({ id });
-            }
-        },
-        { immediate: true },
-    );
-
     const job = computed(() => (jobId.value ? (jobStore.getJob(jobId.value) ?? null) : null));
-
     return { job };
 }
