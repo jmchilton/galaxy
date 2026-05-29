@@ -2433,6 +2433,11 @@ def _capture_workflow_tool_request_state(
     if request_internal is None:
         return None, None, None
 
+    # Persistence is best-effort and execution-neutral: an exception here
+    # (e.g. ``tool.tool_source.to_string()`` on a tool with no serializable
+    # source, or a unique-constraint race we cannot recover) must not abort
+    # workflow scheduling. Savepoint scopes the flush so a failure rolls back
+    # to clean transaction state instead of poisoning the outer session.
     try:
         with trans.sa_session.begin_nested():
             tool_source = get_or_create_tool_source(trans.sa_session, tool)
@@ -2440,6 +2445,10 @@ def _capture_workflow_tool_request_state(
             tool_request.request = request_internal.input_state
             tool_request.tool_source = tool_source
             tool_request.history = history
+            # `state` is the async-submission lifecycle (NEW/SUBMITTED/FAILED)
+            # and does not apply to workflow-minted records; left NULL so
+            # consumers can distinguish "captured workflow state" from
+            # "pending async submission".
             tool_request.request_state = request_state.value
             trans.sa_session.add(tool_request)
     except Exception as e:

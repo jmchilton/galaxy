@@ -12,7 +12,12 @@ import pytest
 from galaxy import model
 from galaxy.managers.workflows import WorkflowContentsManager
 from galaxy.tool_util.parser.output_objects import ToolOutput
-from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
+from galaxy.tools.parameters.meta import to_decoded_json
+from galaxy.tools.parameters.workflow_utils import (
+    ConnectedValue,
+    NO_REPLACEMENT,
+    RuntimeValue,
+)
 from galaxy.util import bunch
 from galaxy.workflow import modules
 from .workflow_support import (
@@ -670,3 +675,31 @@ def test_capture_unexpected_error_returns_none_loudly():
         assert _capture(resolve) == (None, None, None)
 
     log.warning.assert_called_once()
+
+
+def test_to_decoded_json_lowers_connected_value_in_repeat():
+    """ConnectedValue inside a repeat lowers to its JSON marker.
+
+    Regression: an unresolved connection inside a `repeat` survived to the
+    tool_request flush as a raw ``ConnectedValue()`` and broke JSON encode
+    with a TypeError. ``to_decoded_json`` recurses and lowers it to a marker.
+    """
+    payload = {
+        "datasets": [
+            {"input": {"src": "hda", "id": 1}},
+            {"input": ConnectedValue()},
+        ],
+    }
+
+    result = to_decoded_json(payload)
+
+    assert result["datasets"][0]["input"] == {"src": "hda", "id": 1}
+    assert result["datasets"][1]["input"] == {"__class__": "ConnectedValue"}
+    json.dumps(result)
+
+
+def test_to_decoded_json_lowers_bare_runtime_value():
+    """Bare RuntimeValue tokens lower to their JSON marker form too."""
+    result = to_decoded_json({"foo": RuntimeValue()})
+    assert result == {"foo": {"__class__": "RuntimeValue"}}
+    json.dumps(result)
