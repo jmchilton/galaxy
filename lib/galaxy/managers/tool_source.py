@@ -8,8 +8,10 @@ identical source text without one request later queueing with the other's
 
 ``ToolSource`` carries ``UniqueConstraint("hash", "source_class",
 "identity_hash")``, so even under concurrent inserts (PostgreSQL) at most one
-row survives; :func:`get_or_create_tool_source` retries on the unique-violation
-race to return the winner.
+row survives; :func:`get_or_create_tool_source` scopes its insert in a savepoint
+and, on the unique-violation race, rolls back just that savepoint and returns
+the winner. Scoping to a savepoint (rather than a full session rollback) keeps
+the helper safe to call from within an enclosing transaction or savepoint.
 """
 
 import hashlib
@@ -47,13 +49,16 @@ def get_or_create_tool_source(session: Session, tool) -> ToolSource:
         tool_version=tool.version,
         dynamic_tool_id=tool.dynamic_tool.id if tool.dynamic_tool else None,
     )
-    session.add(tool_source)
     try:
-        session.flush()
+        with session.begin_nested():
+            session.add(tool_source)
+            session.flush()
     except IntegrityError:
-        # Concurrent writer won the race; roll back our insert and return
-        # theirs. The unique constraint guarantees a row exists now.
-        session.rollback()
+        # Concurrent writer won the race. The savepoint rolled back only our
+        # insert, leaving the surrounding transaction intact (a full
+        # session.rollback() here would deactivate an enclosing savepoint in
+        # callers that wrap us in begin_nested()). The unique constraint
+        # guarantees a row exists now, so return theirs.
         winner = _lookup(session, content_hash, source_class, identity_hash)
         if winner is None:
             raise
