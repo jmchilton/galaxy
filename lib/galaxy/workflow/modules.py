@@ -2433,24 +2433,15 @@ def _capture_workflow_tool_request_state(
     if request_internal is None:
         return None, None, None
 
-    # Persistence is best-effort and execution-neutral: an exception here
-    # (e.g. ``tool.tool_source.to_string()`` on a tool with no serializable
-    # source, or a unique-constraint race we cannot recover) must not abort
-    # workflow scheduling. Degrade to "no ToolRequest minted for this step"
-    # exactly like the validation failure paths above.
     try:
-        tool_source = get_or_create_tool_source(trans.sa_session, tool)
-        tool_request = ToolRequest()
-        tool_request.request = request_internal.input_state
-        tool_request.tool_source = tool_source
-        tool_request.history = history
-        # `state` is the async-submission lifecycle (NEW/SUBMITTED/FAILED)
-        # and does not apply to workflow-minted records; left NULL so
-        # consumers can distinguish "captured workflow state" from
-        # "pending async submission".
-        tool_request.request_state = request_state.value
-        trans.sa_session.add(tool_request)
-        trans.sa_session.flush()
+        with trans.sa_session.begin_nested():
+            tool_source = get_or_create_tool_source(trans.sa_session, tool)
+            tool_request = ToolRequest()
+            tool_request.request = request_internal.input_state
+            tool_request.tool_source = tool_source
+            tool_request.history = history
+            tool_request.request_state = request_state.value
+            trans.sa_session.add(tool_request)
     except Exception as e:
         log.warning(
             "Failed to persist ToolRequest for workflow tool step %s: %s",
