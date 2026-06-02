@@ -6,6 +6,7 @@ import {
     faEye,
     faHistory,
     faSave,
+    faSitemap,
     faSpinner,
     faUsers,
 } from "@fortawesome/free-solid-svg-icons";
@@ -135,6 +136,20 @@ function handleEdit() {
 
 async function handleSave() {
     await store.savePage();
+}
+
+async function handleExtractWorkflow() {
+    if (!props.historyId || !store.currentPage) {
+        return;
+    }
+    // The summary scans the last saved revision, so flush any edits first.
+    if (store.isDirty) {
+        await store.savePage();
+        if (store.error) {
+            return;
+        }
+    }
+    router.push(`/histories/${props.historyId}/extract_workflow?from_page=${props.pageId}`);
 }
 
 async function handleSaveAndView() {
@@ -274,6 +289,16 @@ function handleRevisionRestore(revisionId: string) {
                     @click="store.toggleChatPanel">
                     <FontAwesomeIcon :icon="faComments" />
                     Chat
+                </BButton>
+                <BButton
+                    v-if="!isStandalone"
+                    variant="outline-primary"
+                    size="sm"
+                    class="mr-2"
+                    data-description="page extract workflow button"
+                    @click="handleExtractWorkflow">
+                    <FontAwesomeIcon :icon="faSitemap" />
+                    Extract Workflow
                 </BButton>
                 <template v-if="isStandalone">
                     <ObjectPermissionsModal

@@ -713,6 +713,9 @@ pages:
       chat_button:
         type: data-description
         selector: 'page chat button'
+      extract_workflow_button:
+        type: data-description
+        selector: 'page extract workflow button'
       chat_panel:
         type: data-description
         selector: 'page chat panel'

@@ -71,6 +71,7 @@ const SELECTORS = {
     PREVIEW_BUTTON: "[data-description='page preview button']",
     PERMISSIONS_BUTTON: "[data-description='page permissions button']",
     SAVE_VIEW_BUTTON: "[data-description='page save-view button']",
+    EXTRACT_WORKFLOW_BUTTON: "[data-description='page extract workflow button']",
     EDIT_BUTTON: "[data-description='page edit button']",
     DISPLAY_TOOLBAR: "[data-description='page display toolbar']",
 };
@@ -215,6 +216,36 @@ describe("PageEditorView", () => {
         it("hides save & view button in history mode", () => {
             expect(wrapper.find(SELECTORS.SAVE_VIEW_BUTTON).exists()).toBe(false);
         });
+
+        it("shows Extract Workflow button in notebook (history) mode", () => {
+            const extractBtn = wrapper.find(SELECTORS.EXTRACT_WORKFLOW_BUTTON);
+            expect(extractBtn.exists()).toBe(true);
+            expect(extractBtn.text()).toContain("Extract Workflow");
+        });
+
+        it("Extract Workflow saves a dirty page then navigates with from_page query", async () => {
+            expect(store.isDirty).toBe(true);
+            const extractBtn = wrapper.find(SELECTORS.EXTRACT_WORKFLOW_BUTTON);
+            await extractBtn.trigger("click");
+            await flushPromises();
+
+            expect(store.savePage).toHaveBeenCalled();
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/extract_workflow?from_page=${PAGE_ID}`);
+        });
+
+        it("Extract Workflow does not save when the page is not dirty", async () => {
+            store.currentContent = "";
+            store.currentTitle = "";
+            await wrapper.vm.$nextTick();
+            expect(store.isDirty).toBe(false);
+
+            const extractBtn = wrapper.find(SELECTORS.EXTRACT_WORKFLOW_BUTTON);
+            await extractBtn.trigger("click");
+            await flushPromises();
+
+            expect(store.savePage).not.toHaveBeenCalled();
+            expect(mockPush).toHaveBeenCalledWith(`/histories/${HISTORY_ID}/extract_workflow?from_page=${PAGE_ID}`);
+        });
     });
 
     describe("Editor view (standalone mode)", () => {
@@ -242,6 +273,10 @@ describe("PageEditorView", () => {
 
         it("shows save & view button in standalone mode", () => {
             expect(wrapper.find(SELECTORS.SAVE_VIEW_BUTTON).exists()).toBe(true);
+        });
+
+        it("hides Extract Workflow button in standalone mode", () => {
+            expect(wrapper.find(SELECTORS.EXTRACT_WORKFLOW_BUTTON).exists()).toBe(false);
         });
 
         it("back button navigates to pages list", async () => {
