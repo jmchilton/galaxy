@@ -16937,27 +16937,6 @@ export interface components {
              */
             generate_version?: string | null;
             /**
-             * Histories
-             * @description Histories associated with the invocation.
-             */
-            histories?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * History dataset collections
-             * @description History dataset collections associated with the invocation.
-             */
-            history_dataset_collections?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * History datasets
-             * @description History datasets associated with the invocation.
-             */
-            history_datasets?: {
-                [key: string]: unknown;
-            } | null;
-            /**
              * Workflow ID
              * @description The workflow this invocation has been triggered for.
              * @example 0123456789ABCDEF
@@ -16968,20 +16947,6 @@ export interface components {
              * @description Raw galaxy-flavored markdown contents of the report.
              */
             invocation_markdown?: string | null;
-            /**
-             * Invocations
-             * @description Other invocations associated with the invocation.
-             */
-            invocations?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Jobs
-             * @description Jobs associated with the invocation.
-             */
-            jobs?: {
-                [key: string]: unknown;
-            } | null;
             /**
              * Markdown
              * @description Raw galaxy-flavored markdown contents of the report.
@@ -17010,13 +16975,6 @@ export interface components {
              * @description The name of the user who owns this report.
              */
             username: string;
-            /**
-             * Workflows
-             * @description Workflows associated with the invocation.
-             */
-            workflows?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * InvocationSerializationView
