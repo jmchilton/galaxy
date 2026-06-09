@@ -286,16 +286,12 @@ class PSAAuthnz(IdentityProvider):
             or "refresh_token" not in user_authnz_token.extra_data
         ):
             return False
-        # refresh tokens if they reached their half lifetime
-        expires = self._try_to_locate_refresh_token_expiration(user_authnz_token.extra_data)
+        # refresh tokens if they reached their half lifetime or are already expired
+        expires = self._try_to_locate_token_expiration(user_authnz_token.extra_data)
         if not expires:
             log.debug("No `expires` or `expires_in` key found in token extra data, cannot refresh")
             return False
-        if (
-            int(user_authnz_token.extra_data["auth_time"]) + int(expires) / 2
-            <= int(time.time())
-            < int(user_authnz_token.extra_data["auth_time"]) + int(expires)
-        ):
+        if int(user_authnz_token.extra_data["auth_time"]) + int(expires) / 2 <= int(time.time()):
             on_the_fly_config(trans.sa_session)
             if self.config["provider"] == "azure":
                 self.refresh_azure(user_authnz_token)
@@ -305,7 +301,7 @@ class PSAAuthnz(IdentityProvider):
             return True
         return False
 
-    def _try_to_locate_refresh_token_expiration(self, extra_data):
+    def _try_to_locate_token_expiration(self, extra_data):
         return locate_token_expiration(extra_data)
 
     def authenticate(self, trans, idphint=None) -> "HttpResponseProtocol":

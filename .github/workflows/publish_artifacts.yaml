@@ -139,5 +139,7 @@ jobs:
         working-directory: 'client'
       - name: publish client-api
         if: (github.event_name == 'workflow_dispatch' && inputs.release_type == 'release') || (github.event_name == 'release' && !github.event.release.prerelease)
-        run: npm publish --provenance --access public
+        # Publish like the client: pnpm + --no-git-checks (CI publishes from a detached
+        # tag checkout with a dirty tree, which pnpm's default git checks would block).
+        run: pnpm publish --provenance --access public --no-git-checks
         working-directory: 'client/packages/api-client'

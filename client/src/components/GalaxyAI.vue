@@ -241,6 +241,13 @@ watch(busy, (isBusy) => {
     }
 });
 
+async function selectClarificationOption(option: string) {
+    // A quick-reply to a clarifying question -- send it as the next message. The router
+    // includes the clarification turn when routing, so a terse option still routes.
+    query.value = option;
+    await submitQuery();
+}
+
 async function sendFeedback(messageId: string, value: "up" | "down") {
     const message = messages.value.find((m) => m.id === messageId);
     if (message) {
@@ -438,7 +445,8 @@ watch(currentChatId, async (newId) => {
                 :render-markdown="renderMarkdown"
                 :processing-action="processingAction"
                 @feedback="sendFeedback"
-                @handle-action="handleAction" />
+                @handle-action="handleAction"
+                @select-clarification-option="selectClarificationOption" />
 
             <!-- Loading state -->
             <div v-if="busy" class="loading-entry">
