@@ -118,8 +118,12 @@ def _tool_step(label=None):
     return step
 
 
-def _content_stub(id_, copied_from=None):
-    return SimpleNamespace(id=id_, copied_from_history_dataset_association=copied_from)
+def _content_stub(id_, copied_from=None, creating_jobs=()):
+    return SimpleNamespace(
+        id=id_,
+        copied_from_history_dataset_association=copied_from,
+        creating_job_associations=list(creating_jobs),
+    )
 
 
 def test_index_input_resolves_to_input_label():
@@ -148,6 +152,21 @@ def test_index_normalizes_copied_dataset_to_original():
     original = _content_stub(12)
     copy = _content_stub(99, copied_from=original)
     assert index.content_label_arg("hda", copy) == 'output="aligned"'
+
+
+def test_index_does_not_normalize_collection_operation_output():
+    # Extract Dataset / Filter / ... produce a copy *and* a creating job; they are
+    # real steps and must resolve to their own label, not their source's.
+    extract_step = _tool_step("extract_dataset")
+    extract_step.create_or_update_workflow_output(output_name="output", label="extracted", uuid=None)
+    index = ExtractionLabelIndex(
+        content_to_step={("dataset", 12): (_tool_step(), "out_file"), ("dataset", 77): (extract_step, "output")},
+        job_to_step={},
+        icj_to_step={},
+    )
+    source = _content_stub(12)
+    extracted = _content_stub(77, copied_from=source, creating_jobs=["extract_job"])
+    assert index.content_label_arg("hda", extracted) == 'output="extracted"'
 
 
 def test_index_plain_job_resolves_to_step_label():
