@@ -1,4 +1,5 @@
 import functools
+import re
 import time
 import unittest
 from collections import (
@@ -1460,6 +1461,156 @@ test_data:
         input_steps = self.assert_steps_of_type(downloaded, "data_input", expected_len=2)
         assert {step["label"] for step in input_steps} == {"first input", "second input"}, input_steps
 
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_step_label_labels_tool_step(self, history_id):
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hda_ids=[d1["id"], d2["id"]],
+            job_ids=[cat1_job_id],
+            step_labels=[{"kind": "job", "id": cat1_job_id, "label": "concatenate"}],
+        )
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert tool_step["label"] == "concatenate", tool_step
+
+    @skip_without_tool("random_lines1")
+    @summarize_instance_history_on_error
+    def test_extract_step_label_for_icj_step(self, history_id):
+        """Labelling a mapped step by its ImplicitCollectionJobs id labels the
+        single workflow step the ICJ collapses to."""
+        hdca, _, _, implicit_hdca1_id, implicit_hdca2_id = self._run_random_lines_mapped_over_pair(history_id)
+        icj_id1 = self._icj_id_for_hdca(history_id, implicit_hdca1_id)
+        icj_id2 = self._icj_id_for_hdca(history_id, implicit_hdca2_id)
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hdca_ids=[hdca["id"]],
+            implicit_collection_jobs_ids=[icj_id1, icj_id2],
+            step_labels=[{"kind": "implicit_collection_jobs", "id": icj_id1, "label": "first map"}],
+        )
+        tool_steps = self.assert_steps_of_type(downloaded, "tool", expected_len=2)
+        labelled = [s for s in tool_steps if s["label"] == "first map"]
+        assert len(labelled) == 1, [s["label"] for s in tool_steps]
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_without_step_labels_leaves_steps_unlabeled(self, history_id):
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hda_ids=[d1["id"], d2["id"]],
+            job_ids=[cat1_job_id],
+        )
+        tool_step = self.assert_steps_of_type(downloaded, "tool", expected_len=1)[0]
+        assert not tool_step.get("label"), tool_step
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_duplicate_step_label_rejected(self, history_id):
+        d1, _, cat1_job_id_a = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        run_b = self.dataset_populator.run_tool(
+            tool_id="cat1",
+            inputs={"input1": {"src": "hda", "id": d1["id"]}},
+            history_id=history_id,
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        cat1_job_id_b = run_b["jobs"][0]["id"]
+        self._assert_extract_rejected(
+            {
+                "workflow_name": "duplicate step labels",
+                "hda_ids": [d1["id"]],
+                "job_ids": [cat1_job_id_a, cat1_job_id_b],
+                "step_labels": [
+                    {"kind": "job", "id": cat1_job_id_a, "label": "dup"},
+                    {"kind": "job", "id": cat1_job_id_b, "label": "dup"},
+                ],
+            },
+            (400,),
+        )
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_step_label_colliding_with_input_name_rejected(self, history_id):
+        """Step labels and input names share one namespace — a step label equal
+        to an input name must be rejected."""
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        self._assert_extract_rejected(
+            {
+                "workflow_name": "step label vs input name",
+                "hda_ids": [d1["id"], d2["id"]],
+                "job_ids": [cat1_job_id],
+                "dataset_names": ["shared", "other"],
+                "step_labels": [{"kind": "job", "id": cat1_job_id, "label": "shared"}],
+            },
+            (400,),
+        )
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_step_label_colliding_with_default_input_name_rejected(self, history_id):
+        """When inputs are left unnamed they take the literal "Input Dataset"
+        default the service validator can't see; a step label equal to it hits
+        the model-layer backstop in extract_steps_by_ids, which raises rather
+        than silently drop the explicitly requested label."""
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        self._assert_extract_rejected(
+            {
+                "workflow_name": "step label vs default input name",
+                "hda_ids": [d1["id"], d2["id"]],
+                "job_ids": [cat1_job_id],
+                "step_labels": [{"kind": "job", "id": cat1_job_id, "label": "Input Dataset"}],
+            },
+            (400,),
+        )
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_step_label_for_unselected_step_rejected(self, history_id):
+        """A step label whose id is not among the selected job/ICJ ids is rejected."""
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        run_b = self.dataset_populator.run_tool(
+            tool_id="cat1",
+            inputs={"input1": {"src": "hda", "id": d1["id"]}},
+            history_id=history_id,
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        unselected_job_id = run_b["jobs"][0]["id"]
+        self._assert_extract_rejected(
+            {
+                "workflow_name": "unselected step label",
+                "hda_ids": [d1["id"], d2["id"]],
+                "job_ids": [cat1_job_id],
+                "step_labels": [{"kind": "job", "id": unselected_job_id, "label": "ghost"}],
+            },
+            (400,),
+        )
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_empty_step_label_rejected(self, history_id):
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        self._assert_extract_rejected(
+            {
+                "workflow_name": "empty step label",
+                "hda_ids": [d1["id"], d2["id"]],
+                "job_ids": [cat1_job_id],
+                "step_labels": [{"kind": "job", "id": cat1_job_id, "label": "   "}],
+            },
+            (400,),
+        )
+
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_overlong_step_label_rejected(self, history_id):
+        """WorkflowStep.label is Unicode(255); reject an over-long step label up front."""
+        d1, d2, cat1_job_id = self._seed_two_inputs_and_run_cat1(history_id, c1="alpha\n", c2="beta\n")
+        self._assert_extract_rejected(
+            {
+                "workflow_name": "overlong step label",
+                "hda_ids": [d1["id"], d2["id"]],
+                "job_ids": [cat1_job_id],
+                "step_labels": [{"kind": "job", "id": cat1_job_id, "label": "x" * 256}],
+            },
+            (400,),
+        )
+
 
 class TestWorkflowExtractionSummaryApi(_ExtractionHelpersMixin, BaseWorkflowsApiTestCase):
     """Tests for GET /api/histories/{history_id}/extraction_summary."""
@@ -1677,3 +1828,104 @@ class TestWorkflowExtractionSummaryApi(_ExtractionHelpersMixin, BaseWorkflowsApi
 
 
 RunJobsSummary = namedtuple("RunJobsSummary", ["history_id", "workflow_id", "inputs", "jobs"])
+
+
+class TestNotebookWorkflowExtractionReport(
+    _ExtractionHelpersMixin, BaseWorkflowsApiTestCase, WorkflowStructureAssertions
+):
+    """POST /api/workflows/extract with from_page_id — carry a notebook's markdown
+    into the extracted workflow as its report, rewriting internal-id directives
+    into workflow-relative label directives."""
+
+    def _extract(self, **payload):
+        if "workflow_name" not in payload:
+            payload["workflow_name"] = "report extraction"
+        response = self._post("workflows/extract", data=payload, json=True)
+        self._assert_status_code_is(response, 200)
+        return response.json()
+
+    def _report_markdown(self, workflow_id):
+        download = self._get(f"workflows/{workflow_id}/download")
+        self._assert_status_code_is(download, 200)
+        return download.json().get("report", {}).get("markdown")
+
+    def _run_cat1(self, history_id):
+        d1 = self.dataset_populator.new_dataset(history_id, content="1 2 3\n")
+        d2 = self.dataset_populator.new_dataset(history_id, content="4 5 6\n")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        run = self.dataset_populator.run_tool(
+            tool_id="cat1",
+            inputs={"input1": {"src": "hda", "id": d1["id"]}, "queries_0|input2": {"src": "hda", "id": d2["id"]}},
+            history_id=history_id,
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        return run["outputs"][0]["id"], run["jobs"][0]["id"]
+
+    @skip_without_tool("cat1")
+    def test_report_rewrites_output_and_job_directives(self):
+        with self.dataset_populator.test_history() as history_id:
+            out_id, cat1_job_id = self._run_cat1(history_id)
+            page = self.dataset_populator.new_notebook_referencing(
+                history_id, output_ids=[out_id], job_ids=[cat1_job_id]
+            )
+
+            result = self._extract(job_ids=[cat1_job_id], from_page_id=page["id"])
+            markdown = self._report_markdown(result["id"])
+
+            assert markdown is not None, "extracted workflow has no report markdown"
+            # The page's prose is preserved; its id directives are rewritten to labels.
+            assert "# Analysis" in markdown, markdown
+            assert 'output="' in markdown, markdown
+            assert 'step="' in markdown, markdown
+            # No instance id may leak into a portable workflow report.
+            assert "history_dataset_id=" not in markdown, markdown
+            assert "job_id=" not in markdown, markdown
+            assert result["report_warnings"] == [], result["report_warnings"]
+
+            # The output= label is a real workflow output the reconcile exposed.
+            output_match = re.search(r'output="([^"]+)"', markdown)
+            assert output_match is not None, markdown
+            output_label = output_match.group(1)
+            downloaded = self._get(f"workflows/{result['id']}/download").json()
+            output_labels = {
+                wo["label"] for step in downloaded["steps"].values() for wo in step.get("workflow_outputs", [])
+            }
+            assert output_label in output_labels, (output_label, output_labels)
+
+    @skip_without_tool("random_lines1")
+    def test_report_rewrites_icj_job_directive_to_step(self):
+        with self.dataset_populator.test_history() as history_id:
+            hdca = self.dataset_collection_populator.create_pair_in_history(
+                history_id, contents=["1 2 3\n4 5 6", "7 8 9\n10 11 10"], wait=True
+            ).json()["outputs"][0]
+            inputs = {"input": {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]}, "num_lines": 2}
+            run = self.dataset_populator.run_tool(tool_id="random_lines1", inputs=inputs, history_id=history_id)
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            output_hdca_id = run["implicit_collections"][0]["id"]
+            icj_id = self._icj_id_for_hdca(history_id, output_hdca_id)
+            page = self.dataset_populator.new_notebook_referencing(history_id, icj_ids=[icj_id])
+
+            result = self._extract(implicit_collection_jobs_ids=[icj_id], from_page_id=page["id"])
+            markdown = self._report_markdown(result["id"])
+
+            assert markdown is not None
+            assert 'step="' in markdown, markdown
+            assert "implicit_collection_jobs_id=" not in markdown, markdown
+            assert result["report_warnings"] == [], result["report_warnings"]
+
+    def test_400_on_page_without_history(self):
+        page_response = self.dataset_populator._post(
+            "pages",
+            {"slug": "no-history-report", "title": "No History", "content": "# x", "content_format": "markdown"},
+            json=True,
+        )
+        self._assert_status_code_is(page_response, 200)
+        page = page_response.json()
+        with self.dataset_populator.test_history() as history_id:
+            d1 = self.dataset_populator.new_dataset(history_id, content="a", wait=True)
+            response = self._post(
+                "workflows/extract",
+                {"workflow_name": "bad report", "hda_ids": [d1["id"]], "from_page_id": page["id"]},
+                json=True,
+            )
+            assert response.status_code == 400, response.text
