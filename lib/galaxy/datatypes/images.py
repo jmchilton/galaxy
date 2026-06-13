@@ -554,6 +554,10 @@ class Pdf(Image):
         base64_image_data = base64.b64encode(png_data).decode("utf-8")
         return f"![{name}](data:image/png;base64,{base64_image_data})"
 
+    # Cap the rasterized longest side (px) so an oversized/adversarial page cannot
+    # allocate an enormous bitmap during server-side report rendering.
+    MAX_RENDER_PX = 2000
+
     @staticmethod
     def _first_page_as_png(file_name: str, dpi: int = 150) -> Optional[bytes]:
         if pymupdf is None:
@@ -563,7 +567,12 @@ class Pdf(Image):
             with pymupdf.open(file_name) as doc:
                 if doc.page_count == 0:
                     return None
-                pixmap = doc.load_page(0).get_pixmap(dpi=dpi)
+                page = doc.load_page(0)
+                longest_pt = max(page.rect.width, page.rect.height)
+                if longest_pt > 0:
+                    # points are 1/72 inch; clamp dpi so longest side <= MAX_RENDER_PX
+                    dpi = max(1, min(dpi, int(Pdf.MAX_RENDER_PX * 72 / longest_pt)))
+                pixmap = page.get_pixmap(dpi=dpi)
                 return pixmap.tobytes("png")
         except Exception:
             log.exception("Failed to rasterize PDF %s for inline display", file_name)

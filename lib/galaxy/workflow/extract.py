@@ -919,16 +919,19 @@ def step_inputs_by_id(trans: ProvidesHistoryContext, job: Job) -> tuple[ToolInpu
 
 def _original_hda(hda: HistoryDatasetAssociation) -> HistoryDatasetAssociation:
     # Follow plain copies back to their source, but stop at anything with its own
-    # creating job: collection-operation tools (Extract Dataset, Filter, Relabel,
-    # ...) produce a copy *and* record a job, and those are real workflow steps -
-    # normalizing past them would attribute the output to its source and drop the
-    # operation from the extracted workflow.
+    # creating job. Collection-operation tools that yield a single dataset
+    # (Extract Dataset, Unzip Collection) set copied_from *and* record a job, and
+    # those are real workflow steps - normalizing past them would attribute the
+    # output to its source and drop the operation from the extracted workflow.
     while hda.copied_from_history_dataset_association and not hda.creating_job_associations:
         hda = hda.copied_from_history_dataset_association
     return hda
 
 
 def _original_hdca(hdca: HistoryDatasetCollectionAssociation) -> HistoryDatasetCollectionAssociation:
+    # Symmetry with _original_hda. Collection-output operations (Filter, Flatten,
+    # Relabel, ...) build a fresh output HDCA rather than a copy, so this guard is
+    # defensive: a copied HDCA has no creating job and still normalizes.
     while hdca.copied_from_history_dataset_collection_association and not hdca.creating_job_associations:
         hdca = hdca.copied_from_history_dataset_collection_association
     return hdca
