@@ -28,6 +28,11 @@ try:
 except ImportError:
     PIL = None  # type: ignore[assignment, unused-ignore]
 
+try:
+    import pymupdf  # PyMuPDF; renders PDF pages to raster for inline display
+except ImportError:
+    pymupdf = None  # type: ignore[assignment, unused-ignore]
+
 from galaxy.datatypes.binary import Binary
 from galaxy.datatypes.metadata import (
     FileParameter,
@@ -537,6 +542,32 @@ class Pdf(Image):
         """Determine if the file is in pdf format."""
         with open(filename, "rb") as fh:
             return fh.read(4) == b"%PDF"
+
+    def handle_dataset_as_image(self, hda: DatasetProtocol) -> str:
+        # A raw PDF cannot be embedded as an <img>, so rasterize the first page to
+        # PNG. This lets notebooks/reports reference PDF-emitting tools (e.g. R
+        # volcano/DESeq2 plots) directly and still display them inline.
+        name = hda.name or ""
+        png_data = self._first_page_as_png(hda.dataset.get_file_name())
+        if png_data is None:
+            return f"*cannot display PDF as image - PDF rasterization unavailable for {name}*"
+        base64_image_data = base64.b64encode(png_data).decode("utf-8")
+        return f"![{name}](data:image/png;base64,{base64_image_data})"
+
+    @staticmethod
+    def _first_page_as_png(file_name: str, dpi: int = 150) -> Optional[bytes]:
+        if pymupdf is None:
+            log.warning("Cannot render PDF as image: PyMuPDF (pymupdf) is not installed.")
+            return None
+        try:
+            with pymupdf.open(file_name) as doc:
+                if doc.page_count == 0:
+                    return None
+                pixmap = doc.load_page(0).get_pixmap(dpi=dpi)
+                return pixmap.tobytes("png")
+        except Exception:
+            log.exception("Failed to rasterize PDF %s for inline display", file_name)
+            return None
 
 
 @build_sniff_from_prefix

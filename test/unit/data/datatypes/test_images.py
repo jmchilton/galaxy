@@ -1,5 +1,9 @@
+import base64
 from typing import Any
 
+import pytest
+
+from galaxy.datatypes import images as images_module
 from galaxy.datatypes.images import (
     Dicom,
     Image,
@@ -239,3 +243,16 @@ def test_dicom_sniff():
 @__test(Pdf, "454Score.pdf")
 def test_unsupported_metadata(metadata):
     __assert_empty_metadata(metadata)
+
+
+@pytest.mark.skipif(images_module.pymupdf is None, reason="PyMuPDF (pymupdf) not installed")
+def test_pdf_handle_dataset_as_image_rasterizes_to_png():
+    # A PDF cannot be embedded as an <img> directly; handle_dataset_as_image
+    # should rasterize the first page to a PNG data URI for inline display.
+    with get_dataset("454Score.pdf") as dataset:
+        dataset.dataset = MockDatasetDataset(dataset.get_file_name())
+        dataset.name = "my plot"
+        markdown = Pdf().handle_dataset_as_image(dataset)
+    assert markdown.startswith("![my plot](data:image/png;base64,")
+    raw = base64.b64decode(markdown.split("base64,", 1)[1].rstrip(")"))
+    assert raw[:8] == b"\x89PNG\r\n\x1a\n"  # valid PNG magic number

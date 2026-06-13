@@ -901,6 +901,14 @@ class ToBasicMarkdownDirectiveHandler(GalaxyInternalMarkdownDirectiveHandler):
             filepath = path_match.group(2)
             file = os.path.join(hda.extra_files_path, filepath)
         else:
+            # No explicit path - let the datatype format the image so that
+            # format-specific rendering (e.g. rasterizing a PDF to PNG) applies.
+            datatype = hda.datatype
+            if datatype is not None:
+                try:
+                    return (datatype.handle_dataset_as_image(hda), True)
+                except Exception:
+                    log.exception("Datatype failed to render dataset %s as image; embedding raw bytes", hda.id)
             file = dataset.get_file_name()
 
         with open(file, "rb") as f:

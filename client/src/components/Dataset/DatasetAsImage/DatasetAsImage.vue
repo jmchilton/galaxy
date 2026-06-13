@@ -29,14 +29,20 @@ const imageUrl = computed(() => {
     return pathDestination.value?.fileLink;
 });
 
-const isImage = computedAsync(async () => {
+const contentType = computedAsync(async () => {
     if (!imageUrl.value) {
         return null;
     }
     const res = await fetch(imageUrl.value);
     const buff = await res.blob();
-    return buff.type.startsWith("image/");
-}, true);
+    return buff.type;
+    // Optimistic default: assume an image until the fetch resolves the type.
+}, "image/");
+
+const isImage = computed(() => (contentType.value ?? "").startsWith("image/"));
+// PDF-emitting tools (R volcano/DESeq2 plots, etc.) are displayed inline via the
+// browser's native viewer; the baked report/export rasterizes them server-side.
+const isPdf = computed(() => contentType.value === "application/pdf");
 
 const isFluid = ref(true);
 
@@ -47,11 +53,8 @@ const toggleFluid = () => {
 
 <template>
     <div v-if="imageUrl" class="w-100">
-        <BAlert v-if="!isImage" variant="warning" show>
-            This dataset does not appear to be an image: {{ imageUrl }}.
-        </BAlert>
         <div
-            v-else
+            v-if="isImage"
             class="image-wrapper"
             :class="{ interactive: props.allowSizeToggle }"
             @click="props.allowSizeToggle ? toggleFluid() : null">
@@ -60,6 +63,8 @@ const toggleFluid = () => {
                 <small class="text-white">{{ isFluid ? "Click for actual size" : "Click to fit width" }}</small>
             </div>
         </div>
+        <embed v-else-if="isPdf" :src="imageUrl" type="application/pdf" class="pdf-embed" />
+        <BAlert v-else variant="warning" show> This dataset does not appear to be an image: {{ imageUrl }}. </BAlert>
     </div>
     <BAlert v-else variant="warning" show>Image not found: {{ imageUrl }}.</BAlert>
 </template>
@@ -68,6 +73,11 @@ const toggleFluid = () => {
 .image-wrapper {
     position: relative;
     display: inline-block;
+}
+
+.pdf-embed {
+    width: 100%;
+    min-height: 600px;
 }
 
 .cursor-pointer {

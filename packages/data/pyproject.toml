@@ -41,6 +41,7 @@ dependencies = [
     "pydantic[email]>=2.7.4",
     "pydicom",
     "pylibmagic",
+    "pymupdf",
     "pypng",
     "python-magic",
     "pysam>=0.21",
