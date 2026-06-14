@@ -547,10 +547,18 @@ class Pdf(Image):
         # A raw PDF cannot be embedded as an <img>, so rasterize the first page to
         # PNG. This lets notebooks/reports reference PDF-emitting tools (e.g. R
         # volcano/DESeq2 plots) directly and still display them inline.
+        return self.render_pdf_page_as_image_markdown(hda, page=1)
+
+    def render_pdf_page_as_image_markdown(self, hda: DatasetProtocol, page: int = 1) -> str:
+        """Markdown image of a 1-based PDF page rasterized to PNG.
+
+        Backs the ``history_dataset_as_pdf`` notebook directive (page control) and
+        the ``history_dataset_as_image`` fallback (page 1) for PDFs.
+        """
         name = hda.name or ""
-        png_data = self._first_page_as_png(hda.dataset.get_file_name())
+        png_data = self._page_as_png(hda.dataset.get_file_name(), page_number=page)
         if png_data is None:
-            return f"*cannot display PDF as image - PDF rasterization unavailable for {name}*"
+            return f"*cannot display PDF page {page} for {name}*"
         base64_image_data = base64.b64encode(png_data).decode("utf-8")
         return f"![{name}](data:image/png;base64,{base64_image_data})"
 
@@ -559,7 +567,9 @@ class Pdf(Image):
     MAX_RENDER_PX = 2000
 
     @staticmethod
-    def _first_page_as_png(file_name: str, dpi: int = 150) -> Optional[bytes]:
+    def _page_as_png(file_name: str, page_number: int = 1, dpi: int = 150) -> Optional[bytes]:
+        """Rasterize a 1-based ``page_number`` of a PDF to PNG bytes (clamped to a
+        page that exists)."""
         if pymupdf is None:
             log.warning("Cannot render PDF as image: PyMuPDF (pymupdf) is not installed.")
             return None
@@ -567,7 +577,8 @@ class Pdf(Image):
             with pymupdf.open(file_name) as doc:
                 if doc.page_count == 0:
                     return None
-                page = doc.load_page(0)
+                page_index = min(max(page_number - 1, 0), doc.page_count - 1)
+                page = doc.load_page(page_index)
                 longest_pt = max(page.rect.width, page.rect.height)
                 if longest_pt > 0:
                     # points are 1/72 inch; clamp dpi so longest side <= MAX_RENDER_PX

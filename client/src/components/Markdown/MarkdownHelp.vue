@@ -92,6 +92,7 @@ history_dataset_as_image(output=normalized_result_plot)
                 'history_dataset_display',
                 'history_dataset_collection_display',
                 'history_dataset_as_image',
+                'history_dataset_as_pdf',
                 'history_dataset_as_table',
                 'history_dataset_peek',
                 'history_dataset_info',

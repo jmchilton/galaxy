@@ -525,6 +525,33 @@ class TestHistoryPages(SeleniumTestCase):
 
     @selenium_test
     @managed_history
+    def test_display_renders_pdf_via_pdf_directive(self):
+        """history_dataset_as_pdf embeds the requested page with viewer chrome hidden.
+
+        The dedicated PDF directive carries a `page` argument; the live view embeds
+        the PDF at that page (#page=N&toolbar=0) and the baked report rasterizes the
+        same page server-side.
+        """
+        history_id = self.current_history_id()
+        pdf = self.dataset_populator.new_dataset(
+            history_id, content=open(self.get_filename("454Score.pdf"), "rb"), file_type="pdf", wait=True
+        )
+        content = f"# Figures\n\n```galaxy\nhistory_dataset_as_pdf(history_dataset_id={pdf['id']}, page=1)\n```\n"
+        self.dataset_populator.new_history_page(history_id, title="PDF Directive", content=content)
+
+        self.navigate_to_history_pages()
+        self.history_page_assert_item_count(1)
+        self.components.pages.history.view_button.wait_for_and_click()
+        self.components.pages.history.display_toolbar.wait_for_visible()
+        self.components.pages.history.rendered_view.wait_for_visible()
+
+        self.wait_for_selector_visible(".markdown-wrapper")
+        embed = self.wait_for_selector_visible("embed.pdf-embed")
+        assert "#page=1" in (embed.get_attribute("src") or ""), embed.get_attribute("src")
+        self.screenshot("history_page_pdf_directive")
+
+    @selenium_test
+    @managed_history
     def test_revision_diff_view(self):
         """Two diff modes: compare to previous and compare to current."""
         history_id = self.current_history_id()

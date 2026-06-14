@@ -56,6 +56,9 @@ function historySharedElements(mode) {
         directiveEntry("history_dataset_as_image", mode, {
             emitter: "onHistoryDatasetId",
         }),
+        directiveEntry("history_dataset_as_pdf", mode, {
+            emitter: "onHistoryDatasetId",
+        }),
         directiveEntry("history_dataset_index", mode, {
             emitter: "onHistoryDatasetId",
         }),

@@ -27,6 +27,7 @@ VALID_ARGUMENTS: dict[str, Union[list[str], DynamicArguments]] = {
     "generate_galaxy_version": [],
     "generate_time": [],
     "history_dataset_as_image": ["hid", "history_dataset_id", "input", "invocation_id", "output", "path"],
+    "history_dataset_as_pdf": ["hid", "history_dataset_id", "input", "invocation_id", "output", "page"],
     "history_dataset_as_table": [
         "compact",
         "footer",

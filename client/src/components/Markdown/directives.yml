@@ -20,6 +20,13 @@ history_dataset_as_image:
     types. This can be used to present graphs and other visual summaries of an analysis into
     a Galaxy Markdown document summary.
 
+history_dataset_as_pdf:
+  side_panel_name: PDF
+  help: |
+    Embed a PDF dataset in the resulting document. Use the optional "page" argument to choose
+    which page to show (defaults to 1). Useful for PDF-emitting tools (e.g. R plots) so a
+    specific figure page can be referenced directly without re-uploading a screenshot.
+
 history_dataset_index:
   side_panel_name: Dataset Index
   help: |

@@ -87,6 +87,12 @@ Galaxy:
       name: "galaxy"
       configure: true
       content: "history_dataset_as_image()"
+  - title: "PDF"
+    description: "Embed a PDF page"
+    cell:
+      name: "galaxy"
+      configure: true
+      content: "history_dataset_as_pdf()"
   - title: "Link to Dataset"
     description: "Create link to a Dataset"
     cell:

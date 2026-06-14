@@ -125,6 +125,9 @@ class _ReportLabelRewriter(GalaxyInternalMarkdownDirectiveHandler):
     def handle_dataset_as_image(self, line, hda):
         return self._content(line, "hda", hda)
 
+    def handle_dataset_as_pdf(self, line, hda):
+        return self._content(line, "hda", hda)
+
     def handle_dataset_as_table(self, line, hda):
         return self._content(line, "hda", hda)
 

@@ -78,6 +78,7 @@ INPUT_LABEL_PATTERN = re.compile(rf"input=\s*{ARG_VAL_CAPTURED_REGEX}\s*")
 INVOCATION_ID_PATTERN = re.compile(rf"invocation_id=\s*({ARG_VAL_CAPTURED_REGEX})\s*(?:,\s*)?")
 STEP_LABEL_PATTERN = re.compile(rf"step=\s*{ARG_VAL_CAPTURED_REGEX}\s*")
 PATH_LABEL_PATTERN = re.compile(rf"path=\s*{ARG_VAL_CAPTURED_REGEX}\s*")
+PAGE_PATTERN = re.compile(rf"page=\s*{ARG_VAL_CAPTURED_REGEX}\s*")
 
 # Matches encoded and unencoded ids in galaxy blocks
 UNENCODED_ID_PATTERN = re.compile(
@@ -286,6 +287,10 @@ class GalaxyInternalMarkdownDirectiveHandler(metaclass=abc.ABCMeta):
                 if object_id is not None and object_type == "history_dataset_id":
                     hda = hda_manager.get_accessible(object_id, trans.user)
                     rval = self.handle_dataset_as_image(line, hda)
+            elif container == "history_dataset_as_pdf":
+                if object_id is not None and object_type == "history_dataset_id":
+                    hda = hda_manager.get_accessible(object_id, trans.user)
+                    rval = self.handle_dataset_as_pdf(line, hda)
             elif container == "history_dataset_as_table":
                 if object_id is not None and object_type == "history_dataset_id":
                     hda = hda_manager.get_accessible(object_id, trans.user)
@@ -429,6 +434,10 @@ class GalaxyInternalMarkdownDirectiveHandler(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def handle_dataset_as_image(self, line, hda):
+        pass
+
+    @abc.abstractmethod
+    def handle_dataset_as_pdf(self, line, hda):
         pass
 
     @abc.abstractmethod
@@ -597,6 +606,9 @@ class ReadyForExportMarkdownDirectiveHandler(GalaxyInternalMarkdownDirectiveHand
     def handle_dataset_as_image(self, line, hda):
         pass
 
+    def handle_dataset_as_pdf(self, line, hda):
+        pass
+
     def handle_dataset_as_table(self, line, hda):
         pass
 
@@ -736,6 +748,9 @@ class _ReferencedContentCollector(GalaxyInternalMarkdownDirectiveHandler):
         self._record_hda(hda)
 
     def handle_dataset_as_image(self, line, hda):
+        self._record_hda(hda)
+
+    def handle_dataset_as_pdf(self, line, hda):
         self._record_hda(hda)
 
     def handle_dataset_as_table(self, line, hda):
@@ -915,6 +930,23 @@ class ToBasicMarkdownDirectiveHandler(GalaxyInternalMarkdownDirectiveHandler):
             image_data = f.read()
         rval = (self._embed_image(name, "png", image_data), True)
         return rval
+
+    def handle_dataset_as_pdf(self, line, hda):
+        name = hda.name or ""
+        page = 1
+        if page_match := re.search(PAGE_PATTERN, line):
+            try:
+                page = int(next(g for g in page_match.groups() if g is not None))
+            except (StopIteration, ValueError):
+                page = 1
+        datatype = hda.datatype
+        render = getattr(datatype, "render_pdf_page_as_image_markdown", None)
+        if render is not None:
+            try:
+                return (render(hda, page), True)
+            except Exception:
+                log.exception("Failed to render PDF dataset %s page %s as image", hda.id, page)
+        return (f"*cannot display PDF page {page} for {name}*\n\n", True)
 
     def _embed_image(self, name: str, image_type: str, image_data: bytes):
         base64_image_data = base64.b64encode(image_data).decode("utf-8")

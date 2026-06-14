@@ -8,6 +8,7 @@ history_dataset_id:
   - history_dataset_embedded
   - history_dataset_as_table
   - history_dataset_as_image
+  - history_dataset_as_pdf
   - history_dataset_link
   - history_dataset_name
   - history_dataset_peek

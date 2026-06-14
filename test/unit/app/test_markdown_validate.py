@@ -165,6 +165,23 @@ history_dataset_as_image(output="cow", pathx="foo/bar.png")
         at_line=3,
     )
 
+    # Test the PDF directive accepts a page argument and rejects unknown ones.
+    assert_markdown_valid("""
+
+```galaxy
+history_dataset_as_pdf(history_dataset_id=THISFAKEID, page=2)
+```
+""")
+    assert_markdown_invalid(
+        """
+
+```galaxy
+history_dataset_as_pdf(history_dataset_id=THISFAKEID, pagex=2)
+```
+""",
+        at_line=3,
+    )
+
     # Test validation of three arguments
     assert_markdown_valid("""
 ```galaxy

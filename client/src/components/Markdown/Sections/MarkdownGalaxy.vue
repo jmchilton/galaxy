@@ -16,6 +16,7 @@ import { useWorkflowStore } from "@/stores/workflowStore";
 
 import DatasetCollectionElementPicker from "./Elements/DatasetCollectionElementPicker.vue";
 import HistoryDatasetAsImage from "./Elements/HistoryDatasetAsImage.vue";
+import HistoryDatasetAsPdf from "./Elements/HistoryDatasetAsPdf.vue";
 import HistoryDatasetAsTable from "./Elements/HistoryDatasetAsTable.vue";
 import HistoryDatasetCollectionDisplay from "./Elements/HistoryDatasetCollection/CollectionDisplay.vue";
 import HistoryDatasetDetails from "./Elements/HistoryDatasetDetails.vue";
@@ -168,6 +169,10 @@ watch(
                     <HistoryDatasetAsImage v-if="element" :key="element" :dataset-id="element" :path="args.path" />
                 </template>
             </DatasetCollectionElementPicker>
+            <HistoryDatasetAsPdf
+                v-else-if="name == 'history_dataset_as_pdf' && args.history_dataset_id"
+                :dataset-id="args.history_dataset_id"
+                :page="args.page" />
             <HistoryDatasetAsTable
                 v-else-if="name == 'history_dataset_as_table' && args.history_dataset_id"
                 :compact="compact"

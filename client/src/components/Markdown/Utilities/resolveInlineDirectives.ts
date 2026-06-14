@@ -69,7 +69,10 @@ export function resolveInlineDirectives(
                 return `![${name}](gxdatasetasimage://${datasetId})`;
             }
             // For other directives, keep the original but with resolved ID
-            // This ensures other inline directives can be handled similarly
+            // This ensures other inline directives can be handled similarly.
+            // Note: history_dataset_as_pdf is not expanded inline here (there is no
+            // inline image scheme for PDFs); it is supported as a fenced ```galaxy
+            // block (history_dataset_id=/output=), which is how notebooks/reports use it.
         }
 
         // If we couldn't resolve, return the original match
