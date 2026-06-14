@@ -169,3 +169,62 @@ class TestNotebookWorkflowExtraction(SeleniumTestCase, ExtractsWorkflows, Workfl
 
         self.navigate_to_history_page_editor(history_id, page["id"])
         self.components.pages.history.extract_workflow_button.wait_for_visible()
+
+    @skip_without_tool("cat1")
+    @selenium_test
+    @managed_history
+    def test_notebook_keeps_extract_dataset_step(self):
+        """A notebook whose provenance runs Extract Dataset keeps it as a real step.
+
+        Extract Dataset (``__EXTRACT_DATASET__``) writes an output that is *both*
+        copied_from its source element and produced by its own job. Before the
+        ``_original_hda`` fix, extraction normalized the output back to the source
+        and dropped the Extract Dataset step, leaving the downstream consumer
+        dangling. Here a list collection -> Extract Dataset (first element) ->
+        cat1 chain is referenced by the notebook; the extracted workflow must
+        retain the Extract Dataset step, connected, ahead of cat1.
+        """
+        history_id = self.current_history_id()
+        hdca = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()["outputs"][0]
+        extract = self.dataset_populator.run_tool(
+            "__EXTRACT_DATASET__",
+            {"input": {"src": "hdca", "id": hdca["id"]}, "which|which_dataset": "first"},
+            history_id,
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        extracted_id = extract["outputs"][0]["id"]
+        other = self.dataset_populator.new_dataset(history_id, content="baz", wait=True)
+        cat = self.dataset_populator.run_tool(
+            "cat1",
+            {"input1": {"src": "hda", "id": extracted_id}, "queries_0|input2": {"src": "hda", "id": other["id"]}},
+            history_id,
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        page = self.dataset_populator.new_notebook_referencing(history_id, output_ids=[cat["outputs"][0]["id"]])
+
+        self.navigate_to_history_page_editor(history_id, page["id"])
+        self.notebook_click_extract_workflow()
+        self.components.workflow_extract.tool_card_checkbox.wait_for_present()
+        self.screenshot("notebook_extract_extract_dataset_form")
+
+        workflow_name = "Selenium Notebook Extract Dataset"
+        self.extract_workflow_name_and_submit(workflow_name)
+
+        workflow = self.get_workflow_by_name(workflow_name)
+        tool_steps = self.assert_steps_of_type(workflow, "tool")
+        tool_ids = [s["tool_id"] for s in tool_steps]
+        assert "__EXTRACT_DATASET__" in tool_ids, f"Extract Dataset step dropped from extracted workflow: {tool_ids}"
+        assert "cat1" in tool_ids, tool_ids
+        # The bug broke wiring specifically, so assert the actual edges, not just
+        # that the step is present and nothing is disconnected: the collection
+        # input feeds Extract Dataset, and Extract Dataset feeds cat1.
+        extract_step = next(s for s in tool_steps if s["tool_id"] == "__EXTRACT_DATASET__")
+        cat_step = next(s for s in tool_steps if s["tool_id"] == "cat1")
+        collection_input = self.assert_steps_of_type(workflow, "data_collection_input", 1)[0]
+        assert (
+            extract_step["input_connections"]["input"]["id"] == collection_input["id"]
+        ), "Extract Dataset step is not wired from the collection input"
+        assert (
+            cat_step["input_connections"]["input1"]["id"] == extract_step["id"]
+        ), "cat1 is not wired from the Extract Dataset step"
+        self.assert_workflow_connected(workflow)

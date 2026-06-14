@@ -495,6 +495,36 @@ class TestHistoryPages(SeleniumTestCase):
 
     @selenium_test
     @managed_history
+    def test_display_renders_pdf_as_image(self):
+        """A history_dataset_as_image directive on a PDF renders inline.
+
+        PDF-emitting tools can be referenced directly via history_dataset_as_image:
+        the renderer rasterizes server-side for export and the live view embeds the
+        PDF (DatasetAsImage <embed class="pdf-embed">), instead of the prior "does
+        not appear to be an image" warning.
+        """
+        history_id = self.current_history_id()
+        pdf = self.dataset_populator.new_dataset(
+            history_id, content=open(self.get_filename("454Score.pdf"), "rb"), file_type="pdf", wait=True
+        )
+        content = f"# Figures\n\n```galaxy\nhistory_dataset_as_image(history_dataset_id={pdf['id']})\n```\n"
+        self.dataset_populator.new_history_page(history_id, title="PDF Figure", content=content)
+
+        self.navigate_to_history_pages()
+        self.history_page_assert_item_count(1)
+        self.components.pages.history.view_button.wait_for_and_click()
+        self.components.pages.history.display_toolbar.wait_for_visible()
+        self.components.pages.history.rendered_view.wait_for_visible()
+
+        self.wait_for_selector_visible(".markdown-wrapper")
+        self.wait_for_selector_visible("embed.pdf-embed")
+        # The PDF embed and the "does not appear to be an image" warning are
+        # mutually exclusive branches; assert the warning is gone to pin intent.
+        self.wait_for_selector_absent_or_hidden(".markdown-wrapper .alert-warning")
+        self.screenshot("history_page_pdf_as_image")
+
+    @selenium_test
+    @managed_history
     def test_revision_diff_view(self):
         """Two diff modes: compare to previous and compare to current."""
         history_id = self.current_history_id()
