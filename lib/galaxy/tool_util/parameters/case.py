@@ -75,6 +75,15 @@ class TestCaseStateAndWarnings:
     unhandled_inputs: List[str]
     handled_inputs: Set[str]
 
+    def validate(self, tool_parameter_bundle: List[ToolParameterT], profile: str, name: Optional[str] = None) -> None:
+        """Run the full validation sequence against this built state.
+
+        Shared by ``test_case_state`` (the request parsing path) and ``test_case_validation``
+        (the reporting path) so the two cannot diverge on what makes a test case valid.
+        """
+        self.tool_state.validate(tool_parameter_bundle, name=name)
+        _raise_for_unhandled_inputs(self.unhandled_inputs, self.handled_inputs, profile)
+
 
 @dataclass
 class TestCaseStateValidationResult:
@@ -331,10 +340,10 @@ def test_case_state(
             unhandled_inputs.append(input_name)
 
     tool_state = TestCaseToolState(state)
+    result = TestCaseStateAndWarnings(tool_state, warnings, unhandled_inputs, handled_inputs)
     if validate:
-        tool_state.validate(tool_parameter_bundle, name=name)
-        _raise_for_unhandled_inputs(unhandled_inputs, handled_inputs, profile)
-    return TestCaseStateAndWarnings(tool_state, warnings, unhandled_inputs, handled_inputs)
+        result.validate(tool_parameter_bundle, profile, name=name)
+    return result
 
 
 def _raise_for_unhandled_inputs(unhandled_inputs: List[str], handled_inputs: Set[str], profile: str) -> None:
@@ -370,23 +379,15 @@ def test_case_validation(
     test_dict: ToolSourceTest, tool_parameter_bundle: List[ToolParameterT], profile: str, name: Optional[str] = None
 ) -> TestCaseStateValidationResult:
     exception: Optional[Exception] = None
-    tool_state: TestCaseToolState = TestCaseToolState({})
-    warnings: List[str] = []
+    built = TestCaseStateAndWarnings(TestCaseToolState({}), [], [], set())
     try:
-        test_case_state_and_warnings = test_case_state(test_dict, tool_parameter_bundle, profile, validate=False)
-        tool_state = test_case_state_and_warnings.tool_state
-        warnings = test_case_state_and_warnings.warnings
-        tool_state.validate(tool_parameter_bundle, name=name)
-        _raise_for_unhandled_inputs(
-            test_case_state_and_warnings.unhandled_inputs,
-            test_case_state_and_warnings.handled_inputs,
-            profile,
-        )
+        built = test_case_state(test_dict, tool_parameter_bundle, profile, validate=False)
+        built.validate(tool_parameter_bundle, profile, name=name)
     except Exception as e:
         exception = e
     return TestCaseStateValidationResult(
-        tool_state,
-        warnings,
+        built.tool_state,
+        built.warnings,
         exception,
         tool_parameter_bundle,
         profile,
