@@ -728,10 +728,8 @@ def test_legacy_unqualified_conditional_discriminator_in_section_is_resolved():
 
 def test_legacy_fallback_is_consistent_between_validation_and_request_state():
     # A legacy (<24.2) test that elides a conditional name is tolerated by the request-state
-    # path (test_case_state); the reporting path (validate_test_cases_for_tool_source ->
-    # test_case_validation) must apply the same tolerance instead of falsely reporting
-    # "Invalid parameter name found". Both share _raise_for_unhandled_inputs so they cannot
-    # diverge.
+    # path; the reporting path must apply the same tolerance instead of falsely reporting
+    # "Invalid parameter name found".
     tool_source = raw_xml_tool_source("""
 <tool id="elided_conditional_in_section" name="elided_conditional_in_section" version="1.0.0" profile="22.01">
     <command>echo</command>
