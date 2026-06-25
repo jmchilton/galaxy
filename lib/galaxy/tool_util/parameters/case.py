@@ -73,6 +73,7 @@ class TestCaseStateAndWarnings:
     tool_state: TestCaseToolState
     warnings: List[str]
     unhandled_inputs: List[str]
+    handled_inputs: Set[str]
 
 
 @dataclass
@@ -332,10 +333,19 @@ def test_case_state(
     tool_state = TestCaseToolState(state)
     if validate:
         tool_state.validate(tool_parameter_bundle, name=name)
-        for input_name in unhandled_inputs:
-            if not _input_name_was_handled_by_legacy_fallback(input_name, handled_inputs, profile):
-                raise RequestParameterInvalidException(f"Invalid parameter name found {input_name}")
-    return TestCaseStateAndWarnings(tool_state, warnings, unhandled_inputs)
+        _raise_for_unhandled_inputs(unhandled_inputs, handled_inputs, profile)
+    return TestCaseStateAndWarnings(tool_state, warnings, unhandled_inputs, handled_inputs)
+
+
+def _raise_for_unhandled_inputs(unhandled_inputs: List[str], handled_inputs: Set[str], profile: str) -> None:
+    """Reject test inputs that didn't map to any parameter, tolerating legacy fallbacks.
+
+    The single home for the unhandled-input rule, shared by ``test_case_state`` (the request
+    parsing path) and ``test_case_validation`` (the reporting path) so they cannot diverge.
+    """
+    for input_name in unhandled_inputs:
+        if not _input_name_was_handled_by_legacy_fallback(input_name, handled_inputs, profile):
+            raise RequestParameterInvalidException(f"Invalid parameter name found {input_name}")
 
 
 def _input_name_was_handled_by_legacy_fallback(input_name: str, handled_inputs: Set[str], profile: str) -> bool:
@@ -367,8 +377,11 @@ def test_case_validation(
         tool_state = test_case_state_and_warnings.tool_state
         warnings = test_case_state_and_warnings.warnings
         tool_state.validate(tool_parameter_bundle, name=name)
-        for input_name in test_case_state_and_warnings.unhandled_inputs:
-            raise RequestParameterInvalidException(f"Invalid parameter name found {input_name}")
+        _raise_for_unhandled_inputs(
+            test_case_state_and_warnings.unhandled_inputs,
+            test_case_state_and_warnings.handled_inputs,
+            profile,
+        )
     except Exception as e:
         exception = e
     return TestCaseStateValidationResult(

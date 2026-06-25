@@ -726,6 +726,51 @@ def test_legacy_unqualified_conditional_discriminator_in_section_is_resolved():
     dict_verify_each(tool_state.input_state, expectations)
 
 
+def test_legacy_fallback_is_consistent_between_validation_and_request_state():
+    # A legacy (<24.2) test that elides a conditional name is tolerated by the request-state
+    # path (test_case_state); the reporting path (validate_test_cases_for_tool_source ->
+    # test_case_validation) must apply the same tolerance instead of falsely reporting
+    # "Invalid parameter name found". Both share _raise_for_unhandled_inputs so they cannot
+    # diverge.
+    tool_source = raw_xml_tool_source("""
+<tool id="elided_conditional_in_section" name="elided_conditional_in_section" version="1.0.0" profile="22.01">
+    <command>echo</command>
+    <inputs>
+        <section name="advanced_options" title="Advanced">
+            <conditional name="esf_cond">
+                <param name="esf" type="select">
+                    <option value="default" selected="true">Default</option>
+                    <option value="user">User supplied</option>
+                </param>
+                <when value="default" />
+                <when value="user">
+                    <param name="size_factor_input" type="data" format="txt" />
+                </when>
+            </conditional>
+        </section>
+    </inputs>
+    <outputs />
+    <tests>
+        <test>
+            <section name="advanced_options">
+                <param name="esf" value="user" />
+                <param name="size_factor_input" value="simple_line.txt" />
+            </section>
+        </test>
+    </tests>
+</tool>
+        """)
+    parsed_tool = parse_tool(tool_source)
+    test_case = tool_source.parse_tests_to_dict()["tests"][0]
+
+    # request-state path tolerates the elided conditional name (does not raise)
+    case_state(test_case, parsed_tool.inputs, tool_source.parse_profile(), validate=True)
+
+    # reporting path must agree - no false "Invalid parameter name found"
+    results = validate_test_cases_for_tool_source(tool_source)
+    assert results[0].validation_error is None, results[0].validation_error
+
+
 def test_legacy_select_labels_are_converted_to_values_for_request_state():
     tool_source = tool_source_for("multi_select")
     test_case = tool_source.parse_tests_to_dict()["tests"][1]
