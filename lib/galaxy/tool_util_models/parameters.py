@@ -2222,6 +2222,9 @@ class ConditionalParameterModel(BaseGalaxyToolParameterModelDefinition):
 
         py_type: Type
 
+        if not when_types:
+            raise ValueError(f"Conditional parameter '{self.name}' has no when branches to build a model from")
+
         if len(when_types) > 1:
             cond_type = union_type(when_types)
 
