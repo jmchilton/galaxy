@@ -1,0 +1,93 @@
+- doc: |
+    A list:list connected to a multi-select maps over the full nested structure,
+    producing one job per leaf dataset (here 2) and mirroring the list:list input
+    shape in the output. Inner lists are NOT reduced into the multi-value parameter -
+    each job receives a single element as its select value.
+  job:
+    input:
+      class: Collection
+      collection_type: list:list
+      elements:
+        - identifier: outer1
+          class: Collection
+          elements:
+            - identifier: the_example_2
+              class: File
+              contents: '"ex2"'
+              filetype: 'expression.json'
+        - identifier: outer2
+          class: Collection
+          elements:
+            - identifier: the_example_5
+              class: File
+              contents: '"ex5"'
+              filetype: 'expression.json'
+  outputs:
+    output:
+      class: Collection
+      collection_type: list:list
+      elements:
+        outer1:
+          elements:
+            the_example_2:
+              asserts:
+              - that: has_text
+                text: 'ex2'
+        outer2:
+          elements:
+            the_example_5:
+              asserts:
+              - that: has_text
+                text: 'ex5'
+
+- doc: |
+    Discriminating case: outer1 holds an inner list of TWO elements. Under full
+    map-over this yields THREE jobs (one per leaf), NOT two jobs with the inner
+    list [--ex1, ex2] reduced into a single multi-value select. The output mirrors
+    the ragged list:list input (outer1 has two elements, outer2 has one). This
+    distinguishes the actual map-over behavior from the (unimplemented) reduce-inner
+    semantics discussed in galaxyproject/galaxy#18541.
+  job:
+    input:
+      class: Collection
+      collection_type: list:list
+      elements:
+        - identifier: outer1
+          class: Collection
+          elements:
+            - identifier: ex1_el
+              class: File
+              contents: '"--ex1"'
+              filetype: 'expression.json'
+            - identifier: ex2_el
+              class: File
+              contents: '"ex2"'
+              filetype: 'expression.json'
+        - identifier: outer2
+          class: Collection
+          elements:
+            - identifier: ex3_el
+              class: File
+              contents: '"--ex3"'
+              filetype: 'expression.json'
+  outputs:
+    output:
+      class: Collection
+      collection_type: list:list
+      elements:
+        outer1:
+          elements:
+            ex1_el:
+              asserts:
+              - that: has_text
+                text: '--ex1'
+            ex2_el:
+              asserts:
+              - that: has_text
+                text: 'ex2'
+        outer2:
+          elements:
+            ex3_el:
+              asserts:
+              - that: has_text
+                text: '--ex3'
