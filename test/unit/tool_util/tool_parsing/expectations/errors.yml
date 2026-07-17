@@ -1,0 +1,6 @@
+# Error cases: parse_tool rejects XML that is not a valid tool definition.
+
+parse_non_tool_xml_raises:
+  fixture: sample_tool_conf
+  operation: parse
+  expect_error: true

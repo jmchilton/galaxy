@@ -1,0 +1,27 @@
+# Select inputs: static options (label/value), multiple.
+#
+# NOTE: the functional-tools corpus has no top-level dynamic (from_dataset /
+# from_data_table) select, so is_dynamic=true / options=None is not locked here.
+# Add a case if such a fixture is introduced.
+
+parse_static_radio_select_options:
+  fixture: inputs_as_json
+  operation: parse
+  assertions:
+    - path: [inputs, {name: radio_select}, parameter_type]
+      value: gx_select
+    - path: [inputs, {name: radio_select}, is_dynamic]
+      value: false
+    - path: [inputs, {name: radio_select}, multiple]
+      value: false
+    - path: [inputs, {name: radio_select}, options, {value: a_radio}, label]
+      value: A Radio
+
+parse_multiple_select:
+  fixture: inputs_as_json
+  operation: parse
+  assertions:
+    - path: [inputs, {name: optional_multiple_select}, multiple]
+      value: true
+    - path: [inputs, {name: optional_multiple_select}, options, "$length"]
+      value: 3

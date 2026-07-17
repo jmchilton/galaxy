@@ -1,0 +1,52 @@
+# Output parsing: data outputs, collection outputs, discovered datasets.
+# Collection outputs (<collection>) are emitted by from_tool_source via the main
+# tool_outputs dict; these lock that behavior so it cannot silently regress.
+
+parse_all_output_types_paired_collection:
+  fixture: all_output_types
+  operation: parse
+  assertions:
+    - path: [outputs, {name: static_pair}, type]
+      value: collection
+    - path: [outputs, {name: static_pair}, collection_type]
+      value: paired
+
+parse_all_output_types_list_collection_discovered:
+  fixture: all_output_types
+  operation: parse
+  assertions:
+    - path: [outputs, {name: discovered_list}, type]
+      value: collection
+    - path: [outputs, {name: discovered_list}, collection_type]
+      value: list
+    - path: [outputs, {name: discovered_list}, discover_datasets, 0, discover_via]
+      value: pattern
+
+parse_all_output_types_no_duplicate_collection:
+  fixture: all_output_types
+  operation: parse
+  assertions:
+    # Guards against re-introducing the commented-out second emit loop, which
+    # would list each collection twice.
+    - path: [outputs, "$length"]
+      value: 8
+
+parse_all_output_types_data_discovered_datasets:
+  fixture: all_output_types
+  operation: parse
+  assertions:
+    - path: [outputs, {name: static_output}, type]
+      value: data
+    - path: [outputs, {name: static_output}, discover_datasets, "$length"]
+      value: 0
+    - path: [outputs, {name: discovered_output}, discover_datasets, 0, pattern]
+      value: '(?P<designation>.+)\.txt'
+
+parse_simple_data_outputs:
+  fixture: output_format
+  operation: parse
+  assertions:
+    - path: [outputs, "$length"]
+      value: 5
+    - path: [outputs, 0, type]
+      value: data

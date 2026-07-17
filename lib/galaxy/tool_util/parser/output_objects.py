@@ -538,10 +538,8 @@ class ToolOutputCollectionPart:
 
 
 def from_tool_source(tool_source: "ToolSource") -> Sequence[ToolOutputModel]:
-    tool_outputs, tool_output_collections = tool_source.parse_outputs(None)
+    tool_outputs, _tool_output_collections = tool_source.parse_outputs(None)
     outputs = []
     for tool_output in tool_outputs.values():
         outputs.append(tool_output.to_model())
-    # for tool_output_collection in tool_output_collections.values():
-    #    outputs.append(tool_output_collection.to_model())
     return outputs

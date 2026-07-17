@@ -1,0 +1,28 @@
+# Conditional inputs: test parameter, when-branch discriminators, nested params.
+
+parse_conditional_boolean_test_and_when_branches:
+  fixture: disambiguate_cond
+  operation: parse
+  assertions:
+    - path: [inputs, {name: p1}, parameter_type]
+      value: gx_conditional
+    - path: [inputs, {name: p1}, test_parameter, parameter_type]
+      value: gx_boolean
+    - path: [inputs, {name: p1}, whens, "$length"]
+      value: 2
+    # when-branches are addressed by their discriminator value.
+    - path: [inputs, {name: p1}, whens, {discriminator: true}, parameters, {name: p1v}, parameter_type]
+      value: gx_integer
+    - path: [inputs, {name: p1}, whens, {discriminator: false}, is_default_when]
+      value: true
+
+parse_conditional_empty_when_branch:
+  fixture: disambiguate_cond
+  operation: parse
+  assertions:
+    # The false branch of `files` has no parameters; the true branch nests
+    # another conditional (p4).
+    - path: [inputs, {name: files}, whens, {discriminator: false}, parameters, "$length"]
+      value: 0
+    - path: [inputs, {name: files}, whens, {discriminator: true}, parameters, {name: p4}, parameter_type]
+      value: gx_conditional
