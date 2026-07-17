@@ -1,0 +1,40 @@
+# Leaf parameter types: boolean, integer, float, text, color.
+# Locks the value / default_value semantics each carries in ParsedTool -- the
+# scalar shapes a TS parser must reproduce.
+
+parse_yaml_boolean_int_float:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: booltest}, parameter_type]
+      value: gx_boolean
+    - path: [inputs, {name: booltest}, value]
+      value: false
+    - path: [inputs, {name: inttest}, parameter_type]
+      value: gx_integer
+    - path: [inputs, {name: inttest}, value]
+      value: 1
+    - path: [inputs, {name: floattest}, parameter_type]
+      value: gx_float
+    - path: [inputs, {name: floattest}, value]
+      value: 1.0
+
+parse_yaml_text_optional_default:
+  fixture: configfile_user_defined.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: text}, parameter_type]
+      value: gx_text
+    - path: [inputs, {name: text}, optional]
+      value: true
+    - path: [inputs, {name: text}, default_value]
+      value: "hello!"
+    - path: [inputs, {name: text}, area]
+      value: false
+
+parse_xml_color_param:
+  fixture: inputs_as_json
+  operation: parse
+  assertions:
+    - path: [inputs, {name: repeat}, parameters, {name: r}, parameter_type]
+      value: gx_color

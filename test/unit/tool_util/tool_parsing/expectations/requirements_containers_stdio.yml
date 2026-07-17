@@ -31,3 +31,13 @@ parse_stdio_exit_codes:
       value: "-inf"
     - path: [stdio, exit_codes, 1, range_end]
       value: inf
+
+# YAML `container:` shorthand resolves to a docker container.
+parse_yaml_container:
+  fixture: cat_user_defined.yml
+  operation: parse
+  assertions:
+    - path: [containers, 0, type]
+      value: docker
+    - path: [containers, 0, container_id]
+      value: busybox

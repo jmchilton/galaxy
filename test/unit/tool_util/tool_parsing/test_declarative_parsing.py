@@ -16,7 +16,10 @@ from gxformat2.testing import DeclarativeTestSuite
 
 from galaxy.tool_util.model_factory import parse_tool
 from galaxy.tool_util.parser.factory import get_tool_source
-from galaxy.tool_util.unittest_utils import functional_test_tool_source
+from galaxy.tool_util.unittest_utils import (
+    functional_test_tool_path,
+    functional_test_tool_source,
+)
 
 EXPECTATIONS_DIR = os.path.join(os.path.dirname(__file__), "expectations")
 
@@ -24,6 +27,11 @@ EXPECTATIONS_DIR = os.path.join(os.path.dirname(__file__), "expectations")
 def _load_fixture(name: str):
     if os.path.isabs(name) and os.path.exists(name):
         return get_tool_source(name)
+    # An explicit `.xml`/`.yml` names the corpus file directly -- unambiguous for
+    # YAML fixtures whose stem already ends in `_y` (which the suffix heuristic
+    # below would mis-strip).
+    if name.endswith((".xml", ".yml")):
+        return get_tool_source(functional_test_tool_path(name))
     return functional_test_tool_source(name)
 
 

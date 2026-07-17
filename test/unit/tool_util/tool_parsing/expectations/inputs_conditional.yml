@@ -26,3 +26,25 @@ parse_conditional_empty_when_branch:
       value: 0
     - path: [inputs, {name: files}, whens, {discriminator: true}, parameters, {name: p4}, parameter_type]
       value: gx_conditional
+
+parse_yaml_conditional_boolean_test:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: p1}, parameter_type]
+      value: gx_conditional
+    - path: [inputs, {name: p1}, test_parameter, parameter_type]
+      value: gx_boolean
+    - path: [inputs, {name: p1}, test_parameter, name]
+      value: p1use
+    - path: [inputs, {name: p1}, whens, "$length"]
+      value: 2
+    # Both branches carry a text `p1val` with a branch-specific default.
+    - path: [inputs, {name: p1}, whens, {discriminator: true}, parameters, {name: p1val}, parameter_type]
+      value: gx_text
+    - path: [inputs, {name: p1}, whens, {discriminator: true}, parameters, {name: p1val}, default_value]
+      value: p1used
+    - path: [inputs, {name: p1}, whens, {discriminator: false}, parameters, {name: p1val}, default_value]
+      value: p1notused
+    - path: [inputs, {name: p1}, whens, {discriminator: false}, is_default_when]
+      value: true
