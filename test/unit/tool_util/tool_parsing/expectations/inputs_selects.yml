@@ -25,3 +25,33 @@ parse_multiple_select:
       value: true
     - path: [inputs, {name: optional_multiple_select}, options, "$length"]
       value: 3
+
+# ParsedTool does not carry select `display`, so radio/dropdown/checkbox
+# collapse to single-select vs multiple; assert one of each from YAML.
+parse_yaml_static_select_selected_option:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: drop_select}, parameter_type]
+      value: gx_select
+    - path: [inputs, {name: drop_select}, is_dynamic]
+      value: false
+    - path: [inputs, {name: drop_select}, multiple]
+      value: false
+    - path: [inputs, {name: drop_select}, options, "$length"]
+      value: 3
+    - path: [inputs, {name: drop_select}, options, {value: a_drop}, label]
+      value: A Drop
+    - path: [inputs, {name: drop_select}, options, {value: a_drop}, selected]
+      value: true
+    - path: [inputs, {name: drop_select}, options, {value: b_drop}, selected]
+      value: false
+
+parse_yaml_multiple_select:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: check_select}, multiple]
+      value: true
+    - path: [inputs, {name: check_select}, options, {value: a_check}, selected]
+      value: true

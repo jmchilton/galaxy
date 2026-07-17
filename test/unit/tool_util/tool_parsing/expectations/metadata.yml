@@ -23,3 +23,22 @@ parse_citations_and_xrefs:
       value: bio.tools
     - path: [xrefs, 0, value]
       value: Citation.js
+
+parse_yaml_tool_identity_and_edam:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [id]
+      value: simple_constructs_y
+    - path: [version]
+      value: "1.0"
+    - path: [description]
+      value: Simple constructs
+    - path: [edam_operations, "$length"]
+      value: 2
+    - path: [edam_operations, 0]
+      value: operation_0004
+    - path: [edam_topics, "$length"]
+      value: 2
+    - path: [edam_topics, 1]
+      value: topic_3372

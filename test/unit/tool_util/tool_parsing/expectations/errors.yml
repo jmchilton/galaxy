@@ -1,4 +1,8 @@
 # Error cases: parse_tool rejects XML that is not a valid tool definition.
+#
+# XML-only: the functional-tools corpus has no malformed YAML tool to point at,
+# and error cases are never dumped to TS goldens (nothing to replay), so a YAML
+# case here would add no porting coverage.
 
 parse_non_tool_xml_raises:
   fixture: sample_tool_conf

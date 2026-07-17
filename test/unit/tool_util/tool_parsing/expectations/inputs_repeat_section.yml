@@ -23,3 +23,15 @@ parse_repeat_min_and_section:
       value: gx_section
     - path: [inputs, {name: section_example}, parameters, {name: section_text}, parameter_type]
       value: gx_text
+
+# The YAML corpus has no section input, so only repeat is locked from YAML here.
+parse_yaml_repeat_with_data_child:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: more_files}, parameter_type]
+      value: gx_repeat
+    - path: [inputs, {name: more_files}, label]
+      value: More Files
+    - path: [inputs, {name: more_files}, parameters, {name: nestinput}, parameter_type]
+      value: gx_data

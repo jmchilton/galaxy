@@ -33,3 +33,34 @@ parse_data_collection_input:
       value: list
     - path: [inputs, {name: input1}, extensions]
       value_set: [txt]
+
+parse_yaml_data_input_extensions:
+  fixture: cat_user_defined.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: input1}, parameter_type]
+      value: gx_data
+    - path: [inputs, {name: input1}, multiple]
+      value: false
+    - path: [inputs, {name: input1}, extensions]
+      value_set: [txt]
+
+parse_yaml_data_input_multiple:
+  fixture: cat_multiple_user_defined.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: datasets}, parameter_type]
+      value: gx_data
+    - path: [inputs, {name: datasets}, multiple]
+      value: true
+
+parse_yaml_paired_collection_input:
+  fixture: collection_paired_test_y.yml
+  operation: parse
+  assertions:
+    - path: [inputs, {name: f1}, parameter_type]
+      value: gx_data_collection
+    - path: [inputs, {name: f1}, collection_type]
+      value: paired
+    - path: [inputs, {name: f1}, label]
+      value: Input pair

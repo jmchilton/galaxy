@@ -50,3 +50,34 @@ parse_simple_data_outputs:
       value: 5
     - path: [outputs, 0, type]
       value: data
+
+parse_yaml_paired_collection_output:
+  fixture: collection_creates_pair_y.yml
+  operation: parse
+  assertions:
+    - path: [outputs, {name: paired_output}, type]
+      value: collection
+    - path: [outputs, {name: paired_output}, collection_type]
+      value: paired
+    - path: [outputs, {name: paired_output}, label]
+      value: Split Pair
+
+parse_yaml_data_output_from_work_dir:
+  fixture: simple_constructs.yml
+  operation: parse
+  assertions:
+    - path: [outputs, "$length"]
+      value: 1
+    - path: [outputs, {name: out_file1}, type]
+      value: data
+    - path: [outputs, {name: out_file1}, format]
+      value: txt
+    - path: [outputs, {name: out_file1}, from_work_dir]
+      value: out_file1.txt
+
+parse_yaml_output_format_source:
+  fixture: cat_multiple_user_defined.yml
+  operation: parse
+  assertions:
+    - path: [outputs, {name: output1}, format_source]
+      value: datasets
