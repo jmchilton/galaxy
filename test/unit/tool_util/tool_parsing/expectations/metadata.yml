@@ -1,0 +1,25 @@
+# Top-level tool metadata: id/version/profile, citations, xrefs.
+
+parse_tool_identity:
+  fixture: catDocker
+  operation: parse
+  assertions:
+    - path: [id]
+      value: catdc
+    - path: [version]
+      value: 1.0.0
+    - path: [profile]
+      value_matches: '^[0-9]+\.[0-9]+$'
+
+parse_citations_and_xrefs:
+  fixture: bibtex
+  operation: parse
+  assertions:
+    - path: [id]
+      value: bibtex
+    - path: [citations, {type: doi}, content]
+      value: 10.1101/gr.4086505
+    - path: [xrefs, 0, type]
+      value: bio.tools
+    - path: [xrefs, 0, value]
+      value: Citation.js

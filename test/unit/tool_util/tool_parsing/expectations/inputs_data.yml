@@ -1,0 +1,35 @@
+# Data-family inputs: data_column (incl. its data_ref back-reference),
+# data collection inputs.
+
+parse_data_column_ref:
+  fixture: column_param
+  operation: parse
+  assertions:
+    - path: [inputs, {name: col}, parameter_type]
+      value: gx_data_column
+    - path: [inputs, {name: col}, multiple]
+      value: false
+    - path: [inputs, {name: col}, data_ref]
+      value: input1
+
+parse_data_input:
+  fixture: column_param
+  operation: parse
+  assertions:
+    - path: [inputs, {name: input1}, parameter_type]
+      value: gx_data
+    - path: [inputs, {name: input1}, multiple]
+      value: false
+    - path: [inputs, {name: input1}, extensions]
+      value_set: [tabular, csv]
+
+parse_data_collection_input:
+  fixture: collection_creates_list
+  operation: parse
+  assertions:
+    - path: [inputs, {name: input1}, parameter_type]
+      value: gx_data_collection
+    - path: [inputs, {name: input1}, collection_type]
+      value: list
+    - path: [inputs, {name: input1}, extensions]
+      value_set: [txt]

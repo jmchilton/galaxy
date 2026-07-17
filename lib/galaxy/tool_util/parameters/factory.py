@@ -226,6 +226,7 @@ def _from_input_source_galaxy(input_source: InputSource, profile: float) -> Tool
                 optional=optional,
                 multiple=multiple,
                 url_default=url_default,
+                extensions=input_source.parse_extensions(),
                 **_common_param_kwargs(input_source),
             )
         elif param_type == "data_collection":
@@ -237,6 +238,7 @@ def _from_input_source_galaxy(input_source: InputSource, profile: float) -> Tool
                 name=input_source.parse_name(),
                 optional=optional,
                 value=default_value,
+                extensions=input_source.parse_extensions(),
                 **_common_param_kwargs(input_source),
             )
         elif param_type == "select":
@@ -285,6 +287,7 @@ def _from_input_source_galaxy(input_source: InputSource, profile: float) -> Tool
         elif param_type == "data_column":
             multiple = input_source.get_bool("multiple", False)
             optional = input_source.parse_optional()
+            data_ref = input_source.get("data_ref")
             value = input_source.get("value")
             # mirror basic.py logic around accept_default
             accept_default = input_source.get_bool("accept_default", False)
@@ -304,6 +307,7 @@ def _from_input_source_galaxy(input_source: InputSource, profile: float) -> Tool
                 multiple=multiple,
                 optional=optional,
                 value=value,
+                data_ref=data_ref,
                 **_common_param_kwargs(input_source),
             )
         elif param_type == "group_tag":

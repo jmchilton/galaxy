@@ -1,0 +1,25 @@
+# Repeat and section inputs: nesting + min/max.
+
+parse_repeat_with_data_child:
+  fixture: disambiguate_repeats
+  operation: parse
+  assertions:
+    - path: [inputs, {name: queries}, parameter_type]
+      value: gx_repeat
+    - path: [inputs, {name: queries}, parameters, {name: input}, parameter_type]
+      value: gx_data
+
+parse_repeat_min_and_section:
+  fixture: inputs_as_json
+  operation: parse
+  assertions:
+    - path: [inputs, {name: repeat}, parameter_type]
+      value: gx_repeat
+    - path: [inputs, {name: repeat}, min]
+      value: 1
+    - path: [inputs, {name: repeat}, parameters, {name: r}, parameter_type]
+      value: gx_color
+    - path: [inputs, {name: section_example}, parameter_type]
+      value: gx_section
+    - path: [inputs, {name: section_example}, parameters, {name: section_text}, parameter_type]
+      value: gx_text

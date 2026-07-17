@@ -1988,6 +1988,7 @@ class DataColumnParameterModel(BaseGalaxyToolParameterModelDefinition):
     type: Literal["data_column"]
     multiple: bool
     value: int | list[int] | None = None
+    data_ref: str | None = None
 
     def field_kwargs(self) -> dict[str, Any]:
         kwargs = super().field_kwargs()
