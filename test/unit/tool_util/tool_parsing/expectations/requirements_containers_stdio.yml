@@ -21,6 +21,49 @@ parse_docker_container:
     - path: [containers, 0, container_id]
       value: busybox:1.36.1-glibc
 
+parse_mulled_package_and_container:
+  fixture: mulled_example_explicit
+  operation: parse
+  assertions:
+    - path: [requirements, {type: package}, name]
+      value: bwa
+    - path: [requirements, {type: package}, version]
+      value: "0.7.15"
+    - path: [containers, 0, type]
+      value: docker
+    - path: [containers, 0, container_id]
+      value: quay.io/biocontainers/bwa:0.7.15--0
+
+parse_versionless_package_requirements:
+  fixture: mulled_example_multi_versionless
+  operation: parse
+  assertions:
+    - path: [requirements, "$length"]
+      value: 2
+    - path: [requirements, {name: samtools}, version]
+      value: null
+    - path: [requirements, {name: bedtools}, version]
+      value: null
+
+parse_resource_requirements:
+  fixture: resource_requirements
+  operation: parse
+  assertions:
+    - path: [requirements, {type: resource}, cores_min]
+      value: "1.1"
+    - path: [requirements, {type: resource}, cores_max]
+      value: "2"
+    - path: [requirements, {type: resource}, ram_min]
+      value: "1.1"
+    - path: [requirements, {type: resource}, ram_max]
+      value: "2>"
+    - path: [requirements, {type: resource}, tmpdir_min]
+      value: $(inputs.input1.size)
+    - path: [requirements, {type: resource}, tmpdir_max]
+      value: $(inputs.input1.size * 2)
+    - path: [requirements, {type: resource}, timelimit]
+      value: "60"
+
 parse_stdio_exit_codes:
   fixture: all_output_types
   operation: parse
@@ -31,6 +74,38 @@ parse_stdio_exit_codes:
       value: "-inf"
     - path: [stdio, exit_codes, 1, range_end]
       value: inf
+
+parse_stdio_exit_code_rule_fields:
+  fixture: mulled_example_explicit
+  operation: parse
+  assertions:
+    - path: [stdio, exit_codes, "$length"]
+      value: 1
+    - path: [stdio, exit_codes, 0, range_start]
+      value: 2.0
+    - path: [stdio, exit_codes, 0, range_end]
+      value: inf
+    - path: [stdio, exit_codes, 0, error_level]
+      value: 3
+
+parse_stdio_regex_rules:
+  fixture: detect_errors
+  operation: parse
+  assertions:
+    - path: [stdio, exit_codes, "$length"]
+      value: 3
+    - path: [stdio, regexes, "$length"]
+      value: 6
+    - path: [stdio, regexes, 0, match]
+      value: message
+    - path: [stdio, regexes, 0, stdout_match]
+      value: true
+    - path: [stdio, regexes, 0, stderr_match]
+      value: false
+    - path: [stdio, regexes, 0, error_level]
+      value: 1
+    - path: [stdio, regexes, 0, desc]
+      value: some program message of interest
 
 # YAML `container:` shorthand resolves to a docker container.
 parse_yaml_container:
