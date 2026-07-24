@@ -1,0 +1,21 @@
+
+<tool>
+    <expand macro="inputs">
+        <input name="first_input" />
+        <expand macro="second" />
+    </expand>
+    <macros>
+        <macro name="inputs">
+            <inputs>
+                <yield />
+            </inputs>
+        </macro>
+        <macro name="second">
+            <expand macro="second_delegate" />
+            <input name="third_input" />
+        </macro>
+        <macro name="second_delegate">
+            <input name="second_input" />
+        </macro>
+    </macros>
+</tool>

@@ -1,0 +1,14 @@
+
+<tool id="issue_647">
+    <macros>
+        <macro name="a">
+            <param name="a1" type="text" value="a1" label="a1"/>
+            <yield />
+        </macro>
+    </macros>
+    <inputs>
+        <expand macro="a">
+            <param name="b" type="text" value="b" label="b" />
+        </expand>
+    </inputs>
+</tool>

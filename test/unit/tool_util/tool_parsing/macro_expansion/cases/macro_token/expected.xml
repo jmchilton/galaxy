@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<tool>
+    <inputs>hello</inputs>
+    <inputs>world</inputs>
+    <inputs>the_default</inputs>
+    <macros/>
+</tool>

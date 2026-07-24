@@ -1,0 +1,12 @@
+
+<macros>
+    <xml name="a">
+        <A/>
+    </xml>
+    <xml name="b">
+        <B/>
+    </xml>
+    <xml name="testp" tokens="token_name">
+        <expand macro="@TOKEN_NAME@"/>
+    </xml>
+</macros>

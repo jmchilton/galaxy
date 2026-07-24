@@ -1,0 +1,16 @@
+
+<tool>
+    <macros>
+        <xml name="a">
+            <A>
+                <expand macro="b"/>
+            </A>
+        </xml>
+        <xml name="b">
+            <B>
+                <expand macro="a"/>
+            </B>
+        </xml>
+    </macros>
+    <expand macro="a"/>
+</tool>

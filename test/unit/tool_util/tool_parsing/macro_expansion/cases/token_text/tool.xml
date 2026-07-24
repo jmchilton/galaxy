@@ -1,0 +1,10 @@
+
+<tool>
+    <macros>
+        <token name="@CITATION@">The citation.</token>
+    </macros>
+    <help>@CITATION@</help>
+    <another>
+        <tag />
+    </another>
+</tool>

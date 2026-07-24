@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<tool>
+    <macros/>
+    <inputs>
+        <conditional name="library">
+            <when value="paired">
+                <param name="test"/>
+            </when>
+            <when value="paired_collection">
+                <param name="test"/>
+            </when>
+        </conditional>
+    </inputs>
+</tool>
