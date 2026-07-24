@@ -48,7 +48,8 @@ def _expand(tool_path: str) -> str:
     tree = load_tool(tool_path)
     root = tree.getroot()
     for el in root.iter():
-        el.attrib.pop(XML_BASE_ATTR, None)
+        if XML_BASE_ATTR in el.attrib:
+            del el.attrib[XML_BASE_ATTR]
     return xml_to_string(root, pretty=True)
 
 
