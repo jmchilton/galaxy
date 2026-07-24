@@ -1,0 +1,12 @@
+
+<tool>
+    <macros>
+        <token name="@WIZARD@">Ab@HELPER@ra</token>
+        <token name="@HELPER@">ra@WITCH@ab</token>
+        <token name="@WITCH@">cad</token>
+    </macros>
+    <help>@WIZARD@</help>
+    <another>
+        <tag />
+    </another>
+</tool>

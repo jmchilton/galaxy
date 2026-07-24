@@ -1,0 +1,9 @@
+
+<tool>
+    <macros>
+        <token name="__ATTR_NAME">name</token>
+    </macros>
+    <another>
+        <tag __ATTR_NAME="blah" />
+    </another>
+</tool>

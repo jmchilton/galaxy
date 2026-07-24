@@ -1,0 +1,25 @@
+
+<tool>
+    <macros>
+        <xml name="test">
+            <blah/>
+            <yield/>
+            <blah>
+                <yield name="token1"/>
+            </blah>
+            <yield name="token2"/>
+        </xml>
+    </macros>
+    <expand macro="test">
+        <token name="token1">
+            <content_of_token1/>
+            <more_content_of_token1/>
+        </token>
+        <sub_of_expand_1/>
+        <token name="token2">
+            <content_of_token2/>
+            <more_content_of_token2/>
+        </token>
+        <sub_of_expand_2/>
+    </expand>
+</tool>

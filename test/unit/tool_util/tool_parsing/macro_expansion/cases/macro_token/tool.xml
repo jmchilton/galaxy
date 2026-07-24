@@ -1,0 +1,11 @@
+
+<tool>
+    <expand macro="inputs" foo="hello" />
+    <expand macro="inputs" foo="world" />
+    <expand macro="inputs" />
+    <macros>
+        <xml name="inputs" token_foo="the_default">
+            <inputs>@FOO@</inputs>
+        </xml>
+    </macros>
+</tool>

@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<tool>
+    <inputs>
+        <cow>hello</cow>
+    </inputs>
+    <inputs>
+        <cow>world</cow>
+    </inputs>
+    <inputs>
+        <cow>the_default</cow>
+    </inputs>
+    <macros/>
+</tool>

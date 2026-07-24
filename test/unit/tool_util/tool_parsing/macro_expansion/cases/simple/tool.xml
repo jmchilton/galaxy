@@ -1,0 +1,9 @@
+
+<tool>
+    <expand macro="inputs" />
+    <macros>
+        <macro name="inputs">
+            <inputs />
+        </macro>
+    </macros>
+</tool>

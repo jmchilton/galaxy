@@ -1,0 +1,14 @@
+
+<tool>
+    <expand macro="inputs" foo="hello" />
+    <expand macro="inputs" foo="world" />
+    <expand macro="inputs" />
+    <macros>
+        <xml name="inputs" token_foo="the_default">
+            <expand macro="real_inputs"><cow>@FOO@</cow></expand>
+        </xml>
+        <xml name="real_inputs">
+            <inputs><yield /></inputs>
+        </xml>
+    </macros>
+</tool>

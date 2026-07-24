@@ -1,0 +1,9 @@
+
+<tool>
+    <macros>
+        <token name="@TAG_VAL@">The value.</token>
+    </macros>
+    <another>
+        <tag value="@TAG_VAL@" />
+    </another>
+</tool>

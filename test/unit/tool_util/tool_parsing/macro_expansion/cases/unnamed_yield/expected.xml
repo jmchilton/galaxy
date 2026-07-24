@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<tool>
+    <inputs>
+        <input name="first_input"/>
+    </inputs>
+    <inputs>
+        <input name="second_input"/>
+    </inputs>
+    <inputs>
+        <input name="third_input"/>
+    </inputs>
+    <macros/>
+</tool>

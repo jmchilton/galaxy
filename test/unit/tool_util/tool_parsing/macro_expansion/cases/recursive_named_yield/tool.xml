@@ -1,0 +1,23 @@
+
+<tool>
+    <macros>
+        <xml name="test">
+            <A>
+                <yield name="token1"/>
+            </A>
+        </xml>
+    </macros>
+    <expand macro="test">
+        <token name="token1">
+            <T1>
+                <yield name="token2"/>
+            </T1>
+        </token>
+        <token name="token2">
+            <T2>
+                <yield/>
+            </T2>
+        </token>
+        <T/>
+    </expand>
+</tool>

@@ -1,0 +1,6 @@
+<tool id="tool_with_macro" name="macro_annotation" version="@WRAPPER_VERSION@">
+    <expand macro="inputs" />
+    <macros>
+        <import>external.xml</import>
+    </macros>
+</tool>

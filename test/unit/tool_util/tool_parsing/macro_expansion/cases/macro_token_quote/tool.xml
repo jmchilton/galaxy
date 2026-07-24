@@ -1,0 +1,11 @@
+
+<tool>
+    <expand macro="inputs" bar="hello" />
+    <expand macro="inputs" bar="my awesome" />
+    <expand macro="inputs" bar="doggo" />
+    <macros>
+        <xml name="inputs" tokens="bar" token_quote="$$">
+            <inputs type="the type is $$BAR$$" />
+        </xml>
+    </macros>
+</tool>

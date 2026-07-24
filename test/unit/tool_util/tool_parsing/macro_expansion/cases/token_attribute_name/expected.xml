@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<tool>
+    <macros/>
+    <another>
+        <tag name="blah"/>
+    </another>
+</tool>

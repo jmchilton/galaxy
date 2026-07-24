@@ -1,0 +1,25 @@
+
+<tool>
+    <macros>
+        <macro name="paired_options">
+            <when value="paired">
+                <yield />
+            </when>
+            <when value="paired_collection">
+                <yield />
+            </when>
+        </macro>
+        <macro name="single_or_paired_general">
+            <conditional name="library">
+                <expand macro="paired_options">
+                    <yield />
+                </expand>
+            </conditional>
+        </macro>
+    </macros>
+    <inputs>
+        <expand macro="single_or_paired_general">
+            <param name="test"/>
+        </expand>
+    </inputs>
+</tool>

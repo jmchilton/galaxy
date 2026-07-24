@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<tool>
+    <inputs type="the type is hello"/>
+    <inputs type="the type is my awesome"/>
+    <inputs type="the type is doggo"/>
+    <macros/>
+</tool>

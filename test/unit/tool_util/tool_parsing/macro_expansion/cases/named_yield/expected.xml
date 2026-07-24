@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<tool>
+    <macros/>
+    <A>
+        <sub_of_expand_1/>
+        <sub_of_expand_2/>
+    </A>
+    <content_of_token1/>
+    <more_content_of_token1/>
+    <B>
+        <sub_of_expand_1/>
+        <sub_of_expand_2/>
+        <content_of_token2/>
+        <more_content_of_token2/>
+    </B>
+</tool>

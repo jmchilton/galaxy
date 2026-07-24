@@ -1,0 +1,24 @@
+
+<tool>
+    <expand macro="inputs">
+        <input name="first_input" />
+    </expand>
+    <expand macro="inputs">
+        <input name="second_input" />
+    </expand>
+    <expand macro="inputs">
+        <input name="third_input" />
+    </expand>
+    <macros>
+        <macro name="inputs">
+            <expand macro="foo">
+                <yield />
+            </expand>
+        </macro>
+        <macro name="foo">
+            <inputs>
+                <yield />
+            </inputs>
+        </macro>
+    </macros>
+</tool>

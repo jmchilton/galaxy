@@ -1,0 +1,8 @@
+
+<tool>
+    <macros>
+        <import>external.xml</import>
+    </macros>
+    <expand macro="testp" token_name="a"/>
+    <expand macro="testp" token_name="b"/>
+</tool>
