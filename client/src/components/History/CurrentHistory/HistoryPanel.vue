@@ -6,6 +6,7 @@ import { computed, onMounted, ref, set as VueSet, unref, watch } from "vue";
 import { type HistoryItemSummary, type HistorySummaryExtended, userOwnsHistory } from "@/api";
 import { getGalaxyInstance } from "@/app";
 import ExpandedItems from "@/components/History/Content/ExpandedItems";
+import { itemUniqueKey } from "@/components/History/Content/model/itemKey";
 import { HistoryFilters } from "@/components/History/HistoryFilters";
 import { deleteContent, updateContentFields } from "@/components/History/model/queries";
 import { useSelectedItems } from "@/composables/selectedItems/selectedItems";
@@ -363,10 +364,6 @@ function updateFilterValue(filterKey: string, newValue: any) {
 
 function getItemKey(item: HistoryItemSummary) {
     return itemUniqueKey(item);
-}
-
-function itemUniqueKey(item: HistoryItemSummary) {
-    return `${item.history_content_type}-${item.id}`;
 }
 
 onMounted(async () => {
