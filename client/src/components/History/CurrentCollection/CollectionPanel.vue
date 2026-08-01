@@ -17,13 +17,13 @@ import {
     isHDCA,
     type SubCollection,
 } from "@/api";
-import { fetchDatasetDetails } from "@/api/datasets";
 import ExpandedItems from "@/components/History/Content/ExpandedItems";
 import { itemUniqueKey } from "@/components/History/Content/model/itemKey";
 import { HistoryFilters } from "@/components/History/HistoryFilters";
 import { updateContentFields } from "@/components/History/model/queries";
 import { useSelectedItems } from "@/composables/selectedItems/selectedItems";
 import { useCollectionElementsStore } from "@/stores/collectionElementsStore";
+import { useDatasetStore } from "@/stores/datasetStore";
 import { setItemDragstart } from "@/utils/setDrag";
 import { errorMessageAsString } from "@/utils/simple-error";
 
@@ -49,6 +49,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const collectionElementsStore = useCollectionElementsStore();
+const datasetStore = useDatasetStore();
 
 const emit = defineEmits<{
     (e: "view-collection", collection: CollectionEntry): void;
@@ -143,11 +144,12 @@ const selectedDatasets = ref<HDADetailed[]>([]);
 const loadingSelection = ref(false);
 const selectionError = ref<string | null>(null);
 
-/** A collection element carries less than the builders need: the contents API serializes
- * it through `dictify_element_reference`, which omits `extension`, `hid`, `deleted` and
- * `visible`. Without them the builder's mixed-extension warning can never fire, its
- * messages read "undefined: <name>", and deleted elements are not rejected. So fetch the
- * real dataset for each selected element before handing the selection over.
+/** The collection contents API deliberately serves a minimal element payload -- see
+ * `dictify_element_reference`, "load minimal details ... History panel can use this
+ * reference to expand to full details if individual dataset elements are clicked". It omits
+ * `extension`, `hid`, `deleted` and `visible`, which the collection builders read, so
+ * expand the selection to full datasets before handing it over. This is the same store the
+ * row's expanded details view uses, so a row the user already opened is a cache hit.
  *
  * `CollectionCreatorIndex`'s own hydration watcher cannot do this: it fills gaps from
  * `historyDatasetsStore`, which fetches with `visible: true`, and collection elements are
@@ -155,16 +157,17 @@ const selectionError = ref<string | null>(null);
 async function onBuildCollection() {
     loadingSelection.value = true;
     selectionError.value = null;
-    try {
-        selectedDatasets.value = await Promise.all(
-            Array.from(selectedItems.value.values()).map((dataset) => fetchDatasetDetails({ id: dataset.id })),
-        );
-        showCollectionCreator.value = true;
-    } catch (e) {
-        selectionError.value = errorMessageAsString(e);
-    } finally {
-        loadingSelection.value = false;
+    const ids = Array.from(selectedItems.value.values()).map((dataset) => dataset.id);
+    const datasets = await Promise.all(ids.map((id) => datasetStore.fetchDataset({ id })));
+    loadingSelection.value = false;
+
+    const failedId = ids.find((id, index) => datasets[index] === undefined);
+    if (failedId !== undefined) {
+        selectionError.value = errorMessageAsString(datasetStore.getDatasetError(failedId));
+        return;
     }
+    selectedDatasets.value = datasets as HDADetailed[];
+    showCollectionCreator.value = true;
 }
 
 function onCreatedCollection() {
