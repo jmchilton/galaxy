@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
     type AnonymousUser,
     type AnyHistory,
+    type DCESummary,
     type HistorySummary,
     type HistorySummaryExtended,
     isRegisteredUser,
+    normalizeCollectionElements,
     userOwnsHistory,
 } from ".";
 
@@ -106,6 +108,76 @@ describe("API Types Helpers", () => {
             expect(userOwnsHistory(SESSIONLESS_USER, HISTORY_OWNED_BY_REGISTERED_USER)).toBe(false);
             expect(userOwnsHistory(SESSIONLESS_USER, HISTORY_SUMMARY_WITHOUT_USER_ID)).toBe(false);
             expect(userOwnsHistory(SESSIONLESS_USER, HISTORY_OWNED_BY_ANONYMOUS_USER)).toBe(false);
+        });
+    });
+
+    describe("normalizeCollectionElements", () => {
+        function datasetElement(objectOverrides: object = {}): DCESummary {
+            return {
+                id: "dce_id",
+                model_class: "DatasetCollectionElement",
+                element_index: 0,
+                element_identifier: "forward",
+                element_type: "hda",
+                object: { id: "hda_id", tags: [], ...objectOverrides },
+            } as unknown as DCESummary;
+        }
+
+        it("gives a dataset element's object the fields the contents API omits", () => {
+            const element = datasetElement();
+
+            normalizeCollectionElements([element]);
+
+            // Without history_content_type, updateContentFields addresses the item as
+            // /api/histories/{history_id}/contents/undefineds/{id}.
+            expect(element.object).toMatchObject({
+                name: "forward",
+                history_content_type: "dataset",
+            });
+        });
+
+        it("mutates in place so each element keeps one object identity", () => {
+            const element = datasetElement();
+            const objectBefore = element.object;
+
+            const [normalized] = normalizeCollectionElements([element]);
+
+            // Selection, refs and range indices all key on this object; handing consumers
+            // a derived copy would give a row two identities.
+            expect(normalized).toBe(element);
+            expect(element.object).toBe(objectBefore);
+        });
+
+        it("does not overwrite a name the payload already carries", () => {
+            const element = datasetElement({ name: "real dataset name" });
+
+            normalizeCollectionElements([element]);
+
+            expect(element.object).toMatchObject({ name: "real dataset name" });
+        });
+
+        it("leaves sub-collection elements alone", () => {
+            const element = {
+                id: "dce_id",
+                model_class: "DatasetCollectionElement",
+                element_index: 0,
+                element_identifier: "nested",
+                element_type: "dataset_collection",
+                object: { id: "dc_id", collection_type: "paired" },
+            } as unknown as DCESummary;
+
+            normalizeCollectionElements([element]);
+
+            // Sub-collections become SubCollection entries on drill-down instead.
+            expect(element.object).not.toHaveProperty("history_content_type");
+            expect(element.object).not.toHaveProperty("name");
+        });
+
+        it("tolerates an element with no object", () => {
+            const element = datasetElement();
+            (element as unknown as { object: unknown }).object = null;
+
+            expect(() => normalizeCollectionElements([element])).not.toThrow();
         });
     });
 });

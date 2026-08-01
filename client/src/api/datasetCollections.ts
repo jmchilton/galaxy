@@ -7,6 +7,7 @@ import {
     type HDCADetailed,
     type HDCASummary,
     isHDCA,
+    normalizeCollectionElements,
 } from "@/api";
 import type { components } from "@/api/schema";
 import { ApiError, errorMessageAsString, type GalaxyApiResult, rethrowSimple } from "@/utils/simple-error";
@@ -76,7 +77,7 @@ export async function fetchCollectionElements(params: {
     if (error) {
         rethrowSimple(error);
     }
-    return data;
+    return normalizeCollectionElements(data);
 }
 
 export async function fetchElementsFromCollection(params: {
