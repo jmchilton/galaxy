@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import VueRouter from "vue-router";
 
 import type { DCESummary, HDCASummary, HistorySummary } from "@/api";
-import { useServerMock } from "@/api/client/__mocks__";
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { useCollectionElementsStore } from "@/stores/collectionElementsStore";
 
 import CollectionPanel from "./CollectionPanel.vue";
@@ -16,6 +16,23 @@ import ContentItem from "@/components/History/Content/ContentItem.vue";
 vi.mock("vue-router/composables", () => ({
     useRoute: vi.fn(() => ({ path: "/" })),
     useRouter: vi.fn(() => ({})),
+}));
+
+// `stubs` does not reach children imported by a <script setup> parent, so stub the module.
+// The panel's contract with the creator is the `selectedItems` it hands over.
+vi.mock("@/components/Collections/CollectionCreatorIndex.vue", () => ({
+    default: {
+        name: "CollectionCreatorIndex",
+        props: {
+            historyId: String,
+            collectionType: String,
+            extendedCollectionType: Object,
+            selectedItems: Array,
+            show: Boolean,
+            hideOnCreate: Boolean,
+        },
+        render: (h: (tag: string) => unknown) => h("div"),
+    },
 }));
 
 const { server, http } = useServerMock();
@@ -124,12 +141,6 @@ async function mountPanel() {
         localVue,
         router: new VueRouter(),
         pinia: createTestingPinia({ createSpy: vi.fn, stubActions: false }),
-        stubs: {
-            CollectionNavigation: true,
-            CollectionDetails: true,
-            DatasetDetails: true,
-            CollectionCreatorIndex: true,
-        },
     });
     await flushPromises();
     return wrapper;
@@ -156,6 +167,28 @@ describe("CollectionPanel", () => {
             }),
             http.get("/api/object_stores", ({ response }) => {
                 return response(200).json([]);
+            }),
+            http.get("/api/configuration", ({ response }) => {
+                return response(200).json({});
+            }),
+            // The fields the contents endpoint does not serialize for collection elements.
+            http.get("/api/datasets/{dataset_id}", ({ response, params }) => {
+                return response.untyped(
+                    HttpResponse.json({
+                        id: params.dataset_id,
+                        model_class: "HistoryDatasetAssociation",
+                        history_content_type: "dataset",
+                        name: `element ${String(params.dataset_id).split("_")[1]}`,
+                        extension: "txt",
+                        hid: 7,
+                        deleted: false,
+                        visible: false,
+                        purged: false,
+                        state: "ok",
+                        history_id: "history_id",
+                        tags: [],
+                    }),
+                );
             }),
         );
     });
@@ -208,6 +241,34 @@ describe("CollectionPanel", () => {
         // resolvable as an HDCA -- the "History dataset collection association not found"
         // path. The sub-collection branch never receives `select-click-handler`.
         expect(wrapper.text()).not.toContain("Build List");
+    });
+
+    it("hands the creator datasets the builders can actually use", async () => {
+        const wrapper = await mountPanel();
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+        await ctrlClick(rows(wrapper).at(0));
+
+        await wrapper
+            .findAll("button")
+            .filter((b) => b.text().includes("Build List"))
+            .at(0)
+            .trigger("click");
+        await flushPromises();
+
+        const creator = wrapper.findComponent({ name: "CollectionCreatorIndex" });
+        const [seeded] = creator.props("selectedItems");
+
+        // Two failure modes this guards. The click path used to store the un-enriched
+        // element object, so the creator looked its id up as an HDCA. And the contents API
+        // never sends `extension`/`hid`, so the builder's mixed-extension warning could not
+        // fire and its messages read "undefined: <name>".
+        expect(seeded).toMatchObject({
+            id: "hda_0",
+            history_content_type: "dataset",
+            name: "element 0",
+            extension: "txt",
+            hid: 7,
+        });
     });
 
     it("writes a tag change back to the stored element", async () => {
