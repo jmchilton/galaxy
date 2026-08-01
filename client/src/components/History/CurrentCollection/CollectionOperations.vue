@@ -20,8 +20,8 @@ const props = defineProps<{
     showSelection?: boolean;
     /** How many elements are selected, to label the build action. */
     selectionSize?: number;
-    /** Selection is only offered where the collection can be worked with. */
-    selectable?: boolean;
+    /** Whether the selection is being gathered, so the build action can wait on it. */
+    buildingCollection?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -46,7 +46,6 @@ const sheetUrl = computed(() => `/collection/${props.dsc.id}/sheet`);
         <nav class="content-operations d-flex justify-content-between bg-secondary">
             <GButtonGroup class="collection-operations-btn-group">
                 <GButton
-                    v-if="props.selectable"
                     tooltip
                     title="Select Items"
                     class="show-collection-content-selectors-btn rounded-0"
@@ -63,6 +62,7 @@ const sheetUrl = computed(() => `/collection/${props.dsc.id}/sheet`);
                     size="small"
                     color="blue"
                     transparent
+                    :disabled="props.buildingCollection"
                     @click="emit('build-collection')">
                     <FontAwesomeIcon fixed-width :icon="faLayerGroup" />
                     <span>Build List ({{ props.selectionSize }})</span>
