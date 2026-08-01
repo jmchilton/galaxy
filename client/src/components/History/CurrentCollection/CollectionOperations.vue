@@ -16,11 +16,9 @@ const route = useRoute();
 
 const props = defineProps<{
     dsc: HDCASummary; // typescript recognizes HDCADetailed IS_A HDCASummary
-    /** Whether the element selectors are shown, so the toggle can reflect it. */
     showSelection?: boolean;
-    /** How many elements are selected, to label the build action. */
     selectionSize?: number;
-    /** Whether the selection is being gathered, so the build action can wait on it. */
+    /** Whether the selection is still being gathered, so the build action can wait on it. */
     buildingCollection?: boolean;
 }>();
 

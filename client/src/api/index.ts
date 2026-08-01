@@ -146,16 +146,9 @@ export interface DCECollection extends DCESummary {
 /**
  * The dataset behind a collection element, shaped as history content.
  *
- * The collection contents API serializes an element's dataset through
- * `dictify_element_reference`, which omits two things consumers of a dataset need:
- * `name` — inside a collection the element identifier *is* the displayed name — and
- * `history_content_type`, without which the item cannot be addressed against
- * `/api/histories/{history_id}/contents/{type}s/{id}`.
- *
- * `normalizeCollectionElements` fills both in where elements enter the client, so
- * consumers share one consistently shaped object rather than each deriving its own copy.
- *
- * Mirrors `SubCollection`, which does the same for `dataset_collection` elements.
+ * The contents API omits `name` and `history_content_type`; `normalizeCollectionElements`
+ * fills them in. Mirrors `SubCollection`, which does the same for `dataset_collection`
+ * elements.
  */
 export interface CollectionElementDataset extends HDAObject {
     name: string;
@@ -261,15 +254,12 @@ export function isDatasetElement(element: DCESummary): element is DCEDataset {
 }
 
 /**
- * Fills in the history content fields the collection contents API leaves off a dataset
- * element's `object`, so it satisfies `CollectionElementDataset`.
+ * Fills in the history content fields the contents API leaves off a dataset element's
+ * `object`, so it satisfies `CollectionElementDataset`.
  *
- * Applied once where elements enter the client, before they reach
- * `collectionElementsStore` and are made reactive — adding keys afterwards would need
- * `Vue.set` for them to be observed.
- *
- * Returns the same array, mutated in place: the identity of each element and its object is
- * what selection, refs and range indices key on downstream.
+ * Call before elements reach `collectionElementsStore` and are made reactive; adding keys
+ * afterwards would need `Vue.set`. Mutates in place — downstream selection, refs and range
+ * indices key on element and object identity.
  */
 export function normalizeCollectionElements(elements: DCESummary[]): DCESummary[] {
     for (const element of elements) {

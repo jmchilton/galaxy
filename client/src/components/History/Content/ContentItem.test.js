@@ -143,8 +143,6 @@ describe("ContentItem", () => {
     });
 
     it("enables tags for a taggable item that is not a history item", async () => {
-        // A collection element wraps a real dataset, so its tags are editable
-        // even though the element itself is not a history item.
         await wrapper.setProps({ isHistoryItem: false, taggable: true });
 
         const tags = wrapper.findComponent(StatelessTags);
@@ -152,9 +150,8 @@ describe("ContentItem", () => {
     });
 
     it("saves tags against the item exactly as given, without patching it", async () => {
-        // Callers hand down an item already shaped as history content — collection
-        // elements are normalized at the fetch boundary. ContentItem is shared across
-        // every listing, so it must not compensate for one caller's payload here.
+        // Callers hand down an item already shaped as history content; this component is
+        // shared across every listing and must not compensate for one caller's payload.
         const elementDataset = {
             id: "elem_id",
             history_id: "history_id",
@@ -187,9 +184,8 @@ describe("ContentItem", () => {
     });
 
     it("renders the tags the item carries, holding no state of its own", async () => {
-        // The owner of the item is the single source of truth for tags. Shadowing them
-        // here would mask a change made anywhere else (another tab, a bulk tag operation)
-        // for as long as the row stays mounted.
+        // Shadowing tags here would mask a change made anywhere else (another tab, a bulk
+        // tag operation) for as long as the row stays mounted.
         const elementDataset = {
             id: "elem_id",
             history_id: "history_id",

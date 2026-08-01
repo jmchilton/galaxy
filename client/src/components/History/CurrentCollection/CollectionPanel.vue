@@ -90,17 +90,13 @@ const rootCollection = computed(() => {
 const isRoot = computed(() => dsc.value == rootCollection.value);
 const canEdit = computed(() => isRoot.value && canMutateHistory(props.history));
 
-/** Selection inside a collection uses the same composable as the history
- * panel, so selecting behaves identically in both places: a select toggle,
- * click to select without opening the item, and shift for a range. */
 const showCollectionCreator = ref(false);
 
 /** The datasets behind this collection's elements, in listing order.
  *
- * These are the store's own objects — the same ones handed to `ContentItem` as `item`,
- * which is what it passes back to the click handler. Deriving copies here instead would
- * give a row two identities, and the composable's range selection is positional
- * (`allItems.indexOf(item)`), so it would stop finding the clicked row.
+ * These must be the store's own objects, the same ones bound to `ContentItem`'s `item`:
+ * range selection is positional (`allItems.indexOf(item)`), so a row deriving a second
+ * identity here would stop being found.
  */
 const selectableDatasets = computed(() =>
     collectionElements.value
@@ -127,11 +123,8 @@ const {
     allItems: selectableDatasets,
     selectable: computed(() => canEdit.value),
     expectedKeyDownClass: "content-item",
-    // Matches the history panel so keyboard navigation behaves the same.
     disallowedKeyDownClasses: ["sub-item"],
-    // A collection listing has no filtering and no query selection, so these
-    // are inert; they exist because the composable is shared with the history
-    // panel, where filtering drives select-all-in-query.
+    // A collection listing has no filtering and no select-all-in-query, so these are inert.
     filterText: ref(""),
     totalItemsInQuery: computed(() => selectableDatasets.value.length),
     filterClass: HistoryFilters,
@@ -144,12 +137,10 @@ const selectedDatasets = ref<HDADetailed[]>([]);
 const loadingSelection = ref(false);
 const selectionError = ref<string | null>(null);
 
-/** The collection contents API deliberately serves a minimal element payload -- see
- * `dictify_element_reference`, "load minimal details ... History panel can use this
- * reference to expand to full details if individual dataset elements are clicked". It omits
- * `extension`, `hid`, `deleted` and `visible`, which the collection builders read, so
- * expand the selection to full datasets before handing it over. This is the same store the
- * row's expanded details view uses, so a row the user already opened is a cache hit.
+/** The contents API serves a minimal element payload, without the `extension`, `hid`,
+ * `deleted` and `visible` the collection builders read, so expand the selection before
+ * handing it over. `datasetStore` also backs the row's expanded details view, so a row the
+ * user already opened is a cache hit.
  *
  * `CollectionCreatorIndex`'s own hydration watcher cannot do this: it fills gaps from
  * `historyDatasetsStore`, which fetches with `visible: true`, and collection elements are
@@ -178,7 +169,7 @@ function onCreatedCollection() {
 }
 
 /** `ContentItem` has already persisted the change; reflect it on the stored element so the
- * row keeps showing it. Mirrors the history panel's handler. */
+ * row keeps showing it. */
 function onTagChange(item: CollectionElementDataset, newTags: string[]) {
     item.tags = newTags;
 }
@@ -280,10 +271,8 @@ watch(
                                 :item="item"
                                 :is-placeholder="true"
                                 name="Loading..." />
-                            <!-- A dataset row is selectable and taggable; every selection
-                                 binding uses `item.object`, the one object identity the row
-                                 has, which is also what ContentItem hands back to the click
-                                 handler. -->
+                            <!-- Every binding here uses `item.object`, the row's single
+                                 identity, which ContentItem hands back to the click handler. -->
                             <ContentItem
                                 v-else-if="isDatasetElement(item)"
                                 :id="item.element_index + 1"
@@ -304,8 +293,7 @@ watch(
                                 @tag-change="onTagChange"
                                 @drag-start="setItemDragstart(item, $event)"
                                 @update:expand-dataset="setExpanded(item, $event)" />
-                            <!-- A sub-collection row is neither selectable nor taggable; it
-                                 drills down instead. -->
+                            <!-- A sub-collection row drills down rather than selecting. -->
                             <ContentItem
                                 v-else
                                 :id="item.element_index + 1"

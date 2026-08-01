@@ -198,8 +198,6 @@ describe("CollectionPanel", () => {
 
         const item = rows(wrapper).at(0).props("item");
 
-        // Normalized at the fetch boundary, so the row gets a fully shaped dataset rather
-        // than a copy derived per render.
         expect(item).toMatchObject({
             id: "hda_0",
             name: "element 0",
@@ -213,10 +211,9 @@ describe("CollectionPanel", () => {
         const store = useCollectionElementsStore();
         const stored = store.getCollectionElements(COLLECTION) as DCESummary[];
 
-        // The bug this guards: the panel bound `:item` to one object and passed a derived
-        // copy to the selection handlers. Since ContentItem hands `props.item` back to the
-        // click handler, a row must have exactly one identity -- and it has to be the one
-        // the composable's positional range logic sees in `allItems`.
+        // ContentItem hands `props.item` back to the click handler, so a row must have
+        // exactly one identity, and it has to be the one the composable's positional range
+        // logic sees in `allItems`.
         expect(rows(wrapper).at(0).props("item")).toBe(stored[0]!.object);
         expect(rows(wrapper).at(1).props("item")).toBe(stored[1]!.object);
     });
@@ -237,9 +234,7 @@ describe("CollectionPanel", () => {
 
         await ctrlClick(rows(wrapper).at(2));
 
-        // Selecting one would hand the creator a DCObject, which is neither a dataset nor
-        // resolvable as an HDCA -- the "History dataset collection association not found"
-        // path. The sub-collection branch never receives `select-click-handler`.
+        // Selecting one would hand the creator a DCObject, which it cannot resolve.
         expect(wrapper.text()).not.toContain("Build List");
     });
 
@@ -258,10 +253,8 @@ describe("CollectionPanel", () => {
         const creator = wrapper.findComponent({ name: "CollectionCreatorIndex" });
         const [seeded] = creator.props("selectedItems");
 
-        // Two failure modes this guards. The click path used to store the un-enriched
-        // element object, so the creator looked its id up as an HDCA. And the contents API
-        // never sends `extension`/`hid`, so the builder's mixed-extension warning could not
-        // fire and its messages read "undefined: <name>".
+        // The creator resolves what it is handed as a dataset, and its mixed-extension
+        // warning and messages read `extension`/`hid`, which the contents API omits.
         expect(seeded).toMatchObject({
             id: "hda_0",
             history_content_type: "dataset",
@@ -278,8 +271,8 @@ describe("CollectionPanel", () => {
         row.vm.$emit("tag-change", row.props("item"), ["added"]);
         await localVue.nextTick();
 
-        // ContentItem holds no tag state of its own; the panel owns the item, so the row
-        // only keeps showing the edit if the panel writes it back.
+        // ContentItem holds no tag state of its own, so the row only keeps showing the
+        // edit if the panel writes it back.
         expect(rows(wrapper).at(0).props("item").tags).toEqual(["added"]);
     });
 });
