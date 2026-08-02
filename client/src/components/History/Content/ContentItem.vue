@@ -44,8 +44,7 @@ interface Props {
     isDataset?: boolean;
     isRangeSelectAnchor?: boolean;
     isHistoryItem?: boolean;
-    /** Allow editing tags even when this is not a top level history item, as for a
-     * collection element, which wraps a real dataset. */
+    /** Allow tag editing without `isHistoryItem`. */
     taggable?: boolean;
     selected?: boolean;
     selectable?: boolean;

@@ -93,10 +93,8 @@ const showCollectionCreator = ref(false);
 
 /** The datasets behind this collection's elements, in listing order.
  *
- * These must be the store's own objects, the same ones bound to `ContentItem`'s `item`:
- * range selection is positional (`allItems.indexOf(item)`), so a row deriving a second
- * identity here would stop being found.
- */
+ * Range selection is positional (`allItems.indexOf(item)`), so these must be the store's
+ * own objects — a row deriving a second identity here stops being found. */
 const selectableDatasets = computed(() =>
     collectionElements.value
         .filter(isDCE)
@@ -104,9 +102,8 @@ const selectableDatasets = computed(() =>
         .map((element) => element.object),
 );
 
-/** Elements the store has a slot for but has not fetched. Nothing can select them, so the
- * operations bar reports them rather than letting a build quietly cover part of the
- * collection. */
+/** Placeholders a selection cannot reach — reported so a build does not quietly cover
+ * part of the collection. */
 const unloadedElementCount = computed(() => collectionElements.value.filter(isPlaceholder).length);
 
 const {
@@ -274,8 +271,6 @@ watch(
                                 :item="item"
                                 :is-placeholder="true"
                                 name="Loading..." />
-                            <!-- Every binding here uses `item.object`, the row's single
-                                 identity, which ContentItem hands back to the click handler. -->
                             <ContentItem
                                 v-else-if="isDatasetElement(item)"
                                 :id="item.element_index + 1"
