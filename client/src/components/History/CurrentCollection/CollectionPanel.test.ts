@@ -12,6 +12,7 @@ import { useCollectionElementsStore } from "@/stores/collectionElementsStore";
 
 import CollectionPanel from "./CollectionPanel.vue";
 import ContentItem from "@/components/History/Content/ContentItem.vue";
+import ListingLayout from "@/components/History/Layout/ListingLayout.vue";
 
 vi.mock("vue-router/composables", () => ({
     useRoute: vi.fn(() => ({ path: "/" })),
@@ -131,11 +132,11 @@ function elementsPayload(): DCESummary[] {
     ];
 }
 
-async function mountPanel() {
+async function mountPanel(collection: HDCASummary = COLLECTION) {
     const wrapper = mount(CollectionPanel as object, {
         propsData: {
             history: HISTORY,
-            selectedCollections: [COLLECTION],
+            selectedCollections: [collection],
             showControls: true,
         },
         localVue,
@@ -156,6 +157,15 @@ function ctrlClick(row: Wrapper<Vue>) {
     // eventStore.isCtrlKey reads metaKey on Mac and ctrlKey elsewhere; set both so the
     // test does not depend on the simulated platform.
     return row.find(".p-1.cursor-pointer").trigger("click", { ctrlKey: true, metaKey: true });
+}
+
+function shiftClick(row: Wrapper<Vue>) {
+    return row.find(".p-1.cursor-pointer").trigger("click", { shiftKey: true });
+}
+
+function selectionCount(wrapper: Wrapper<Vue>) {
+    const label = wrapper.text().match(/Build List \((\d+)\)/);
+    return label ? Number(label[1]) : 0;
 }
 
 describe("CollectionPanel", () => {
@@ -274,5 +284,148 @@ describe("CollectionPanel", () => {
         // ContentItem holds no tag state of its own, so the row only keeps showing the
         // edit if the panel writes it back.
         expect(rows(wrapper).at(0).props("item").tags).toEqual(["added"]);
+    });
+});
+
+/** A collection larger than one fetch window. `collectionElementsStore` seeds one
+ * placeholder per element and fills a 50-wide window at a time, so scrolling to a far
+ * offset leaves a gap of unloaded rows in the middle of the rendering. */
+describe("CollectionPanel with unloaded elements", () => {
+    const TOTAL = 120;
+    const BIG_COLLECTION = { ...COLLECTION, element_count: TOTAL, name: "big list" } as HDCASummary;
+
+    function pagedElement(index: number): DCESummary {
+        return {
+            id: `dce_${index}`,
+            element_index: index,
+            element_identifier: `element ${index}`,
+            element_type: "hda",
+            model_class: "DatasetCollectionElement",
+            object: {
+                id: `hda_${index}`,
+                model_class: "HistoryDatasetAssociation",
+                state: "ok",
+                hda_ldda: "hda",
+                history_id: "history_id",
+                tags: [],
+                accessible: true,
+                purged: false,
+            },
+        } as unknown as DCESummary;
+    }
+
+    /** Loads the first window, then a window at the far end, leaving rows 50-69 unloaded. */
+    async function mountWithGap() {
+        const wrapper = await mountPanel(BIG_COLLECTION);
+        wrapper.findComponent(ListingLayout).vm.$emit("scroll", 70);
+        await flushPromises();
+        await flushPromises();
+        return wrapper;
+    }
+
+    beforeEach(() => {
+        suppressLucideVue2Deprecation();
+        server.use(
+            http.get("/api/dataset_collections/{hdca_id}/contents/{parent_id}", ({ response, query }) => {
+                const offset = Number(query.get("offset") ?? 0);
+                const limit = Number(query.get("limit") ?? 50);
+                const page: DCESummary[] = [];
+                for (let i = offset; i < Math.min(offset + limit, TOTAL); i++) {
+                    page.push(pagedElement(i));
+                }
+                return response(200).json(page);
+            }),
+            http.get("/api/object_stores", ({ response }) => response(200).json([])),
+            http.get("/api/configuration", ({ response }) => response(200).json({})),
+        );
+    });
+
+    it("renders every element but leaves the unfetched ones as placeholders", async () => {
+        const wrapper = await mountWithGap();
+
+        const all = rows(wrapper).wrappers;
+        expect(all).toHaveLength(TOTAL);
+        expect(all.filter((row) => row.props("isPlaceholder") === true)).toHaveLength(20);
+    });
+
+    it("selects only the loaded rows when a range spans unloaded ones", async () => {
+        const wrapper = await mountWithGap();
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+
+        const all = rows(wrapper);
+        await ctrlClick(all.at(49));
+        await shiftClick(all.at(70));
+
+        // 22 rows were dragged over, but rows 50-69 have no dataset behind them yet, so
+        // only the two loaded ends can be selected. `allItems` holds loaded datasets only
+        // and compaction preserves order, so the range is the right *set* -- it is just
+        // silently smaller than the span the user swept.
+        expect(selectionCount(wrapper)).toBe(2);
+    });
+
+    it("reports the loaded count on select-all rather than the collection's size", async () => {
+        const wrapper = await mountWithGap();
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+
+        await rows(wrapper).at(0).trigger("keydown", { key: "a", ctrlKey: true, metaKey: true });
+        await flushPromises();
+
+        // The panel passes no `querySelection`, so select-all cannot claim the 120 the
+        // collection holds. "Build List" would otherwise promise datasets it never fetched.
+        expect(selectionCount(wrapper)).toBe(100);
+    });
+});
+
+/** A `list` may hold the same HDA under two element identifiers. Selection keys on the
+ * dataset, so those two rows share one key and the selection holds fewer entries than the
+ * listing has rows. */
+describe("CollectionPanel with a duplicated dataset element", () => {
+    function duplicateElements(): DCESummary[] {
+        const element = (index: number, hdaId: string): DCESummary =>
+            ({
+                id: `dce_${index}`,
+                element_index: index,
+                element_identifier: `element ${index}`,
+                element_type: "hda",
+                model_class: "DatasetCollectionElement",
+                object: {
+                    id: hdaId,
+                    model_class: "HistoryDatasetAssociation",
+                    state: "ok",
+                    hda_ldda: "hda",
+                    history_id: "history_id",
+                    tags: [],
+                    accessible: true,
+                    purged: false,
+                },
+            }) as unknown as DCESummary;
+
+        // Rows 0 and 2 are the same underlying dataset.
+        return [element(0, "hda_dup"), element(1, "hda_other"), element(2, "hda_dup")];
+    }
+
+    beforeEach(() => {
+        suppressLucideVue2Deprecation();
+        server.use(
+            http.get("/api/dataset_collections/{hdca_id}/contents/{parent_id}", ({ response }) =>
+                response(200).json(duplicateElements()),
+            ),
+            http.get("/api/object_stores", ({ response }) => response(200).json([])),
+            http.get("/api/configuration", ({ response }) => response(200).json({})),
+        );
+    });
+
+    it("counts the datasets it actually holds when everything is selected", async () => {
+        const wrapper = await mountPanel();
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+
+        await rows(wrapper).at(0).trigger("keydown", { key: "a", ctrlKey: true, metaKey: true });
+        await flushPromises();
+
+        // Three rows collapse to two selected datasets. Reporting three would mean the
+        // selection size disagreed with the map, which is exactly the condition the
+        // composable reads as "query selection" -- a mode this panel has no query for, and
+        // in which `isSelected` starts answering from a filter instead of the selection.
+        expect(selectionCount(wrapper)).toBe(2);
     });
 });

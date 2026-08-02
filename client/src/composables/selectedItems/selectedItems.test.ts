@@ -19,12 +19,14 @@ describe("useSelectedItems", () => {
     const selectedItemsProps = {
         scopeKey: ref("scope"),
         getItemKey: getItemKey,
-        filterText: ref(""),
-        totalItemsInQuery: ref(numberOfLoadedItems),
         allItems: ref(allItems),
-        filterClass: HistoryFilters, // Can be any, just to satisfy the type
         selectable: ref(true),
-        querySelectionBreak: () => querySelectionBreakMock(),
+        querySelection: {
+            filterText: ref(""),
+            totalItemsInQuery: ref(numberOfLoadedItems),
+            filterClass: HistoryFilters, // Can be any, just to satisfy the type
+            querySelectionBreak: () => querySelectionBreakMock(),
+        },
         onDelete: () => {},
     };
 
@@ -131,12 +133,63 @@ describe("useSelectedItems", () => {
             expect(selectionReturn.isQuerySelection.value).toBe(true);
             expect(querySelectionBreakMock).not.toHaveBeenCalled();
 
-            selectedItemsProps.totalItemsInQuery.value = 80;
+            selectedItemsProps.querySelection.totalItemsInQuery.value = 80;
             await flushPromises();
 
             expect(selectionReturn.isQuerySelection.value).toBe(false);
             expect(selectionReturn.selectionSize.value).toBe(numberOfLoadedItems);
             expect(querySelectionBreakMock).toHaveBeenCalled();
+        });
+    });
+
+    describe("Without query selection", () => {
+        /** A listing with no query behind it — a collection's elements, say — cannot
+         * select past what is loaded, so it omits `querySelection` entirely. */
+        function useWithoutQuerySelection(loadedItems: ItemType[]) {
+            const composable = useSelectedItems<ItemType, any>({
+                scopeKey: ref("scope"),
+                getItemKey: getItemKey,
+                allItems: ref(loadedItems),
+                selectable: ref(true),
+                onDelete: () => {},
+            });
+            composable.setShowSelection(true);
+            return composable;
+        }
+
+        it("never enters query selection, even after selecting everything", async () => {
+            const composable = useWithoutQuerySelection(generateTestItems(10));
+
+            composable.selectAllInCurrentQuery();
+            await flushPromises();
+
+            expect(composable.isQuerySelection.value).toBe(false);
+        });
+
+        it("reports the number of items actually selected, not a query total", async () => {
+            // The collection panel labels its build action with this. Reporting a query
+            // total it cannot back with objects would promise datasets it does not have.
+            const composable = useWithoutQuerySelection(generateTestItems(10));
+
+            composable.selectAllInCurrentQuery();
+            await flushPromises();
+
+            expect(composable.selectionSize.value).toBe(10);
+            expect(composable.selectedItems.value.size).toBe(10);
+        });
+
+        it("reports selection per item rather than by testing a filter", async () => {
+            // With query selection on, `isSelected` short-circuits through
+            // `filterClass.testFilters`, which an empty filter answers `true` for
+            // everything. Without it, only genuinely selected items report selected.
+            const items = generateTestItems(3);
+            const composable = useWithoutQuerySelection(items);
+
+            composable.setSelected(items[0]!, true);
+            await flushPromises();
+
+            expect(composable.isSelected(items[0]!)).toBe(true);
+            expect(composable.isSelected(items[1]!)).toBe(false);
         });
     });
 
@@ -192,7 +245,7 @@ describe("useSelectedItems", () => {
     }
 
     async function setTotalItemsInQuery(totalItems: number) {
-        selectedItemsProps.totalItemsInQuery.value = totalItems;
+        selectedItemsProps.querySelection.totalItemsInQuery.value = totalItems;
         await flushPromises();
     }
 

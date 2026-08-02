@@ -397,13 +397,15 @@ const {
 } = useSelectedItems<HistoryItemSummary, typeof ContentItem>({
     scopeKey: queryKey,
     getItemKey: getItemKey,
-    filterText: filterText,
-    totalItemsInQuery: computed(() => totalMatchesCount.value ?? 0),
     allItems: historyItems,
-    filterClass: HistoryFilters,
     selectable: canEditHistory,
-    querySelectionBreak: () => {
-        querySelectionBreak.value = true;
+    querySelection: {
+        filterText: filterText,
+        totalItemsInQuery: computed(() => totalMatchesCount.value ?? 0),
+        filterClass: HistoryFilters,
+        querySelectionBreak: () => {
+            querySelectionBreak.value = true;
+        },
     },
     onDelete,
     expectedKeyDownClass: "content-item",

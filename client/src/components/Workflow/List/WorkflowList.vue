@@ -123,11 +123,13 @@ const {
 } = useSelectedItems<WorkflowSummary, typeof WorkflowCard>({
     scopeKey: computed(() => `${props.activeList}-workflows-${filterText.value}`),
     getItemKey: (item) => item.id,
-    filterText: filterText,
-    totalItemsInQuery: computed(() => totalWorkflows.value ?? 0),
     allItems: workflowsLoaded,
-    filterClass: workflowFilters.value,
     selectable: computed(() => !published.value && !sharedWithMe.value),
+    querySelection: {
+        filterText: filterText,
+        totalItemsInQuery: computed(() => totalWorkflows.value ?? 0),
+        filterClass: workflowFilters.value,
+    },
     onDelete: async (item) => {
         const { deleteWorkflow: deleteInModal } = useWorkflowCardActions(
             computed(() => item),

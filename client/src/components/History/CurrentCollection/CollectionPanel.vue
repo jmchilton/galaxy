@@ -19,7 +19,6 @@ import {
 } from "@/api";
 import ExpandedItems from "@/components/History/Content/ExpandedItems";
 import { itemUniqueKey } from "@/components/History/Content/model/itemKey";
-import { HistoryFilters } from "@/components/History/HistoryFilters";
 import { updateContentFields } from "@/components/History/model/queries";
 import { useSelectedItems } from "@/composables/selectedItems/selectedItems";
 import { useCollectionElementsStore } from "@/stores/collectionElementsStore";
@@ -124,10 +123,8 @@ const {
     selectable: computed(() => canEdit.value),
     expectedKeyDownClass: "content-item",
     disallowedKeyDownClasses: ["sub-item"],
-    // A collection listing has no filtering and no select-all-in-query, so these are inert.
-    filterText: ref(""),
-    totalItemsInQuery: computed(() => selectableDatasets.value.length),
-    filterClass: HistoryFilters,
+    // No `querySelection`: a collection listing has no filter behind it, so selection can
+    // only ever cover the elements that are loaded.
     // Deleting an element from a collection is not offered here.
     onDelete: () => {},
 });

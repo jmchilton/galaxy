@@ -10,12 +10,9 @@ import type { ComponentInstanceExtends, ComponentInstanceRef, SelectedItemsProps
 export function useSelectedItems<T, ComponentType extends ComponentInstanceExtends>({
     scopeKey,
     getItemKey,
-    filterText,
-    totalItemsInQuery,
     allItems,
-    filterClass,
     selectable,
-    querySelectionBreak = () => {},
+    querySelection,
     onDelete,
     expectedKeyDownClass = undefined,
     disallowedKeyDownClasses = [],
@@ -35,9 +32,20 @@ export function useSelectedItems<T, ComponentType extends ComponentInstanceExten
 
     const currItemFocused = useActiveElement();
 
-    const selectionSize = computed(() => (isQuerySelection.value ? totalItemsInQuery.value : selectedItems.value.size));
-    const isQuerySelection = computed(() => allSelected.value && totalItemsInQuery.value !== selectedItems.value.size);
-    const currentFilters = computed(() => filterClass.getFiltersForText(filterText.value));
+    /** Without `querySelection` there is nothing to select beyond `allItems`, so a
+     * selection is never a query selection and its size is simply what is selected. */
+    const isQuerySelection = computed(
+        () =>
+            querySelection !== undefined &&
+            allSelected.value &&
+            querySelection.totalItemsInQuery.value !== selectedItems.value.size,
+    );
+    const selectionSize = computed(() =>
+        isQuerySelection.value && querySelection ? querySelection.totalItemsInQuery.value : selectedItems.value.size,
+    );
+    const currentFilters = computed(() =>
+        querySelection ? querySelection.filterClass.getFiltersForText(querySelection.filterText.value) : null,
+    );
     const initSelectedKey = computed(() => (initSelectedItem.value ? getItemKey(initSelectedItem.value as T) : null)); // TODO: Weird Unwrap ref type
     const lastInRangeIndex = computed(() =>
         lastInRange.value ? allItems.value.indexOf(lastInRange.value as T) : null,
@@ -66,8 +74,8 @@ export function useSelectedItems<T, ComponentType extends ComponentInstanceExten
     }
 
     function isSelected(item: T) {
-        if (isQuerySelection.value) {
-            return filterClass.testFilters(currentFilters.value, item as Record<string, unknown>);
+        if (isQuerySelection.value && querySelection && currentFilters.value) {
+            return querySelection.filterClass.testFilters(currentFilters.value, item as Record<string, unknown>);
         }
         const key = getItemKey(item as T);
         return selectedItems.value.has(key);
@@ -243,7 +251,7 @@ export function useSelectedItems<T, ComponentType extends ComponentInstanceExten
 
     function breakQuerySelection() {
         if (allSelected.value) {
-            querySelectionBreak();
+            querySelection?.querySelectionBreak?.();
         }
         allSelected.value = false;
     }
@@ -435,11 +443,13 @@ export function useSelectedItems<T, ComponentType extends ComponentInstanceExten
         }
     });
 
-    watch(totalItemsInQuery, (newVal, oldVal) => {
-        if (allSelected.value && newVal !== oldVal) {
-            breakQuerySelection();
-        }
-    });
+    if (querySelection) {
+        watch(querySelection.totalItemsInQuery, (newVal, oldVal) => {
+            if (allSelected.value && newVal !== oldVal) {
+                breakQuerySelection();
+            }
+        });
+    }
 
     return {
         selectedItems,

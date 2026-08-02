@@ -179,11 +179,13 @@ const {
 } = useSelectedItems<AnyHistoryEntry, typeof HistoryCard>({
     scopeKey: computed(() => `${props.activeList}-histories-${filterText.value}`),
     getItemKey: (item) => item.id,
-    filterText: filterText,
-    totalItemsInQuery: computed(() => totalHistories.value ?? 0),
     allItems: historiesLoaded,
-    filterClass: historyListFilters.value,
     selectable: computed(() => myView.value),
+    querySelection: {
+        filterText: filterText,
+        totalItemsInQuery: computed(() => totalHistories.value ?? 0),
+        filterClass: historyListFilters.value,
+    },
     onDelete: async (item) => {
         const { onDeleteHistory } = useHistoryCardActions(
             computed(() => item),
