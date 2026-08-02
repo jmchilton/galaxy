@@ -33,6 +33,15 @@ export type DCEEntry = ContentPlaceholder | DCESummary | InvalidDCEEntry;
 
 const FETCH_LIMIT = 50;
 
+/** Whether this entry is a seeded slot rather than a fetched element. */
+export function isPlaceholder(element: DCEEntry): element is ContentPlaceholder {
+    return "id" in element === false;
+}
+
+function isInvalid(element: DCEEntry): element is InvalidDCEEntry {
+    return (element as InvalidDCEEntry)["valid"] === false;
+}
+
 /**
  * Element pagination for a single collection — placeholder-backed and
  * paginated via `LastQueue`. Detail / summary caching for the collection
@@ -160,14 +169,6 @@ export const useCollectionElementsStore = defineStore("collectionElementsStore",
         storedElements.forEach((element) => {
             (element as InvalidDCEEntry).valid = false;
         });
-    }
-
-    function isPlaceholder(element: DCEEntry): element is ContentPlaceholder {
-        return "id" in element === false;
-    }
-
-    function isInvalid(element: DCEEntry): element is InvalidDCEEntry {
-        return (element as InvalidDCEEntry)["valid"] === false;
     }
 
     function initWithPlaceholderElements(collection: CollectionEntry): ContentPlaceholder[] {

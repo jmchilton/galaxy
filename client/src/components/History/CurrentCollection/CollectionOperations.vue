@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { faCheckSquare } from "@fortawesome/free-regular-svg-icons";
-import { faDownload, faInfoCircle, faLayerGroup, faTable } from "@fortawesome/free-solid-svg-icons";
+import {
+    faDownload,
+    faExclamationTriangle,
+    faInfoCircle,
+    faLayerGroup,
+    faTable,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed } from "vue";
 import { useRoute } from "vue-router/composables";
@@ -18,6 +24,8 @@ const props = defineProps<{
     dsc: HDCASummary; // typescript recognizes HDCADetailed IS_A HDCASummary
     showSelection?: boolean;
     selectionSize?: number;
+    /** Elements not fetched yet, and so out of the selection's reach. */
+    unloadedElementCount?: number;
     /** Whether the selection is still being gathered, so the build action can wait on it. */
     buildingCollection?: boolean;
 }>();
@@ -41,7 +49,7 @@ const sheetUrl = computed(() => `/collection/${props.dsc.id}/sheet`);
 </script>
 <template>
     <section>
-        <nav class="content-operations d-flex justify-content-between bg-secondary">
+        <nav class="content-operations d-flex flex-wrap justify-content-between bg-secondary">
             <GButtonGroup class="collection-operations-btn-group">
                 <GButton
                     tooltip
@@ -102,11 +110,26 @@ const sheetUrl = computed(() => `/collection/${props.dsc.id}/sheet`);
                     <span>View Sheet</span>
                 </GButton>
             </GButtonGroup>
+            <!-- A selection reaches only the elements that have been fetched, so a build over
+                 a partly-loaded collection would otherwise be silently short. -->
+            <span
+                v-if="props.showSelection && props.unloadedElementCount"
+                v-b-tooltip.hover
+                class="unloaded-elements-note align-self-center px-2"
+                title="Only loaded elements can be selected. Scroll the list to load the rest.">
+                <FontAwesomeIcon fixed-width :icon="faExclamationTriangle" />
+                <span>{{ props.unloadedElementCount }} not loaded</span>
+            </span>
         </nav>
     </section>
 </template>
 
 <style scoped lang="scss">
+.unloaded-elements-note {
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+}
+
 .collection-operations-btn-group {
     display: flex;
     flex-wrap: wrap;

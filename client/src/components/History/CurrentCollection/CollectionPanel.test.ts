@@ -274,6 +274,14 @@ describe("CollectionPanel", () => {
         });
     });
 
+    it("says nothing about loading when every element is present", async () => {
+        const wrapper = await mountPanel();
+
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+
+        expect(wrapper.text()).not.toContain("not loaded");
+    });
+
     it("writes a tag change back to the stored element", async () => {
         const wrapper = await mountPanel();
 
@@ -373,6 +381,31 @@ describe("CollectionPanel with unloaded elements", () => {
         // The panel passes no `querySelection`, so select-all cannot claim the 120 the
         // collection holds. "Build List" would otherwise promise datasets it never fetched.
         expect(selectionCount(wrapper)).toBe(100);
+    });
+
+    it("says how many elements the selection cannot reach", async () => {
+        const wrapper = await mountWithGap();
+
+        // Nothing to warn about until the user is actually selecting.
+        expect(wrapper.text()).not.toContain("not loaded");
+
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+
+        // Selecting everything here builds a list of 100 out of 120. That the missing 20
+        // cannot be selected is inherent; saying so is what keeps the build honest.
+        expect(wrapper.text()).toContain("20 not loaded");
+    });
+
+    it("stops warning once the missing elements arrive", async () => {
+        const wrapper = await mountWithGap();
+        await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
+        expect(wrapper.text()).toContain("20 not loaded");
+
+        wrapper.findComponent(ListingLayout).vm.$emit("scroll", 50);
+        await flushPromises();
+        await flushPromises();
+
+        expect(wrapper.text()).not.toContain("not loaded");
     });
 });
 

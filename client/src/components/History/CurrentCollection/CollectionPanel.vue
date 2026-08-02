@@ -21,7 +21,7 @@ import ExpandedItems from "@/components/History/Content/ExpandedItems";
 import { itemUniqueKey } from "@/components/History/Content/model/itemKey";
 import { updateContentFields } from "@/components/History/model/queries";
 import { useSelectedItems } from "@/composables/selectedItems/selectedItems";
-import { useCollectionElementsStore } from "@/stores/collectionElementsStore";
+import { isPlaceholder, useCollectionElementsStore } from "@/stores/collectionElementsStore";
 import { useDatasetStore } from "@/stores/datasetStore";
 import { setItemDragstart } from "@/utils/setDrag";
 import { errorMessageAsString } from "@/utils/simple-error";
@@ -103,6 +103,11 @@ const selectableDatasets = computed(() =>
         .filter(isDatasetElement)
         .map((element) => element.object),
 );
+
+/** Elements the store has a slot for but has not fetched. Nothing can select them, so the
+ * operations bar reports them rather than letting a build quietly cover part of the
+ * collection. */
+const unloadedElementCount = computed(() => collectionElements.value.filter(isPlaceholder).length);
 
 const {
     selectedItems,
@@ -239,6 +244,7 @@ watch(
                     :dsc="dsc"
                     :show-selection="showSelection"
                     :selection-size="selectionSize"
+                    :unloaded-element-count="unloadedElementCount"
                     :building-collection="loadingSelection"
                     @update:show-selection="setShowSelection"
                     @build-collection="onBuildCollection" />
