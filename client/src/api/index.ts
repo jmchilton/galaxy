@@ -144,13 +144,16 @@ export interface DCECollection extends DCESummary {
 }
 
 /**
- * The dataset behind a collection element, shaped as history content.
+ * The dataset behind a collection element, shaped as history content while retaining
+ * the collection element occurrence that contains it.
  *
- * The contents API omits `name` and `history_content_type`; `normalizeCollectionElements`
- * fills them in. Mirrors `SubCollection`, which does the same for `dataset_collection`
- * elements.
+ * The contents API keeps the DCE id and identifier outside the nested dataset and omits
+ * `name` and `history_content_type`; `normalizeCollectionElements` brings that context
+ * together. Mirrors `SubCollection`, which does the same for `dataset_collection` elements.
  */
 export interface CollectionElementDataset extends HDAObject {
+    collection_element_id: string;
+    element_identifier: string;
     name: string;
     history_content_type: "dataset";
 }
@@ -254,8 +257,8 @@ export function isDatasetElement(element: DCESummary): element is DCEDataset {
 }
 
 /**
- * Fills in the history content fields the contents API leaves off a dataset element's
- * `object`, so it satisfies `CollectionElementDataset`.
+ * Fills in the collection-element context and history content fields the contents API
+ * leaves off a dataset element's `object`, so it satisfies `CollectionElementDataset`.
  *
  * Call before elements reach `collectionElementsStore` and are made reactive; adding keys
  * afterwards would need `Vue.set`. Mutates in place — downstream selection, refs and range
@@ -264,6 +267,8 @@ export function isDatasetElement(element: DCESummary): element is DCEDataset {
 export function normalizeCollectionElements(elements: DCESummary[]): DCESummary[] {
     for (const element of elements) {
         if (isDatasetElement(element) && element.object) {
+            element.object.collection_element_id = element.id;
+            element.object.element_identifier = element.element_identifier;
             element.object.name ??= element.element_identifier;
             element.object.history_content_type = "dataset";
         }

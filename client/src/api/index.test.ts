@@ -131,6 +131,8 @@ describe("API Types Helpers", () => {
             // Without history_content_type, updateContentFields addresses the item as
             // /api/histories/{history_id}/contents/undefineds/{id}.
             expect(element.object).toMatchObject({
+                collection_element_id: "dce_id",
+                element_identifier: "forward",
                 name: "forward",
                 history_content_type: "dataset",
             });

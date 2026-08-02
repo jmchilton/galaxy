@@ -18,7 +18,6 @@ import {
     type SubCollection,
 } from "@/api";
 import ExpandedItems from "@/components/History/Content/ExpandedItems";
-import { itemUniqueKey } from "@/components/History/Content/model/itemKey";
 import { updateContentFields } from "@/components/History/model/queries";
 import { useSelectedItems } from "@/composables/selectedItems/selectedItems";
 import { isPlaceholder, useCollectionElementsStore } from "@/stores/collectionElementsStore";
@@ -106,6 +105,12 @@ const selectableDatasets = computed(() =>
  * part of the collection. */
 const unloadedElementCount = computed(() => collectionElements.value.filter(isPlaceholder).length);
 
+/** A collection selects element occurrences, which remain distinct when they reference the
+ * same HDA. */
+function collectionElementDatasetKey(item: CollectionElementDataset) {
+    return `dataset-collection-element-${item.collection_element_id}`;
+}
+
 const {
     selectedItems,
     showSelection,
@@ -120,7 +125,7 @@ const {
     onKeyDown: onSelectKeyDown,
 } = useSelectedItems<CollectionElementDataset, typeof ContentItem>({
     scopeKey: computed(() => String(dsc.value?.id ?? "")),
-    getItemKey: itemUniqueKey,
+    getItemKey: collectionElementDatasetKey,
     allItems: selectableDatasets,
     selectable: computed(() => canEdit.value),
     expectedKeyDownClass: "content-item",
@@ -147,7 +152,8 @@ const selectionError = ref<string | null>(null);
 async function onBuildCollection() {
     loadingSelection.value = true;
     selectionError.value = null;
-    const ids = Array.from(selectedItems.value.values()).map((dataset) => dataset.id);
+    const selectedElements = Array.from(selectedItems.value.values());
+    const ids = selectedElements.map((dataset) => dataset.id);
     const datasets = await Promise.all(ids.map((id) => datasetStore.fetchDataset({ id })));
     loadingSelection.value = false;
 
@@ -156,7 +162,10 @@ async function onBuildCollection() {
         selectionError.value = errorMessageAsString(datasetStore.getDatasetError(failedId));
         return;
     }
-    selectedDatasets.value = datasets as HDADetailed[];
+    selectedDatasets.value = datasets.map((dataset, index) => ({
+        ...(dataset as HDADetailed),
+        name: selectedElements[index]!.element_identifier,
+    }));
     showCollectionCreator.value = true;
 }
 
@@ -274,12 +283,13 @@ watch(
                             <ContentItem
                                 v-else-if="isDatasetElement(item)"
                                 :id="item.element_index + 1"
-                                :ref="itemRefs[itemUniqueKey(item.object)]"
+                                :ref="itemRefs[collectionElementDatasetKey(item.object)]"
                                 :item="item.object"
                                 :name="item.element_identifier"
                                 taggable
                                 :writable="canEdit"
                                 :expand-dataset="isExpanded(item)"
+                                :get-item-key="collectionElementDatasetKey"
                                 :selectable="showSelection"
                                 :selected="isSelected(item.object)"
                                 :is-range-select-anchor="isRangeSelectAnchor(item.object)"

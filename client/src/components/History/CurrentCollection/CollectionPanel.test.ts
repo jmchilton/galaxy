@@ -188,7 +188,7 @@ describe("CollectionPanel", () => {
                         id: params.dataset_id,
                         model_class: "HistoryDatasetAssociation",
                         history_content_type: "dataset",
-                        name: `element ${String(params.dataset_id).split("_")[1]}`,
+                        name: `underlying ${String(params.dataset_id)}`,
                         extension: "txt",
                         hid: 7,
                         deleted: false,
@@ -445,20 +445,50 @@ describe("CollectionPanel with a duplicated dataset element", () => {
             ),
             http.get("/api/object_stores", ({ response }) => response(200).json([])),
             http.get("/api/configuration", ({ response }) => response(200).json({})),
+            http.get("/api/datasets/{dataset_id}", ({ response, params }) =>
+                response.untyped(
+                    HttpResponse.json({
+                        id: params.dataset_id,
+                        model_class: "HistoryDatasetAssociation",
+                        history_content_type: "dataset",
+                        name: `underlying ${String(params.dataset_id)}`,
+                        extension: "txt",
+                        hid: 7,
+                        deleted: false,
+                        visible: false,
+                        purged: false,
+                        state: "ok",
+                        history_id: "history_id",
+                        tags: [],
+                    }),
+                ),
+            ),
         );
     });
 
-    it("counts the datasets it actually holds when everything is selected", async () => {
+    it("preserves repeated dataset occurrences and their element identifiers", async () => {
         const wrapper = await mountPanel();
         await wrapper.find(".show-collection-content-selectors-btn").trigger("click");
 
         await rows(wrapper).at(0).trigger("keydown", { key: "a", ctrlKey: true, metaKey: true });
         await flushPromises();
 
-        // Three rows collapse to two selected datasets. Reporting three would mean the
-        // selection size disagreed with the map, which is exactly the condition the
-        // composable reads as "query selection" -- a mode this panel has no query for, and
-        // in which `isSelected` starts answering from a filter instead of the selection.
-        expect(selectionCount(wrapper)).toBe(2);
+        expect(selectionCount(wrapper)).toBe(3);
+
+        await wrapper
+            .findAll("button")
+            .filter((button) => button.text().includes("Build List"))
+            .at(0)
+            .trigger("click");
+        await flushPromises();
+
+        const creator = wrapper.findComponent({ name: "CollectionCreatorIndex" });
+        const selectedItems = creator.props("selectedItems");
+        expect(selectedItems).toMatchObject([
+            { id: "hda_dup", name: "element 0" },
+            { id: "hda_other", name: "element 1" },
+            { id: "hda_dup", name: "element 2" },
+        ]);
+        expect(selectedItems[0]).not.toBe(selectedItems[2]);
     });
 });
