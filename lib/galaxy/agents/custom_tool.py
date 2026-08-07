@@ -248,7 +248,7 @@ class CustomToolAgent(BaseGalaxyAgent):
         # drafts, which directly cuts the validator-retry round-trips this agent
         # would otherwise pay for. Operators can still override via
         # inference_services.custom_tool.temperature.
-        return self._get_agent_config("temperature", 0.2)
+        return self._get_float_config("temperature", 0.2)
 
     def _create_agent(self) -> Agent[GalaxyAgentDependencies, Any]:
         """Create agent with ``UserToolSourceAuthoringView`` as the output type.

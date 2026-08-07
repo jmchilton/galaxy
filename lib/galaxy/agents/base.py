@@ -5,6 +5,7 @@ Base classes for Galaxy AI agents.
 import asyncio
 import fnmatch
 import logging
+import math
 import os
 import random
 from abc import (
@@ -93,11 +94,16 @@ TOOL_HELPER_HISTORY_MESSAGES = 8
 DEFAULT_MAX_QUERY_LENGTH = 10000
 """Fallback cap on a single query, overridable per agent via ``max_query_length``."""
 
-_TRUNCATION_MARKER = "\n\n[... {omitted} characters omitted ...]\n\n"
-
 # Phrases that only show up in a deliberate injection attempt, so every agent scans
-# for them. Kept separate from the role markers below, which tool logs print for
-# ordinary reasons ("Operating System:", "Filesystem:").
+# for them.
+#
+# Conversational role markers ("system:", "assistant:") used to be scanned alongside
+# these and are deliberately absent. The query reaches the model as a user-role
+# message, so a literal "system:" in it creates no role boundary to exploit, and any
+# paraphrase ("SYSTEM :", "<|im_start|>system") walked through a substring test
+# anyway. What it did reliably catch was ordinary output: tool banners print
+# "Operating System:", "Filesystem:" and "Subsystem:", and a user pasting one got
+# "please rephrase your question" about a log they did not write.
 _INJECTION_PHRASES = (
     "ignore previous instructions",
     "ignore all previous",
@@ -105,7 +111,6 @@ _INJECTION_PHRASES = (
     "forget all previous",
     "new instructions:",
 )
-_ROLE_MARKERS = ("system:", "assistant:")
 
 # Hardcoded fallback if the capability YAML can't be located. Mirrors the
 # previous behaviour (deepseek -> no structured output, everything else yes).
@@ -178,6 +183,44 @@ def _capability_for_model(model_name: str, capability: str, table: dict[str, Any
     return None
 
 
+def _coerce_int(raw: Any) -> int | None:
+    """Coerce a free-form ``inference_services`` value to an int, or None if it isn't one.
+
+    ``inference_services`` is an untyped dict that Galaxy's config schema does not
+    descend into, so anything can turn up in a numeric key. Two cases a bare ``int()``
+    gets wrong:
+
+    * ``bool`` is an ``int`` subclass and YAML reads ``yes``/``true`` as one, so
+      ``max_tokens: yes`` would quietly become a one-token budget.
+    * ``int(float("inf"))`` -- YAML spells that ``.inf`` -- raises ``OverflowError``,
+      an ``ArithmeticError`` rather than a ``ValueError``, so it escapes the except
+      clause a caller would think to write.
+    """
+    if isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _coerce_float(raw: Any) -> float | None:
+    """Coerce a free-form ``inference_services`` value to a finite float, or None.
+
+    The int sibling gets infinity rejected for free because ``int()`` overflows on it;
+    ``float(".inf")`` succeeds, so it has to be excluded here. An infinite timeout is a
+    hang rather than a generous timeout, and a NaN comparison is false in both
+    directions, so neither is a value any caller wants to receive.
+    """
+    if isinstance(raw, bool):
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
 __all__ = [
     "ActionSuggestion",
     "ActionType",
@@ -197,36 +240,7 @@ __all__ = [
     "SimpleGalaxyAgent",
     "TOOL_HELPER_HISTORY_MESSAGES",
     "truncate_message_history",
-    "truncate_middle",
 ]
-
-
-def truncate_middle(text: str, max_length: int) -> str:
-    """Trim ``text`` to ``max_length`` characters, keeping its head and tail.
-
-    Tool logs bury the actual failure at the end, so a plain head slice throws away
-    the part that matters most. A third of the budget goes to the head (invocation
-    and setup lines) and the rest to the tail.
-
-    Deliberately not ``galaxy.util.shrink_string_by_size``, which shrinks these same
-    streams on their way into the database: it splits evenly and its ``join_by`` is a
-    fixed string, so it can express neither the tail bias nor the omitted-character
-    count the model needs to know it is reading a fragment.
-    """
-    if max_length <= 0:
-        return ""
-    if len(text) <= max_length:
-        return text
-
-    # Size the marker against the whole input: the rendered omitted count is always
-    # smaller, so the result can only come in under the budget, never over.
-    budget = max_length - len(_TRUNCATION_MARKER.format(omitted=len(text)))
-    if budget <= 0:
-        return text[:max_length]
-
-    head_length = budget // 3
-    tail_length = budget - head_length
-    return text[:head_length] + _TRUNCATION_MARKER.format(omitted=len(text) - budget) + text[-tail_length:]
 
 
 def truncate_message_history(history: list[ModelMessage], limit: int = MAX_HISTORY_MESSAGES) -> list[ModelMessage]:
@@ -437,12 +451,6 @@ class BaseGalaxyAgent(ABC):
     # produce conforming output before the run fails.
     DEFAULT_AGENT_RETRIES = 3
 
-    # Whether to scan the query for conversational role markers ("system:",
-    # "assistant:"). Agents whose "query" is machine-generated text turn this off --
-    # tool logs print them innocently. See ErrorAnalysisAgent. The instruction-phrase
-    # patterns are always scanned.
-    SCAN_QUERY_FOR_ROLE_MARKERS = True
-
     def __init__(self, deps: GalaxyAgentDependencies):
         self.deps = deps
 
@@ -459,38 +467,53 @@ class BaseGalaxyAgent(ABC):
     def get_system_prompt(self) -> str:
         pass
 
+    def _warn_invalid_config(self, key: str, raw: Any, fallback: Any) -> None:
+        # Log the type, not the value: _get_agent_config is the same accessor that
+        # serves api_key, so echoing whatever it returned into the log is a habit
+        # worth not having. The type is enough to find the offending YAML line.
+        log.warning(
+            "Ignoring invalid %s of type %s for the %s agent; using %s.",
+            key,
+            type(raw).__name__,
+            self.agent_type,
+            fallback,
+        )
+
+    def _get_int_config(self, key: str, default: int) -> int:
+        """Read ``key`` from ``inference_services`` as a positive int.
+
+        Anything else falls back to ``default`` with a warning. Only nonsense falls
+        back: an explicitly configured small value is an admin decision, and quietly
+        raising it would defeat a limit set for cost or safety. Every int key here is
+        a budget -- tokens, characters -- and zero of those is not a small budget.
+        """
+        raw = self._get_agent_config(key, default)
+        value = _coerce_int(raw)
+        if value is None or value <= 0:
+            self._warn_invalid_config(key, raw, default)
+            return default
+        return value
+
+    def _get_float_config(self, key: str, default: float) -> float:
+        """Read ``key`` from ``inference_services`` as a non-negative finite float.
+
+        Zero is allowed here where :meth:`_get_int_config` rejects it: a temperature
+        of 0 is a deliberate "be deterministic", not a broken budget.
+        """
+        raw = self._get_agent_config(key, default)
+        value = _coerce_float(raw)
+        if value is None or value < 0:
+            self._warn_invalid_config(key, raw, default)
+            return default
+        return value
+
     def _resolve_max_query_length(self) -> int:
         """Resolve the configured query cap, falling back to the default on bad input.
 
-        ``inference_services`` is a free-form dict, so a stray value here would
-        otherwise reach a slice index and either blow up mid-request or, worse,
-        silently trim every query down to nothing.
+        A stray value here reaches a slice index, so it would otherwise blow up
+        mid-request or, worse, silently trim every query down to nothing.
         """
-        configured = self._get_agent_config("max_query_length", DEFAULT_MAX_QUERY_LENGTH)
-        if isinstance(configured, bool):
-            # bool is an int subclass and YAML reads `yes`/`true` as one, so int()
-            # would quietly turn `max_query_length: yes` into a one-character cap.
-            resolved = 0
-        else:
-            try:
-                resolved = int(configured)
-            except (TypeError, ValueError, OverflowError):
-                # OverflowError is int(inf) -- YAML spells that `.inf`.
-                resolved = 0
-        # Only nonsense falls back. An explicitly configured small cap is an admin
-        # decision -- quietly raising it would defeat a limit set for cost or safety.
-        if resolved <= 0:
-            # Log the type, not the value: _get_agent_config is the same accessor that
-            # serves api_key, so echoing whatever it returned into the log is a habit
-            # worth not having. The type is enough to find the offending YAML line.
-            log.warning(
-                "Ignoring invalid max_query_length of type %s for the %s agent; using %d.",
-                type(configured).__name__,
-                self.agent_type,
-                DEFAULT_MAX_QUERY_LENGTH,
-            )
-            return DEFAULT_MAX_QUERY_LENGTH
-        return resolved
+        return self._get_int_config("max_query_length", DEFAULT_MAX_QUERY_LENGTH)
 
     def _validate_query(self, query: str) -> str | None:
         """Validate query input. Returns None if valid, error message if not."""
@@ -502,12 +525,8 @@ class BaseGalaxyAgent(ABC):
         if len(query) > max_length:
             return f"Query too long ({len(query)} chars). Maximum is {max_length} characters."
 
-        suspicious_patterns = list(_INJECTION_PHRASES)
-        if self.SCAN_QUERY_FOR_ROLE_MARKERS:
-            suspicious_patterns += _ROLE_MARKERS
-
         query_lower = query.lower()
-        for pattern in suspicious_patterns:
+        for pattern in _INJECTION_PHRASES:
             if pattern in query_lower:
                 log.warning(f"Potential prompt injection detected in {self.agent_type} query: {pattern}")
                 return "I'm not able to process that query. Please rephrase your question."
@@ -957,10 +976,10 @@ class BaseGalaxyAgent(ABC):
         return OpenAIChatModel(model_name, provider=openai_provider)
 
     def _get_temperature(self) -> float:
-        return self._get_agent_config("temperature", 0.7)
+        return self._get_float_config("temperature", 0.7)
 
     def _get_max_tokens(self) -> int:
-        return self._get_agent_config("max_tokens", self.DEFAULT_MAX_TOKENS)
+        return self._get_int_config("max_tokens", self.DEFAULT_MAX_TOKENS)
 
     def _get_retries(self, default: int | None = None) -> int:
         """Retry budget for the agent's pydantic-ai ``Agent(retries=...)``.
@@ -976,13 +995,14 @@ class BaseGalaxyAgent(ABC):
             raw = self._get_agent_config("retries", self.DEFAULT_AGENT_RETRIES)
         else:
             raw = self._get_agent_specific_config("retries", default)
-        try:
-            retries = int(raw)
-        except (TypeError, ValueError):
-            retries = None
+        # Unlike the other numeric keys this raises rather than falling back: a
+        # negative budget fails every request, and letting the bare TypeError out
+        # would be mistaken for an unknown-agent fallback by the manager.
+        retries = _coerce_int(raw)
         if retries is None or retries < 0:
             raise ConfigurationError(
-                f"inference_services 'retries' for agent '{self.agent_type}' must be a non-negative integer, got {raw!r}"
+                f"inference_services 'retries' for agent '{self.agent_type}' must be a non-negative integer, "
+                f"got a value of type {type(raw).__name__}"
             )
         return retries
 

@@ -587,6 +587,37 @@ def shrink_and_unicodify(stream):
     return stream
 
 
+_TRUNCATION_MARKER = "\n\n[... {omitted} characters omitted ...]\n\n"
+
+
+def truncate_middle(text: str, max_length: int) -> str:
+    """Trim ``text`` to ``max_length`` characters, keeping its head and tail.
+
+    Tool logs bury the actual failure at the end, so a plain head slice throws away
+    the part that matters most. A third of the budget goes to the head (invocation
+    and setup lines) and the rest to the tail.
+
+    Deliberately not :func:`shrink_string_by_size`, which shrinks these same streams
+    on their way into the database: it splits evenly and its ``join_by`` is a fixed
+    string, so it can express neither the tail bias nor the omitted-character count
+    a reader -- here, a model -- needs to know it is reading a fragment.
+    """
+    if max_length <= 0:
+        return ""
+    if len(text) <= max_length:
+        return text
+
+    # Size the marker against the whole input: the rendered omitted count is always
+    # smaller, so the result can only come in under the budget, never over.
+    budget = max_length - len(_TRUNCATION_MARKER.format(omitted=len(text)))
+    if budget <= 0:
+        return text[:max_length]
+
+    head_length = budget // 3
+    tail_length = budget - head_length
+    return text[:head_length] + _TRUNCATION_MARKER.format(omitted=len(text) - budget) + text[-tail_length:]
+
+
 def shrink_string_by_size(
     value, size, join_by="..", left_larger=True, beginning_on_size_error=False, end_on_size_error=False
 ):

@@ -188,7 +188,7 @@ class WorkflowOrchestratorAgent(BaseGalaxyAgent):
 
     def _get_agent_timeout(self) -> float:
         """Default 120s to accommodate slow LLM backends."""
-        return self._get_agent_config("agent_timeout", 120.0)
+        return self._get_float_config("agent_timeout", 120.0)
 
     async def _execute_sequential(
         self, agents: list[str], query: str, context: dict[str, Any] | None = None

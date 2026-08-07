@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from galaxy.schema.agents import ConfidenceLevel
+from galaxy.util import truncate_middle
 from .base import (
     ActionSuggestion,
     ActionType,
@@ -27,10 +28,15 @@ from .base import (
     extract_structured_output,
     GalaxyAgentDependencies,
     normalize_llm_text,
-    truncate_middle,
 )
 
 log = logging.getLogger(__name__)
+
+# Caps on the job streams echoed back as prompt context. The stderr the wizard posts
+# as the query gets the full max_query_length budget; this is the second, smaller copy
+# that rides along in the Job Details block.
+JOB_CONTEXT_STDERR_LIMIT = 2000
+JOB_CONTEXT_STDOUT_LIMIT = 1000
 
 
 class ErrorAnalysisResult(BaseModel):
@@ -50,16 +56,6 @@ class ErrorAnalysisAgent(BaseGalaxyAgent):
 
     agent_type = AgentType.ERROR_ANALYSIS
     capability_blurb = "Troubleshoot a failed job when you share its error message or job details."
-
-    # The query here is a job's stderr, not something a human typed. Tool banners
-    # routinely print "Operating System:", "Filesystem:", "Subsystem:" and friends,
-    # every one of which trips the role-marker blacklist and hands the user "please
-    # rephrase" for a log they never wrote.
-    #
-    # Only the role markers are exempted -- the instruction-phrase patterns still run,
-    # since no tool prints "ignore previous instructions". Within a run this agent
-    # registers no tools and nothing reads its output back as another agent's input.
-    SCAN_QUERY_FOR_ROLE_MARKERS = False
 
     def _create_agent(self) -> Agent[GalaxyAgentDependencies, Any]:
         if self._supports_structured_output():
@@ -101,8 +97,11 @@ class ErrorAnalysisAgent(BaseGalaxyAgent):
                 "tool_version": job.tool_version,
                 "state": job.state,
                 "exit_code": job.exit_code,
-                "stderr": job.stderr[:2000] if job.stderr else "",
-                "stdout": job.stdout[:1000] if job.stdout else "",
+                # Trimmed once, here. _format_job_context renders whatever it is given
+                # rather than slicing again -- a second pass would nest a marker inside
+                # a marker and report an omitted count for the already-trimmed text.
+                "stderr": truncate_middle(job.stderr, JOB_CONTEXT_STDERR_LIMIT) if job.stderr else "",
+                "stdout": truncate_middle(job.stdout, JOB_CONTEXT_STDOUT_LIMIT) if job.stdout else "",
                 "command_line": job.command_line,
                 "parameters": job.get_param_values(self.deps.trans.app) if hasattr(job, "get_param_values") else {},
                 "create_time": job.create_time.isoformat() if job.create_time else None,
@@ -212,7 +211,7 @@ class ErrorAnalysisAgent(BaseGalaxyAgent):
         if job_details.get("exit_code") is not None:
             parts.append(f"Exit Code: {job_details['exit_code']}")
         if job_details.get("stderr"):
-            parts.append(f"Error Output: {job_details['stderr'][:500]}...")
+            parts.append(f"Error Output: {job_details['stderr']}")
 
         return "\n".join(parts)
 

@@ -39,6 +39,7 @@ from galaxy.schema.schema import (
 from galaxy.schema.workflows import InvokeWorkflowPayload
 from galaxy.structured_app import MinimalManagerApp
 from galaxy.tool_util_models.dynamic_tool_models import DynamicUnprivilegedToolCreatePayload
+from galaxy.util import truncate_middle
 from galaxy.work.context import SessionRequestContext
 
 log = logging.getLogger(__name__)
@@ -815,7 +816,9 @@ class AgentOperationsManager:
                 "error": "No creating job found for this dataset",
             }
 
-        # Truncate large outputs to avoid overwhelming the LLM
+        # Truncate large outputs to avoid overwhelming the LLM. Middle-trimmed rather
+        # than head-sliced: a failing tool's actual error is on its last lines, which
+        # is exactly what a head slice drops.
         max_output_length = 4000
 
         stderr = job.stderr or ""
@@ -829,10 +832,10 @@ class AgentOperationsManager:
             "tool_version": job.tool_version,
             "state": job.state,
             "exit_code": job.exit_code,
-            "info": info[:max_output_length] if info else None,
-            "stderr": stderr[:max_output_length] if stderr else None,
-            "stdout": stdout[:max_output_length] if stdout else None,
-            "truncated": len(stderr) > max_output_length or len(stdout) > max_output_length,
+            "info": truncate_middle(info, max_output_length) if info else None,
+            "stderr": truncate_middle(stderr, max_output_length) if stderr else None,
+            "stdout": truncate_middle(stdout, max_output_length) if stdout else None,
+            "truncated": max(len(stderr), len(stdout), len(info)) > max_output_length,
         }
 
     def peek_dataset_content(self, dataset_id: str) -> dict[str, Any]:
