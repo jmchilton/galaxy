@@ -63,11 +63,11 @@ from galaxy.agents import (
     WorkflowReportAgent,
 )
 from galaxy.agents.base import truncate_message_history
-from galaxy.agents.error_analysis import JOB_CONTEXT_STDERR_LIMIT
 from galaxy.agents.custom_tool import (
     CritiqueReport,
     ToolEdit,
 )
+from galaxy.agents.error_analysis import JOB_CONTEXT_STDERR_LIMIT
 from galaxy.agents.registry import build_default_registry
 from galaxy.agents.tools import SimplifiedToolRecommendationResult
 from galaxy.managers.agents import AgentService
@@ -79,6 +79,7 @@ from galaxy.tool_util.deps.mulled.recommend import (
 from galaxy.tool_util_models import CondaPackage
 
 agent_registry = build_default_registry()
+from galaxy import util as galaxy_util
 from galaxy.agents import base as agents_base
 from galaxy.agents.base import (
     _capability_for_model,
@@ -100,7 +101,6 @@ from galaxy.agents.page_assistant import (
 from galaxy.exceptions import ConfigurationError
 from galaxy.schema.agents import ConfidenceLevel
 from galaxy.tool_util_models import UserToolSource
-from galaxy import util as galaxy_util
 from galaxy.util import truncate_middle
 from galaxy.util.unittest_utils import pytestmark_live_llm
 
