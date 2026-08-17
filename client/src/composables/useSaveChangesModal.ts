@@ -55,15 +55,20 @@ export function useSaveChangesModal(isDirty: Ref<boolean>, onSave: () => Promise
     async function handleSaveChangesProceed(url: string, forceSave: boolean, ignoreChanges: boolean) {
         showSaveChangesModal.value = false;
         if (forceSave) {
-            await onSave();
+            try {
+                await onSave();
+            } catch {
+                // Stay put; `onSave` surfaces the error. Catching also keeps it from escaping unhandled.
+                return;
+            }
         } else if (!ignoreChanges) {
             return;
         }
         bypassGuard = true;
         try {
-            // Await the push and only reset the bypassGuard if it succeeds
             await router.push(url);
         } finally {
+            // Reset even on rejection -- latched, this would wave every later navigation through unguarded.
             bypassGuard = false;
         }
     }

@@ -256,6 +256,27 @@ describe("PageEditorView", () => {
             expect(mockPush).toHaveBeenCalledWith("/pages/list");
         });
 
+        it("Save proceeds but the save fails: stays put and surfaces the store error", async () => {
+            // `savePage` re-throws after setting `store.error`; the modal must stay closed so it shows.
+            // A `console.error` here would mean the rejection escaped the `on-proceed` handler.
+            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+            makeDirty();
+            vi.mocked(store.savePage).mockRejectedValueOnce(new Error("save failed"));
+            callGuard(mockOnBeforeRouteLeave, "/pages/list");
+            await nextTick();
+
+            wrapper.findComponent(SaveChangesModal).vm.$emit("on-proceed", "/pages/list", true, false, false);
+            await flushPromises();
+
+            expect(store.savePage).toHaveBeenCalled();
+            expect(mockPush).not.toHaveBeenCalled();
+            expect(wrapper.findComponent(SaveChangesModal).props("showModal")).toBe(false);
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+            consoleErrorSpy.mockRestore();
+        });
+
         it("keeps guarding subsequent navigation after a rejected router.push", async () => {
             // We expect a rejection here, but we want to silence the console.error so it doesn't fail the test.
             const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

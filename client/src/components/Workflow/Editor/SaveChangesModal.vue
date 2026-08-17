@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { faSave, faTimes, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { ref } from "vue";
+import { ref, watch } from "vue";
 
 import localize from "@/utils/localization";
 
@@ -22,7 +22,18 @@ const props = withDefaults(defineProps<Props>(), {
     appendVersion: false,
 });
 
+/** Blocks a second click while the parent acts on the chosen proceed. */
 const busy = ref(false);
+
+// Clear on open -- a proceed that fails to navigate leaves this instance alive and latched.
+watch(
+    () => props.showModal,
+    (showModal) => {
+        if (showModal) {
+            busy.value = false;
+        }
+    },
+);
 
 const emit = defineEmits<{
     /** Proceed with or without saving the changes */
