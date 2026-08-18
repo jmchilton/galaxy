@@ -46,6 +46,44 @@ class TestMaximumWorkflowInvocationDuration(integration_util.IntegrationTestCase
         state = self._get(invocation_url).json()["state"]
         assert state == "failed", state
 
+    def test_timeout_stops_running_jobs(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+steps:
+  sleepy:
+    tool_id: cat_data_and_sleep
+    in:
+      input1: input1
+    state:
+      sleep_time: 180
+  the_pause:
+    type: pause
+    in:
+      input: input1
+  after_pause:
+    tool_id: cat1
+    in:
+      input1: the_pause
+""",
+                test_data={"input1": "1 2 3"},
+                history_id=history_id,
+                wait=False,
+            )
+            self.workflow_populator.wait_for_invocation(None, summary.invocation_id, assert_ok=False, timeout=120)
+            invocation = self.workflow_populator.get_invocation(summary.invocation_id)
+            assert invocation["state"] == "failed", invocation
+            sleep_jobs = [
+                job
+                for job in self.workflow_populator.get_invocation_jobs(summary.invocation_id)
+                if job["tool_id"] == "cat_data_and_sleep"
+            ]
+            assert len(sleep_jobs) == 1, sleep_jobs
+            assert sleep_jobs[0]["state"] in ("deleting", "deleted"), sleep_jobs[0]
+
 
 class TestMaximumWorkflowJobsPerSchedulingIteration(integration_util.IntegrationTestCase):
     dataset_populator: DatasetPopulator
