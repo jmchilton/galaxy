@@ -10042,7 +10042,11 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             return True
         return False
 
-    def cancel_invocation_steps(self):
+    def stop_unfinished_jobs(self, recursive: bool = False):
+        """Mark every unfinished job created by this invocation for deletion.
+
+        Does not commit, the caller is expected to.
+        """
         sa_session = required_object_session(self)
         job_subq = (
             select(Job.id)
@@ -10051,7 +10055,6 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             .filter(~Job.state.in_(Job.finished_states))
             .with_for_update()
         )
-        sa_session.execute(update(Job).where(Job.id.in_(job_subq)).values({"state": Job.states.DELETING}))
 
         job_collection_subq = (
             select(Job.id)
@@ -10066,9 +10069,27 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             .subquery()
         )
 
-        sa_session.execute(
-            update(Job).where(Job.id.in_(job_collection_subq.element)).values({"state": Job.states.DELETING})
-        )
+        for job_ids in (job_subq, job_collection_subq.element):
+            # A job that made it to a runner needs that runner to notice and tear it down,
+            # one that never did has nothing watching it and would sit in deleting forever.
+            sa_session.execute(
+                update(Job)
+                .where(Job.id.in_(job_ids), Job.job_runner_name.is_not(None))
+                .values({"state": Job.states.DELETING})
+            )
+            sa_session.execute(
+                update(Job)
+                .where(Job.id.in_(job_ids), Job.job_runner_name.is_(None))
+                .values({"state": Job.states.DELETED})
+            )
+
+        if recursive:
+            for invocation in self.subworkflow_invocations:
+                invocation.subworkflow_invocation.stop_unfinished_jobs(recursive=True)
+
+    def cancel_invocation_steps(self):
+        sa_session = required_object_session(self)
+        self.stop_unfinished_jobs()
 
         for invocation in self.subworkflow_invocations:
             subworkflow_invocation = invocation.subworkflow_invocation
@@ -10083,6 +10104,11 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
 
     def fail(self):
         self.state = WorkflowInvocation.states.FAILED
+        if self.id is not None:
+            # A failed invocation is terminal and will never be scheduled again, so jobs
+            # from unrelated branches would otherwise run on with nothing left to consume
+            # their outputs. Stop them the same way cancellation does.
+            self.stop_unfinished_jobs(recursive=True)
 
     def step_states_by_step_id(self):
         step_states = {}

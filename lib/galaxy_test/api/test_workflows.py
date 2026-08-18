@@ -6287,6 +6287,56 @@ steps:
         assert message["reason"] == "dataset_failed"
         assert message["workflow_step_id"] == 1
 
+    @skip_without_tool("__APPLY_RULES__")
+    @skip_without_tool("job_properties")
+    @skip_without_tool("cat_data_and_sleep")
+    def test_workflow_failure_stops_jobs_on_unrelated_branches(self, history_id):
+        summary = self._run_workflow(
+            """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+steps:
+  sleepy:
+    tool_id: cat_data_and_sleep
+    in:
+      input1: input1
+    state:
+      sleep_time: 120
+  job_props:
+    tool_id: job_properties
+    state:
+      thebool: true
+      failbool: true
+  apply:
+    tool_id: __APPLY_RULES__
+    in:
+      input: job_props/list_output
+    state:
+      rules:
+        rules:
+          - type: add_column_metadata
+            value: identifier0
+        mapping:
+          - type: list_identifiers
+            columns: [0]
+        """,
+            test_data={"input1": "1 2 3"},
+            history_id=history_id,
+            assert_ok=False,
+            wait=False,
+        )
+        self.workflow_populator.wait_for_invocation(None, summary.invocation_id, assert_ok=False)
+        invocation_details = self.workflow_populator.get_invocation(summary.invocation_id)
+        assert invocation_details["state"] == "failed"
+        sleep_jobs = [
+            j
+            for j in self.workflow_populator.get_invocation_jobs(summary.invocation_id)
+            if j["tool_id"] == "cat_data_and_sleep"
+        ]
+        assert len(sleep_jobs) == 1, sleep_jobs
+        assert sleep_jobs[0]["state"] in ("deleting", "deleted"), sleep_jobs[0]
+
     @skip_without_tool("__RELABEL_FROM_FILE__")
     def test_workflow_failed_with_message_exception(self, history_id):
         summary = self._run_workflow(

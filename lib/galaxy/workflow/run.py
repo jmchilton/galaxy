@@ -207,8 +207,7 @@ class WorkflowInvoker:
             log.debug(
                 f"Workflow invocation [{workflow_invocation.id}] exceeded maximum number of seconds allowed for scheduling [{maximum_duration}], failing."
             )
-            workflow_invocation.set_state(model.WorkflowInvocation.states.FAILED)
-            # All jobs ran successfully, so we can save now
+            workflow_invocation.fail()
             self.trans.sa_session.add(workflow_invocation)
 
             # Not flushing in here, because web controller may create multiple
