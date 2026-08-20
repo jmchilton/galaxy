@@ -1,11 +1,12 @@
 import type { DatatypesMapperModel } from "@/components/Datatypes/model";
 import type { UntypedParameters } from "@/components/Workflow/Editor/modules/parameters";
 import type { useWorkflowStores } from "@/composables/workflowStores";
-import type { Steps } from "@/stores/workflowStepStore";
+import type { Step, Steps } from "@/stores/workflowStepStore";
 import { assertDefined } from "@/utils/assertions";
 
 import { isWorkflowInput } from "../../constants";
 import type {
+    DanglingGateState,
     DisconnectedInputState,
     DuplicateLabelState,
     ExtractInputAction,
@@ -17,6 +18,7 @@ import type {
     UntypedParameterState,
 } from "./lintingTypes";
 import { terminalFactory } from "./terminals";
+import { analyzeInputReferences } from "./whenExpression";
 
 export const bestPracticeWarningAnnotation =
     "This workflow does not provide a short description. Providing a short description helps workflow executors understand the purpose and usage of the workflow.";
@@ -53,6 +55,73 @@ export function getDisconnectedInputs(
         });
     });
     return inputs;
+}
+
+/**
+ * Steps whose `when` expression reads a name nothing supplies.
+ *
+ * A gate on a disconnected tool parameter evaluates false forever, because the tool
+ * state key survives as null; a gate on a disconnected probe raises during evaluation.
+ * Neither is visible without this check -- `getDisconnectedInputs` walks `step.inputs`,
+ * which never contains a synthesized gate port.
+ */
+export function getDanglingGates(steps: Steps = {}) {
+    const dangling: DanglingGateState[] = [];
+    Object.values(steps).forEach((step) => {
+        if (!step.when) {
+            return;
+        }
+        const references = analyzeInputReferences(step.when);
+        if (references.hasDynamicInputsAccess) {
+            return;
+        }
+        const reported = new Set<string>();
+        references.staticPaths.forEach((path) => {
+            const name = path.join("|");
+            if (reported.has(name) || gateReferenceIsSatisfied(step, name)) {
+                return;
+            }
+            reported.add(name);
+            dangling.push({
+                stepId: step.id,
+                stepLabel: step.label || step.content_id || step.name,
+                warningLabel: name,
+                inputName: name,
+                autofix: false,
+                highlightType: "input",
+                name,
+            });
+        });
+    });
+    return dangling;
+}
+
+function gateReferenceIsSatisfied(step: Step, name: string): boolean {
+    if (namesInclude(Object.keys(step.input_connections ?? {}), name)) {
+        return true;
+    }
+    if (
+        namesInclude(
+            (step.inputs ?? []).map((input) => input.name),
+            name,
+        )
+    ) {
+        // A connectable tool parameter with nothing connected is the dangling case.
+        return false;
+    }
+    // Everything else the expression can legitimately read comes from the step's state.
+    const root = name.split("|")[0]!;
+    return Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, root);
+}
+
+/** True when `name` is one of the candidates, or an ancestor of one. */
+function namesInclude(candidates: string[], name: string): boolean {
+    return candidates.some((candidate) => candidate === name || candidate.startsWith(`${name}|`));
+}
+
+/** Gate checks only make sense once something in the workflow is gated. */
+export function hasGatedSteps(steps: Steps = {}): boolean {
+    return Object.values(steps).some((step) => Boolean(step.when));
 }
 
 export function getMissingMetadata(steps: Steps) {
@@ -235,6 +304,6 @@ function isMetadataLintState(state: LintState): state is MetadataLintState {
 /** Type guard for linting states that are for a workflow step input or output. */
 export function isStateForInputOrOutput(
     state: LintState,
-): state is DisconnectedInputState | DuplicateLabelState | UnlabeledOuputState {
+): state is DanglingGateState | DisconnectedInputState | DuplicateLabelState | UnlabeledOuputState {
     return "highlightType" in state;
 }
