@@ -1092,3 +1092,57 @@ describe("invalid connection marking", () => {
         expect(Object.keys(connectionStore.invalidConnections)).toHaveLength(0);
     });
 });
+
+describe("canAcceptWithPresenceGate", () => {
+    let terminals: { [index: string]: { [index: string]: ReturnType<typeof terminalFactory> } } = {};
+    let stepStore: ReturnType<typeof useWorkflowStepStore>;
+    beforeEach(() => {
+        setActivePinia(createPinia());
+        terminals = setupAdvanced();
+        stepStore = useWorkflowStepStore("mock-workflow");
+        Object.values(JSON.parse(JSON.stringify(advancedSteps)) as Steps).map((step) => {
+            stepStore.addStep(step);
+        });
+    });
+
+    it("accepts an optional output the step is not yet gated on", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+        expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(true);
+    });
+
+    it("leaves the terminal ungated afterwards", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        dataIn.canAcceptWithPresenceGate(optionalDataOut);
+        expect(dataIn.isPresenceGated()).toBe(false);
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+    });
+
+    it("still refuses a connection a gate would not rescue", () => {
+        const dataOut = terminals["data input"]!["output"] as OutputTerminal;
+        const collectionInput = terminals["any collection"]!["input"] as InputCollectionTerminal;
+        expect(collectionInput.canAcceptWithPresenceGate(dataOut).canAccept).toBe(false);
+        expect(collectionInput.canAcceptWithPresenceGate(dataOut).reason).toBe(
+            "Cannot attach a data output to a collection input.",
+        );
+    });
+
+    it("still refuses when the input is already filled", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataOut = terminals["data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        dataIn.connect(dataOut);
+        expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(false);
+    });
+
+    it("works for parameter terminals too", () => {
+        const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+        const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
+            "output"
+        ] as OutputParameterTerminal;
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(false);
+        expect(integerInputParam.canAcceptWithPresenceGate(optionalIntegerOutputParam).canAccept).toBe(true);
+    });
+});

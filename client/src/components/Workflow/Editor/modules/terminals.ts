@@ -223,6 +223,7 @@ class BaseInputTerminal extends Terminal {
     datatypes: InputTerminalInputs["datatypes"];
     optional: InputTerminalInputs["optional"];
     localMapOver: CollectionTypeDescriptor;
+    private presenceGateAssumed = false;
 
     constructor(attr: InputTerminalArgs) {
         super(attr);
@@ -239,10 +240,28 @@ class BaseInputTerminal extends Terminal {
         }
     }
     /**
+     * Evaluate acceptance as though the step were already gated on this input.
+     *
+     * A drop cannot authorize itself: at drop time there is no `when` yet, so the rule
+     * that would allow the connection has nothing to read. This answers whether writing
+     * the gate is the remedy, or whether the connection is refused for other reasons.
+     */
+    canAcceptWithPresenceGate(other: BaseOutputTerminal): ConnectionAcceptable {
+        this.presenceGateAssumed = true;
+        try {
+            return this.canAccept(other);
+        } finally {
+            this.presenceGateAssumed = false;
+        }
+    }
+    /**
      * True when the step only runs while this input carries a value, which makes an
      * optional output safe to attach to a required input.
      */
     isPresenceGated(): boolean {
+        if (this.presenceGateAssumed) {
+            return true;
+        }
         const step = this.stores.stepStore.getStep(this.stepId);
         if (!step?.when) {
             return false;

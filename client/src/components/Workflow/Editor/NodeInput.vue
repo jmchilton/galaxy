@@ -23,6 +23,8 @@ import {
     type OutputCollectionTerminal,
     terminalFactory,
 } from "@/components/Workflow/Editor/modules/terminals";
+import { presenceGateExpression } from "@/components/Workflow/Editor/modules/whenExpression";
+import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import { getConnectionId } from "@/stores/workflowConnectionStore";
 import type { InputTerminalSource } from "@/stores/workflowStepStore";
@@ -92,7 +94,8 @@ const position = useRelativePosition(
 );
 
 const stores = useWorkflowStores();
-const { connectionStore, stateStore } = stores;
+const { connectionStore, stateStore, stepStore } = stores;
+const { confirm } = useConfirmDialog();
 const hasTerminals = ref(false);
 watchEffect(() => {
     hasTerminals.value = connectionStore.getOutputTerminalsForInputTerminal(id.value).length > 0;
@@ -170,7 +173,7 @@ function onRemove() {
     connections.forEach((connection) => terminal.value.disconnect(connection));
 }
 
-function onDrop(event: DragEvent) {
+async function onDrop(event: DragEvent) {
     if (!event.dataTransfer) {
         return;
     }
@@ -187,7 +190,36 @@ function onDrop(event: DragEvent) {
 
     if (terminal.value.canAccept(droppedTerminal).canAccept) {
         terminal.value.connect(droppedTerminal);
+        return;
     }
+    if (terminal.value.canAcceptWithPresenceGate(droppedTerminal).canAccept) {
+        await offerPresenceGate(droppedTerminal);
+    }
+}
+
+/** The dropped value may be absent, and only a gate makes that safe. Offer to write one. */
+async function offerPresenceGate(droppedTerminal: OutputCollectionTerminal) {
+    const confirmed = await confirm(
+        `${label.value} may arrive empty, and this step requires it. Run this step only when ${label.value} is provided?`,
+        { title: "Run this step conditionally?", okText: "Run only when provided" },
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    const previousWhen = stepStore.getStep(props.stepId)?.when;
+    stores.undoRedoStore
+        .action()
+        .onRun(() => {
+            terminal.value.makeConnection(droppedTerminal);
+            stepStore.updateStepValue(props.stepId, "when", presenceGateExpression(props.input.name));
+        })
+        .onUndo(() => {
+            stepStore.updateStepValue(props.stepId, "when", previousWhen);
+            terminal.value.dropConnection(droppedTerminal);
+        })
+        .setName("gate step on input")
+        .apply();
 }
 
 const draggedOver = ref(false);
