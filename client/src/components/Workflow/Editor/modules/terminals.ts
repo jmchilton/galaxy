@@ -23,6 +23,7 @@ import {
     NULL_COLLECTION_TYPE_DESCRIPTION,
 } from "./collectionTypeDescription";
 import { applyCompaction, computePickValueCompaction, reverseCompaction } from "./pickValueCompact";
+import { expressionGuardsInputPresence, expressionReferencesInput } from "./whenExpression";
 
 export const NO_COLLECTION_TYPE_INFORMATION_MESSAGE =
     "No collection type or collection type source defined - this is fine but may lead to less intuitive connection logic.";
@@ -237,6 +238,22 @@ class BaseInputTerminal extends Terminal {
             this.localMapOver = NULL_COLLECTION_TYPE_DESCRIPTION;
         }
     }
+    /**
+     * True when the step only runs while this input carries a value, which makes an
+     * optional output safe to attach to a required input.
+     */
+    isPresenceGated(): boolean {
+        const step = this.stores.stepStore.getStep(this.stepId);
+        if (!step?.when) {
+            return false;
+        }
+        const isSynthesizedGatePort = !step.inputs?.some((input) => input.name === this.name);
+        if (isSynthesizedGatePort) {
+            // Nothing consumes a gate probe, so an inverse gate is as valid as a positive one.
+            return expressionReferencesInput(step.when, this.name);
+        }
+        return expressionGuardsInputPresence(step.when, this.name);
+    }
     connect(other: BaseOutputTerminal): void {
         super.connect(other);
         this.setDefaultMapOver(other);
@@ -375,7 +392,7 @@ class BaseInputTerminal extends Terminal {
         return producesAcceptableDatatype(this.datatypesMapper, this.datatypes, other.datatypes);
     }
     _producesAcceptableDatatypeAndOptionalness(other: BaseOutputTerminal) {
-        if (!this.optional && !this.multiple && other.optional) {
+        if (!this.optional && !this.multiple && other.optional && !this.isPresenceGated()) {
             return new ConnectionAcceptable(false, "Cannot connect an optional output to a non-optional input");
         }
         return this._producesAcceptableDatatype(other);
@@ -582,7 +599,7 @@ export class InputParameterTerminal extends BaseInputTerminal {
         const effectiveThisType = this.effectiveType(this.type);
         const otherType = ("type" in other && other.type) || "data";
         const effectiveOtherType = this.effectiveType(otherType);
-        if (!this.optional && other.optional) {
+        if (!this.optional && other.optional && !this.isPresenceGated()) {
             return new ConnectionAcceptable(false, `Cannot attach an optional output to a required parameter`);
         }
         const canAccept = effectiveThisType === effectiveOtherType;
