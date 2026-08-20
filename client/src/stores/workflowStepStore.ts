@@ -3,6 +3,7 @@ import { computed, del, ref, set } from "vue";
 import type { FieldDict, SampleSheetColumnDefinitions } from "@/api";
 import { isWorkflowInput } from "@/components/Workflow/constants";
 import type { CollectionTypeDescriptor } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
+import { expressionReferencesInput } from "@/components/Workflow/Editor/modules/whenExpression";
 import { getConnectionId, useConnectionStore } from "@/stores/workflowConnectionStore";
 import { assertDefined } from "@/utils/assertions";
 
@@ -269,7 +270,7 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
             stepToConnections(step).forEach((connection) => connectionStore.addConnection(connection));
         }
 
-        stepExtraInputs.value[step.id] = findStepExtraInputs(step);
+        stepExtraInputs.value[step.id] = findStepExtraInputs(step, steps.value);
 
         if (select) {
             stateStore.setStepMultiSelected(step.id, true);
@@ -305,7 +306,7 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
         );
 
         steps.value[step.id.toString()] = Object.freeze({ ...step, workflow_outputs });
-        stepExtraInputs.value[step.id] = findStepExtraInputs(step);
+        stepExtraInputs.value[step.id] = findStepExtraInputs(step, steps.value);
     }
 
     function updateStepValue<K extends keyof Step>(stepId: number, key: K, value: Step[K]) {
@@ -498,23 +499,71 @@ function stepToConnections(step: Step): Connection[] {
     return connections;
 }
 
-function findStepExtraInputs(step: Step) {
+function findStepExtraInputs(step: Step, steps: Steps): InputTerminalSource[] {
     const extraInputs: InputTerminalSource[] = [];
-    if (step.when !== undefined) {
-        Object.keys(step.input_connections).forEach((inputName) => {
-            if (!step.inputs.find((input) => input.name === inputName) && step.when?.includes(inputName)) {
-                const terminalSource = {
-                    name: inputName,
-                    optional: false,
-                    input_type: "parameter" as const,
-                    type: "boolean" as const,
-                    multiple: false,
-                    label: inputName,
-                    extensions: [],
-                };
-                extraInputs.push(terminalSource);
-            }
-        });
+    if (step.when === undefined) {
+        return extraInputs;
     }
+    Object.keys(step.input_connections ?? {}).forEach((inputName) => {
+        if (step.inputs.find((input) => input.name === inputName)) {
+            return;
+        }
+        if (!expressionReferencesInput(step.when, inputName)) {
+            return;
+        }
+        extraInputs.push(gatePortTerminalSource(step, inputName, steps));
+    });
     return extraInputs;
+}
+
+/**
+ * Shape a synthesized gate port after whatever feeds it.
+ *
+ * A probe carries a value into the expression and nothing consumes it, so its terminal
+ * has to accept what the source produces. Optionality matters as much as type: a probe
+ * fed by an optional input is otherwise a required parameter terminal, and the editor
+ * refuses the very connection the gate depends on.
+ */
+function gatePortTerminalSource(step: Step, inputName: string, steps: Steps): InputTerminalSource {
+    const links = step.input_connections[inputName];
+    const link = Array.isArray(links) ? links[0] : links;
+    const sourceStep = link ? steps[link.id.toString()] : undefined;
+    const output = sourceStep?.outputs.find((candidate) => candidate.name === link?.output_name);
+    const base = {
+        name: inputName,
+        label: inputName,
+        multiple: false,
+        optional: Boolean(output?.optional) || Boolean(sourceStep?.when),
+    };
+    if (!output || isParameterOutput(output)) {
+        return {
+            ...base,
+            input_type: "parameter",
+            type: output?.type ?? "boolean",
+            extensions: [],
+        };
+    }
+    if (isCollectionOutput(output)) {
+        return {
+            ...base,
+            input_type: "dataset_collection",
+            collection_types: output.collection_type ? [output.collection_type] : [],
+            fields: [],
+            column_definitions: null,
+            extensions: output.extensions,
+        };
+    }
+    return {
+        ...base,
+        input_type: "dataset",
+        extensions: output.extensions,
+    };
+}
+
+function isParameterOutput(output: OutputTerminalSource): output is ParameterOutput {
+    return "parameter" in output && Boolean(output.parameter);
+}
+
+function isCollectionOutput(output: OutputTerminalSource): output is CollectionOutput {
+    return "collection" in output && Boolean(output.collection);
 }
