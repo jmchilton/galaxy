@@ -533,6 +533,31 @@ describe("canAccept", () => {
             "Cannot connect an optional output to a non-optional input",
         );
     });
+    it("accepts optional data -> required data when the step is gated on that input", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.input !== null)");
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(true);
+        expect(dataIn.canAccept(optionalDataOut).reason).toBe(null);
+    });
+    it("rejects optional data -> required data when the gate reads a different input", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.unrelated !== null)");
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+        expect(dataIn.canAccept(optionalDataOut).reason).toBe(
+            "Cannot connect an optional output to a non-optional input",
+        );
+    });
+    it("rejects optional data -> required data when the gate runs the step while the input is absent", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.input === null)");
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+        expect(dataIn.canAccept(optionalDataOut).reason).toBe(
+            "Cannot connect an optional output to a non-optional input",
+        );
+    });
     it("rejects parameter to data connection", () => {
         const dataIn = terminals["simple data"]!["input"] as InputTerminal;
         // # type system would reject this, but test runtime too
@@ -560,6 +585,37 @@ describe("canAccept", () => {
         const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
             "output"
         ] as OutputParameterTerminal;
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(false);
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).reason).toBe(
+            "Cannot attach an optional output to a required parameter",
+        );
+    });
+    it("accepts optional parameter -> required parameter when the step is gated on that input", () => {
+        const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+        const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
+            "output"
+        ] as OutputParameterTerminal;
+        stepStore.updateStepValue(integerInputParam.stepId, "when", "$(inputs.advanced.advanced_threshold !== null)");
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(true);
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).reason).toBe(null);
+    });
+    it("rejects optional parameter -> required parameter when the gate reads a different input", () => {
+        const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+        const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
+            "output"
+        ] as OutputParameterTerminal;
+        stepStore.updateStepValue(integerInputParam.stepId, "when", "$(inputs.advanced.other !== null)");
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(false);
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).reason).toBe(
+            "Cannot attach an optional output to a required parameter",
+        );
+    });
+    it("rejects optional parameter -> required parameter when the gate runs the step while the input is absent", () => {
+        const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+        const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
+            "output"
+        ] as OutputParameterTerminal;
+        stepStore.updateStepValue(integerInputParam.stepId, "when", "$(inputs.advanced.advanced_threshold === null)");
         expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(false);
         expect(integerInputParam.canAccept(optionalIntegerOutputParam).reason).toBe(
             "Cannot attach an optional output to a required parameter",
@@ -997,5 +1053,42 @@ describe("producesAcceptableDatatype", () => {
         expect(producesAcceptableDatatype(testDatatypesMapper, ["txt"], ["ab1"]).reason).toBe(
             "Effective output data type(s) [ab1] do not appear to match input type(s) [txt].",
         );
+    });
+});
+
+describe("invalid connection marking", () => {
+    let terminals: { [index: string]: { [index: string]: ReturnType<typeof terminalFactory> } } = {};
+    let stepStore: ReturnType<typeof useWorkflowStepStore>;
+    let connectionStore: ReturnType<typeof useConnectionStore>;
+    beforeEach(() => {
+        setActivePinia(createPinia());
+        terminals = setupAdvanced();
+        stepStore = useWorkflowStepStore("mock-workflow");
+        connectionStore = useConnectionStore("mock-workflow");
+        Object.values(JSON.parse(JSON.stringify(advancedSteps)) as Steps).map((step) => {
+            stepStore.addStep(step);
+        });
+    });
+
+    function connectOptionalDataToRequiredInput() {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        dataIn.connect(optionalDataOut);
+        return { optionalDataOut, dataIn };
+    }
+
+    it("marks an ungated optional data connection invalid", () => {
+        const { optionalDataOut, dataIn } = connectOptionalDataToRequiredInput();
+        expect(dataIn.getInvalidConnectedTerminals()).toHaveLength(1);
+        expect(optionalDataOut.getInvalidConnectedTerminals()).toHaveLength(1);
+        expect(Object.keys(connectionStore.invalidConnections)).toHaveLength(1);
+    });
+
+    it("leaves a gated optional data connection alone", () => {
+        const { optionalDataOut, dataIn } = connectOptionalDataToRequiredInput();
+        stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.input !== null)");
+        expect(dataIn.getInvalidConnectedTerminals()).toHaveLength(0);
+        expect(optionalDataOut.getInvalidConnectedTerminals()).toHaveLength(0);
+        expect(Object.keys(connectionStore.invalidConnections)).toHaveLength(0);
     });
 });
