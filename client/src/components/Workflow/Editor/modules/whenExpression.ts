@@ -197,6 +197,10 @@ function isPathPrefix(targetPath: string[], referencedPath: string[]): boolean {
     return targetPath.every((segment, position) => segment === referencedPath[position]);
 }
 
+function isSamePath(targetPath: string[], referencedPath: string[]): boolean {
+    return targetPath.length === referencedPath.length && isPathPrefix(targetPath, referencedPath);
+}
+
 function connectionPath(inputName: string): string[] {
     return inputName.split("|");
 }
@@ -419,7 +423,9 @@ class PresenceEvaluator {
         if (path.dynamic) {
             throw new ParseFailure("dynamic inputs access");
         }
-        return isPathPrefix(this.targetPath, path.segments) ? null : UNKNOWN;
+        // Only the target itself is known to be null. Reading a property *of* the target
+        // would throw at run time rather than yield a value, so it stays indeterminate.
+        return isSamePath(this.targetPath, path.segments) ? null : UNKNOWN;
     }
 }
 

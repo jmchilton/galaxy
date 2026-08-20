@@ -106,6 +106,12 @@ describe("classifyWhenInputIsNull", () => {
     it("leaves other inputs indeterminate", () => {
         expect(classifyWhenInputIsNull("$(inputs.other !== null)", "cond|input1")).toBe("unknown");
     });
+
+    it("leaves a property read on the target indeterminate", () => {
+        // If `reference` is null this throws rather than evaluating either way.
+        expect(classifyWhenInputIsNull('$(inputs.reference.format != "bwa_mem2_index")', "reference")).toBe("unknown");
+        expect(classifyWhenInputIsNull('$(inputs.reference.format === "x")', "reference")).toBe("unknown");
+    });
 });
 
 describe("expressionGuardsInputPresence", () => {
@@ -126,6 +132,10 @@ describe("expressionGuardsInputPresence", () => {
 
     it("returns false without an expression", () => {
         expect(expressionGuardsInputPresence(undefined, "cond|input1")).toBe(false);
+    });
+
+    it("allows a gate that reads a property of the input", () => {
+        expect(expressionGuardsInputPresence('$(inputs.reference.format != "bwa_mem2_index")', "reference")).toBe(true);
     });
 });
 
