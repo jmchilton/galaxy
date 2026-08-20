@@ -100,7 +100,7 @@ describe("getCombinedStepInputs", () => {
     const stepWithWhen = createTestStep(1, {
         inputs: [regularInput],
         outputs: [],
-        when: "${check_value}",
+        when: "$(inputs.check_value)",
         inputConnections: {
             check_value: { output_name: "output", id: 0 },
         },
@@ -148,5 +148,70 @@ describe("getCombinedStepInputs", () => {
         const combinedInputs = getCombinedStepInputs(step, stepStore);
 
         expect(combinedInputs).toHaveLength(0);
+    });
+});
+
+describe("synthesized gate ports", () => {
+    beforeEach(() => {
+        setActivePinia(createPinia());
+    });
+
+    const optionalDataInput: NewStep = {
+        ...workflowStepZero,
+        id: 0,
+        type: "data_input",
+        outputs: [{ name: "output", extensions: ["input"], optional: true }],
+    };
+
+    const booleanParameterInput: NewStep = {
+        ...workflowStepZero,
+        id: 0,
+        type: "parameter_input",
+        outputs: [{ name: "output", optional: false, type: "boolean", parameter: true, multiple: false }],
+    } as NewStep;
+
+    function gatePort(source: NewStep, when: string, connectionName = "probe") {
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        stepStore.addStep(source);
+        const gated = stepStore.addStep(
+            createTestStep(1, {
+                when,
+                inputConnections: { [connectionName]: { output_name: "output", id: 0 } },
+            }),
+        );
+        return stepStore.getStepExtraInputs(gated.id);
+    }
+
+    it("types a data probe as a dataset terminal carrying its source's optionality", () => {
+        const ports = gatePort(optionalDataInput, "$(inputs.probe !== null)");
+        expect(ports).toHaveLength(1);
+        expect(ports[0]).toMatchObject({
+            name: "probe",
+            input_type: "dataset",
+            optional: true,
+            extensions: ["input"],
+        });
+    });
+
+    it("keeps a boolean parameter probe a boolean parameter", () => {
+        const ports = gatePort(booleanParameterInput, "$(inputs.probe)");
+        expect(ports).toHaveLength(1);
+        expect(ports[0]).toMatchObject({
+            name: "probe",
+            input_type: "parameter",
+            type: "boolean",
+            optional: false,
+        });
+    });
+
+    it("marks a probe fed by a gated step optional", () => {
+        const gatedSource: NewStep = { ...workflowStepZero, id: 0, when: "$(inputs.when)" };
+        const ports = gatePort(gatedSource, "$(inputs.probe !== null)");
+        expect(ports[0]).toMatchObject({ optional: true });
+    });
+
+    it("does not synthesize a port for a connection the expression only appears to name", () => {
+        const ports = gatePort(optionalDataInput, "$(inputs.probe !== null)", "pro");
+        expect(ports).toHaveLength(0);
     });
 });
