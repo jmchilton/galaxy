@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import (
     Any,
     TYPE_CHECKING,
-    Union,
+    TypedDict,
 )
 
 import yaml
@@ -53,6 +53,7 @@ from galaxy.jobs.runners.util.pykube_util import (
     Service,
     service_object_dict,
 )
+from galaxy.util import now
 from galaxy.util.bytesize import ByteSize
 
 if TYPE_CHECKING:
@@ -73,6 +74,12 @@ class RetryableDeleteJobState(JobState):
     def init_retryable_job(self, max_retries, attempts):
         self.max_retries: int = max_retries
         self.attempts: int = attempts
+
+
+class EntryPoint(TypedDict):
+    tool_port: int | None
+    domain: str
+    entry_path: str
 
 
 class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
@@ -102,7 +109,7 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             k8s_extra_job_envs=dict(map=str, default=None),
             k8s_tolerations=dict(map=str, default=None),
             k8s_galaxy_instance_id=dict(map=str),
-            k8s_timeout_seconds_job_deletion=dict(map=int, valid=lambda x: int > 0, default=30),
+            k8s_timeout_seconds_job_deletion=dict(map=int, valid=lambda x: int(x) > 0, default=30),
             k8s_job_api_version=dict(map=str, default=DEFAULT_JOB_API_VERSION),
             k8s_job_ttl_secs_after_finished=dict(map=int, valid=lambda x: x is None or int(x) >= 0, default=None),
             k8s_job_metadata=dict(map=str, default=None),
@@ -457,16 +464,15 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             ]
         return rules_spec
 
-    def __get_k8s_ingress_spec(self, ajs):
+    def __get_k8s_ingress_spec(self, ajs: AsynchronousJobState) -> dict[str, Any]:
         """The k8s spec template is nothing but a Ingress spec, except that it is nested and does not have an apiversion
         nor kind."""
         guest_ports = ajs.job_wrapper.guest_ports
+        entry_points: list[EntryPoint] = []
         if len(guest_ports) > 0:
-            entry_points = []
             configured_eps = [ep for ep in ajs.job_wrapper.get_job().interactivetool_entry_points if ep.configured]
             for entry_point in configured_eps:
-                # sending in self.app as `trans` since it's only used for `.security` so seems to work
-                entry_point_path = self.app.interactivetool_manager.get_entry_point_path(self.app, entry_point)
+                entry_point_path = self.app.interactivetool_manager.get_entry_point_path(entry_point)
                 if "?" in entry_point_path:
                     # Removing all the parameters from the ingress path, but they will still be in the database
                     # so the link that the user clicks on will still have them
@@ -476,14 +482,13 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                     entry_point_path = entry_point_path.split("?")[0]
                 entry_point_domain = f"{self.app.config.interactivetools_proxy_host}"
                 if entry_point.requires_domain:
-                    entry_point_subdomain = self.app.interactivetool_manager.get_entry_point_subdomain(
-                        self.app, entry_point
-                    )
+                    entry_point_subdomain = self.app.interactivetool_manager.get_entry_point_subdomain(entry_point)
                     entry_point_domain = f"{entry_point_subdomain}.{entry_point_domain}"
                     entry_point_path = "/"
                 entry_points.append(
                     {"tool_port": entry_point.tool_port, "domain": entry_point_domain, "entry_path": entry_point_path}
                 )
+        assert ajs.job_wrapper.tool is not None
         k8s_spec_template = {
             "metadata": {
                 "labels": {
@@ -510,8 +515,10 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 k8s_spec_template["spec"]["tls"] = [
                     {"hosts": [domain], "secretName": re.sub("[^a-z0-9-]", "-", domain)} for domain in domains
                 ]
-        if self.runner_params.get("k8s_interactivetools_ingress_annotations"):
-            new_ann = yaml.safe_load(self.runner_params.get("k8s_interactivetools_ingress_annotations"))
+        if k8s_interactivetools_ingress_annotations := self.runner_params.get(
+            "k8s_interactivetools_ingress_annotations"
+        ):
+            new_ann = yaml.safe_load(k8s_interactivetools_ingress_annotations)
             k8s_spec_template["metadata"]["annotations"].update(new_ann)
         return k8s_spec_template
 
@@ -595,8 +602,7 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             if self.__has_guest_ports(ajs.job_wrapper):
                 configured_eps = [ep for ep in ajs.job_wrapper.get_job().interactivetool_entry_points if ep.configured]
                 for entry_point in configured_eps:
-                    # sending in self.app as `trans` since it's only used for `.security` so seems to work
-                    entry_point_path = self.app.interactivetool_manager.get_entry_point_path(self.app, entry_point)
+                    entry_point_path = self.app.interactivetool_manager.get_entry_point_path(entry_point)
                     if "?" in entry_point_path:
                         # Removing all the parameters from the ingress path, but they will still be in the database
                         # so the link that the user clicks on will still have them
@@ -606,9 +612,7 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                         entry_point_path = entry_point_path.split("?")[0]
                     entry_point_domain = f"{self.app.config.interactivetools_proxy_host}"
                     if entry_point.requires_domain:
-                        entry_point_subdomain = self.app.interactivetool_manager.get_entry_point_subdomain(
-                            self.app, entry_point
-                        )
+                        entry_point_subdomain = self.app.interactivetool_manager.get_entry_point_subdomain(entry_point)
                         entry_point_domain = f"{entry_point_subdomain}.{entry_point_domain}"
                     envs.append({"name": "INTERACTIVETOOL_PORT", "value": str(entry_point.tool_port)})
                     envs.append({"name": "INTERACTIVETOOL_DOMAIN", "value": str(entry_point_domain)})
@@ -694,7 +698,7 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     def __get_k8s_job_name(self, prefix, job_wrapper):
         return f"{prefix}-{self.__force_label_conformity(job_wrapper.get_id_tag())}"
 
-    def check_watched_item(self, job_state: AsynchronousJobState) -> Union[AsynchronousJobState, None]:
+    def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
         """Checks the state of a job already submitted on k8s. Job state is an AsynchronousJobState"""
         jobs = find_job_object_by_name(self._pykube_api, job_state.job_id, self.runner_params["k8s_namespace"])
 
@@ -748,7 +752,7 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                         if self.runner_params.get("k8s_unschedulable_walltime_limit"):
                             creation_time_str = k8s_job.obj["metadata"].get("creationTimestamp")
                             creation_time = datetime.strptime(creation_time_str, "%Y-%m-%dT%H:%M:%SZ")
-                            elapsed_seconds = (datetime.utcnow() - creation_time).total_seconds()
+                            elapsed_seconds = (now() - creation_time).total_seconds()
                             if elapsed_seconds > self.runner_params["k8s_unschedulable_walltime_limit"]:
                                 return self._handle_unschedulable_job(k8s_job, job_state)
                             else:
@@ -1089,7 +1093,7 @@ class KubernetesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         job_state: "JobState",
         exception: bool = False,
         message: str = "Job failed",
-        full_status: Union[dict[str, Any], None] = None,
+        full_status: dict[str, Any] | None = None,
     ) -> None:
         log.debug("PP Getting into fail_job in k8s runner")
         gxy_job = job_state.job_wrapper.get_job()

@@ -3,7 +3,7 @@ import axios from "axios";
 import { getAppRoot } from "@/onload/loadConfig";
 import { rethrowSimple } from "@/utils/simple-error";
 
-export async function updateToolFormData(tool_id, tool_uuid, tool_version, history_id, inputs) {
+export async function updateToolFormData(tool_id, tool_uuid, tool_version, history_id, inputs, optionsPagination) {
     const current_state = {
         tool_id: tool_id,
         tool_uuid: tool_uuid,
@@ -11,7 +11,10 @@ export async function updateToolFormData(tool_id, tool_uuid, tool_version, histo
         inputs: inputs,
         history_id: history_id,
     };
-    const url = `${getAppRoot()}api/tools/${tool_uuid || tool_id}/build`;
+    if (optionsPagination) {
+        current_state.options_pagination = optionsPagination;
+    }
+    const url = `${getAppRoot()}api/tools/${tool_id || tool_uuid}/build`;
     try {
         const { data } = await axios.post(url, current_state);
         return data;
@@ -21,7 +24,7 @@ export async function updateToolFormData(tool_id, tool_uuid, tool_version, histo
 }
 
 /** Tools data request helper **/
-export async function getToolFormData(tool_id, tool_version, job_id, history_id) {
+export async function getToolFormData(tool_id, tool_version, job_id, history_id, tool_uuid) {
     let url = "";
     const data = {};
 
@@ -40,6 +43,7 @@ export async function getToolFormData(tool_id, tool_version, job_id, history_id)
     }
     history_id && (data["history_id"] = history_id);
     tool_version && (data["tool_version"] = tool_version);
+    tool_uuid && (data["tool_uuid"] = tool_uuid);
 
     // attach data to request url
     if (Object.entries(data).length != 0) {
@@ -54,10 +58,4 @@ export async function getToolFormData(tool_id, tool_version, job_id, history_id)
     } catch (e) {
         rethrowSimple(e);
     }
-}
-
-export async function submitJob(jobDetails) {
-    const url = `${getAppRoot()}api/tools`;
-    const { data } = await axios.post(url, jobDetails);
-    return data;
 }

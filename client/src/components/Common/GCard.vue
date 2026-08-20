@@ -117,6 +117,11 @@ interface Props {
      */
     selected?: boolean;
 
+    /** When true, dims the card when it is not selected
+     * @default false
+     */
+    dimWhenUnselected?: boolean;
+
     /** Tooltip text for select checkbox
      * @default ""
      */
@@ -181,6 +186,16 @@ interface Props {
      * @default false
      */
     highlighted?: boolean;
+
+    /** Whether the card is disabled (non-interactive, dimmed appearance)
+     * @default false
+     */
+    disabled?: boolean;
+
+    /** Tooltip text to show when the card is disabled
+     * @default undefined
+     */
+    disabledTitle?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -213,6 +228,8 @@ const props = withDefaults(defineProps<Props>(), {
     updateTimeIcon: () => faEdit,
     updateTimeTitle: "Last updated",
     highlighted: false,
+    disabled: false,
+    disabledTitle: undefined,
 });
 
 /**
@@ -263,6 +280,17 @@ const emit = defineEmits<{
 
 const bookmarkLoading = ref(false);
 
+// Track open state of the extra-actions dropdown so the card can raise its
+// stacking context while open. Without this, the open menu can visually drop
+// over the next card row but get pixel-intercepted by that card's primary
+// action buttons (see issue surfaced by Selenium test_delete_and_undelete_history).
+const extraActionsOpen = ref(false);
+
+function onExtraDropdown(open: boolean) {
+    extraActionsOpen.value = open;
+    emit("dropdown", open);
+}
+
 /**
  * Toggles bookmark status with loading state
  */
@@ -288,6 +316,9 @@ const getActionId = (cardId: string, actionId: string) => `g-card-action-${actio
 const allowedTitleLines = computed(() => props.titleNLines);
 
 function onKeyDown(event: KeyboardEvent) {
+    if (props.disabled) {
+        return;
+    }
     if ((props.clickable && event.key === "Enter") || event.key === " ") {
         event.stopPropagation();
         emit("click", event);
@@ -302,18 +333,22 @@ function onKeyDown(event: KeyboardEvent) {
     <component
         :is="'div'"
         :id="`g-card-${props.id}`"
-        :role="props.clickable ? 'button' : undefined"
+        :role="props.clickable && !props.disabled ? 'button' : undefined"
         class="g-card pt-0 px-1 mb-2"
         :class="[
             { 'g-card-grid-view': gridView },
             { 'g-card-selected': selected },
             { 'g-card-current': current },
             { 'g-card-published': published },
-            { 'g-card-clickable': props.clickable },
+            { 'g-card-clickable': props.clickable && !props.disabled },
+            { 'g-card-disabled': props.disabled },
+            { 'g-card-dim': props.dimWhenUnselected && !props.selected },
+            { 'g-card-dropdown-open': extraActionsOpen },
             containerClass,
         ]"
-        :tabindex="props.clickable ? 0 : undefined"
-        @click="props.clickable ? emit('click', $event) : undefined"
+        :tabindex="props.clickable && !props.disabled ? 0 : undefined"
+        :title="props.disabled ? props.disabledTitle : undefined"
+        @click="props.clickable && !props.disabled ? emit('click', $event) : undefined"
         @keydown="onKeyDown">
         <div
             :id="`g-card-content-${props.id}`"
@@ -324,13 +359,13 @@ function onKeyDown(event: KeyboardEvent) {
                     <div
                         :id="`g-card-${props.id}-header`"
                         class="d-flex flex-gapy-1 flex-gapx-1 justify-content-between">
-                        <div class="d-flex flex-column">
+                        <div class="d-flex flex-column flex-grow-1 g-card-title-section">
                             <div class="d-flex">
                                 <div v-if="selectable">
                                     <slot name="select">
                                         <BFormCheckbox
                                             :id="getElementId(props.id, 'select')"
-                                            v-b-tooltip.hover.noninteractive
+                                            v-g-tooltip.hover
                                             :checked="selected"
                                             :title="props.selectTitle || localize('Select for bulk actions')"
                                             @change="emit('select')" />
@@ -343,7 +378,6 @@ function onKeyDown(event: KeyboardEvent) {
                                             :id="getElementId(props.id, 'title')"
                                             bold
                                             inline
-                                            class="d-block"
                                             :size="props.titleSize">
                                             <FontAwesomeIcon
                                                 v-if="props.titleIcon?.icon"
@@ -356,7 +390,7 @@ function onKeyDown(event: KeyboardEvent) {
                                             <BLink
                                                 v-if="typeof title === 'object'"
                                                 :id="getElementId(props.id, 'title-link')"
-                                                v-b-tooltip.hover.noninteractive
+                                                v-g-tooltip.hover
                                                 :title="localize(title.title)"
                                                 :class="{ 'g-card-title-truncate': props.titleNLines }"
                                                 @click.stop.prevent="title.handler">
@@ -365,7 +399,7 @@ function onKeyDown(event: KeyboardEvent) {
                                             <template v-else>
                                                 <span
                                                     :id="getElementId(props.id, 'title-text')"
-                                                    v-b-tooltip.hover.noninteractive
+                                                    v-g-tooltip.onoverflow
                                                     :title="localize(title)"
                                                     :class="{ 'g-card-title-truncate': props.titleNLines }">
                                                     {{ title }}
@@ -376,7 +410,7 @@ function onKeyDown(event: KeyboardEvent) {
                                                 <BButton
                                                     v-if="props.canRenameTitle"
                                                     :id="getElementId(props.id, 'rename')"
-                                                    v-b-tooltip.hover.noninteractive
+                                                    v-g-tooltip.hover
                                                     class="inline-icon-button g-card-rename"
                                                     variant="link"
                                                     :title="localize(props.renameTitle)"
@@ -396,7 +430,7 @@ function onKeyDown(event: KeyboardEvent) {
                                             v-if="badge.visible ?? true"
                                             :id="getBadgeId(props.id, badge.id)"
                                             :key="badge.id"
-                                            v-b-tooltip.hover.noninteractive
+                                            v-g-tooltip.hover
                                             :pill="badge.type !== 'badge'"
                                             class="mt-1"
                                             :class="{
@@ -416,7 +450,7 @@ function onKeyDown(event: KeyboardEvent) {
                             </div>
                         </div>
 
-                        <div class="align-items-start d-flex flex-row-reverse flex-wrap gap-1">
+                        <div class="align-items-start d-flex flex-row-reverse flex-wrap gap-1 flex-shrink-0">
                             <div>
                                 <slot v-if="props.showBookmark" name="bookmark">
                                     <BButton
@@ -427,7 +461,7 @@ function onKeyDown(event: KeyboardEvent) {
                                                 props.bookmarked ? 'bookmark-remove' : 'bookmark-add',
                                             )
                                         "
-                                        v-b-tooltip.hover.noninteractive
+                                        v-g-tooltip.hover
                                         class="inline-icon-button"
                                         variant="link"
                                         :title="props.bookmarked ? 'Remove bookmark' : 'Add to bookmarks'"
@@ -437,7 +471,7 @@ function onKeyDown(event: KeyboardEvent) {
                                     <BButton
                                         v-else
                                         :id="getElementId(props.id, 'bookmark-loading')"
-                                        v-b-tooltip.hover.noninteractive
+                                        v-g-tooltip.hover
                                         class="inline-icon-button"
                                         variant="link"
                                         :title="localize('Bookmarking...')"
@@ -453,14 +487,14 @@ function onKeyDown(event: KeyboardEvent) {
                                             props.extraActions.some((ea) => ea.visible ?? true)
                                         "
                                         :id="getElementId(props.id, 'extra-actions')"
-                                        v-b-tooltip.hover.noninteractive
+                                        v-g-tooltip.hover
                                         right
                                         no-caret
                                         title="More options"
                                         toggle-class="inline-icon-button"
                                         variant="link"
-                                        @show="() => emit('dropdown', true)"
-                                        @hide="() => emit('dropdown', false)">
+                                        @show="() => onExtraDropdown(true)"
+                                        @hide="() => onExtraDropdown(false)">
                                         <template v-slot:button-content>
                                             <FontAwesomeIcon :icon="faCaretDown" fixed-width />
                                         </template>
@@ -496,7 +530,7 @@ function onKeyDown(event: KeyboardEvent) {
                                                 v-if="badge.visible ?? true"
                                                 :id="getBadgeId(props.id, badge.id)"
                                                 :key="badge.id"
-                                                v-b-tooltip.hover.top.noninteractive
+                                                v-g-tooltip.hover.top
                                                 :pill="badge.type !== 'badge'"
                                                 :class="{
                                                     'outline-badge': badge.variant?.includes('outline'),
@@ -526,7 +560,7 @@ function onKeyDown(event: KeyboardEvent) {
                                                 v-if="(indicator.visible ?? true) && !indicator.disabled"
                                                 :id="getIndicatorId(props.id, indicator.id)"
                                                 :key="`${indicator.id}-button`"
-                                                v-b-tooltip.hover.noninteractive
+                                                v-g-tooltip.hover
                                                 class="inline-icon-button"
                                                 :title="localize(indicator.title)"
                                                 :variant="indicator.variant || 'outline-secondary'"
@@ -546,7 +580,7 @@ function onKeyDown(event: KeyboardEvent) {
                                                 v-else-if="(indicator.visible ?? true) && indicator.disabled"
                                                 :id="getIndicatorId(props.id, indicator.id)"
                                                 :key="`${indicator.id}-icon`"
-                                                v-b-tooltip.hover.noninteractive
+                                                v-g-tooltip.hover
                                                 :title="localize(indicator.title)"
                                                 :icon="indicator.icon"
                                                 :size="indicator.size || 'sm'"
@@ -595,7 +629,7 @@ function onKeyDown(event: KeyboardEvent) {
                                 :id="`g-card-${props.id}-update-time`"
                                 class="align-self-end mt-1">
                                 <BBadge
-                                    v-b-tooltip.hover.noninteractive
+                                    v-g-tooltip.hover
                                     pill
                                     variant="secondary"
                                     :title="localize(props.updateTimeTitle)">
@@ -618,7 +652,7 @@ function onKeyDown(event: KeyboardEvent) {
                                             v-if="sa.visible ?? true"
                                             :id="getActionId(props.id, sa.id)"
                                             :key="sa.id"
-                                            v-b-tooltip.hover.noninteractive
+                                            v-g-tooltip.hover
                                             :disabled="sa.disabled"
                                             :title="localize(sa.title)"
                                             :variant="sa.variant || 'outline-primary'"
@@ -648,7 +682,7 @@ function onKeyDown(event: KeyboardEvent) {
                                                 v-if="pa.visible ?? true"
                                                 :id="getActionId(props.id, pa.id)"
                                                 :key="pa.id"
-                                                v-b-tooltip.hover.noninteractive
+                                                v-g-tooltip.hover
                                                 class="mt-1"
                                                 :disabled="pa.disabled"
                                                 :title="localize(pa.title)"
@@ -688,6 +722,20 @@ function onKeyDown(event: KeyboardEvent) {
     container: g-card / inline-size;
     width: 100%;
 
+    // While the extra-actions dropdown is open, raise this card above its
+    // siblings so the menu does not get pixel-intercepted by a neighboring
+    // card's primary action buttons drawn at the same screen coordinates,
+    // and relax the content's overflow:hidden so popper-positioned menu
+    // items (especially when flipped above the toggle) are not clipped.
+    &.g-card-dropdown-open {
+        position: relative;
+        z-index: 2;
+
+        .g-card-content {
+            overflow: visible;
+        }
+    }
+
     &.g-card-grid-view {
         width: calc(100% / 3);
 
@@ -705,6 +753,19 @@ function onKeyDown(event: KeyboardEvent) {
         border-color: $brand-primary;
     }
 
+    &.g-card-dim .g-card-content {
+        filter: saturate(0.5);
+        opacity: 0.7;
+        transition:
+            filter 0.15s ease,
+            opacity 0.15s ease;
+    }
+
+    &.g-card-dim:hover .g-card-content {
+        filter: none;
+        opacity: 1;
+    }
+
     &.g-card-current .g-card-content {
         background-color: $brand-light;
         border-width: 2px;
@@ -720,6 +781,15 @@ function onKeyDown(event: KeyboardEvent) {
         box-shadow: 0 0 0 0.2rem transparentize($brand-primary, 0.75);
     }
 
+    &.g-card-disabled {
+        cursor: default;
+
+        .g-card-content {
+            filter: saturate(0.3);
+            opacity: 0.5;
+        }
+    }
+
     &.g-card-clickable {
         cursor: pointer;
 
@@ -731,17 +801,24 @@ function onKeyDown(event: KeyboardEvent) {
                 background-color: lighten($brand-light, 0.5);
             }
         }
+
+        // A current row that's also focused stays on its "current" blue
+        // styling instead of swapping to the gray focus ring — keeps the
+        // just-clicked row visually selected. Non-current focused rows still
+        // get the gray ring for keyboard-navigation accessibility.
+        &.g-card-current:focus-within .g-card-content {
+            border-color: $brand-primary;
+            background-color: $brand-light;
+            box-shadow: none;
+        }
+    }
+
+    .g-card-title-section {
+        min-width: 50%;
     }
 
     .g-card-rename {
-        visibility: hidden;
-    }
-
-    &:hover,
-    &:focus-within {
-        .g-card-rename {
-            visibility: visible;
-        }
+        align-self: flex-start;
     }
 
     .g-card-content {

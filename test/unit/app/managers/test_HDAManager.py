@@ -231,8 +231,7 @@ class TestHDAManager(HDATestCase):
             )
 
         self.log(
-            "a copy of a restricted dataset in another users history should be inaccessible even to "
-            "the histories owner"
+            "a copy of a restricted dataset in another users history should be inaccessible even to the histories owner"
         )
         history2 = self.history_manager.create(name="history2", user=non_owner)
         self.trans.set_history(history2)
@@ -446,7 +445,6 @@ class TestHDASerializer(HDATestCase):
         assert serialized["type"] == "file"
 
         assert isinstance(serialized["url"], str)
-        assert isinstance(serialized["urls"], dict)
         assert isinstance(serialized["download_url"], str)
 
         self.log("serialized should jsonify well")
@@ -479,6 +477,27 @@ class TestHDASerializer(HDATestCase):
         self.app.config.expose_dataset_path = True
         serialized = self.hda_serializer.serialize(hda, keys, user=self.admin_user)
         assert "file_name" in serialized
+
+    def test_serialize_metadata_skips_file_path_for_purged(self):
+        # Purged datasets have no object store path, so metadata serialization must skip it.
+        assert self.app.config.expose_dataset_path
+
+        def _serialize(purged):
+            metadata_file = model.MetadataFile(name="bam_index")
+            metadata_file.get_file_name = mock.Mock(return_value="/objects/bam_index.dat")
+            item = mock.MagicMock(purged=purged)
+            item.metadata.spec.items.return_value = [("bam_index", {})]
+            item.metadata.get.return_value = metadata_file
+            result = self.hda_serializer.serialize_metadata(item, "metadata")
+            return metadata_file.get_file_name, result
+
+        get_file_name, result = _serialize(purged=True)
+        get_file_name.assert_not_called()
+        assert "bam_index" not in result
+
+        get_file_name, result = _serialize(purged=False)
+        get_file_name.assert_called_once()
+        assert result["bam_index"] == "/objects/bam_index.dat"
 
     def test_serializing_inaccessible(self):
         owner = self.user_manager.create(**user2_data)

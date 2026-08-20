@@ -5,6 +5,7 @@ from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
+from .upload_activity_helpers import UsesUploadActivity
 
 NEW_HISTORY_NAME = "New History Name"
 HISTORY_PANEL_AXE_IMPACT_LEVEL = "moderate"
@@ -13,7 +14,7 @@ HISTORY_PANEL_AXE_IMPACT_LEVEL = "moderate"
 HISTORY_PANEL_VIOLATION_EXCEPTIONS = ["heading-order", "label"]
 
 
-class TestHistoryPanel(SeleniumTestCase):
+class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
     ensure_registered = True
 
     @selenium_only("Not yet migrated to support Playwright backend")
@@ -156,10 +157,9 @@ class TestHistoryPanel(SeleniumTestCase):
             close_btn.click()
             self.sleep_for(self.wait_types.UX_RENDER)
 
-    @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
     def test_refresh_preserves_state(self):
-        self.perform_upload(self.get_filename("1.txt"))
+        self.upload_context("local-file").stage_local_file(self.get_filename("1.txt")).start()
         self.wait_for_history()
 
         # Open the details, verify they are open and do a refresh.
@@ -175,7 +175,7 @@ class TestHistoryPanel(SeleniumTestCase):
         assert self.history_panel_item_showing_details(hid=1)
 
         # Close the detailed display, refresh, and ensure they are still closed.
-        self.history_panel_click_item_title(hid=1, wait=False)
+        self.history_panel_click_item_title(hid=1, wait=True)
         assert not self.history_panel_item_showing_details(hid=1)
 
         self._refresh()

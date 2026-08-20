@@ -18,7 +18,6 @@ from queue import (
 from typing import (
     Any,
     Generic,
-    Optional,
     TYPE_CHECKING,
     TypeVar,
     Union,
@@ -358,8 +357,8 @@ class BaseJobRunner:
     def get_work_dir_outputs(
         self,
         job_wrapper: "MinimalJobWrapper",
-        job_working_directory: Optional[str] = None,
-        tool_working_directory: Optional[str] = None,
+        job_working_directory: str | None = None,
+        tool_working_directory: str | None = None,
     ):
         """
         Returns list of pairs (source_file, destination) describing path
@@ -425,6 +424,7 @@ class BaseJobRunner:
 
     def _walk_dataset_outputs(self, job: model.Job):
         for dataset_assoc in job.output_datasets + job.output_library_datasets:
+            assert dataset_assoc.dataset.dataset is not None
             for dataset in (
                 dataset_assoc.dataset.dataset.history_associations + dataset_assoc.dataset.dataset.library_associations
             ):
@@ -483,10 +483,10 @@ class BaseJobRunner:
                 venv = GALAXY_VENV_TEMPLATE % job_wrapper.galaxy_virtual_env
                 external_metadata_script = f"{lib_adjust} {venv} {external_metadata_script}"
                 if resolve_requirements:
-                    dependency_shell_commands = (
-                        self.app.datatypes_registry.set_external_metadata_tool.build_dependency_shell_commands(
-                            job_directory=job_wrapper.working_directory
-                        )
+                    set_metadata_tool = self.app.datatypes_registry.set_external_metadata_tool
+                    assert set_metadata_tool is not None
+                    dependency_shell_commands = set_metadata_tool.build_dependency_shell_commands(
+                        job_directory=job_wrapper.working_directory
                     )
                     if dependency_shell_commands:
                         if isinstance(dependency_shell_commands, list):
@@ -542,10 +542,10 @@ class BaseJobRunner:
     def _find_container(
         self,
         job_wrapper: "MinimalJobWrapper",
-        compute_working_directory: Optional[str] = None,
-        compute_tool_directory: Optional[str] = None,
-        compute_job_directory: Optional[str] = None,
-        compute_tmp_directory: Optional[str] = None,
+        compute_working_directory: str | None = None,
+        compute_tool_directory: str | None = None,
+        compute_job_directory: str | None = None,
+        compute_tmp_directory: str | None = None,
     ):
         job_directory_type = "galaxy" if compute_working_directory is None else "pulsar"
         if not compute_working_directory:
@@ -602,7 +602,7 @@ class BaseJobRunner:
         job_state: "JobState",
         exception: bool = False,
         message: str = "Job failed",
-        full_status: Union[dict[str, Any], None] = None,
+        full_status: dict[str, Any] | None = None,
     ) -> None:
         job = job_state.job_wrapper.get_job()
         if job_state.stop_job and job.state != model.Job.states.NEW:
@@ -622,7 +622,7 @@ class BaseJobRunner:
                 fail_message, tool_stdout=tool_stdout, tool_stderr=tool_stderr, exception=exception
             )
 
-    def mark_as_resubmitted(self, job_state: "JobState", info: Optional[str] = None):
+    def mark_as_resubmitted(self, job_state: "JobState", info: str | None = None):
         job_state.job_wrapper.mark_as_resubmitted(info=info)
         if not self.app.config.track_jobs_in_database:
             assert self.app.job_manager.job_handler.dispatcher
@@ -786,7 +786,7 @@ class AsynchronousJobState(JobState):
         job_destination: JobDestination,
         *,
         files_dir=None,
-        job_id: Union[str, None] = None,
+        job_id: str | None = None,
         job_file=None,
         output_file=None,
         error_file=None,
@@ -797,7 +797,7 @@ class AsynchronousJobState(JobState):
         self.old_state = None
         self._running = False
         self.check_count = 0
-        self.start_time: Union[datetime.datetime, None] = None
+        self.start_time: datetime.datetime | None = None
 
         # job_id is the DRM's job id, not the Galaxy job id
         self.job_id = job_id
@@ -945,10 +945,10 @@ class AsynchronousJobRunner(BaseJobRunner, Monitors, Generic[T]):
         self.watched = new_watched
 
     # Subclasses should implement this unless they override check_watched_items all together.
-    def check_watched_item(self, job_state: T) -> Union[T, None]:
+    def check_watched_item(self, job_state: T) -> T | None:
         raise NotImplementedError()
 
-    def _collect_job_output(self, job_id: int, external_job_id: Optional[str], job_state: JobState):
+    def _collect_job_output(self, job_id: int, external_job_id: str | None, job_state: JobState):
         # wait for the files to appear
         which_try = 0
         collect_output_success = True

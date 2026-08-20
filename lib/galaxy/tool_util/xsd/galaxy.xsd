@@ -1399,6 +1399,7 @@ that at least one of the assumptions of the test is not met. This is most useful
       <xs:element name="repeat" type="TestRepeat"/>
       <xs:element name="conditional" type="TestConditional"/>
       <xs:element name="section" type="TestSection"/>
+      <xs:element name="credentials" type="TestCredentials"/>
       <xs:element name="output" type="TestOutput" minOccurs="0" maxOccurs="unbounded"/>
       <xs:element name="output_collection" type="TestOutputCollection"/>
       <xs:element name="assert_command" type="TestAssertions">
@@ -1439,6 +1440,72 @@ $assertions
       </xs:element>
     </xs:choice>
   </xs:group>
+  <xs:complexType name="TestCredentials">
+    <xs:annotation>
+      <xs:documentation xml:lang="en"><![CDATA[
+
+Specify test credentials for a service that requires authentication.
+This allows tool tests to provide credential values (variables and secrets)
+that will be injected as environment variables during test execution.
+
+This is intended for use with public test accounts/credentials only.
+
+### Example
+
+```xml
+<test>
+    <credentials name="ega_credentials">
+        <variable name="ega_username" value="test_user" />
+        <secret name="ega_password" value="test_password" />
+    </credentials>
+    <param name="input" value="test.txt" />
+    <output name="output" file="expected.txt" />
+</test>
+```
+
+]]></xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="variable" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="name" type="xs:string" use="required">
+            <xs:annotation>
+              <xs:documentation xml:lang="en">Name of the credential variable (must match a variable defined in the tool's requirements/credentials)</xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+          <xs:attribute name="value" type="xs:string" use="required">
+            <xs:annotation>
+              <xs:documentation xml:lang="en">Test value for this variable</xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="secret" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="name" type="xs:string" use="required">
+            <xs:annotation>
+              <xs:documentation xml:lang="en">Name of the credential secret (must match a secret defined in the tool's requirements/credentials)</xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+          <xs:attribute name="value" type="xs:string" use="required">
+            <xs:annotation>
+              <xs:documentation xml:lang="en">Test value for this secret (use public test credentials only)</xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string" use="required">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Name of the credentials group (must match the name defined in tool's requirements/credentials)</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="version" type="xs:string" default="1.0">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Version of the credentials definition (must match the version defined in tool's requirements/credentials). Defaults to "1.0".</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
   <xs:complexType name="TestSection">
     <xs:annotation>
       <xs:documentation xml:lang="en"><![CDATA[
@@ -2465,7 +2532,7 @@ $attribute_list::5]]></xs:documentation>
         <xs:annotation>
           <xs:documentation xml:lang="en"><![CDATA[Asserts the specified output contains a line matching the
 regular expression specified by the argument expression. If n is given
-the assertion checks for exactly n occurences.
+the assertion checks for exactly n occurrences.
 
 $attribute_list::5]]></xs:documentation>
         </xs:annotation>
@@ -2586,8 +2653,8 @@ $attribute_list::5]]></xs:documentation>
         <xs:annotation>
           <xs:documentation xml:lang="en"><![CDATA[Asserts the specified output contains text matching the
 regular expression specified by the argument expression.
-If n is given the assertion checks for exacly n (nonoverlapping)
-occurences.
+If n is given the assertion checks for exactly n (nonoverlapping)
+occurrences.
 
 $attribute_list::5]]></xs:documentation>
         </xs:annotation>
@@ -2648,7 +2715,7 @@ number (``n``) of columns.
 
 For instance, ``<has_n_columns n="3"/>``. The assertion tests only the first line.
 Number of columns can optionally also be specified with ``delta``. Alternatively the
-range of expected occurences can be specified by ``min`` and/or ``max``.
+range of expected occurrences can be specified by ``min`` and/or ``max``.
 
 Optionally a column separator (``sep``, default is ``       ``) `and comment character(s)
 can be specified (``comment``, default is empty string). The first non-comment
@@ -2924,7 +2991,7 @@ For example:
 ```
 
 Alternatively to ``n`` and ``delta`` also the ``min`` and ``max`` attributes
-can be used to specify the range of the expected number of occurences.
+can be used to specify the range of the expected number of occurrences.
 With ``negate`` the result of the assertion can be inverted.
 
 $attribute_list::5]]></xs:documentation>
@@ -2976,7 +3043,7 @@ $attribute_list::5]]></xs:documentation>
         <xs:annotation>
           <xs:documentation xml:lang="en"><![CDATA[Assert if the XML file contains element(s) or tag(s) with the specified
 [XPath-like ``path``](https://lxml.de/xpathxslt.html).  If ``n`` and ``delta``
-or ``min`` and ``max`` are given also the number of occurences is checked.
+or ``min`` and ``max`` are given also the number of occurrences is checked.
 
 ```xml
 <assert_contents>
@@ -2986,7 +3053,7 @@ or ``min`` and ``max`` are given also the number of occurences is checked.
 </assert_contents>
 ```
 
-With ``negate="true"`` the outcome of the assertions wrt the precence and number
+With ``negate="true"`` the outcome of the assertions wrt the presence and number
 of ``path`` can be negated. If there are any sub assertions then check them against
 
 - the content of the attribute ``attribute``
@@ -3001,7 +3068,7 @@ of ``path`` can be negated. If there are any sub assertions then check them agai
 ```
 
 Sub-assertions are not subject to the ``negate`` attribute of ``xml_element``.
-If ``all`` is ``true`` then the sub assertions are checked for all occurences.
+If ``all`` is ``true`` then the sub assertions are checked for all occurrences.
 
 Note that all other XML assertions can be expressed by this assertion (Galaxy
 also implements the other assertions by calling this one).

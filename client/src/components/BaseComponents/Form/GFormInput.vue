@@ -8,9 +8,10 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: "input", value: string | null): void;
     (e: "keydown", event: KeyboardEvent): void;
+    (e: "blur", event: FocusEvent): void;
 }>();
 
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputElement = ref<HTMLInputElement | null>(null);
 
 const inputValue = computed({
     get() {
@@ -22,16 +23,26 @@ const inputValue = computed({
 });
 
 function focus() {
-    inputRef.value?.focus();
+    inputElement.value?.focus();
+}
+
+function getInputElement() {
+    return inputElement.value;
 }
 
 defineExpose({
     focus,
+    getInputElement,
 });
 </script>
 
 <template>
-    <input ref="inputRef" v-model="inputValue" class="g-form-input" @keydown="(event) => emit('keydown', event)" />
+    <input
+        ref="inputElement"
+        v-model="inputValue"
+        class="g-form-input"
+        @keydown="(event) => emit('keydown', event)"
+        @blur="(event) => emit('blur', event)" />
 </template>
 
 <style scoped lang="scss">

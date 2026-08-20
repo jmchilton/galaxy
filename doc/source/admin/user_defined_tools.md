@@ -77,7 +77,7 @@ While the structure is similar, several key differences exist:
 To enable this feature:
 
 1. Set `enable_beta_tool_formats: true` in your Galaxy configuration.
-2. Create a role of type `Custom Tool Execution` in the admin user interdace.
+2. Create a role of type `Custom Tool Execution` in the admin user interface.
 3. Assign users or groups to this role.
 
 ## Sharing User-Defined Tools
@@ -88,10 +88,70 @@ These tools can also be exported to disk and loaded like regular tools, enabling
 
 ## Security considerations
 
-User-defined tools share the same security risks as interactive tools..
+User-defined tools share the same security risks as interactive tools.
 See https://training.galaxyproject.org/training-material/topics/admin/tutorials/interactive-tools/tutorial.html#securing-interactive-tools for an extended discussion,
 and see https://github.com/galaxyproject/galaxy/blob/dev/test/integration/embedded_pulsar_job_conf.yml#L29 for a simple example that uses embedded pulsar to isolate mounts and disables network access.
 While the feature is in beta we recommend that only trusted users are allowed to use this feature.
+
+## Supported input parameter types
+
+The YAML authoring layer exposes a deliberately narrow subset of Galaxy's
+parameter model. The JSON schema published to the editor (`ToolSourceSchema.json`)
+is generated from this subset and rejects any unknown fields via
+`extra="forbid"`, so unsupported attributes fail fast at parse time.
+
+Supported leaf parameter types:
+
+| Type              | Supported fields (beyond `name`, `label`, `help`, `optional`)          |
+| ----------------- | ---------------------------------------------------------------------- |
+| `boolean`         | `value`                                                                |
+| `integer`         | `value`, `min`, `max`, `validators` (`in_range` only)                  |
+| `float`           | `value`, `min`, `max`, `validators` (`in_range` only)                  |
+| `text`            | `value`, `area`, `validators` (`length`, `regex`, `empty_field`)       |
+| `select`          | `options` (static, non-empty), `multiple`, `validators` (`no_options`) |
+| `color`           | `value`                                                                |
+| `data`            | `format`, `multiple`, `min`, `max`                                     |
+| `data_collection` | `collection_type`, `format`                                            |
+
+Supported structural groups: `conditional`, `repeat`, `section`. These recurse
+into the supported leaf set.
+
+Example using several supported types:
+
+```yaml
+class: GalaxyUserTool
+id: example_tool
+version: "0.1"
+name: Example
+container: busybox
+shell_command: echo "$(inputs.greeting) $(inputs.count)"
+inputs:
+  - name: greeting
+    type: select
+    options:
+      - { label: Hi, value: hi, selected: true }
+      - { label: Hello, value: hello, selected: false }
+  - name: count
+    type: integer
+    value: 1
+    min: 1
+    max: 10
+  - name: extras
+    type: repeat
+    min: 0
+    parameters:
+      - name: input_file
+        type: data
+        format: txt
+outputs: []
+```
+
+Types that exist in the XML tool vocabulary but are **not** supported in YAML
+user-defined tools and will be rejected at parse time: `hidden`, `drill_down`,
+`data_column`, `genomebuild`, `group_tag`, `baseurl`, `rules`, `directory`.
+XML-only fields such as `truevalue`, `falsevalue`, `argument`, `is_dynamic`,
+`hidden` (as a field), and `parameter_type` are likewise rejected on any
+parameter.
 
 ## Limitations
 

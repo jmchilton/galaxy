@@ -21,7 +21,6 @@ from http.server import (
     HTTPServer,
 )
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 import pytest
@@ -119,8 +118,8 @@ class MockHttpServer:
 
     def __init__(
         self,
-        base_url: Optional[str],
-        handler_class: Optional[type[MockHTTPRequestHandler]],
+        base_url: str | None,
+        handler_class: type[MockHTTPRequestHandler] | None,
         is_remote: bool,
     ):
         self.base_url = base_url
@@ -134,13 +133,14 @@ class MockHttpServer:
         remote_url: str,
         status: int = 200,
         body: str | bytes = "",
-        file_path: Optional[str] = None,
+        file_path: str | None = None,
         content_type: str = "application/octet-stream",
         sleep_ms: int = 0,
-        response_headers: Optional[dict[str, str]] = None,
+        response_headers: dict[str, str] | None = None,
         request_method: str = "GET",
         support_head: bool = False,
         support_ranges: bool = False,
+        redirect_to_self: bool = False,
     ) -> str:
         """Register a mock endpoint and return its URL, or return remote_url with skip-if-down.
 
@@ -155,6 +155,7 @@ class MockHttpServer:
             request_method: HTTP method to match (GET, POST, etc.).
             support_head: Whether to also respond to HEAD requests.
             support_ranges: Whether to support Range request headers (HTTP 206).
+            redirect_to_self: Whether to add a Location header pointing to this route's own URL.
         """
         if self.is_remote:
             if not is_site_up(remote_url):
@@ -194,7 +195,10 @@ class MockHttpServer:
             support_head=support_head,
             support_ranges=support_ranges,
         )
-        return f"{self.base_url}{path}"
+        url = f"{self.base_url}{path}"
+        if redirect_to_self:
+            headers["Location"] = url
+        return url
 
 
 def start_mock_http_server(host: str = "127.0.0.1", port: int = 0) -> tuple[HTTPServer, str]:

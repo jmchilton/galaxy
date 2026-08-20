@@ -8,7 +8,6 @@ import tempfile
 from io import StringIO
 from typing import (
     Any,
-    Optional,
 )
 
 import bdbag.bdbag_api
@@ -49,14 +48,18 @@ def main(argv=None):
     args = _arg_parser().parse_args(argv)
     registry = Registry()
     registry.load_datatypes(root_dir=args.galaxy_root, config=args.datatypes_registry)
-    do_fetch(args.request, working_directory=args.working_directory or os.getcwd(), registry=registry)
+    do_fetch(
+        args.request,
+        working_directory=args.working_directory or os.getcwd(),
+        registry=registry,
+    )
 
 
 def do_fetch(
     request_path: str,
     working_directory: str,
     registry: Registry,
-    file_sources_dict: Optional[dict] = None,
+    file_sources_dict: dict | None = None,
 ):
     assert os.path.exists(request_path)
     with open(request_path) as f:
@@ -186,15 +189,21 @@ def _fetch_target(upload_config: "UploadConfig", target: dict[str, Any]):
             # get_composite_dataset_name finds dataset name from basename of contents
             # and such but we're not implementing that here yet. yagni?
             # also need name...
-            metadata = item.get("metadata") or {
+            # Substitution keys (e.g. base_name) default from the datatype, with any
+            # provided metadata layered on top.
+            metadata = {
                 composite_file.substitute_name_with_metadata: datatype.metadata_spec[
                     composite_file.substitute_name_with_metadata
                 ].default
                 for composite_file in datatype.composite_files.values()
                 if composite_file.substitute_name_with_metadata
             }
-            name = metadata.get("base_name") or item.get("name") or "Composite Dataset"
-            metadata["base_name"] = name
+            metadata.update(item.get("metadata") or {})
+            # History display name: respect an explicitly provided name, then fall back to
+            # base_name. Do NOT write this back into metadata["base_name"] -- base_name drives
+            # the canonical "%s" -> base_name substitution for composite filenames and must keep
+            # its provided/default value (e.g. "RgeneticsData"), independent of the display name.
+            name = item.get("name") or metadata.get("base_name") or "Composite Dataset"
             dataset = Bunch(
                 name=name,
                 metadata=metadata,
@@ -269,7 +278,7 @@ def _fetch_target(upload_config: "UploadConfig", target: dict[str, Any]):
             link_data_only, link_data_only_explicit = _link_data_only(item)
 
         name: str
-        path: Optional[str]
+        path: str | None
         default_in_place = False
         if not deferred:
             name, path, is_link = _has_src_to_path(
@@ -318,6 +327,7 @@ def _fetch_target(upload_config: "UploadConfig", target: dict[str, Any]):
             requested_transform.append({"action": "to_posix_lines"})
         source_dict["requested_transform"] = requested_transform
         effective_state = "ok"
+        stdout: str | None = None
         if not deferred and not error_message:
             in_place = item.get("in_place", default_in_place)
             purge_source = item.get("purge_source", True)
@@ -410,6 +420,9 @@ def _fetch_target(upload_config: "UploadConfig", target: dict[str, Any]):
             effective_state = "deferred"
             registry = upload_config.registry
             ext = sniff.guess_ext_from_file_name(name, registry=registry, requested_ext=requested_ext)
+        info = f"uploaded {ext} file"
+        if stdout:
+            info = f"{info}\n{stdout}"
         rval = {
             "name": name,
             "dbkey": dbkey,
@@ -417,7 +430,7 @@ def _fetch_target(upload_config: "UploadConfig", target: dict[str, Any]):
             "link_data_only": link_data_only,
             "sources": sources,
             "hashes": hashes,
-            "info": f"uploaded {ext} file",
+            "info": info,
             "state": effective_state,
         }
         if path:
@@ -501,7 +514,7 @@ def _directory_to_items(directory):
     return items
 
 
-def _has_src_to_name(item) -> Optional[str]:
+def _has_src_to_name(item) -> str | None:
     # Logic should broadly match logic of _has_src_to_path but not resolve the item
     # into a path.
     name = item.get("name")
@@ -545,7 +558,7 @@ def _has_src_to_path(
                 return name, path, is_link
 
         headers = item.get("headers")
-        file_source_options: Optional[FilesSourceOptions] = None
+        file_source_options: FilesSourceOptions | None = None
         if headers:
             extra_props = PartialFilesSourceProperties(**{"http_headers": headers})
             file_source_options = FilesSourceOptions(extra_props=extra_props)
@@ -619,7 +632,7 @@ class UploadConfig:
         registry: Registry,
         working_directory: str,
         allow_failed_collections: bool,
-        file_sources_dict: Optional[dict] = None,
+        file_sources_dict: dict | None = None,
     ):
         self.registry = registry
         self.working_directory = working_directory

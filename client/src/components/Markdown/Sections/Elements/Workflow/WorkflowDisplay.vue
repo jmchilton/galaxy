@@ -82,7 +82,7 @@ watch(
         <b-card-header v-if="!embedded">
             <span class="float-right">
                 <b-button
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :href="downloadUrl"
                     variant="link"
                     size="sm"
@@ -94,7 +94,7 @@ watch(
                     <span class="fa fa-download" />
                 </b-button>
                 <b-button
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :href="importUrl"
                     role="button"
                     variant="link"
@@ -123,13 +123,7 @@ watch(
                             :target="`step-icon-${step.order_index}`"
                             :tool-id="step.tool_id"
                             :tool-version="step.tool_version" />
-                        <WorkflowStepTitle
-                            :step-tool-id="step.tool_id"
-                            :step-tool-uuid="step.tool_uuid"
-                            :step-subworkflow-id="step.subworkflow_id"
-                            :step-label="step.label"
-                            :step-type="step.type"
-                            :step-index="step.order_index" />
+                        <WorkflowStepTitle :workflow-step="step" />
                         <WorkflowTree :input="step" :skip-head="true" />
                     </div>
                 </div>

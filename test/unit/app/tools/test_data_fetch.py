@@ -5,7 +5,6 @@ from base64 import b64encode
 from contextlib import contextmanager
 from shutil import rmtree
 from tempfile import mkdtemp
-from typing import Optional
 
 import pytest
 
@@ -25,7 +24,7 @@ URI_FOR_1_2_3 = f"base64://{B64_FOR_1_2_3}"
         ),
     ],
 )
-def test_simple_path_get(hash_value: str, error_message: Optional[str]):
+def test_simple_path_get(hash_value: str, error_message: str | None):
     with _execute_context() as execute_context:
         job_directory = execute_context.job_directory
         example_path = os.path.join(job_directory, "example_file")
@@ -429,7 +428,6 @@ def _execute_context(allow_localhost=False):
                             "ftp_upload_dir": None,
                             "ftp_upload_purge": True,
                             "tmp_dir": None,
-                            "webdav_use_temp_files": None,
                             "listings_expiry_time": None,
                         },
                     },

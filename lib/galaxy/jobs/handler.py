@@ -5,7 +5,6 @@ Galaxy job handler, prepares, runs, tracks, and finishes Galaxy jobs
 import abc
 import datetime
 import os
-import time
 from collections import defaultdict
 from queue import (
     Empty,
@@ -15,7 +14,6 @@ from typing import (
     Any,
     Optional,
     TYPE_CHECKING,
-    Union,
 )
 
 from sqlalchemy.exc import OperationalError
@@ -31,6 +29,7 @@ from sqlalchemy.sql.expression import (
 
 from galaxy import model
 from galaxy.exceptions import ObjectNotFound
+from galaxy.job_execution.actions.post import ActionBox
 from galaxy.jobs import (
     JobQueueI,
     JobWrapper,
@@ -113,13 +112,13 @@ class JobHandler(JobHandlerI):
 
 
 class ItemGrabber:
-    grab_model: Union[type[model.Job], type[model.WorkflowInvocation]]
+    grab_model: type[model.Job] | type[model.WorkflowInvocation]
 
     def __init__(
         self,
         app: MinimalManagerApp,
         handler_assignment_method=None,
-        max_grab: Union[int, None] = None,
+        max_grab: int | None = None,
         self_handler_tags=None,
         handler_tags=None,
     ) -> None:
@@ -250,7 +249,7 @@ class BaseJobHandlerQueue(JobQueueI, Monitors):
         # Keep track of the pid that started the job manager, only it has valid threads
         self.parent_pid = os.getpid()
         # This queue is not used if track_jobs_in_database is True.
-        self.queue: Queue[tuple[int, Optional[str]]] = Queue()
+        self.queue: Queue[tuple[int, str | None]] = Queue()
 
 
 class JobHandlerQueue(BaseJobHandlerQueue):
@@ -363,8 +362,8 @@ class JobHandlerQueue(BaseJobHandlerQueue):
             self.dispatcher.recover(job, job_wrapper)
         pass
 
-    def __recover_job_wrapper(self, job: model.Job) -> JobWrapper:
-        # Already dispatched and running
+    def __recover_job_wrapper(self, job: model.Job, resubmit: bool = False) -> JobWrapper:
+        # Already dispatched and running, or being resubmitted
         job_wrapper = self.job_wrapper(job)
         # Use the persisted destination as its params may differ from
         # what's in the job config
@@ -382,7 +381,17 @@ class JobHandlerQueue(BaseJobHandlerQueue):
                 job.id,
                 job.destination_id,
             )
-        job_wrapper.job_runner_mapper.cached_job_destination = job_destination
+        if resubmit:
+            # On resubmit pickup, route through the mapper so dynamic
+            # destinations (including chains) are walked fresh. This is what
+            # allows multiple resubmits through dynamic destinations to work:
+            # the resubmit handler persisted the dynamic *intent* (e.g.
+            # "tpv_dispatcher" with runner="dynamic"); cache_job_destination
+            # forces re-evaluation through __determine_job_destination, which
+            # recurses on chained dynamic destinations.
+            job_wrapper.job_runner_mapper.cache_job_destination(job_destination)
+        else:
+            job_wrapper.job_runner_mapper.cached_job_destination = job_destination
         return job_wrapper
 
     def __monitor(self):
@@ -538,8 +547,9 @@ class JobHandlerQueue(BaseJobHandlerQueue):
         # Check resubmit jobs first so that limits of new jobs will still be enforced
         for job in resubmit_jobs:
             log.debug("(%s) Job was resubmitted and is being dispatched immediately", job.id)
-            # Reassemble resubmit job destination from persisted value
-            jw = self.__recover_job_wrapper(job)
+            # Reassemble resubmit job destination from persisted value, walking
+            # any dynamic destination chain afresh.
+            jw = self.__recover_job_wrapper(job, resubmit=True)
             if jw.is_ready_for_resubmission(job):
                 self.increase_running_job_count(job.user_id, jw.job_destination.id)
                 self.dispatcher.put(jw)
@@ -554,6 +564,12 @@ class JobHandlerQueue(BaseJobHandlerQueue):
                     copied_from_job = self.sa_session.get(model.Job, job.copied_from_job_id)
                     assert copied_from_job is not None
                     job.copy_from_job(copied_from_job)
+                    # Execute non-immediate post-job actions (e.g. HideDatasetAction)
+                    # that were registered during workflow step execution but are
+                    # normally only run at job completion via the runner finish path.
+                    for pjaa in job.post_job_actions:
+                        if pjaa.post_job_action.action_type not in ActionBox.immediate_actions:
+                            ActionBox.execute(self.app, self.sa_session, pjaa.post_job_action, job)
                     continue
                 job_state = self.__check_job_state(job)
                 if job_state == JOB_WAIT:
@@ -573,6 +589,7 @@ class JobHandlerQueue(BaseJobHandlerQueue):
                     log.info("(%d) User (%s) is over total walltime limit: job paused", job.id, job.user_id)
                     job.set_state(model.Job.states.PAUSED)
                     for dataset_assoc in job.output_datasets + job.output_library_datasets:
+                        assert dataset_assoc.dataset.dataset is not None
                         dataset_assoc.dataset.dataset.state = model.Dataset.states.PAUSED
                         dataset_assoc.dataset.info = "Execution of this dataset's job is paused because you were over your total job runtime at the time it was ready to run"
                         self.sa_session.add(dataset_assoc.dataset.dataset)
@@ -1081,7 +1098,8 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
         Continually iterate and stop appropriate jobs.
         """
         # HACK: Delay until after forking, we need a way to do post fork notification!!!
-        time.sleep(10)
+        # Sleeping through the Sleeper lets shutdown_monitor's wake() cut this short.
+        self._monitor_sleep(10)
         while self.monitor_running:
             try:
                 self.__monitor_step()
@@ -1090,7 +1108,7 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
             # Sleep
             self._monitor_sleep(1)
 
-    def __delete(self, job: model.Job, error_msg: Optional[str]):
+    def __delete(self, job: model.Job, error_msg: str | None):
         final_state = job.states.DELETED
         if error_msg is not None:
             final_state = job.states.ERROR
@@ -1109,7 +1127,7 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
         Called repeatedly by `monitor` to stop jobs.
         """
         # Pull all new jobs from the queue at once
-        jobs_to_check: list[tuple[model.Job, Optional[str]]] = []
+        jobs_to_check: list[tuple[model.Job, str | None]] = []
         with self.sa_session.begin():
             self._add_newly_deleted_jobs(jobs_to_check)
             try:
@@ -1118,7 +1136,7 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
                 return
             self._check_jobs(jobs_to_check)
 
-    def put(self, job_id: int, error_msg: Optional[str] = None):
+    def put(self, job_id: int, error_msg: str | None = None):
         if not self.track_jobs_in_database:
             self.queue.put((job_id, error_msg))
 
@@ -1135,7 +1153,7 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
             self.shutdown_monitor()
             log.info("job handler stop queue stopped")
 
-    def _add_newly_deleted_jobs(self, jobs_to_check: list[tuple[model.Job, Optional[str]]]):
+    def _add_newly_deleted_jobs(self, jobs_to_check: list[tuple[model.Job, str | None]]):
         if self.track_jobs_in_database:
             newly_deleted_jobs = self._get_new_jobs()
             for job in newly_deleted_jobs:
@@ -1151,7 +1169,7 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
         )
         return self.sa_session.scalars(stmt).all()
 
-    def _pull_from_queue(self, jobs_to_check: list[tuple[model.Job, Optional[str]]]):
+    def _pull_from_queue(self, jobs_to_check: list[tuple[model.Job, str | None]]):
         # Pull jobs from the queue (in the case of Administrative stopped jobs)
         try:
             while 1:
@@ -1165,7 +1183,7 @@ class JobHandlerStopQueue(BaseJobHandlerQueue):
         except Empty:
             pass
 
-    def _check_jobs(self, jobs_to_check: list[tuple[model.Job, Optional[str]]]):
+    def _check_jobs(self, jobs_to_check: list[tuple[model.Job, str | None]]):
         for job, error_msg in jobs_to_check:
             if (
                 job.state

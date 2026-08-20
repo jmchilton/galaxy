@@ -2,7 +2,6 @@
 
 import os
 import tempfile
-from typing import Optional
 
 from galaxy.files import (
     ConfiguredFileSources,
@@ -15,6 +14,7 @@ from galaxy.files.plugins import FileSourcePluginsConfig
 
 TEST_USERNAME = "alice"
 TEST_EMAIL = "alice@galaxyproject.org"
+TEST_OIDC_ACCESS_TOKENS = {"oidc": "test-oidc-token"}
 
 
 def serialize_and_recover(file_sources_o: ConfiguredFileSources, user_context: OptionalUserContext = None):
@@ -23,11 +23,11 @@ def serialize_and_recover(file_sources_o: ConfiguredFileSources, user_context: O
     return file_sources
 
 
-def find_file_a(dir_list: list[AnyRemoteEntry]) -> Optional[AnyRemoteEntry]:
+def find_file_a(dir_list: list[AnyRemoteEntry]) -> AnyRemoteEntry | None:
     return find(dir_list, class_="File", name="a")
 
 
-def find(dir_list: list[AnyRemoteEntry], class_=None, name=None) -> Optional[AnyRemoteEntry]:
+def find(dir_list: list[AnyRemoteEntry], class_=None, name=None) -> AnyRemoteEntry | None:
     for ent in dir_list:
         if class_ is not None and ent.class_ != class_:
             continue
@@ -75,6 +75,7 @@ def user_context_fixture(user_ftp_dir=None, role_names=None, group_names=None, i
             "googledrive|client_secret": os.environ.get("GALAXY_TEST_GOOGLE_DRIVE_CLIENT_SECRET"),
             "googledrive|access_token": os.environ.get("GALAXY_TEST_GOOGLE_DRIVE_ACCESS_TOKEN"),
             "googledrive|refresh_token": os.environ.get("GALAXY_TEST_GOOGLE_DRIVE_REFRESH_TOKEN"),
+            "onedrive|access_token": os.environ.get("GALAXY_TEST_ONEDRIVE_ACCESS_TOKEN"),
             "googlecloudstorage|project": os.environ.get("GALAXY_TEST_GCS_PROJECT"),
             "googlecloudstorage|bucket_name": os.environ.get("GALAXY_TEST_GCS_BUCKET"),
             "googlecloudstorage|client_id": os.environ.get("GALAXY_TEST_GCS_CLIENT_ID"),
@@ -92,6 +93,7 @@ def user_context_fixture(user_ftp_dir=None, role_names=None, group_names=None, i
         group_names=group_names or set(),
         is_admin=is_admin,
         file_sources=file_sources,
+        oidc_access_tokens=TEST_OIDC_ACCESS_TOKENS,
     )
     return user_context
 
@@ -158,7 +160,7 @@ def write_from(
         return file_source_path.file_source.write_from(file_source_path.path, f.name, user_context=user_context)
 
 
-def configured_file_sources(conf_file, file_sources_config: Optional[FileSourcePluginsConfig] = None):
+def configured_file_sources(conf_file, file_sources_config: FileSourcePluginsConfig | None = None):
     file_sources_config = file_sources_config or FileSourcePluginsConfig()
     assert file_sources_config
     if isinstance(conf_file, str):
@@ -175,14 +177,14 @@ def assert_can_write_and_read_to_conf(conf: dict):
     file_source_id = conf["id"]
     file_sources = configured_file_sources([conf])
     test_uri = f"gxfiles://{file_source_id}/{test_filename}"
-    actual_uri = write_from(
+    write_from(
         file_sources,
         test_uri,
         test_contents,
     )
     assert_realizes_contains(
         file_sources,
-        actual_uri,
+        test_uri,
         test_contents,
     )
 

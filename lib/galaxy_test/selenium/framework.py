@@ -3,6 +3,7 @@
 import datetime
 import errno
 import json
+import logging
 import os
 import traceback
 import unittest
@@ -13,16 +14,11 @@ from functools import (
 from typing import (
     Any,
     cast,
-    Optional,
     TYPE_CHECKING,
 )
 
 import requests
 import yaml
-from gxformat2 import (
-    convert_and_import_workflow,
-    ImporterGalaxyInterface,
-)
 from requests.models import Response
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -44,7 +40,10 @@ from galaxy.selenium.navigates_galaxy import (
     NavigatesGalaxy,
     retry_during_transitions,
 )
-from galaxy.tool_util.verify import verify
+from galaxy.tool_util.verify import (
+    verify,
+    verify_job_metadata,
+)
 from galaxy.tool_util.verify.interactor import prepare_request_params
 from galaxy.util import (
     asbool,
@@ -69,14 +68,15 @@ from galaxy_test.base.env import (
 from galaxy_test.base.populators import (
     load_data_dict,
     stage_inputs,
-    YamlContentT,
 )
 from galaxy_test.base.testcase import FunctionalTestCase
 
 try:
     from galaxy_test.driver.driver_util import GalaxyTestDriver
 except ImportError:
-    GalaxyTestDriver = None  # type: ignore[misc,assignment]
+    GalaxyTestDriver = None  # type: ignore[assignment, misc, unused-ignore]
+
+logger = logging.getLogger(__name__)
 
 
 def _load_config_file() -> None:
@@ -422,6 +422,32 @@ class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin, Use
         axe_results = self.axe_eval()
         assert_baseline_accessible(axe_results)
 
+    def playwright_drag_item_above(self, source_locator, target_locator):
+        """Drag ``source_locator`` so it is dropped immediately above ``target_locator``.
+
+        Playwright's ``drag_to`` jumps the cursor and is fooled by drop zones
+        that activate only after a sustained mouse-move. Hand-rolled mouse
+        moves (with intermediate steps and a small initial nudge) are reliable
+        for HTML5-DnD targets used across the tool-panel UIs.
+        """
+        source_locator.scroll_into_view_if_needed()
+        target_locator.scroll_into_view_if_needed()
+        source_box = source_locator.bounding_box()
+        target_box = target_locator.bounding_box()
+        assert source_box is not None, "source element has no bounding box (off-screen?)"
+        assert target_box is not None, "target element has no bounding box (off-screen?)"
+
+        source_x = source_box["x"] + (source_box["width"] / 2)
+        source_y = source_box["y"] + (source_box["height"] / 2)
+        target_x = target_box["x"] + (target_box["width"] / 2)
+        target_y = target_box["y"] + min(8, target_box["height"] / 4)
+
+        self.page.mouse.move(source_x, source_y)
+        self.page.mouse.down()
+        self.page.mouse.move(source_x, source_y + 12, steps=4)
+        self.page.mouse.move(target_x, target_y, steps=20)
+        self.page.mouse.up()
+
     def _target_url_from_selenium(self):
         # Deal with the case when Galaxy has a different URL when being accessed by Selenium
         # then when being accessed by local API calls.
@@ -435,10 +461,22 @@ class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin, Use
         self.target_url_from_selenium = self._target_url_from_selenium()
         self.snapshots = []
         self.setup_driver_and_session()
-        if self.run_as_admin and GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL == DEFAULT_ADMIN_USER:
-            self._setup_interactor()
-            self._setup_user(GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL)
-        self._try_setup_with_driver()
+        # Once the driver is allocated, any subsequent failure must still
+        # tear it down: pytest does not call tearDown when setUp raises, so
+        # without this the Playwright asyncio loop would stay registered as
+        # "running" on the main thread and cascade every subsequent test's
+        # setUp with "Sync API inside the asyncio loop".
+        try:
+            if self.run_as_admin and GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL == DEFAULT_ADMIN_USER:
+                self._setup_interactor()
+                self._setup_user(GALAXY_TEST_SELENIUM_ADMIN_USER_EMAIL)
+            self._try_setup_with_driver()
+        except Exception:
+            try:
+                self.tear_down_driver()
+            except Exception:
+                logger.exception("Error tearing down driver after setup_selenium failure")
+            raise
 
     def _try_setup_with_driver(self):
         try:
@@ -584,13 +622,13 @@ class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin, Use
     def assert_workflow_has_changes_and_save(self):
         save_button = self.components.workflow_editor.save_button
         save_button.wait_for_visible()
-        assert not save_button.has_class("disabled")
+        assert not save_button.has_class("g-disabled")
         save_button.wait_for_and_click()
         self.sleep_for(self.wait_types.UX_RENDER)
 
     @retry_assertion_during_transitions
     def assert_modal_has_text(self, expected_text):
-        modal_element = self.components.workflow_editor.state_modal_body.wait_for_visible()
+        modal_element = self.components.workflow_editor.state_upgrade_modal.wait_for_visible()
         text = modal_element.text
         assert expected_text in text, f"Failed to find expected text [{expected_text}] in modal text [{text}]"
 
@@ -702,6 +740,11 @@ class UsesHistoryItemAssertions(NavigatesGalaxyMixin):
         item_body = self.history_panel_item_component(hid=hid)
         name = item_body.name.wait_for_text()
         assert name == expected_name, name
+
+    def assert_item_extension(self, hid, expected_extension):
+        item_body = self.history_panel_item_component(hid=hid)
+        extension = item_body.datatype.wait_for_text()
+        assert extension == expected_extension, extension
 
     def assert_item_hid_text(self, hid):
         # Check the text HID matches HID returned from API.  The hid span includes a colon.
@@ -894,6 +937,9 @@ class RunsToolTests(NavigatesGalaxyMixin):
         if deferred:
             self.sleep_for(self.wait_types.UX_RENDER)
             for key, value in deferred:
+                expanded_id = key.replace("|", "-")
+                if self.components.tool_form.parameter_div(parameter=expanded_id).is_absent:
+                    continue
                 self._set_tool_form_value(key, value, required_filenames)
 
         for key, value in data_params:
@@ -928,8 +974,7 @@ class RunsToolTests(NavigatesGalaxyMixin):
     def _parse_repeat_key(key: str):
         import re
 
-        match = re.match(r"^(.+?)_(\d+)\|(.+)$", key)
-        if match:
+        if match := re.match(r"^(.+?)_(\d+)\|(.+)$", key):
             return match.group(1), int(match.group(2)), match.group(3)
         return None
 
@@ -1028,30 +1073,38 @@ class RunsToolTests(NavigatesGalaxyMixin):
 
     def _set_color_value(self, expanded_id: str, value: str):
         color_input = self.components.tool_form.parameter_color_input(parameter=expanded_id).wait_for_present()
-        self._set_input_value_via_js(color_input, value)
+        self.set_element_value(color_input, value)
 
     def _set_text_value(self, expanded_id: str, value: str):
         input_element = self.components.tool_form.parameter_text_input(parameter=expanded_id).wait_for_present()
-        self._set_input_value_via_js(input_element, value)
-
-    def _set_input_value_via_js(self, element, value):
-        self.execute_script(
-            "arguments[0].value = arguments[1];"
-            "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));"
-            "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
-            element,
-            value,
-        )
+        self.set_element_value(input_element, value)
 
     # -- Output verification --
 
     def _verify_tool_test_outputs(
         self, test_def: dict, history_id: str, tool_id: str, pre_job_ids: set, dataset_populator
     ):
-
+        expect_failure = test_def.get("expect_failure", False)
         outputs = test_def.get("outputs", [])
         output_collections = test_def.get("output_collections", [])
-        if not outputs and not output_collections:
+        expect_num_outputs = test_def.get("expect_num_outputs")
+        expect_exit_code = test_def.get("expect_exit_code")
+        stdout_assertions = test_def.get("stdout")
+        stderr_assertions = test_def.get("stderr")
+        command_assertions = test_def.get("command")
+        command_version_assertions = test_def.get("command_version")
+        has_work = (
+            outputs
+            or output_collections
+            or expect_failure
+            or expect_num_outputs is not None
+            or expect_exit_code is not None
+            or stdout_assertions
+            or stderr_assertions
+            or command_assertions
+            or command_version_assertions
+        )
+        if not has_work:
             return
 
         def _find_new_job(driver=None):
@@ -1064,9 +1117,47 @@ class RunsToolTests(NavigatesGalaxyMixin):
         new_job = self._wait_on(_find_new_job, "tool job to appear in history")
         assert new_job is not None
         job_id = new_job["id"]
+
+        has_job_checks = (
+            expect_exit_code is not None
+            or stdout_assertions
+            or stderr_assertions
+            or command_assertions
+            or command_version_assertions
+        )
+
+        if expect_failure:
+            dataset_populator.wait_for_job(job_id, assert_ok=False)
+            job_details = dataset_populator.get_job_details(job_id, full=has_job_checks).json()
+            assert job_details["state"] == "error", f"Expected job to fail but state is '{job_details['state']}'"
+            if has_job_checks:
+                verify_job_metadata(
+                    job_details,
+                    expect_exit_code,
+                    stdout_assertions,
+                    stderr_assertions,
+                    command_assertions,
+                    command_version_assertions,
+                )
+            return
+
         dataset_populator.wait_for_job(job_id, assert_ok=True)
+        if has_job_checks:
+            job_details = dataset_populator.get_job_details(job_id, full=True).json()
+            verify_job_metadata(
+                job_details,
+                expect_exit_code,
+                stdout_assertions,
+                stderr_assertions,
+                command_assertions,
+                command_version_assertions,
+            )
 
         all_job_outputs = dataset_populator.job_outputs(job_id)
+
+        if expect_num_outputs is not None:
+            actual_count = len([o for o in all_job_outputs if "dataset" in o])
+            assert actual_count == int(expect_num_outputs), f"Expected {expect_num_outputs} outputs, got {actual_count}"
 
         if outputs:
             output_id_by_name = {o["name"]: o["dataset"]["id"] for o in all_job_outputs if "dataset" in o}
@@ -1083,6 +1174,20 @@ class RunsToolTests(NavigatesGalaxyMixin):
                     wait=False,
                 )
                 verify(output_name, output_content, output_def.get("attributes", {}))
+                primary_datasets = output_def.get("attributes", {}).get("primary_datasets", {})
+                for designation, (_primary_outfile, primary_attribs) in primary_datasets.items():
+                    primary_key = f"__new_primary_file_{output_name}|{designation}__"
+                    assert primary_key in output_id_by_name, (
+                        f"Discovered dataset '{designation}' not found for output '{output_name}': "
+                        f"{list(output_id_by_name.keys())}"
+                    )
+                    primary_content = dataset_populator.get_history_dataset_content(
+                        history_id,
+                        dataset_id=output_id_by_name[primary_key],
+                        type="bytes",
+                        wait=False,
+                    )
+                    verify(designation, primary_content, primary_attribs)
 
         if output_collections:
             collection_id_by_name = {
@@ -1105,15 +1210,13 @@ class RunsToolTests(NavigatesGalaxyMixin):
             wait=False,
         )
 
-        expected_type = oc_def.get("attributes", {}).get("type")
-        if expected_type:
+        if expected_type := oc_def.get("attributes", {}).get("type"):
             actual_type = data_collection["collection_type"]
             assert (
                 actual_type == expected_type
             ), f"Collection '{oc_def['name']}': expected type '{expected_type}', got '{actual_type}'"
 
-        expected_count = oc_def.get("attributes", {}).get("count")
-        if expected_count is not None:
+        if (expected_count := oc_def.get("attributes", {}).get("count")) is not None:
             actual_count = len(data_collection["elements"])
             assert actual_count == int(
                 expected_count
@@ -1224,7 +1327,7 @@ class RunsWorkflows(GalaxyTestSeleniumContext):
         workflow_populator.upload_yaml_workflow(content, name=name, **kwds)
         return name
 
-    def workflow_run_setup_inputs(self, content: Optional[str]) -> tuple[str, dict[str, Any]]:
+    def workflow_run_setup_inputs(self, content: str | None) -> tuple[str, dict[str, Any]]:
         history_id = self.current_history_id()
         if content:
             yaml_content = yaml.safe_load(content)
@@ -1263,9 +1366,9 @@ class RunsWorkflows(GalaxyTestSeleniumContext):
     def workflow_run_and_submit(
         self,
         workflow_content: str,
-        test_data_content: Optional[str] = None,
+        test_data_content: str | None = None,
         landing_screenshot_name=None,
-        inputs_specified_screenshot_name: Optional[str] = None,
+        inputs_specified_screenshot_name: str | None = None,
         ensure_expanded: bool = False,
     ):
         history_id, inputs = self.workflow_run_setup_inputs(test_data_content)
@@ -1426,9 +1529,7 @@ class SeleniumSessionDatasetCollectionPopulator(SeleniumSessionGetPostMixin, pop
         return create_response
 
 
-class SeleniumSessionWorkflowPopulator(
-    SeleniumSessionGetPostMixin, populators.BaseWorkflowPopulator, ImporterGalaxyInterface
-):
+class SeleniumSessionWorkflowPopulator(SeleniumSessionGetPostMixin, populators.BaseWorkflowPopulator):
     """Implementation of BaseWorkflowPopulator backed by bioblend."""
 
     def __init__(self, selenium_context: GalaxySeleniumContext):
@@ -1446,10 +1547,6 @@ class SeleniumSessionWorkflowPopulator(
         upload_response = self._post("workflows", data=data)
         upload_response.raise_for_status()
         return upload_response.json()
-
-    def upload_yaml_workflow(self, yaml_content: YamlContentT, **kwds) -> str:
-        workflow = convert_and_import_workflow(yaml_content, galaxy_interface=self, **kwds)
-        return workflow["id"]
 
 
 __all__ = ("retry_during_transitions",)

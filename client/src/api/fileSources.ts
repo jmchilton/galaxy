@@ -1,4 +1,4 @@
-import { faAws, faDropbox, faGoogleDrive, faHubspot } from "@fortawesome/free-brands-svg-icons";
+import { faAws, faDropbox, faGithub, faGoogleDrive, faHubspot } from "@fortawesome/free-brands-svg-icons";
 import { faCloud, faFolderTree, faNetworkWired, type IconDefinition } from "font-awesome-6";
 
 import type { components } from "@/api/schema";
@@ -31,6 +31,14 @@ export const templateTypes: FileSourceTypesDetail = {
     googledrive: {
         icon: faGoogleDrive,
         message: "This is a  repository plugin that connects with the commercial Google Drive service.",
+    },
+    mavedb: {
+        icon: faNetworkWired,
+        message: "This is a repository plugin that connects with MaveDB score set files.",
+    },
+    onedrive: {
+        icon: faCloud,
+        message: "This is a repository plugin that connects with Microsoft OneDrive.",
     },
     onedata: {
         icon: faNetworkWired,
@@ -70,13 +78,34 @@ export const templateTypes: FileSourceTypesDetail = {
         icon: faNetworkWired,
         message: "This is a repository plugin that connects with a Dataverse.org instance.",
     },
+    cbioportal: {
+        icon: faNetworkWired,
+        message: "This is a read-only file repository plugin that connects with a cBioPortal instance.",
+    },
     huggingface: {
         icon: faHubspot,
         message: "This is a file repository plugin that connects with the Hugging Face Hub.",
     },
+    github: {
+        icon: faGithub,
+        message: "This is a file repository plugin that connects with a GitHub repository.",
+    },
+    iiif: {
+        icon: faNetworkWired,
+        message:
+            "This is a read-only file repository plugin that connects to IIIF (International Image Interoperability Framework) sources. IIIF is a framework widely used by museums, libraries, and archives for delivering high-resolution image-based cultural heritage materials.",
+    },
     omero: {
         icon: faNetworkWired,
         message: "This is a file repository plugin that connects with an OMERO server.",
+    },
+    ssh: {
+        icon: faNetworkWired,
+        message: "This is a file repository plugin that connects with a remote server over SSH.",
+    },
+    irods: {
+        icon: faNetworkWired,
+        message: "This is a file repository plugin that connects with an iRODS server.",
     },
 };
 

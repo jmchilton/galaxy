@@ -6,6 +6,7 @@ import { computed } from "vue";
 
 import type { HDADetailed } from "@/api";
 import { prependPath } from "@/utils/redirect";
+import { bytesToString } from "@/utils/utils";
 
 interface Props {
     item: HDADetailed;
@@ -25,7 +26,14 @@ const metaDownloadUrl = computed(() => {
     return prependPath(`api/datasets/${props.item.id}/metadata_file?metadata_file=`);
 });
 const downloadUrl = computed(() => {
-    return prependPath(`api/datasets/${props.item.id}/display?to_ext=${props.item.extension}`);
+    return prependPath(`api/datasets/${props.item.id}/download?to_ext=${props.item.extension}`);
+});
+const downloadTitle = computed(() => {
+    const size = props.item.file_size;
+    if (size) {
+        return `Download (${bytesToString(size)})`;
+    }
+    return "Download";
 });
 
 function onDownload(resource: string, extension = "") {
@@ -36,14 +44,14 @@ function onDownload(resource: string, extension = "") {
 <template>
     <BDropdown
         v-if="hasMetaFiles"
-        v-b-tooltip.hover
+        v-g-tooltip.hover
         dropup
         no-caret
         no-flip
         size="sm"
         variant="link"
         toggle-class="text-decoration-none"
-        title="Download"
+        :title="downloadTitle"
         class="download-btn"
         data-description="dataset download">
         <template v-slot:button-content>
@@ -66,9 +74,9 @@ function onDownload(resource: string, extension = "") {
 
     <BButton
         v-else
-        v-b-tooltip.hover
+        v-g-tooltip.hover
         class="download-btn px-1"
-        title="Download"
+        :title="downloadTitle"
         size="sm"
         variant="link"
         :href="downloadUrl"

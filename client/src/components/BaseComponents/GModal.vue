@@ -8,7 +8,12 @@ import { watchImmediate } from "@vueuse/core";
 import { faXmark } from "font-awesome-6";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
-import { type ComponentSize, type ComponentSizeClassList, prefix } from "@/components/BaseComponents/componentVariants";
+import {
+    type ComponentColor,
+    type ComponentSize,
+    type ComponentSizeClassList,
+    prefix,
+} from "@/components/BaseComponents/componentVariants";
 import { useUid } from "@/composables/utils/uid";
 import { match } from "@/utils/utils";
 
@@ -36,12 +41,16 @@ const props = withDefaults(
         title?: string;
         /** Fixes the height of the modal to a pre-set height based on `size` */
         fixedHeight?: boolean;
+        /** Color of the Ok button */
+        okColor?: ComponentColor;
         /** Disables the Ok button */
         okDisabled?: boolean;
         /** Title to show when the Ok button is disabled */
         okDisabledTitle?: string;
         /** When false, keeps the modal open on "ok" */
         closeOnOk?: boolean;
+        /** Allows content to overflow the modal body (e.g. for dropdowns/selectors inside the modal) */
+        overflowVisible?: boolean;
     }>(),
     {
         id: undefined,
@@ -54,9 +63,11 @@ const props = withDefaults(
         footer: false,
         title: undefined,
         fixedHeight: false,
+        okColor: "blue",
         okDisabled: false,
         okDisabledTitle: undefined,
         closeOnOk: true,
+        overflowVisible: false,
     },
 );
 
@@ -83,19 +94,21 @@ const dialog = ref<HTMLDialogElement | null>(null);
 onMounted(() => {
     if (dialog.value) {
         dialog.value.addEventListener("close", onClose);
-        dialog.value.addEventListener("open", onOpen);
+    }
+    if (props.show) {
+        showModal();
     }
 });
 
 onBeforeUnmount(() => {
     if (dialog.value) {
         dialog.value.removeEventListener("close", onClose);
-        dialog.value.removeEventListener("open", onOpen);
     }
 });
 
 function showModal() {
     dialog.value?.showModal();
+    onOpen();
 }
 
 let isOk = false;
@@ -168,7 +181,12 @@ defineExpose({ showModal, hideModal });
 <template>
     <!-- This is a convenience shortcut for mouse-users to close the dialog, so disabling this warning is fine here -->
     <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
-    <dialog :id="currentId" ref="dialog" class="g-dialog" :class="sizeClass" @click="onClickDialog">
+    <dialog
+        :id="currentId"
+        ref="dialog"
+        class="g-dialog"
+        :class="[sizeClass, { 'g-overflow-visible': props.overflowVisible }]"
+        @click="onClickDialog">
         <section>
             <header>
                 <Heading
@@ -202,7 +220,7 @@ defineExpose({ showModal, hideModal });
                     <GButton
                         :disabled="okDisabled"
                         :disabled-title="okDisabledTitle"
-                        color="blue"
+                        :color="props.okColor"
                         @click="hideModal(true)">
                         {{ props.okText ?? "Ok" }}
                     </GButton>
@@ -220,8 +238,9 @@ defineExpose({ showModal, hideModal });
 
     padding: var(--spacing-3);
 
+    max-height: calc(100vh - 4rem);
+
     section {
-        height: 100%;
         width: 100%;
         display: flex;
         flex-direction: column;
@@ -234,9 +253,27 @@ defineExpose({ showModal, hideModal });
             padding: var(--spacing-2);
             margin: calc(var(--spacing-2) * -1);
 
-            max-height: 100%;
             display: flex;
             flex-direction: column;
+        }
+    }
+
+    &.g-fixed-height {
+        section {
+            height: 100%;
+        }
+    }
+
+    &.g-overflow-visible {
+        overflow: visible;
+
+        section {
+            overflow: visible;
+        }
+
+        .g-modal-content {
+            overflow: visible;
+            max-height: none;
         }
     }
 
@@ -274,6 +311,10 @@ defineExpose({ showModal, hideModal });
         height: calc(100vh - 6rem);
         max-width: calc(100vw - 6rem);
         max-height: calc(100vh - 6rem);
+
+        section {
+            height: 100%;
+        }
     }
 
     header {

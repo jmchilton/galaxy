@@ -52,12 +52,14 @@ import {
     guessInitialFilterType,
     guessNameForPair,
 } from "@/components/Collections/pairing";
+import type { PreparedUpload } from "@/components/Panels/Upload/types";
 import type { UploadRowModel } from "@/components/Upload/model";
-import type { SupportedCollectionType } from "@/composables/upload/collectionTypes";
+import type { SupportedCollectionType, UploadCollectionConfig } from "@/composables/upload/collectionTypes";
 import type { NewUploadItem } from "@/composables/upload/uploadItemTypes";
+import { uploadApiOptionDefaults } from "@/composables/upload/uploadOptionModel";
 import { getAppRoot } from "@/onload/loadConfig";
 import { errorMessageAsString } from "@/utils/simple-error";
-import { isUrl } from "@/utils/url";
+import { isUrl, isValidUrl } from "@/utils/url";
 
 import { createTusUpload, type FileStream, type NamedBlob, type UploadableFile } from "./tusUpload";
 
@@ -126,6 +128,8 @@ interface UploadItemCommon {
     deferred: boolean;
     /** Optional hash values for verification */
     hashes?: FetchDatasetHash[];
+    /** Whether to auto-decompress the upload */
+    auto_decompress: boolean;
 }
 
 /** Upload item from a local file */
@@ -167,6 +171,8 @@ export interface UploadPayload {
     targets: (HdasUploadTarget | HdcaUploadTarget)[];
     /** Whether to auto-decompress uploads */
     auto_decompress: boolean;
+    /** Optional preferred object store id for all created datasets. */
+    preferred_object_store_id?: string;
     /** Local files to upload via TUS (not part of API, processed by submitUpload) */
     files: UploadableFile[];
 }
@@ -183,16 +189,29 @@ export interface UploadDataPayload extends UploadPayload {
 export interface BuildPayloadOptions {
     /** Whether this is a composite upload (multiple files as one dataset) */
     composite?: boolean;
+    /**
+     * User-defined name for a composite dataset. When set, forwarded to the API so Galaxy
+     * names the dataset accordingly. When absent, Galaxy auto-generates the name.
+     */
+    compositeName?: string;
 }
 
 // ============================================================================
 // Configuration Types
 // ============================================================================
 
+/** Per-file progress tracking options */
+interface PerFileProgressOptions {
+    /** Upload item IDs corresponding to files (one per file, for per-file progress tracking) */
+    uploadIds?: string[];
+    /** Callback for per-file progress updates (fileId, percentage) */
+    perFileProgress?: (fileId: string, percentage: number) => void;
+}
+
 /**
  * Configuration for upload submission.
  */
-export interface UploadSubmitConfig extends FetchDatasetsCallbacks {
+export interface UploadSubmitConfig extends FetchDatasetsCallbacks, PerFileProgressOptions {
     /** The upload payload data */
     data: UploadDataPayload;
     /** Whether this is a composite upload */
@@ -204,9 +223,11 @@ export interface UploadSubmitConfig extends FetchDatasetsCallbacks {
 /**
  * Configuration for the uploadDatasets function.
  */
-export interface UploadDatasetsConfig extends FetchDatasetsCallbacks, BuildPayloadOptions {
+export interface UploadDatasetsConfig extends FetchDatasetsCallbacks, BuildPayloadOptions, PerFileProgressOptions {
     /** Chunk size for TUS uploads in bytes (default: 10MB) */
     chunkSize?: number;
+    /** Optional preferred object store id for uploaded datasets. */
+    preferredObjectStoreId?: string;
 }
 
 // ============================================================================
@@ -219,9 +240,7 @@ export interface UploadDatasetsConfig extends FetchDatasetsCallbacks, BuildPaylo
 export const uploadItemDefaults = {
     dbkey: "?",
     ext: "auto",
-    space_to_tab: false,
-    to_posix_lines: true,
-    deferred: false,
+    ...uploadApiOptionDefaults,
 } as const;
 
 // ============================================================================
@@ -343,6 +362,7 @@ export function createFileUploadItem(
         to_posix_lines: options.to_posix_lines ?? uploadItemDefaults.to_posix_lines,
         deferred: options.deferred ?? uploadItemDefaults.deferred,
         hashes: options.hashes,
+        auto_decompress: options.auto_decompress ?? uploadItemDefaults.auto_decompress ?? true,
     };
 }
 
@@ -379,6 +399,7 @@ export function createPastedUploadItem(
         to_posix_lines: options.to_posix_lines ?? uploadItemDefaults.to_posix_lines,
         deferred: options.deferred ?? uploadItemDefaults.deferred,
         hashes: options.hashes,
+        auto_decompress: options.auto_decompress ?? uploadItemDefaults.auto_decompress ?? true,
     };
 }
 
@@ -404,12 +425,13 @@ export function createUrlUploadItem(
     historyId: string,
     options: Partial<Omit<UrlUploadItem, "src" | "url" | "historyId">> = {},
 ): UrlUploadItem {
+    const trimmedUrl = url.trim();
     // Extract filename from URL if not provided
-    const defaultName = url.split("/").pop()?.split("?")[0] || DEFAULT_FILE_NAME;
+    const defaultName = trimmedUrl.split("/").pop()?.split("?")[0] || DEFAULT_FILE_NAME;
 
     return {
         src: "url",
-        url,
+        url: trimmedUrl,
         historyId,
         name: options.name ?? defaultName,
         size: options.size ?? 0,
@@ -419,6 +441,7 @@ export function createUrlUploadItem(
         to_posix_lines: options.to_posix_lines ?? uploadItemDefaults.to_posix_lines,
         deferred: options.deferred ?? uploadItemDefaults.deferred,
         hashes: options.hashes,
+        auto_decompress: options.auto_decompress ?? uploadItemDefaults.auto_decompress ?? true,
     };
 }
 
@@ -443,6 +466,7 @@ export function toApiUploadItem(item: NewUploadItem): ApiUploadItem {
         to_posix_lines: item.toPosixLines,
         deferred: item.deferred,
         hashes: item.hashes,
+        auto_decompress: item.autoDecompress ?? true,
     };
 
     switch (item.uploadMode) {
@@ -504,7 +528,7 @@ export function parseContentToUploadItems(
     // If first line is a URL, treat all lines as URLs
     if (isUrl(firstLine)) {
         return lines.filter(Boolean).map((urlLine) => {
-            if (!isUrl(urlLine)) {
+            if (!isValidUrl(urlLine)) {
                 throw new Error(`Invalid URL: ${urlLine}`);
             }
             return createUrlUploadItem(urlLine, historyId, options);
@@ -530,7 +554,7 @@ function buildDataElement(item: ApiUploadItem): ApiDataElement {
         name: normalizeFileName(item.name),
         space_to_tab: item.space_to_tab,
         to_posix_lines: item.to_posix_lines,
-        auto_decompress: false,
+        auto_decompress: item.auto_decompress ?? uploadItemDefaults.auto_decompress ?? true,
         deferred: item.deferred,
     };
 
@@ -592,7 +616,7 @@ function validateItemContent(item: ApiUploadItem): void {
             if (!item.url || item.url.trim().length === 0) {
                 throw new Error(`No URL for upload item: ${item.name}`);
             }
-            if (!isUrl(item.url)) {
+            if (!isValidUrl(item.url)) {
                 throw new Error(`Invalid URL: ${item.url}`);
             }
             break;
@@ -608,7 +632,7 @@ function validateItemContent(item: ApiUploadItem): void {
  * @throws Error if no valid items are provided or validation fails
  */
 export function buildUploadPayload(items: ApiUploadItem[], options: BuildPayloadOptions = {}): UploadPayload {
-    const { composite = false } = options;
+    const { composite = false, compositeName } = options;
 
     if (items.length === 0) {
         throw new Error("No upload items provided.");
@@ -639,6 +663,7 @@ export function buildUploadPayload(items: ApiUploadItem[], options: BuildPayload
         const firstItem = items[0]!;
         const compositeElement: CompositeDataElement = {
             src: "composite",
+            name: compositeName ?? undefined,
             dbkey: firstItem.dbkey,
             ext: firstItem.ext,
             auto_decompress: false,
@@ -667,7 +692,7 @@ export function buildUploadPayload(items: ApiUploadItem[], options: BuildPayload
         history_id: historyId,
         targets: [
             {
-                auto_decompress: false,
+                auto_decompress: true,
                 destination: { type: "hdas" },
                 elements,
             },
@@ -780,7 +805,8 @@ export function buildCollectionUploadPayload(items: ApiUploadItem[], options: Co
     let elements: HdcaUploadTarget["elements"];
 
     if (options.collectionType === "list") {
-        elements = dataElements;
+        // reverse the order of the elements to emulate what we have in the history panel
+        elements = dataElements.reverse();
     } else if (options.collectionType === "list:paired") {
         elements = buildPairedElements(items, dataElements);
     } else {
@@ -811,23 +837,42 @@ export function buildCollectionUploadPayload(items: ApiUploadItem[], options: Co
  * Converts UploadPayload to FetchDataPayload for API submission.
  */
 function toApiPayload(data: UploadPayload): FetchDataPayload {
-    return {
+    const payload: FetchDataPayload = {
         history_id: data.history_id,
         targets: data.targets,
         auto_decompress: data.auto_decompress,
     };
+
+    if (data.preferred_object_store_id) {
+        payload.preferred_object_store_id = data.preferred_object_store_id;
+    }
+
+    return payload;
 }
 
 /**
  * Uploads files via TUS protocol, then submits the complete payload.
+ *
+ * @param data - Upload payload containing files and targets
+ * @param tusEndpoint - TUS upload endpoint URL
+ * @param chunkSize - Chunk size for TUS uploads in bytes
+ * @param callbacks - Standard fetch callbacks (success, error, warning, progress)
+ * @param uploadIds - Optional array of upload item IDs (one per file) for per-file progress tracking
+ * @param perFileProgress - Optional callback for per-file progress updates
  */
 async function uploadFilesViaTus(
     data: UploadPayload,
     tusEndpoint: string,
     chunkSize: number,
     callbacks: FetchDatasetsCallbacks,
+    uploadIds?: string[],
+    perFileProgress?: (fileId: string, percentage: number) => void,
 ): Promise<void> {
     const files = data.files || [];
+    const hasPerFileTracking = uploadIds && perFileProgress && uploadIds.length === files.length;
+
+    // Track per-file progress for aggregate calculation
+    const fileProgressMap = new Map<string, number>();
 
     // Build API payload with TUS session info
     const apiPayload: Record<string, unknown> = {
@@ -835,6 +880,10 @@ async function uploadFilesViaTus(
         targets: data.targets,
         auto_decompress: data.auto_decompress,
     };
+
+    if (data.preferred_object_store_id) {
+        apiPayload.preferred_object_store_id = data.preferred_object_store_id;
+    }
 
     try {
         // Upload each file sequentially via TUS
@@ -844,12 +893,28 @@ async function uploadFilesViaTus(
                 continue;
             }
 
+            const fileId = hasPerFileTracking ? uploadIds[index] : undefined;
+
             const result = await createTusUpload({
                 file,
                 endpoint: tusEndpoint,
                 historyId: data.history_id,
                 chunkSize,
-                onProgress: callbacks.progress || (() => {}),
+                onProgress: (percentage: number) => {
+                    if (hasPerFileTracking && fileId) {
+                        fileProgressMap.set(fileId, percentage);
+                        perFileProgress!(fileId, percentage);
+
+                        // Compute aggregate progress from all files uploaded so far
+                        const values = Array.from(fileProgressMap.values());
+                        const aggregate = Math.round(
+                            values.reduce((sum: number, p: number) => sum + p, 0) / values.length,
+                        );
+                        callbacks.progress?.(aggregate);
+                    } else {
+                        callbacks.progress?.(percentage);
+                    }
+                },
                 onError: (err: Error) => {
                     callbacks.error?.(err);
                 },
@@ -886,6 +951,8 @@ export async function submitUpload(config: UploadSubmitConfig): Promise<void> {
         progress = () => {},
         isComposite = false,
         chunkSize = DEFAULT_CHUNK_SIZE,
+        uploadIds,
+        perFileProgress,
     } = config;
 
     // Initial validation
@@ -902,7 +969,7 @@ export async function submitUpload(config: UploadSubmitConfig): Promise<void> {
 
     if (hasFiles || isComposite) {
         // Upload files via TUS, then submit payload
-        await uploadFilesViaTus(data, tusEndpoint, chunkSize, callbacks);
+        await uploadFilesViaTus(data, tusEndpoint, chunkSize, callbacks, uploadIds, perFileProgress);
     } else if (data.targets && data.targets.length > 0) {
         const firstTarget = data.targets[0];
 
@@ -932,7 +999,7 @@ export async function submitUpload(config: UploadSubmitConfig): Promise<void> {
                     blob.name = String(firstElement.name || DEFAULT_FILE_NAME);
 
                     const filesData: UploadPayload = { ...data, files: [blob] };
-                    await uploadFilesViaTus(filesData, tusEndpoint, chunkSize, callbacks);
+                    await uploadFilesViaTus(filesData, tusEndpoint, chunkSize, callbacks, uploadIds, perFileProgress);
                 }
             }
         }
@@ -970,17 +1037,29 @@ export async function submitUpload(config: UploadSubmitConfig): Promise<void> {
  * ```
  */
 export async function uploadDatasets(items: ApiUploadItem[], config: UploadDatasetsConfig = {}): Promise<void> {
-    const { composite = false, chunkSize, success, error, warning, progress } = config;
+    const {
+        composite = false,
+        compositeName,
+        chunkSize,
+        success,
+        error,
+        warning,
+        progress,
+        preferredObjectStoreId,
+        uploadIds,
+        perFileProgress,
+    } = config;
 
     try {
         // Build the API-ready payload from upload items
-        const payload = buildUploadPayload(items, { composite });
+        const payload = buildUploadPayload(items, { composite, compositeName });
 
         // Prepare the data for submission
         const data: UploadDataPayload = {
             history_id: payload.history_id,
             targets: payload.targets,
             auto_decompress: payload.auto_decompress,
+            preferred_object_store_id: preferredObjectStoreId,
             files: payload.files,
         };
 
@@ -993,11 +1072,46 @@ export async function uploadDatasets(items: ApiUploadItem[], config: UploadDatas
             error,
             warning,
             progress,
+            uploadIds,
+            perFileProgress,
         });
     } catch (err) {
         const errorMessage = errorMessageAsString(err);
         config.error?.(errorMessage);
     }
+}
+
+/**
+ * Determines if an upload item is compatible with the Fetch API (i.e., can be included in the payload).
+ * Items with uploadMode "data-library" are not compatible because they are copied from the data library and require a different handling approach.
+ */
+export function isFetchApiCompatible(item: NewUploadItem): boolean {
+    return item.uploadMode !== "data-library";
+}
+
+/**
+ * Builds a PreparedUpload object from UI upload items.
+ */
+export function buildPreparedUpload(items: NewUploadItem[], collectionConfig?: UploadCollectionConfig): PreparedUpload {
+    return buildPreparedUploadWithOptions(items, collectionConfig);
+}
+
+interface PreparedUploadBuildOptions {
+    apiItems?: ApiUploadItem[];
+    uploadOptions?: PreparedUpload["uploadOptions"];
+}
+
+export function buildPreparedUploadWithOptions(
+    items: NewUploadItem[],
+    collectionConfig?: UploadCollectionConfig,
+    options?: PreparedUploadBuildOptions,
+): PreparedUpload {
+    return {
+        apiItems: options?.apiItems ?? items.filter(isFetchApiCompatible).map((item) => toApiUploadItem(item)),
+        collectionConfig,
+        uploadItems: items,
+        uploadOptions: options?.uploadOptions,
+    };
 }
 
 /**
@@ -1025,7 +1139,7 @@ export async function uploadCollectionDatasets(
     collectionOptions: CollectionUploadOptions,
     config: UploadDatasetsConfig = {},
 ): Promise<void> {
-    const { chunkSize, success, error, warning, progress } = config;
+    const { chunkSize, success, error, warning, progress, preferredObjectStoreId, uploadIds, perFileProgress } = config;
 
     try {
         const payload = buildCollectionUploadPayload(items, collectionOptions);
@@ -1034,6 +1148,7 @@ export async function uploadCollectionDatasets(
             history_id: payload.history_id,
             targets: payload.targets,
             auto_decompress: payload.auto_decompress,
+            preferred_object_store_id: preferredObjectStoreId,
             files: payload.files,
         };
 
@@ -1044,6 +1159,8 @@ export async function uploadCollectionDatasets(
             error,
             warning,
             progress,
+            uploadIds,
+            perFileProgress,
         });
     } catch (err) {
         config.error?.(errorMessageAsString(err));

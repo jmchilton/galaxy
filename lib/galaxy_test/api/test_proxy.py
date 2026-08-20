@@ -1,12 +1,7 @@
-from unittest.mock import (
-    AsyncMock,
-    MagicMock,
-    patch,
-)
-
 import pytest
 import requests
 
+from galaxy.webapps.galaxy.api.proxy import MAX_STREAM_BYTES
 from galaxy_test.base.populators import DatasetPopulator
 from ._framework import ApiTestCase
 
@@ -50,9 +45,11 @@ class TestProxyApi(ApiTestCase):
         url = self._get_zip_url(mock_http_server)
         response = self._get(f"proxy?url={url}")
         self._assert_status_code_is_ok(response)
-        assert response.headers["content-length"] == EXPECTED_HEADERS["content-length"]
+        # content-length and accept-ranges are stripped from GET responses
+        # (StreamingResponse uses chunked encoding, range requests not supported)
+        assert "content-length" not in response.headers
+        assert "accept-ranges" not in response.headers
         assert response.headers["content-type"] == EXPECTED_HEADERS["content-type"]
-        assert response.headers["accept-ranges"] == EXPECTED_HEADERS["accept-ranges"]
         assert len(response.content) == int(EXPECTED_HEADERS["content-length"])
 
     def test_proxy_get_request_with_range(self, mock_http_server):
@@ -60,8 +57,9 @@ class TestProxyApi(ApiTestCase):
         request_range = "bytes=0-3"
         response = self._get(f"proxy?url={url}", headers={"range": request_range})
         self._assert_status_code_is(response, 206)
-        assert response.headers["accept-ranges"] == "bytes"
-        assert response.headers["content-length"] == "4"
+        # content-length and accept-ranges are stripped from streamed responses
+        assert "content-length" not in response.headers
+        assert "accept-ranges" not in response.headers
         assert response.headers["content-range"].startswith("bytes 0-3/")
         assert response.content == ZIP_MAGIC_NUMBER
 
@@ -137,79 +135,61 @@ class TestProxyApi(ApiTestCase):
         # Verify content-encoding header was properly filtered out (no double decompression)
         assert "content-encoding" not in response.headers
 
-    @patch("galaxy.webapps.galaxy.api.proxy.httpx.AsyncClient")
-    def test_proxy_validates_redirects(self, mock_client_class):
-        """Test that redirects are validated."""
-        # Create mock responses - redirect to a local file (invalid scheme)
-        redirect_response = MagicMock()
-        redirect_response.status_code = 302
-        redirect_response.headers = {"location": "file://internal-server/secret-files"}
-        redirect_response.aclose = AsyncMock()
-
-        # Setup mock client
-        mock_client = MagicMock()
-        mock_client.request = AsyncMock(return_value=redirect_response)
-        mock_client.aclose = AsyncMock()
-        mock_client_class.return_value = mock_client
-
-        # Attempt to proxy a URL that redirects to file:// (should be blocked)
-        response = self._get("proxy?url=https://evil.com/redirect")
-
-        # Should fail with 400 Bad Request due to invalid redirect URL scheme
+    def test_proxy_validates_redirects(self, mock_http_server):
+        """Test that redirects to invalid schemes are blocked."""
+        url = mock_http_server.get_url(
+            remote_url="https://evil.com/redirect",
+            status=302,
+            response_headers={"Location": "file://internal-server/secret-files"},
+        )
+        response = self._get(f"proxy?url={url}")
         self._assert_status_code_is(response, 400)
         assert "Invalid URL format" in response.json()["err_msg"]
 
-    @patch("galaxy.webapps.galaxy.api.proxy.httpx.AsyncClient")
-    def test_proxy_follows_valid_redirects(self, mock_client_class):
+    def test_proxy_follows_valid_redirects(self, mock_http_server):
         """Test that valid redirects are followed after validation."""
-        # Create mock responses
-        redirect_response = MagicMock()
-        redirect_response.status_code = 301
-        redirect_response.headers = {"location": "https://example.com/final"}
-        redirect_response.aclose = AsyncMock()
-
-        final_response = MagicMock()
-        final_response.status_code = 200
-        final_response.headers = {"content-type": "text/plain"}
-        final_response.aclose = AsyncMock()
-
-        # Create async generator for streaming
-        async def mock_stream():
-            yield b"test content"
-
-        final_response.aiter_bytes = mock_stream
-
-        # Setup mock client to return redirect first, then final response
-        mock_client = MagicMock()
-        mock_client.request = AsyncMock(side_effect=[redirect_response, final_response])
-        mock_client.aclose = AsyncMock()
-        mock_client_class.return_value = mock_client
-
-        # Proxy a URL that redirects to a valid external URL
-        response = self._get("proxy?url=https://example.com/redirect")
-
-        # Should succeed and follow the redirect
+        final_url = mock_http_server.get_url(
+            remote_url="https://example.com/final",
+            status=200,
+            body="test content",
+            content_type="text/plain",
+        )
+        redirect_url = mock_http_server.get_url(
+            remote_url="https://example.com/redirect",
+            status=301,
+            response_headers={"Location": final_url},
+        )
+        response = self._get(f"proxy?url={redirect_url}")
         self._assert_status_code_is_ok(response)
         assert b"test content" in response.content
 
-    @patch("galaxy.webapps.galaxy.api.proxy.httpx.AsyncClient")
-    def test_proxy_blocks_too_many_redirects(self, mock_client_class):
+    def test_proxy_blocks_too_many_redirects(self, mock_http_server):
         """Test that excessive redirects are blocked to prevent redirect loops."""
-        # Create a mock response that always redirects
-        redirect_response = MagicMock()
-        redirect_response.status_code = 302
-        redirect_response.headers = {"location": "https://example.com/loop"}
-        redirect_response.aclose = AsyncMock()
-
-        # Setup mock client
-        mock_client = MagicMock()
-        mock_client.request = AsyncMock(return_value=redirect_response)
-        mock_client.aclose = AsyncMock()
-        mock_client_class.return_value = mock_client
-
-        # Attempt to proxy a URL that loops redirects
-        response = self._get("proxy?url=https://example.com/loop")
-
-        # Should fail with 400 Bad Request due to too many redirects
+        url = mock_http_server.get_url(
+            remote_url="https://example.com/loop",
+            status=302,
+            redirect_to_self=True,
+        )
+        response = self._get(f"proxy?url={url}")
         self._assert_status_code_is(response, 400)
         assert "Too many redirects" in response.json()["err_msg"]
+
+    def test_proxy_truncates_large_response(self, mock_http_server):
+        """Test that responses exceeding MAX_STREAM_BYTES are truncated without protocol errors.
+
+        The proxy must not forward the upstream content-length header, because the
+        stream may be cut short by the size limit. Using chunked transfer encoding
+        (no content-length) avoids 'Too little data for declared Content-Length'.
+        """
+        oversized_body = b"x" * (MAX_STREAM_BYTES + 1024)
+        url = mock_http_server.get_url(
+            remote_url="https://example.com/large-file",
+            body=oversized_body,
+            content_type="application/octet-stream",
+        )
+        response = self._get(f"proxy?url={url}")
+        self._assert_status_code_is_ok(response)
+        # content-length must not be forwarded for streamed responses
+        assert "content-length" not in response.headers
+        # Response should be truncated to at most MAX_STREAM_BYTES
+        assert len(response.content) <= MAX_STREAM_BYTES

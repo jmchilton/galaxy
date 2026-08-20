@@ -6,14 +6,20 @@ from tempfile import (
     mkdtemp,
     mkstemp,
 )
-from unittest.mock import patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 from uuid import uuid4
 
 import pytest
 from requests import get
 
 from galaxy.exceptions import ObjectInvalid
-from galaxy.objectstore import persist_extra_files_for_dataset
+from galaxy.objectstore import (
+    ObjectStoreAuth,
+    persist_extra_files_for_dataset,
+)
 from galaxy.objectstore.azure_blob import AzureBlobObjectStore
 from galaxy.objectstore.caching import (
     CacheTarget,
@@ -514,6 +520,30 @@ def test_distributed_store_with_cache_targets():
             assert len(object_store.cache_targets()) == 2
 
 
+def test_distributed_store_start_propagates_to_backends():
+    with TestConfig(DISTRIBUTED_TEST_CONFIG) as (_, object_store):
+        for backend in object_store.backends.values():
+            backend.start = MagicMock()
+        object_store.start()
+        for backend in object_store.backends.values():
+            backend.start.assert_called_once()
+
+
+def test_distributed_store_get_filename_forwards_auth_to_backend():
+    auth = ObjectStoreAuth(user=None)
+    dataset = MockDataset(1)
+    dataset.object_store_id = "files1"
+    with TestConfig(DISTRIBUTED_TEST_CONFIG) as (directory, object_store):
+        directory.write("Hello World!", "files1/000/dataset_1.dat")
+        backend = object_store.backends["files1"]
+        backend._get_filename = MagicMock(wraps=backend._get_filename)
+
+        object_store.get_filename(dataset, auth=auth)
+
+        backend._get_filename.assert_called_once()
+        assert backend._get_filename.call_args.kwargs["auth"] is auth
+
+
 HIERARCHICAL_MUST_HAVE_UNIFIED_QUOTA_SOURCE = """<?xml version="1.0"?>
 <object_store type="hierarchical" private="true">
     <backends>
@@ -546,6 +576,16 @@ def test_hiercachical_backend_must_share_quota_source():
 
 PITHOS_TEST_CONFIG = get_example("pithos_simple.xml")
 PITHOS_TEST_CONFIG_YAML = get_example("pithos_simple.yml")
+
+
+@patch_object_stores_to_skip_initialize
+def test_pithos_caches_outside_the_dataset_directory():
+    # Pithos used to stage into config.file_path - the primary dataset directory -
+    # which puts cache files among datasets and points the cache monitor at them.
+    for config_str in [PITHOS_TEST_CONFIG, PITHOS_TEST_CONFIG_YAML]:
+        with TestConfig(config_str) as (directory, object_store):
+            assert object_store.staging_path == directory.global_config.object_store_cache_path
+            assert object_store.staging_path != directory.global_config.file_path
 
 
 @patch_object_stores_to_skip_initialize
@@ -664,6 +704,9 @@ def test_config_parse_boto3():
             # defaults to AWS
             assert object_store.endpoint_url is None
 
+            # direct download (presigned URL redirects) is opt-in
+            assert object_store.enable_direct_download is False
+
             cache_target = object_store.cache_target
             assert cache_target.size == 1000
             assert cache_target.path == "database/object_store_cache"
@@ -689,6 +732,62 @@ def test_config_parse_boto3():
 
             extra_dirs = as_dict["extra_dirs"]
             assert len(extra_dirs) == 2
+
+
+@patch_object_stores_to_skip_initialize
+def test_config_parse_enable_direct_download():
+    for config_str in [get_example("boto3_direct_download.xml"), get_example("boto3_direct_download.yml")]:
+        with TestConfig(config_str) as (directory, object_store):
+            assert object_store.enable_direct_download is True
+
+            as_dict = object_store.to_dict()
+            _assert_key_has_value(as_dict, "enable_direct_download", True)
+
+            model = object_store.to_model("the_object_store_id")
+            assert model.enable_direct_download is True
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_direct_download_url_returns_presigned_url_when_enabled():
+    with TestConfig(get_example("boto3_direct_download.yml")) as (directory, object_store):
+        object_store._client = MagicMock()
+        object_store._client.generate_presigned_url.return_value = "https://s3.example.org/signed"
+        with patch.object(object_store, "_exists", return_value=True):
+            url = object_store.get_direct_download_url(MockDataset(1))
+        assert url == "https://s3.example.org/signed"
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_direct_download_url_returns_none_when_disabled():
+    with TestConfig(get_example("boto3_simple.yml")) as (directory, object_store):
+        object_store._client = MagicMock()
+        with patch.object(object_store, "_exists", return_value=True):
+            url = object_store.get_direct_download_url(MockDataset(1))
+        assert url is None
+        object_store._client.generate_presigned_url.assert_not_called()
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_direct_download_url_forwards_content_disposition():
+    with TestConfig(get_example("boto3_direct_download.yml")) as (directory, object_store):
+        object_store._client = MagicMock()
+        object_store._client.generate_presigned_url.return_value = "https://s3.example.org/signed"
+        with patch.object(object_store, "_exists", return_value=True):
+            object_store.get_direct_download_url(
+                MockDataset(1),
+                content_disposition='attachment; filename="Galaxy1-[data].txt"',
+                content_type="application/octet-stream",
+            )
+        _, call_kwargs = object_store._client.generate_presigned_url.call_args
+        params = call_kwargs["Params"]
+        assert params["ResponseContentDisposition"] == 'attachment; filename="Galaxy1-[data].txt"'
+        assert params["ResponseContentType"] == "application/octet-stream"
+
+
+def test_get_direct_download_url_disk_store_returns_none():
+    with TestConfig(DISK_TEST_CONFIG) as (directory, object_store):
+        url = object_store.get_direct_download_url(MockDataset(1))
+        assert url is None
 
 
 @patch_object_stores_to_skip_initialize
@@ -934,7 +1033,7 @@ def test_cache_monitor_thread(tmp_path):
     path.write_text("this is an example file")
 
     cache_target = CacheTarget(cache_dir, 1, 0.000000001)
-    monitor = InProcessCacheMonitor(cache_target, 30, 0)
+    monitor = InProcessCacheMonitor([cache_target], 30, 0)
 
     path_cleaned = False
     for _ in range(100):
@@ -964,6 +1063,21 @@ def test_check_cache_sanity(tmp_path):
     small_cache_target = CacheTarget(cache_dir, 1, 0.000000001)
     check_cache(small_cache_target)
     assert not path.exists()
+
+
+def test_check_cache_treats_non_positive_size_as_unbounded(tmp_path):
+    # A non-positive cache size means "unbounded" everywhere else in this module
+    # (see CacheTarget.fits_in_cache), so the monitor must not treat it as a
+    # zero-byte budget and reap the whole directory.
+    cache_dir = tmp_path
+    path = cache_dir / "a_file_0"
+    path.write_text("this is an example file")
+
+    check_cache(CacheTarget(cache_dir, -1, 0.2))
+    assert path.exists()
+
+    check_cache(CacheTarget(cache_dir, 0, 0.2))
+    assert path.exists()
 
 
 def test_fits_in_cache_check(tmp_path):

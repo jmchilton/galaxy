@@ -5,9 +5,7 @@ from datetime import (
 )
 from functools import partial
 from typing import (
-    Optional,
     TYPE_CHECKING,
-    Union,
 )
 
 from sqlalchemy.orm import Session
@@ -28,6 +26,7 @@ from galaxy.schema.tasks import (
     RequestUser,
 )
 from galaxy.util import (
+    now,
     plugin_config,
     unicodify,
 )
@@ -184,7 +183,7 @@ class WorkflowSchedulingManager(ConfiguresHandlers):
         workflow_invocation: model.WorkflowInvocation,
         request_params,
         flush: bool = True,
-        initial_state: Optional[InvocationState] = None,
+        initial_state: InvocationState | None = None,
     ):
         initial_state = initial_state or model.WorkflowInvocation.states.NEW
         workflow_invocation.set_state(initial_state)
@@ -291,7 +290,7 @@ class WorkflowSchedulingManager(ConfiguresHandlers):
             log.info("Tag [%s] handlers: %s", tag, ", ".join(handlers))
         self.__handlers_configured = True
 
-    def __init_plugin(self, plugin_type: str, workflow_scheduler_id: Union[str, None] = None, **kwds) -> None:
+    def __init_plugin(self, plugin_type: str, workflow_scheduler_id: str | None = None, **kwds) -> None:
         workflow_scheduler_id = workflow_scheduler_id or self.default_scheduler_id
 
         if workflow_scheduler_id in self.workflow_schedulers:
@@ -308,7 +307,6 @@ class WorkflowSchedulingManager(ConfiguresHandlers):
 
 
 class WorkflowRequestMonitor(Monitors):
-
     def __init__(self, app: "MinimalManagerApp", workflow_scheduling_manager: WorkflowSchedulingManager) -> None:
         self.app = app
         self.workflow_scheduling_manager = workflow_scheduling_manager
@@ -350,12 +348,12 @@ class WorkflowRequestMonitor(Monitors):
                 invocation_step_update_time := invocation.get_last_workflow_invocation_step_update_time()
             ):
                 do_schedule = invocation_step_update_time > last_schedule_time
-            if not do_schedule and (datetime.now() - last_schedule_time) > self.timedelta:
+            if not do_schedule and (now() - last_schedule_time) > self.timedelta:
                 # If we haven't scheduled in a while, schedule anyway.
                 log.debug(
                     "Scheduling workflow invocation [%s] after %s seconds without scheduling.",
                     invocation.id,
-                    (datetime.now() - last_schedule_time).total_seconds(),
+                    (now() - last_schedule_time).total_seconds(),
                 )
                 do_schedule = True
             return do_schedule
@@ -459,7 +457,7 @@ class WorkflowRequestMonitor(Monitors):
                         if i.active and i.id < workflow_invocation.id:
                             return False
                 if self.ready_to_schedule_more(workflow_invocation):
-                    self.update_time_tracking_dict[invocation_id] = datetime.now()
+                    self.update_time_tracking_dict[invocation_id] = now()
                     workflow_scheduler.schedule(workflow_invocation)
                     log.debug("Workflow invocation [%s] scheduled", invocation_id)
             except Exception:

@@ -10,7 +10,7 @@
         <div v-if="showEntryPoints">
             <ToolEntryPoints v-for="job in entryPoints" :key="job.id" :job-id="job.id" />
         </div>
-        <b-modal v-model="showError" size="sm" :title="errorTitle | l" scrollable ok-only>
+        <GModal :show.sync="showError" size="medium" :title="errorTitle | l" fixed-height>
             <b-alert v-if="errorMessage" show variant="danger">
                 {{ errorMessage }}
             </b-alert>
@@ -21,7 +21,7 @@
             <small class="text-muted">
                 <pre>{{ errorContentPretty }}</pre>
             </small>
-        </b-modal>
+        </GModal>
         <ToolRecommendation v-if="showRecommendation" :tool-id="formConfig.id" />
         <ToolCard
             v-if="showForm"
@@ -43,6 +43,11 @@
             @onChangeVersion="onChangeVersion">
             <div class="mt-2 mb-4">
                 <Heading v-localize h2 separator bold size="sm"> Tool Parameters </Heading>
+
+                <GAlert v-if="showNoToolParametersAlert" show variant="info" data-description="no tool parameters">
+                    This tool requires no input parameters and can be run as is.
+                </GAlert>
+
                 <FormDisplay
                     :id="toolId"
                     :inputs="formConfig.inputs"
@@ -50,6 +55,8 @@
                     :loading="loading"
                     :validation-scroll-to="validationScrollTo"
                     :warnings="formConfig.warnings"
+                    @load-more="onLoadMore"
+                    @search-change="onSearchChange"
                     @onChange="onChange"
                     @onValidation="onValidation" />
             </div>
@@ -110,9 +117,11 @@
 </template>
 
 <script>
+import { debounce } from "lodash";
 import { mapActions, mapState, storeToRefs } from "pinia";
 
 import { canMutateHistory } from "@/api";
+import { findInputByDottedName } from "@/components/Form/utilities";
 import { useUserToolCredentials } from "@/composables/userToolCredentials";
 import { useConfigStore } from "@/stores/configurationStore";
 import { useHistoryItemsStore } from "@/stores/historyItemsStore";
@@ -121,12 +130,16 @@ import { useJobStore } from "@/stores/jobStore";
 import { useTourStore } from "@/stores/tourStore";
 import { useUserStore } from "@/stores/userStore";
 import { useUserToolsServiceCredentialsStore } from "@/stores/userToolsServiceCredentialsStore";
+import { parseBool } from "@/utils/parseBool";
 
-import { getToolFormData, submitJob, updateToolFormData } from "./services";
+import { getToolFormData, updateToolFormData } from "./services";
+import { submitToolJob } from "./submit";
 
+import GModal from "../BaseComponents/GModal.vue";
 import ToolRecommendation from "../ToolRecommendation.vue";
 import ToolCard from "./ToolCard.vue";
 import ToolFormTags from "./ToolFormTags.vue";
+import GAlert from "@/components/BaseComponents/GAlert.vue";
 import ButtonSpinner from "@/components/Common/ButtonSpinner.vue";
 import Heading from "@/components/Common/Heading.vue";
 import FormSelect from "@/components/Form/Elements/FormSelect.vue";
@@ -147,6 +160,8 @@ export default {
         ToolFormTags,
         ToolRecommendation,
         Heading,
+        GAlert,
+        GModal,
     },
     props: {
         id: {
@@ -270,16 +285,18 @@ export default {
         initialized() {
             return this.formData !== undefined;
         },
+        showNoToolParametersAlert() {
+            return !this.loading && this.formConfig?.inputs?.length === 0;
+        },
         canMutateHistory() {
             return this.currentHistory && canMutateHistory(this.currentHistory);
         },
         hasCredentialsErrors() {
             if (this.formConfig.credentials?.length) {
-                const { hasUserProvidedAllRequiredServiceCredentials, toolHasRequiredServiceCredentials } =
-                    useUserToolCredentials(this.formConfig.id, this.formConfig.version);
-                if (!toolHasRequiredServiceCredentials.value) {
-                    return false;
-                }
+                const { hasUserProvidedAllRequiredServiceCredentials } = useUserToolCredentials(
+                    this.formConfig.id,
+                    this.formConfig.version,
+                );
                 return !hasUserProvidedAllRequiredServiceCredentials.value;
             }
             return false;
@@ -291,7 +308,7 @@ export default {
         hasConfigOrValErrors() {
             return (
                 (this.formConfig.errors && Object.values(this.formConfig.errors).length > 0) ||
-                this.validationInternal?.length
+                this.validationInternal?.length > 0
             );
         },
     },
@@ -304,7 +321,14 @@ export default {
         },
     },
     created() {
+        // Debounce the per-keystroke options refetch so rapid typing in the
+        // dropdown search box coalesces into a single backend round trip
+        // (and doesn't race with the change-on-selection refetch).
+        this.onSearchChange = debounce(this.onSearchChange, 400);
         this.requestTool();
+    },
+    beforeDestroy() {
+        this.onSearchChange.cancel?.();
     },
     methods: {
         ...mapActions(useJobStore, ["saveLatestResponse"]),
@@ -327,9 +351,13 @@ export default {
             this.formData = newData;
             if (refreshRequest) {
                 this.onUpdate();
-            } else if (this.formConfigInitialized && this.hasConfigOrValErrors) {
-                // After the first manual change to a form input, for every change, if there isn't a request to refresh,
-                // we reset the errors since we haven't received a tool form update via the backend.
+            } else if (
+                this.formConfigInitialized &&
+                this.formConfig.errors &&
+                Object.values(this.formConfig.errors).length > 0
+            ) {
+                // Clear stale backend errors when the user edits. Scoped to backend errors only;
+                // client-side validation errors are not wiped here.
                 this.formConfig.errors = null;
             }
             this.formConfigInitialized = true;
@@ -345,6 +373,93 @@ export default {
                     this.disabled = false;
                 });
         },
+        /**
+         * Handle a "load more" request from a paginated data parameter dropdown.
+         * Re-fetches the form with `options_pagination` set for the requested
+         * parameter (keyed by full ``|``-separated dotted path so nested params
+         * under conditionals/repeats/sections work too), then walks both the
+         * response and the local `formConfig.inputs` to append the new options
+         * into the matching parameter's option list.
+         */
+        onLoadMore({ name, src, offset, limit, search }) {
+            const spec = { offset, limit };
+            if (search) {
+                spec.search = search;
+            }
+            const optionsPagination = { [name]: { [src]: spec } };
+            updateToolFormData(
+                this.formConfig.id,
+                this.toolUuid,
+                this.currentVersion,
+                this.history_id,
+                this.formData,
+                optionsPagination,
+            ).then((data) => this.mergeFetchedOptions(name, src, data));
+        },
+        /**
+         * Handle the user typing in the dropdown's search box. Refetch the
+         * parameter's options against the backend with the search filter, then
+         * MERGE (not replace) the server matches into the already-loaded options.
+         * Merging keeps the list non-empty and preserves any already-loaded or
+         * selected options, so the multiselect (and its focused search input) is
+         * never unmounted mid-typing; the client-side filter still narrows the
+         * union down to the typed query. An empty query fetches the default first
+         * page. Debounced upstream in ``FormSelect``.
+         */
+        onSearchChange({ name, src, query, limit }) {
+            const spec = { offset: 0, limit };
+            if (query) {
+                spec.search = query;
+            }
+            const optionsPagination = { [name]: { [src]: spec } };
+            updateToolFormData(
+                this.formConfig.id,
+                this.toolUuid,
+                this.currentVersion,
+                this.history_id,
+                this.formData,
+                optionsPagination,
+            ).then((data) => this.mergeFetchedOptions(name, src, data));
+        },
+        /**
+         * Merge a freshly fetched page of options (from load-more or search) into
+         * the matching parameter's option list, de-duplicating by ``id``/``src``.
+         * Both callers merge rather than replace so the dropdown never empties out
+         * from under an open multiselect (which would unmount its focused input),
+         * and so a beyond-the-page selection stays visible. Refreshes the form
+         * afterwards so the rendered clone picks up the new options (see
+         * ``refreshInputs``).
+         */
+        mergeFetchedOptions(name, src, data) {
+            const newInput = findInputByDottedName(data.inputs, name);
+            const target = findInputByDottedName(this.formConfig.inputs, name);
+            if (!newInput || !target) {
+                return;
+            }
+            const existing = (target.options && target.options[src]) || [];
+            const incoming = (newInput.options && newInput.options[src]) || [];
+            const seen = new Set(existing.map((o) => `${o.id}_${o.src}`));
+            const merged = existing.concat(incoming.filter((o) => !seen.has(`${o.id}_${o.src}`)));
+            target.options = { ...target.options, [src]: merged };
+            if (newInput.options_meta && newInput.options_meta[src]) {
+                target.options_meta = {
+                    ...(target.options_meta || {}),
+                    [src]: newInput.options_meta[src],
+                };
+            }
+            this.refreshInputs();
+        },
+        /**
+         * Hand ``FormDisplay`` a fresh ``inputs`` array reference after mutating a
+         * parameter's ``options``/``options_meta`` in place. ``FormDisplay`` renders
+         * from an internal *clone* of ``inputs`` that is only re-synced by its
+         * ``watch(() => props.inputs)``, which fires on array identity change, not on
+         * deep mutation. Without this bump the paginated / searched options are
+         * fetched but never reach the dropdown (issue #23135).
+         */
+        refreshInputs() {
+            this.formConfig.inputs = [...this.formConfig.inputs];
+        },
         onChangeVersion(newVersion) {
             this.requestTool(newVersion);
         },
@@ -353,7 +468,13 @@ export default {
             this.disabled = true;
             this.loading = true;
 
-            return getToolFormData(this.id || this.toolUuid, this.currentVersion, this.job_id, this.history_id)
+            return getToolFormData(
+                this.id || this.toolUuid,
+                this.currentVersion,
+                this.job_id,
+                this.history_id,
+                this.toolUuid,
+            )
                 .then((data) => {
                     this.currentVersion = data.version;
                     this.formConfig = data;
@@ -379,7 +500,7 @@ export default {
         onUpdatePreferredObjectStoreId(preferredObjectStoreId) {
             this.preferredObjectStoreId = preferredObjectStoreId;
         },
-        onExecute(config, historyId) {
+        async onExecute(config, historyId) {
             // If a tour is active that was generated for this tool, end it.
             if (this.currentTour?.id.startsWith(`tool-generated-${this.formConfig.id}`)) {
                 this.setTour(undefined);
@@ -391,27 +512,23 @@ export default {
             }
             this.showExecuting = true;
             this.addRecentTool(this.formConfig?.id);
+
             const jobDef = {
-                history_id: historyId,
                 tool_id: this.formConfig.id,
-                tool_version: this.formConfig.version,
                 tool_uuid: this.toolUuid,
-                __tags: this.tags,
-                inputs: {
-                    ...this.formData,
-                },
+                tool_version: this.formConfig.version,
+                history_id: historyId,
+                use_cached_jobs: this.useCachedJobs || false,
+                send_email_notification: this.useEmail || false,
             };
-            if (this.useEmail) {
-                jobDef.inputs["send_email_notification"] = true;
-            }
             if (this.useJobRemapping) {
-                jobDef.inputs["rerun_remap_job_id"] = this.job_id;
-            }
-            if (this.useCachedJobs) {
-                jobDef.inputs["use_cached_job"] = true;
+                jobDef.rerun_remap_job_id = this.job_id;
             }
             if (this.preferredObjectStoreId) {
                 jobDef.preferred_object_store_id = this.preferredObjectStoreId;
+            }
+            if (this.tags?.length) {
+                jobDef.tags = this.tags;
             }
             if (this.dataManagerMode === "bundle") {
                 jobDef.data_manager_mode = this.dataManagerMode;
@@ -422,76 +539,81 @@ export default {
                     this.formConfig.version,
                 );
             }
+
             console.debug("toolForm::onExecute()", jobDef);
             const prevRoute = this.$route.fullPath;
-            submitJob(jobDef).then(
-                (jobResponse) => {
-                    this.submissionRequestFailed = false;
-                    this.showExecuting = false;
-                    let changeRoute = false;
-                    this.startWatchingHistory();
-                    if (jobResponse.produces_entry_points) {
-                        this.showEntryPoints = true;
-                        this.entryPoints = jobResponse.jobs;
+
+            try {
+                const jobResponse = await submitToolJob({
+                    jobDef,
+                    formConfig: this.formConfig,
+                    formData: this.formData,
+                });
+                jobResponse.produces_entry_points = this.formConfig.model_class === "InteractiveTool";
+
+                this.submissionRequestFailed = false;
+                this.showExecuting = false;
+                this.startWatchingHistory();
+
+                if (jobResponse.produces_entry_points) {
+                    this.showEntryPoints = true;
+                    this.entryPoints = jobResponse.jobs;
+                }
+
+                const nJobs = jobResponse.jobs ? jobResponse.jobs.length : 0;
+                const nErrors = jobResponse.errors?.length || 0;
+                if (nJobs > 0 && nErrors === 0) {
+                    this.showForm = false;
+                    this.saveLatestResponse({
+                        jobDef,
+                        jobResponse,
+                        toolName: this.toolName,
+                    });
+                } else if (nErrors > 0) {
+                    this.showError = true;
+                    this.showForm = true;
+                    this.errorTitle =
+                        nJobs > 0
+                            ? `Job submission for ${nErrors} out of ${nJobs + nErrors} jobs failed.`
+                            : "Job submission rejected.";
+                    this.errorContent = jobResponse.errors;
+                    return;
+                }
+
+                if (prevRoute === this.$route.fullPath) {
+                    this.$router.push(`/jobs/submission/success`);
+                } else {
+                    if (parseBool(config.enable_tool_recommendations)) {
+                        this.showRecommendation = true;
                     }
-                    const nJobs = jobResponse && jobResponse.jobs ? jobResponse.jobs.length : 0;
-                    if (nJobs > 0 && !jobResponse.errors?.length) {
-                        this.showForm = false;
-                        const toolName = this.toolName;
-                        this.saveLatestResponse({
-                            jobDef,
-                            jobResponse,
-                            toolName,
-                        });
-                        changeRoute = prevRoute === this.$route.fullPath;
-                    } else {
-                        const defaultErrorTitle = "Job submission rejected.";
-                        this.showError = true;
-                        this.showForm = true;
-                        if (jobResponse?.errors) {
-                            const nErrors = jobResponse.errors.length;
-                            if (nJobs > 0) {
-                                this.errorTitle = `Job submission for ${nErrors} out of ${
-                                    nJobs + nErrors
-                                } jobs failed.`;
-                            } else {
-                                this.errorTitle = defaultErrorTitle;
-                            }
-                            this.errorContent = jobResponse.errors;
-                        } else {
-                            this.errorTitle = defaultErrorTitle;
-                            this.errorContent = jobResponse;
-                        }
+                    document.querySelector("#center").scrollTop = 0;
+                }
+            } catch (e) {
+                this.showExecuting = false;
+
+                // Check for structured error data from both axios responses and tool request failures
+                const errorData = e?.response?.data?.err_data || e?.err_data;
+                if (errorData) {
+                    const errorEntries = Object.entries(errorData);
+                    if (errorEntries.length > 0) {
+                        this.errorMessage = e?.response?.data?.err_msg || e?.err_msg;
+                        this.submissionRequestFailed = true;
+                        this.validationScrollTo = errorEntries[0];
+                        return;
                     }
-                    if (changeRoute) {
-                        this.$router.push(`/jobs/submission/success`);
-                    } else {
-                        if ([true, "true"].includes(config.enable_tool_recommendations)) {
-                            this.showRecommendation = true;
-                        }
-                        document.querySelector("#center").scrollTop = 0;
-                    }
-                },
-                (e) => {
-                    this.errorMessage = e?.response?.data?.err_msg;
+                }
+
+                const errorMsg = e?.response?.data?.err_msg || e?.err_msg;
+                if (errorMsg) {
+                    this.errorMessage = errorMsg;
                     this.submissionRequestFailed = true;
-                    this.showExecuting = false;
-                    let genericError = true;
-                    const errorData = e && e.response && e.response.data && e.response.data.err_data;
-                    if (errorData) {
-                        const errorEntries = Object.entries(errorData);
-                        if (errorEntries.length > 0) {
-                            this.validationScrollTo = errorEntries[0];
-                            genericError = false;
-                        }
-                    }
-                    if (genericError) {
-                        this.showError = true;
-                        this.errorTitle = "Job submission failed.";
-                        this.errorContent = jobDef;
-                    }
-                },
-            );
+                    return;
+                }
+
+                this.showError = true;
+                this.errorTitle = "Job submission failed.";
+                this.errorContent = e?.message || jobDef;
+            }
         },
     },
 };

@@ -36,7 +36,7 @@ import {
     faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BBadge, BButton, BCollapse } from "bootstrap-vue";
+import { BBadge, BButton } from "bootstrap-vue";
 import { faX, faXmark } from "font-awesome-6";
 import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
@@ -56,6 +56,7 @@ import { SECRET_PLACEHOLDER, useUserToolsServiceCredentialsStore } from "@/store
 import { errorMessageAsString } from "@/utils/simple-error";
 
 import GButton from "@/components/BaseComponents/GButton.vue";
+import GCollapse from "@/components/BaseComponents/GCollapse.vue";
 import GCard from "@/components/Common/GCard.vue";
 import CredentialsGroupForm from "@/components/User/Credentials/CredentialsGroupForm.vue";
 
@@ -406,10 +407,9 @@ async function updateGroup(groupId: string): Promise<void> {
 async function deleteGroup(groupToDelete: ServiceCredentialGroupResponse): Promise<void> {
     const confirmed = await confirm(`Are you sure you want to delete the credentials group "${groupToDelete.name}"?`, {
         title: "Delete credentials group",
-        okTitle: "Delete group",
-        okVariant: "danger",
-        cancelVariant: "outline-primary",
-        centered: true,
+        okText: "Delete group",
+        okColor: "red",
+        okIcon: faTrash,
     });
 
     if (confirmed && groupToDelete) {
@@ -554,7 +554,7 @@ const groupIndicators = computed(() => (group: ServiceCredentialGroupResponse): 
                     <template v-if="!currentServiceCredentialsGroup?.id">
                         <BBadge
                             v-if="props.serviceDefinition.optional"
-                            v-b-tooltip.hover.noninteractive
+                            v-g-tooltip.hover
                             pill
                             title="This service is optional. You may choose not to provide credentials for it."
                             variant="secondary"
@@ -563,7 +563,7 @@ const groupIndicators = computed(() => (group: ServiceCredentialGroupResponse): 
                         </BBadge>
                         <BBadge
                             v-else
-                            v-b-tooltip.hover.noninteractive
+                            v-g-tooltip.hover
                             pill
                             title="This service is required. The tool may not function properly without providing credentials for it."
                             :variant="currentServiceCredentialsGroup ? 'success' : 'warning'"
@@ -583,7 +583,7 @@ const groupIndicators = computed(() => (group: ServiceCredentialGroupResponse): 
             </BButton>
         </div>
 
-        <BCollapse :id="`accordion-${props.serviceDefinition.name}`" v-model="isExpanded" class="px-2">
+        <GCollapse v-model="isExpanded" class="px-2">
             <div class="d-flex flex-column mt-2">
                 <span class="text-md">{{ props.serviceDefinition.description }}</span>
 
@@ -637,7 +637,7 @@ const groupIndicators = computed(() => (group: ServiceCredentialGroupResponse): 
                     </template>
                 </GCard>
             </div>
-        </BCollapse>
+        </GCollapse>
     </div>
 </template>
 

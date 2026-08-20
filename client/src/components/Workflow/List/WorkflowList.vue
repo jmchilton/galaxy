@@ -3,7 +3,6 @@ import { faStar, faTags, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BAlert, BButton, BNav, BNavItem, BPagination } from "bootstrap-vue";
 import { faTrashRestore } from "font-awesome-6";
-import { filter } from "underscore";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router/composables";
 
@@ -88,7 +87,7 @@ const bookmarkButtonTitle = computed(() =>
     showBookmarked.value ? "Hide bookmarked workflows" : "Show bookmarked workflows",
 );
 
-const workflowFilters = computed(() => getWorkflowFilters(props.activeList));
+const workflowFilters = computed(() => getWorkflowFilters(props.activeList, userStore.isAnonymous));
 const rawFilters = computed(() =>
     Object.fromEntries(workflowFilters.value.getFiltersForText(filterText.value, true, false)),
 );
@@ -201,7 +200,7 @@ async function load(overlayLoading = false, silent = false) {
         let filteredWorkflows = data;
 
         if (props.activeList === "my") {
-            filteredWorkflows = filter(filteredWorkflows, (w: any) => userStore.matchesCurrentUsername(w.owner));
+            filteredWorkflows = filteredWorkflows.filter((w: any) => userStore.matchesCurrentUsername(w.owner));
         }
 
         workflowsLoaded.value = filteredWorkflows;
@@ -253,8 +252,9 @@ async function onBulkDelete() {
             Are you sure you want to delete ${totalSelected} workflows?`,
         {
             title: "Delete workflows",
-            okTitle: "Delete workflows",
-            okVariant: "danger",
+            okText: "Delete workflows",
+            okIcon: faTrash,
+            okColor: "red",
         },
     );
 
@@ -293,8 +293,8 @@ async function onBulkRestore() {
     const totalSelected = selectedWorkflowIds.value.length;
 
     const confirmed = await confirm(`Are you sure you want to restore ${totalSelected} workflows?`, {
-        okTitle: "Restore workflows",
-        okVariant: "primary",
+        okText: "Restore workflows",
+        okIcon: faTrashRestore,
     });
 
     if (confirmed) {
@@ -427,7 +427,7 @@ onMounted(() => {
                 :show-advanced.sync="showAdvanced">
                 <template v-slot:menu-help-text>
                     <!-- eslint-disable-next-line vue/no-v-html -->
-                    <div v-html="helpHtml(activeList)"></div>
+                    <div v-html="helpHtml(activeList, userStore.isAnonymous)"></div>
                 </template>
             </FilterMenu>
 
@@ -446,7 +446,7 @@ onMounted(() => {
                         <span v-localize>Filter:</span>
                         <BButton
                             id="show-deleted"
-                            v-b-tooltip.hover
+                            v-g-tooltip.hover
                             size="sm"
                             :title="deleteButtonTitle"
                             :pressed="showDeleted"
@@ -458,7 +458,7 @@ onMounted(() => {
 
                         <BButton
                             id="show-bookmarked"
-                            v-b-tooltip.hover
+                            v-g-tooltip.hover
                             size="sm"
                             :title="bookmarkButtonTitle"
                             :pressed="showBookmarked"
@@ -531,7 +531,7 @@ onMounted(() => {
                 <BButton
                     v-if="!showDeleted"
                     id="workflow-list-footer-bulk-delete-button"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :title="bulkDeleteOrRestoreLoading ? 'Deleting workflows' : 'Delete selected workflows'"
                     :disabled="bulkDeleteOrRestoreLoading"
                     size="sm"
@@ -546,7 +546,7 @@ onMounted(() => {
                 <BButton
                     v-else
                     id="workflow-list-footer-bulk-restore-button"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :title="bulkDeleteOrRestoreLoading ? 'Restoring workflows' : 'Restore selected workflows'"
                     :disabled="bulkDeleteOrRestoreLoading"
                     size="sm"
@@ -562,7 +562,7 @@ onMounted(() => {
                 <BButton
                     v-if="!showDeleted"
                     id="workflow-list-footer-bulk-add-tags-button"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :title="bulkTagsLoading ? 'Adding tags' : 'Add tags to selected workflows'"
                     :disabled="bulkTagsLoading"
                     size="sm"

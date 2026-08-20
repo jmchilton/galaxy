@@ -65,12 +65,7 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
 
         self.select_history_card_operation("Unnamed history", '[id^="g-card-rename-history-"]')
 
-        # Rename the history
-        history_name_input = self.wait_for_selector(".ui-form-element input.ui-input")
-        history_name_input.clear()
-        history_name_input.send_keys(self.history1_name)
-
-        self.wait_for_and_click_selector("button#submit")
+        self.rename_modal_rename("history", self.history1_name)
 
         self.navigate_to_histories_page()
 
@@ -84,7 +79,7 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
 
         # Delete the history
         self.select_history_card_operation(self.history2_name, '[id^="g-card-action-delete-history-"]', True)
-        self.components.histories.delete_history_confirm.wait_for_and_click()
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
 
         self.sleep_for(self.wait_types.UX_RENDER)
         self.assert_histories_in_list([self.history2_name], False)
@@ -111,7 +106,7 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
         self.assert_histories_in_list([self.history4_name])
 
         self.select_history_card_operation(self.history4_name, '[id^="g-card-action-purge-history-"]', True)
-        self.components.histories.delete_history_confirm.wait_for_and_click()
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
 
         self.sleep_for(self.wait_types.UX_RENDER)
         self.assert_histories_in_list([self.history4_name], False)
@@ -133,7 +128,7 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
 
         # Delete multiple histories
         self.components.histories.bulk_delete_button.wait_for_and_click()
-        self.components.histories.bulk_delete_confirm.wait_for_and_click()
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
 
         # Display deleted histories
         self.components.histories.advanced_search_toggle.wait_for_and_click()
@@ -145,7 +140,7 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
 
         # Restore multiple histories
         self.components.histories.bulk_restore_button.wait_for_and_click()
-        self.components.histories.bulk_restore_confirm.wait_for_and_click()
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
 
         # Verify deleted histories have been restored
         self.components.histories.reset_input.wait_for_and_click()
@@ -199,16 +194,16 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
         self.sleep_for(self.wait_types.UX_RENDER)
 
         # Verify the confirmation dialog is displayed
-        confirm_dialog = self.wait_for_selector("#bulk-open-multiview-histories")
-        assert confirm_dialog.is_displayed()
+        confirm_dialog = self.components.confirm_dialog
+        confirm_dialog.message.wait_for_visible()
 
         # Verify the dialog contains information about the limit
-        dialog_text = confirm_dialog.text
+        dialog_text = confirm_dialog.message.wait_for_text()
         assert "10" in dialog_text  # The maximum number of histories
         assert "11" in dialog_text  # The number of histories selected
 
         # Click confirm to proceed despite the limit
-        self.wait_for_and_click(self.components.histories.bulk_open_multiview_limit_confirm_button)
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
 
         # Wait for dialog to close
         self.sleep_for(self.wait_types.UX_RENDER)
@@ -368,3 +363,7 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
     def create_history(self, name):
         self.home()
         self.history_panel_create_new_with_name(name)
+        # Wait for the panel label to reflect the new name, confirming the
+        # rename XHR has completed before any subsequent home() navigation
+        # that would otherwise cancel the still-in-flight request.
+        self.wait_for_selector(f'[data-description="name display"][title="{name}"]')

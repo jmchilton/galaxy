@@ -2,26 +2,55 @@
 import { faChevronLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { storeToRefs } from "pinia";
-import { onMounted, onUnmounted, ref } from "vue";
-import { useRouter } from "vue-router/composables";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router/composables";
 
 import { usePanels } from "@/composables/usePanels";
+import { useChatStore } from "@/stores/chatStore";
 import { useUserStore } from "@/stores/userStore";
 
 import CenterFrame from "./CenterFrame.vue";
 import ActivityBar from "@/components/ActivityBar/ActivityBar.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
+import GalaxyAI from "@/components/GalaxyAI.vue";
+import ChatPanel from "@/components/GalaxyAI/ChatPanel.vue";
 import HistoryIndex from "@/components/History/Index.vue";
 import FlexPanel from "@/components/Panels/FlexPanel.vue";
 import DragAndDropModal from "@/components/Upload/DragAndDropModal.vue";
 
+const chatStore = useChatStore();
+const { isRightPanelOpen, isBottomPanelOpen, activeChatId } = storeToRefs(chatStore);
+const { historyPanelWidth, chatPanelWidth } = storeToRefs(useUserStore());
+
+const route = useRoute();
 const router = useRouter();
+
+watch(
+    () => route.path,
+    (newPath) => {
+        if (newPath.startsWith("/galaxyai")) {
+            chatStore.hideChat();
+        }
+    },
+    { immediate: true },
+);
+
+/** A list of paths for which `p-3` should not be applied
+ *
+ * TODO: Maybe we remove this global `p-3` and add it to the individual components that need it instead?
+ */
+const isNoPaddingPath = computed(() => {
+    return (
+        route.path.startsWith("/galaxyai") ||
+        (route.path.startsWith("/histories/") && route.path.includes("/pages/")) ||
+        route.path.startsWith("/pages/editor")
+    );
+});
+
 const showCenter = ref(false);
 const { showPanels } = usePanels();
 
 const historyPanel = ref(null);
-
-const { historyPanelWidth } = storeToRefs(useUserStore());
 
 // methods
 function hideCenter() {
@@ -53,11 +82,14 @@ onUnmounted(() => {
 <template>
     <div id="columns" class="d-flex">
         <ActivityBar v-if="showPanels" />
-        <div id="center" class="overflow-auto p-3 w-100">
-            <CenterFrame v-show="showCenter" id="galaxy_main" @load="onLoad" />
-            <div v-show="!showCenter" class="h-100">
-                <router-view :key="$route.fullPath" class="h-100" />
+        <div id="center" class="d-flex flex-column w-100" style="min-width: 0">
+            <div class="flex-grow-1 overflow-auto" :class="{ 'p-3': !isNoPaddingPath }" style="min-height: 0">
+                <CenterFrame v-show="showCenter" id="galaxy_main" @load="onLoad" />
+                <div v-show="!showCenter" class="h-100">
+                    <router-view :key="$route.fullPath" class="h-100" />
+                </div>
             </div>
+            <ChatPanel v-if="isBottomPanelOpen" />
         </div>
         <FlexPanel v-if="showPanels" ref="historyPanel" side="right" :reactive-width.sync="historyPanelWidth">
             <template v-slot:closed-button="{ open }">
@@ -69,6 +101,14 @@ onUnmounted(() => {
                 </GButton>
             </template>
             <HistoryIndex @show="onShow" />
+        </FlexPanel>
+        <FlexPanel
+            v-if="showPanels && isRightPanelOpen"
+            panel-id="chat-panel"
+            side="right"
+            :reactive-width.sync="chatPanelWidth"
+            @close="chatStore.hideChat()">
+            <GalaxyAI :exchange-id="activeChatId || undefined" docked />
         </FlexPanel>
         <DragAndDropModal />
     </div>

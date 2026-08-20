@@ -62,7 +62,31 @@ CITATIONS_ERRORS = """
 CITATIONS_VALID = """
 <tool id="id" name="name">
     <citations>
-        <citation type="doi">DOI</citation>
+        <citation type="doi">10.1186/1471-2105-11-485</citation>
+    </citations>
+</tool>
+"""
+
+CITATIONS_LEGACY_DOI_PREFIX = """
+<tool id="id" name="name">
+    <citations>
+        <citation type="doi">doi:10.1186/1471-2105-11-485</citation>
+    </citations>
+</tool>
+"""
+
+CITATIONS_INVALID = """
+<tool id="id" name="name">
+    <citations>
+        <citation type="doi">not-a-doi</citation>
+    </citations>
+</tool>
+"""
+
+CITATIONS_LEGACY_DOI_PREFIX_MODERN = """
+<tool id="id" name="name" profile="26.1">
+    <citations>
+        <citation type="doi">doi:10.1186/1471-2105-11-485</citation>
     </citations>
 </tool>
 """
@@ -177,6 +201,36 @@ HELP_INVALID_RST = """
         **xxl__
     </help>
 </tool>
+"""
+
+HELP_MARKDOWN_INVALID_RST = """
+<tool id="id" name="name">
+    <help format="markdown">
+        **xxl__
+    </help>
+</tool>
+"""
+
+HELP_YAML_MARKDOWN_INVALID_RST = """
+class: GalaxyTool
+id: id
+name: name
+version: '1.0'
+command: echo test
+help: |
+  **xxl__
+"""
+
+HELP_YAML_RST_INVALID = """
+class: GalaxyTool
+id: id
+name: name
+version: '1.0'
+command: echo test
+help:
+  format: restructuredtext
+  content: |
+    **xxl__
 """
 
 # test tool xml for inputs linter
@@ -711,6 +765,89 @@ OUTPUTS_FILTER_EXPRESSION = """
 </tool>
 """
 
+OUTPUTS_STRUCTURED_LIKE_UNQUALIFIED = """
+<tool id="id" name="name">
+    <inputs>
+        <conditional name="cond">
+            <param name="cond_param" type="select">
+                <option value="paired">Paired</option>
+            </param>
+            <when value="paired">
+                <param name="input1" type="data_collection" collection_type="paired" format="data" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="list_output" structured_like="input1" type="paired" inherit_format="true" />
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_STRUCTURED_LIKE_QUALIFIED = """
+<tool id="id" name="name">
+    <inputs>
+        <conditional name="cond">
+            <param name="cond_param" type="select">
+                <option value="paired">Paired</option>
+            </param>
+            <when value="paired">
+                <param name="input1" type="data_collection" collection_type="paired" format="data" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="list_output" structured_like="cond|input1" type="paired" inherit_format="true" />
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_STRUCTURED_LIKE_MISSING = """
+<tool id="id" name="name">
+    <inputs>
+        <param name="input2" type="data" format="data" />
+    </inputs>
+    <outputs>
+        <collection name="list_output" structured_like="nonexistent" type="paired" inherit_format="true" />
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_FORMAT_SOURCE_UNQUALIFIED = """
+<tool id="id" name="name">
+    <inputs>
+        <conditional name="cond">
+            <param name="cond_param" type="select">
+                <option value="yes">Yes</option>
+            </param>
+            <when value="yes">
+                <param name="input1" type="data" format="data" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output1" format_source="input1" />
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_FORMAT_SOURCE_QUALIFIED = """
+<tool id="id" name="name">
+    <inputs>
+        <conditional name="cond">
+            <param name="cond_param" type="select">
+                <option value="yes">Yes</option>
+            </param>
+            <when value="yes">
+                <param name="input1" type="data" format="data" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output1" format_source="cond|input1" />
+    </outputs>
+</tool>
+"""
+
 # tool xml for repeats linter
 REPEATS = """
 <tool id="id" name="name">
@@ -1125,7 +1262,34 @@ def test_citations_valid(lint_ctx):
     assert "Found 1 citations." in lint_ctx.valid_messages
     assert len(lint_ctx.valid_messages) == 1
     assert not lint_ctx.info_messages
+    assert not lint_ctx.warn_messages
     assert not lint_ctx.error_messages
+
+
+def test_citations_legacy_doi_prefix(lint_ctx):
+    tool_source = get_xml_tool_source(CITATIONS_LEGACY_DOI_PREFIX)
+    run_lint_module(lint_ctx, citations, tool_source)
+    assert lint_ctx.warn_messages == [
+        "Citation 'doi:10.1186/1471-2105-11-485' uses the legacy 'doi:' prefix; use the bare DOI '10.1186/1471-2105-11-485' instead."
+    ]
+    assert not lint_ctx.error_messages
+
+
+def test_citations_invalid(lint_ctx):
+    tool_source = get_xml_tool_source(CITATIONS_INVALID)
+    run_lint_module(lint_ctx, citations, tool_source)
+    assert len(lint_ctx.warn_messages) == 1
+    assert "is invalid and will not load for tools with profile >= 26.1" in str(lint_ctx.warn_messages[0])
+    assert not lint_ctx.error_messages
+
+
+def test_citations_legacy_doi_prefix_error_on_modern_profile(lint_ctx):
+    tool_source = get_xml_tool_source(CITATIONS_LEGACY_DOI_PREFIX_MODERN)
+    run_lint_module(lint_ctx, citations, tool_source)
+    assert lint_ctx.error_messages == [
+        "Citation 'doi:10.1186/1471-2105-11-485' uses the legacy 'doi:' prefix; use the bare DOI '10.1186/1471-2105-11-485' instead."
+    ]
+    assert not lint_ctx.warn_messages
 
 
 def test_command_multiple(lint_ctx):
@@ -1315,6 +1479,29 @@ def test_help_invalid_rst(lint_ctx):
     assert len(lint_ctx.valid_messages) == 1
     assert len(lint_ctx.warn_messages) == 1
     assert not lint_ctx.error_messages
+
+
+def test_help_markdown_skips_rst_validation(lint_ctx):
+    tool_source = get_xml_tool_source(HELP_MARKDOWN_INVALID_RST)
+    run_lint_module(lint_ctx, help, tool_source)
+    assert "Tool contains help section." in lint_ctx.valid_messages
+    assert "Help contains valid reStructuredText." not in lint_ctx.valid_messages
+    assert "Invalid reStructuredText found in help" not in lint_ctx.warn_messages
+    assert not lint_ctx.error_messages
+
+
+def test_help_yaml_markdown_skips_rst_validation(lint_ctx):
+    tool_source = get_tool_source(HELP_YAML_MARKDOWN_INVALID_RST)
+    run_lint_module(lint_ctx, help, tool_source)
+    assert "Help contains valid reStructuredText." not in lint_ctx.valid_messages
+    assert "Invalid reStructuredText found in help" not in lint_ctx.warn_messages
+
+
+def test_help_yaml_rst_invalid(lint_ctx):
+    tool_source = get_tool_source(HELP_YAML_RST_INVALID)
+    run_lint_module(lint_ctx, help, tool_source)
+    assert "Invalid reStructuredText found in help" in lint_ctx.warn_messages
+    assert "Help contains valid reStructuredText." not in lint_ctx.valid_messages
 
 
 def test_inputs_no_inputs(lint_ctx):
@@ -1881,6 +2068,41 @@ def test_outputs_filter_expression(lint_ctx):
     assert not lint_ctx.error_messages
 
 
+def test_outputs_structured_like_unqualified(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_STRUCTURED_LIKE_UNQUALIFIED)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert "unqualified structured_like='input1'" in lint_ctx.warn_messages
+    assert "cond|input1" in lint_ctx.warn_messages
+    assert "structured_like" not in lint_ctx.error_messages
+
+
+def test_outputs_structured_like_qualified(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_STRUCTURED_LIKE_QUALIFIED)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert "structured_like" not in lint_ctx.warn_messages
+    assert "structured_like" not in lint_ctx.error_messages
+
+
+def test_outputs_structured_like_missing(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_STRUCTURED_LIKE_MISSING)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert "does not match any input" in lint_ctx.error_messages
+
+
+def test_outputs_format_source_unqualified(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_UNQUALIFIED)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert "unqualified format_source='input1'" in lint_ctx.warn_messages
+    assert "cond|input1" in lint_ctx.warn_messages
+
+
+def test_outputs_format_source_qualified(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_QUALIFIED)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert "format_source" not in lint_ctx.warn_messages
+    assert "format_source" not in lint_ctx.error_messages
+
+
 def test_stdio_default_for_default_profile(lint_ctx):
     tool_source = get_xml_tool_source(STDIO_DEFAULT_FOR_DEFAULT_PROFILE)
     run_lint_module(lint_ctx, stdio, tool_source)
@@ -2425,7 +2647,7 @@ def test_skip_by_module(lint_ctx):
 def test_list_linters():
     linter_names = Linter.list_listers()
     # make sure to add/remove a test for new/removed linters if this number changes
-    assert len(linter_names) == 143
+    assert len(linter_names) == 148
     assert "Linter" not in linter_names
     # make sure that linters from all modules are available
     for prefix in [
@@ -2449,7 +2671,7 @@ def test_linting_functional_tool_multi_select(lint_ctx):
     run_lint_module(lint_ctx, tests, tool_source)
     warn_message = lint_ctx.warn_messages[0]
     assert (
-        "Test 2: failed to validate test parameters against inputs - tests won't run on a modern Galaxy tool profile version. Validation errors are [5 validation errors for"
+        "Test 2: failed to validate test parameters against inputs - tests won't run on a modern Galaxy tool profile version. Validation errors are [6 validation errors for"
         in str(warn_message)
     )
 

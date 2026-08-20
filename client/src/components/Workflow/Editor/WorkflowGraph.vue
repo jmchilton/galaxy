@@ -4,16 +4,16 @@ import { storeToRefs } from "pinia";
 import { computed, type PropType, provide, reactive, type Ref, ref, watch, watchEffect } from "vue";
 
 import { DatatypesMapperModel } from "@/components/Datatypes/model";
+import { useFocusedNodes } from "@/components/Graph/composables/useFocusedNodes";
+import { useD3Zoom } from "@/composables/d3Zoom";
+import { useViewportBoundingBox } from "@/composables/viewportBoundingBox";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import type { TerminalPosition, XYPosition } from "@/stores/workflowEditorStateStore";
 import type { Step } from "@/stores/workflowStepStore";
 import { assertDefined } from "@/utils/assertions";
+import type { Vector } from "@/utils/geometry";
 
-import { useD3Zoom } from "./composables/d3Zoom";
-import { useFocusedNodes } from "./composables/useFocusedNodes";
-import { useViewportBoundingBox } from "./composables/viewportBoundingBox";
 import { useWorkflowBoundingBox } from "./composables/workflowBoundingBox";
-import type { Rectangle, Vector } from "./modules/geometry";
 import type { OutputTerminals } from "./modules/terminals";
 import { maxZoom, minZoom } from "./modules/zoomLevels";
 
@@ -23,11 +23,11 @@ import BoxSelectPreview from "./Tools/BoxSelectPreview.vue";
 import InputCatcher from "./Tools/InputCatcher.vue";
 import ToolBar from "./Tools/ToolBar.vue";
 import LoadingOverlay from "@/components/Common/LoadingOverlay.vue";
+import ZoomControl from "@/components/Graph/ZoomControl.vue";
 import AreaHighlight from "@/components/Workflow/Editor/AreaHighlight.vue";
 import WorkflowNode from "@/components/Workflow/Editor/Node.vue";
 import WorkflowEdges from "@/components/Workflow/Editor/WorkflowEdges.vue";
 import WorkflowMinimap from "@/components/Workflow/Editor/WorkflowMinimap.vue";
-import ZoomControl from "@/components/Workflow/Editor/ZoomControl.vue";
 
 const emit = defineEmits(["transform", "graph-offset", "onRemove", "scrollTo", "stepClicked"]);
 const props = defineProps({
@@ -46,9 +46,28 @@ const props = defineProps({
 });
 
 const { stateStore, stepStore, connectionStore } = useWorkflowStores();
-const { scale, activeNodeId, draggingPosition, draggingTerminal } = storeToRefs(stateStore);
+const { scale, activeNodeId, draggingPosition, draggingTerminal, pendingHighlight } = storeToRefs(stateStore);
 
-const { focusedNodeIds } = useFocusedNodes(activeNodeId, connectionStore);
+const { focusedNodeIds } = useFocusedNodes(activeNodeId, {
+    upstream(id) {
+        const result: number[] = [];
+        for (const conn of connectionStore.getConnectionsForStep(id)) {
+            if (conn.input.stepId === id) {
+                result.push(conn.output.stepId);
+            }
+        }
+        return result;
+    },
+    downstream(id) {
+        const result: number[] = [];
+        for (const conn of connectionStore.getConnectionsForStep(id)) {
+            if (conn.output.stepId === id) {
+                result.push(conn.input.stepId);
+            }
+        }
+        return result;
+    },
+});
 const canvas: Ref<HTMLElement | null> = ref(null);
 
 const elementBounding = useElementBounding(canvas, { windowResize: false, windowScroll: false });
@@ -59,7 +78,7 @@ const {
     setZoom,
     moveTo,
     setTransform: d3SetTransform,
-} = useD3Zoom(scale.value, minZoom, maxZoom, canvas, scroll, props.initialPosition);
+} = useD3Zoom(scale.value, minZoom, maxZoom, canvas, props.initialPosition);
 
 watch(
     () => transform.value,
@@ -210,19 +229,24 @@ const { comments } = storeToRefs(commentStore);
 
 const areaHighlight = ref<InstanceType<typeof AreaHighlight>>();
 
-function highlightGraphRegion(bounds: Rectangle, moveToPosition: boolean = true) {
-    const centerPosition = { x: bounds.x + bounds.width / 2.0, y: bounds.y + bounds.height / 2.0 };
-    areaHighlight.value?.show(bounds);
-    if (moveToPosition) {
-        moveTo(centerPosition);
+watch(pendingHighlight, (pending) => {
+    if (pending) {
+        pendingHighlight.value = null;
+        const centerPosition = {
+            x: pending.bounds.x + pending.bounds.width / 2.0,
+            y: pending.bounds.y + pending.bounds.height / 2.0,
+        };
+        areaHighlight.value?.show(pending.bounds);
+        if (pending.moveTo !== false) {
+            moveTo(centerPosition);
+        }
     }
-}
+});
 
 defineExpose({
     fitWorkflow,
     setZoom,
     moveTo,
-    highlightGraphRegion,
     setTransform: d3SetTransform,
 });
 </script>
@@ -302,7 +326,7 @@ defineExpose({
     </div>
 </template>
 
-<style scoped land="scss">
+<style scoped lang="scss">
 .workflow-canvas {
     position: relative;
 

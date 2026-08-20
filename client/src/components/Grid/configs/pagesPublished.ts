@@ -2,7 +2,8 @@ import { faEye, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useEventBus } from "@vueuse/core";
 
 import { GalaxyApi } from "@/api";
-import Filtering, { contains, type ValidFilter } from "@/utils/filtering";
+import { GRID_LABELS } from "@/components/Page/constants";
+import Filtering, { contains, equals, toBool, type ValidFilter } from "@/utils/filtering";
 import { rethrowSimple } from "@/utils/simple-error";
 
 import type { ActionArray, FieldArray, GridConfig } from "./types";
@@ -19,12 +20,18 @@ type PageEntry = Record<string, unknown>;
  * Request and return data from server
  */
 async function getData(offset: number, limit: number, search: string, sort_by: string, sort_desc: boolean) {
+    if (search.includes("is:standalone")) {
+        // Pages that are not attached to a history have their type set to "standalone" on the backend
+        // We convert the search term here before sending to the backend
+        search = search.replace("is:standalone", "type:standalone");
+    }
+
     const { response, data, error } = await GalaxyApi().GET("/api/pages", {
         params: {
             query: {
                 limit,
                 offset,
-                search,
+                search: search,
                 sort_by: sort_by as SortKeyLiteral,
                 sort_desc,
                 show_own: false,
@@ -101,6 +108,13 @@ const validFilters: Record<string, ValidFilter<string | boolean | undefined>> = 
     title: { placeholder: "title", type: String, handler: contains("title"), menuItem: true },
     slug: { handler: contains("slug"), menuItem: false },
     user: { placeholder: "user", type: String, handler: contains("username"), menuItem: true },
+    standalone: {
+        placeholder: "Only standalone",
+        type: Boolean,
+        boolType: "is",
+        handler: equals("standalone", "type", toBool),
+        menuItem: true,
+    },
 };
 
 /**
@@ -112,11 +126,11 @@ const gridConfig: GridConfig = {
     fields: fields,
     filtering: new Filtering(validFilters, undefined, false, false),
     getData: getData,
-    plural: "Pages",
+    plural: GRID_LABELS.gridPlural,
     sortBy: "update_time",
     sortDesc: true,
     sortKeys: ["create_time", "title", "update_time"],
-    title: "Published Pages",
+    title: GRID_LABELS.publishedTitle,
 };
 
 export default gridConfig;

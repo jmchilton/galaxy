@@ -22,9 +22,10 @@ from .framework import (
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
+from .upload_activity_helpers import UsesUploadActivity
 
 
-class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
+class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
     @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
     def test_run_tool_verify_contents_by_peek(self):
@@ -196,7 +197,7 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
     def test_rerun_deleted_dataset(self):
         # upload a first dataset that should not become selected on re-run
         test_path = self.get_filename("1.tabular")
-        self.perform_upload(test_path)
+        self.upload_context("local-file").stage_local_file(test_path).start()
         self.history_panel_wait_for_hid_ok(1)
         self.tool_open("column_param")
         self.select_set_value("#col", "3")
@@ -241,7 +242,7 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
     def test_rerun_dataset_collection_element(self):
         # upload a first dataset that should not become selected on re-run
         test_path = self.get_filename("1.fasta")
-        self.perform_upload(test_path)
+        self.upload_context("local-file").stage_local_file(test_path).start()
         self.history_panel_wait_for_hid_ok(1)
 
         history_id = self.current_history_id()
@@ -276,9 +277,9 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
         test_path_decoy = self.get_filename("1.txt")
         # Upload form posts bad data if executed two times in a row like this, so
         # wait between uploads. xref https://github.com/galaxyproject/galaxy/issues/5169
-        self.perform_upload(test_path)
+        self.upload_context("local-file").stage_local_file(test_path).start()
         self.history_panel_wait_for_hid_ok(1)
-        self.perform_upload(test_path_decoy)
+        self.upload_context("local-file").stage_local_file(test_path_decoy).start()
         self.history_panel_wait_for_hid_ok(2)
 
         self.home()
@@ -293,6 +294,94 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
         latest_hda = self.latest_history_item()
         assert latest_hda["hid"] == 3
         assert latest_hda["name"] == "Select first on dataset 1"
+
+    @selenium_test
+    def test_data_options_paginated_smoke(self):
+        """Tool form opens responsively with a large history and the dropdown
+        is bounded — proves the build endpoint paginates and the client handles
+        the response without trying to render every HDA."""
+        history_id = self.current_history_id()
+        # Seed the history with 60 datasets in a single fetch request so the
+        # default 50-per-page cap kicks in.
+        self.dataset_populator.fetch_hdas(history_id, [{"src": "pasted", "paste_content": "x"}] * 60)
+        self.home()
+        self.tool_open("cat1")
+        select_field = self.components.tool_form.parameter_data_select(parameter="input1").wait_for_visible()
+        # Open the multiselect so its options render in the DOM.
+        trigger = select_field.find_element(By.CSS_SELECTOR, ".multiselect__select")
+        trigger.click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        options = select_field.find_elements(By.CSS_SELECTOR, "[role='option']")
+        # 60 datasets uploaded but the default page size is 50, so the dropdown
+        # must contain exactly 50 — anything less would indicate client-side
+        # under-rendering, anything more would mean pagination is broken.
+        assert (
+            len(options) == 50
+        ), f"Expected dropdown to render exactly 50 options (default page size), got {len(options)}"
+
+    @selenium_test
+    def test_data_options_load_more_appends(self):
+        """Scrolling the dropdown's ``Loading more…`` sentinel into view must
+        fetch the next page and *append* it to the select. Regression test for
+        issue #23135 — the load-more request fired but the fetched options never
+        reached the dropdown because ``FormDisplay`` renders from a clone of
+        ``inputs`` that only re-syncs on array-identity change."""
+        history_id = self.current_history_id()
+        # 60 datasets with a default 50-per-page cap leaves a full second page.
+        self.dataset_populator.fetch_hdas(history_id, [{"src": "pasted", "paste_content": "x"}] * 60)
+        self.home()
+        self.tool_open("cat1")
+        select_field = self.components.tool_form.parameter_data_select(parameter="input1").wait_for_visible()
+        trigger = select_field.find_element(By.CSS_SELECTOR, ".multiselect__select")
+        trigger.click()
+        self.sleep_for(self.wait_types.UX_RENDER)
+        assert len(select_field.find_elements(By.CSS_SELECTOR, "[role='option']")) == 50
+
+        # Scroll the load-more sentinel into view to trigger the intersection
+        # observer, then confirm additional options were appended. Re-query and
+        # re-scroll on each retry: the sentinel disappears once the final page
+        # loads, and the option list re-renders when the new page arrives.
+        @retry_assertion_during_transitions
+        def assert_more_options_loaded():
+            sentinels = select_field.find_elements(By.CSS_SELECTOR, ".form-data-load-more-sentinel")
+            if sentinels:
+                self.scroll_into_view(sentinels[0])
+            options = select_field.find_elements(By.CSS_SELECTOR, "[role='option']")
+            assert len(options) > 50, f"Expected the dropdown to append a second page (>50 options), got {len(options)}"
+
+        assert_more_options_loaded()
+
+    @selenium_test
+    def test_data_options_pinned_via_rerun(self):
+        """A dataset selected as a tool input but living deep in history (past
+        the first page window) must still appear in the rerun form's dropdown
+        via the ``pinned`` mechanism — otherwise the user couldn't see what was
+        previously selected."""
+        history_id = self.current_history_id()
+        # Upload the to-be-pinned dataset first so it gets the lowest hid and
+        # ends up far below the page window once we add the bulk uploads.
+        first_hda = self.dataset_populator.fetch_hda(history_id, {"src": "pasted", "paste_content": "pinned"})
+        self.dataset_populator.fetch_hdas(history_id, [{"src": "pasted", "paste_content": "x"}] * 60)
+        run_response = self.dataset_populator.run_tool(
+            "cat1",
+            inputs={"input1": {"src": "hda", "id": first_hda["id"]}},
+            history_id=history_id,
+        )
+        output_hid = run_response["outputs"][0]["hid"]
+        self.dataset_populator.wait_for_history(history_id)
+        self.home()
+        self.hda_click_primary_action_button(output_hid, "rerun")
+        select_field = self.components.tool_form.parameter_data_select(parameter="input1").wait_for_visible()
+
+        @retry_assertion_during_transitions
+        def assert_pinned_value_selected():
+            selected = select_field.find_element(By.CSS_SELECTOR, ".multiselect__single")
+            text = selected.text
+            assert text.startswith(
+                f"{first_hda['hid']}: "
+            ), f"Expected rerun form to display the pinned input '{first_hda['hid']}: ...', got '{text}'"
+
+        assert_pinned_value_selected()
 
     @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
@@ -346,7 +435,7 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
         self.tool_form_execute()
 
 
-class TestLoggedInToolForm(SeleniumTestCase):
+class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
     ensure_registered = True
 
     @selenium_only("Not yet migrated to support Playwright backend")
@@ -356,7 +445,7 @@ class TestLoggedInToolForm(SeleniumTestCase):
         # normally HID 2 would be selected but since it is discarded - it won't
         # be an option so verify the result was run with HID 1.
         test_path = self.get_filename("1.fasta")
-        self.perform_upload(test_path)
+        self.upload_context("local-file").stage_local_file(test_path).start()
         self.history_panel_wait_for_hid_ok(1)
 
         history_id = self.current_history_id()
@@ -427,9 +516,7 @@ class TestLoggedInToolForm(SeleniumTestCase):
     @pytest.mark.local
     def test_run_apply_rules_tutorial(self):
         self.home()
-        self.upload_rule_start()
-        self.upload_rule_set_data_type("Collections")
-        self.components.upload.rule_source_content.wait_for_and_send_keys(
+        self.upload_context("rule").creating("collections").from_source("pasted_table").paste_content(
             """https://raw.githubusercontent.com/jmchilton/galaxy/apply_rules_tutorials/test-data/rules/treated1fb.txt treated_single_1
 https://raw.githubusercontent.com/jmchilton/galaxy/apply_rules_tutorials/test-data/rules/treated2fb.txt treated_paired_2
 https://raw.githubusercontent.com/jmchilton/galaxy/apply_rules_tutorials/test-data/rules/treated3fb.txt treated_paired_3
@@ -440,16 +527,15 @@ https://raw.githubusercontent.com/jmchilton/galaxy/apply_rules_tutorials/test-da
 """
         )
         self.screenshot("rules_apply_rules_example_4_1_input_paste")
-        self.upload_rule_build()
         rule_builder = self.components.rule_builder
-        rule_builder._.wait_for_and_click()
+        rule_builder._.wait_for_visible()
         self.rule_builder_set_mapping("url", "A")
         self.rule_builder_set_mapping("list-identifiers", ["B"])
         self.rule_builder_set_collection_name("flat_count_list")
         self.rule_builder_set_extension("txt")
 
         self.screenshot("rules_apply_rules_example_4_2_input_rules")
-        rule_builder.main_button_ok.wait_for_and_click()
+        self.components.file_set_wizard.wizard_submit_button.wait_for_and_click()
         self.history_panel_wait_for_hid_ok(1)
         self.screenshot("rules_apply_rules_example_4_3_input_ready")
         self.history_multi_view_display_collection_contents(1, "list")

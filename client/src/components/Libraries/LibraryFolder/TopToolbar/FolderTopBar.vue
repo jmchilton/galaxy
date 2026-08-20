@@ -14,6 +14,7 @@ import {
 import { computed, reactive, ref } from "vue";
 
 import { GalaxyApi } from "@/api";
+import type { LibraryFolderMetadata } from "@/api/libraries";
 import type { CollectionBuilderType } from "@/components/Collections/common/buildCollectionModal";
 import { Services } from "@/components/Libraries/LibraryFolder/services";
 import { deleteSelectedItems } from "@/components/Libraries/LibraryFolder/TopToolbar/delete-selected";
@@ -42,7 +43,7 @@ type CollectionElement = {
 };
 
 interface Props {
-    metadata: any;
+    metadata: LibraryFolderMetadata;
     selected: any[];
     folderId: string;
     unselected: any[];
@@ -336,7 +337,7 @@ function onAddDatasetsDirectory(selectedDatasets: Record<string, string | boolea
 
                     <BDropdown
                         v-if="props.canAddLibraryItem"
-                        v-b-tooltip.top.noninteractive
+                        v-g-tooltip.top
                         right
                         no-caret
                         class="add-library-items-datasets mr-1">
@@ -365,7 +366,7 @@ function onAddDatasetsDirectory(selectedDatasets: Record<string, string | boolea
                         </BDropdownGroup>
                     </BDropdown>
 
-                    <BDropdown v-b-tooltip.top.noninteractive right no-caret class="add-to-history mr-1">
+                    <BDropdown v-g-tooltip.top right no-caret class="add-to-history mr-1">
                         <template v-slot:button-content>
                             <FontAwesomeIcon :icon="faBook" />
                             Add to History

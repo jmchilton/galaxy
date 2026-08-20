@@ -46,6 +46,15 @@ export interface UploadFileListItem extends UploadListItemBase {
 /** Union of all upload list UI items */
 export type UploadListItem = UploadBatchListItem | UploadFileListItem;
 
+/**
+ * Subset of the upload state API used by upload tracking utilities.
+ * Provides only the functions needed for tracking and managing upload progress.
+ */
+export type UploadStateTrackingApi = Pick<
+    ReturnType<typeof useUploadState>,
+    "addBatch" | "addUploadItem" | "getBatch" | "setStatus" | "updateProgress" | "setError"
+>;
+
 /** Collection batch state tracking */
 export interface CollectionBatchState {
     /** Unique batch identifier */
@@ -183,7 +192,7 @@ export function useUploadState() {
                 upload,
             }));
 
-        return [...batchItems, ...standaloneItems].sort((a, b) => a.createdAt - b.createdAt);
+        return [...batchItems, ...standaloneItems].sort((a, b) => b.createdAt - a.createdAt);
     });
 
     /**
@@ -300,7 +309,7 @@ export function useUploadState() {
      */
     function updateProgress(id: string, progress: number) {
         const item = items.value.find((u) => u.id === id);
-        if (item) {
+        if (item && item.status !== "completed") {
             item.progress = Math.max(0, Math.min(100, Math.round(progress)));
             if (item.progress >= 100 && item.status !== "error") {
                 item.status = "completed";

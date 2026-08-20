@@ -58,7 +58,7 @@ const rerunUrl = computed(() => {
     return prependPath(props.itemUrls.rerun!);
 });
 const downloadUrl = computed(() => {
-    return prependPath(`api/datasets/${props.item.id}/display?to_ext=${props.item.extension}`);
+    return prependPath(`api/datasets/${props.item.id}/download?to_ext=${props.item.extension}`);
 });
 
 function onCopyLink() {
@@ -87,7 +87,7 @@ function onVisualize() {
 }
 
 function onRerun() {
-    router.push(`/root?job_id=${props.item.creating_job}`);
+    router.push(`/?job_id=${props.item.creating_job}`);
 }
 </script>
 
@@ -97,7 +97,7 @@ function onRerun() {
             <div class="btn-group float-left">
                 <BButton
                     v-if="showError"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="px-1"
                     title="Error"
                     size="sm"
@@ -111,7 +111,7 @@ function onRerun() {
 
                 <BButton
                     v-if="showDownloads"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="px-1"
                     title="Copy Link"
                     size="sm"
@@ -122,7 +122,7 @@ function onRerun() {
 
                 <BButton
                     v-if="showInfo"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="info-btn px-1"
                     title="Dataset Details"
                     size="sm"
@@ -134,7 +134,7 @@ function onRerun() {
 
                 <BButton
                     v-if="showVisualizations"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="visualize-btn px-1"
                     title="Visualize"
                     size="sm"
@@ -146,7 +146,7 @@ function onRerun() {
 
                 <BButton
                     v-if="showHighlight"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="highlight-btn px-1"
                     title="Show Related Items"
                     size="sm"
@@ -157,7 +157,7 @@ function onRerun() {
 
                 <BButton
                     v-if="writable && showRerun"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="rerun-btn px-1"
                     title="Run Job Again"
                     size="sm"

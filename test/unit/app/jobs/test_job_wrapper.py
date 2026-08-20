@@ -69,7 +69,9 @@ class AbstractTestCases:
         @contextmanager
         def _prepared_wrapper(self):
             wrapper = self._wrapper()
-            wrapper._get_tool_evaluator = lambda *args, **kwargs: MockEvaluator(wrapper.app, wrapper.tool, wrapper.get_job(), wrapper.working_directory)  # type: ignore[method-assign]
+            wrapper._get_tool_evaluator = lambda *args, **kwargs: MockEvaluator(  # type: ignore[method-assign]
+                wrapper.app, wrapper.tool, wrapper.get_job(), wrapper.working_directory
+            )
             wrapper.prepare()
             yield wrapper
 
@@ -170,6 +172,10 @@ class MockToolbox:
 
     def tool_for_job(self, job, exact, check_access=True, user=None):
         tool = self.get(job.tool_id)
+        return tool
+
+    def materialize_tool(self, tool, *, reason):
+        assert reason == "job_setup"
         return tool
 
 

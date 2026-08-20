@@ -1,5 +1,5 @@
 <script setup>
-import { BAlert, BCollapse, BLink } from "bootstrap-vue";
+import { BAlert, BLink } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { getArgs } from "@/components/Markdown/parse";
@@ -33,6 +33,7 @@ import WorkflowDisplay from "./Elements/Workflow/WorkflowDisplay.vue";
 import WorkflowImage from "./Elements/Workflow/WorkflowImage.vue";
 import WorkflowLicense from "./Elements/Workflow/WorkflowLicense.vue";
 import VisualizationWrapper from "./VisualizationWrapper.vue";
+import GCollapse from "@/components/BaseComponents/GCollapse.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import WorkflowInvocationInputs from "@/components/WorkflowInvocationState/WorkflowInvocationInputs.vue";
 import WorkflowInvocationOutputs from "@/components/WorkflowInvocationState/WorkflowInvocationOutputs.vue";
@@ -60,9 +61,8 @@ const workflowLoading = ref(false);
 const args = computed(() => {
     if (invocation.value && workflowId.value) {
         return parseInvocation(invocation.value, workflowId.value, name.value, attributes.value.args);
-    } else {
-        return { ...attributes.value.args };
     }
+    return { ...attributes.value.args };
 });
 
 const hasLabels = computed(() => props.labels !== undefined);
@@ -151,7 +151,7 @@ watch(
         <BLink v-if="isCollapsible" class="font-weight-bold" @click="toggle = !toggle">
             {{ args.collapse }}
         </BLink>
-        <BCollapse :visible="isVisible">
+        <GCollapse :visible="isVisible">
             <TextContent
                 v-if="name == 'generate_galaxy_version'"
                 class="galaxy-version"
@@ -197,7 +197,7 @@ watch(
                 :dataset-id="args.history_dataset_id"
                 :embedded="name == 'history_dataset_embedded'" />
             <HistoryDatasetIndex v-else-if="name == 'history_dataset_index'" :args="args" />
-            <HistoryDatasetLink v-else-if="name == 'history_dataset_link'" :args="args" />
+            <HistoryDatasetLink v-else-if="name == 'history_dataset_link' && args.history_dataset_id" :args="args" />
             <HistoryLink v-else-if="name == 'history_link'" :history-id="args.history_id" />
             <InstanceUrl
                 v-else-if="name == 'instance_access_link'"
@@ -276,6 +276,6 @@ watch(
                 :size="args.size || 'lg'"
                 :workflow-version="args.workflow_checkpoint || undefined" />
             <WorkflowLicense v-else-if="name == 'workflow_license'" :workflow-id="args.workflow_id" />
-        </BCollapse>
+        </GCollapse>
     </div>
 </template>
