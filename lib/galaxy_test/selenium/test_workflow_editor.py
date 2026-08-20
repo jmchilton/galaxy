@@ -36,6 +36,11 @@ from .framework import (
     UsesWorkflowAssertions,
 )
 
+# Gate modes offered by FormConditional.vue.
+GATE_MODE_NONE = "Always run this step"
+GATE_MODE_BOOLEAN = "Run when a boolean parameter is true"
+GATE_MODE_INPUT_PROVIDED = "Run when an input is provided"
+
 CHIPSEQ_COLUMNS = [
     ColumnDefinition(
         "Condition",
@@ -950,15 +955,17 @@ steps:
         workflow = self.workflow_populator.download_workflow(workflow_id)
         return workflow
 
-    def _pick_value_select_mode(self, label):
-        mode_selector = "div.ui-form-element[id='form-element-mode']"
-        container = self.wait_for_selector(mode_selector)
+    def _select_form_option(self, form_element_id, label):
+        """Pick an option by label from a FormElement select."""
+        element_id = f"form-element-{form_element_id}"
+        container = self.wait_for_selector(f"div.ui-form-element[id='{element_id}']")
         trigger = container.find_element(By.CSS_SELECTOR, ".multiselect__select")
         trigger.click()
         self.sleep_for(self.wait_types.UX_RENDER)
         js = """
-            var label = arguments[0];
-            var container = document.querySelector('#form-element-mode');
+            var elementId = arguments[0];
+            var label = arguments[1];
+            var container = document.getElementById(elementId);
             var items = container.querySelectorAll('.multiselect__element');
             for (var i = 0; i < items.length; i++) {
                 if (items[i].textContent.trim() === label) {
@@ -968,8 +975,8 @@ steps:
             }
             return false;
         """
-        result = self.execute_script(js, label)
-        assert result, f"Mode option '{label}' not found"
+        result = self.execute_script(js, element_id, label)
+        assert result, f"Option '{label}' not found in {element_id}"
 
     @selenium_test
     def test_pick_value_add_from_palette(self):
@@ -985,7 +992,7 @@ steps:
         editor = self.components.workflow_editor
         node = editor.node._(label="Pick Value")
         node.wait_for_and_click()
-        self._pick_value_select_mode("All non-null (as collection)")
+        self._select_form_option("mode", "All non-null (as collection)")
         self.sleep_for(self.wait_types.UX_RENDER)
         self.assert_workflow_has_changes_and_save()
         workflow = self._download_current_workflow()
@@ -1108,7 +1115,7 @@ steps:
         editor = self.components.workflow_editor
         pick_node = editor.node._(label="pick")
         pick_node.wait_for_and_click()
-        self._pick_value_select_mode("All non-null (as collection)")
+        self._select_form_option("mode", "All non-null (as collection)")
         self.sleep_for(self.wait_types.UX_RENDER)
         self.assert_workflow_has_changes_and_save()
         workflow = self._download_current_workflow()
@@ -1300,14 +1307,14 @@ steps:
         conditional_node.input_terminal(name="input").wait_for_present()
         # Assert no when input before making step conditional
         conditional_node.input_terminal(name="when").wait_for_absent()
-        conditional_toggle = editor.step_when.wait_for_present()
-        self.move_to_and_click(conditional_toggle)
-        # Toggling conditional should cause when input to appear
+        editor.step_when.wait_for_present()
+        self._select_form_option("__conditional", GATE_MODE_BOOLEAN)
+        # Choosing the boolean gate should cause the when input to appear
         conditional_node.input_terminal(name="when").wait_for_present()
-        self.move_to_and_click(conditional_toggle)
-        # Toggling conditional should cause when input to disappear
+        self._select_form_option("__conditional", GATE_MODE_NONE)
+        # Clearing the gate should cause the when input to disappear
         conditional_node.input_terminal(name="when").wait_for_absent()
-        self.move_to_and_click(conditional_toggle)
+        self._select_form_option("__conditional", GATE_MODE_BOOLEAN)
         conditional_node.input_terminal(name="when").wait_for_present()
         # Output connection should be invalid, as output from conditional step is potentially null
         self.assert_connection_invalid("conditional_step#out_file1", "downstream_step#input1")
@@ -1331,6 +1338,33 @@ steps:
         save_button.wait_for_visible()
         # TODO: hook up best practice panel, disable save when "when" not connected
         # assert save_button.has_class("disabled")
+
+    @selenium_test
+    def test_editor_gate_step_on_optional_input(self):
+        self.open_in_workflow_editor("""
+class: GalaxyWorkflow
+inputs:
+  fallback: data
+  maybe:
+    type: data
+    optional: true
+steps:
+  gated:
+    tool_id: cat
+    in:
+      input1: maybe
+""")
+        editor = self.components.workflow_editor
+        # Without a gate, an optional input feeding a required parameter is a real problem.
+        self.assert_connection_invalid("maybe#output", "gated#input1")
+        editor.node._(label="gated").wait_for_and_click()
+        self._select_form_option("__conditional", GATE_MODE_INPUT_PROVIDED)
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.assert_connection_valid("maybe#output", "gated#input1")
+        self.assert_workflow_has_changes_and_save()
+        workflow = self._download_current_workflow()
+        gated_step = [s for s in workflow["steps"].values() if s.get("label") == "gated"][0]
+        assert gated_step["when"] == "$(inputs.input1 !== null)"
 
     @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
@@ -1895,6 +1929,11 @@ steps:
     def assert_connection_invalid(self, source, sink):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
         self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_present()
+
+    def assert_connection_valid(self, source, sink):
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_absent()
+        self.assert_connected(source, sink)
 
     def assert_not_connected(self, source, sink):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)

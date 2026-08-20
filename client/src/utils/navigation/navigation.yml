@@ -1093,7 +1093,7 @@ workflow_editor:
     step_when:
       type: xpath
       selector: >
-       //div[@id='form-element-__conditional']//input
+       //div[@id='form-element-__conditional']
     param_type_form: '#parameter_definition\|parameter_type'
     configure_output:
       type: xpath
