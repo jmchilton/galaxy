@@ -1,0 +1,36 @@
+class: GalaxyWorkflow
+inputs:
+  base:
+    type: data
+  maybe:
+    type: data
+    optional: true
+outputs:
+  out:
+    outputSource: pick/output
+steps:
+  when_present:
+    tool_id: cat
+    in:
+      input1:
+        source: maybe
+      probe:
+        source: maybe
+    when: $(inputs.probe !== null)
+  when_absent:
+    tool_id: cat
+    in:
+      input1:
+        source: base
+      probe:
+        source: maybe
+    when: $(inputs.probe === null)
+  pick:
+    type: pick_value
+    in:
+      input_0:
+        source: when_present/out_file1
+      input_1:
+        source: when_absent/out_file1
+    state:
+      mode: first_non_null

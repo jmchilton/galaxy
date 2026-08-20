@@ -1,0 +1,24 @@
+- doc: baseline - optional input provided, no gate, direct connection to required port
+  job:
+    maybe:
+      class: File
+      contents: "PROVIDED"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+- doc: |
+    baseline - optional omitted, no gate. Observed - tool request state validation_failed,
+    job errors with "Parameter 'input1': specify a dataset of the required format".
+    There is no implicit skip.
+  expect_failure: true
+  job: {}
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"

@@ -1,0 +1,26 @@
+class: GalaxyWorkflow
+inputs:
+  fallback:
+    type: data
+  maybe:
+    type: data
+    optional: true
+outputs:
+  out:
+    outputSource: pick/output
+steps:
+  gated:
+    tool_id: cat
+    in:
+      input1:
+        source: maybe
+    when: $(inputs.input1 !== null)
+  pick:
+    type: pick_value
+    in:
+      input_0:
+        source: gated/out_file1
+      input_1:
+        source: fallback
+    state:
+      mode: first_non_null

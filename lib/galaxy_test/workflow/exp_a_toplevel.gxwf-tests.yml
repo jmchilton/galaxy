@@ -1,0 +1,28 @@
+- doc: optional input provided -> gated step runs, pick takes gated output
+  job:
+    fallback:
+      class: File
+      contents: "FALLBACK"
+      filetype: txt
+    maybe:
+      class: File
+      contents: "PROVIDED"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+- doc: optional input omitted -> gated step skipped, pick falls back
+  job:
+    fallback:
+      class: File
+      contents: "FALLBACK"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "FALLBACK"

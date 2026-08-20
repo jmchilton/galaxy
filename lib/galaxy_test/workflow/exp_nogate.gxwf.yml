@@ -1,0 +1,14 @@
+class: GalaxyWorkflow
+inputs:
+  maybe:
+    type: data
+    optional: true
+outputs:
+  out:
+    outputSource: consumer/out_file1
+steps:
+  consumer:
+    tool_id: cat
+    in:
+      input1:
+        source: maybe

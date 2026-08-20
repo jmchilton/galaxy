@@ -1,0 +1,20 @@
+- doc: launder only - optional provided
+  job:
+    maybe:
+      class: File
+      contents: "PROVIDED"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+- doc: launder only - optional omitted. Observed - no failure, skipped HDA is consumed literally.
+  job: {}
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "null"

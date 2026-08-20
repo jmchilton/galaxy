@@ -1,0 +1,28 @@
+- doc: twin dispatch, optional provided -> the with-dataset copy runs
+  job:
+    base:
+      class: File
+      contents: "BASE"
+      filetype: txt
+    maybe:
+      class: File
+      contents: "PROVIDED"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+- doc: twin dispatch, optional omitted -> the without-dataset copy runs
+  job:
+    base:
+      class: File
+      contents: "BASE"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "BASE"

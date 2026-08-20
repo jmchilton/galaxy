@@ -1,0 +1,21 @@
+class: GalaxyWorkflow
+inputs:
+  maybe:
+    type: data
+    optional: true
+outputs:
+  out:
+    outputSource: consumer/out_file1
+steps:
+  launder:
+    type: pick_value
+    in:
+      input_0:
+        source: maybe
+    state:
+      mode: first_or_skip
+  consumer:
+    tool_id: cat
+    in:
+      input1:
+        source: launder/output
