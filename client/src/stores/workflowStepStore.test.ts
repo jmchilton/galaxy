@@ -210,6 +210,23 @@ describe("synthesized gate ports", () => {
         expect(ports[0]).toMatchObject({ optional: true });
     });
 
+    it("keeps the conventional when port a required boolean whatever feeds it", () => {
+        const textParameterInput: NewStep = {
+            ...workflowStepZero,
+            id: 0,
+            type: "parameter_input",
+            outputs: [{ name: "output", optional: true, type: "text", parameter: true, multiple: false }],
+        } as NewStep;
+        const ports = gatePort(textParameterInput, "$(inputs.when)", "when");
+        expect(ports).toHaveLength(1);
+        expect(ports[0]).toMatchObject({
+            name: "when",
+            input_type: "parameter",
+            type: "boolean",
+            optional: false,
+        });
+    });
+
     it("does not synthesize a port for a connection the expression only appears to name", () => {
         const ports = gatePort(optionalDataInput, "$(inputs.probe !== null)", "pro");
         expect(ports).toHaveLength(0);

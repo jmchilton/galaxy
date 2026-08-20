@@ -516,6 +516,9 @@ function findStepExtraInputs(step: Step, steps: Steps): InputTerminalSource[] {
     return extraInputs;
 }
 
+/** The connection name the boolean gate convention uses. */
+const BOOLEAN_GATE_INPUT_NAME = "when";
+
 /**
  * Shape a synthesized gate port after whatever feeds it.
  *
@@ -525,6 +528,18 @@ function findStepExtraInputs(step: Step, steps: Steps): InputTerminalSource[] {
  * refuses the very connection the gate depends on.
  */
 function gatePortTerminalSource(step: Step, inputName: string, steps: Steps): InputTerminalSource {
+    if (inputName === BOOLEAN_GATE_INPUT_NAME) {
+        // `when` is a convention with a fixed meaning: the gate's own boolean.
+        return {
+            name: inputName,
+            label: inputName,
+            multiple: false,
+            optional: false,
+            input_type: "parameter",
+            type: "boolean",
+            extensions: [],
+        };
+    }
     const links = step.input_connections[inputName];
     const link = Array.isArray(links) ? links[0] : links;
     const sourceStep = link ? steps[link.id.toString()] : undefined;
@@ -556,7 +571,7 @@ function gatePortTerminalSource(step: Step, inputName: string, steps: Steps): In
     return {
         ...base,
         input_type: "dataset",
-        extensions: output.extensions,
+        extensions: output.extensions ?? [],
     };
 }
 
