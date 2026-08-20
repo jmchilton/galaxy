@@ -5,6 +5,7 @@ import {
     classifyWhenInputIsNull,
     expressionGuardsInputPresence,
     expressionReferencesInput,
+    presenceGateExpression,
 } from "./whenExpression";
 
 describe("analyzeInputReferences", () => {
@@ -126,4 +127,26 @@ describe("expressionGuardsInputPresence", () => {
     it("returns false without an expression", () => {
         expect(expressionGuardsInputPresence(undefined, "cond|input1")).toBe(false);
     });
+});
+
+describe("presenceGateExpression", () => {
+    it.each([
+        ["input1", "$(inputs.input1 !== null)"],
+        ["cond|input1", "$(inputs.cond.input1 !== null)"],
+        ["segment-with-dashes", '$(inputs["segment-with-dashes"] !== null)'],
+        ["cond|has-dash", '$(inputs.cond["has-dash"] !== null)'],
+        ["0|input1", '$(inputs["0"].input1 !== null)'],
+    ])("spells %s", (inputName, expected) => {
+        expect(presenceGateExpression(inputName)).toBe(expected);
+    });
+
+    it.each(["input1", "cond|input1", "segment-with-dashes", "cond|has-dash", "0|input1"])(
+        "generates a gate the analyzer reads back for %s",
+        (inputName) => {
+            const expression = presenceGateExpression(inputName);
+            expect(expressionReferencesInput(expression, inputName)).toBe(true);
+            expect(classifyWhenInputIsNull(expression, inputName)).toBe("false-when-null");
+            expect(expressionGuardsInputPresence(expression, inputName)).toBe(true);
+        },
+    );
 });

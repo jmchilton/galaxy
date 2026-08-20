@@ -208,7 +208,7 @@ function connectionPath(inputName: string): string[] {
  * referencing every candidate. Callers only ever ask about inputs that are already
  * connected, so an over-match shows a real edge while an under-match hides one.
  */
-export function expressionReferencesInput(expression: string | undefined, inputName: string): boolean {
+export function expressionReferencesInput(expression: string | null | undefined, inputName: string): boolean {
     if (!expression) {
         return false;
     }
@@ -239,7 +239,7 @@ function expressionBody(expression: string): string | null {
  * accesses, `!`, equality, and `&&`/`||` — with the target bound to `null` and every
  * other input left indeterminate. Anything outside that subset is `"unknown"`.
  */
-export function classifyWhenInputIsNull(expression: string | undefined, inputName: string): NullBehavior {
+export function classifyWhenInputIsNull(expression: string | null | undefined, inputName: string): NullBehavior {
     if (!expression) {
         return "unknown";
     }
@@ -269,7 +269,7 @@ export function classifyWhenInputIsNull(expression: string | undefined, inputNam
  * The step may still not run for other reasons; what matters to the editor is that the
  * expression is not known to run the step while the input is absent.
  */
-export function expressionGuardsInputPresence(expression: string | undefined, inputName: string): boolean {
+export function expressionGuardsInputPresence(expression: string | null | undefined, inputName: string): boolean {
     if (!expressionReferencesInput(expression, inputName)) {
         return false;
     }
@@ -471,4 +471,20 @@ function compare(operator: string, left: EvaluatedValue, right: EvaluatedValue):
 
 function isNullish(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
     return value === null || value === undefined;
+}
+
+const JAVASCRIPT_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/** Spell a connection name as a JavaScript access path into `inputs`. */
+export function inputsAccessPath(inputName: string): string {
+    return connectionPath(inputName).reduce(
+        (path, segment) =>
+            JAVASCRIPT_IDENTIFIER.test(segment) ? `${path}.${segment}` : `${path}[${JSON.stringify(segment)}]`,
+        "inputs",
+    );
+}
+
+/** The `when` expression that runs a step only while the named input carries a value. */
+export function presenceGateExpression(inputName: string): string {
+    return `$(${inputsAccessPath(inputName)} !== null)`;
 }

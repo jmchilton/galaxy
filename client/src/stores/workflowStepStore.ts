@@ -160,6 +160,31 @@ export function getCombinedStepInputs(step: Step, stepStore: WorkflowStepStore):
     return [...extraInputs, ...step.inputs];
 }
 
+/**
+ * True when the value arriving on this input can be absent at run time, either because
+ * every source output is optional or because every source step is itself gated.
+ */
+export function connectedInputCanBeAbsent(step: Step, inputName: string, stepStore: WorkflowStepStore): boolean {
+    const links = step.input_connections?.[inputName];
+    if (!links) {
+        return false;
+    }
+    const linkArray = Array.isArray(links) ? links : [links];
+    if (linkArray.length === 0) {
+        return false;
+    }
+    return linkArray.every((link) => {
+        const sourceStep = stepStore.getStep(link.id);
+        if (!sourceStep) {
+            return false;
+        }
+        if (sourceStep.when) {
+            return true;
+        }
+        return Boolean(sourceStep.outputs.find((output) => output.name === link.output_name)?.optional);
+    });
+}
+
 export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (workflowId) => {
     const steps = ref<Steps>({});
     const stepMapOver = ref<{ [index: number]: CollectionTypeDescriptor }>({});
