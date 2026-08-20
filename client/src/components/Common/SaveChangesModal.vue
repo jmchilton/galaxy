@@ -14,6 +14,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from "vue-router/composables";
 
 import { useToast } from "@/composables/toast";
+import { pushIgnoringNavCancel } from "@/composables/windowAwareNavigation";
 import localize from "@/utils/localization";
 import { errorMessageAsString } from "@/utils/simple-error";
 
@@ -39,6 +40,7 @@ const Toast = useToast();
 
 const showModal = ref(false);
 const pendingNavUrl = ref("");
+const pendingNavAction = ref<(() => void) | null>(null);
 const busy = ref(false);
 
 /** True while we're pushing a navigation the user already resolved via the modal. */
@@ -47,6 +49,7 @@ let bypassGuard = false;
 function guard(to: { fullPath: string }, _from: unknown, next: (arg?: false) => void) {
     if (props.hasChanges && !bypassGuard) {
         pendingNavUrl.value = to.fullPath;
+        pendingNavAction.value = null;
         showModal.value = true;
         next(false);
     } else {
@@ -56,6 +59,23 @@ function guard(to: { fullPath: string }, _from: unknown, next: (arg?: false) => 
 
 onBeforeRouteLeave(guard);
 onBeforeRouteUpdate(guard);
+
+/**
+ * Prompts before a navigation the router guards cannot see -- the window manager opening a
+ * floating frame, say, which never reaches ``originalPush``. Runs ``navigate`` straight
+ * away when there is nothing to lose.
+ */
+function guardNavigation(navigate: () => void) {
+    if (props.hasChanges) {
+        pendingNavUrl.value = "";
+        pendingNavAction.value = navigate;
+        showModal.value = true;
+    } else {
+        navigate();
+    }
+}
+
+defineExpose({ guardNavigation });
 
 function handleBeforeUnload(event: BeforeUnloadEvent) {
     if (props.hasChanges) {
@@ -91,16 +111,17 @@ async function proceed(url: string, forceSave: boolean, ignoreChanges: boolean) 
         props.onDiscard?.();
     }
 
+    const navigate = pendingNavAction.value;
     closeModal();
     bypassGuard = true;
     try {
-        // Await the push and only reset bypassGuard/busy once it settles, so a rejected
-        // push (Galaxy's patched router.push rethrows on failure) doesn't leave navigation
-        // permanently unguarded or the modal's buttons permanently disabled.
-        await router.push(url);
-    } catch {
-        // Navigation failures here are already-decided (modal is closed, user chose to
-        // proceed), so nothing further to recover in the UI, just avoid an unhandled rejection.
+        // Await the navigation and only reset bypassGuard/busy once it settles, so a
+        // navigation that never happens doesn't leave the guard bypassed or the modal's
+        // buttons permanently disabled. The helper reports a real failure and stays quiet
+        // for a cancelled one, so only a throwing `navigate` callback reaches the catch.
+        await (navigate ? navigate() : pushIgnoringNavCancel(router, url));
+    } catch (error) {
+        Toast.error(errorMessageAsString(error), "Navigation failed");
     } finally {
         bypassGuard = false;
     }
@@ -111,6 +132,7 @@ function closeModal() {
     showModal.value = false;
     busy.value = false;
     pendingNavUrl.value = "";
+    pendingNavAction.value = null;
 }
 
 function dontSave() {
