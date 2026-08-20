@@ -81,7 +81,12 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-    store.clearCurrentPage();
+    if (!props.displayOnly) {
+        // Clear editor-scoped state but leave store.error alone so a save failure
+        // remains visible across the transient unmount/remount that error-state
+        // re-renders trigger in the parent.
+        store.clearCurrentPage();
+    }
 });
 
 watch(
