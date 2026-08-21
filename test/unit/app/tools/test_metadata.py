@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -287,11 +288,82 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         )
         assert output_dataset_collection.collection
         command = self.metadata_command({}, {"split_output": output_dataset_collection})
-        self._write_work_dir_file("1.tabular", "1\n2\n3")
-        self._write_work_dir_file("2.tabular", "4\n5\n6")
+        outputs_directory = Path(self.tool_working_directory) / "outputs"
+        outputs_directory.mkdir()
+        (outputs_directory / "1.tabular").write_text("1\n2\n3")
+        (outputs_directory / "2.tabular").write_text("4\n5\n6")
         self._write_job_files()
         self.exec_metadata_command(command)
-        # Emulate job stuff here...
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        collections = json.loads((export_directory / "collections_attrs.txt").read_text())
+        assert [(dataset["name"], dataset["extension"]) for dataset in datasets] == [
+            ("1", "tabular"),
+            ("2", "tabular"),
+        ]
+        assert [dataset["metadata"]["data_lines"] for dataset in datasets] == [3, 3]
+        elements = collections[0]["collection"]["elements"]
+        assert [element["element_identifier"] for element in elements] == ["1", "2"]
+        assert [element["hda"]["encoded_id"] for element in elements] == [dataset["encoded_id"] for dataset in datasets]
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        self.app.model.session.refresh(output_dataset_collection)
+        assert [element.element_identifier for element in output_dataset_collection.collection.elements] == ["1", "2"]
+        assert [dataset.metadata.data_lines for dataset in output_dataset_collection.dataset_instances] == [3, 3]
+
+    def test_nested_collection_discovery_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        source_file_name = os.path.join(
+            galaxy_directory(), "test/functional/tools/collection_creates_dynamic_list_of_pairs.xml"
+        )
+        self._init_tool_for_path(source_file_name)
+        collection = model.DatasetCollection(populated=False)
+        collection.collection_type = "list:paired"
+        output_dataset_collection = self._create_output_dataset_collection(collection=collection)
+        command = self.metadata_command({}, {"list_output": output_dataset_collection})
+        for sample, contents in (("samp1", ("A", "B")), ("samp2", ("C", "D"))):
+            self._write_work_dir_file(f"{sample}_forward.fq", f"{contents[0]}\n")
+            self._write_work_dir_file(f"{sample}_reverse.fq", f"{contents[1]}\n")
+        self._write_job_files()
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        collections = json.loads((export_directory / "collections_attrs.txt").read_text())
+        outer_elements = collections[0]["collection"]["elements"]
+        assert [element["element_identifier"] for element in outer_elements] == ["samp1", "samp2"]
+        assert [
+            [element["element_identifier"] for element in outer_element["child_collection"]["elements"]]
+            for outer_element in outer_elements
+        ] == [["forward", "reverse"], ["forward", "reverse"]]
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        self.app.model.session.refresh(output_dataset_collection)
+        assert [element.element_identifier for element in output_dataset_collection.collection.elements] == [
+            "samp1",
+            "samp2",
+        ]
+        assert all(
+            [element.element_identifier for element in outer_element.child_collection.elements]
+            == ["forward", "reverse"]
+            for outer_element in output_dataset_collection.collection.elements
+        )
 
     @pytest.mark.parametrize("strategy", ["directory", "extended"])
     def test_collection_input_sources(self, strategy):
