@@ -8,7 +8,6 @@ corresponding to files in other contexts.
 
 import abc
 import logging
-import os
 from collections.abc import (
     Callable,
     Iterable,
@@ -16,15 +15,25 @@ from collections.abc import (
 from decimal import Decimal
 from typing import (
     Any,
-    NamedTuple,
     Optional,
     TYPE_CHECKING,
     Union,
 )
 
 import galaxy.model
-from galaxy import util
 from galaxy.exceptions import RequestParameterInvalidException
+from galaxy.job_execution.output_collect_utils import (
+    OutputCollectionSecurityError as OutputCollectionSecurityError,
+    InvalidDiscoveredFilePathError as InvalidDiscoveredFilePathError,
+    UntrustedToolProvidedMetadataError as UntrustedToolProvidedMetadataError,
+    ExternalOutputPathNotAllowedError as ExternalOutputPathNotAllowedError,
+    ensure_path_in_directory as ensure_path_in_directory,
+    safe_path_from_directory as safe_path_from_directory,
+    discover_target_directory as discover_target_directory,
+    discovered_file_for_element,
+    DiscoveredResult,
+    MaxDiscoveredFilesExceededError,
+)
 from galaxy.model import (
     Dataset,
     JobOutputNameTooLongError,
@@ -46,10 +55,6 @@ from galaxy.util.hash_util import HASH_NAME_MAP
 if TYPE_CHECKING:
     from sqlalchemy.orm.scoping import scoped_session
 
-    from galaxy.job_execution.output_collect import (
-        DatasetCollector,
-        ToolMetadataDatasetCollector,
-    )
     from galaxy.model import DatasetInstance
     from galaxy.model.dataset_collections.builder import CollectionBuilder
     from galaxy.model.dataset_collections.structure import UninitializedTree
@@ -63,44 +68,6 @@ log = logging.getLogger(__name__)
 
 UNSET = object()
 DEFAULT_CHUNK_SIZE = 1000
-
-
-class MaxDiscoveredFilesExceededError(ValueError):
-    pass
-
-
-class OutputCollectionSecurityError(ValueError):
-    """Raised when job-provided output metadata crosses a collection trust boundary."""
-
-
-class InvalidDiscoveredFilePathError(OutputCollectionSecurityError):
-    def __init__(self):
-        super().__init__("Job output refers to a file outside its allowed working directory.")
-
-
-class UntrustedToolProvidedMetadataError(OutputCollectionSecurityError):
-    def __init__(self):
-        super().__init__("This tool is not permitted to create unnamed outputs.")
-
-
-class ExternalOutputPathNotAllowedError(OutputCollectionSecurityError):
-    def __init__(self):
-        super().__init__("This tool is not permitted to collect output files from outside its working directory.")
-
-
-CollectorT = Union["DatasetCollector", "ToolMetadataDatasetCollector"]
-
-
-def ensure_path_in_directory(path: StrPath, directory: StrPath) -> StrPath:
-    if not util.in_directory(path, directory):
-        raise InvalidDiscoveredFilePathError()
-    return path
-
-
-def safe_path_from_directory(path: StrPath, directory: StrPath) -> str:
-    joined = os.path.join(directory, path)
-    ensure_path_in_directory(joined, directory)
-    return joined
 
 
 class ModelPersistenceContext(metaclass=abc.ABCMeta):
@@ -1078,197 +1045,3 @@ def replace_request_syntax_sugar(obj):
             if "hashes" in obj and obj["hashes"] is None:
                 obj["hashes"] = []
             obj.setdefault("hashes", []).extend(new_hashes)
-
-
-class DiscoveredFile(NamedTuple):
-    path: str
-    collector: CollectorT | None
-    match: "JsonCollectedDatasetMatch"
-
-    def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> "DiscoveredResultState":
-        info = element.get("info", None)
-        return DiscoveredResultState(info, final_job_state)
-
-
-class DiscoveredResultState(NamedTuple):
-    info: str | None
-    state: str
-
-
-class DiscoveredDeferredFile(NamedTuple):
-    collector: CollectorT | None
-    match: "JsonCollectedDatasetMatch"
-
-    def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> DiscoveredResultState:
-        info = element.get("info", None)
-        state = "deferred" if final_job_state == "ok" else final_job_state
-        return DiscoveredResultState(info, state)
-
-    @property
-    def path(self) -> None:
-        return None
-
-
-DiscoveredResult = Union[DiscoveredFile, DiscoveredDeferredFile, "DiscoveredFileError"]
-
-
-def discovered_file_for_element(
-    dataset,
-    model_persistence_context: ModelPersistenceContext,
-    parent_identifiers=None,
-    collector=None,
-) -> DiscoveredResult:
-    model_persistence_context.increment_discovered_file_count()
-    parent_identifiers = parent_identifiers or []
-    target_directory = discover_target_directory(
-        getattr(collector, "directory", None), model_persistence_context.job_working_directory
-    )
-    filename = dataset.get("filename")
-    error_message = dataset.get("error_message")
-    if error_message is None:
-        if dataset.get("state") == "deferred":
-            return DiscoveredDeferredFile(
-                collector, JsonCollectedDatasetMatch(dataset, collector, None, parent_identifiers=parent_identifiers)
-            )
-
-        # link_data_only is a privileged import capability; ordinary job metadata remains confined.
-        if dataset.get("link_data_only"):
-            if not model_persistence_context.allows_external_output_paths:
-                raise ExternalOutputPathNotAllowedError()
-            path = filename
-        else:
-            path = safe_path_from_directory(filename, target_directory)
-        return DiscoveredFile(
-            path,
-            collector,
-            JsonCollectedDatasetMatch(dataset, collector, filename, path=path, parent_identifiers=parent_identifiers),
-        )
-    else:
-        assert "error_message" in dataset
-        return DiscoveredFileError(
-            dataset["error_message"],
-            collector,
-            JsonCollectedDatasetMatch(dataset, collector, None, parent_identifiers=parent_identifiers),
-        )
-
-
-def discover_target_directory(dir_name, job_working_directory):
-    if dir_name:
-        return safe_path_from_directory(dir_name, job_working_directory)
-    else:
-        return job_working_directory
-
-
-class JsonCollectedDatasetMatch:
-    def __init__(self, as_dict, collector: CollectorT | None, filename, path=None, parent_identifiers=None):
-        parent_identifiers = parent_identifiers or []
-        self.as_dict = as_dict
-        self.collector = collector
-        self.filename = filename
-        self.path = path
-        self._parent_identifiers = parent_identifiers
-
-    @property
-    def designation(self):
-        # If collecting nested collection, grab identifier_0,
-        # identifier_1, etc... and join on : to build designation.
-        if element_identifiers := self.raw_element_identifiers:
-            return ":".join(element_identifiers)
-        elif "designation" in self.as_dict:
-            return self.as_dict.get("designation")
-        elif "name" in self.as_dict:
-            return self.as_dict.get("name")
-        else:
-            return None
-
-    @property
-    def element_identifiers(self):
-        return self._parent_identifiers + (self.raw_element_identifiers or [self.designation])
-
-    @property
-    def raw_element_identifiers(self):
-        identifiers = []
-        i = 0
-        while True:
-            key = f"identifier_{i}"
-            if key in self.as_dict:
-                identifiers.append(self.as_dict.get(key))
-            else:
-                break
-            i += 1
-
-        return identifiers
-
-    @property
-    def name(self):
-        """Return name or None if not defined by the discovery pattern."""
-        return self.as_dict.get("name")
-
-    @property
-    def dbkey(self) -> str:
-        return self.as_dict.get("dbkey", self.collector and self.collector.default_dbkey or "?")
-
-    @property
-    def ext(self) -> str:
-        return self.as_dict.get("ext", self.collector and self.collector.default_ext or "data")
-
-    @property
-    def visible(self) -> bool:
-        try:
-            return self.as_dict["visible"].lower() == "visible"
-        except KeyError:
-            if self.collector and self.collector.default_visible is not None:
-                return self.collector.default_visible
-            return True
-
-    @property
-    def link_data(self):
-        return bool(self.as_dict.get("link_data_only", False))
-
-    @property
-    def tag_list(self):
-        return self.as_dict.get("tags", [])
-
-    @property
-    def object_id(self):
-        return self.as_dict.get("object_id", None)
-
-    @property
-    def sources(self):
-        return self.as_dict.get("sources", [])
-
-    @property
-    def hashes(self):
-        return self.as_dict.get("hashes", [])
-
-    @property
-    def created_from_basename(self):
-        return self.as_dict.get("created_from_basename")
-
-    @property
-    def extra_files(self):
-        return self.as_dict.get("extra_files")
-
-    @property
-    def effective_state(self):
-        return self.as_dict.get("state") or "ok"
-
-    @property
-    def row(self):
-        return self.as_dict.get("row") or None
-
-
-class RegexCollectedDatasetMatch(JsonCollectedDatasetMatch):
-    def __init__(self, re_match, collector: CollectorT | None, filename, path=None):
-        super().__init__(re_match.groupdict(), collector, filename, path=path)
-
-
-class DiscoveredFileError(NamedTuple):
-    error_message: str
-    collector: CollectorT | None
-    match: JsonCollectedDatasetMatch
-    path: str | None = None
-
-    def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> DiscoveredResultState:
-        info = self.error_message
-        return DiscoveredResultState(info, "error")
