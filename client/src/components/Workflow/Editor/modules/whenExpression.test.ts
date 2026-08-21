@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import RAW_SPECIFICATION from "./when_expression_spec.yml";
+import GENERATED_PRESENCE_CONDITIONS from "./generated_presence_conditions.yml";
+import EXPRESSION_SPECIFICATIONS from "./when_expression_spec.yml";
 import {
     analyzeInputReferences,
     classifyWhenInputIsNull,
@@ -34,12 +35,8 @@ interface GeneratedConditionSpecification {
     expression: string;
 }
 
-interface WhenExpressionSpecification {
-    expressions: ExpressionSpecification[];
-    generated_presence_conditions: GeneratedConditionSpecification[];
-}
-
-const SPECIFICATION = RAW_SPECIFICATION as WhenExpressionSpecification;
+const EXPRESSIONS = EXPRESSION_SPECIFICATIONS as ExpressionSpecification[];
+const GENERATED_CONDITIONS = GENERATED_PRESENCE_CONDITIONS as GeneratedConditionSpecification[];
 
 function requireInput(specification: ExpressionSpecification): InputTarget {
     if (specification.input === undefined) {
@@ -49,7 +46,7 @@ function requireInput(specification: ExpressionSpecification): InputTarget {
 }
 
 describe("when expression specification", () => {
-    for (const specification of SPECIFICATION.expressions) {
+    for (const specification of EXPRESSIONS) {
         it(specification.doc, () => {
             const { expression, expect: expected } = specification;
 
@@ -81,7 +78,7 @@ describe("when expression specification", () => {
 });
 
 describe("generated presence conditions", () => {
-    for (const specification of SPECIFICATION.generated_presence_conditions) {
+    for (const specification of GENERATED_CONDITIONS) {
         it(specification.doc, () => {
             const expression = presenceGateExpression(specification.input);
             expect(expression).toBe(specification.expression);
