@@ -412,6 +412,11 @@ def _collect_unnamed_hdca(context, unnamed_output, output_collections):
 
 def collect_dynamic_outputs(context: LightweightJobContext, output_collections):
     for unnamed_output in context.tool_provided_metadata.get_unnamed_outputs():
+        for element in unnamed_output["elements"]:
+            element_name = element.get("name")
+            rows = unnamed_output.get("rows", {})
+            if element_name in rows and "row" not in element:
+                element["row"] = rows[element_name]
         destination_type = unnamed_output["destination"]["type"]
         if destination_type == "hdas":
             _collect_unnamed_hdas(context, unnamed_output["elements"])
