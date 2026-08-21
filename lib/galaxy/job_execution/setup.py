@@ -24,8 +24,6 @@ from galaxy.job_execution.datasets import (
 )
 from galaxy.job_execution.metadata_constants import (  # noqa: F401 - compatibility re-export
     TOOL_PROVIDED_JOB_METADATA_FILE,
-)
-from galaxy.job_execution.metadata_constants import (  # noqa: F401 - compatibility re-export
     TOOL_PROVIDED_JOB_METADATA_KEYS,
 )
 from galaxy.model import (
