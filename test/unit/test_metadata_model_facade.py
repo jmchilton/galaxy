@@ -42,6 +42,31 @@ def test_metadata_dataset_store_supports_datatype_metadata(tmp_path):
     assert json.loads(dataset.metadata.to_JSON_dict()) == {"data_lines": 2, "dbkey": "?", "sequences": 1}
 
 
+def test_metadata_dataset_store_initializes_metadata_after_sniffing(tmp_path):
+    dataset_path = tmp_path / "dataset.fasta"
+    dataset_path.write_text(">seq1\nGCTGCATG\n")
+    store_path = tmp_path / "store"
+    store_path.mkdir()
+    (store_path / "datasets_attrs.txt").write_text("[]")
+    registry = example_datatype_registry_for_sample()
+    store = MetadataDatasetStore.from_directory(store_path, registry)
+
+    dataset = store.create(
+        registry,
+        extension="_sniff_",
+        designation="one",
+        visible=True,
+        dbkey="?",
+        name="one",
+    )
+    dataset.link_to(str(dataset_path))
+    dataset.set_meta()
+
+    assert dataset.extension == "fasta"
+    assert dataset.metadata.data_lines == 2
+    assert dataset.metadata.sequences == 1
+
+
 def test_metadata_dataset_store_rejects_non_hda(tmp_path):
     (tmp_path / "datasets_attrs.txt").write_text(
         json.dumps([{"id": 1, "model_class": "LibraryDatasetDatasetAssociation"}])

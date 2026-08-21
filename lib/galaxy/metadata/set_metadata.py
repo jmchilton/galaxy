@@ -30,7 +30,6 @@ COMMAND_VERSION_FILENAME = "COMMAND_VERSION"
 import galaxy.datatypes.registry
 import galaxy.model
 import galaxy.model.mapping
-from galaxy.datatypes import sniff
 from galaxy.datatypes.data import validate
 from galaxy.exceptions import MessageException
 from galaxy.datatypes.metadata import MetadataTempFile
@@ -57,19 +56,16 @@ from galaxy.job_execution.paths import dataset_path_to_extra_path
 from galaxy.job_execution.pydantic_defer import defer_pydantic_model_builds
 from galaxy.metadata.model_facade import (
     MetadataDataset,
-    MetadataDatasetCollectionStore,
     MetadataDatasetInstance,
     MetadataDatasetStore,
     MetadataModelExportStore,
+    resolve_sniffed_dataset,
 )
 from galaxy.metadata.output_collect import (
     collect_dynamic_outputs as collect_dynamic_outputs_lightweight,
     collect_primary_datasets as collect_primary_datasets_lightweight,
-    discovered_collection_extensions,
-    discovered_primary_extensions,
     LightweightJobContext,
     LightweightJobOutputNameTooLongError,
-    unnamed_output_extensions,
 )
 from galaxy.model import (
     Dataset,
@@ -132,7 +128,7 @@ def push_if_necessary(object_store: ObjectStore, dataset, external_filename):
         object_store.update_from_file(dataset.dataset, file_name=external_filename, create=True)
 
 
-def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, working_directory):
+def _requires_dynamic_persistence(metadata_params, tool_provided_metadata):
     if any(
         output["destination"]["type"] not in {"hdas", "hdca"} for output in tool_provided_metadata.get_unnamed_outputs()
     ):
@@ -148,47 +144,6 @@ def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, worki
     ):
         return True
 
-    return False
-
-
-def _requires_datatype_sniffing(dataset_store, outputs, tool_provided_metadata):
-    for output_name, output in outputs.items():
-        dataset = dataset_store.find(output["id"])
-        file_dict = tool_provided_metadata.get_dataset_meta(output_name, dataset.dataset.id, dataset.dataset.uuid)
-        extension = file_dict.get("ext", dataset.extension)
-        if extension == "_sniff_":
-            return True
-    return False
-
-
-def _dynamic_requires_datatype_sniffing(
-    metadata_params,
-    tool_provided_metadata,
-    collection_store,
-    dataset_store,
-    working_directory,
-):
-    input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
-    extensions = unnamed_output_extensions(tool_provided_metadata)
-    extensions = (
-        *extensions,
-        *discovered_primary_extensions(
-            metadata_params,
-            tool_provided_metadata,
-            dataset_store,
-            working_directory,
-            input_ext,
-        ),
-        *discovered_collection_extensions(
-            metadata_params,
-            tool_provided_metadata,
-            collection_store,
-            working_directory,
-        ),
-    )
-    for extension in extensions:
-        if extension == "_sniff_":
-            return True
     return False
 
 
@@ -215,15 +170,9 @@ def set_meta_with_tool_provided(
     # This is intentional due to interplay of overwrite kwd, the fact that some metadata
     # parameters may rely on the values of others, and that we are accepting the
     # values provided by the tool as Truth.
-    if (extension := dataset_instance.extension) == "_sniff_":
+    if dataset_instance.extension == "_sniff_":
         try:
-            extension = sniff.handle_uploaded_dataset_file(dataset_instance.dataset.get_file_name(), datatypes_registry)
-            # We need to both set the extension so it is available to set_meta
-            # and record it in the metadata so it can be reloaded on the server
-            # side and the model updated (see MetadataCollection.{from,to}_JSON_dict)
-            dataset_instance.extension = extension
-            # Set special metadata property that will reload this on server side.
-            dataset_instance.metadata.__extension__ = extension
+            resolve_sniffed_dataset(dataset_instance, datatypes_registry)
         except Exception:
             log.exception("Problem sniffing datatype.")
 
@@ -325,7 +274,6 @@ def set_metadata_portable(
         use_lightweight_store = not _requires_dynamic_persistence(
             metadata_params,
             tool_provided_metadata,
-            tool_job_working_directory / "working",
         )
 
     lightweight_store = None
@@ -335,27 +283,6 @@ def set_metadata_portable(
             datatypes_registry,
             object_store=object_store,
         )
-        if extended_metadata_collection and _requires_datatype_sniffing(
-            lightweight_store,
-            outputs,
-            tool_provided_metadata,
-        ):
-            lightweight_store = None
-            use_lightweight_store = False
-        elif extended_metadata_collection:
-            lightweight_collection_store = MetadataDatasetCollectionStore.from_directory(
-                tool_job_working_directory / "metadata/outputs_new",
-                lightweight_store,
-            )
-            if _dynamic_requires_datatype_sniffing(
-                metadata_params,
-                tool_provided_metadata,
-                lightweight_collection_store,
-                lightweight_store,
-                tool_job_working_directory / "working",
-            ):
-                lightweight_store = None
-                use_lightweight_store = False
 
     if not use_lightweight_store:
         if os.environ.get(LIGHTWEIGHT_MODELS_ENV) == "1":

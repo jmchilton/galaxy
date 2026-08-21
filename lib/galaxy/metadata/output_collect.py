@@ -93,10 +93,7 @@ class LightweightJobContext:
             dataset.name = match.name or match.designation
             dataset.info = info
             dataset.state = state
-        for key, value in (metadata or {}).items():
-            metadata_element = dataset.datatype.metadata_spec.get(key)
-            if metadata_element and metadata_element.set_in_upload:
-                setattr(dataset.metadata, key, value)
+        dataset.apply_uploaded_metadata(metadata or {})
         return dataset
 
     def store_dataset(self, dataset, discovered_file, output_name, dataset_attributes=None):
@@ -122,6 +119,7 @@ class LightweightJobContext:
             else:
                 dataset.set_size(no_extra_files=True)
         metadata = dataset_attributes.get("metadata")
+        dataset.resolve_datatype()
         if metadata:
             metadata = dict(metadata)
             metadata["dbkey"] = dataset_attributes.get("dbkey", dataset.dbkey)

@@ -156,6 +156,34 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         assert output_dataset.metadata.bam_index.name == "bam_index"
         assert Path(output_dataset.metadata.bam_index.get_file_name()).stat().st_size > 0
 
+    def test_sniffed_output_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
+        self._init_tool_for_path(source_file_name)
+        output_dataset = self._create_output_dataset(extension="data")
+        self.app.model.session.commit()
+        command = self.metadata_command({"out_file1": output_dataset})
+        self._write_galaxy_json(f'{{"type": "dataset", "dataset_id": "{output_dataset.dataset.id}", "ext": "_sniff_"}}')
+        self._write_output_dataset_contents(output_dataset, ">seq1\nGCTGCATG\n")
+        self._write_job_files()
+
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        dataset_attributes = json.loads((export_directory / "datasets_attrs.txt").read_text())[0]
+        assert dataset_attributes["extension"] == "fasta"
+        assert dataset_attributes["metadata"]["sequences"] == 1
+
+        assert self.metadata_compute_strategy
+        output_dataset.extension = dataset_attributes["extension"]
+        self.metadata_compute_strategy.load_metadata(
+            output_dataset,
+            "out_file1",
+            self.app.model.session,
+            working_directory=self.job_working_directory,
+        )
+        assert output_dataset.metadata.sequences == 1
+
     def _test_simple_output(self):
         source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
         self._init_tool_for_path(source_file_name)
@@ -476,6 +504,48 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         self.app.model.session.refresh(output_dataset_collection)
         assert [element.element_identifier for element in output_dataset_collection.collection.elements] == ["1", "2"]
         assert [dataset.metadata.data_lines for dataset in output_dataset_collection.dataset_instances] == [3, 3]
+
+    def test_list_discovery_with_sniffed_elements_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool(tool_contents="""
+<tool id="discover_sniffed_collection" name="discover_sniffed_collection" version="1.0">
+  <command>echo unused</command>
+  <inputs />
+  <outputs>
+    <collection name="sniffed" type="list">
+      <discover_datasets pattern="__name__" ext="_sniff_" directory="outputs" />
+    </collection>
+  </outputs>
+</tool>
+""")
+        collection = model.DatasetCollection(collection_type="list", populated=False)
+        output_dataset_collection = self._create_output_dataset_collection(collection=collection)
+        command = self.metadata_command({}, {"sniffed": output_dataset_collection})
+        outputs_directory = Path(self.tool_working_directory) / "outputs"
+        outputs_directory.mkdir()
+        (outputs_directory / "one").write_text(">seq1\nGCTGCATG\n")
+        (outputs_directory / "two").write_text(">seq2\nGCTG\n")
+        self._write_job_files()
+
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        assert [dataset["extension"] for dataset in datasets] == ["fasta", "fasta"]
+        assert [dataset["metadata"]["sequences"] for dataset in datasets] == [1, 1]
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        self.app.model.session.refresh(output_dataset_collection)
+        assert [dataset.extension for dataset in output_dataset_collection.dataset_instances] == ["fasta", "fasta"]
+        assert [dataset.metadata.sequences for dataset in output_dataset_collection.dataset_instances] == [1, 1]
 
     def test_list_discovery_into_bare_dataset_collection_extended(self):
         self.app.config.metadata_strategy = "extended"
