@@ -1146,3 +1146,28 @@ describe("canAcceptWithPresenceGate", () => {
         expect(integerInputParam.canAcceptWithPresenceGate(optionalIntegerOutputParam).canAccept).toBe(true);
     });
 });
+
+describe("canAcceptWithPresenceGate spellability", () => {
+    let terminals: { [index: string]: { [index: string]: ReturnType<typeof terminalFactory> } } = {};
+    beforeEach(() => {
+        setActivePinia(createPinia());
+        terminals = setupAdvanced();
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        Object.values(JSON.parse(JSON.stringify(advancedSteps)) as Steps).map((step) => {
+            stepStore.addStep(step);
+        });
+    });
+
+    it("declines to offer a gate for an input nested in a repeat", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const repeatIn = terminals["multiple simple data"]!["queries_0|input2"] as InputTerminal;
+        expect(repeatIn.canAccept(optionalDataOut).canAccept).toBe(false);
+        expect(repeatIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(false);
+    });
+
+    it("offers a gate for an input nested in a conditional", () => {
+        const optionalIntegerOut = terminals["optional integer parameter input"]!["output"] as OutputParameterTerminal;
+        const nestedIn = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+        expect(nestedIn.canAcceptWithPresenceGate(optionalIntegerOut).canAccept).toBe(true);
+    });
+});

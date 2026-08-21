@@ -52,8 +52,24 @@ function makeSteps(gatedStepOverrides: Partial<Step> = {}): Steps {
                     input_type: "dataset",
                 },
                 {
-                    name: "queries_0|input2",
+                    name: "cond|input2",
                     label: "Second input",
+                    multiple: false,
+                    extensions: ["txt"],
+                    optional: false,
+                    input_type: "dataset",
+                },
+                {
+                    name: "queries_0|input3",
+                    label: "Repeat input",
+                    multiple: false,
+                    extensions: ["txt"],
+                    optional: false,
+                    input_type: "dataset",
+                },
+                {
+                    name: "input4",
+                    label: "Always present input",
                     multiple: false,
                     extensions: ["txt"],
                     optional: false,
@@ -63,10 +79,16 @@ function makeSteps(gatedStepOverrides: Partial<Step> = {}): Steps {
             outputs: [{ name: "out_file1", extensions: ["txt"], optional: false }],
             input_connections: {
                 input1: { id: 1, output_name: "output" },
-                "queries_0|input2": { id: 2, output_name: "output" },
+                "cond|input2": { id: 1, output_name: "output" },
+                "queries_0|input3": { id: 1, output_name: "output" },
+                input4: { id: 2, output_name: "output" },
             },
             position: { left: 0, top: 0 },
-            tool_state: {},
+            tool_state: {
+                input1: '{"__class__": "ConnectedValue"}',
+                cond: { input2: { __class__: "ConnectedValue" } },
+                queries: '[{"__index__": 0, "input3": {"__class__": "ConnectedValue"}}]',
+            },
             workflow_outputs: [],
             ...gatedStepOverrides,
         } as unknown as Step,
@@ -134,10 +156,10 @@ describe("FormConditional", () => {
 
         it("reads a nested presence gate", () => {
             const wrapper = mountConditional({
-                when: "$(inputs.queries_0.input2 !== null)",
+                when: "$(inputs.cond.input2 !== null)",
             });
             expect(modeElement(wrapper).props("value")).toBe("presence");
-            expect(wrapper.findAllComponents(FormElement).at(1).props("value")).toBe("queries_0|input2");
+            expect(wrapper.findAllComponents(FormElement).at(1).props("value")).toBe("cond|input2");
         });
 
         it("reads anything else as a custom expression", () => {
@@ -152,14 +174,28 @@ describe("FormConditional", () => {
             expect(optionValues(wrapper, 0)).toContain("presence");
 
             const gated = mountConditional({ when: "$(inputs.input1 !== null)" });
-            expect(optionPairs(gated, 1)).toEqual([["First input", "input1"]]);
+            expect(optionPairs(gated, 1).map((option) => option[1])).not.toContain("input4");
         });
 
         it("does not offer the presence mode when nothing gateable is connected", () => {
             const wrapper = mountConditional({
-                input_connections: { "queries_0|input2": { id: 2, output_name: "output" } },
+                input_connections: { input4: { id: 2, output_name: "output" } },
             });
             expect(optionValues(wrapper, 0)).not.toContain("presence");
+        });
+    });
+
+    describe("inputs a gate cannot be written for", () => {
+        it("does not offer an input nested in a repeat", () => {
+            // The connection is `queries_0|input3` but tool state holds `queries` as an
+            // array, so there is no property path of that shape to generate.
+            const gated = mountConditional({ when: "$(inputs.input1 !== null)" });
+            expect(optionPairs(gated, 1).map((option) => option[1])).not.toContain("queries_0|input3");
+        });
+
+        it("offers an input nested in a conditional", () => {
+            const gated = mountConditional({ when: "$(inputs.input1 !== null)" });
+            expect(optionPairs(gated, 1).map((option) => option[1])).toContain("cond|input2");
         });
     });
 
@@ -179,8 +215,8 @@ describe("FormConditional", () => {
 
         it("rewrites the expression when the gated input changes", () => {
             const wrapper = mountConditional({ when: "$(inputs.input1 !== null)" });
-            wrapper.findAllComponents(FormElement).at(1).vm.$emit("input", "queries_0|input2");
-            expect(lastUpdate(wrapper).when).toBe("$(inputs.queries_0.input2 !== null)");
+            wrapper.findAllComponents(FormElement).at(1).vm.$emit("input", "cond|input2");
+            expect(lastUpdate(wrapper).when).toBe("$(inputs.cond.input2 !== null)");
         });
 
         it("ignores a selection of the mode already in effect", () => {

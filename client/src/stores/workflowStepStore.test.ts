@@ -6,6 +6,8 @@ import {
     getCombinedStepInputs,
     type InputTerminalSource,
     type NewStep,
+    presenceGateIsSpellable,
+    type Step,
     type StepInputConnection,
     useWorkflowStepStore,
 } from "@/stores/workflowStepStore";
@@ -230,5 +232,47 @@ describe("synthesized gate ports", () => {
     it("does not synthesize a port for a connection the expression only appears to name", () => {
         const ports = gatePort(optionalDataInput, "$(inputs.probe !== null)", "pro");
         expect(ports).toHaveLength(0);
+    });
+});
+
+describe("presenceGateIsSpellable", () => {
+    beforeEach(() => {
+        setActivePinia(createPinia());
+    });
+
+    const toolStep = createTestStep(0, {
+        inputs: [],
+        outputs: [],
+    }) as NewStep;
+
+    function step(toolState: Record<string, unknown>): Step {
+        return { ...toolStep, tool_state: toolState } as Step;
+    }
+
+    it("spells a top-level input", () => {
+        expect(presenceGateIsSpellable(step({ input1: '{"__class__": "ConnectedValue"}' }), "input1")).toBe(true);
+    });
+
+    it("spells an input nested in a conditional", () => {
+        expect(presenceGateIsSpellable(step({ cond: { input1: {} } }), "cond|input1")).toBe(true);
+    });
+
+    it("spells an input nested in a json-encoded conditional", () => {
+        expect(presenceGateIsSpellable(step({ cond: '{"input1": {}}' }), "cond|input1")).toBe(true);
+    });
+
+    it("refuses an input nested in a repeat", () => {
+        // Connection name is `queries_0|input2`; state holds `queries` as an array, so no
+        // property path of that shape exists and a generated gate would read undefined.
+        const repeatState = { queries: '[{"__index__": 0, "input2": {}}]' };
+        expect(presenceGateIsSpellable(step(repeatState), "queries_0|input2")).toBe(false);
+    });
+
+    it("spells a probe, which is not a tool parameter at all", () => {
+        expect(presenceGateIsSpellable(step({}), "probe")).toBe(true);
+    });
+
+    it("refuses a nested name when tool state is unavailable", () => {
+        expect(presenceGateIsSpellable(step({}), "cond|input1")).toBe(false);
     });
 });
