@@ -91,6 +91,14 @@ describe("getDanglingGates", () => {
         expect(getDanglingGates(steps(step))).toEqual([]);
     });
 
+    it("does not confuse a literal pipe in an access with a nested connection path", () => {
+        const step = makeStep({
+            when: '$(inputs["cond|input1"] !== null)',
+            input_connections: { "cond|input1": { id: 0, output_name: "output" } },
+        });
+        expect(getDanglingGates(steps(step))).toHaveLength(1);
+    });
+
     it("accepts an inverse probe gate whose probe is connected", () => {
         const step = makeStep({
             when: "$(inputs.probe === null)",

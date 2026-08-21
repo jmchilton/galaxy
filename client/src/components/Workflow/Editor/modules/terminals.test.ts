@@ -1221,4 +1221,24 @@ describe("twin dispatch acceptance", () => {
         const consumingIn = gatedTwin("$(inputs.input1 !== null)", requiredDataOut);
         expect(consumingIn.attachable(optionalDataOut).canAccept).toBe(false);
     });
+
+    it("refuses a twin connection when the gate probe has a second source", () => {
+        const requiredDataOut = terminals["data input"]!["output"] as OutputTerminal;
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const consumingIn = terminals["multiple simple data"]!["queries_0|input2"] as InputTerminal;
+        const step = stepStore.getStep(consumingIn.stepId)!;
+        stepStore.updateStep({
+            ...step,
+            when: "$(inputs.probe !== null)",
+            input_connections: {
+                ...step.input_connections,
+                probe: [
+                    { id: optionalDataOut.stepId, output_name: optionalDataOut.name },
+                    { id: requiredDataOut.stepId, output_name: requiredDataOut.name },
+                ],
+            },
+        });
+
+        expect(consumingIn.attachable(optionalDataOut).canAccept).toBe(false);
+    });
 });

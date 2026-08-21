@@ -112,6 +112,15 @@ describe("classifyWhenInputIsNull", () => {
         expect(classifyWhenInputIsNull('$(inputs.reference.format != "bwa_mem2_index")', "reference")).toBe("unknown");
         expect(classifyWhenInputIsNull('$(inputs.reference.format === "x")', "reference")).toBe("unknown");
     });
+
+    it("evaluates a property read that optional-chains from the absent target", () => {
+        expect(classifyWhenInputIsNull("$(inputs.reference?.format !== null)", "reference")).toBe("true-when-null");
+        expect(classifyWhenInputIsNull("$(inputs.reference?.format === undefined)", "reference")).toBe(
+            "true-when-null",
+        );
+        expect(classifyWhenInputIsNull("$(inputs.reference?.format === null)", "reference")).toBe("false-when-null");
+        expect(expressionGuardsInputPresence("$(inputs.reference?.format !== null)", "reference")).toBe(false);
+    });
 });
 
 describe("expressionGuardsInputPresence", () => {
@@ -194,8 +203,22 @@ describe("analyzer soundness", () => {
 
     it("does not mistake a regex body for real code", () => {
         const analysis = analyzeInputReferences("$(/inputs.zzz/.test(inputs.a))");
-        expect(analysis.staticPaths).toEqual([]);
-        expect(analysis.hasDynamicInputsAccess).toBe(true);
+        expect(analysis.staticPaths).toEqual([["a"]]);
+        expect(analysis.hasDynamicInputsAccess).toBe(false);
+        expect(expressionReferencesInput("$(/inputs.zzz/.test('inputs.a'))", "a")).toBe(false);
+    });
+
+    it("recognizes an inverse gate regardless of logical operand order", () => {
+        expect(classifyWhenInputIsNull("$(inputs.force || inputs.a === null)", "a")).toBe("true-when-null");
+        expect(expressionGuardsInputPresence("$(inputs.force || inputs.a === null)", "a")).toBe(false);
+        expect(classifyWhenInputIsNull("$((inputs.force && false) || inputs.a === null)", "a")).toBe("true-when-null");
+    });
+
+    it("does not mistake known truthiness for an exact boolean value", () => {
+        expect(classifyWhenInputIsNull("$((inputs.force || true) === true && inputs.a === null)", "a")).toBe("unknown");
+        expect(classifyWhenInputIsNull("$((inputs.force && false) === false && inputs.a === null)", "a")).toBe(
+            "unknown",
+        );
     });
 
     it("is not fooled by a token after the closing parenthesis", () => {

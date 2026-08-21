@@ -12,6 +12,8 @@
  * permissively: the runtime, not the editor, decides whether a step runs.
  */
 
+import { connectionNameToInputPath, inputPathIsPrefix } from "./workflowInputPath";
+
 type TokenType = "identifier" | "number" | "string" | "punct";
 
 interface Token {
@@ -30,9 +32,22 @@ export type NullBehavior = "false-when-null" | "true-when-null" | "unknown";
 
 const PUNCTUATORS = ["===", "!==", "==", "!=", "&&", "||", "!", "(", ")", "[", "]", ".", ",", "?", ":"];
 
+// `UNKNOWN` has unknown value and truthiness. The other two retain only the
+// truthiness established by short-circuit evaluation; equality must still treat their
+// exact values as indeterminate.
 const UNKNOWN = Symbol("unknown");
+const TRUTHY_UNKNOWN = Symbol("truthy-unknown");
+const FALSY_UNKNOWN = Symbol("falsy-unknown");
 
-type EvaluatedValue = typeof UNKNOWN | string | number | boolean | null | undefined;
+type EvaluatedValue =
+    | typeof UNKNOWN
+    | typeof TRUTHY_UNKNOWN
+    | typeof FALSY_UNKNOWN
+    | string
+    | number
+    | boolean
+    | null
+    | undefined;
 
 /** Tokenize a JavaScript-ish expression, or return null when it cannot be scanned. */
 function tokenize(expression: string): Token[] | null {
@@ -63,9 +78,18 @@ function tokenize(expression: string): Token[] | null {
         }
 
         if (char === "/") {
-            // A regex literal would otherwise be scanned as code. Division is rare enough
-            // in a gate that refusing to scan either is cheaper than telling them apart.
-            return null;
+            // Ignore regex contents so text such as `inputs.foo` inside the pattern is
+            // not mistaken for an access. If this slash follows a value, it may instead
+            // be division; leave that unsupported rather than guessing.
+            if (!canStartRegex(tokens)) {
+                return null;
+            }
+            const next = readRegexLiteral(expression, index);
+            if (next === null) {
+                return null;
+            }
+            index = next;
+            continue;
         }
 
         if (char === '"' || char === "'" || char === "`") {
@@ -98,6 +122,45 @@ function tokenize(expression: string): Token[] | null {
     }
 
     return tokens;
+}
+
+/** Conservatively recognize regex literals where the analyzer's subset expects a value. */
+function canStartRegex(tokens: Token[]): boolean {
+    const previous = tokens[tokens.length - 1];
+    if (!previous) {
+        return true;
+    }
+    return previous.type === "punct" && previous.value !== ")" && previous.value !== "]" && previous.value !== ".";
+}
+
+/** Skip a regex literal, including escaped characters, character classes, and flags. */
+function readRegexLiteral(expression: string, start: number): number | null {
+    let index = start + 1;
+    let inCharacterClass = false;
+
+    while (index < expression.length) {
+        const char = expression[index]!;
+        if (char === "\\") {
+            index += 2;
+            continue;
+        }
+        if (char === "[") {
+            inCharacterClass = true;
+        } else if (char === "]") {
+            inCharacterClass = false;
+        } else if (char === "/" && !inCharacterClass) {
+            index++;
+            while (/[A-Za-z]/.test(expression[index] ?? "")) {
+                index++;
+            }
+            return index;
+        } else if (char === "\n" || char === "\r") {
+            return null;
+        }
+        index++;
+    }
+
+    return null;
 }
 
 /** Read a quoted literal starting at `start`. Template literals keep their raw body. */
@@ -166,6 +229,8 @@ export function analyzeInputReferences(expression: string): ReferenceAnalysis {
 
 interface AccessPath {
     segments: string[];
+    /** Segment counts after which `?.` starts an optional chain. */
+    optionalAfterSegments: number[];
     dynamic: boolean;
     next: number;
 }
@@ -173,11 +238,15 @@ interface AccessPath {
 /** Walk the property access chain that follows an `inputs` token. */
 function readAccessPath(tokens: Token[], start: number): AccessPath {
     const segments: string[] = [];
+    const optionalAfterSegments: number[] = [];
     let index = start;
 
     for (;;) {
         if (tokens[index]?.value === "?" && (tokens[index + 1]?.value === "." || tokens[index + 1]?.value === "[")) {
-            index++;
+            optionalAfterSegments.push(segments.length);
+            // `value?.name` leaves the dot for the ordinary dot-access branch;
+            // `value?.[name]` must skip both `?` and `.` to reach the bracket.
+            index += tokens[index + 1]?.value === "." && tokens[index + 2]?.value === "[" ? 2 : 1;
         }
         const token = tokens[index];
         if (token?.value === "." && tokens[index + 1]?.type === "identifier") {
@@ -192,26 +261,14 @@ function readAccessPath(tokens: Token[], start: number): AccessPath {
                 index += 3;
                 continue;
             }
-            return { segments, dynamic: true, next: index };
+            return { segments, optionalAfterSegments, dynamic: true, next: index };
         }
-        return { segments, dynamic: false, next: index };
+        return { segments, optionalAfterSegments, dynamic: false, next: index };
     }
-}
-
-/** True when `targetPath` names the referenced access or an ancestor of it. */
-function isPathPrefix(targetPath: string[], referencedPath: string[]): boolean {
-    if (targetPath.length > referencedPath.length) {
-        return false;
-    }
-    return targetPath.every((segment, position) => segment === referencedPath[position]);
 }
 
 function isSamePath(targetPath: string[], referencedPath: string[]): boolean {
-    return targetPath.length === referencedPath.length && isPathPrefix(targetPath, referencedPath);
-}
-
-function connectionPath(inputName: string): string[] {
-    return inputName.split("|");
+    return targetPath.length === referencedPath.length && inputPathIsPrefix(targetPath, referencedPath);
 }
 
 /**
@@ -226,14 +283,14 @@ export function expressionReferencesInput(expression: string | null | undefined,
         return false;
     }
 
-    const targetPath = connectionPath(inputName);
+    const targetPath = connectionNameToInputPath(inputName);
     const references = analyzeInputReferences(expression);
 
     if (references.hasDynamicInputsAccess) {
         return true;
     }
 
-    return references.staticPaths.some((referencedPath) => isPathPrefix(targetPath, referencedPath));
+    return references.staticPaths.some((referencedPath) => inputPathIsPrefix(targetPath, referencedPath));
 }
 
 /**
@@ -259,7 +316,7 @@ export function classifyWhenInputIsNull(expression: string | null | undefined, i
         return "unknown";
     }
 
-    const parser = new PresenceEvaluator(tokens, connectionPath(inputName));
+    const parser = new PresenceEvaluator(tokens, connectionNameToInputPath(inputName));
     const value = parser.evaluate();
     if (value === UNKNOWN) {
         return "unknown";
@@ -269,10 +326,12 @@ export function classifyWhenInputIsNull(expression: string | null | undefined, i
 }
 
 /**
- * True when the expression is safe to read as a presence guard for the named input.
+ * True when the editor should treat the expression as a presence guard for the input.
  *
- * The step may still not run for other reasons; what matters to the editor is that the
- * expression is not known to run the step while the input is absent.
+ * This is deliberately permissive for existing, hand-written expressions: a gate that
+ * references the input is accepted unless the evaluator can prove it runs while the
+ * input is absent. The runtime remains authoritative for expressions classified as
+ * unknown.
  */
 export function expressionGuardsInputPresence(expression: string | null | undefined, inputName: string): boolean {
     if (!expressionReferencesInput(expression, inputName)) {
@@ -283,6 +342,12 @@ export function expressionGuardsInputPresence(expression: string | null | undefi
 }
 
 function isTruthy(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
+    if (value === TRUTHY_UNKNOWN) {
+        return true;
+    }
+    if (value === FALSY_UNKNOWN) {
+        return false;
+    }
     return Boolean(value);
 }
 
@@ -427,26 +492,42 @@ class PresenceEvaluator {
         }
         // Only the target itself is known to be null. Reading a property *of* the target
         // would throw at run time rather than yield a value, so it stays indeterminate.
-        return isSamePath(this.targetPath, path.segments) ? null : UNKNOWN;
+        if (isSamePath(this.targetPath, path.segments)) {
+            return null;
+        }
+        if (
+            inputPathIsPrefix(this.targetPath, path.segments) &&
+            path.optionalAfterSegments.includes(this.targetPath.length)
+        ) {
+            // `target?.property` short-circuits to undefined when target is null;
+            // the equivalent non-optional property read throws and remains unknown.
+            return undefined;
+        }
+        return UNKNOWN;
     }
 }
 
 function combineAnd(left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
     if (left === UNKNOWN) {
-        return UNKNOWN;
+        // If the unknown left side is falsy, JavaScript returns that falsy value;
+        // otherwise it returns `right`. A falsy right therefore settles the result's
+        // truthiness even though its exact value is unknown.
+        return right !== UNKNOWN && !isTruthy(right) ? FALSY_UNKNOWN : UNKNOWN;
     }
     return isTruthy(left) ? right : left;
 }
 
 function combineOr(left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
     if (left === UNKNOWN) {
-        return UNKNOWN;
+        // Symmetrically, a truthy right side makes `unknown || right` truthy for
+        // either possible truthiness of the left side.
+        return right !== UNKNOWN && isTruthy(right) ? TRUTHY_UNKNOWN : UNKNOWN;
     }
     return isTruthy(left) ? left : right;
 }
 
 function compare(operator: string, left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
-    if (left === UNKNOWN || right === UNKNOWN) {
+    if (isIndeterminate(left) || isIndeterminate(right)) {
         return UNKNOWN;
     }
 
@@ -476,11 +557,17 @@ function isNullish(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
     return value === null || value === undefined;
 }
 
+function isIndeterminate(
+    value: EvaluatedValue,
+): value is typeof UNKNOWN | typeof TRUTHY_UNKNOWN | typeof FALSY_UNKNOWN {
+    return value === UNKNOWN || value === TRUTHY_UNKNOWN || value === FALSY_UNKNOWN;
+}
+
 const JAVASCRIPT_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /** Spell a connection name as a JavaScript access path into `inputs`. */
 export function inputsAccessPath(inputName: string): string {
-    return connectionPath(inputName).reduce(
+    return connectionNameToInputPath(inputName).reduce(
         (path, segment) =>
             JAVASCRIPT_IDENTIFIER.test(segment) ? `${path}.${segment}` : `${path}[${JSON.stringify(segment)}]`,
         "inputs",
@@ -491,3 +578,7 @@ export function inputsAccessPath(inputName: string): string {
 export function presenceGateExpression(inputName: string): string {
     return `$(${inputsAccessPath(inputName)} !== null)`;
 }
+
+/** The established workflow-editor convention for a direct boolean gate. */
+export const BOOLEAN_GATE_INPUT_NAME = "when";
+export const BOOLEAN_GATE_EXPRESSION = `$(inputs.${BOOLEAN_GATE_INPUT_NAME})`;

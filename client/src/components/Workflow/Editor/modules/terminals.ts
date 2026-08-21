@@ -9,6 +9,7 @@ import {
     type DataOutput,
     type DataStepInput,
     getCombinedStepInputs,
+    normalizeConnectionOutputLinks,
     type ParameterOutput,
     type ParameterStepInput,
     presenceGateIsSpellable,
@@ -265,8 +266,10 @@ class BaseInputTerminal extends Terminal {
         }
     }
     /**
-     * True when the step only runs while this input carries a value, which makes an
-     * optional output safe to attach to a required input.
+     * True when the editor can treat this input as presence-gated.
+     *
+     * Generated gates are decisive. Hand-written gates follow the analyzer's permissive
+     * policy: accept a reference unless it is known to run while the input is absent.
      */
     isPresenceGated(other?: BaseOutputTerminal): boolean {
         if (this.presenceGateAssumed) {
@@ -288,16 +291,20 @@ class BaseInputTerminal extends Terminal {
     }
     /**
      * The twin dispatch shape: the gate names a different input of this step, but one fed
-     * by the very output being attached. The step cannot run while that output is absent,
-     * so this input is never consumed missing either.
+     * solely by the output being attached. Apply the same presence-gate decision to that
+     * probe, because it and this input become absent together.
      */
     private gatedThroughSharedSource(step: Step, other: BaseOutputTerminal): boolean {
         return Object.entries(step.input_connections ?? {}).some(([name, links]) => {
             if (name === this.name || !expressionGuardsInputPresence(step.when, name)) {
                 return false;
             }
-            const linkArray = Array.isArray(links) ? links : links ? [links] : [];
-            return linkArray.some((link) => link.id === other.stepId && link.output_name === other.name);
+            const linkArray = normalizeConnectionOutputLinks(links);
+            // A second source could keep the probe present while `other` is absent, so
+            // only a single-source probe establishes the twin relationship.
+            return (
+                linkArray.length === 1 && linkArray[0]!.id === other.stepId && linkArray[0]!.output_name === other.name
+            );
         });
     }
     connect(other: BaseOutputTerminal): void {

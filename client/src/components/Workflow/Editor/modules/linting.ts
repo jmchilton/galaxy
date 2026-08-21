@@ -19,6 +19,7 @@ import type {
 } from "./lintingTypes";
 import { terminalFactory } from "./terminals";
 import { analyzeInputReferences } from "./whenExpression";
+import { connectionNameToInputPath, inputPathIsPrefix } from "./workflowInputPath";
 
 export const bestPracticeWarningAnnotation =
     "This workflow does not provide a short description. Providing a short description helps workflow executors understand the purpose and usage of the workflow.";
@@ -82,10 +83,11 @@ export function getDanglingGates(steps: Steps = {}) {
         const reported = new Set<string>();
         references.staticPaths.forEach((path) => {
             const name = path.join("|");
-            if (reported.has(name) || gateReferenceIsSatisfied(step, name)) {
+            const referenceKey = JSON.stringify(path);
+            if (reported.has(referenceKey) || gateReferenceIsSatisfied(step, path)) {
                 return;
             }
-            reported.add(name);
+            reported.add(referenceKey);
             dangling.push({
                 stepId: step.id,
                 stepLabel: step.label || step.content_id || step.name,
@@ -100,27 +102,27 @@ export function getDanglingGates(steps: Steps = {}) {
     return dangling;
 }
 
-function gateReferenceIsSatisfied(step: Step, name: string): boolean {
-    if (namesInclude(Object.keys(step.input_connections ?? {}), name)) {
+function gateReferenceIsSatisfied(step: Step, path: string[]): boolean {
+    if (connectionNamesIncludePath(Object.keys(step.input_connections ?? {}), path)) {
         return true;
     }
     if (
-        namesInclude(
+        connectionNamesIncludePath(
             (step.inputs ?? []).map((input) => input.name),
-            name,
+            path,
         )
     ) {
         // A connectable tool parameter with nothing connected is the dangling case.
         return false;
     }
     // Everything else the expression can legitimately read comes from the step's state.
-    const root = name.split("|")[0]!;
+    const root = path[0]!;
     return Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, root);
 }
 
-/** True when `name` is one of the candidates, or an ancestor of one. */
-function namesInclude(candidates: string[], name: string): boolean {
-    return candidates.some((candidate) => candidate === name || candidate.startsWith(`${name}|`));
+/** True when `path` names a candidate connection or one of its ancestors. */
+function connectionNamesIncludePath(candidates: string[], path: string[]): boolean {
+    return candidates.some((candidate) => inputPathIsPrefix(path, connectionNameToInputPath(candidate)));
 }
 
 /** Gate checks only make sense once something in the workflow is gated. */

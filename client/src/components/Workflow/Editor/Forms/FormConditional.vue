@@ -5,12 +5,9 @@ import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import { connectedInputCanBeAbsent, presenceGateIsSpellable, type Step } from "@/stores/workflowStepStore";
 
-import { presenceGateExpression } from "../modules/whenExpression";
+import { BOOLEAN_GATE_EXPRESSION, BOOLEAN_GATE_INPUT_NAME, presenceGateExpression } from "../modules/whenExpression";
 
 import FormElement from "@/components/Form/FormElement.vue";
-
-/** The gate the boolean mode writes; the `id: when` convention the IWC corpus uses. */
-const BOOLEAN_GATE = "$(inputs.when)";
 
 type GateMode = "none" | "boolean" | "presence" | "custom";
 
@@ -42,7 +39,7 @@ const mode = computed<GateMode>(() => {
     if (!props.step.when) {
         return "none";
     }
-    if (props.step.when === BOOLEAN_GATE) {
+    if (props.step.when === BOOLEAN_GATE_EXPRESSION) {
         return "boolean";
     }
     return presenceGateInput.value ? "presence" : "custom";
@@ -78,8 +75,8 @@ async function onMode(newMode: GateMode) {
         emit("onUpdateStep", props.step.id, { when: undefined });
     } else if (newMode === "boolean") {
         emit("onUpdateStep", props.step.id, {
-            when: BOOLEAN_GATE,
-            input_connections: { ...(props.step.input_connections ?? {}), when: undefined },
+            when: BOOLEAN_GATE_EXPRESSION,
+            input_connections: { ...(props.step.input_connections ?? {}), [BOOLEAN_GATE_INPUT_NAME]: undefined },
         });
     } else if (newMode === "presence") {
         const firstGateable = gateableInputs.value[0];
