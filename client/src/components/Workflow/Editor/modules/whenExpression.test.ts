@@ -160,3 +160,52 @@ describe("presenceGateExpression", () => {
         },
     );
 });
+
+describe("analyzer soundness", () => {
+    it("does not decide a cross-type loose comparison", () => {
+        // JS says 1 == "1", so this expression is true when the input is absent.
+        expect(classifyWhenInputIsNull("$(1 == '1' && inputs.cond.input1 === null)", "cond|input1")).toBe("unknown");
+        expect(expressionGuardsInputPresence('$(inputs.a !== null || 0 == "")', "a")).toBe(true);
+        expect(classifyWhenInputIsNull('$(inputs.a !== null || 0 == "")', "a")).toBe("unknown");
+    });
+
+    it("still decides same-type loose comparisons", () => {
+        expect(classifyWhenInputIsNull("$(inputs.a == null)", "a")).toBe("true-when-null");
+        expect(classifyWhenInputIsNull("$(inputs.a != null)", "a")).toBe("false-when-null");
+    });
+
+    it("yields the surviving operand of a logical expression", () => {
+        expect(classifyWhenInputIsNull("$((inputs.a || inputs.a) !== null)", "a")).toBe("false-when-null");
+        expect(classifyWhenInputIsNull("$((inputs.a && inputs.a) === null)", "a")).toBe("true-when-null");
+    });
+
+    it("survives an expression deep enough to exhaust the stack", () => {
+        const deep = `$(${"(".repeat(20000)}inputs.a${")".repeat(20000)} !== null)`;
+        expect(() => classifyWhenInputIsNull(deep, "a")).not.toThrow();
+        expect(classifyWhenInputIsNull(deep, "a")).toBe("unknown");
+        expect(() => expressionGuardsInputPresence(deep, "a")).not.toThrow();
+    });
+
+    it("reads through optional chaining", () => {
+        expect(expressionReferencesInput("$(inputs.cond?.input1 !== null)", "cond|input1")).toBe(true);
+        expect(classifyWhenInputIsNull("$(inputs.cond?.input1 === null)", "cond|input1")).toBe("true-when-null");
+        expect(analyzeInputReferences("$(inputs.cond?.input1)").staticPaths).toEqual([["cond", "input1"]]);
+    });
+
+    it("does not mistake a regex body for real code", () => {
+        const analysis = analyzeInputReferences("$(/inputs.zzz/.test(inputs.a))");
+        expect(analysis.staticPaths).toEqual([]);
+        expect(analysis.hasDynamicInputsAccess).toBe(true);
+    });
+
+    it("is not fooled by a token after the closing parenthesis", () => {
+        expect(classifyWhenInputIsNull("$(inputs.a === null);", "a")).toBe("true-when-null");
+        expect(classifyWhenInputIsNull("$(inputs.a === null) // trailing", "a")).toBe("true-when-null");
+        expect(expressionGuardsInputPresence("$(inputs.a === null);", "a")).toBe(false);
+    });
+
+    it("still refuses to parse a genuinely truncated expression", () => {
+        expect(classifyWhenInputIsNull("$(inputs.a === null", "a")).toBe("unknown");
+        expect(classifyWhenInputIsNull("$(inputs.a === null)) extra", "a")).toBe("unknown");
+    });
+});
