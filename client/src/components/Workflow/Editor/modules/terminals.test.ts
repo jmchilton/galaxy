@@ -1165,6 +1165,15 @@ describe("canAcceptWithPresenceGate spellability", () => {
         expect(repeatIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(false);
     });
 
+    it("declines to offer a gate for a step that already has one", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.unrelated)");
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+        expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(false);
+    });
+
     it("offers a gate for an input nested in a conditional", () => {
         const optionalIntegerOut = terminals["optional integer parameter input"]!["output"] as OutputParameterTerminal;
         const nestedIn = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;

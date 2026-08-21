@@ -253,6 +253,40 @@ describe("FormConditional", () => {
             expect(updates(wrapper)).toHaveLength(0);
         });
 
+        it("asks before replacing a hand-written expression with the boolean gate", async () => {
+            confirmMock.mockResolvedValue(false);
+            const wrapper = mountConditional({ when: "$(inputs.flag && inputs.other !== null)" });
+            modeElement(wrapper).vm.$emit("input", "boolean");
+            await flushPromises();
+            expect(confirmMock).toHaveBeenCalled();
+            expect(updates(wrapper)).toHaveLength(0);
+        });
+
+        it("asks before replacing a hand-written expression with a presence gate", async () => {
+            confirmMock.mockResolvedValue(false);
+            const wrapper = mountConditional({ when: "$(inputs.flag && inputs.other !== null)" });
+            modeElement(wrapper).vm.$emit("input", "presence");
+            await flushPromises();
+            expect(confirmMock).toHaveBeenCalled();
+            expect(updates(wrapper)).toHaveLength(0);
+        });
+
+        it("replaces a hand-written expression once the user agrees", async () => {
+            confirmMock.mockResolvedValue(true);
+            const wrapper = mountConditional({ when: "$(inputs.flag && inputs.other !== null)" });
+            modeElement(wrapper).vm.$emit("input", "boolean");
+            await flushPromises();
+            expect(lastUpdate(wrapper).when).toBe("$(inputs.when)");
+        });
+
+        it("does not ask when the expression is one this form generated", async () => {
+            const wrapper = mountConditional({ when: "$(inputs.input1 !== null)" });
+            modeElement(wrapper).vm.$emit("input", "boolean");
+            await flushPromises();
+            expect(confirmMock).not.toHaveBeenCalled();
+            expect(lastUpdate(wrapper).when).toBe("$(inputs.when)");
+        });
+
         it("shows a hand-written expression without rewriting it", () => {
             const expression = "$(inputs.input1 != null && inputs.other)";
             const wrapper = mountConditional({ when: expression });
