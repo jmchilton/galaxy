@@ -5,6 +5,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from galaxy.datatypes.metadata import MetadataCollection
 from galaxy.schema.states import (
@@ -129,7 +130,11 @@ class MetadataDatasetInstance:
         object.__setattr__(self, "_attributes", attributes)
         object.__setattr__(self, "_datatypes_registry", datatypes_registry)
         object.__setattr__(self, "dataset", MetadataDataset(attributes["dataset"], object_store=object_store))
-        object.__setattr__(self, "_metadata", attributes.get("metadata") or {})
+        metadata = attributes.get("metadata")
+        if metadata is None:
+            metadata = {}
+            attributes["metadata"] = metadata
+        object.__setattr__(self, "_metadata", metadata)
         object.__setattr__(self, "_metadata_collection", MetadataCollection(self))
         object.__setattr__(self, "_state", None)
 
@@ -189,6 +194,14 @@ class MetadataDatasetInstance:
     def creating_job(self):
         return None
 
+    @property
+    def created_from_basename(self):
+        return self.dataset.created_from_basename
+
+    @created_from_basename.setter
+    def created_from_basename(self, value):
+        self.dataset.created_from_basename = value
+
     def get_file_name(self, sync_cache: bool = True, auth=None):
         return self.dataset.get_file_name(sync_cache=sync_cache, auth=auth)
 
@@ -219,6 +232,19 @@ class MetadataDatasetInstance:
         except TypeError:
             return self.datatype.set_peek(self, **kwds)
 
+    def init_meta(self, copy_from=None):
+        return self.datatype.init_meta(self, copy_from=copy_from)
+
+    def set_meta(self, **kwds):
+        self.clear_associated_files(metadata_safe=True)
+        return self.datatype.set_meta(self, **kwds)
+
+    def change_datatype(self, extension):
+        self.extension = extension
+
+    def link_to(self, filename):
+        self.dataset.external_filename = filename
+
     def clear_associated_files(self, metadata_safe: bool = False, purge: bool = False):
         return None
 
@@ -246,6 +272,92 @@ class MetadataDatasetStore:
 
     def find(self, dataset_id):
         return self._datasets.get(dataset_id)
+
+    def create(
+        self,
+        datatypes_registry,
+        object_store=None,
+        *,
+        extension,
+        designation,
+        visible,
+        dbkey,
+        name,
+        info=None,
+        state="ok",
+        sources=None,
+        hashes=None,
+        created_from_basename=None,
+        tags=None,
+    ):
+        dataset_instance_key = uuid4().hex
+        dataset_key = uuid4().hex
+        dataset_uuid = str(uuid4())
+        dataset_attributes = {
+            "encoded_id": dataset_instance_key,
+            "model_class": "HistoryDatasetAssociation",
+            "name": name or "Unnamed dataset",
+            "info": info,
+            "blurb": None,
+            "peek": None,
+            "extension": extension,
+            "metadata": {"dbkey": dbkey},
+            "metadata_deferred": state == "deferred",
+            "designation": designation,
+            "deleted": False,
+            "visible": visible,
+            "dataset_uuid": dataset_uuid,
+            "validated_state": "unknown",
+            "validated_state_message": None,
+            "state": state,
+            "hid": None,
+            "annotation": "",
+            "tags": tags or [],
+            "tool_version": None,
+            "copied_from_history_dataset_association_id_chain": [],
+            "dataset": {
+                "encoded_id": dataset_key,
+                "model_class": "Dataset",
+                "state": state,
+                "deleted": False,
+                "purged": False,
+                "purgable": True,
+                "external_filename": None,
+                "_extra_files_path": None,
+                "file_size": None,
+                "object_store_id": None,
+                "total_size": None,
+                "created_from_basename": created_from_basename,
+                "uuid": dataset_uuid,
+                "hashes": [
+                    {
+                        "encoded_id": uuid4().hex,
+                        "model_class": "DatasetHash",
+                        "hash_function": item["hash_function"],
+                        "hash_value": item["hash_value"],
+                        "extra_files_path": item.get("extra_files_path"),
+                    }
+                    for item in (hashes or [])
+                ],
+                "sources": [
+                    {
+                        "encoded_id": uuid4().hex,
+                        "model_class": "DatasetSource",
+                        "source_uri": item["source_uri"],
+                        "extra_files_path": item.get("extra_files_path"),
+                        "transform": item.get("transform"),
+                        "requested_transform": item.get("requested_transform"),
+                        "hashes": item.get("hashes", []),
+                    }
+                    for item in (sources or [])
+                ],
+            },
+        }
+        dataset = MetadataDatasetInstance(dataset_attributes, datatypes_registry, object_store=object_store)
+        dataset.init_meta()
+        self._attributes.append(dataset_attributes)
+        self._datasets[dataset_instance_key] = dataset
+        return dataset
 
 
 class MetadataDatasetCollectionElement:
@@ -332,6 +444,15 @@ class MetadataDatasetCollection:
     def handle_population_failed(self, message):
         self.populated_state = self.populated_states.FAILED
         self.populated_state_message = message
+
+    def replace_elements(self, elements: list[dict[str, Any]]):
+        self._attributes["elements"] = elements
+        object.__setattr__(
+            self,
+            "elements",
+            [MetadataDatasetCollectionElement(element, self._datasets) for element in elements],
+        )
+        self.element_count = len(elements)
 
 
 class MetadataDatasetCollectionInstance:
@@ -432,6 +553,14 @@ class MetadataModelExportStore:
         # Fixed outputs already occur in the input store. Mutations are made
         # directly against their canonical serialized dictionaries.
         return None
+
+    def add_job_output_dataset_associations(self, job_id, name, dataset):
+        job_attributes = next((job for job in self._job_attributes if job.get("id") == job_id), None)
+        if job_attributes is None:
+            job_attributes = {"id": job_id, "output_dataset_mapping": {}}
+            self._job_attributes.append(job_attributes)
+        output_mapping = job_attributes.setdefault("output_dataset_mapping", {})
+        output_mapping.setdefault(name, []).append(dataset._attributes.get("id", dataset._attributes["encoded_id"]))
 
     def push_metadata_files(self):
         # File-backed metadata is conservatively routed to the ORM path.

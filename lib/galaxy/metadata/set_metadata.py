@@ -46,21 +46,31 @@ from galaxy.job_execution.output_collect import (
     collect_dynamic_outputs,
     collect_primary_datasets,
     SessionlessJobContext,
-    validate_unnamed_outputs,
 )
 from galaxy.job_execution.output_collect_utils import (
+    ensure_path_in_directory,
+    OutputCollectionSecurityError,
+    validate_unnamed_outputs,
     collect_extra_files,
     collect_shrinked_content_from_path,
     default_exit_code_file,
+    MaxDiscoveredFilesExceededError,
     read_exit_code_from,
 )
 from galaxy.job_execution.paths import dataset_path_to_extra_path
 from galaxy.job_execution.pydantic_defer import defer_pydantic_model_builds
 from galaxy.metadata.model_facade import (
     MetadataDataset,
+    MetadataDatasetCollectionStore,
     MetadataDatasetInstance,
     MetadataDatasetStore,
     MetadataModelExportStore,
+)
+from galaxy.metadata.output_collect import (
+    collect_dynamic_outputs as collect_dynamic_outputs_lightweight,
+    discovered_collection_extensions,
+    LightweightJobContext,
+    LightweightJobOutputNameTooLongError,
 )
 from galaxy.model import (
     Dataset,
@@ -68,11 +78,6 @@ from galaxy.model import (
     store,
 )
 from galaxy.model.store import SessionlessContext
-from galaxy.model.store.discover import (
-    ensure_path_in_directory,
-    MaxDiscoveredFilesExceededError,
-    OutputCollectionSecurityError,
-)
 from galaxy.objectstore import (
     build_object_store_from_config,
     ObjectStore,
@@ -129,7 +134,13 @@ def push_if_necessary(object_store: ObjectStore, dataset, external_filename):
 
 
 def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, working_directory):
-    if metadata_params.get("output_collections") or tool_provided_metadata.get_unnamed_outputs():
+    if tool_provided_metadata.get_unnamed_outputs():
+        return True
+
+    if any(
+        collection.get("model_class") != "HistoryDatasetCollectionAssociation"
+        for collection in metadata_params.get("output_collections", {}).values()
+    ):
         return True
 
     tool_outputs = metadata_params.get("tool", {}).get("outputs", {})
@@ -167,6 +178,27 @@ def _uses_file_metadata(dataset_store, outputs, tool_provided_metadata, datatype
         dataset = dataset_store.find(output["id"])
         file_dict = tool_provided_metadata.get_dataset_meta(output_name, dataset.dataset.id, dataset.dataset.uuid)
         extension = file_dict.get("ext", dataset.extension)
+        if extension == "_sniff_":
+            return True
+        datatype = datatypes_registry.get_datatype_by_extension(extension)
+        if any(isinstance(spec.param, FileParameter) for spec in datatype.metadata_spec.values()):
+            return True
+    return False
+
+
+def _dynamic_uses_file_metadata(
+    metadata_params,
+    tool_provided_metadata,
+    collection_store,
+    working_directory,
+    datatypes_registry,
+):
+    for extension in discovered_collection_extensions(
+        metadata_params,
+        tool_provided_metadata,
+        collection_store,
+        working_directory,
+    ):
         if extension == "_sniff_":
             return True
         datatype = datatypes_registry.get_datatype_by_extension(extension)
@@ -326,6 +358,20 @@ def set_metadata_portable(
         ):
             lightweight_store = None
             use_lightweight_store = False
+        elif extended_metadata_collection:
+            lightweight_collection_store = MetadataDatasetCollectionStore.from_directory(
+                tool_job_working_directory / "metadata/outputs_new",
+                lightweight_store,
+            )
+            if _dynamic_uses_file_metadata(
+                metadata_params,
+                tool_provided_metadata,
+                lightweight_collection_store,
+                tool_job_working_directory / "working",
+                datatypes_registry,
+            ):
+                lightweight_store = None
+                use_lightweight_store = False
 
     if not use_lightweight_store:
         if os.environ.get(LIGHTWEIGHT_MODELS_ENV) == "1":
@@ -334,6 +380,7 @@ def set_metadata_portable(
         galaxy.model.set_datatypes_registry(datatypes_registry)
 
     job_context = None
+    lightweight_job_context = None
     version_string = None
 
     export_store = None
@@ -453,6 +500,18 @@ def set_metadata_portable(
             max_discovered_files=max_discovered_files,
             job=job,
         )
+    elif extended_metadata_collection:
+        assert export_store
+        lightweight_job_context = LightweightJobContext(
+            metadata_params,
+            tool_provided_metadata,
+            object_store,
+            export_store,
+            tool_job_working_directory / "working",
+            datatypes_registry,
+            final_job_state,
+            max_discovered_files,
+        )
 
     output_collection_security_error = None
     try:
@@ -465,7 +524,29 @@ def set_metadata_portable(
         if not export_store:
             # Can't happen, but type system doesn't know
             raise Exception("export_store not built")
-        if not use_lightweight_store:
+        if use_lightweight_store:
+            assert lightweight_job_context
+            assert export_store
+            output_collections = {
+                name: export_store.dataset_collections.find(output_collection["id"])
+                for name, output_collection in metadata_params["output_collections"].items()
+            }
+            assert all(output_collections.values())
+            try:
+                collect_dynamic_outputs_lightweight(lightweight_job_context, output_collections)
+            except (MaxDiscoveredFilesExceededError, LightweightJobOutputNameTooLongError) as e:
+                log.warning("Job failed during extended metadata output discovery: %s", e)
+                discovery_failed = True
+                final_job_state = "error"
+                job_messages.append(
+                    {
+                        "type": "max_discovered_files",
+                        "desc": str(e),
+                        "code_desc": None,
+                        "error_level": StdioErrorLevel.FATAL,
+                    }
+                )
+        else:
             assert import_model_store
             assert job_context
             output_collections = {}
