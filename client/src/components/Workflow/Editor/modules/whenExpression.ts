@@ -62,6 +62,12 @@ function tokenize(expression: string): Token[] | null {
             continue;
         }
 
+        if (char === "/") {
+            // A regex literal would otherwise be scanned as code. Division is rare enough
+            // in a gate that refusing to scan either is cheaper than telling them apart.
+            return null;
+        }
+
         if (char === '"' || char === "'" || char === "`") {
             const literal = readStringLiteral(expression, index);
             if (!literal) {
@@ -170,6 +176,9 @@ function readAccessPath(tokens: Token[], start: number): AccessPath {
     let index = start;
 
     for (;;) {
+        if (tokens[index]?.value === "?" && (tokens[index + 1]?.value === "." || tokens[index + 1]?.value === "[")) {
+            index++;
+        }
         const token = tokens[index];
         if (token?.value === "." && tokens[index + 1]?.type === "identifier") {
             segments.push(tokens[index + 1]!.value);
@@ -227,15 +236,6 @@ export function expressionReferencesInput(expression: string | null | undefined,
     return references.staticPaths.some((referencedPath) => isPathPrefix(targetPath, referencedPath));
 }
 
-/** Strip the `$(...)` wrapper Galaxy `when` expressions carry. */
-function expressionBody(expression: string): string | null {
-    const trimmed = expression.trim();
-    if (trimmed.startsWith("$(") && trimmed.endsWith(")")) {
-        return trimmed.slice(2, -1);
-    }
-    return null;
-}
-
 /**
  * Decide how the expression behaves when the named connection carries no value.
  *
@@ -248,13 +248,14 @@ export function classifyWhenInputIsNull(expression: string | null | undefined, i
         return "unknown";
     }
 
-    const body = expressionBody(expression);
-    if (body === null || isTemplateLiteral(body)) {
+    const trimmed = expression.trim();
+    if (isTemplateLiteral(trimmed)) {
         return "unknown";
     }
 
-    const tokens = tokenize(body);
-    if (!tokens || tokens.length === 0) {
+    const tokens = tokenize(trimmed);
+    // Galaxy `when` expressions are a `$(...)` body.
+    if (!tokens || tokens[0]?.value !== "$" || tokens[1]?.value !== "(") {
         return "unknown";
     }
 
@@ -285,37 +286,38 @@ function isTruthy(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
     return Boolean(value);
 }
 
-/**
- * Recursive-descent evaluator over the recognized expression subset.
- *
- * Throws {@link ParseFailure} on anything it does not model; callers map that to
- * "unknown" rather than to a verdict.
- */
+/** Raised on anything the evaluator does not model; mapped to "unknown", never to a verdict. */
 class ParseFailure extends Error {}
 
+/** Recursive-descent evaluator over the recognized expression subset. */
 class PresenceEvaluator {
     private tokens: Token[];
     private targetPath: string[];
-    private position = 0;
+    private position: number;
 
     constructor(tokens: Token[], targetPath: string[]) {
         this.tokens = tokens;
         this.targetPath = targetPath;
+        this.position = 2;
     }
 
     evaluate(): EvaluatedValue {
         try {
             const value = this.parseOr();
-            if (this.position !== this.tokens.length) {
+            if (!this.consume(")") || !this.atEnd()) {
                 return UNKNOWN;
             }
             return value;
-        } catch (error) {
-            if (error instanceof ParseFailure) {
-                return UNKNOWN;
-            }
-            throw error;
+        } catch {
+            // Including anything the recursive descent itself can raise, such as a
+            // RangeError on a deeply nested expression. Nothing escapes into the editor.
+            return UNKNOWN;
         }
+    }
+
+    /** Only statement punctuation may follow the expression body. */
+    private atEnd(): boolean {
+        return this.tokens.slice(this.position).every((token) => token.value === ";");
     }
 
     private peek(): Token | undefined {
@@ -430,29 +432,17 @@ class PresenceEvaluator {
 }
 
 function combineAnd(left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
-    if (left !== UNKNOWN && !isTruthy(left)) {
-        return false;
-    }
-    if (right !== UNKNOWN && !isTruthy(right)) {
-        return false;
-    }
-    if (left === UNKNOWN || right === UNKNOWN) {
+    if (left === UNKNOWN) {
         return UNKNOWN;
     }
-    return true;
+    return isTruthy(left) ? right : left;
 }
 
 function combineOr(left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
-    if (left !== UNKNOWN && isTruthy(left)) {
-        return true;
-    }
-    if (right !== UNKNOWN && isTruthy(right)) {
-        return true;
-    }
-    if (left === UNKNOWN || right === UNKNOWN) {
+    if (left === UNKNOWN) {
         return UNKNOWN;
     }
-    return false;
+    return isTruthy(left) ? left : right;
 }
 
 function compare(operator: string, left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
@@ -461,18 +451,25 @@ function compare(operator: string, left: EvaluatedValue, right: EvaluatedValue):
     }
 
     const strict = left === right;
-    const loose = isNullish(left) && isNullish(right) ? true : strict;
-
-    switch (operator) {
-        case "===":
-            return strict;
-        case "!==":
-            return !strict;
-        case "==":
-            return loose;
-        default:
-            return !loose;
+    if (operator === "===") {
+        return strict;
     }
+    if (operator === "!==") {
+        return !strict;
+    }
+
+    // Loose equality across types has its own coercion rules -- `1 == "1"` is true.
+    // Decide it only where coercion cannot apply.
+    let loose: boolean;
+    if (isNullish(left) || isNullish(right)) {
+        loose = isNullish(left) && isNullish(right);
+    } else if (typeof left === typeof right) {
+        loose = strict;
+    } else {
+        return UNKNOWN;
+    }
+
+    return operator === "==" ? loose : !loose;
 }
 
 function isNullish(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
