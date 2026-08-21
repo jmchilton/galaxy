@@ -17,7 +17,6 @@ import glob
 import json
 import logging
 import os
-import re
 import sys
 import traceback
 from functools import partial
@@ -68,7 +67,9 @@ from galaxy.metadata.model_facade import (
 )
 from galaxy.metadata.output_collect import (
     collect_dynamic_outputs as collect_dynamic_outputs_lightweight,
+    collect_primary_datasets as collect_primary_datasets_lightweight,
     discovered_collection_extensions,
+    discovered_primary_extensions,
     LightweightJobContext,
     LightweightJobOutputNameTooLongError,
     unnamed_output_extensions,
@@ -146,33 +147,6 @@ def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, worki
     ):
         return True
 
-    tool_outputs = metadata_params.get("tool", {}).get("outputs", {})
-    for output_name, output_definition in tool_outputs.items():
-        output = metadata_params["outputs"].get(output_name)
-        if output is None:
-            continue
-        for collector in output_definition.get("discover_datasets", []):
-            discover_via = collector.get("discover_via", "pattern")
-            if discover_via == "tool_provided_metadata":
-                if list(tool_provided_metadata.get_new_datasets(output_name)):
-                    return True
-                continue
-            if discover_via != "pattern":
-                return True
-            target_directory = Path(working_directory) / (collector.get("directory") or "")
-            if not target_directory.is_dir():
-                continue
-            pattern = collector["pattern"].replace("DATASET_ID", str(output["id"]))
-            recurse = collector.get("recurse", False)
-            candidates = target_directory.rglob("*") if recurse else target_directory.iterdir()
-            for candidate in candidates:
-                candidate_name = (
-                    str(candidate.relative_to(target_directory))
-                    if collector.get("match_relative_path", False)
-                    else candidate.name
-                )
-                if candidate.is_file() and re.match(pattern, candidate_name):
-                    return True
     return False
 
 
@@ -193,12 +167,21 @@ def _dynamic_uses_file_metadata(
     metadata_params,
     tool_provided_metadata,
     collection_store,
+    dataset_store,
     working_directory,
     datatypes_registry,
 ):
+    input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
     extensions = unnamed_output_extensions(tool_provided_metadata)
     extensions = (
         *extensions,
+        *discovered_primary_extensions(
+            metadata_params,
+            tool_provided_metadata,
+            dataset_store,
+            working_directory,
+            input_ext,
+        ),
         *discovered_collection_extensions(
             metadata_params,
             tool_provided_metadata,
@@ -375,6 +358,7 @@ def set_metadata_portable(
                 metadata_params,
                 tool_provided_metadata,
                 lightweight_collection_store,
+                lightweight_store,
                 tool_job_working_directory / "working",
                 datatypes_registry,
             ):
@@ -540,7 +524,13 @@ def set_metadata_portable(
                 for name, output_collection in metadata_params["output_collections"].items()
             }
             assert all(output_collections.values())
+            output_instances = {
+                name: export_store.datasets.find(output["id"]) for name, output in metadata_params["outputs"].items()
+            }
+            assert all(output_instances.values())
+            input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
             try:
+                collect_primary_datasets_lightweight(lightweight_job_context, output_instances, input_ext)
                 collect_dynamic_outputs_lightweight(lightweight_job_context, output_collections)
             except (MaxDiscoveredFilesExceededError, LightweightJobOutputNameTooLongError) as e:
                 log.warning("Job failed during extended metadata output discovery: %s", e)

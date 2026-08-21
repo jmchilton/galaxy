@@ -37,6 +37,8 @@ class MetadataDataset:
         attributes.setdefault("hashes", [])
 
     def __getattr__(self, name):
+        if name == "id":
+            return self._attributes.get("id")
         try:
             return self._attributes[name]
         except KeyError:
@@ -139,6 +141,8 @@ class MetadataDatasetInstance:
         object.__setattr__(self, "_state", None)
 
     def __getattr__(self, name):
+        if name == "id":
+            return self._attributes.get("id")
         try:
             return self._attributes[name]
         except KeyError:
@@ -167,7 +171,9 @@ class MetadataDatasetInstance:
 
     @metadata.setter
     def metadata(self, value):
-        self._metadata = self.metadata.make_dict_copy(value)
+        metadata = self.metadata.make_dict_copy(value)
+        self._metadata = metadata
+        self._attributes["metadata"] = metadata
 
     @property
     def datatype(self):

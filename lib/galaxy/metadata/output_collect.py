@@ -11,7 +11,10 @@ from galaxy.job_execution.output_collect_utils import (
     MaxDiscoveredFilesExceededError,
 )
 from galaxy.objectstore import persist_extra_files
-from galaxy.tool_util.parser.output_objects import ToolOutputCollection
+from galaxy.tool_util.parser.output_objects import (
+    ToolOutput,
+    ToolOutputCollection,
+)
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +62,10 @@ class LightweightJobContext:
         output_definition = self.metadata_params["tool"]["output_collections"].get(name)
         return ToolOutputCollection.from_dict(name, output_definition) if output_definition else None
 
+    def output_def(self, name):
+        output_definition = self.metadata_params["tool"]["outputs"].get(name)
+        return ToolOutput.from_dict(name, output_definition) if output_definition else None
+
     def create_dataset(self, output_name, match, state, *, info=None, metadata=None, dataset=None):
         extension = (self.change_datatype_actions.get(output_name) or match.ext).lower()
         dbkey = "?" if match.dbkey == "__input__" else match.dbkey
@@ -92,8 +99,14 @@ class LightweightJobContext:
                 setattr(dataset.metadata, key, value)
         return dataset
 
-    def store_dataset(self, dataset, discovered_file, output_name):
+    def store_dataset(self, dataset, discovered_file, output_name, dataset_attributes=None):
         match = discovered_file.match
+        dataset_attributes = dataset_attributes or {}
+        for attribute_name in ("name", "info", "dbkey"):
+            if attribute_name in dataset_attributes:
+                setattr(dataset, attribute_name, dataset_attributes[attribute_name])
+        if "ext" in dataset_attributes:
+            dataset.extension = dataset_attributes["ext"]
         path = discovered_file.path
         if path is not None and dataset.state != "deferred":
             if match.link_data:
@@ -108,12 +121,18 @@ class LightweightJobContext:
                 dataset.set_size()
             else:
                 dataset.set_size(no_extra_files=True)
-        try:
-            dataset.set_meta()
-        except Exception:
-            if dataset.state == "ok":
-                dataset.state = "failed_metadata"
-            log.exception("Exception occurred while setting metadata")
+        metadata = dataset_attributes.get("metadata")
+        if metadata:
+            metadata = dict(metadata)
+            metadata["dbkey"] = dataset_attributes.get("dbkey", dataset.dbkey)
+            dataset.metadata.from_JSON_dict(json_dict=metadata)
+        else:
+            try:
+                dataset.set_meta()
+            except Exception:
+                if dataset.state == "ok":
+                    dataset.state = "failed_metadata"
+                log.exception("Exception occurred while setting metadata")
         try:
             dataset.set_peek()
         except Exception:
@@ -238,6 +257,84 @@ def unnamed_output_extensions(tool_provided_metadata):
 
     for unnamed_output in tool_provided_metadata.get_unnamed_outputs():
         yield from walk(unnamed_output["elements"])
+
+
+def discovered_primary_extensions(
+    metadata_params,
+    tool_provided_metadata,
+    dataset_store,
+    working_directory,
+    input_ext,
+):
+    for name, output_attributes in metadata_params.get("outputs", {}).items():
+        output_definition_dict = metadata_params["tool"]["outputs"].get(name)
+        if output_definition_dict is None:
+            continue
+        output_definition = ToolOutput.from_dict(name, output_definition_dict)
+        collectors = [
+            dataset_collector(description) for description in output_definition.dataset_collector_descriptions
+        ]
+        output = dataset_store.find(output_attributes["id"])
+        for discovered_file in discover_files(name, tool_provided_metadata, collectors, str(working_directory), output):
+            extension = discovered_file.match.ext.lower()
+            yield input_ext if extension == "input" else extension
+
+
+def collect_primary_datasets(context: LightweightJobContext, outputs, input_ext):
+    for name, output in outputs.items():
+        output_definition = context.output_def(name)
+        collectors = (
+            [dataset_collector(description) for description in output_definition.dataset_collector_descriptions]
+            if output_definition is not None
+            else [DEFAULT_DATASET_COLLECTOR]
+        )
+        discovered_files = list(
+            discover_files(name, context.tool_provided_metadata, collectors, context.job_working_directory, output)
+        )
+        for _discovered_file in discovered_files:
+            context.increment_discovered_file_count()
+        primary_output_assigned = False
+        for index, discovered_file in enumerate(discovered_files):
+            match = discovered_file.match
+            extension = input_ext if match.ext == "input" else match.ext.lower()
+            dbkey = "?" if match.dbkey == "__input__" else match.dbkey
+            if index == 0 and discovered_file.collector.assign_primary_output:
+                output.change_datatype(extension)
+                output.dbkey = dbkey
+                output.designation = match.designation
+                output.name = match.name or f"{output.name} ({match.designation})"
+                output.dataset.external_filename = None
+                if not output.dataset.purged:
+                    context.object_store.update_from_file(output.dataset, file_name=discovered_file.path, create=True)
+                output.init_meta()
+                try:
+                    output.set_meta()
+                except Exception:
+                    output.state = "failed_metadata"
+                    log.debug("set_meta failed for assigned primary output", exc_info=True)
+                output.set_peek()
+                primary_output_assigned = True
+                continue
+            basename = discovered_file.path.rsplit("/", 1)[-1]
+            dataset_attributes = context.tool_provided_metadata.get_new_dataset_meta_by_basename(name, basename) or {}
+            dataset = context.create_dataset(
+                name,
+                match,
+                context.final_job_state,
+                info=output.info,
+            )
+            dataset.extension = extension
+            dataset.dbkey = dbkey
+            dataset.name = match.name or f"{output.name} ({match.designation})"
+            dataset.init_meta(copy_from=output)
+            dataset.dbkey = dbkey
+            if output.dataset.purged:
+                dataset.purged = True
+                dataset.dataset.purged = True
+            context.store_dataset(dataset, discovered_file, name, dataset_attributes=dataset_attributes)
+            context.add_output_dataset_association(name, [match.designation], dataset)
+        if primary_output_assigned:
+            output.discovered = True
 
 
 def _collect_unnamed_hdas(context, elements):
