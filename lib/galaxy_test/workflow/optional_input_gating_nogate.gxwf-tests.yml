@@ -13,10 +13,10 @@
         - that: has_text
           text: "PROVIDED"
 - doc: |
-    Optional input omitted with no gate - the invocation fails. Tool request state is
-    validation_failed and the job errors with "Parameter 'input1': specify a dataset
-    of the required format". This proves the skip in the gated fixtures comes from the
-    when expression rather than from implicit null propagation.
+    Optional input omitted with no gate - the invocation fails rather than skipping the
+    step. This is what proves the skip in the gated fixtures comes from the when
+    expression rather than from implicit null propagation. The harness only checks that
+    something failed, so the reason is not asserted here.
   expect_failure: true
   job: {}
   outputs:

@@ -38,4 +38,5 @@ steps:
       input_1:
         source: when_absent/out_file1
     state:
-      mode: first_non_null
+      # Fails unless exactly one twin ran, which is what makes the inverse gate testable.
+      mode: the_only_non_null
