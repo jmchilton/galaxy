@@ -2,9 +2,7 @@
 
 import abc
 import logging
-import operator
 import os
-import re
 from collections.abc import Callable
 from decimal import Decimal
 from typing import (
@@ -16,9 +14,21 @@ from typing import (
 from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.job_execution.output_format import resolve_format_source
 from galaxy.job_execution.output_collect_utils import (
+    validate_unnamed_outputs as validate_unnamed_outputs,
+    discover_target_directory,
+    ensure_path_in_directory,
+    JsonCollectedDatasetMatch,
+    RegexCollectedDatasetMatch,
+    safe_path_from_directory,
     collect_extra_files as collect_extra_files,
     collect_shrinked_content_from_path as collect_shrinked_content_from_path,
+    dataset_collector as dataset_collector,
+    DEFAULT_DATASET_COLLECTOR as DEFAULT_DATASET_COLLECTOR,
     default_exit_code_file as default_exit_code_file,
+    DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR as DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR,
+    discover_files as discover_files,
+    DiscoveredFile,
+    MaxDiscoveredFilesExceededError,
     read_exit_code_from as read_exit_code_from,
 )
 from galaxy.model import (
@@ -33,12 +43,7 @@ from galaxy.model.dataset_collections import builder
 from galaxy.model.dataset_collections.structure import UninitializedTree
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.store.discover import (
-    discover_target_directory,
-    DiscoveredFile,
-    ensure_path_in_directory,
     get_required_item,
-    JsonCollectedDatasetMatch,
-    MaxDiscoveredFilesExceededError,
     MetadataSourceProvider as AbstractMetadataSourceProvider,
     ModelPersistenceContext,
     OutputCollectionSecurityError,
@@ -46,17 +51,13 @@ from galaxy.model.store.discover import (
     persist_elements_to_folder,
     persist_elements_to_hdca,
     persist_hdas,
-    RegexCollectedDatasetMatch,
-    safe_path_from_directory,
     SessionlessModelPersistenceContext,
     UNSET,
     UntrustedToolProvidedMetadataError,
 )
 from galaxy.objectstore import ObjectStore
 from galaxy.tool_util.parser.output_collection_def import (
-    DEFAULT_DATASET_COLLECTOR_DESCRIPTION,
     INPUT_DBKEY_TOKEN,
-    ToolProvidedMetadataDatasetCollection,
 )
 from galaxy.tool_util.parser.output_objects import (
     ToolOutput,
@@ -74,8 +75,6 @@ if TYPE_CHECKING:
         DirectoryModelExportStore,
     )
     from galaxy.schema.schema import JobState
-
-DATASET_ID_TOKEN = "DATASET_ID"
 
 log = logging.getLogger(__name__)
 
@@ -532,149 +531,3 @@ def collect_primary_datasets(job_context: BaseJobContext, output: dict[str, Data
     for callback in storage_callbacks:
         callback()
     return primary_datasets
-
-
-def discover_files(output_name, tool_provided_metadata, extra_file_collectors, job_working_directory, matchable):
-    extra_file_collectors = extra_file_collectors
-    if extra_file_collectors and extra_file_collectors[0].discover_via == "tool_provided_metadata":
-        # just load entries from tool provided metadata...
-        assert len(extra_file_collectors) == 1
-        extra_file_collector = extra_file_collectors[0]
-        target_directory = discover_target_directory(extra_file_collector.directory, job_working_directory)
-        for dataset in tool_provided_metadata.get_new_datasets(output_name):
-            filename = dataset["filename"]
-            path = safe_path_from_directory(filename, target_directory)
-            yield DiscoveredFile(
-                path,
-                extra_file_collector,
-                JsonCollectedDatasetMatch(dataset, extra_file_collector, filename, path=path),
-            )
-    else:
-        for match, collector in walk_over_file_collectors(extra_file_collectors, job_working_directory, matchable):
-            yield DiscoveredFile(match.path, collector, match)
-
-
-def walk_over_file_collectors(extra_file_collectors, job_working_directory, matchable):
-    for extra_file_collector in extra_file_collectors:
-        assert extra_file_collector.discover_via == "pattern"
-        for match in walk_over_extra_files(
-            extra_file_collector.directory, extra_file_collector, job_working_directory, matchable
-        ):
-            yield match, extra_file_collector
-
-
-def walk_over_extra_files(target_dir, extra_file_collector, job_working_directory, matchable, parent_paths=None):
-    """
-    Walks through all files in a given directory, and returns all files that
-    match the given collector's match criteria. If the collector has the
-    recurse flag enabled, will also recursively descend into child folders.
-    """
-    parent_paths = parent_paths or []
-
-    def _walk(target_dir, extra_file_collector, job_working_directory, matchable, parent_paths):
-        directory = discover_target_directory(target_dir, job_working_directory)
-        if os.path.isdir(directory):
-            for filename in os.listdir(directory):
-                path = os.path.join(directory, filename)
-                if os.path.isdir(path):
-                    if extra_file_collector.recurse:
-                        new_parent_paths = parent_paths[:]
-                        new_parent_paths.append(filename)
-                        # The current directory is already validated, so use that as the next job_working_directory when recursing
-                        yield from _walk(
-                            filename, extra_file_collector, directory, matchable, parent_paths=new_parent_paths
-                        )
-                else:
-                    match = extra_file_collector.match(matchable, filename, path=path, parent_paths=parent_paths)
-                    if match:
-                        # A matched path is part of the declared output. Reject an
-                        # escaping symlink instead of silently producing an incomplete
-                        # collection whose missing element is difficult to diagnose.
-                        ensure_path_in_directory(path, directory)
-                        yield match
-
-    yield from extra_file_collector.sort(
-        _walk(target_dir, extra_file_collector, job_working_directory, matchable, parent_paths)
-    )
-
-
-def validate_unnamed_outputs(job_context: BaseJobContext) -> list[dict[str, Any]]:
-    unnamed_outputs = job_context.tool_provided_metadata.get_unnamed_outputs()
-    if unnamed_outputs and not job_context.allows_unnamed_outputs:
-        raise UntrustedToolProvidedMetadataError()
-    return unnamed_outputs
-
-
-def dataset_collector(dataset_collection_description):
-    if dataset_collection_description is DEFAULT_DATASET_COLLECTOR_DESCRIPTION:
-        # Use 'is' and 'in' operators, so lets ensure this is
-        # treated like a singleton.
-        return DEFAULT_DATASET_COLLECTOR
-    else:
-        if dataset_collection_description.discover_via == "pattern":
-            return DatasetCollector(dataset_collection_description)
-        else:
-            return ToolMetadataDatasetCollector(dataset_collection_description)
-
-
-class ToolMetadataDatasetCollector:
-    def __init__(self, dataset_collection_description):
-        self.discover_via = dataset_collection_description.discover_via
-        self.default_dbkey = dataset_collection_description.default_dbkey
-        self.default_ext = dataset_collection_description.default_ext
-        self.default_visible = dataset_collection_description.default_visible
-        self.directory = dataset_collection_description.directory
-        self.assign_primary_output = dataset_collection_description.assign_primary_output
-
-
-class DatasetCollector:
-    def __init__(self, dataset_collection_description):
-        self.discover_via = dataset_collection_description.discover_via
-        # dataset_collection_description is an abstract description
-        # built from the tool parsing module - see galaxy.tool_util.parser.output_collection_def
-        self.sort_key = dataset_collection_description.sort_key
-        self.sort_reverse = dataset_collection_description.sort_reverse
-        self.sort_comp = dataset_collection_description.sort_comp
-        self.pattern = dataset_collection_description.pattern
-        self.default_dbkey = dataset_collection_description.default_dbkey
-        self.default_ext = dataset_collection_description.default_ext
-        self.default_visible = dataset_collection_description.default_visible
-        self.directory = dataset_collection_description.directory
-        self.assign_primary_output = dataset_collection_description.assign_primary_output
-        self.recurse = dataset_collection_description.recurse
-        self.match_relative_path = dataset_collection_description.match_relative_path
-
-    def _pattern_for_dataset(self, dataset_instance=None):
-        token_replacement = r"\d+"
-        if dataset_instance:
-            token_replacement = str(dataset_instance.id)
-        return self.pattern.replace(DATASET_ID_TOKEN, token_replacement)
-
-    def match(self, dataset_instance, filename, path=None, parent_paths=None):
-        pattern = self._pattern_for_dataset(dataset_instance)
-        if self.match_relative_path and parent_paths:
-            filename = os.path.join(*parent_paths, filename)
-        match_object = None
-        if re_match := re.match(pattern, filename):
-            match_object = RegexCollectedDatasetMatch(re_match, self, filename, path=path)
-        return match_object
-
-    def sort(self, matches):
-        reverse = self.sort_reverse
-        sort_key = self.sort_key
-        sort_comp = self.sort_comp
-        assert sort_key in ["filename", "dbkey", "name", "designation"]
-        assert sort_comp in ["lexical", "numeric"]
-        key = operator.attrgetter(sort_key)
-        if sort_comp == "numeric":
-            key = _compose(int, key)
-
-        return sorted(matches, key=key, reverse=reverse)
-
-
-def _compose(f, g):
-    return lambda x: f(g(x))
-
-
-DEFAULT_DATASET_COLLECTOR = DatasetCollector(DEFAULT_DATASET_COLLECTOR_DESCRIPTION)
-DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR = ToolMetadataDatasetCollector(ToolProvidedMetadataDatasetCollection())
