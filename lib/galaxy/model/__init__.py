@@ -12624,7 +12624,7 @@ class HasConfigEnvironment(RepresentById):
             return TemplateEnvironment.model_validate(environment)
 
 
-T = TypeVar("T", bound=ConfigTemplate, covariant=True)
+T = TypeVar("T", bound="ConfigTemplate", covariant=True)
 
 
 class HasConfigTemplate(HasConfigSecrets, HasConfigEnvironment, RepresentById, Generic[T]):

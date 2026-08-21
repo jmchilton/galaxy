@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 from collections import defaultdict
@@ -75,7 +77,7 @@ class UserDefinedFileSources(Protocol):
     descriptions of user file sources selected for serialization.
     """
 
-    def validate_uri_root(self, uri: str, user_context: "FileSourcesUserContext") -> None:
+    def validate_uri_root(self, uri: str, user_context: FileSourcesUserContext) -> None:
         pass
 
     def find_best_match(self, url: str) -> FileSourceScore | None:
@@ -84,7 +86,7 @@ class UserDefinedFileSources(Protocol):
     def user_file_sources_to_dicts(
         self,
         for_serialization: bool,
-        user_context: "FileSourcesUserContext",
+        user_context: FileSourcesUserContext,
         browsable_only: bool | None = False,
         include_kind: set[PluginKind] | None = None,
         exclude_kind: set[PluginKind] | None = None,
@@ -100,7 +102,7 @@ class UserDefinedFileSources(Protocol):
 
 
 class NullUserDefinedFileSources(UserDefinedFileSources):
-    def validate_uri_root(self, uri: str, user_context: "FileSourcesUserContext") -> None:
+    def validate_uri_root(self, uri: str, user_context: FileSourcesUserContext) -> None:
         return None
 
     def find_best_match(self, url: str) -> FileSourceScore | None:
@@ -109,7 +111,7 @@ class NullUserDefinedFileSources(UserDefinedFileSources):
     def user_file_sources_to_dicts(
         self,
         for_serialization: bool,
-        user_context: "FileSourcesUserContext",
+        user_context: FileSourcesUserContext,
         browsable_only: bool | None = False,
         include_kind: set[PluginKind] | None = None,
         exclude_kind: set[PluginKind] | None = None,
@@ -242,7 +244,7 @@ class ConfiguredFileSources:
         path = file_source.to_relative_path(uri)
         return FileSourcePath(file_source, path)
 
-    def validate_uri_root(self, uri: str, user_context: "FileSourcesUserContext"):
+    def validate_uri_root(self, uri: str, user_context: FileSourcesUserContext):
         # validate a URI against Galaxy's configuration, environment, and the current
         # user. Throw appropriate exception if there is a problem with the files source
         # referenced by the URI.
@@ -288,7 +290,7 @@ class ConfiguredFileSources:
     def plugins_to_dict(
         self,
         for_serialization: bool = False,
-        user_context: "OptionalUserContext" = None,
+        user_context: OptionalUserContext = None,
         browsable_only: bool | None = False,
         include_kind: set[PluginKind] | None = None,
         exclude_kind: set[PluginKind] | None = None,
@@ -330,7 +332,7 @@ class ConfiguredFileSources:
     def to_dict(
         self,
         for_serialization: bool = False,
-        user_context: "OptionalUserContext" = None,
+        user_context: OptionalUserContext = None,
         referenced_uris: set[str] | None = None,
     ) -> dict[str, Any]:
         return {
