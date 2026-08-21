@@ -3,9 +3,6 @@ import copy
 import json
 import logging
 import uuid
-from collections import deque
-from itertools import chain
-from sys import getsizeof
 
 import numpy
 import sqlalchemy
@@ -23,6 +20,7 @@ from galaxy.util import (
     unicodify,
 )
 from galaxy.util.aliaspickler import AliasPickleModule
+from galaxy.util.object_size import total_size
 
 log = logging.getLogger(__name__)
 
@@ -294,43 +292,6 @@ MutationObj.associate_with(MutableJSONType)
 
 
 metadata_pickler = AliasPickleModule({("cookbook.patterns", "Bunch"): ("galaxy.util.bunch", "Bunch")})
-
-
-def total_size(o, handlers=None, verbose=False):
-    """Returns the approximate memory footprint an object and all of its contents.
-
-    Automatically finds the contents of the following builtin containers and
-    their subclasses:  tuple, list, deque, dict, set and frozenset.
-    To search other containers, add handlers to iterate over their contents:
-
-        handlers = {SomeContainerClass: iter,
-                    OtherContainerClass: OtherContainerClass.get_elements}
-
-    Recipe from:  https://code.activestate.com/recipes/577504-compute-memory-footprint-of-an-object-and-its-cont/
-    """
-    handlers = handlers or {}
-
-    def dict_handler(d):
-        return chain.from_iterable(d.items())
-
-    all_handlers = {tuple: iter, list: iter, deque: iter, dict: dict_handler, set: iter, frozenset: iter}
-    all_handlers.update(handlers)  # user handlers take precedence
-    seen = set()  # track which object id's have already been seen
-    default_size = getsizeof(0)  # estimate sizeof object without __sizeof__
-
-    def sizeof(o):
-        if id(o) in seen:  # do not double count the same object
-            return 0
-        seen.add(id(o))
-        s = getsizeof(o, default_size)
-
-        for typ, handler in all_handlers.items():
-            if isinstance(o, typ):
-                s += sum(map(sizeof, handler(o)))
-                break
-        return s
-
-    return sizeof(o)
 
 
 class MetadataType(JSONType):
