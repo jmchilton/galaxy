@@ -142,9 +142,9 @@ from typing_extensions import (
 )
 
 import galaxy.exceptions
-import galaxy.model.metadata
 import galaxy.security.passwords
 import galaxy.util
+from galaxy.datatypes import metadata as model_metadata
 from galaxy.files.templates import (
     FileSourceConfiguration,
     FileSourceTemplate,
@@ -153,6 +153,7 @@ from galaxy.files.templates import (
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.custom_types import (
     DoubleEncodedJsonType,
+    json_encoder as metadata_json_encoder,
     JSONType,
     MetadataType,
     MutableJSONType,
@@ -5489,7 +5490,7 @@ class DatasetInstance(RepresentById, UsesCreateAndUpdateTime, _HasTable):
     implicitly_converted_parent_datasets: list["ImplicitlyConvertedDatasetAssociation"]
 
     validated_states = DatasetValidatedState
-    _metadata_collection: "galaxy.model.metadata.MetadataCollection"
+    _metadata_collection: "model_metadata.MetadataCollection"
 
     def __init__(
         self,
@@ -5669,11 +5670,11 @@ class DatasetInstance(RepresentById, UsesCreateAndUpdateTime, _HasTable):
         return datatype_for_extension(self.extension)
 
     @property
-    def metadata(self) -> "galaxy.model.metadata.MetadataCollection":
+    def metadata(self) -> "model_metadata.MetadataCollection":
         # using weakref to store parent (to prevent circ ref),
         #   does a Session.clear() cause parent to be invalidated, while still copying over this non-database attribute?
         if not hasattr(self, "_metadata_collection") or self._metadata_collection.parent != self:
-            self._metadata_collection = galaxy.model.metadata.MetadataCollection(self)
+            self._metadata_collection = model_metadata.MetadataCollection(self)
         return self._metadata_collection
 
     @metadata.setter
@@ -5681,7 +5682,7 @@ class DatasetInstance(RepresentById, UsesCreateAndUpdateTime, _HasTable):
         # Needs to accept a MetadataCollection, a bunch, or a dict
         self._metadata = self.metadata.make_dict_copy(bunch)
 
-    def get_metadata(self) -> "galaxy.model.metadata.MetadataCollection":
+    def get_metadata(self) -> "model_metadata.MetadataCollection":
         # Alias for backwards compatibility with .get_metadata() calls in jbrowse/jbrowse2
         # https://github.com/galaxyproject/tools-iuc/blob/4095773348da6faeb6096f58785b66898b09befa/tools/jbrowse2/jbrowse2.xml#L88
         return self.metadata
@@ -5698,7 +5699,7 @@ class DatasetInstance(RepresentById, UsesCreateAndUpdateTime, _HasTable):
     def metadata_file_types(self):
         meta_types = []
         for meta_type in self.metadata.spec.keys():
-            if isinstance(self.metadata.spec[meta_type].param, galaxy.model.metadata.FileParameter):
+            if isinstance(self.metadata.spec[meta_type].param, model_metadata.FileParameter):
                 meta_types.append(meta_type)
         return meta_types
 
@@ -11349,6 +11350,9 @@ class MetadataFile(Base, StorableObject, Serializable):
         serialization_options.attach_identifier(id_encoder, self, as_dict)
         as_dict["uuid"] = str(self.uuid or "") or None
         return as_dict
+
+
+model_metadata.configure_model_metadata(MetadataFile, metadata_json_encoder)
 
 
 class FormDefinition(Base, Dictifiable, RepresentById):
