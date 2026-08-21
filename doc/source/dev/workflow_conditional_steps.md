@@ -71,6 +71,12 @@ The workflow editor writes this expression for you. Choose _Run when an input is
 provided_ on the step, or drop an optional output onto a required input and accept the
 offer to gate the step.
 
+One shape it will not write for you: a parameter inside a `<repeat>`. Galaxy names that
+connection `queries_0|input2` while the step's state holds `queries` as a list, so the
+connection name has no matching property path, and the editor declines rather than
+generating an expression that would quietly never gate. Gating on a top-level input that
+feeds the repeat, or on a separate input used only as a probe, works normally.
+
 ## Gate, then merge
 
 A gated step's outputs are optional, because the step might not run. Connecting one
