@@ -957,26 +957,10 @@ steps:
 
     def _select_form_option(self, form_element_id, label):
         """Pick an option by label from a FormElement select."""
-        element_id = f"form-element-{form_element_id}"
-        container = self.wait_for_selector(f"div.ui-form-element[id='{element_id}']")
-        trigger = container.find_element(By.CSS_SELECTOR, ".multiselect__select")
-        trigger.click()
+        tool_form = self.components.tool_form
+        tool_form.parameter_select_trigger(parameter=form_element_id).wait_for_and_click()
         self.sleep_for(self.wait_types.UX_RENDER)
-        js = """
-            var elementId = arguments[0];
-            var label = arguments[1];
-            var container = document.getElementById(elementId);
-            var items = container.querySelectorAll('.multiselect__element');
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].textContent.trim() === label) {
-                    items[i].querySelector('.multiselect__option').click();
-                    return true;
-                }
-            }
-            return false;
-        """
-        result = self.execute_script(js, element_id, label)
-        assert result, f"Option '{label}' not found in {element_id}"
+        tool_form.parameter_select_option(parameter=form_element_id, label=label).wait_for_and_click()
 
     @selenium_test
     def test_pick_value_add_from_palette(self):
