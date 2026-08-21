@@ -484,9 +484,11 @@ class MetadataDatasetCollectionStore:
         self,
         collections: dict[Any, MetadataDatasetCollectionInstance],
         attributes: list[dict[str, Any]],
+        datasets: MetadataDatasetStore,
     ):
         self._collections = collections
         self._attributes = attributes
+        self._datasets = datasets
 
     @classmethod
     def from_directory(cls, directory, datasets: MetadataDatasetStore):
@@ -499,10 +501,36 @@ class MetadataDatasetCollectionStore:
                 raise ValueError("Lightweight metadata supports HistoryDatasetCollectionAssociation outputs only")
             collection = MetadataDatasetCollectionInstance(collection_attributes, datasets)
             collections[collection.id] = collection
-        return cls(collections, attributes)
+        return cls(collections, attributes, datasets)
 
     def find(self, collection_id):
         return self._collections.get(collection_id)
+
+    def create(self, name, collection_type, column_definitions=None):
+        collection_instance_key = uuid4().hex
+        collection_attributes = {
+            "encoded_id": collection_instance_key,
+            "model_class": "HistoryDatasetCollectionAssociation",
+            "display_name": name,
+            "state": "new",
+            "hid": None,
+            "implicit_output_name": None,
+            "copied_from_history_dataset_collection_association_id_chain": [],
+            "collection": {
+                "encoded_id": uuid4().hex,
+                "model_class": "DatasetCollection",
+                "type": collection_type,
+                "populated_state": "new",
+                "populated_state_message": None,
+                "column_definitions": column_definitions,
+                "element_count": 0,
+                "elements": [],
+            },
+        }
+        collection = MetadataDatasetCollectionInstance(collection_attributes, self._datasets)
+        self._attributes.append(collection_attributes)
+        self._collections[collection_instance_key] = collection
+        return collection
 
 
 class MetadataJob:
