@@ -71,6 +71,10 @@ export function getDanglingGates(steps: Steps = {}) {
         if (!step.when) {
             return;
         }
+        if (step.errors?.length) {
+            // Nothing loaded, so nothing resolves. The missing tool is the report to make.
+            return;
+        }
         const references = analyzeInputReferences(step.when);
         if (references.hasDynamicInputsAccess) {
             return;

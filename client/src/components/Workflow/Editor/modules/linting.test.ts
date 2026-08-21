@@ -99,6 +99,13 @@ describe("getDanglingGates", () => {
         expect(getDanglingGates(steps(step))).toEqual([]);
     });
 
+    it("says nothing about a step whose tool could not be loaded", () => {
+        // An uninstalled tool has no inputs and no usable state, so every reference
+        // would look unsatisfied. The missing tool is the problem to report, not the gate.
+        const step = makeStep({ when: "$(inputs.input1 !== null)", inputs: [], tool_state: {}, errors: ["boom"] });
+        expect(getDanglingGates(steps(step))).toEqual([]);
+    });
+
     it("says nothing about an expression it cannot resolve statically", () => {
         const step = makeStep({ when: "$(inputs[name] !== null)" });
         expect(getDanglingGates(steps(step))).toEqual([]);
