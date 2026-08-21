@@ -583,6 +583,67 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         assert len(security_messages) == 1
         assert security_messages[0]["desc"] == expected_message
 
+    def test_unnamed_outputs_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
+        self._init_tool_for_path(source_file_name)
+        command = self.metadata_command({})
+        self._write_work_dir_file("standalone.txt", "standalone\n")
+        self._write_work_dir_file("first.txt", "first\n")
+        self._write_work_dir_file("second.txt", "second\n")
+        self._write_galaxy_json(
+            json.dumps(
+                {
+                    "__unnamed_outputs": [
+                        {
+                            "destination": {"type": "hdas"},
+                            "elements": [
+                                {
+                                    "filename": "standalone.txt",
+                                    "ext": "txt",
+                                    "name": "standalone",
+                                }
+                            ],
+                        },
+                        {
+                            "destination": {"type": "hdca"},
+                            "name": "unnamed list",
+                            "collection_type": "list",
+                            "elements": [
+                                {"filename": "first.txt", "ext": "txt", "name": "first"},
+                                {"filename": "second.txt", "ext": "txt", "name": "second"},
+                            ],
+                        },
+                    ]
+                }
+            )
+        )
+        self._write_job_files()
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        collections = json.loads((export_directory / "collections_attrs.txt").read_text())
+        assert [dataset["name"] for dataset in datasets] == ["standalone", "first", "second"]
+        assert collections[0]["display_name"] == "unnamed list"
+        assert [element["element_identifier"] for element in collections[0]["collection"]["elements"]] == [
+            "first",
+            "second",
+        ]
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        assert [dataset.name for dataset in self.history.datasets] == ["standalone", "first", "second"]
+        assert [collection.name for collection in self.history.dataset_collections] == ["unnamed list"]
+
+
     def _create_output_dataset_collection(self, **kwd):
         output_dataset_collection = model.HistoryDatasetCollectionAssociation(**kwd)
         self.history.add_dataset_collection(output_dataset_collection)

@@ -71,6 +71,7 @@ from galaxy.metadata.output_collect import (
     discovered_collection_extensions,
     LightweightJobContext,
     LightweightJobOutputNameTooLongError,
+    unnamed_output_extensions,
 )
 from galaxy.model import (
     Dataset,
@@ -134,7 +135,9 @@ def push_if_necessary(object_store: ObjectStore, dataset, external_filename):
 
 
 def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, working_directory):
-    if tool_provided_metadata.get_unnamed_outputs():
+    if any(
+        output["destination"]["type"] not in {"hdas", "hdca"} for output in tool_provided_metadata.get_unnamed_outputs()
+    ):
         return True
 
     if any(
@@ -193,12 +196,17 @@ def _dynamic_uses_file_metadata(
     working_directory,
     datatypes_registry,
 ):
-    for extension in discovered_collection_extensions(
-        metadata_params,
-        tool_provided_metadata,
-        collection_store,
-        working_directory,
-    ):
+    extensions = unnamed_output_extensions(tool_provided_metadata)
+    extensions = (
+        *extensions,
+        *discovered_collection_extensions(
+            metadata_params,
+            tool_provided_metadata,
+            collection_store,
+            working_directory,
+        ),
+    )
+    for extension in extensions:
         if extension == "_sniff_":
             return True
         datatype = datatypes_registry.get_datatype_by_extension(extension)

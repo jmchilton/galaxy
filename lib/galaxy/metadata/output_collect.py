@@ -5,7 +5,9 @@ from uuid import uuid4
 
 from galaxy.job_execution.output_collect_utils import (
     dataset_collector,
+    DEFAULT_DATASET_COLLECTOR,
     discover_files,
+    discovered_file_for_element,
     MaxDiscoveredFilesExceededError,
 )
 from galaxy.objectstore import persist_extra_files
@@ -57,21 +59,37 @@ class LightweightJobContext:
         output_definition = self.metadata_params["tool"]["output_collections"].get(name)
         return ToolOutputCollection.from_dict(name, output_definition) if output_definition else None
 
-    def create_dataset(self, output_name, match, state):
-        dataset = self.export_store.datasets.create(
-            self.datatypes_registry,
-            self.object_store,
-            extension=(self.change_datatype_actions.get(output_name) or match.ext).lower(),
-            designation=match.designation,
-            visible=match.visible,
-            dbkey="?" if match.dbkey == "__input__" else match.dbkey,
-            name=match.name or match.designation,
-            state=state,
-            sources=match.sources,
-            hashes=match.hashes,
-            created_from_basename=match.created_from_basename,
-            tags=match.tag_list,
-        )
+    def create_dataset(self, output_name, match, state, *, info=None, metadata=None, dataset=None):
+        extension = (self.change_datatype_actions.get(output_name) or match.ext).lower()
+        dbkey = "?" if match.dbkey == "__input__" else match.dbkey
+        if dataset is None:
+            dataset = self.export_store.datasets.create(
+                self.datatypes_registry,
+                self.object_store,
+                extension=extension,
+                designation=match.designation,
+                visible=match.visible,
+                dbkey=dbkey,
+                name=match.name or match.designation,
+                info=info,
+                state=state,
+                sources=match.sources,
+                hashes=match.hashes,
+                created_from_basename=match.created_from_basename,
+                tags=match.tag_list,
+            )
+        else:
+            dataset.extension = extension
+            dataset.designation = match.designation
+            dataset.visible = match.visible
+            dataset.dbkey = dbkey
+            dataset.name = match.name or match.designation
+            dataset.info = info
+            dataset.state = state
+        for key, value in (metadata or {}).items():
+            metadata_element = dataset.datatype.metadata_spec.get(key)
+            if metadata_element and metadata_element.set_in_upload:
+                setattr(dataset.metadata, key, value)
         return dataset
 
     def store_dataset(self, dataset, discovered_file, output_name):
@@ -210,7 +228,101 @@ def discovered_collection_extensions(metadata_params, tool_provided_metadata, co
             yield discovered_file.match.ext.lower()
 
 
+def unnamed_output_extensions(tool_provided_metadata):
+    def walk(elements):
+        for element in elements:
+            if "elements" in element:
+                yield from walk(element["elements"])
+            else:
+                yield element.get("ext", "data").lower()
+
+    for unnamed_output in tool_provided_metadata.get_unnamed_outputs():
+        yield from walk(unnamed_output["elements"])
+
+
+def _collect_unnamed_hdas(context, elements):
+    def walk(current_elements):
+        for element in current_elements:
+            if "elements" in element:
+                yield from walk(element["elements"])
+            else:
+                yield element
+
+    for element in walk(elements):
+        discovered_file = discovered_file_for_element(element, context)
+        match = discovered_file.match
+        info, state = discovered_file.discovered_state(element, context.final_job_state)
+        dataset = context.export_store.datasets.find(match.object_id) if match.object_id else None
+        dataset = context.create_dataset(
+            None,
+            match,
+            state,
+            info=info,
+            metadata=element.get("metadata"),
+            dataset=dataset,
+        )
+        context.store_dataset(dataset, discovered_file, None)
+
+
+def _collect_unnamed_hdca(context, unnamed_output, output_collections):
+    destination = unnamed_output["destination"]
+    collection_id = destination.get("object_id")
+    if collection_id:
+        hdca = context.export_store.dataset_collections.find(collection_id)
+        if hdca is None:
+            raise ValueError(f"Failed to find target dataset collection [{collection_id}]")
+    else:
+        name = unnamed_output.get("name", "unnamed collection")
+        hdca = context.export_store.dataset_collections.create(
+            name,
+            unnamed_output["collection_type"],
+            unnamed_output.get("column_definitions"),
+        )
+        output_collections[name] = hdca
+    if error_message := unnamed_output.get("error_message"):
+        hdca.collection.handle_population_failed(error_message)
+        return
+    builder = CollectionElementBuilder(hdca.collection.collection_type)
+
+    def collect(elements, parent_identifiers=None):
+        parent_identifiers = parent_identifiers or []
+        for element in elements:
+            if "elements" in element:
+                collect(element["elements"], [*parent_identifiers, element["name"]])
+                continue
+            discovered_file = discovered_file_for_element(
+                element,
+                context,
+                parent_identifiers=parent_identifiers,
+                collector=DEFAULT_DATASET_COLLECTOR,
+            )
+            match = discovered_file.match
+            info, state = discovered_file.discovered_state(element, context.final_job_state)
+            dataset = context.create_dataset(
+                None,
+                match,
+                state,
+                info=info,
+                metadata=element.get("metadata"),
+            )
+            context.store_dataset(dataset, discovered_file, None)
+            builder.add(match.element_identifiers, dataset, row=match.row)
+
+    collect(unnamed_output["elements"])
+    hdca.collection.replace_elements(builder.serialize_elements())
+    hdca.collection.mark_as_populated()
+
+
 def collect_dynamic_outputs(context: LightweightJobContext, output_collections):
+    for unnamed_output in context.tool_provided_metadata.get_unnamed_outputs():
+        destination_type = unnamed_output["destination"]["type"]
+        if destination_type == "hdas":
+            _collect_unnamed_hdas(context, unnamed_output["elements"])
+        elif destination_type == "hdca":
+            _collect_unnamed_hdca(context, unnamed_output, output_collections)
+        else:
+            raise ValueError(f"Unsupported lightweight output destination [{destination_type}]")
+
     for name, hdca in output_collections.items():
         output_definition = context.output_collection_def(name)
         if not output_definition or not output_definition.dynamic_structure:
