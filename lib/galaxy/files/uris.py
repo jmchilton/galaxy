@@ -3,7 +3,10 @@ import logging
 import os
 import socket
 import tempfile
-from typing import Optional
+from typing import (
+    Optional,
+    TYPE_CHECKING,
+)
 from urllib.parse import urlparse
 
 from galaxy.exceptions import (
@@ -15,15 +18,17 @@ from galaxy.files import (
     ConfiguredFileSources,
     NoMatchingFileSource,
 )
-from galaxy.files.models import (
-    FilesSourceOptions,
-    RealizedSourceMetadata,
-)
 from galaxy.util import (
     stream_to_path,
     unicodify,
 )
 from galaxy.util.config_parsers import IpAllowedListEntryT
+
+if TYPE_CHECKING:
+    from galaxy.files.models import (
+        FilesSourceOptions,
+        RealizedSourceMetadata,
+    )
 
 log = logging.getLogger(__name__)
 
@@ -46,8 +51,8 @@ def stream_url_to_file(
     dir: str | None = None,
     user_context=None,
     target_path: str | None = None,
-    file_source_opts: FilesSourceOptions | None = None,
-    metadata_out: RealizedSourceMetadata | None = None,
+    file_source_opts: "FilesSourceOptions | None" = None,
+    metadata_out: "RealizedSourceMetadata | None" = None,
 ) -> str:
     """Stream ``url`` to a local path and return that path.
 

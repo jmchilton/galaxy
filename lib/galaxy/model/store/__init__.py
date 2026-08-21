@@ -170,7 +170,7 @@ class StoreAppProtocol(Protocol):
     security: IdEncodingHelper
     tag_handler: GalaxyTagHandler
     model: GalaxyModelMapping
-    file_sources: ConfiguredFileSources
+    file_sources: "ConfiguredFileSources"
     workflow_contents_manager: "WorkflowContentsManager"
 
 
@@ -1971,13 +1971,13 @@ class ModelExportStore(metaclass=abc.ABCMeta):
 
 class DirectoryModelExportStore(ModelExportStore):
     app: StoreAppProtocol | None
-    file_sources: ConfiguredFileSources | None
+    file_sources: "ConfiguredFileSources | None"
 
     def __init__(
         self,
         export_directory: StrPath,
         app: StoreAppProtocol | None = None,
-        file_sources: ConfiguredFileSources | None = None,
+        file_sources: "ConfiguredFileSources | None" = None,
         for_edit: bool = False,
         serialize_dataset_objects: bool | None = None,
         export_files: str | None = None,
@@ -2756,7 +2756,7 @@ class BcoExportOptions:
     override_environment_variables: dict[str, str] | None = None
     override_empirical_error: dict[str, str] | None = None
     override_algorithmic_error: dict[str, str] | None = None
-    override_xref: list[XrefItem] | None = None
+    override_xref: list["XrefItem"] | None = None
 
 
 class FileSourceModelExportStore(abc.ABC, DirectoryModelExportStore):

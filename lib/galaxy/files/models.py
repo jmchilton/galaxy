@@ -16,7 +16,7 @@ from pydantic import (
 )
 from typing_extensions import TypedDict
 
-from galaxy.files.sources._defaults import (
+from galaxy.files._defaults import (
     DEFAULT_SCHEME,
     DEFAULT_WRITABLE,
 )
