@@ -7,12 +7,51 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from galaxy.datatypes.metadata import MetadataCollection
+from galaxy.datatypes.metadata import (
+    MetadataCollection,
+    MetadataTempFile,
+)
 from galaxy.schema.states import (
     DatasetCollectionPopulatedState,
     DatasetState,
 )
 from galaxy.util import nice_size as format_size
+
+
+class MetadataFileReference(MetadataTempFile):
+    """Writable worker-local copy of an existing persisted metadata file."""
+
+    def __init__(self, attributes, dataset, metadata_tmp_files_dir):
+        super().__init__(metadata_tmp_files_dir=metadata_tmp_files_dir)
+        self.id = attributes.get("id")
+        self.uuid = attributes.get("uuid")
+        self.name = attributes.get("name")
+        self.object_store_id = attributes.get("object_store_id")
+        self.dataset = dataset
+
+    def get_file_name(self):
+        if self._filename is None:
+            temporary_path = super().get_file_name()
+            object_store = self.dataset.object_store
+            if object_store is not None:
+                store_by = object_store.get_store_by(self.dataset)
+                identifier = getattr(self, store_by) if store_by else None
+                if identifier is not None:
+                    alt_name = f"metadata_{identifier}.dat"
+                    if object_store.exists(
+                        self,
+                        extra_dir="_metadata_files",
+                        extra_dir_at_root=True,
+                        alt_name=alt_name,
+                    ):
+                        source_path = object_store.get_filename(
+                            self,
+                            extra_dir="_metadata_files",
+                            extra_dir_at_root=True,
+                            alt_name=alt_name,
+                        )
+                        shutil.copyfile(source_path, temporary_path)
+        return self._filename
 
 
 class MetadataDataset:
@@ -128,14 +167,24 @@ class MetadataDatasetInstance:
 
     states = DatasetState
 
-    def __init__(self, attributes: dict[str, Any], datatypes_registry, object_store=None):
+    def __init__(
+        self,
+        attributes: dict[str, Any],
+        datatypes_registry,
+        object_store=None,
+        metadata_tmp_files_dir=None,
+    ):
         object.__setattr__(self, "_attributes", attributes)
         object.__setattr__(self, "_datatypes_registry", datatypes_registry)
+        object.__setattr__(self, "_metadata_tmp_files_dir", metadata_tmp_files_dir)
         object.__setattr__(self, "dataset", MetadataDataset(attributes["dataset"], object_store=object_store))
         metadata = attributes.get("metadata")
         if metadata is None:
             metadata = {}
             attributes["metadata"] = metadata
+        for name, value in metadata.items():
+            if isinstance(value, dict) and value.get("model_class") == "MetadataFile":
+                metadata[name] = MetadataFileReference(value, self.dataset, metadata_tmp_files_dir)
         object.__setattr__(self, "_metadata", metadata)
         object.__setattr__(self, "_metadata_collection", MetadataCollection(self))
         object.__setattr__(self, "_state", None)
@@ -152,7 +201,15 @@ class MetadataDatasetInstance:
         class_attribute = getattr(type(self), name, None)
         if isinstance(class_attribute, property) and class_attribute.fset is not None:
             class_attribute.fset(self, value)
-        elif name in {"_attributes", "_datatypes_registry", "dataset", "_metadata", "_metadata_collection", "_state"}:
+        elif name in {
+            "_attributes",
+            "_datatypes_registry",
+            "_metadata_tmp_files_dir",
+            "dataset",
+            "_metadata",
+            "_metadata_collection",
+            "_state",
+        }:
             object.__setattr__(self, name, value)
         else:
             self._attributes[name] = value
@@ -243,6 +300,7 @@ class MetadataDatasetInstance:
 
     def set_meta(self, **kwds):
         self.clear_associated_files(metadata_safe=True)
+        kwds.setdefault("metadata_tmp_files_dir", self._metadata_tmp_files_dir)
         return self.datatype.set_meta(self, **kwds)
 
     def change_datatype(self, extension):
@@ -259,22 +317,34 @@ class MetadataDatasetInstance:
 
 
 class MetadataDatasetStore:
-    def __init__(self, datasets: dict[Any, MetadataDatasetInstance], attributes: list[dict[str, Any]]):
+    def __init__(
+        self,
+        datasets: dict[Any, MetadataDatasetInstance],
+        attributes: list[dict[str, Any]],
+        metadata_tmp_files_dir=None,
+    ):
         self._datasets = datasets
         self._attributes = attributes
+        self._metadata_tmp_files_dir = metadata_tmp_files_dir
 
     @classmethod
     def from_directory(cls, directory, datatypes_registry, object_store=None):
-        datasets_path = Path(directory) / "datasets_attrs.txt"
+        directory = Path(directory)
+        datasets_path = directory / "datasets_attrs.txt"
         with datasets_path.open() as handle:
             attributes = json.load(handle)
         datasets = {}
         for dataset_attributes in attributes:
             if dataset_attributes.get("model_class") != "HistoryDatasetAssociation":
                 raise ValueError("Lightweight metadata supports HistoryDatasetAssociation outputs only")
-            dataset = MetadataDatasetInstance(dataset_attributes, datatypes_registry, object_store=object_store)
+            dataset = MetadataDatasetInstance(
+                dataset_attributes,
+                datatypes_registry,
+                object_store=object_store,
+                metadata_tmp_files_dir=directory.parent,
+            )
             datasets[dataset.id] = dataset
-        return cls(datasets, attributes)
+        return cls(datasets, attributes, metadata_tmp_files_dir=directory.parent)
 
     def find(self, dataset_id):
         return self._datasets.get(dataset_id)
@@ -359,7 +429,12 @@ class MetadataDatasetStore:
                 ],
             },
         }
-        dataset = MetadataDatasetInstance(dataset_attributes, datatypes_registry, object_store=object_store)
+        dataset = MetadataDatasetInstance(
+            dataset_attributes,
+            datatypes_registry,
+            object_store=object_store,
+            metadata_tmp_files_dir=self._metadata_tmp_files_dir,
+        )
         dataset.init_meta()
         self._attributes.append(dataset_attributes)
         self._datasets[dataset_instance_key] = dataset
@@ -597,8 +672,31 @@ class MetadataModelExportStore:
         output_mapping.setdefault(name, []).append(dataset._attributes.get("id", dataset._attributes["encoded_id"]))
 
     def push_metadata_files(self):
-        # File-backed metadata is conservatively routed to the ORM path.
-        return None
+        metadata_files_directory = self.export_directory / "metadata_files"
+        for dataset in self.datasets._datasets.values():
+            for name, value in dataset._metadata.items():
+                if MetadataTempFile.is_JSONified_value(value):
+                    value = MetadataTempFile.from_JSON(value)
+                if not isinstance(value, MetadataTempFile):
+                    continue
+
+                metadata_file_uuid = str(getattr(value, "uuid", None) or uuid4())
+                relative_path = Path("metadata_files") / f"{metadata_file_uuid}.dat"
+                metadata_files_directory.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(value.get_file_name(), self.export_directory / relative_path)
+                serialized_file = {
+                    "model_class": "MetadataFile",
+                    "name": name,
+                    "uuid": metadata_file_uuid,
+                    "deleted": False,
+                    "purged": False,
+                    "file_name": str(relative_path),
+                }
+                if metadata_file_id := getattr(value, "id", None):
+                    serialized_file["id"] = metadata_file_id
+                else:
+                    serialized_file["encoded_id"] = uuid4().hex
+                dataset._metadata[name] = serialized_file
 
     def _finalize(self):
         shutil.copytree(self.import_directory, self.export_directory, dirs_exist_ok=True)

@@ -63,7 +63,10 @@ from galaxy.files import (
 from galaxy.files.uris import stream_url_to_file
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.mapping import GalaxyModelMapping
-from galaxy.model.metadata import MetadataCollection
+from galaxy.model.metadata import (
+    MetadataCollection,
+    MetadataTempFile,
+)
 from galaxy.model.orm.util import (
     add_object_to_object_session,
     add_object_to_session,
@@ -265,11 +268,53 @@ def replace_metadata_file(
     metadata: dict[str, Any],
     dataset_instance: model.DatasetInstance,
     sa_session: SessionlessContext | scoped_session,
+    file_source_root: str | None = None,
+    metadata_file_sources: list[tuple[model.MetadataFile, str]] | None = None,
+    reuse_existing: bool = False,
 ) -> dict[str, Any]:
     def remap_objects(p, k, obj):
         if isinstance(obj, dict) and "model_class" in obj and obj["model_class"] == "MetadataFile":
-            metadata_file = model.MetadataFile(dataset=dataset_instance, uuid=obj["uuid"])
-            sa_session.add(metadata_file)
+            source_path = None
+            if file_name := obj.get("file_name"):
+                if file_source_root is None:
+                    raise MalformedContents("MetadataFile content requires a directory model store")
+                archive_path = os.path.abspath(os.path.join(file_source_root, file_name))
+                if os.path.islink(archive_path):
+                    raise MalformedContents(f"Invalid metadata file path: {archive_path}")
+                source_path = os.path.realpath(archive_path)
+                if not in_directory(source_path, file_source_root):
+                    raise MalformedContents(f"Invalid metadata file path: {source_path}")
+                if not os.path.isfile(source_path):
+                    raise MalformedContents(f"Metadata file does not exist: {source_path}")
+                if isinstance(sa_session, SessionlessContext):
+                    return (
+                        k,
+                        MetadataTempFile.from_JSON({"kwds": {}, "filename": source_path}),
+                    )
+
+            metadata_file = None
+            if reuse_existing and not isinstance(sa_session, SessionlessContext):
+                if metadata_file_id := obj.get("id"):
+                    candidate = sa_session.get(model.MetadataFile, metadata_file_id)
+                    candidate_parent = (candidate.history_dataset or candidate.library_dataset) if candidate else None
+                    if candidate_parent is dataset_instance:
+                        metadata_file = candidate
+                if metadata_file is None:
+                    statement = select(model.MetadataFile).filter_by(uuid=obj["uuid"])
+                    if isinstance(dataset_instance, model.HistoryDatasetAssociation):
+                        statement = statement.filter_by(hda_id=dataset_instance.id)
+                    else:
+                        statement = statement.filter_by(lda_id=dataset_instance.id)
+                    metadata_file = sa_session.scalars(statement).first()
+            if metadata_file is None:
+                metadata_file = model.MetadataFile(dataset=dataset_instance, name=obj.get("name"), uuid=obj["uuid"])
+                sa_session.add(metadata_file)
+            elif name := obj.get("name"):
+                metadata_file.name = name
+            if source_path:
+                if metadata_file_sources is None:
+                    raise MalformedContents("MetadataFile content requires a directory model store")
+                metadata_file_sources.append((metadata_file, source_path))
             return (k, metadata_file)
         return (k, obj)
 
@@ -491,6 +536,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
         job: model.Job | None,
     ) -> None:
         object_key = self.object_key
+        metadata_file_sources: list[tuple[model.MetadataFile, str]] = []
 
         def handle_dataset_object_edit(dataset_instance, dataset_attrs):
             if "dataset" in dataset_attrs:
@@ -543,7 +589,14 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                     if attribute in dataset_attrs:
                         value = dataset_attrs[attribute]
                         if attribute == "metadata":
-                            value = replace_metadata_file(value, dataset_instance, self.sa_session)
+                            value = replace_metadata_file(
+                                value,
+                                dataset_instance,
+                                self.sa_session,
+                                self.file_source_root,
+                                metadata_file_sources,
+                                reuse_existing=True,
+                            )
                         setattr(dataset_instance, attribute, value)
 
                 handle_dataset_object_edit(dataset_instance, dataset_attrs)
@@ -609,7 +662,13 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                     )
                 else:
                     raise Exception("Unknown dataset instance type encountered")
-                metadata = replace_metadata_file(metadata, dataset_instance, self.sa_session)
+                metadata = replace_metadata_file(
+                    metadata,
+                    dataset_instance,
+                    self.sa_session,
+                    self.file_source_root,
+                    metadata_file_sources,
+                )
                 if self.sessionless:
                     dataset_instance._metadata_collection = MetadataCollection(
                         dataset_instance, session=self.sa_session
@@ -797,6 +856,11 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                     else:
                         assert "id" in dataset_attrs
                         object_import_tracker.lddas_by_key[dataset_attrs["id"]] = dataset_instance
+
+        if metadata_file_sources:
+            self._flush()
+            for metadata_file, source_path in metadata_file_sources:
+                metadata_file.update_from_file(source_path)
 
     def _import_libraries(self, object_import_tracker: "ObjectImportTracker") -> None:
         object_key = self.object_key
