@@ -162,6 +162,12 @@ describe("FormConditional", () => {
             expect(wrapper.findAllComponents(FormElement).at(1).props("value")).toBe("cond|input2");
         });
 
+        it("reads a repeat presence gate", () => {
+            const wrapper = mountConditional({ when: "$(inputs.queries[0].input3 !== null)" });
+            expect(modeElement(wrapper).props("value")).toBe("presence");
+            expect(wrapper.findAllComponents(FormElement).at(1).props("value")).toBe("queries_0|input3");
+        });
+
         it("reads anything else as a custom expression", () => {
             const wrapper = mountConditional({ when: "$(inputs.input1 != null)" });
             expect(modeElement(wrapper).props("value")).toBe("custom");
@@ -185,12 +191,10 @@ describe("FormConditional", () => {
         });
     });
 
-    describe("inputs a gate cannot be written for", () => {
-        it("does not offer an input nested in a repeat", () => {
-            // The connection is `queries_0|input3` but tool state holds `queries` as an
-            // array, so there is no property path of that shape to generate.
+    describe("nested gate inputs", () => {
+        it("offers an input nested in a repeat", () => {
             const gated = mountConditional({ when: "$(inputs.input1 !== null)" });
-            expect(optionPairs(gated, 1).map((option) => option[1])).not.toContain("queries_0|input3");
+            expect(optionPairs(gated, 1).map((option) => option[1])).toContain("queries_0|input3");
         });
 
         it("offers an input nested in a conditional", () => {
@@ -217,6 +221,12 @@ describe("FormConditional", () => {
             const wrapper = mountConditional({ when: "$(inputs.input1 !== null)" });
             wrapper.findAllComponents(FormElement).at(1).vm.$emit("input", "cond|input2");
             expect(lastUpdate(wrapper).when).toBe("$(inputs.cond.input2 !== null)");
+        });
+
+        it("writes an indexed presence gate for a repeat input", () => {
+            const wrapper = mountConditional({ when: "$(inputs.input1 !== null)" });
+            wrapper.findAllComponents(FormElement).at(1).vm.$emit("input", "queries_0|input3");
+            expect(lastUpdate(wrapper).when).toBe("$(inputs.queries[0].input3 !== null)");
         });
 
         it("ignores a selection of the mode already in effect", () => {

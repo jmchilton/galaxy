@@ -12,6 +12,7 @@ import {
     normalizeConnectionOutputLinks,
     type ParameterOutput,
     type ParameterStepInput,
+    presenceGateInputPath,
     presenceGateIsSpellable,
     type Step,
     type TerminalSource,
@@ -280,11 +281,15 @@ class BaseInputTerminal extends Terminal {
             return false;
         }
         const isSynthesizedGatePort = !step.inputs?.some((input) => input.name === this.name);
+        const inputPath = presenceGateInputPath(step, this.name);
+        if (!inputPath) {
+            return false;
+        }
         if (isSynthesizedGatePort) {
             // Nothing consumes a gate probe, so an inverse gate is as valid as a positive one.
-            return expressionReferencesInput(step.when, this.name);
+            return expressionReferencesInput(step.when, inputPath);
         }
-        if (expressionGuardsInputPresence(step.when, this.name)) {
+        if (expressionGuardsInputPresence(step.when, inputPath)) {
             return true;
         }
         return other ? this.gatedThroughSharedSource(step, other) : false;
@@ -296,7 +301,8 @@ class BaseInputTerminal extends Terminal {
      */
     private gatedThroughSharedSource(step: Step, other: BaseOutputTerminal): boolean {
         return Object.entries(step.input_connections ?? {}).some(([name, links]) => {
-            if (name === this.name || !expressionGuardsInputPresence(step.when, name)) {
+            const inputPath = presenceGateInputPath(step, name);
+            if (name === this.name || !inputPath || !expressionGuardsInputPresence(step.when, inputPath)) {
                 return false;
             }
             const linkArray = normalizeConnectionOutputLinks(links);

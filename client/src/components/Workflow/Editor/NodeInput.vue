@@ -27,7 +27,7 @@ import { presenceGateExpression } from "@/components/Workflow/Editor/modules/whe
 import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import { getConnectionId } from "@/stores/workflowConnectionStore";
-import type { InputTerminalSource } from "@/stores/workflowStepStore";
+import { type InputTerminalSource, presenceGateInputPath } from "@/stores/workflowStepStore";
 
 import { useRelativePosition } from "./composables/relativePosition";
 import { useTerminal } from "./composables/useTerminal";
@@ -206,6 +206,11 @@ async function offerPresenceGate(droppedTerminal: OutputCollectionTerminal) {
     if (!confirmed) {
         return;
     }
+    const step = stepStore.getStep(props.stepId);
+    const inputPath = step && presenceGateInputPath(step, props.input.name);
+    if (!inputPath) {
+        return;
+    }
 
     stores.undoRedoStore
         .action()
@@ -213,7 +218,7 @@ async function offerPresenceGate(droppedTerminal: OutputCollectionTerminal) {
             // Raw, because the surrounding action is what makes this one undo step.
             terminal.value.makeConnection(droppedTerminal);
             terminal.value.setDefaultMapOver(droppedTerminal);
-            stepStore.updateStepValue(props.stepId, "when", presenceGateExpression(props.input.name));
+            stepStore.updateStepValue(props.stepId, "when", presenceGateExpression(inputPath));
         })
         .onUndo(() => {
             stepStore.updateStepValue(props.stepId, "when", undefined);

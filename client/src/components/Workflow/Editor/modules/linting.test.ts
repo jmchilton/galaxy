@@ -91,6 +91,15 @@ describe("getDanglingGates", () => {
         expect(getDanglingGates(steps(step))).toEqual([]);
     });
 
+    it("accepts a gate reading a connection nested under a repeat", () => {
+        const step = makeStep({
+            when: "$(inputs.queries[0].input2 !== null)",
+            input_connections: { "queries_0|input2": { id: 0, output_name: "output" } },
+            tool_state: { queries: '[{"__index__": 0, "input2": {}}]' },
+        });
+        expect(getDanglingGates(steps(step))).toEqual([]);
+    });
+
     it("does not confuse a literal pipe in an access with a nested connection path", () => {
         const step = makeStep({
             when: '$(inputs["cond|input1"] !== null)',

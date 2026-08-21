@@ -368,11 +368,14 @@ describe("presenceGateIsSpellable", () => {
         expect(presenceGateIsSpellable(step({ cond: '{"input1": {}}' }), "cond|input1")).toBe(true);
     });
 
-    it("refuses an input nested in a repeat", () => {
-        // Connection name is `queries_0|input2`; state holds `queries` as an array, so no
-        // property path of that shape exists and a generated gate would read undefined.
+    it("spells an input nested in a repeat", () => {
         const repeatState = { queries: '[{"__index__": 0, "input2": {}}]' };
-        expect(presenceGateIsSpellable(step(repeatState), "queries_0|input2")).toBe(false);
+        expect(presenceGateIsSpellable(step(repeatState), "queries_0|input2")).toBe(true);
+    });
+
+    it("refuses a flattened name with two valid interpretations", () => {
+        const ambiguousState = { queries_0: { input2: {} }, queries: [{ input2: {} }] };
+        expect(presenceGateIsSpellable(step(ambiguousState), "queries_0|input2")).toBe(false);
     });
 
     it("spells a probe, which is not a tool parameter at all", () => {

@@ -12,7 +12,12 @@
  * permissively: the runtime, not the editor, decides whether a step runs.
  */
 
-import { connectionNameToInputPath, inputPathIsPrefix } from "./workflowInputPath";
+import {
+    connectionNameToInputPath,
+    type InputPath,
+    inputPathIsPrefix,
+    type InputPathSegment,
+} from "./workflowInputPath";
 
 type TokenType = "identifier" | "number" | "string" | "punct";
 
@@ -23,7 +28,7 @@ interface Token {
 
 export interface ReferenceAnalysis {
     /** Fully static `inputs` accesses, as path segments. */
-    staticPaths: string[][];
+    staticPaths: InputPath[];
     /** True when some `inputs` access could not be resolved statically. */
     hasDynamicInputsAccess: boolean;
 }
@@ -193,8 +198,8 @@ function isTemplateLiteral(expression: string): boolean {
 /**
  * Collect every `inputs` access in an expression.
  *
- * Recognizes dot access, chained bracket access with string literals, and mixtures of
- * the two. Anything else — a computed index, a bare `inputs` reference, a template
+ * Recognizes dot access, chained bracket access with string or numeric literals, and
+ * mixtures of the two. Anything else — a computed index, a bare `inputs` reference, a template
  * literal that might interpolate one — is reported through `hasDynamicInputsAccess`.
  */
 export function analyzeInputReferences(expression: string): ReferenceAnalysis {
@@ -228,7 +233,7 @@ export function analyzeInputReferences(expression: string): ReferenceAnalysis {
 }
 
 interface AccessPath {
-    segments: string[];
+    segments: InputPath;
     /** Segment counts after which `?.` starts an optional chain. */
     optionalAfterSegments: number[];
     dynamic: boolean;
@@ -237,7 +242,7 @@ interface AccessPath {
 
 /** Walk the property access chain that follows an `inputs` token. */
 function readAccessPath(tokens: Token[], start: number): AccessPath {
-    const segments: string[] = [];
+    const segments: InputPath = [];
     const optionalAfterSegments: number[] = [];
     let index = start;
 
@@ -256,8 +261,8 @@ function readAccessPath(tokens: Token[], start: number): AccessPath {
         }
         if (token?.value === "[") {
             const inner = tokens[index + 1];
-            if (inner?.type === "string" && tokens[index + 2]?.value === "]") {
-                segments.push(inner.value);
+            if ((inner?.type === "string" || inner?.type === "number") && tokens[index + 2]?.value === "]") {
+                segments.push(inner.type === "number" ? Number(inner.value) : inner.value);
                 index += 3;
                 continue;
             }
@@ -267,7 +272,7 @@ function readAccessPath(tokens: Token[], start: number): AccessPath {
     }
 }
 
-function isSamePath(targetPath: string[], referencedPath: string[]): boolean {
+function isSamePath(targetPath: InputPath, referencedPath: InputPath): boolean {
     return targetPath.length === referencedPath.length && inputPathIsPrefix(targetPath, referencedPath);
 }
 
@@ -278,12 +283,15 @@ function isSamePath(targetPath: string[], referencedPath: string[]): boolean {
  * referencing every candidate. Callers only ever ask about inputs that are already
  * connected, so an over-match shows a real edge while an under-match hides one.
  */
-export function expressionReferencesInput(expression: string | null | undefined, inputName: string): boolean {
+export function expressionReferencesInput(
+    expression: string | null | undefined,
+    input: string | readonly InputPathSegment[],
+): boolean {
     if (!expression) {
         return false;
     }
 
-    const targetPath = connectionNameToInputPath(inputName);
+    const targetPath = normalizeInputPath(input);
     const references = analyzeInputReferences(expression);
 
     if (references.hasDynamicInputsAccess) {
@@ -300,7 +308,10 @@ export function expressionReferencesInput(expression: string | null | undefined,
  * accesses, `!`, equality, and `&&`/`||` — with the target bound to `null` and every
  * other input left indeterminate. Anything outside that subset is `"unknown"`.
  */
-export function classifyWhenInputIsNull(expression: string | null | undefined, inputName: string): NullBehavior {
+export function classifyWhenInputIsNull(
+    expression: string | null | undefined,
+    input: string | readonly InputPathSegment[],
+): NullBehavior {
     if (!expression) {
         return "unknown";
     }
@@ -316,7 +327,7 @@ export function classifyWhenInputIsNull(expression: string | null | undefined, i
         return "unknown";
     }
 
-    const parser = new PresenceEvaluator(tokens, connectionNameToInputPath(inputName));
+    const parser = new PresenceEvaluator(tokens, normalizeInputPath(input));
     const value = parser.evaluate();
     if (value === UNKNOWN) {
         return "unknown";
@@ -333,12 +344,15 @@ export function classifyWhenInputIsNull(expression: string | null | undefined, i
  * input is absent. The runtime remains authoritative for expressions classified as
  * unknown.
  */
-export function expressionGuardsInputPresence(expression: string | null | undefined, inputName: string): boolean {
-    if (!expressionReferencesInput(expression, inputName)) {
+export function expressionGuardsInputPresence(
+    expression: string | null | undefined,
+    input: string | readonly InputPathSegment[],
+): boolean {
+    if (!expressionReferencesInput(expression, input)) {
         return false;
     }
 
-    return classifyWhenInputIsNull(expression, inputName) !== "true-when-null";
+    return classifyWhenInputIsNull(expression, input) !== "true-when-null";
 }
 
 function isTruthy(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
@@ -357,10 +371,10 @@ class ParseFailure extends Error {}
 /** Recursive-descent evaluator over the recognized expression subset. */
 class PresenceEvaluator {
     private tokens: Token[];
-    private targetPath: string[];
+    private targetPath: InputPath;
     private position: number;
 
-    constructor(tokens: Token[], targetPath: string[]) {
+    constructor(tokens: Token[], targetPath: InputPath) {
         this.tokens = tokens;
         this.targetPath = targetPath;
         this.position = 2;
@@ -565,18 +579,23 @@ function isIndeterminate(
 
 const JAVASCRIPT_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-/** Spell a connection name as a JavaScript access path into `inputs`. */
-export function inputsAccessPath(inputName: string): string {
-    return connectionNameToInputPath(inputName).reduce(
-        (path, segment) =>
-            JAVASCRIPT_IDENTIFIER.test(segment) ? `${path}.${segment}` : `${path}[${JSON.stringify(segment)}]`,
-        "inputs",
-    );
+function normalizeInputPath(input: string | readonly InputPathSegment[]): InputPath {
+    return typeof input === "string" ? connectionNameToInputPath(input) : [...input];
 }
 
-/** The `when` expression that runs a step only while the named input carries a value. */
-export function presenceGateExpression(inputName: string): string {
-    return `$(${inputsAccessPath(inputName)} !== null)`;
+/** Spell an input path as a JavaScript access path into `inputs`. */
+export function inputsAccessPath(input: string | readonly InputPathSegment[]): string {
+    return normalizeInputPath(input).reduce<string>((path, segment) => {
+        if (typeof segment === "number") {
+            return `${path}[${segment}]`;
+        }
+        return JAVASCRIPT_IDENTIFIER.test(segment) ? `${path}.${segment}` : `${path}[${JSON.stringify(segment)}]`;
+    }, "inputs");
+}
+
+/** The `when` expression that runs a step only while the addressed input carries a value. */
+export function presenceGateExpression(input: string | readonly InputPathSegment[]): string {
+    return `$(${inputsAccessPath(input)} !== null)`;
 }
 
 /** The established workflow-editor convention for a direct boolean gate. */

@@ -3,7 +3,12 @@ import { computed } from "vue";
 
 import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useWorkflowStores } from "@/composables/workflowStores";
-import { connectedInputCanBeAbsent, presenceGateIsSpellable, type Step } from "@/stores/workflowStepStore";
+import {
+    connectedInputCanBeAbsent,
+    presenceGateInputPath,
+    presenceGateIsSpellable,
+    type Step,
+} from "@/stores/workflowStepStore";
 
 import { BOOLEAN_GATE_EXPRESSION, BOOLEAN_GATE_INPUT_NAME, presenceGateExpression } from "../modules/whenExpression";
 
@@ -32,7 +37,7 @@ const gateableInputs = computed(() =>
 
 /** The input a presence gate written by this form addresses, if the gate is one of ours. */
 const presenceGateInput = computed(() =>
-    connectedInputNames.value.find((name) => props.step.when === presenceGateExpression(name)),
+    connectedInputNames.value.find((name) => props.step.when === gateExpression(name)),
 );
 
 const mode = computed<GateMode>(() => {
@@ -87,7 +92,15 @@ async function onMode(newMode: GateMode) {
 }
 
 function onPresenceInput(inputName: string) {
-    emit("onUpdateStep", props.step.id, { when: presenceGateExpression(inputName) });
+    const expression = gateExpression(inputName);
+    if (expression) {
+        emit("onUpdateStep", props.step.id, { when: expression });
+    }
+}
+
+function gateExpression(inputName: string): string | null {
+    const inputPath = presenceGateInputPath(props.step, inputName);
+    return inputPath ? presenceGateExpression(inputPath) : null;
 }
 
 function confirmDiscardingCustomExpression() {

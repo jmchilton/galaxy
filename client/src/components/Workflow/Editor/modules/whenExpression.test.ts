@@ -15,6 +15,7 @@ describe("analyzeInputReferences", () => {
         ['$(inputs.cond["input1"])', [["cond", "input1"]]],
         ["$(inputs['cond'].input1)", [["cond", "input1"]]],
         ['$(inputs["cond|input1"])', [["cond|input1"]]],
+        ["$(inputs.queries[0].input2)", [["queries", 0, "input2"]]],
         ["$(inputs.a && inputs.b)", [["a"], ["b"]]],
     ])("reads static access paths out of %s", (expression, expected) => {
         const analysis = analyzeInputReferences(expression);
@@ -157,6 +158,15 @@ describe("presenceGateExpression", () => {
         ["0|input1", '$(inputs["0"].input1 !== null)'],
     ])("spells %s", (inputName, expected) => {
         expect(presenceGateExpression(inputName)).toBe(expected);
+    });
+
+    it("spells and analyzes a resolved repeat path", () => {
+        const inputPath = ["queries", 0, "input2"] as const;
+        const expression = presenceGateExpression(inputPath);
+        expect(expression).toBe("$(inputs.queries[0].input2 !== null)");
+        expect(expressionReferencesInput(expression, inputPath)).toBe(true);
+        expect(classifyWhenInputIsNull(expression, inputPath)).toBe("false-when-null");
+        expect(expressionGuardsInputPresence(expression, inputPath)).toBe(true);
     });
 
     it.each(["input1", "cond|input1", "segment-with-dashes", "cond|has-dash", "0|input1"])(

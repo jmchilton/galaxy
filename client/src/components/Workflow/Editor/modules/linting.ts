@@ -19,7 +19,7 @@ import type {
 } from "./lintingTypes";
 import { terminalFactory } from "./terminals";
 import { analyzeInputReferences } from "./whenExpression";
-import { connectionNameToInputPath, inputPathIsPrefix } from "./workflowInputPath";
+import { type InputPath, inputPathIsPrefix, resolveConnectionNameToInputPath } from "./workflowInputPath";
 
 export const bestPracticeWarningAnnotation =
     "This workflow does not provide a short description. Providing a short description helps workflow executors understand the purpose and usage of the workflow.";
@@ -102,12 +102,13 @@ export function getDanglingGates(steps: Steps = {}) {
     return dangling;
 }
 
-function gateReferenceIsSatisfied(step: Step, path: string[]): boolean {
-    if (connectionNamesIncludePath(Object.keys(step.input_connections ?? {}), path)) {
+function gateReferenceIsSatisfied(step: Step, path: InputPath): boolean {
+    if (connectionNamesIncludePath(step, Object.keys(step.input_connections ?? {}), path)) {
         return true;
     }
     if (
         connectionNamesIncludePath(
+            step,
             (step.inputs ?? []).map((input) => input.name),
             path,
         )
@@ -117,12 +118,15 @@ function gateReferenceIsSatisfied(step: Step, path: string[]): boolean {
     }
     // Everything else the expression can legitimately read comes from the step's state.
     const root = path[0]!;
-    return Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, root);
+    return typeof root === "string" && Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, root);
 }
 
 /** True when `path` names a candidate connection or one of its ancestors. */
-function connectionNamesIncludePath(candidates: string[], path: string[]): boolean {
-    return candidates.some((candidate) => inputPathIsPrefix(path, connectionNameToInputPath(candidate)));
+function connectionNamesIncludePath(step: Step, candidates: string[], path: InputPath): boolean {
+    return candidates.some((candidate) => {
+        const candidatePath = resolveConnectionNameToInputPath(candidate, step.tool_state);
+        return candidatePath ? inputPathIsPrefix(path, candidatePath) : false;
+    });
 }
 
 /** Gate checks only make sense once something in the workflow is gated. */

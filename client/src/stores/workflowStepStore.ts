@@ -7,7 +7,10 @@ import {
     BOOLEAN_GATE_INPUT_NAME,
     expressionReferencesInput,
 } from "@/components/Workflow/Editor/modules/whenExpression";
-import { connectionNameToInputPath } from "@/components/Workflow/Editor/modules/workflowInputPath";
+import {
+    type InputPath,
+    resolveConnectionNameToInputPath,
+} from "@/components/Workflow/Editor/modules/workflowInputPath";
 import { getConnectionId, useConnectionStore } from "@/stores/workflowConnectionStore";
 import { assertDefined } from "@/utils/assertions";
 
@@ -554,7 +557,8 @@ function findStepExtraInputs(step: Step, steps: Steps): InputTerminalSource[] {
         if (step.inputs.find((input) => input.name === inputName)) {
             return;
         }
-        if (!expressionReferencesInput(step.when, inputName)) {
+        const inputPath = presenceGateInputPath(step, inputName);
+        if (!inputPath || !expressionReferencesInput(step.when, inputPath)) {
             return;
         }
         extraInputs.push(gatePortTerminalSource(step, inputName, steps));
@@ -565,49 +569,17 @@ function findStepExtraInputs(step: Step, steps: Steps): InputTerminalSource[] {
 /**
  * True when a connection name can be spelled as a JavaScript path into `inputs`.
  *
- * A conditional's connection name maps onto tool state segment for segment:
- * `cond|input1` is `inputs.cond.input1`. A repeat's does not -- the connection is
- * `queries_0|input2` while the state holds `queries` as an array -- so a gate generated
- * by splitting on `|` would read undefined forever and never actually gate. Walk the
- * state rather than guessing from the shape of the name.
+ * A conditional maps segment for segment, while a repeat connection such as
+ * `queries_0|input2` maps to `inputs.queries[0].input2`. Walk tool state so `_0`
+ * can be distinguished from a literal property suffix and ambiguous names declined.
  */
 export function presenceGateIsSpellable(step: Step, inputName: string): boolean {
-    const segments = connectionNameToInputPath(inputName);
-    if (segments.length === 1) {
-        // Correct for a top-level parameter and for an extra connection alike.
-        return true;
-    }
-
-    let level: unknown = parseToolState(step);
-    for (const segment of segments) {
-        if (!isRecord(level) || !Object.prototype.hasOwnProperty.call(level, segment)) {
-            return false;
-        }
-        level = level[segment];
-    }
-    return true;
+    return presenceGateInputPath(step, inputName) !== null;
 }
 
-/** Tool state arrives with its top-level values JSON encoded, inconsistently. */
-function parseToolState(step: Step): Record<string, unknown> {
-    const raw = (step.tool_state ?? {}) as Record<string, unknown>;
-    const parsed: Record<string, unknown> = {};
-    Object.entries(raw).forEach(([key, value]) => {
-        parsed[key] = typeof value === "string" ? tryParseJson(value) : value;
-    });
-    return parsed;
-}
-
-function tryParseJson(value: string): unknown {
-    try {
-        return JSON.parse(value);
-    } catch {
-        return value;
-    }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+/** The actual `inputs` expression path for a connected input, when unambiguous. */
+export function presenceGateInputPath(step: Step, inputName: string): InputPath | null {
+    return resolveConnectionNameToInputPath(inputName, step.tool_state);
 }
 
 /**
