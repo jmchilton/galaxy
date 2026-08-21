@@ -207,15 +207,16 @@ async function offerPresenceGate(droppedTerminal: OutputCollectionTerminal) {
         return;
     }
 
-    const previousWhen = stepStore.getStep(props.stepId)?.when;
     stores.undoRedoStore
         .action()
         .onRun(() => {
+            // Raw, because the surrounding action is what makes this one undo step.
             terminal.value.makeConnection(droppedTerminal);
+            terminal.value.setDefaultMapOver(droppedTerminal);
             stepStore.updateStepValue(props.stepId, "when", presenceGateExpression(props.input.name));
         })
         .onUndo(() => {
-            stepStore.updateStepValue(props.stepId, "when", previousWhen);
+            stepStore.updateStepValue(props.stepId, "when", undefined);
             terminal.value.dropConnection(droppedTerminal);
         })
         .setName("gate step on input")

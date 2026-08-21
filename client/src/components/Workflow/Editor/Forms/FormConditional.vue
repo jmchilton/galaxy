@@ -66,12 +66,16 @@ function inputLabel(name: string): string {
     return props.step.inputs?.find((input) => input.name === name)?.label || name;
 }
 
-function onMode(newMode: GateMode) {
+async function onMode(newMode: GateMode) {
     if (newMode === mode.value) {
         return;
     }
+    // Every transition out of a custom expression discards it, not just clearing.
+    if (mode.value === "custom" && !(await confirmDiscardingCustomExpression())) {
+        return;
+    }
     if (newMode === "none") {
-        clearGate();
+        emit("onUpdateStep", props.step.id, { when: undefined });
     } else if (newMode === "boolean") {
         emit("onUpdateStep", props.step.id, {
             when: BOOLEAN_GATE,
@@ -89,17 +93,11 @@ function onPresenceInput(inputName: string) {
     emit("onUpdateStep", props.step.id, { when: presenceGateExpression(inputName) });
 }
 
-async function clearGate() {
-    if (mode.value === "custom") {
-        const confirmed = await confirm(
-            `This step runs only when ${props.step.when} is true. That condition was not written by this form and cannot be restored here.`,
-            { title: "Remove this step's condition?", okText: "Remove" },
-        );
-        if (!confirmed) {
-            return;
-        }
-    }
-    emit("onUpdateStep", props.step.id, { when: undefined });
+function confirmDiscardingCustomExpression() {
+    return confirm(
+        `This step runs only when ${props.step.when} is true. That condition was not written by this form and cannot be restored here.`,
+        { title: "Discard this step's condition?", okText: "Discard" },
+    );
 }
 </script>
 

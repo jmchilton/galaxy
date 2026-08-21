@@ -252,6 +252,10 @@ class BaseInputTerminal extends Terminal {
         if (!step || !presenceGateIsSpellable(step, this.name)) {
             return new ConnectionAcceptable(false, "No presence gate can be written for this input.");
         }
+        if (step.when) {
+            // Writing one here would replace a condition the author already chose.
+            return new ConnectionAcceptable(false, "This step already has a condition.");
+        }
         this.presenceGateAssumed = true;
         try {
             return this.canAccept(other);
