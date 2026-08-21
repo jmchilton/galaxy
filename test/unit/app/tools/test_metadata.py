@@ -691,7 +691,16 @@ class TestMetadata(TestCase, tools_support.UsesTools):
                         {
                             "destination": {"type": "hdca"},
                             "name": "unnamed list",
-                            "collection_type": "list",
+                            "collection_type": "sample_sheet",
+                            "column_definitions": [
+                                {
+                                    "type": "int",
+                                    "name": "replicate number",
+                                    "optional": False,
+                                    "default_value": 0,
+                                }
+                            ],
+                            "rows": {"first": [1], "second": [2]},
                             "elements": [
                                 {"filename": "first.txt", "ext": "txt", "name": "first"},
                                 {"filename": "second.txt", "ext": "txt", "name": "second"},
@@ -713,6 +722,7 @@ class TestMetadata(TestCase, tools_support.UsesTools):
             "first",
             "second",
         ]
+        assert [element["columns"] for element in collections[0]["collection"]["elements"]] == [[1], [2]]
 
         import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
         import_store = model.store.get_import_model_store_for_directory(
