@@ -13,15 +13,3 @@ through Galaxy's internal pipe-prefixed connection names (for example,
 ``inputs["cond|param"]``). Use the nested tool-state form instead, such as
 ``inputs.cond.param`` or ``inputs["cond"]["param"]``. Ordinary top-level inputs
 and extra expression inputs such as ``inputs.when`` remain unchanged.
-
-Gating a workflow step on an optional input
-===========================================
-
-An optional workflow input can be connected to a required tool data parameter
-when the step is gated on that input being provided, for example
-``when: $(inputs.input1 !== null)``. The step runs when the dataset is supplied
-and is skipped when it is not; merge its output with a fallback using a
-``pick_value`` step. The workflow editor now offers this as a gate mode on the
-step form, offers it when an optional output is dropped on a required input, and
-no longer reports such a connection as invalid. See
-:doc:`../dev/workflow_conditional_steps` for the authoring pattern.
