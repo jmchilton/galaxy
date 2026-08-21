@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from galaxy.datatypes import sniff
 from galaxy.datatypes.metadata import (
     MetadataCollection,
     MetadataTempFile,
@@ -16,6 +17,15 @@ from galaxy.schema.states import (
     DatasetState,
 )
 from galaxy.util import nice_size as format_size
+
+
+def resolve_sniffed_dataset(dataset_instance, datatypes_registry):
+    if dataset_instance.extension != "_sniff_":
+        return
+    extension = sniff.handle_uploaded_dataset_file(dataset_instance.dataset.get_file_name(), datatypes_registry)
+    dataset_instance.extension = extension
+    dataset_instance.init_meta()
+    dataset_instance.metadata.__extension__ = extension
 
 
 class MetadataFileReference(MetadataTempFile):
@@ -188,6 +198,7 @@ class MetadataDatasetInstance:
         object.__setattr__(self, "_metadata", metadata)
         object.__setattr__(self, "_metadata_collection", MetadataCollection(self))
         object.__setattr__(self, "_state", None)
+        object.__setattr__(self, "_pending_uploaded_metadata", {})
 
     def __getattr__(self, name):
         if name == "id":
@@ -209,6 +220,7 @@ class MetadataDatasetInstance:
             "_metadata",
             "_metadata_collection",
             "_state",
+            "_pending_uploaded_metadata",
         }:
             object.__setattr__(self, name, value)
         else:
@@ -299,9 +311,30 @@ class MetadataDatasetInstance:
         return self.datatype.init_meta(self, copy_from=copy_from)
 
     def set_meta(self, **kwds):
+        self.resolve_datatype()
+        pending_uploaded_metadata = dict(self._pending_uploaded_metadata)
+        self._pending_uploaded_metadata.clear()
+        self._apply_uploaded_metadata(pending_uploaded_metadata)
         self.clear_associated_files(metadata_safe=True)
         kwds.setdefault("metadata_tmp_files_dir", self._metadata_tmp_files_dir)
-        return self.datatype.set_meta(self, **kwds)
+        rval = self.datatype.set_meta(self, **kwds)
+        self._apply_uploaded_metadata(pending_uploaded_metadata)
+        return rval
+
+    def resolve_datatype(self):
+        resolve_sniffed_dataset(self, self._datatypes_registry)
+
+    def apply_uploaded_metadata(self, metadata):
+        if self.datatype is None:
+            self._pending_uploaded_metadata.update(metadata)
+        else:
+            self._apply_uploaded_metadata(metadata)
+
+    def _apply_uploaded_metadata(self, metadata):
+        for key, value in metadata.items():
+            metadata_element = self.datatype.metadata_spec.get(key)
+            if metadata_element and metadata_element.set_in_upload:
+                setattr(self.metadata, key, value)
 
     def change_datatype(self, extension):
         self.extension = extension
@@ -435,7 +468,8 @@ class MetadataDatasetStore:
             object_store=object_store,
             metadata_tmp_files_dir=self._metadata_tmp_files_dir,
         )
-        dataset.init_meta()
+        if extension != "_sniff_":
+            dataset.init_meta()
         self._attributes.append(dataset_attributes)
         self._datasets[dataset_instance_key] = dataset
         return dataset

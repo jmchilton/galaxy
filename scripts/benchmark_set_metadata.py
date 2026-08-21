@@ -26,14 +26,15 @@ from galaxy.job_execution.metadata_constants import LAZY_IMPORTS_ENV  # noqa: E4
 from galaxy.util import galaxy_directory  # noqa: E402
 
 CASES = {
-    "fasta-small": ("fasta", ">seq1\nGCTGCATG\n", {"data_lines": 2, "sequences": 1}, ()),
-    "tabular-1k": ("tabular", "".join(f"{i}\t{i + 1}\t{i + 2}\n" for i in range(1_000)), {}, ()),
-    "bam-small": ("bam", REPOSITORY_ROOT / "test-data/1.bam", {}, ("bam_index",)),
+    "fasta-small": ("fasta", ">seq1\nGCTGCATG\n", {"data_lines": 2, "sequences": 1}, (), None),
+    "fasta-sniff": ("data", ">seq1\nGCTGCATG\n", {"data_lines": 2, "sequences": 1}, (), "fasta"),
+    "tabular-1k": ("tabular", "".join(f"{i}\t{i + 1}\t{i + 2}\n" for i in range(1_000)), {}, (), None),
+    "bam-small": ("bam", REPOSITORY_ROOT / "test-data/1.bam", {}, ("bam_index",), None),
 }
 
 
 def prepare_case(case_name, strategy):
-    extension, contents, expected_metadata, expected_metadata_files = CASES[case_name]
+    extension, contents, expected_metadata, expected_metadata_files, expected_sniffed_extension = CASES[case_name]
     case = TestMetadata()
     case.setUp()
     case.app.config.metadata_strategy = strategy
@@ -44,12 +45,22 @@ def prepare_case(case_name, strategy):
     sa_session.commit()
     output_datasets = {"out_file1": output_dataset}
     command = case.metadata_command(output_datasets)
+    if expected_sniffed_extension:
+        case._write_galaxy_json(f'{{"type": "dataset", "dataset_id": "{output_dataset.dataset.id}", "ext": "_sniff_"}}')
     if isinstance(contents, Path):
         Path(output_dataset.dataset.get_file_name()).write_bytes(contents.read_bytes())
     else:
         case._write_output_dataset_contents(output_dataset, contents)
     case._write_job_files()
-    return case, output_dataset, sa_session, command, expected_metadata, expected_metadata_files
+    return (
+        case,
+        output_dataset,
+        sa_session,
+        command,
+        expected_metadata,
+        expected_metadata_files,
+        expected_sniffed_extension,
+    )
 
 
 def run_once(case, command, mode):
@@ -74,20 +85,34 @@ def run_once(case, command, mode):
     return elapsed
 
 
-def validate_result(case, output_dataset, sa_session, expected_metadata, expected_metadata_files):
+def validate_result(
+    case,
+    output_dataset,
+    sa_session,
+    expected_metadata,
+    expected_metadata_files,
+    expected_sniffed_extension,
+):
     strategy = case.metadata_compute_strategy
     assert strategy
     if not strategy.external_metadata_set_successfully(
         output_dataset, "out_file1", sa_session, working_directory=case.job_working_directory
     ):
         raise RuntimeError("set_metadata did not produce a successful metadata result")
-    if expected_metadata_files:
+    if expected_metadata_files or expected_sniffed_extension:
         export_directory = Path(case.job_working_directory) / "metadata" / "outputs_populated"
         dataset_attributes = next(
             attributes
             for attributes in json.loads((export_directory / "datasets_attrs.txt").read_text())
             if attributes.get("id") == output_dataset.id
         )
+        if expected_sniffed_extension:
+            actual_extension = dataset_attributes["extension"]
+            if actual_extension != expected_sniffed_extension:
+                raise RuntimeError(
+                    f"sniffed extension: expected {expected_sniffed_extension!r}, got {actual_extension!r}"
+                )
+            output_dataset.extension = actual_extension
         for name in expected_metadata_files:
             serialized_file = dataset_attributes["metadata"].get(name)
             if not isinstance(serialized_file, dict) or serialized_file.get("model_class") != "MetadataFile":
@@ -95,7 +120,8 @@ def validate_result(case, output_dataset, sa_session, expected_metadata, expecte
             if file_name := serialized_file.get("file_name"):
                 if not (export_directory / file_name).is_file():
                     raise RuntimeError(f"staged metadata file {file_name!r} does not exist")
-        return
+        if expected_metadata_files:
+            return
     strategy.load_metadata(output_dataset, "out_file1", sa_session, working_directory=case.job_working_directory)
     for name, expected_value in expected_metadata.items():
         actual_value = getattr(output_dataset.metadata, name)
@@ -104,21 +130,41 @@ def validate_result(case, output_dataset, sa_session, expected_metadata, expecte
 
 
 def benchmark_case(case_name, strategy, warmups, repetitions):
-    case, output_dataset, sa_session, command, expected_metadata, expected_metadata_files = prepare_case(
-        case_name, strategy
-    )
+    (
+        case,
+        output_dataset,
+        sa_session,
+        command,
+        expected_metadata,
+        expected_metadata_files,
+        expected_sniffed_extension,
+    ) = prepare_case(case_name, strategy)
     timings = {"normal": [], "all": []}
     try:
         for _ in range(warmups):
             for mode in ("normal", "all"):
                 run_once(case, command, mode)
-                validate_result(case, output_dataset, sa_session, expected_metadata, expected_metadata_files)
+                validate_result(
+                    case,
+                    output_dataset,
+                    sa_session,
+                    expected_metadata,
+                    expected_metadata_files,
+                    expected_sniffed_extension,
+                )
         for repetition in range(repetitions):
             # Reverse the order on alternate repetitions to reduce cache/order bias.
             modes = ("normal", "all") if repetition % 2 == 0 else ("all", "normal")
             for mode in modes:
                 timings[mode].append(run_once(case, command, mode))
-                validate_result(case, output_dataset, sa_session, expected_metadata, expected_metadata_files)
+                validate_result(
+                    case,
+                    output_dataset,
+                    sa_session,
+                    expected_metadata,
+                    expected_metadata_files,
+                    expected_sniffed_extension,
+                )
     finally:
         case.tearDown()
         case.tear_down_app()
