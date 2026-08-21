@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from galaxy.datatypes.metadata import MetadataCollection
-from galaxy.schema.states import DatasetState
+from galaxy.schema.states import (
+    DatasetCollectionPopulatedState,
+    DatasetState,
+)
 from galaxy.util import nice_size as format_size
 
 
@@ -245,6 +248,142 @@ class MetadataDatasetStore:
         return self._datasets.get(dataset_id)
 
 
+class MetadataDatasetCollectionElement:
+    """Collection-element-shaped view over serialized collection attributes."""
+
+    def __init__(self, attributes: dict[str, Any], datasets: MetadataDatasetStore):
+        object.__setattr__(self, "_attributes", attributes)
+        object.__setattr__(self, "_datasets", datasets)
+        child_attributes = attributes.get("child_collection")
+        object.__setattr__(
+            self,
+            "child_collection",
+            MetadataDatasetCollection(child_attributes, datasets) if child_attributes is not None else None,
+        )
+
+    def __getattr__(self, name):
+        try:
+            return self._attributes[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name, value):
+        if name in {"_attributes", "_datasets", "child_collection"}:
+            object.__setattr__(self, name, value)
+        else:
+            self._attributes[name] = value
+
+    @property
+    def is_collection(self):
+        return self.child_collection is not None
+
+    @property
+    def dataset_instance(self):
+        if self.is_collection:
+            raise AttributeError("Nested collection has no associated dataset_instance")
+        hda_reference = self._attributes.get("hda") or {}
+        dataset_id = hda_reference.get("id", hda_reference.get("encoded_id"))
+        return self._datasets.find(dataset_id)
+
+
+class MetadataDatasetCollection:
+    """DatasetCollection-shaped view over serialized collection attributes."""
+
+    populated_states = DatasetCollectionPopulatedState
+
+    def __init__(self, attributes: dict[str, Any], datasets: MetadataDatasetStore):
+        object.__setattr__(self, "_attributes", attributes)
+        object.__setattr__(self, "_datasets", datasets)
+        object.__setattr__(
+            self,
+            "elements",
+            [MetadataDatasetCollectionElement(element, datasets) for element in attributes.get("elements", [])],
+        )
+
+    def __getattr__(self, name):
+        if name == "collection_type":
+            return self._attributes["type"]
+        try:
+            return self._attributes[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name, value):
+        if name in {"_attributes", "_datasets", "elements"}:
+            object.__setattr__(self, name, value)
+        else:
+            self._attributes["type" if name == "collection_type" else name] = value
+
+    @property
+    def dataset_instances(self):
+        datasets = []
+        for element in self.elements:
+            if element.is_collection:
+                datasets.extend(element.child_collection.dataset_instances)
+            elif dataset := element.dataset_instance:
+                datasets.append(dataset)
+        return datasets
+
+    def mark_as_populated(self):
+        self.populated_state = self.populated_states.OK
+        self.populated_state_message = None
+        self.element_count = len(self.elements)
+
+    def handle_population_failed(self, message):
+        self.populated_state = self.populated_states.FAILED
+        self.populated_state_message = message
+
+
+class MetadataDatasetCollectionInstance:
+    """HDCA-shaped view over serialized collection attributes."""
+
+    def __init__(self, attributes: dict[str, Any], datasets: MetadataDatasetStore):
+        object.__setattr__(self, "_attributes", attributes)
+        object.__setattr__(self, "collection", MetadataDatasetCollection(attributes["collection"], datasets))
+
+    def __getattr__(self, name):
+        try:
+            return self._attributes[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name, value):
+        if name in {"_attributes", "collection"}:
+            object.__setattr__(self, name, value)
+        else:
+            self._attributes[name] = value
+
+    @property
+    def dataset_instances(self):
+        return self.collection.dataset_instances
+
+
+class MetadataDatasetCollectionStore:
+    def __init__(
+        self,
+        collections: dict[Any, MetadataDatasetCollectionInstance],
+        attributes: list[dict[str, Any]],
+    ):
+        self._collections = collections
+        self._attributes = attributes
+
+    @classmethod
+    def from_directory(cls, directory, datasets: MetadataDatasetStore):
+        collections_path = Path(directory) / "collections_attrs.txt"
+        with collections_path.open() as handle:
+            attributes = json.load(handle)
+        collections = {}
+        for collection_attributes in attributes:
+            if collection_attributes.get("model_class") != "HistoryDatasetCollectionAssociation":
+                raise ValueError("Lightweight metadata supports HistoryDatasetCollectionAssociation outputs only")
+            collection = MetadataDatasetCollectionInstance(collection_attributes, datasets)
+            collections[collection.id] = collection
+        return cls(collections, attributes)
+
+    def find(self, collection_id):
+        return self._collections.get(collection_id)
+
+
 class MetadataJob:
     """Job-shaped view over an existing serialized model-store job."""
 
@@ -280,6 +419,10 @@ class MetadataModelExportStore:
             datatypes_registry,
             object_store=object_store,
         )
+        self.dataset_collections = MetadataDatasetCollectionStore.from_directory(
+            self.import_directory,
+            self.datasets,
+        )
         jobs_path = self.import_directory / "jobs_attrs.txt"
         with jobs_path.open() as handle:
             self._job_attributes = json.load(handle)
@@ -297,4 +440,7 @@ class MetadataModelExportStore:
     def _finalize(self):
         shutil.copytree(self.import_directory, self.export_directory, dirs_exist_ok=True)
         (self.export_directory / "datasets_attrs.txt").write_text(json.dumps(self.datasets._attributes, sort_keys=True))
+        (self.export_directory / "collections_attrs.txt").write_text(
+            json.dumps(self.dataset_collections._attributes, sort_keys=True)
+        )
         (self.export_directory / "jobs_attrs.txt").write_text(json.dumps(self._job_attributes, sort_keys=True))
