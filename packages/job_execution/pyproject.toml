@@ -19,6 +19,7 @@ dependencies = [
     "galaxy-data",
     "galaxy-files",
     "galaxy-objectstore",
+    "galaxy-schema",
     "galaxy-tool-util",
     "galaxy-util",
     "MarkupSafe",
