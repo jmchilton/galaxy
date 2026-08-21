@@ -33,10 +33,7 @@ import galaxy.model.mapping
 from galaxy.datatypes import sniff
 from galaxy.datatypes.data import validate
 from galaxy.exceptions import MessageException
-from galaxy.datatypes.metadata import (
-    FileParameter,
-    MetadataTempFile,
-)
+from galaxy.datatypes.metadata import MetadataTempFile
 from galaxy.job_execution.metadata_constants import (
     LIGHTWEIGHT_MODELS_ENV,
     TOOL_PROVIDED_JOB_METADATA_KEYS,
@@ -150,26 +147,22 @@ def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, worki
     return False
 
 
-def _uses_file_metadata(dataset_store, outputs, tool_provided_metadata, datatypes_registry):
+def _requires_datatype_sniffing(dataset_store, outputs, tool_provided_metadata):
     for output_name, output in outputs.items():
         dataset = dataset_store.find(output["id"])
         file_dict = tool_provided_metadata.get_dataset_meta(output_name, dataset.dataset.id, dataset.dataset.uuid)
         extension = file_dict.get("ext", dataset.extension)
         if extension == "_sniff_":
             return True
-        datatype = datatypes_registry.get_datatype_by_extension(extension)
-        if any(isinstance(spec.param, FileParameter) for spec in datatype.metadata_spec.values()):
-            return True
     return False
 
 
-def _dynamic_uses_file_metadata(
+def _dynamic_requires_datatype_sniffing(
     metadata_params,
     tool_provided_metadata,
     collection_store,
     dataset_store,
     working_directory,
-    datatypes_registry,
 ):
     input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
     extensions = unnamed_output_extensions(tool_provided_metadata)
@@ -191,9 +184,6 @@ def _dynamic_uses_file_metadata(
     )
     for extension in extensions:
         if extension == "_sniff_":
-            return True
-        datatype = datatypes_registry.get_datatype_by_extension(extension)
-        if any(isinstance(spec.param, FileParameter) for spec in datatype.metadata_spec.values()):
             return True
     return False
 
@@ -341,11 +331,10 @@ def set_metadata_portable(
             datatypes_registry,
             object_store=object_store,
         )
-        if extended_metadata_collection and _uses_file_metadata(
+        if extended_metadata_collection and _requires_datatype_sniffing(
             lightweight_store,
             outputs,
             tool_provided_metadata,
-            datatypes_registry,
         ):
             lightweight_store = None
             use_lightweight_store = False
@@ -354,13 +343,12 @@ def set_metadata_portable(
                 tool_job_working_directory / "metadata/outputs_new",
                 lightweight_store,
             )
-            if _dynamic_uses_file_metadata(
+            if _dynamic_requires_datatype_sniffing(
                 metadata_params,
                 tool_provided_metadata,
                 lightweight_collection_store,
                 lightweight_store,
                 tool_job_working_directory / "working",
-                datatypes_registry,
             ):
                 lightweight_store = None
                 use_lightweight_store = False

@@ -672,8 +672,16 @@ class FileParameter(MetadataParameter):
     def make_copy(self, value, target_context: MetadataCollection, source_context):
         session = target_context._object_session(target_context.parent)
         value = self.wrap(value, session=session)
-        if value and not value.id:
-            # This is a new MetadataFile object, we're not copying to another dataset.
+        if isinstance(value, MetadataTempFile):
+            new_value = self.new_file(dataset=target_context.parent)
+            new_value.update_from_file(value.get_file_name())
+            return self.unwrap(new_value)
+        value_parent = (
+            (getattr(value, "history_dataset", None) or getattr(value, "library_dataset", None)) if value else None
+        )
+        if value and (not getattr(value, "id", None) or value_parent is target_context.parent):
+            # This is a new MetadataFile object or it already belongs to the target
+            # dataset, so assigning the metadata must not create a duplicate row.
             # Just use it.
             return self.unwrap(value)
         if target_context.parent is None:

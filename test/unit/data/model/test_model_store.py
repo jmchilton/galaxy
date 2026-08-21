@@ -13,6 +13,7 @@ from typing import (
     Any,
     NamedTuple,
 )
+from uuid import uuid4
 
 import pytest
 from rocrate.rocrate import ROCrate
@@ -1020,6 +1021,7 @@ def test_edit_metadata_files(tmp_path):
     app.add_and_commit(h, d1)
     index = NamedTemporaryFile("w")
     index.write("cool bam index")
+    index.flush()
     metadata_dict = {"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": index.name})}
     d1.metadata.from_JSON_dict(json_dict=metadata_dict)
     assert d1.metadata.bam_index
@@ -1031,6 +1033,56 @@ def test_edit_metadata_files(tmp_path):
     import_history = model.History(name="Test History for Import", user=u)
     app.add_and_commit(import_history)
     _perform_import_from_directory(tmp_path, app, u, import_history, store.ImportOptions(allow_edit=True))
+    assert d1.metadata.bam_index.name == "bam_index"
+    assert pathlib.Path(d1.metadata.bam_index.get_file_name()).read_text() == "cool bam index"
+
+
+def test_edit_metadata_files_from_staged_content(tmp_path):
+    app = _mock_app(store_by="id")
+    sa_session = app.model.context
+    user = model.User(email="staged-metadata@example.com", password="password")
+    history = model.History(name="Staged metadata", user=user)
+    dataset = _create_datasets(sa_session, history, 1, extension="bam")[0]
+    app.add_and_commit(history, dataset)
+
+    export_directory = tmp_path / "export"
+    with store.DirectoryModelExportStore(
+        export_directory,
+        app=app,
+        for_edit=True,
+        strip_metadata_files=False,
+    ) as export_store:
+        export_store.add_dataset(dataset)
+
+    metadata_directory = export_directory / "metadata_files"
+    metadata_directory.mkdir()
+    staged_path = metadata_directory / "bam-index.dat"
+    staged_path.write_text("staged bam index")
+    datasets_path = export_directory / store.ATTRS_FILENAME_DATASETS
+    dataset_attributes = json.loads(datasets_path.read_text())
+    dataset_attributes[0]["metadata"]["bam_index"] = {
+        "encoded_id": uuid4().hex,
+        "model_class": "MetadataFile",
+        "name": "bam_index",
+        "uuid": str(uuid4()),
+        "deleted": False,
+        "purged": False,
+        "file_name": "metadata_files/bam-index.dat",
+    }
+    datasets_path.write_text(json.dumps(dataset_attributes))
+
+    import_history = model.History(name="Unused import history", user=user)
+    app.add_and_commit(import_history)
+    _perform_import_from_directory(
+        export_directory,
+        app,
+        user,
+        import_history,
+        store.ImportOptions(allow_edit=True),
+    )
+
+    assert dataset.metadata.bam_index.name == "bam_index"
+    assert pathlib.Path(dataset.metadata.bam_index.get_file_name()).read_text() == "staged bam index"
 
 
 def test_sessionless_import_edit_datasets():

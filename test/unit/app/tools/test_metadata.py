@@ -126,6 +126,36 @@ class TestMetadata(TestCase, tools_support.UsesTools):
             metadata_params = json.load(f)
         assert metadata_params["outputs"]["out_file1"]["filename_override"] == output_path
 
+    def test_file_metadata_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
+        self._init_tool_for_path(source_file_name)
+        output_dataset = self._create_output_dataset(extension="bam")
+        self.app.model.session.commit()
+        command = self.metadata_command({"out_file1": output_dataset})
+        Path(output_dataset.dataset.get_file_name()).write_bytes(
+            Path(galaxy_directory(), "test-data", "1.bam").read_bytes()
+        )
+        self._write_job_files()
+
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        dataset_attributes = json.loads((export_directory / "datasets_attrs.txt").read_text())[0]
+        serialized_index = dataset_attributes["metadata"]["bam_index"]
+        assert serialized_index["model_class"] == "MetadataFile"
+        assert (export_directory / serialized_index["file_name"]).stat().st_size > 0
+
+        assert self.metadata_compute_strategy
+        self.metadata_compute_strategy.load_metadata(
+            output_dataset,
+            "out_file1",
+            self.app.model.session,
+            working_directory=self.job_working_directory,
+        )
+        assert output_dataset.metadata.bam_index.name == "bam_index"
+        assert Path(output_dataset.metadata.bam_index.get_file_name()).stat().st_size > 0
+
     def _test_simple_output(self):
         source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
         self._init_tool_for_path(source_file_name)
@@ -269,6 +299,50 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         discovered_hda = next(dataset for dataset in self.history.datasets if dataset.designation == "one")
         assert discovered_hda.name == "custom name"
         assert discovered_hda.metadata.data_lines == 10
+
+    def test_primary_dataset_discovery_with_file_metadata_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool(tool_contents="""
+<tool id="discover_primary_bam" name="discover_primary_bam" version="1.0">
+  <command>echo unused</command>
+  <inputs />
+  <outputs>
+    <data name="report" format="txt">
+      <discover_datasets pattern="(?P&lt;designation&gt;.+)\\.part\\.bam" ext="bam" visible="true" />
+    </data>
+  </outputs>
+</tool>
+""")
+        output_dataset = self._create_output_dataset(extension="txt")
+        self.app.model.session.commit()
+        command = self.metadata_command({"report": output_dataset})
+        self._write_output_dataset_contents(output_dataset, "fixed\n")
+        Path(self.tool_working_directory, "one.part.bam").write_bytes(
+            Path(galaxy_directory(), "test-data", "1.bam").read_bytes()
+        )
+        self._write_job_files()
+
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        discovered_dataset = next(dataset for dataset in datasets if dataset["designation"] == "one")
+        serialized_index = discovered_dataset["metadata"]["bam_index"]
+        assert serialized_index["model_class"] == "MetadataFile"
+        assert (export_directory / serialized_index["file_name"]).stat().st_size > 0
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        discovered_hda = next(dataset for dataset in self.history.datasets if dataset.designation == "one")
+        assert discovered_hda.metadata.bam_index.name == "bam_index"
+        assert Path(discovered_hda.metadata.bam_index.get_file_name()).stat().st_size > 0
 
     def test_assign_primary_dataset_discovery_extended(self):
         self.app.config.metadata_strategy = "extended"
