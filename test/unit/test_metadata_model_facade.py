@@ -223,3 +223,48 @@ def test_model_facade_exports_mutated_dataset_collection(tmp_path):
     exported_collection = json.loads((destination / "collections_attrs.txt").read_text())[0]["collection"]
     assert exported_collection["populated_state"] == "ok"
     assert exported_collection["element_count"] == 1
+
+
+def test_model_facade_exports_mutated_bare_dataset_collection(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    dataset_attributes = {
+        "id": 1,
+        "model_class": "HistoryDatasetAssociation",
+        "extension": "txt",
+        "metadata": {"dbkey": "?"},
+        "dataset": {"id": 2, "state": "ok"},
+    }
+    collection_attributes = {
+        "id": 3,
+        "model_class": "DatasetCollection",
+        "type": "list",
+        "populated_state": "new",
+        "populated_state_message": None,
+        "elements": [
+            {
+                "model_class": "DatasetCollectionElement",
+                "element_index": 0,
+                "element_identifier": "one",
+                "hda": {"id": 1, "model_class": "HistoryDatasetAssociation"},
+            }
+        ],
+    }
+    (source / "datasets_attrs.txt").write_text(json.dumps([dataset_attributes]))
+    (source / "collections_attrs.txt").write_text(json.dumps([collection_attributes]))
+    (source / "jobs_attrs.txt").write_text("[]")
+
+    export_store = MetadataModelExportStore(source, destination, example_datatype_registry_for_sample())
+    collection = export_store.dataset_collections.find(3)
+    assert collection.collection is collection
+    assert collection.dataset_instances == [export_store.datasets.find(1)]
+
+    collection.mark_as_populated()
+    export_store._finalize()
+
+    exported_collection = json.loads((destination / "collections_attrs.txt").read_text())[0]
+    assert exported_collection["model_class"] == "DatasetCollection"
+    assert "collection" not in exported_collection
+    assert exported_collection["populated_state"] == "ok"
+    assert exported_collection["element_count"] == 1

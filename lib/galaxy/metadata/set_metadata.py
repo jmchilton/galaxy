@@ -138,8 +138,12 @@ def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, worki
     ):
         return True
 
+    supported_collection_models = {
+        "DatasetCollection",
+        "HistoryDatasetCollectionAssociation",
+    }
     if any(
-        collection.get("model_class") != "HistoryDatasetCollectionAssociation"
+        collection.get("model_class") not in supported_collection_models
         for collection in metadata_params.get("output_collections", {}).values()
     ):
         return True

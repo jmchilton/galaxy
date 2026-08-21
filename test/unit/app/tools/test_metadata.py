@@ -477,6 +477,43 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         assert [element.element_identifier for element in output_dataset_collection.collection.elements] == ["1", "2"]
         assert [dataset.metadata.data_lines for dataset in output_dataset_collection.dataset_instances] == [3, 3]
 
+    def test_list_discovery_into_bare_dataset_collection_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/collection_split_on_column.xml")
+        self._init_tool_for_path(source_file_name)
+        collection = model.DatasetCollection(collection_type="list", populated=False)
+        self.app.model.session.add(collection)
+        self.app.model.session.commit()
+        command = self.metadata_command({}, {"split_output": collection})
+        outputs_directory = Path(self.tool_working_directory) / "outputs"
+        outputs_directory.mkdir()
+        (outputs_directory / "1.tabular").write_text("1\n2\n3")
+        (outputs_directory / "2.tabular").write_text("4\n5\n6")
+        self._write_job_files()
+
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        exported_collection = json.loads((export_directory / "collections_attrs.txt").read_text())[0]
+        assert exported_collection["model_class"] == "DatasetCollection"
+        assert "collection" not in exported_collection
+        assert [element["element_identifier"] for element in exported_collection["elements"]] == ["1", "2"]
+        assert [dataset["metadata"]["data_lines"] for dataset in datasets] == [3, 3]
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        self.app.model.session.refresh(collection)
+        assert [element.element_identifier for element in collection.elements] == ["1", "2"]
+        assert [dataset.metadata.data_lines for dataset in collection.dataset_instances] == [3, 3]
+
     def test_nested_collection_discovery_extended(self):
         self.app.config.metadata_strategy = "extended"
         source_file_name = os.path.join(
