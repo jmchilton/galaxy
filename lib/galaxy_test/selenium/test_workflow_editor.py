@@ -1366,6 +1366,35 @@ steps:
         gated_step = [s for s in workflow["steps"].values() if s.get("label") == "gated"][0]
         assert gated_step["when"] == "$(inputs.input1 !== null)"
 
+    @selenium_test
+    def test_editor_twin_dispatch_connections_valid(self):
+        self.open_in_workflow_editor("""
+class: GalaxyWorkflow
+inputs:
+  base: data
+  maybe:
+    type: data
+    optional: true
+steps:
+  when_present:
+    tool_id: cat
+    in:
+      input1: maybe
+      probe: maybe
+    when: $(inputs.probe !== null)
+  when_absent:
+    tool_id: cat
+    in:
+      input1: base
+      probe: maybe
+    when: $(inputs.probe === null)
+""")
+        # The gate names `probe`, but `input1` is fed by the same optional input and is
+        # equally unreachable while it is absent. Neither connection is broken.
+        self.assert_connection_valid("maybe#output", "when_present#probe")
+        self.assert_connection_valid("maybe#output", "when_present#input1")
+        self.assert_connection_valid("maybe#output", "when_absent#probe")
+
     @selenium_only("Not yet migrated to support Playwright backend")
     @selenium_test
     def test_conditional_subworkflow_step(self):
