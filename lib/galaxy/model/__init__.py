@@ -13460,21 +13460,27 @@ Workflow.step_count = column_property(  # type: ignore[assignment]
 # <user_obj>.preferences[pref_name] = pref_value
 User.preferences = association_proxy("_preferences", "value", creator=UserPreference)
 
-# Optimized version of getting the current Galaxy session.
-# See https://github.com/sqlalchemy/sqlalchemy/discussions/7638 for approach
-session_partition = select(
-    GalaxySession,
-    func.row_number()
-    .over(order_by=GalaxySession.update_time.desc(), partition_by=GalaxySession.user_id)
-    .label("index"),
-).alias()
-partitioned_session = aliased(GalaxySession, session_partition)
-User.current_galaxy_session = relationship(
-    partitioned_session,
-    primaryjoin=and_(partitioned_session.user_id == User.id, session_partition.c.index < 2),
-    uselist=False,
-    viewonly=True,
-)
+
+@event.listens_for(User, "before_mapper_configured")
+def configure_current_galaxy_session(mapper, cls):
+    # Creating an AliasedClass forces all declared mappers to configure. Delay
+    # this relationship until configuration has already begun so importing the
+    # model definitions does not perform that work eagerly.
+    # See https://github.com/sqlalchemy/sqlalchemy/discussions/7638 for the
+    # partitioned relationship and SQLAlchemy's aliased relationship guidance.
+    session_partition = select(
+        GalaxySession,
+        func.row_number()
+        .over(order_by=GalaxySession.update_time.desc(), partition_by=GalaxySession.user_id)
+        .label("index"),
+    ).alias()
+    partitioned_session = aliased(GalaxySession, session_partition)
+    User.current_galaxy_session = relationship(
+        partitioned_session,
+        primaryjoin=and_(partitioned_session.user_id == User.id, session_partition.c.index < 2),
+        uselist=False,
+        viewonly=True,
+    )
 
 
 @event.listens_for(HistoryDatasetCollectionAssociation, "init")
