@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useWorkflowStores } from "@/composables/workflowStores";
-import { connectedInputCanBeAbsent, type Step } from "@/stores/workflowStepStore";
+import { connectedInputCanBeAbsent, presenceGateIsSpellable, type Step } from "@/stores/workflowStepStore";
 
 import { presenceGateExpression } from "../modules/whenExpression";
 
@@ -29,6 +29,7 @@ const connectedInputNames = computed(() => Object.keys(props.step.input_connecti
 const gateableInputs = computed(() =>
     connectedInputNames.value
         .filter((name) => connectedInputCanBeAbsent(props.step, name, stepStore))
+        .filter((name) => presenceGateIsSpellable(props.step, name))
         .map((name) => [inputLabel(name), name]),
 );
 

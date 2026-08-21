@@ -11,6 +11,7 @@ import {
     getCombinedStepInputs,
     type ParameterOutput,
     type ParameterStepInput,
+    presenceGateIsSpellable,
     type TerminalSource,
 } from "@/stores/workflowStepStore";
 import type { Connection, ConnectionId } from "@/stores/workflowStoreTypes";
@@ -247,6 +248,10 @@ class BaseInputTerminal extends Terminal {
      * the gate is the remedy, or whether the connection is refused for other reasons.
      */
     canAcceptWithPresenceGate(other: BaseOutputTerminal): ConnectionAcceptable {
+        const step = this.stores.stepStore.getStep(this.stepId);
+        if (!step || !presenceGateIsSpellable(step, this.name)) {
+            return new ConnectionAcceptable(false, "No presence gate can be written for this input.");
+        }
         this.presenceGateAssumed = true;
         try {
             return this.canAccept(other);
