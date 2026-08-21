@@ -209,6 +209,89 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         self.app.config.metadata_strategy = "extended"
         self._test_primary_dataset_output_metadata_override()
 
+    def test_primary_dataset_discovery_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool(tool_contents="""
+<tool id="discover_primary" name="discover_primary" version="1.0">
+  <command>echo unused</command>
+  <inputs />
+  <outputs>
+    <data name="report" format="tabular">
+      <discover_datasets pattern="(?P&lt;designation&gt;.+)\\.part\\.tabular" ext="tabular" visible="true" />
+    </data>
+  </outputs>
+</tool>
+""")
+        output_dataset = self._create_output_dataset(extension="tabular")
+        self.app.model.session.commit()
+        command = self.metadata_command({"report": output_dataset})
+        self._write_output_dataset_contents(output_dataset, "fixed\n")
+        self._write_work_dir_file("one.part.tabular", "one\ntwo\n")
+        self._write_galaxy_json(
+            json.dumps(
+                {
+                    "report": {
+                        "datasets": [
+                            {
+                                "filename": "one.part.tabular",
+                                "name": "custom name",
+                                "ext": "tabular",
+                                "info": "custom info",
+                                "dbkey": "hg19",
+                                "metadata": {"data_lines": 10},
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+        self._write_job_files()
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        assert len(datasets) == 2
+        discovered_dataset = next(dataset for dataset in datasets if dataset["designation"] == "one")
+        assert discovered_dataset["name"] == "custom name"
+        assert discovered_dataset["info"] == "custom info"
+        assert discovered_dataset["designation"] == "one"
+        assert discovered_dataset["metadata"]["data_lines"] == 10
+
+        import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=import_options,
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        discovered_hda = next(dataset for dataset in self.history.datasets if dataset.designation == "one")
+        assert discovered_hda.name == "custom name"
+        assert discovered_hda.metadata.data_lines == 10
+
+    def test_assign_primary_dataset_discovery_extended(self):
+        self.app.config.metadata_strategy = "extended"
+        source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/multi_output_assign_primary.xml")
+        self._init_tool_for_path(source_file_name)
+        sample = self._create_output_dataset(extension="tabular")
+        other = self._create_output_dataset(extension="txt")
+        self.app.model.session.commit()
+        command = self.metadata_command({"sample": sample, "other": other})
+        self._write_output_dataset_contents(sample, "original\n")
+        self._write_output_dataset_contents(other, "other\n")
+        for index in (1, 2, 3):
+            self._write_work_dir_file(f"sample{index}.report.tsv", f"{index}\n")
+        self._write_job_files()
+        self.exec_metadata_command(command)
+
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        assert [dataset["designation"] for dataset in datasets if "encoded_id" in dataset] == ["sample2", "sample3"]
+        sample_attributes = next(dataset for dataset in datasets if dataset.get("id") == sample.id)
+        assert sample_attributes["name"].endswith("(sample1)")
+        assert sample_attributes["metadata"]["data_lines"] == 1
+
     def _test_primary_dataset_output_metadata_override(self):
         source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
         self._init_tool_for_path(source_file_name)
