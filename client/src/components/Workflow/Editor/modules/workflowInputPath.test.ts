@@ -17,6 +17,10 @@ describe("workflow input paths", () => {
         expect(resolveConnectionNameToInputPath("queries_0|input2", state)).toEqual(["queries", 0, "input2"]);
     });
 
+    it("resolves a conditional stored as encoded JSON", () => {
+        expect(resolveConnectionNameToInputPath("cond|input1", { cond: '{"input1": {}}' })).toEqual(["cond", "input1"]);
+    });
+
     it("resolves nested repeats", () => {
         const state = { outer: [{ inner: [{}, { param: {} }] }] };
         expect(resolveConnectionNameToInputPath("outer_0|inner_1|param", state)).toEqual([

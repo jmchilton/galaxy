@@ -163,3 +163,173 @@ describe("getCombinedStepInputs", () => {
         expect(combinedInputs).toHaveLength(0);
     });
 });
+
+describe("synthesized gate ports", () => {
+    beforeEach(() => {
+        setActivePinia(createPinia());
+    });
+
+    const optionalDataInput: NewStep = {
+        ...workflowStepZero,
+        id: 0,
+        type: "data_input",
+        outputs: [{ name: "output", extensions: ["input"], optional: true }],
+    };
+
+    const booleanParameterInput: NewStep = {
+        ...workflowStepZero,
+        id: 0,
+        type: "parameter_input",
+        outputs: [{ name: "output", optional: false, type: "boolean", parameter: true, multiple: false }],
+    } as NewStep;
+
+    function gatePort(source: NewStep, when: string, connectionName = "probe") {
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        stepStore.addStep(source);
+        const gated = addProbeGatedStep(stepStore, when, connectionName);
+        return stepStore.getStepExtraInputs(gated.id);
+    }
+
+    function addProbeGatedStep(
+        stepStore: ReturnType<typeof useWorkflowStepStore>,
+        when = "$(inputs.probe !== null)",
+        connectionName = "probe",
+    ) {
+        return stepStore.addStep(
+            createTestStep(1, {
+                when,
+                inputConnections: { [connectionName]: { output_name: "output", id: 0 } },
+            }),
+        );
+    }
+
+    it("types a data probe as a dataset terminal carrying its source's optionality", () => {
+        const ports = gatePort(optionalDataInput, "$(inputs.probe !== null)");
+        expect(ports).toHaveLength(1);
+        expect(ports[0]).toMatchObject({
+            name: "probe",
+            input_type: "dataset",
+            optional: true,
+            extensions: ["input"],
+        });
+    });
+
+    it("keeps a boolean parameter probe a boolean parameter", () => {
+        const ports = gatePort(booleanParameterInput, "$(inputs.probe)");
+        expect(ports).toHaveLength(1);
+        expect(ports[0]).toMatchObject({
+            name: "probe",
+            input_type: "parameter",
+            type: "boolean",
+            optional: false,
+        });
+    });
+
+    it("keeps a multiple parameter probe multiple", () => {
+        const multipleParameterInput: NewStep = {
+            ...booleanParameterInput,
+            outputs: [{ name: "output", optional: false, type: "text", parameter: true, multiple: true }],
+        } as NewStep;
+        const ports = gatePort(multipleParameterInput, "$(inputs.probe)");
+        expect(ports[0]).toMatchObject({
+            input_type: "parameter",
+            type: "text",
+            multiple: true,
+        });
+    });
+
+    it("marks a probe fed by a gated step optional", () => {
+        const gatedSource: NewStep = { ...workflowStepZero, id: 0, when: "$(inputs.when)" };
+        const ports = gatePort(gatedSource, "$(inputs.probe !== null)");
+        expect(ports[0]).toMatchObject({ optional: true });
+    });
+
+    it("keeps the conventional when port a required boolean whatever feeds it", () => {
+        const textParameterInput: NewStep = {
+            ...workflowStepZero,
+            id: 0,
+            type: "parameter_input",
+            outputs: [{ name: "output", optional: true, type: "text", parameter: true, multiple: false }],
+        } as NewStep;
+        const ports = gatePort(textParameterInput, "$(inputs.when)", "when");
+        expect(ports).toHaveLength(1);
+        expect(ports[0]).toMatchObject({
+            name: "when",
+            input_type: "parameter",
+            type: "boolean",
+            optional: false,
+        });
+    });
+
+    it("retypes a probe when its source is added after the gated step", () => {
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        const gated = addProbeGatedStep(stepStore);
+
+        stepStore.addStep(optionalDataInput);
+
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({
+            name: "probe",
+            input_type: "dataset",
+            optional: true,
+            extensions: ["input"],
+        });
+    });
+
+    it("retypes a probe when its source output changes", () => {
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        const source = stepStore.addStep(booleanParameterInput);
+        const gated = addProbeGatedStep(stepStore);
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({
+            input_type: "parameter",
+            type: "boolean",
+            optional: false,
+        });
+
+        stepStore.updateStep({ ...source, outputs: optionalDataInput.outputs });
+
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({
+            input_type: "dataset",
+            optional: true,
+            extensions: ["input"],
+        });
+    });
+
+    it("updates probe optionality when its source becomes gated", () => {
+        const requiredDataInput: NewStep = {
+            ...optionalDataInput,
+            outputs: [{ name: "output", extensions: ["input"], optional: false }],
+        };
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        const source = stepStore.addStep(requiredDataInput);
+        const gated = addProbeGatedStep(stepStore);
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({ optional: false });
+
+        stepStore.updateStep({ ...source, when: "$(inputs.when)" });
+
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({ optional: true });
+    });
+
+    it("updates a data probe when its source changes output datatype", () => {
+        const requiredDataInput: NewStep = {
+            ...optionalDataInput,
+            outputs: [{ name: "output", extensions: ["txt"], optional: false }],
+        };
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        const source = stepStore.addStep(requiredDataInput);
+        const gated = addProbeGatedStep(stepStore);
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({ extensions: ["txt"] });
+
+        stepStore.updateStep({
+            ...source,
+            post_job_actions: {
+                ChangeDatatypeActionoutput: {
+                    action_type: "ChangeDatatypeAction",
+                    output_name: "output",
+                    action_arguments: { newtype: "tabular" },
+                },
+            },
+        });
+
+        expect(stepStore.getStepExtraInputs(gated.id)[0]).toMatchObject({ extensions: ["tabular"] });
+    });
+});

@@ -1,0 +1,58 @@
+- doc: |
+    Optional input supplied - every presence gate evaluates true, the gated steps run,
+    and pick_value takes each gated output over the fallback.
+  job:
+    fallback:
+      class: File
+      contents: "FALLBACK"
+      filetype: tabular
+    maybe:
+      class: File
+      contents: "PROVIDED"
+      filetype: tabular
+  outputs:
+    out_toplevel:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+    out_nested:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+    out_repeat:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+- doc: |
+    Optional input omitted - every presence gate evaluates false, so each gated step is
+    skipped before its required parameter is validated, and pick_value falls back.
+  job:
+    fallback:
+      class: File
+      contents: "FALLBACK"
+      filetype: tabular
+  outputs:
+    out_toplevel:
+      class: File
+      asserts:
+        - that: has_text
+          text: "FALLBACK"
+        - that: not_has_text
+          text: "PROVIDED"
+    out_nested:
+      class: File
+      asserts:
+        - that: has_text
+          text: "FALLBACK"
+        - that: not_has_text
+          text: "PROVIDED"
+    out_repeat:
+      class: File
+      asserts:
+        - that: has_text
+          text: "FALLBACK"
+        - that: not_has_text
+          text: "PROVIDED"

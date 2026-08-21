@@ -4,6 +4,7 @@ import { computed, type PropType } from "vue";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import { getConnectionId } from "@/stores/workflowConnectionStore";
 import type { TerminalPosition } from "@/stores/workflowEditorStateStore";
+import { stepOutputCanBeAbsent } from "@/stores/workflowStepStore";
 import type { Connection } from "@/stores/workflowStoreTypes";
 import { curveBasisPath } from "@/utils/connectionPath";
 
@@ -78,12 +79,8 @@ const inputIsMappedOver = computed(
 );
 
 const outputIsOptional = computed(() => {
-    return Boolean(
-        stepStore.getStep(props.connection.output.stepId)?.when ||
-            stepStore
-                .getStep(props.connection.output.stepId)
-                ?.outputs.find((output) => output.name === props.connection.output.name && output.optional),
-    );
+    const outputStep = stepStore.getStep(props.connection.output.stepId);
+    return outputStep ? stepOutputCanBeAbsent(outputStep, props.connection.output.name) : false;
 });
 
 const connectionIsValid = computed(() => {
