@@ -12,6 +12,7 @@ import {
     type ParameterOutput,
     type ParameterStepInput,
     presenceGateIsSpellable,
+    type Step,
     type TerminalSource,
 } from "@/stores/workflowStepStore";
 import type { Connection, ConnectionId } from "@/stores/workflowStoreTypes";
@@ -267,7 +268,7 @@ class BaseInputTerminal extends Terminal {
      * True when the step only runs while this input carries a value, which makes an
      * optional output safe to attach to a required input.
      */
-    isPresenceGated(): boolean {
+    isPresenceGated(other?: BaseOutputTerminal): boolean {
         if (this.presenceGateAssumed) {
             return true;
         }
@@ -280,7 +281,24 @@ class BaseInputTerminal extends Terminal {
             // Nothing consumes a gate probe, so an inverse gate is as valid as a positive one.
             return expressionReferencesInput(step.when, this.name);
         }
-        return expressionGuardsInputPresence(step.when, this.name);
+        if (expressionGuardsInputPresence(step.when, this.name)) {
+            return true;
+        }
+        return other ? this.gatedThroughSharedSource(step, other) : false;
+    }
+    /**
+     * The twin dispatch shape: the gate names a different input of this step, but one fed
+     * by the very output being attached. The step cannot run while that output is absent,
+     * so this input is never consumed missing either.
+     */
+    private gatedThroughSharedSource(step: Step, other: BaseOutputTerminal): boolean {
+        return Object.entries(step.input_connections ?? {}).some(([name, links]) => {
+            if (name === this.name || !expressionGuardsInputPresence(step.when, name)) {
+                return false;
+            }
+            const linkArray = Array.isArray(links) ? links : links ? [links] : [];
+            return linkArray.some((link) => link.id === other.stepId && link.output_name === other.name);
+        });
     }
     connect(other: BaseOutputTerminal): void {
         super.connect(other);
@@ -420,7 +438,7 @@ class BaseInputTerminal extends Terminal {
         return producesAcceptableDatatype(this.datatypesMapper, this.datatypes, other.datatypes);
     }
     _producesAcceptableDatatypeAndOptionalness(other: BaseOutputTerminal) {
-        if (!this.optional && !this.multiple && other.optional && !this.isPresenceGated()) {
+        if (!this.optional && !this.multiple && other.optional && !this.isPresenceGated(other)) {
             return new ConnectionAcceptable(false, "Cannot connect an optional output to a non-optional input");
         }
         return this._producesAcceptableDatatype(other);
@@ -627,7 +645,7 @@ export class InputParameterTerminal extends BaseInputTerminal {
         const effectiveThisType = this.effectiveType(this.type);
         const otherType = ("type" in other && other.type) || "data";
         const effectiveOtherType = this.effectiveType(otherType);
-        if (!this.optional && other.optional && !this.isPresenceGated()) {
+        if (!this.optional && other.optional && !this.isPresenceGated(other)) {
             return new ConnectionAcceptable(false, `Cannot attach an optional output to a required parameter`);
         }
         const canAccept = effectiveThisType === effectiveOtherType;

@@ -1180,3 +1180,45 @@ describe("canAcceptWithPresenceGate spellability", () => {
         expect(nestedIn.canAcceptWithPresenceGate(optionalIntegerOut).canAccept).toBe(true);
     });
 });
+
+describe("twin dispatch acceptance", () => {
+    let terminals: { [index: string]: { [index: string]: ReturnType<typeof terminalFactory> } } = {};
+    let stepStore: ReturnType<typeof useWorkflowStepStore>;
+    beforeEach(() => {
+        setActivePinia(createPinia());
+        terminals = setupAdvanced();
+        stepStore = useWorkflowStepStore("mock-workflow");
+        Object.values(JSON.parse(JSON.stringify(advancedSteps)) as Steps).map((step) => {
+            stepStore.addStep(step);
+        });
+    });
+
+    function gatedTwin(when: string, gatedSource: OutputTerminal) {
+        const gatedIn = terminals["multiple simple data"]!["input1"] as InputTerminal;
+        const consumingIn = terminals["multiple simple data"]!["queries_0|input2"] as InputTerminal;
+        gatedIn.connect(gatedSource);
+        stepStore.updateStepValue(gatedIn.stepId, "when", when);
+        return consumingIn;
+    }
+
+    it("accepts an output the step already gates on through another input", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const consumingIn = gatedTwin("$(inputs.input1 !== null)", optionalDataOut);
+        // The gate does not name this input, but the step cannot run while the shared
+        // source is absent, so the value is never consumed missing.
+        expect(consumingIn.attachable(optionalDataOut).canAccept).toBe(true);
+    });
+
+    it("refuses when the gate runs the step while the shared source is absent", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const consumingIn = gatedTwin("$(inputs.input1 === null)", optionalDataOut);
+        expect(consumingIn.attachable(optionalDataOut).canAccept).toBe(false);
+    });
+
+    it("refuses when the gated input is fed by a different source", () => {
+        const requiredDataOut = terminals["data input"]!["output"] as OutputTerminal;
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const consumingIn = gatedTwin("$(inputs.input1 !== null)", requiredDataOut);
+        expect(consumingIn.attachable(optionalDataOut).canAccept).toBe(false);
+    });
+});
