@@ -508,6 +508,10 @@ class MetadataDatasetCollection:
             self._attributes["type" if name == "collection_type" else name] = value
 
     @property
+    def collection(self):
+        return self
+
+    @property
     def dataset_instances(self):
         datasets = []
         for element in self.elements:
@@ -563,7 +567,7 @@ class MetadataDatasetCollectionInstance:
 class MetadataDatasetCollectionStore:
     def __init__(
         self,
-        collections: dict[Any, MetadataDatasetCollectionInstance],
+        collections: dict[Any, MetadataDatasetCollection | MetadataDatasetCollectionInstance],
         attributes: list[dict[str, Any]],
         datasets: MetadataDatasetStore,
     ):
@@ -578,9 +582,16 @@ class MetadataDatasetCollectionStore:
             attributes = json.load(handle)
         collections = {}
         for collection_attributes in attributes:
-            if collection_attributes.get("model_class") != "HistoryDatasetCollectionAssociation":
-                raise ValueError("Lightweight metadata supports HistoryDatasetCollectionAssociation outputs only")
-            collection = MetadataDatasetCollectionInstance(collection_attributes, datasets)
+            model_class = collection_attributes.get("model_class")
+            if model_class == "DatasetCollection":
+                collection = MetadataDatasetCollection(collection_attributes, datasets)
+            elif model_class == "HistoryDatasetCollectionAssociation":
+                collection = MetadataDatasetCollectionInstance(collection_attributes, datasets)
+            else:
+                raise ValueError(
+                    "Lightweight metadata supports DatasetCollection and "
+                    "HistoryDatasetCollectionAssociation outputs only"
+                )
             collections[collection.id] = collection
         return cls(collections, attributes, datasets)
 
