@@ -627,8 +627,15 @@ class WorkflowModule:
         if collection_info:
             if progress.subworkflow_collection_info:
                 # We've mapped over a subworkflow. Slices of the invocation might be conditional
-                # and progress.subworkflow_collection_info.when_values holds the appropriate when_values
-                collection_info.when_values = progress.subworkflow_collection_info.when_values
+                # and progress.subworkflow_collection_info.when_values holds the appropriate when_values.
+                inherited_when_values = progress.subworkflow_collection_info.when_values
+                if inherited_when_values:
+                    if not collection_info.is_aligned_with(progress.subworkflow_collection_info):
+                        raise exceptions.MessageException(
+                            "This step maps over a collection that cannot be matched up element by element "
+                            "with the collection mapped over the conditional subworkflow containing it."
+                        )
+                    collection_info.when_values = inherited_when_values
             else:
                 # The invocation is not mapped over, but it might still be conditional.
                 # Multiplication and linking should be handled by slice_collection()
