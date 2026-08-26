@@ -931,15 +931,18 @@ class SubWorkflowModule(WorkflowModule):
                         progress, step, execution_state={}, extra_step_state=extra_step_state
                     )
                 )
+
+        # A subworkflow without a condition has no conditional state, not one None per mapped element.
+        conditional_values = when_values if any(value is not None for value in when_values) else None
         if collection_info:
-            collection_info.when_values = when_values
+            collection_info.when_values = conditional_values
 
         subworkflow_invoker = progress.subworkflow_invoker(
             trans,
             step,
             use_cached_job=use_cached_job,
             subworkflow_collection_info=collection_info,
-            when_values=when_values,
+            when_values=conditional_values,
         )
         subworkflow_invoker.invoke()
         subworkflow = subworkflow_invoker.workflow
