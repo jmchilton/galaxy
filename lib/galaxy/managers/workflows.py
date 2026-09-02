@@ -159,6 +159,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 MAX_SUBWORKFLOW_URL_DEPTH = 10
+WORKFLOW_INPUT_NAME_RESERVED_CHARACTER = "|"
 
 INDEX_SEARCH_FILTERS = {
     "name": "name",
@@ -179,6 +180,26 @@ def _tool_steps(workflow: model.Workflow) -> list[model.WorkflowStep]:
         elif step.type == "subworkflow" and step.subworkflow:
             steps.extend(_tool_steps(step.subworkflow))
     return steps
+
+
+def _workflow_input_name_upgrades(workflow: Workflow) -> dict[int, tuple[str, str]]:
+    """Return editor-only replacements for legacy workflow input names containing pipes."""
+    unavailable_names = {step.label for step in workflow.steps if step.label}
+    upgrades = {}
+    for step in workflow.input_steps:
+        input_name = step.label
+        if not input_name or WORKFLOW_INPUT_NAME_RESERVED_CHARACTER not in input_name:
+            continue
+
+        replacement_base = input_name.replace(WORKFLOW_INPUT_NAME_RESERVED_CHARACTER, "_")
+        replacement = replacement_base
+        suffix = 2
+        while replacement in unavailable_names:
+            replacement = f"{replacement_base}_{suffix}"
+            suffix += 1
+        unavailable_names.add(replacement)
+        upgrades[step.order_index] = (input_name, replacement)
+    return upgrades
 
 
 class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], deletable.DeletableManagerMixin):
@@ -1544,6 +1565,7 @@ class WorkflowContentsManager(UsesAnnotations):
 
         output_label_index = set()
         input_step_types = set(workflow.input_step_types)
+        input_name_upgrades = _workflow_input_name_upgrades(workflow)
         # For each step, rebuild the form and encode the state
         for step in workflow.steps:
             # Load from database representation
@@ -1578,6 +1600,13 @@ class WorkflowContentsManager(UsesAnnotations):
                 "when": step.when_expression,
                 "workflow_outputs": [],
             }
+            if input_name_upgrade := input_name_upgrades.get(step.order_index):
+                old_name, new_name = input_name_upgrade
+                step_dict["label"] = new_name
+                upgrade_message_dict["workflow_input_name"] = (
+                    f"Renamed workflow input '{old_name}' to '{new_name}' because "
+                    f"'{WORKFLOW_INPUT_NAME_RESERVED_CHARACTER}' is reserved for nested tool inputs."
+                )
             if tooltip:
                 step_dict["tooltip"] = module.get_tooltip(static_path="/static")
             # Connections
@@ -2115,6 +2144,14 @@ class WorkflowContentsManager(UsesAnnotations):
                 discovered_uuids.add(uuid)
             label = step_dict.get("label", None)
             if label:
+                if (
+                    step_dict.get("type") in model.Workflow.input_step_types
+                    and WORKFLOW_INPUT_NAME_RESERVED_CHARACTER in label
+                ):
+                    raise exceptions.ObjectAttributeInvalidException(
+                        f"Workflow input name '{label}' cannot contain "
+                        f"'{WORKFLOW_INPUT_NAME_RESERVED_CHARACTER}', which is reserved for nested tool inputs."
+                    )
                 if label in discovered_labels:
                     raise exceptions.DuplicatedIdentifierException(f"Duplicated step label '{label}' in request.")
                 discovered_labels.add(label)
