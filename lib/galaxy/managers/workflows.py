@@ -158,7 +158,7 @@ INDEX_SEARCH_FILTERS = {
 
 
 def _workflow_input_name_upgrades(workflow: Workflow) -> dict[int, tuple[str, str]]:
-    """Return editor-only replacements for legacy workflow input names containing pipes."""
+    """Return deterministic replacements for legacy workflow input names containing pipes."""
     unavailable_names = {step.label for step in workflow.steps if step.label}
     upgrades = {}
     for step in workflow.input_steps:
@@ -175,6 +175,27 @@ def _workflow_input_name_upgrades(workflow: Workflow) -> dict[int, tuple[str, st
         unavailable_names.add(replacement)
         upgrades[step.order_index] = (input_name, replacement)
     return upgrades
+
+
+def _replace_upgraded_input_references(expression: str | None, upgrades: dict[int, tuple[str, str]]) -> str | None:
+    """Rewrite static bracket access to input names changed by an automatic upgrade."""
+    if expression is None:
+        return None
+    for old_name, new_name in upgrades.values():
+        expression = expression.replace(f'inputs["{old_name}"]', f'inputs["{new_name}"]')
+        expression = expression.replace(f"inputs['{old_name}']", f"inputs['{new_name}']")
+    return expression
+
+
+def _upgrade_subworkflow_step_dict(step_dict: dict[str, Any], upgrades: dict[int, tuple[str, str]]) -> None:
+    """Apply upgraded subworkflow interface names to a serialized parent step."""
+    for field in ("input_connections", "in"):
+        inputs = step_dict.get(field)
+        if inputs:
+            for old_name, new_name in upgrades.values():
+                if old_name in inputs:
+                    inputs[new_name] = inputs.pop(old_name)
+    step_dict["when"] = _replace_upgraded_input_references(step_dict.get("when"), upgrades)
 
 
 class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], deletable.DeletableManagerMixin):
@@ -1419,6 +1440,9 @@ class WorkflowContentsManager(UsesAnnotations):
             module = module_factory.from_workflow_step(trans, step, exact_tools=False)
             if not module:
                 raise exceptions.MessageException(f"Unrecognized step type: {step.type}")
+            subworkflow_input_name_upgrades: dict[int, tuple[str, str]] = {}
+            if isinstance(module, SubWorkflowModule):
+                subworkflow_input_name_upgrades = _workflow_input_name_upgrades(module.subworkflow)
             # Load label from state of data input modules, necessary for backward compatibility
             self.__set_default_label(step, module, step.tool_inputs)
             # Fix any missing parameters
@@ -1452,6 +1476,23 @@ class WorkflowContentsManager(UsesAnnotations):
                 step_dict["label"] = new_name
                 upgrade_message_dict["workflow_input_name"] = (
                     f"Renamed workflow input '{old_name}' to '{new_name}' because "
+                    f"'{WORKFLOW_INPUT_NAME_RESERVED_CHARACTER}' is reserved for nested tool inputs."
+                )
+            if subworkflow_input_name_upgrades:
+                for input_dict in step_dict["inputs"]:
+                    subworkflow_step_index = input_dict["input_subworkflow_step_id"]
+                    if input_name_upgrade := subworkflow_input_name_upgrades.get(subworkflow_step_index):
+                        _old_name, new_name = input_name_upgrade
+                        input_dict["name"] = new_name
+                        input_dict["label"] = new_name
+                step_dict["when"] = _replace_upgraded_input_references(
+                    step_dict["when"], subworkflow_input_name_upgrades
+                )
+                renamed_inputs = ", ".join(
+                    f"'{old_name}' to '{new_name}'" for old_name, new_name in subworkflow_input_name_upgrades.values()
+                )
+                upgrade_message_dict["subworkflow_input_names"] = (
+                    f"Renamed subworkflow input {renamed_inputs} because "
                     f"'{WORKFLOW_INPUT_NAME_RESERVED_CHARACTER}' is reserved for nested tool inputs."
                 )
             if tooltip:
@@ -1510,17 +1551,22 @@ class WorkflowContentsManager(UsesAnnotations):
             # Encode input connections as dictionary
             input_conn_dict: model.InputConnDictType = {}
             for conn in input_connections:
+                input_name = conn.input_name
+                if conn.input_subworkflow_step is not None:
+                    input_name_upgrade = subworkflow_input_name_upgrades.get(conn.input_subworkflow_step.order_index)
+                    if input_name_upgrade:
+                        _old_name, input_name = input_name_upgrade
                 input_type = "dataset"
                 if conn.input_name in input_connections_type:
                     input_type = input_connections_type[conn.input_name]
                 conn_dict = dict(id=conn.output_step.order_index, output_name=conn.output_name, input_type=input_type)
                 if conn.input_name in multiple_input:
-                    if conn.input_name in input_conn_dict:
-                        cast(list, input_conn_dict[conn.input_name]).append(conn_dict)
+                    if input_name in input_conn_dict:
+                        cast(list, input_conn_dict[input_name]).append(conn_dict)
                     else:
-                        input_conn_dict[conn.input_name] = [conn_dict]
+                        input_conn_dict[input_name] = [conn_dict]
                 else:
-                    input_conn_dict[conn.input_name] = conn_dict
+                    input_conn_dict[input_name] = conn_dict
             step_dict["input_connections"] = input_conn_dict
 
             # Position
@@ -2188,6 +2234,26 @@ class WorkflowContentsManager(UsesAnnotations):
             raise exceptions.RequestParameterInvalidException(
                 "Subworkflow step must define either subworkflow, content_id, or trs_tool_id + trs_version_id."
             )
+
+        input_name_upgrades = _workflow_input_name_upgrades(subworkflow)
+        if input_name_upgrades:
+            _upgrade_subworkflow_step_dict(step_dict, input_name_upgrades)
+            user = trans.get_user()
+            assert user is not None
+            upgraded_subworkflow = subworkflow.copy(user=user)
+            for input_step in upgraded_subworkflow.input_steps:
+                if input_name_upgrade := input_name_upgrades.get(input_step.order_index):
+                    _old_name, input_step.label = input_name_upgrade
+            stored_subworkflow = StoredWorkflow(
+                user=user,
+                name=upgraded_subworkflow.name,
+                workflow=upgraded_subworkflow,
+                hidden=True,
+            )
+            upgraded_subworkflow.stored_workflow = stored_subworkflow
+            if not dry_run:
+                trans.sa_session.add(stored_subworkflow)
+            subworkflow = upgraded_subworkflow
 
         return subworkflow
 
