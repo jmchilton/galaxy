@@ -2074,6 +2074,43 @@ steps:
                 "label",
             )
 
+    def test_update_rejects_pipe_in_workflow_input_name(self):
+        workflow_id = self.workflow_populator.simple_workflow("test_invalid_workflow_input_name")
+        editor_workflow = self._download_workflow(workflow_id, style="editor")
+        input_step = next(step for step in editor_workflow["steps"].values() if step["type"] == "data_input")
+        input_step["label"] = "sample|reads"
+
+        response = self._update_workflow(workflow_id, editor_workflow)
+
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "Workflow input name 'sample|reads' cannot contain '|'")
+
+    def test_import_rejects_pipe_in_subworkflow_input_name(self):
+        response = self._post(
+            "workflows",
+            files={"archive_file": io.StringIO("""class: GalaxyWorkflow
+inputs:
+  source: data
+steps:
+  gated_subworkflow:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        "sample|reads": data
+      steps:
+        consume:
+          tool_id: cat1
+          in:
+            input1: sample|reads
+    in:
+      "sample|reads": source
+    when: $(inputs["sample|reads"] !== null)
+""")},
+        )
+
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "Workflow input name 'sample|reads' cannot contain '|'")
+
     @skip_without_tool("output_filter_with_input")
     def test_export_editor_filtered_outputs(self):
         template = """
