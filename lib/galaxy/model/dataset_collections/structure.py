@@ -103,6 +103,15 @@ class Tree(BaseTree):
     def walk_collections(self, hdca_dict):
         return self._walk_collections(dict_map(lambda hdca: hdca.collection, hdca_dict))
 
+    def walk_coordinates(self, prefix=()):
+        """Yield the index path for every leaf in stable collection order."""
+        for index, (_identifier, substructure) in enumerate(self.children):
+            path = (*prefix, index)
+            if substructure.is_leaf:
+                yield path
+            else:
+                yield from substructure.walk_coordinates(path)
+
     def _walk_collections(self, collection_dict):
         for index, (_identifier, substructure) in enumerate(self.children):
 
@@ -215,20 +224,27 @@ def dict_map(func, input_dict):
     return {k: func(v) for k, v in input_dict.items()}
 
 
+def get_collection(dataset_collection_instance):
+    """Return the collection contained by either an HDCA or a nested DCE."""
+    child_collection = getattr(dataset_collection_instance, "child_collection", None)
+    if child_collection is not None:
+        return child_collection
+    return dataset_collection_instance.collection
+
+
 def get_structure(
     dataset_collection_instance, collection_type_description: "CollectionTypeDescription", leaf_subcollection_type=None
 ):
     if leaf_subcollection_type:
-        collection_type_description = collection_type_description.effective_collection_type_description(
-            leaf_subcollection_type
-        )
-        if hasattr(dataset_collection_instance, "child_collection"):
-            collection_type_description = (
+        if not collection_type_description.has_subcollections_of_type(leaf_subcollection_type):
+            return UninitializedTree(
                 collection_type_description.collection_type_description_factory.for_collection_type(
                     leaf_subcollection_type
                 )
             )
-            return UninitializedTree(collection_type_description)
+        collection_type_description = collection_type_description.effective_collection_type_description(
+            leaf_subcollection_type
+        )
 
-    collection = dataset_collection_instance.collection
+    collection = get_collection(dataset_collection_instance)
     return Tree.for_dataset_collection(collection, collection_type_description)
