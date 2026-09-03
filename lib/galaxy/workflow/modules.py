@@ -49,6 +49,10 @@ from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.dataset_collections import matching
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
 from galaxy.model.dataset_collections.query import HistoryQuery
+from galaxy.model.dataset_collections.structure import (
+    Tree,
+    UninitializedTree,
+)
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
 from galaxy.objectstore import ObjectStorePopulator
@@ -668,10 +672,8 @@ class WorkflowModule:
             "Attempting to perform invocation step action on module that does not support actions."
         )
 
-    def recover_mapping(self, invocation_step, progress):
-        """Re-populate progress object with information about connections
-        from previously executed steps recorded via invocation_steps.
-        """
+    def recover_outputs(self, invocation_step, progress):
+        """Restore persisted step outputs without dereferencing dependencies."""
         outputs = {}
 
         for output_dataset_assoc in invocation_step.output_datasets:
@@ -681,6 +683,17 @@ class WorkflowModule:
             outputs[output_dataset_collection_assoc.output_name] = output_dataset_collection_assoc.dataset_collection
 
         progress.set_step_outputs(invocation_step, outputs, already_persisted=True)
+
+    def recover_mapping(self, invocation_step, progress):
+        """Reconstruct mapping metadata after persisted outputs are available."""
+        outputs = progress.outputs.get(invocation_step.workflow_step_id, {})
+        collection_info = self.compute_collection_info(progress, invocation_step.workflow_step, self.get_all_inputs())
+        progress.set_step_outputs(
+            invocation_step,
+            outputs,
+            already_persisted=True,
+            collection_info=collection_info,
+        )
 
     def get_informal_replacement_parameters(self, step) -> list[str]:
         """Return a list of informal replacement parameters.
@@ -695,18 +708,532 @@ class WorkflowModule:
         Use get_all_inputs (if implemented) to determine collection mapping for execution.
         """
         collections_to_match = self._find_collections_to_match(progress, step, all_inputs)
+        inherited_bindings, axis_refinements = self._extract_inherited_axis_bindings(
+            progress, step, collections_to_match
+        )
+        direct_linked_input_names = [
+            input_name for input_name, to_match in collections_to_match.items() if to_match.linked
+        ]
+        residual_binding_names = [
+            input_name
+            for input_name, (
+                _to_match,
+                _inherited_axes,
+                residual_axes,
+                _inherited_path_ranks,
+            ) in inherited_bindings.items()
+            if residual_axes
+        ]
+        linked_axis_id = self._assign_linked_axis_identity(
+            progress,
+            step,
+            collections_to_match,
+            residual_binding_names,
+        )
         # Have implicit collections...
         collection_info = self.trans.app.dataset_collection_manager.match_collections(collections_to_match)
-        if collection_info:
-            if progress.subworkflow_collection_info:
-                # We've mapped over a subworkflow. Slices of the invocation might be conditional
-                # and progress.subworkflow_collection_info.when_values holds the appropriate when_values
-                collection_info.when_values = progress.subworkflow_collection_info.when_values
+        collection_info = self._add_residual_linked_axis(
+            collection_info,
+            inherited_bindings,
+            linked_axis_id,
+            direct_linked_input_names,
+        )
+        inherited_collection_info = progress.subworkflow_collection_info
+        if inherited_collection_info or inherited_bindings:
+            if inherited_collection_info:
+                context = inherited_collection_info.without_bindings()
             else:
-                # The invocation is not mapped over, but it might still be conditional.
-                # Multiplication and linking should be handled by slice_collection()
-                collection_info.when_values = progress.when_values
-        return collection_info or progress.subworkflow_collection_info
+                context = matching.MatchingCollections.from_axes([])
+            for axis_id, refined_axis in axis_refinements.items():
+                context = context.refine_axis(
+                    axis_id,
+                    refined_axis.structure,
+                    axis_components=refined_axis.axis_components,
+                )
+            if collection_info:
+                collection_info = collection_info.with_inherited_mapping(context)
+            else:
+                collection_info = context
+            for input_name, (
+                to_match,
+                inherited_axes,
+                residual_axes,
+                inherited_path_slices,
+            ) in inherited_bindings.items():
+                axis_indices = tuple(self._axis_index(collection_info, axis) for axis in inherited_axes)
+                axis_path_slices = inherited_path_slices
+                if residual_axes:
+                    axis_indices += (self._axis_index_for_id(collection_info, linked_axis_id),)
+                    residual_path_rank = sum(self._axis_rank(axis) for axis in residual_axes)
+                    axis_path_slices += ((0, residual_path_rank),)
+                collection_info.bindings[input_name] = matching.MatchingCollectionBinding(
+                    collection=to_match.hdca,
+                    axis_indices=axis_indices,
+                    subcollection_type=to_match.subcollection_type,
+                    axis_path_slices=axis_path_slices,
+                )
+                collection_info.collections[input_name] = to_match.hdca
+                collection_info.subcollection_types[input_name] = to_match.subcollection_type
+        elif collection_info:
+            # The invocation is not mapped over, but it might still be conditional.
+            collection_info.when_values = progress.when_values
+        return collection_info
+
+    @staticmethod
+    def _add_residual_linked_axis(
+        collection_info,
+        inherited_bindings,
+        linked_axis_id,
+        direct_linked_input_names,
+    ):
+        residual_structures = []
+        for input_name, (
+            _to_match,
+            _inherited_axes,
+            residual_axes,
+            _inherited_path_ranks,
+        ) in inherited_bindings.items():
+            if residual_axes:
+                structure = matching.leaf
+                for axis in residual_axes:
+                    structure = structure.multiply(axis.structure)
+                residual_axis = matching.MatchingCollectionAxis(
+                    structure,
+                    linked_axis_id,
+                    WorkflowModule._combined_axis_components(residual_axes),
+                )
+                residual_structures.append((input_name, residual_axis))
+        if not residual_structures:
+            return collection_info
+
+        linked_structure = collection_info.linked_structure if collection_info else None
+        structure_candidates = list(residual_structures)
+        if linked_structure:
+            linked_axis = next(axis for axis in collection_info.mapping_axes if axis.axis_id == linked_axis_id)
+            structure_candidates.append((min(direct_linked_input_names), linked_axis))
+        _reference_name, selected_axis = min(
+            structure_candidates,
+            key=lambda item: (
+                -WorkflowModule._axis_rank(item[1]),
+                not item[1].structure.children_known,
+                item[0],
+            ),
+        )
+        reference_structure = selected_axis.structure
+        reference_axis = selected_axis
+        reference_components = list(selected_axis.components())
+        for _input_name, candidate_axis in structure_candidates:
+            if not matching.MatchingCollections._axes_have_compatible_or_refined_shape(reference_axis, candidate_axis):
+                raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+            reference_components.extend(candidate_axis.components())
+        reference_components.append((linked_axis_id, 0, WorkflowModule._structure_rank(reference_structure)))
+        reference_axis = matching.MatchingCollectionAxis(
+            reference_structure,
+            linked_axis_id,
+            tuple(dict.fromkeys(reference_components)),
+        )
+
+        if (
+            collection_info
+            and linked_structure
+            and WorkflowModule._structure_rank(reference_structure) > WorkflowModule._structure_rank(linked_structure)
+        ):
+            linked_axis_index = WorkflowModule._axis_index_for_id(collection_info, linked_axis_id)
+            linked_path_rank = WorkflowModule._structure_rank(linked_structure)
+            for binding in collection_info.bindings.values():
+                if linked_axis_index in binding.axis_indices:
+                    path_slices = list(binding.axis_path_slices or ((0, None),) * len(binding.axis_indices))
+                    binding_axis_index = binding.axis_indices.index(linked_axis_index)
+                    path_slices[binding_axis_index] = (0, linked_path_rank)
+                    binding.axis_path_slices = tuple(path_slices)
+
+        if collection_info is None:
+            collection_info = matching.MatchingCollections.from_axes([reference_axis])
+            collection_info.linked_structure = reference_structure
+        elif linked_structure is None:
+            collection_info.mapping_axes.append(reference_axis)
+            collection_info.linked_structure = reference_structure
+        else:
+            collection_info.linked_structure = reference_structure
+            for axis_index, axis in enumerate(collection_info.mapping_axes):
+                if axis.axis_id == linked_axis_id:
+                    collection_info.mapping_axes[axis_index] = reference_axis
+                    break
+        return collection_info
+
+    @staticmethod
+    def _axis_index(collection_info, axis):
+        for axis_index, candidate in enumerate(collection_info.mapping_axes):
+            if axis.axis_id is not None and axis.axis_id == candidate.axis_id:
+                return axis_index
+            if axis is candidate:
+                return axis_index
+        raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+
+    @staticmethod
+    def _axis_index_for_id(collection_info, axis_id):
+        for axis_index, candidate in enumerate(collection_info.mapping_axes):
+            if candidate.axis_id == axis_id:
+                return axis_index
+        raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+
+    def _extract_inherited_axis_bindings(self, progress, step, collections_to_match):
+        inherited_collection_info = progress.subworkflow_collection_info
+        if not inherited_collection_info:
+            return {}, {}
+        inherited_axes_by_id = {axis.axis_id: axis for axis in inherited_collection_info.mapping_axes}
+        source_axes_by_input = {
+            input_name: self._source_mapping_axes(progress, step, input_name)
+            for input_name, _to_match in collections_to_match.items()
+        }
+        inherited_binding_names = {
+            input_name
+            for input_name, axes in source_axes_by_input.items()
+            if any(axis.axis_id in inherited_axes_by_id for axis in axes)
+        }
+        has_direct_linked_peer = any(
+            input_name not in inherited_binding_names and to_match.linked
+            for input_name, to_match in collections_to_match.items()
+        )
+        inherited_bindings = {}
+        axis_refinements = {}
+        embedded_direct_axes = []
+        for input_name, to_match in list(collections_to_match.items()):
+            axes = source_axes_by_input[input_name]
+            if input_name in inherited_binding_names:
+                collections_to_match.pop(input_name)
+                inherited_axes = tuple(axis for axis in axes if axis.axis_id in inherited_axes_by_id)
+                mapping_structure = self._mapping_structure(to_match)
+                mapping_rank = self._structure_rank(mapping_structure)
+                inherited_path_ranks = []
+                remaining_mapping_rank = mapping_rank
+                for source_axis in inherited_axes:
+                    context_axis = inherited_axes_by_id[source_axis.axis_id]
+                    source_rank = self._axis_rank(source_axis)
+                    context_rank = self._axis_rank(context_axis)
+                    if source_rank > context_rank:
+                        self._record_axis_refinement(
+                            axis_refinements,
+                            source_axis.axis_id,
+                            source_axis.structure,
+                            source_axis.components(),
+                        )
+                    consumed_rank = min(source_rank, remaining_mapping_rank)
+                    inherited_path_ranks.append(consumed_rank)
+                    remaining_mapping_rank -= consumed_rank
+                inherited_rank = sum(inherited_path_ranks)
+                residual_rank = max(0, mapping_rank - inherited_rank)
+                residual_axes = self._take_axis_prefix(
+                    (axis for axis in axes if axis.axis_id not in inherited_axes_by_id),
+                    residual_rank,
+                )
+                covered_residual_rank = sum(self._axis_rank(axis) for axis in residual_axes)
+                missing_residual_rank = residual_rank - covered_residual_rank
+                if missing_residual_rank:
+                    # A collection materialized by a mapped step can reveal a
+                    # deeper, branch-dependent shape for the inherited axis.
+                    # Keep that entire tree as one axis: splitting off a
+                    # synthetic suffix would incorrectly require every outer
+                    # branch to have the same shape and identifiers.
+                    residual_structure = None
+                    if len(inherited_axes) == 1 and residual_axes:
+                        try:
+                            residual_structure = self._structure_suffix(mapping_structure, inherited_rank)
+                        except exceptions.MessageException:
+                            pass
+                    if len(inherited_axes) == 1 and (
+                        (not residual_axes and not has_direct_linked_peer)
+                        or (residual_axes and residual_structure is None)
+                    ):
+                        inherited_axis = inherited_axes[0]
+                        if residual_axes:
+                            axis_components = self._combined_axis_components((*inherited_axes, *residual_axes))
+                            embedded_direct_axes.append((inherited_axis, residual_axes))
+                        else:
+                            axis_components = inherited_axis.components()
+                        self._record_axis_refinement(
+                            axis_refinements,
+                            inherited_axis.axis_id,
+                            mapping_structure,
+                            axis_components,
+                        )
+                        inherited_path_ranks[0] = mapping_rank
+                        residual_axes = ()
+                    elif len(inherited_axes) == 1 and not has_direct_linked_peer and residual_structure is not None:
+                        residual_axes = (matching.MatchingCollectionAxis(residual_structure, residual_axes[0].axis_id),)
+                    else:
+                        suffix_structure = self._structure_suffix(
+                            mapping_structure,
+                            inherited_rank + covered_residual_rank,
+                        )
+                        suffix_rank = self._structure_rank(suffix_structure)
+                        suffix_axis = matching.MatchingCollectionAxis(
+                            suffix_structure,
+                            (
+                                "consumer-residual",
+                                tuple(axis.axis_id for axis in axes),
+                                covered_residual_rank,
+                            ),
+                        )
+                        if suffix_rank > missing_residual_rank:
+                            suffix_axis = self._truncate_axis(suffix_axis, missing_residual_rank)
+                        residual_axes += (suffix_axis,)
+                inherited_bindings[input_name] = (
+                    to_match,
+                    inherited_axes,
+                    residual_axes,
+                    tuple((0, rank) for rank in inherited_path_ranks),
+                )
+        self._promote_embedded_residual_axes(inherited_bindings, axis_refinements)
+        self._promote_direct_linked_bindings(
+            collections_to_match,
+            inherited_bindings,
+            axis_refinements,
+            embedded_direct_axes,
+        )
+        return inherited_bindings, axis_refinements
+
+    @staticmethod
+    def _axis_rank(axis):
+        return WorkflowModule._structure_rank(axis.structure)
+
+    @staticmethod
+    def _structure_rank(structure):
+        return len(structure.collection_type_description.collection_type.split(":"))
+
+    @classmethod
+    def _record_axis_refinement(cls, refinements, axis_id, structure, axis_components=None):
+        candidate = matching.MatchingCollectionAxis(structure, axis_id, axis_components)
+        existing = refinements.get(axis_id)
+        if existing is None:
+            refinements[axis_id] = candidate
+            return
+        existing_rank = cls._axis_rank(existing)
+        candidate_rank = cls._structure_rank(structure)
+        if existing_rank == candidate_rank:
+            if not matching.MatchingCollections._axes_have_compatible_shape(
+                existing,
+                candidate,
+            ):
+                raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+            merged_components = tuple(dict.fromkeys((*existing.components(), *candidate.components())))
+            refinements[axis_id] = matching.MatchingCollectionAxis(
+                existing.structure,
+                axis_id,
+                merged_components,
+            )
+        elif existing_rank < candidate_rank:
+            matching.MatchingCollections.from_axes([existing]).refine_axis(axis_id, structure)
+            refinements[axis_id] = candidate
+        else:
+            matching.MatchingCollections.from_axes([candidate]).refine_axis(axis_id, existing.structure)
+
+    @classmethod
+    def _combined_axis_components(cls, axes):
+        components = []
+        offset = 0
+        for axis in axes:
+            components.extend(
+                (component_id, offset + start, offset + stop) for component_id, start, stop in axis.components()
+            )
+            offset += cls._axis_rank(axis)
+        return tuple(components)
+
+    @staticmethod
+    def _promote_embedded_residual_axes(inherited_bindings, axis_refinements):
+        for input_name, (to_match, inherited_axes, residual_axes, inherited_path_slices) in list(
+            inherited_bindings.items()
+        ):
+            remaining_residual_axes = []
+            inherited_axes = list(inherited_axes)
+            inherited_path_slices = list(inherited_path_slices)
+            for residual_axis in residual_axes:
+                promoted = False
+                for inherited_axis in tuple(inherited_axes):
+                    refined_axis = axis_refinements.get(inherited_axis.axis_id)
+                    component_slice = refined_axis and refined_axis.component_path_slice(residual_axis.axis_id)
+                    if component_slice:
+                        inherited_axes.append(inherited_axis)
+                        inherited_path_slices.append(component_slice)
+                        promoted = True
+                        break
+                if not promoted:
+                    remaining_residual_axes.append(residual_axis)
+            inherited_bindings[input_name] = (
+                to_match,
+                tuple(inherited_axes),
+                tuple(remaining_residual_axes),
+                tuple(inherited_path_slices),
+            )
+
+    def _promote_direct_linked_bindings(
+        self,
+        collections_to_match,
+        inherited_bindings,
+        axis_refinements,
+        embedded_direct_axes,
+    ):
+        if not embedded_direct_axes:
+            return
+        for input_name, to_match in list(collections_to_match.items()):
+            if not to_match.linked:
+                continue
+            direct_axis = matching.MatchingCollectionAxis(self._mapping_structure(to_match))
+            direct_rank = self._axis_rank(direct_axis)
+            candidates = {}
+            for inherited_axis, residual_axes in embedded_direct_axes:
+                refined_axis = axis_refinements[inherited_axis.axis_id]
+                for residual_axis in residual_axes:
+                    component_slice = refined_axis.component_path_slice(residual_axis.axis_id)
+                    residual_rank = self._axis_rank(residual_axis)
+                    if (
+                        component_slice
+                        and direct_rank <= residual_rank
+                        and matching.MatchingCollections._axes_have_compatible_or_refined_shape(
+                            direct_axis, residual_axis
+                        )
+                    ):
+                        direct_slice = (component_slice[0], component_slice[0] + direct_rank)
+                        candidates[(inherited_axis.axis_id, direct_slice)] = inherited_axis
+            if len(candidates) != 1:
+                raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+            (axis_id, component_slice), inherited_axis = next(iter(candidates.items()))
+            assert inherited_axis.axis_id == axis_id
+            collections_to_match.pop(input_name)
+            inherited_bindings[input_name] = (
+                to_match,
+                (inherited_axis,),
+                (),
+                (component_slice,),
+            )
+
+    def _structure_suffix(self, structure, prefix_rank):
+        if prefix_rank == 0:
+            return structure
+        collection_types = structure.collection_type_description.collection_type.split(":")[prefix_rank:]
+        type_description = self.trans.app.dataset_collection_manager.collection_type_descriptions.for_collection_type(
+            ":".join(collection_types)
+        )
+        if not structure.children_known:
+            return UninitializedTree(type_description)
+
+        candidates = [structure]
+        for _depth in range(prefix_rank):
+            next_candidates = []
+            for candidate in candidates:
+                for _identifier, child in candidate.children:
+                    if child.is_leaf:
+                        raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+                    next_candidates.append(child)
+            candidates = next_candidates
+        if not candidates:
+            return UninitializedTree(type_description)
+        reference = candidates[0]
+        for candidate in candidates[1:]:
+            if not reference.compatible_shape(candidate) or not self._structures_have_same_identifiers(
+                reference, candidate
+            ):
+                raise exceptions.MessageException(matching.CANNOT_MATCH_ERROR_MESSAGE)
+        return reference
+
+    @classmethod
+    def _structures_have_same_identifiers(cls, left, right):
+        if left.is_leaf or right.is_leaf:
+            return left.is_leaf and right.is_leaf
+        if [identifier for identifier, _child in left.children] != [
+            identifier for identifier, _child in right.children
+        ]:
+            return False
+        return all(
+            cls._structures_have_same_identifiers(left_child, right_child)
+            for (_left_identifier, left_child), (_right_identifier, right_child) in zip(left.children, right.children)
+        )
+
+    def _mapping_structure(self, to_match):
+        child_collection = matching.get_collection(to_match.hdca)
+        collection_type_description = (
+            self.trans.app.dataset_collection_manager.collection_type_descriptions.for_collection_type(
+                child_collection.collection_type
+            )
+        )
+        return matching.get_structure(
+            child_collection,
+            collection_type_description,
+            leaf_subcollection_type=to_match.subcollection_type,
+        )
+
+    def _take_axis_prefix(self, axes, rank):
+        selected_axes = []
+        remaining_rank = rank
+        for axis in axes:
+            if remaining_rank <= 0:
+                break
+            axis_rank = len(axis.structure.collection_type_description.collection_type.split(":"))
+            if axis_rank <= remaining_rank:
+                selected_axes.append(axis)
+                remaining_rank -= axis_rank
+            else:
+                selected_axes.append(self._truncate_axis(axis, remaining_rank))
+                remaining_rank = 0
+        return tuple(selected_axes)
+
+    def _truncate_axis(self, axis, rank):
+        collection_type = axis.structure.collection_type_description.collection_type
+        prefix_collection_type = ":".join(collection_type.split(":")[:rank])
+        type_description = self.trans.app.dataset_collection_manager.collection_type_descriptions.for_collection_type(
+            prefix_collection_type
+        )
+
+        def truncate_structure(structure, remaining_rank, description):
+            if not structure.children_known:
+                return UninitializedTree(description)
+            if remaining_rank == 1:
+                children = [(identifier, matching.leaf) for identifier, _child in structure.children]
+            else:
+                child_description = description.subcollection_type_description()
+                children = [
+                    (identifier, truncate_structure(child, remaining_rank - 1, child_description))
+                    for identifier, child in structure.children
+                ]
+            return Tree(children, description)
+
+        return matching.MatchingCollectionAxis(
+            truncate_structure(axis.structure, rank, type_description),
+            ("axis-prefix", axis.axis_id, rank),
+        )
+
+    @staticmethod
+    def _source_mapping_axes(progress, step, input_name):
+        axes = []
+        for connection in step.input_connections_by_name.get(input_name, []):
+            source_step_id = connection.output_step.id
+            source_axes = progress.inherited_input_axes.get(source_step_id)
+            if source_axes is None:
+                source_axes = progress.output_mapping_axes.get((source_step_id, connection.output_name))
+            for axis in source_axes or ():
+                if not any(axis.axis_id == existing.axis_id for existing in axes):
+                    axes.append(axis)
+        return tuple(axes)
+
+    @staticmethod
+    def _assign_linked_axis_identity(progress, step, collections_to_match, residual_binding_names=()):
+        linked_inputs = [(name, to_match) for name, to_match in collections_to_match.items() if to_match.linked]
+        linked_input_names = [name for name, _to_match in linked_inputs]
+        linked_input_names.extend(residual_binding_names)
+        if not linked_input_names:
+            return None
+
+        source_tokens = set()
+        for input_name in linked_input_names:
+            for connection in step.input_connections_by_name.get(input_name, []):
+                source_tokens.add((connection.output_step.id, connection.output_name))
+
+        invocation_uuid = progress.workflow_invocation.uuid
+        assert invocation_uuid is not None
+        axis_id = ("workflow-map", str(invocation_uuid), tuple(sorted(source_tokens)))
+        for _input_name, to_match in linked_inputs:
+            to_match.axis_id = axis_id
+        return axis_id
 
     def _find_collections_to_match(self, progress: "WorkflowProgress", step, all_inputs) -> matching.CollectionsToMatch:
         collections_to_match = matching.CollectionsToMatch()
@@ -1032,8 +1559,52 @@ class SubWorkflowModule(WorkflowModule):
                     )
                 )
             outputs[workflow_output_label] = replacement
-        progress.set_step_outputs(invocation_step, outputs)
+        output_mapping_axes = self._collect_output_mapping_axes(subworkflow, subworkflow_progress, collection_info)
+        progress.set_step_outputs(invocation_step, outputs, output_mapping_axes=output_mapping_axes)
         return None
+
+    @staticmethod
+    def _collect_output_mapping_axes(subworkflow, subworkflow_progress, collection_info):
+        output_mapping_axes = {}
+        for workflow_output in subworkflow.workflow_outputs:
+            workflow_output_label = (
+                workflow_output.label or f"{workflow_output.workflow_step.order_index}:{workflow_output.output_name}"
+            )
+            axes = subworkflow_progress.output_mapping_axes.get(
+                (workflow_output.workflow_step_id, workflow_output.output_name)
+            )
+            if axes:
+                output_mapping_axes[workflow_output_label] = axes
+            elif collection_info:
+                output_mapping_axes[workflow_output_label] = tuple(collection_info.mapping_axes)
+        return output_mapping_axes
+
+    def recover_mapping(self, invocation_step, progress):
+        outputs = {}
+        for output_dataset_assoc in invocation_step.output_datasets:
+            outputs[output_dataset_assoc.output_name] = output_dataset_assoc.dataset
+        for output_dataset_collection_assoc in invocation_step.output_dataset_collections:
+            outputs[output_dataset_collection_assoc.output_name] = output_dataset_collection_assoc.dataset_collection
+
+        step = invocation_step.workflow_step
+        collection_info = self.compute_collection_info(progress, step, self.get_all_inputs())
+        subworkflow_invoker = progress.subworkflow_invoker(
+            self.trans,
+            step,
+            subworkflow_collection_info=collection_info,
+        )
+        subworkflow_invoker.progress.remaining_steps()
+        output_mapping_axes = self._collect_output_mapping_axes(
+            subworkflow_invoker.workflow,
+            subworkflow_invoker.progress,
+            collection_info,
+        )
+        progress.set_step_outputs(
+            invocation_step,
+            outputs,
+            already_persisted=True,
+            output_mapping_axes=output_mapping_axes,
+        )
 
     def get_runtime_state(self):
         state = DefaultToolState()
@@ -2244,7 +2815,7 @@ class PickValueModule(WorkflowModule):
                     replacements.append(replacement)
             output = self._pick_from_replacements(trans, invocation_step, mode, replacements)
 
-        progress.set_step_outputs(invocation_step, {"output": output})
+        progress.set_step_outputs(invocation_step, {"output": output}, collection_info=collection_info)
         self._apply_post_job_actions(trans, step, output, progress.effective_replacement_dict())
         return None
 
@@ -2257,7 +2828,7 @@ class PickValueModule(WorkflowModule):
         input_names = {d["name"] for d in all_inputs}
 
         per_element_outputs: list[tuple[str, Any]] = []
-        for iteration_elements, _when_value in collection_info.slice_collections():
+        for iteration_elements, when_value in collection_info.slice_collections():
             # For each slice, extract per-element replacements
             replacements = []
             for input_dict in all_inputs:
@@ -2271,7 +2842,13 @@ class PickValueModule(WorkflowModule):
                 if replacement is not NO_REPLACEMENT:
                     replacements.append(replacement)
 
-            element_output = self._pick_from_replacements(trans, invocation_step, mode, replacements)
+            if when_value is False:
+                if mode == "all_non_null":
+                    element_output = self._create_collection_from_list(trans, invocation_step, [])
+                else:
+                    element_output = self._create_skipped_output(trans, invocation_step)
+            else:
+                element_output = self._pick_from_replacements(trans, invocation_step, mode, replacements)
             # Track the identifier from the first mapped input for naming
             first_mapped = (
                 next(
@@ -2285,7 +2862,13 @@ class PickValueModule(WorkflowModule):
             per_element_outputs.append((identifier, element_output))
 
         # Build the output collection from per-element outputs
-        return self._create_mapped_output_collection(trans, history, mode, per_element_outputs)
+        return self._create_mapped_output_collection(
+            trans,
+            history,
+            mode,
+            per_element_outputs,
+            collection_info.structure,
+        )
 
     def _create_skipped_output(self, trans: "ProvidesHistoryContext", invocation_step):
         """Create a skipped HDA for first_or_skip when all inputs are null."""
@@ -2326,49 +2909,56 @@ class PickValueModule(WorkflowModule):
         )
         return hdca
 
-    def _create_mapped_output_collection(self, trans: "ProvidesHistoryContext", history, mode, per_element_outputs):
+    def _create_mapped_output_collection(
+        self,
+        trans: "ProvidesHistoryContext",
+        history,
+        mode,
+        per_element_outputs,
+        mapping_structure,
+    ):
         """Create an implicit output collection from per-element pick results.
 
-        For single-value modes (first_non_null, etc.), creates a flat list of HDAs.
-        For all_non_null mode, creates a list:list where each element is a sub-collection.
+        Preserve the complete effective mapping structure. For all_non_null,
+        append the list produced at each mapped coordinate.
         """
         collection_manager = trans.app.dataset_collection_manager
-        if mode == "all_non_null":
-            # Each element is an HDCA — build list:list
-            elements = []
-            for identifier, hdca in per_element_outputs:
-                elements.append(
-                    dict(
-                        name=identifier,
-                        src="hdca",
-                        id=hdca.id,
+        output_values = iter(output for _identifier, output in per_element_outputs)
+        output_suffix = ":list" if mode == "all_non_null" else ""
+
+        def build_identifiers(structure):
+            identifiers = []
+            for identifier, child_structure in structure.children:
+                if child_structure.is_leaf:
+                    output = next(output_values)
+                    identifiers.append(
+                        dict(
+                            name=identifier,
+                            src="hdca" if mode == "all_non_null" else "hda",
+                            id=output.id,
+                        )
                     )
-                )
-            return collection_manager.create(
-                trans,
-                history,
-                name="Pick Value - mapped all non-null",
-                collection_type="list:list",
-                element_identifiers=elements,
-            )
-        else:
-            # Each element is an HDA — build flat list
-            elements = []
-            for identifier, hda in per_element_outputs:
-                elements.append(
-                    dict(
-                        name=identifier,
-                        src="hda",
-                        id=hda.id,
+                else:
+                    identifiers.append(
+                        dict(
+                            name=identifier,
+                            src="new_collection",
+                            collection_type=(
+                                child_structure.collection_type_description.collection_type + output_suffix
+                            ),
+                            element_identifiers=build_identifiers(child_structure),
+                        )
                     )
-                )
-            return collection_manager.create(
-                trans,
-                history,
-                name="Pick Value - mapped",
-                collection_type="list",
-                element_identifiers=elements,
-            )
+            return identifiers
+
+        mapping_collection_type = mapping_structure.collection_type_description.collection_type
+        return collection_manager.create(
+            trans,
+            history,
+            name="Pick Value - mapped all non-null" if mode == "all_non_null" else "Pick Value - mapped",
+            collection_type=mapping_collection_type + output_suffix,
+            element_identifiers=build_identifiers(mapping_structure),
+        )
 
     def _apply_post_job_actions(self, trans: "ProvidesAppContext", step, output, replacement_dict):
         """Apply post job actions directly to module output via ActionBox.
@@ -3285,7 +3875,12 @@ class ToolModule(WorkflowModule):
         else:
             step_outputs.update(execution_tracker.output_datasets)
             step_outputs.update(execution_tracker.output_collections)
-        progress.set_step_outputs(invocation_step, step_outputs, already_persisted=not invocation_step.is_new)
+        progress.set_step_outputs(
+            invocation_step,
+            step_outputs,
+            already_persisted=not invocation_step.is_new,
+            collection_info=collection_info,
+        )
 
         if collection_info:
             step_inputs = mapping_params.param_template
