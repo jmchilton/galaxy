@@ -10,6 +10,7 @@ import re
 from collections import defaultdict
 from collections.abc import (
     Callable,
+    Hashable,
     Iterable,
 )
 from typing import (
@@ -50,6 +51,9 @@ from galaxy.model.dataset_collections import matching
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
 from galaxy.model.dataset_collections.query import HistoryQuery
 from galaxy.model.dataset_collections.structure import (
+    get_collection,
+    get_structure,
+    leaf,
     Tree,
     UninitializedTree,
 )
@@ -794,7 +798,7 @@ class WorkflowModule:
             _inherited_path_ranks,
         ) in inherited_bindings.items():
             if residual_axes:
-                structure = matching.leaf
+                structure = leaf
                 for axis in residual_axes:
                     structure = structure.multiply(axis.structure)
                 residual_axis = matching.MatchingCollectionAxis(
@@ -896,7 +900,7 @@ class WorkflowModule:
             for input_name, to_match in collections_to_match.items()
         )
         inherited_bindings = {}
-        axis_refinements = {}
+        axis_refinements: dict[Hashable, matching.MatchingCollectionAxis] = {}
         embedded_direct_axes = []
         for input_name, to_match in list(collections_to_match.items()):
             axes = source_axes_by_input[input_name]
@@ -1030,7 +1034,7 @@ class WorkflowModule:
 
     @classmethod
     def _combined_axis_components(cls, axes):
-        components = []
+        components: list[tuple[Hashable, int, int]] = []
         offset = 0
         for axis in axes:
             components.extend(
@@ -1150,13 +1154,13 @@ class WorkflowModule:
         )
 
     def _mapping_structure(self, to_match):
-        child_collection = matching.get_collection(to_match.hdca)
+        child_collection = get_collection(to_match.hdca)
         collection_type_description = (
             self.trans.app.dataset_collection_manager.collection_type_descriptions.for_collection_type(
                 child_collection.collection_type
             )
         )
-        return matching.get_structure(
+        return get_structure(
             child_collection,
             collection_type_description,
             leaf_subcollection_type=to_match.subcollection_type,
@@ -1188,7 +1192,7 @@ class WorkflowModule:
             if not structure.children_known:
                 return UninitializedTree(description)
             if remaining_rank == 1:
-                children = [(identifier, matching.leaf) for identifier, _child in structure.children]
+                children = [(identifier, leaf) for identifier, _child in structure.children]
             else:
                 child_description = description.subcollection_type_description()
                 children = [
@@ -1204,7 +1208,7 @@ class WorkflowModule:
 
     @staticmethod
     def _source_mapping_axes(progress, step, input_name):
-        axes = []
+        axes: list[matching.MatchingCollectionAxis] = []
         for connection in step.input_connections_by_name.get(input_name, []):
             source_step_id = connection.output_step.id
             source_axes = progress.inherited_input_axes.get(source_step_id)
@@ -1723,7 +1727,9 @@ class SubWorkflowModule(WorkflowModule):
         elif isinstance(value, model.DatasetCollectionElement):
             if value.hda:
                 return skipped_hda or value.hda
-            collection = value.child_collection
+            child_collection = value.child_collection
+            assert child_collection is not None
+            collection = child_collection
         else:
             raise exceptions.MessageException(
                 "Mapped subworkflow parameter pass-through outputs are not supported; only datasets and collections "
