@@ -1558,10 +1558,201 @@ class SubWorkflowModule(WorkflowModule):
                         dependent_workflow_step_id=step.id,
                     )
                 )
+            replacement = self._shape_passthrough_output(
+                trans,
+                invocation_step,
+                workflow_output,
+                workflow_output_label,
+                replacement,
+                collection_info,
+            )
             outputs[workflow_output_label] = replacement
         output_mapping_axes = self._collect_output_mapping_axes(subworkflow, subworkflow_progress, collection_info)
         progress.set_step_outputs(invocation_step, outputs, output_mapping_axes=output_mapping_axes)
         return None
+
+    @staticmethod
+    def _shape_passthrough_output(
+        trans,
+        invocation_step,
+        workflow_output,
+        workflow_output_label,
+        replacement,
+        collection_info,
+    ):
+        """Give a directly exported child input the callable's mapping shape."""
+        output_step = workflow_output.workflow_step
+        if not collection_info or not output_step.is_input_type or replacement is NO_REPLACEMENT:
+            return replacement
+
+        parent_step = invocation_step.workflow_step
+        boundary_connection = next(
+            (
+                connection
+                for connection in parent_step.input_connections
+                if connection.input_subworkflow_step_id == output_step.id
+            ),
+            None,
+        )
+        input_name = boundary_connection.input_name if boundary_connection else None
+        binding = collection_info.bindings.get(input_name) if input_name else None
+        has_false_coordinates = any(False in condition.values for condition in collection_info.conditions)
+        if (
+            binding
+            and not has_false_coordinates
+            and SubWorkflowModule._binding_covers_mapping_axes(binding, collection_info.mapping_axes)
+        ):
+            # The incoming object already contains every inherited coordinate;
+            # preserve its identity instead of materializing an equivalent copy.
+            return replacement
+
+        per_coordinate_values = []
+        for iteration_elements, when_value in collection_info.slice_collections():
+            if binding:
+                element = iteration_elements[input_name]
+                value = element.hda if element.hda else element.child_collection
+            else:
+                value = replacement
+            per_coordinate_values.append((value, when_value is False))
+
+        suffix_type = SubWorkflowModule._passthrough_value_collection_type(
+            per_coordinate_values[0][0] if per_coordinate_values else replacement
+        )
+        mapping_structure = collection_info.structure
+        assert mapping_structure is not None
+        output_values = iter(per_coordinate_values)
+        skipped_hda = (
+            SubWorkflowModule._create_skipped_passthrough_hda(trans, invocation_step)
+            if any(skipped for _value, skipped in per_coordinate_values)
+            else None
+        )
+        collection_manager = trans.app.dataset_collection_manager
+        history = invocation_step.workflow_invocation.history
+
+        def build_elements(structure):
+            elements = {}
+            for identifier, child_structure in structure.children:
+                if child_structure.is_leaf:
+                    value, skipped = next(output_values)
+                    element = SubWorkflowModule._passthrough_value_object(
+                        collection_manager,
+                        trans,
+                        history,
+                        value,
+                        skipped_hda if skipped else None,
+                    )
+                else:
+                    element = collection_manager.create_dataset_collection(
+                        trans,
+                        collection_type=child_structure.collection_type_description.collection_type
+                        + (f":{suffix_type}" if suffix_type else ""),
+                        elements=build_elements(child_structure),
+                        column_definitions=child_structure.column_definitions,
+                        rows=child_structure.columns_metadata,
+                    )
+                elements[identifier] = element
+            return elements
+
+        mapping_type = mapping_structure.collection_type_description.collection_type
+        output_type = mapping_type + (f":{suffix_type}" if suffix_type else "")
+        return collection_manager.create(
+            trans,
+            history,
+            name=f"{parent_step.label or 'Subworkflow'}: {workflow_output_label}",
+            collection_type=output_type,
+            elements=build_elements(mapping_structure),
+            column_definitions=mapping_structure.column_definitions,
+            rows=mapping_structure.columns_metadata,
+        )
+
+    @staticmethod
+    def _binding_covers_mapping_axes(binding, mapping_axes):
+        """Return whether a binding consumes every axis path in canonical order."""
+        expected_axis_index = 0
+        expected_path_start = 0
+        path_slices = binding.axis_path_slices or ((0, None),) * len(binding.axis_indices)
+        if len(path_slices) != len(binding.axis_indices):
+            return False
+        for axis_index, path_slice in zip(binding.axis_indices, path_slices):
+            if axis_index != expected_axis_index or axis_index >= len(mapping_axes):
+                return False
+            axis_rank = len(mapping_axes[axis_index].structure.collection_type_description.collection_type.split(":"))
+            start, stop = path_slice
+            start = start or 0
+            stop = axis_rank if stop is None else stop
+            if start != expected_path_start or stop <= start or stop > axis_rank:
+                return False
+            if stop == axis_rank:
+                expected_axis_index += 1
+                expected_path_start = 0
+            else:
+                expected_path_start = stop
+        return expected_axis_index == len(mapping_axes) and expected_path_start == 0
+
+    @staticmethod
+    def _passthrough_value_collection_type(value):
+        if isinstance(value, model.HistoryDatasetCollectionAssociation):
+            return value.collection.collection_type
+        if isinstance(value, model.DatasetCollection):
+            return value.collection_type
+        if isinstance(value, model.DatasetCollectionElement) and value.child_collection:
+            return value.child_collection.collection_type
+        if isinstance(value, model.HistoryDatasetAssociation):
+            return None
+        raise exceptions.MessageException(
+            "Mapped subworkflow parameter pass-through outputs are not supported; only datasets and collections can "
+            "carry mapping structure."
+        )
+
+    @staticmethod
+    def _passthrough_value_object(collection_manager, trans, history, value, skipped_hda=None):
+        if isinstance(value, model.HistoryDatasetAssociation):
+            return skipped_hda or value
+        if isinstance(value, model.HistoryDatasetCollectionAssociation):
+            collection = value.collection
+        elif isinstance(value, model.DatasetCollection):
+            collection = value
+        elif isinstance(value, model.DatasetCollectionElement):
+            if value.hda:
+                return skipped_hda or value.hda
+            collection = value.child_collection
+        else:
+            raise exceptions.MessageException(
+                "Mapped subworkflow parameter pass-through outputs are not supported; only datasets and collections "
+                "can carry mapping structure."
+            )
+        assert collection is not None
+        return collection_manager.create_dataset_collection(
+            trans,
+            collection_type=collection.collection_type,
+            elements={
+                element.element_identifier: SubWorkflowModule._passthrough_value_object(
+                    collection_manager, trans, history, element, skipped_hda
+                )
+                for element in collection.elements
+            },
+            history=history,
+            column_definitions=collection.column_definitions,
+            rows={
+                element.element_identifier: element.columns
+                for element in collection.elements
+                if element.columns is not None
+            },
+        )
+
+    @staticmethod
+    def _create_skipped_passthrough_hda(trans, invocation_step):
+        history = invocation_step.workflow_invocation.history
+        hda = model.HistoryDatasetAssociation(
+            name="Subworkflow pass-through - skipped",
+            history=history,
+            create_dataset=True,
+            flush=False,
+        )
+        history.add_dataset(hda)
+        hda.set_skipped(ObjectStorePopulator(trans.app, trans.user), replace_dataset=False)
+        trans.sa_session.add(hda)
+        return hda
 
     @staticmethod
     def _collect_output_mapping_axes(subworkflow, subworkflow_progress, collection_info):
@@ -1594,6 +1785,20 @@ class SubWorkflowModule(WorkflowModule):
             subworkflow_collection_info=collection_info,
         )
         subworkflow_invoker.progress.remaining_steps()
+        for workflow_output in subworkflow_invoker.workflow.workflow_outputs:
+            output_label = (
+                workflow_output.label or f"{workflow_output.workflow_step.order_index}:{workflow_output.output_name}"
+            )
+            if output_label in outputs:
+                continue
+            try:
+                replacement = subworkflow_invoker.progress.get_replacement_workflow_output(workflow_output)
+            except KeyError:
+                continue
+            if isinstance(replacement, NoReplacement) or (
+                isinstance(replacement, dict) and replacement.get("__class__") == "NoReplacement"
+            ):
+                outputs[output_label] = NO_REPLACEMENT
         output_mapping_axes = self._collect_output_mapping_axes(
             subworkflow_invoker.workflow,
             subworkflow_invoker.progress,
