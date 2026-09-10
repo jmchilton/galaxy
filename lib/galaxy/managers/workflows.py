@@ -157,12 +157,27 @@ INDEX_SEARCH_FILTERS = {
 }
 
 
+def _legacy_state_label(step_type: str | None, state: Any) -> str | None:
+    """Previously data input modules stored their name in tool state instead of a label."""
+    if step_type not in ("data_input", "data_collection_input"):
+        return None
+    default_label = (safe_loads(state) or {}).get("name")
+    if not default_label or util.unicodify(default_label).lower() in ("input dataset", "input dataset collection"):
+        return None
+    return default_label
+
+
+def _effective_step_label(step: model.WorkflowStep) -> str | None:
+    """Label a step will end up with, including labels still carried in legacy tool state."""
+    return step.label or _legacy_state_label(step.type, step.tool_inputs)
+
+
 def _workflow_input_name_upgrades(workflow: Workflow) -> dict[int, tuple[str, str]]:
     """Return deterministic replacements for legacy workflow input names containing pipes."""
-    unavailable_names = {step.label for step in workflow.steps if step.label}
+    unavailable_names = {label for step in workflow.steps if (label := _effective_step_label(step))}
     upgrades = {}
     for step in workflow.input_steps:
-        input_name = step.label
+        input_name = _effective_step_label(step)
         if not input_name or WORKFLOW_INPUT_NAME_RESERVED_CHARACTER not in input_name:
             continue
 
@@ -2031,16 +2046,20 @@ class WorkflowContentsManager(UsesAnnotations):
                 if uuid in discovered_uuids:
                     raise exceptions.DuplicatedIdentifierException(f"Duplicate step UUID '{uuid}' in request.")
                 discovered_uuids.add(uuid)
+            step_type = step_dict.get("type")
             label = step_dict.get("label", None)
+            # legacy data inputs carry their label in tool state, it is promoted to a label on save
+            input_name = label or _legacy_state_label(step_type, step_dict.get("tool_state"))
+            if (
+                input_name
+                and step_type in model.Workflow.input_step_types
+                and WORKFLOW_INPUT_NAME_RESERVED_CHARACTER in input_name
+            ):
+                raise exceptions.ObjectAttributeInvalidException(
+                    f"Workflow input name '{input_name}' cannot contain "
+                    f"'{WORKFLOW_INPUT_NAME_RESERVED_CHARACTER}', which is reserved for nested tool inputs."
+                )
             if label:
-                if (
-                    step_dict.get("type") in model.Workflow.input_step_types
-                    and WORKFLOW_INPUT_NAME_RESERVED_CHARACTER in label
-                ):
-                    raise exceptions.ObjectAttributeInvalidException(
-                        f"Workflow input name '{label}' cannot contain "
-                        f"'{WORKFLOW_INPUT_NAME_RESERVED_CHARACTER}', which is reserved for nested tool inputs."
-                    )
                 if label in discovered_labels:
                     raise exceptions.DuplicatedIdentifierException(f"Duplicated step label '{label}' in request.")
                 discovered_labels.add(label)
@@ -2400,13 +2419,8 @@ class WorkflowContentsManager(UsesAnnotations):
         """Previously data input modules had a `name` attribute to rename individual steps. Here, this value is transferred
         to the actual `label` attribute which is available for all module types, unique, and mapped to its own database column.
         """
-        if not module.label and module.type in ["data_input", "data_collection_input"]:
-            new_state = safe_loads(state) or {}
-            default_label = new_state.get("name")
-            if default_label and util.unicodify(default_label).lower() not in [
-                "input dataset",
-                "input dataset collection",
-            ]:
+        if not module.label:
+            if default_label := _legacy_state_label(module.type, state):
                 step.label = module.label = default_label
 
     def do_refactor(
