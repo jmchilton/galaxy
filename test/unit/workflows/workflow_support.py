@@ -31,6 +31,13 @@ class MockTrans:
             self._user = model.User(email="testworkflows@bx.psu.edu", password="password")
         return self._user
 
+    def get_user(self):
+        return self.user
+
+    @property
+    def security(self):
+        return self.app.security
+
 
 class MockApp(galaxy_mock.MockApp):
     def __init__(self):
