@@ -24111,6 +24111,8 @@ export interface components {
              * @default Collection
              */
             class: "Collection" | null;
+            /** Count */
+            count?: number | null;
             /** Element Tests */
             element_tests?: {
                 [key: string]:
@@ -24123,6 +24125,10 @@ export interface components {
                     | components["schemas"]["TestCollectionDatasetElementAssertions-Input"]
                     | components["schemas"]["TestCollectionCollectionElementAssertions-Input"];
             } | null;
+            /** Maximum Count */
+            max?: number | null;
+            /** Minimum Count */
+            min?: number | null;
         };
         /** TestCollectionCollectionElementAssertions */
         "TestCollectionCollectionElementAssertions-Output": {
@@ -24131,6 +24137,8 @@ export interface components {
              * @default Collection
              */
             class: "Collection" | null;
+            /** Count */
+            count?: number | null;
             /** Element Tests */
             element_tests?: {
                 [key: string]:
@@ -24143,6 +24151,10 @@ export interface components {
                     | components["schemas"]["TestCollectionDatasetElementAssertions-Output"]
                     | components["schemas"]["TestCollectionCollectionElementAssertions-Output"];
             } | null;
+            /** Maximum Count */
+            max?: number | null;
+            /** Minimum Count */
+            min?: number | null;
         };
         /** TestCollectionDatasetElementAssertions */
         "TestCollectionDatasetElementAssertions-Input": {

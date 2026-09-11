@@ -660,6 +660,9 @@ class TestDataOutputAssertions(BaseTestOutputModel):
 class TestCollectionCollectionElementAssertions(StrictModel):
     model_config = ConfigDict(extra="forbid", title="TestCollectionCollectionElementAssertions")
     class_: Literal["Collection"] | None = Field("Collection", alias="class", title="Class")
+    count: Annotated[int | None, Field(title="Count")] = None
+    min: Annotated[int | None, Field(title="Minimum Count")] = None
+    max: Annotated[int | None, Field(title="Maximum Count")] = None
     elements: Annotated[
         dict[str, "TestCollectionElementAssertion"] | None,
         Field(title="Elements"),

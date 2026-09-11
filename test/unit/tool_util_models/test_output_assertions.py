@@ -59,6 +59,40 @@ def test_nested_collection_element_with_class_collection_validates():
     assert isinstance(inner, TestCollectionCollectionElementAssertions)
 
 
+def test_nested_collection_element_cardinality_assertions_validate():
+    tests = Tests.model_validate(
+        _one_test(
+            {
+                "out": {
+                    "class": "Collection",
+                    "elements": {
+                        "inner": {
+                            "class": "Collection",
+                            "count": 2,
+                            "min": 1,
+                            "max": 3,
+                        }
+                    },
+                }
+            }
+        )
+    )
+    out = tests.root[0].outputs["out"]
+    assert isinstance(out, TestCollectionOutputAssertions)
+    assert out.elements is not None
+    inner = out.elements["inner"]
+    assert isinstance(inner, TestCollectionCollectionElementAssertions)
+    assert (inner.count, inner.min, inner.max) == (2, 1, 3)
+
+
+def test_nested_collection_element_schema_exposes_cardinality_assertions():
+    schema = Tests.model_json_schema()
+    props = schema["$defs"]["TestCollectionCollectionElementAssertions"]["properties"]
+    assert props["count"]["title"] == "Count"
+    assert props["min"]["title"] == "Minimum Count"
+    assert props["max"]["title"] == "Maximum Count"
+
+
 def test_unknown_field_on_file_output_yields_single_error():
     with pytest.raises(ValidationError) as exc:
         Tests.model_validate(_one_test({"out": {"asserts": [], "garbage_key": 1}}))
