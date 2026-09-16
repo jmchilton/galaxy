@@ -378,9 +378,11 @@ class Base(DeclarativeBase, _HasTable):
     mapper_registry.metadata = metadata
     registry = mapper_registry
 
-    @classmethod
-    def __declare_last__(cls):
-        cls.table = cls.__table__
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Migrations use this alias before mapper configuration is requested.
+        if hasattr(cls, "__table__"):
+            cls.table = cls.__table__
 
 
 class RepresentById:
@@ -11337,6 +11339,7 @@ class MetadataFile(Base, StorableObject, Serializable):
     def _serialize(self, id_encoder, serialization_options):
         as_dict = dict_for(self)
         serialization_options.attach_identifier(id_encoder, self, as_dict)
+        as_dict["name"] = self.name
         as_dict["uuid"] = str(self.uuid or "") or None
         return as_dict
 

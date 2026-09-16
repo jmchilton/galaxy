@@ -3,12 +3,16 @@
 import logging
 from uuid import uuid4
 
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.job_execution.output_collect_utils import (
     dataset_collector,
     DEFAULT_DATASET_COLLECTOR,
     discover_files,
     discovered_file_for_element,
     MaxDiscoveredFilesExceededError,
+    OutputCollectionSecurityError,
+    safe_path_from_directory,
+    validate_unnamed_outputs,
 )
 from galaxy.objectstore import persist_extra_files
 from galaxy.tool_util.parser.output_objects import (
@@ -38,6 +42,9 @@ class LightweightJobContext:
         max_discovered_files,
     ):
         self.metadata_params = metadata_params
+        # Match the ORM context's compatibility defaults for jobs prepared by older Galaxy versions.
+        self.allows_unnamed_outputs = metadata_params.get("allows_unnamed_outputs", True)
+        self.allows_external_output_paths = metadata_params.get("allows_external_output_paths", True)
         self.tool_provided_metadata = tool_provided_metadata
         self.object_store = object_store
         self.export_store = export_store
@@ -114,7 +121,11 @@ class LightweightJobContext:
                     dataset.dataset.object_store_id = object_store_id
                 self.object_store.update_from_file(dataset.dataset, file_name=path, create=True)
             if match.extra_files:
-                persist_extra_files(self.object_store, match.extra_files, dataset)
+                persist_extra_files(
+                    self.object_store,
+                    safe_path_from_directory(match.extra_files, self.job_working_directory),
+                    dataset,
+                )
                 dataset.set_size()
             else:
                 dataset.set_size(no_extra_files=True)
@@ -367,6 +378,8 @@ def _collect_unnamed_hdca(context, unnamed_output, output_collections):
         if hdca is None:
             raise ValueError(f"Failed to find target dataset collection [{collection_id}]")
     else:
+        if not unnamed_output.get("collection_type"):
+            raise RequestParameterInvalidException("Must specify an HDCA collection_type")
         name = unnamed_output.get("name", "unnamed collection")
         hdca = context.export_store.dataset_collections.create(
             name,
@@ -409,7 +422,7 @@ def _collect_unnamed_hdca(context, unnamed_output, output_collections):
 
 
 def collect_dynamic_outputs(context: LightweightJobContext, output_collections):
-    for unnamed_output in context.tool_provided_metadata.get_unnamed_outputs():
+    for unnamed_output in validate_unnamed_outputs(context):
         for element in unnamed_output["elements"]:
             element_name = element.get("name")
             rows = unnamed_output.get("rows", {})
@@ -459,6 +472,9 @@ def collect_dynamic_outputs(context: LightweightJobContext, output_collections):
             raise
         except LightweightJobOutputNameTooLongError:
             collection.handle_population_failed("Tool produced an output dataset name that is too long.")
+            raise
+        except OutputCollectionSecurityError:
+            collection.handle_population_failed("Problem building datasets for collection.")
             raise
         except Exception:
             log.exception("Problem gathering output collection")

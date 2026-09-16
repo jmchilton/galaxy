@@ -7,25 +7,16 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from galaxy.datatypes import sniff
 from galaxy.datatypes.metadata import (
     MetadataCollection,
     MetadataTempFile,
 )
+from galaxy.datatypes.sniff import resolve_sniffed_dataset as resolve_sniffed_dataset
 from galaxy.schema.states import (
     DatasetCollectionPopulatedState,
     DatasetState,
 )
 from galaxy.util import nice_size as format_size
-
-
-def resolve_sniffed_dataset(dataset_instance, datatypes_registry):
-    if dataset_instance.extension != "_sniff_":
-        return
-    extension = sniff.handle_uploaded_dataset_file(dataset_instance.dataset.get_file_name(), datatypes_registry)
-    dataset_instance.extension = extension
-    dataset_instance.init_meta()
-    dataset_instance.metadata.__extension__ = extension
 
 
 class MetadataFileReference(MetadataTempFile):

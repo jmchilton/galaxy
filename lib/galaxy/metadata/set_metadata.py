@@ -31,8 +31,8 @@ import galaxy.datatypes.registry
 import galaxy.model
 import galaxy.model.mapping
 from galaxy.datatypes.data import validate
-from galaxy.exceptions import MessageException
 from galaxy.datatypes.metadata import MetadataTempFile
+from galaxy.exceptions import MessageException
 from galaxy.job_execution.metadata_constants import (
     LIGHTWEIGHT_MODELS_ENV,
     TOOL_PROVIDED_JOB_METADATA_KEYS,
@@ -43,14 +43,14 @@ from galaxy.job_execution.output_collect import (
     SessionlessJobContext,
 )
 from galaxy.job_execution.output_collect_utils import (
-    ensure_path_in_directory,
-    OutputCollectionSecurityError,
-    validate_unnamed_outputs,
     collect_extra_files,
     collect_shrinked_content_from_path,
     default_exit_code_file,
+    ensure_path_in_directory,
     MaxDiscoveredFilesExceededError,
+    OutputCollectionSecurityError,
     read_exit_code_from,
+    validate_unnamed_outputs,
 )
 from galaxy.job_execution.paths import dataset_path_to_extra_path
 from galaxy.job_execution.pydantic_defer import defer_pydantic_model_builds
@@ -129,6 +129,12 @@ def push_if_necessary(object_store: ObjectStore, dataset, external_filename):
 
 
 def _requires_dynamic_persistence(metadata_params, tool_provided_metadata):
+    if any(
+        definition.get("format_source") or definition.get("metadata_source")
+        for definition in metadata_params.get("tool", {}).get("output_collections", {}).values()
+    ):
+        return True
+
     if any(
         output["destination"]["type"] not in {"hdas", "hdca"} for output in tool_provided_metadata.get_unnamed_outputs()
     ):
@@ -411,8 +417,7 @@ def set_metadata_portable(
             max_discovered_files=max_discovered_files,
             job=job,
         )
-    elif extended_metadata_collection:
-        assert export_store
+    else:
         lightweight_job_context = LightweightJobContext(
             metadata_params,
             tool_provided_metadata,
@@ -426,7 +431,7 @@ def set_metadata_portable(
 
     output_collection_security_error = None
     try:
-        unnamed_outputs = validate_unnamed_outputs(job_context) if job_context else []
+        unnamed_outputs = validate_unnamed_outputs(lightweight_job_context if use_lightweight_store else job_context)
     except OutputCollectionSecurityError as e:
         output_collection_security_error = e
         unnamed_outputs = []
@@ -447,22 +452,6 @@ def set_metadata_portable(
                 name: export_store.datasets.find(output["id"]) for name, output in metadata_params["outputs"].items()
             }
             assert all(output_instances.values())
-            input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
-            try:
-                collect_primary_datasets_lightweight(lightweight_job_context, output_instances, input_ext)
-                collect_dynamic_outputs_lightweight(lightweight_job_context, output_collections)
-            except (MaxDiscoveredFilesExceededError, LightweightJobOutputNameTooLongError) as e:
-                log.warning("Job failed during extended metadata output discovery: %s", e)
-                discovery_failed = True
-                final_job_state = "error"
-                job_messages.append(
-                    {
-                        "type": "max_discovered_files",
-                        "desc": str(e),
-                        "code_desc": None,
-                        "error_level": StdioErrorLevel.FATAL,
-                    }
-                )
         else:
             assert import_model_store
             assert job_context
@@ -478,48 +467,51 @@ def set_metadata_portable(
                 klass = getattr(galaxy.model, output.get("model_class", "HistoryDatasetAssociation"))
                 output_instances[name] = import_model_store.sa_session.query(klass).find(output["id"])
 
-            input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
-            try:
-                if output_collection_security_error:
-                    raise output_collection_security_error
-                collect_primary_datasets(
-                    job_context,
-                    output_instances,
-                    input_ext=input_ext,
-                )
+        input_ext = json.loads(metadata_params["job_params"].get("__input_ext") or '"data"')
+        output_name_error = (
+            LightweightJobOutputNameTooLongError if use_lightweight_store else galaxy.model.JobOutputNameTooLongError
+        )
+        try:
+            if output_collection_security_error:
+                raise output_collection_security_error
+            if use_lightweight_store:
+                collect_primary_datasets_lightweight(lightweight_job_context, output_instances, input_ext)
+                collect_dynamic_outputs_lightweight(lightweight_job_context, output_collections)
+            else:
+                collect_primary_datasets(job_context, output_instances, input_ext=input_ext)
                 collect_dynamic_outputs(job_context, output_collections)
-            except (MaxDiscoveredFilesExceededError, galaxy.model.JobOutputNameTooLongError, OutputCollectionSecurityError) as e:
-                log.warning("Job failed during extended metadata output discovery: %s", e)
-                discovery_failed = True
-                final_job_state = "error"
-                message: AnyJobMessage
-                if isinstance(e, OutputCollectionSecurityError):
-                    message = OutputCollectionSecurityJobMessage(
-                        type="output_collection_security",
-                        desc=str(e),
-                        code_desc=None,
-                        error_level=StdioErrorLevel.FATAL,
-                    )
-                else:
-                    message = MaxDiscoveredFilesJobMessage(
-                        type="max_discovered_files",
-                        desc=str(e),
-                        code_desc=None,
-                        error_level=StdioErrorLevel.FATAL,
-                    )
-                job_messages.append(message)
-            except MessageException as e:
-                log.warning("Job failed during extended metadata output discovery: %s", e)
-                discovery_failed = True
-                final_job_state = "error"
-                job_messages.append(output_discovery_job_message(unicodify(e)))
-            except Exception:
-                log.exception("Unexpected failure during extended metadata output discovery")
-                discovery_failed = True
-                final_job_state = "error"
-                if job:
-                    job.traceback = unicodify(traceback.format_exc(), strip_null=True)
-                job_messages.append(output_discovery_job_message())
+        except (MaxDiscoveredFilesExceededError, output_name_error, OutputCollectionSecurityError) as e:
+            log.warning("Job failed during extended metadata output discovery: %s", e)
+            discovery_failed = True
+            final_job_state = "error"
+            message: AnyJobMessage
+            if isinstance(e, OutputCollectionSecurityError):
+                message = OutputCollectionSecurityJobMessage(
+                    type="output_collection_security",
+                    desc=str(e),
+                    code_desc=None,
+                    error_level=StdioErrorLevel.FATAL,
+                )
+            else:
+                message = MaxDiscoveredFilesJobMessage(
+                    type="max_discovered_files",
+                    desc=str(e),
+                    code_desc=None,
+                    error_level=StdioErrorLevel.FATAL,
+                )
+            job_messages.append(message)
+        except MessageException as e:
+            log.warning("Job failed during extended metadata output discovery: %s", e)
+            discovery_failed = True
+            final_job_state = "error"
+            job_messages.append(output_discovery_job_message(unicodify(e)))
+        except Exception:
+            log.exception("Unexpected failure during extended metadata output discovery")
+            discovery_failed = True
+            final_job_state = "error"
+            if job:
+                job.traceback = unicodify(traceback.format_exc(), strip_null=True)
+            job_messages.append(output_discovery_job_message())
 
         if job:
             job.set_streams(tool_stdout=tool_stdout, tool_stderr=tool_stderr, job_messages=job_messages)
@@ -706,7 +698,7 @@ def set_metadata_portable(
     if export_store:
         export_store.push_metadata_files()
         export_store._finalize()
-        if discovery_failed and job:
+        if not use_lightweight_store and discovery_failed and job:
             # _finalize() builds the jobs attrs file from included_datasets /
             # included_collections via `creating_job_associations`. For tools
             # whose only discoverable outputs are dynamic collections, nothing

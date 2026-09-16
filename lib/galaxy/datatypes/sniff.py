@@ -987,3 +987,12 @@ DECOMPRESSION_FUNCTIONS: dict[str, Callable] = dict(gzip=gzip.GzipFile, bz2=bz2.
 
 class InappropriateDatasetContentError(Exception):
     pass
+
+
+def resolve_sniffed_dataset(dataset_instance, datatypes_registry):
+    if dataset_instance.extension != "_sniff_":
+        return
+    extension = handle_uploaded_dataset_file(dataset_instance.dataset.get_file_name(), datatypes_registry)
+    dataset_instance.extension = extension
+    dataset_instance.init_meta()
+    dataset_instance.metadata.__extension__ = extension

@@ -12,14 +12,7 @@ from typing import (
 )
 
 from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.job_execution.output_format import resolve_format_source
-from galaxy.job_execution.output_collect_utils import (
-    validate_unnamed_outputs as validate_unnamed_outputs,
-    discover_target_directory,
-    ensure_path_in_directory,
-    JsonCollectedDatasetMatch,
-    RegexCollectedDatasetMatch,
-    safe_path_from_directory,
+from galaxy.job_execution.output_collect_utils import (  # noqa: F401 - compatibility re-exports
     collect_extra_files as collect_extra_files,
     collect_shrinked_content_from_path as collect_shrinked_content_from_path,
     dataset_collector as dataset_collector,
@@ -28,9 +21,13 @@ from galaxy.job_execution.output_collect_utils import (
     DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR as DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR,
     discover_files as discover_files,
     DiscoveredFile,
+    ensure_path_in_directory,
     MaxDiscoveredFilesExceededError,
     read_exit_code_from as read_exit_code_from,
+    safe_path_from_directory,
+    validate_unnamed_outputs as validate_unnamed_outputs,
 )
+from galaxy.job_execution.output_format import resolve_format_source
 from galaxy.model import (
     Dataset,
     DatasetInstance,
@@ -53,7 +50,6 @@ from galaxy.model.store.discover import (
     persist_hdas,
     SessionlessModelPersistenceContext,
     UNSET,
-    UntrustedToolProvidedMetadataError,
 )
 from galaxy.objectstore import ObjectStore
 from galaxy.tool_util.parser.output_collection_def import (
