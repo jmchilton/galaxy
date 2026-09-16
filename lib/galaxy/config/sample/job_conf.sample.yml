@@ -957,6 +957,13 @@ execution:
        # specifying any additional remote_property_ of
        # interest, this is not optional when using message
        # queues.
+       #
+       # The literal string __PULSAR_JOBS_DIRECTORY__ is substituted by
+       # Pulsar with its own configured staging directory, so the Galaxy
+       # admin does not have to know the remote path at all. See
+       # "Galaxy Configuration" in the Pulsar documentation
+       # (https://pulsar.readthedocs.io/) for the related per-job
+       # __PULSAR_JOB_DIRECTORY__ token used by file_actions rewrites.
        jobs_directory: /path/to/remote/pulsar/files/staging/
        # Otherwise MQ and Legacy pulsar destinations can be supplied
        # all the same destination parameters as the RESTful client documented
