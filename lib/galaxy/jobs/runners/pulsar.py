@@ -114,6 +114,27 @@ def _tool_provided_metadata_client_outputs(
     return dynamic_output, dynamic_file_sources
 
 
+def _remote_job_directory(remote_job_config: dict) -> str:
+    """The Pulsar-side job directory, exactly as Pulsar reported it.
+
+    Never re-derive this from ``working_directory``. When a destination sets
+    ``jobs_directory`` the client computes every remote path itself, and that
+    value may be relative - ``jobs_directory: __PULSAR_JOBS_DIRECTORY__`` is the
+    documented recipe for letting the Pulsar admin own the staging root. Joining
+    ``os.path.pardir`` and calling ``os.path.abspath`` on such a path splices in
+    Galaxy's own working directory, and it mangles a Windows Pulsar's paths too.
+    """
+    return remote_job_config["job_directory"]
+
+
+def _remote_tool_directory(remote_job_config: dict) -> str:
+    """Where Pulsar stages tool files, as Pulsar reported it.
+
+    Always ``<job_directory>/tool_files``, but joined with the remote separator.
+    """
+    return remote_job_config["tools_directory"]
+
+
 # Is there a good way to infer some default for this? Can only use
 # url_for from web threads. https://gist.github.com/jmchilton/9098762
 DEFAULT_GALAXY_URL = "http://localhost:8080"
@@ -599,8 +620,8 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 compute_environment=compute_environment,
             )
             remote_working_directory = remote_job_config["working_directory"]
-            remote_job_directory = os.path.abspath(os.path.join(remote_working_directory, os.path.pardir))
-            remote_tool_directory = os.path.abspath(os.path.join(remote_job_directory, "tool_files"))
+            remote_job_directory = _remote_job_directory(remote_job_config)
+            remote_tool_directory = _remote_tool_directory(remote_job_config)
             pulsar_version = PulsarJobRunner.pulsar_version(remote_job_config)
             remote_command_params = dict(
                 working_directory=remote_job_config["metadata_directory"],

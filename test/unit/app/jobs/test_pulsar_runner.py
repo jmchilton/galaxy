@@ -6,7 +6,11 @@ from typing import (
     cast,
 )
 
-from galaxy.jobs.runners.pulsar import PulsarJobRunner
+from galaxy.jobs.runners.pulsar import (
+    _remote_job_directory,
+    _remote_tool_directory,
+    PulsarJobRunner,
+)
 
 
 def _container(container_id, image_identifier_is_path=True):
@@ -161,3 +165,38 @@ def test_stop_job_supplies_recorded_external_id_to_kill_client():
     _destination_params, kill_kwargs = runner.client_manager.calls[-1]
     assert kill_kwargs["external_id"] == external_id
     assert runner.client_manager.clients[-1].killed
+
+
+def _job_config(job_directory, **overrides):
+    config = {
+        "job_directory": job_directory,
+        "working_directory": f"{job_directory}/working",
+        "tools_directory": f"{job_directory}/tool_files",
+    }
+    config.update(overrides)
+    return config
+
+
+def test_remote_job_directory_uses_the_reported_path():
+    config = _job_config("/scratch/pulsar/staging/123")
+    assert _remote_job_directory(config) == "/scratch/pulsar/staging/123"
+    assert _remote_tool_directory(config) == "/scratch/pulsar/staging/123/tool_files"
+
+
+def test_remote_job_directory_preserves_a_relative_token_prefix():
+    # ``jobs_directory: __PULSAR_JOBS_DIRECTORY__`` makes every client-computed
+    # path relative; Pulsar resolves the token itself at submit time. Deriving
+    # these with os.path.abspath would splice in Galaxy's own cwd.
+    config = _job_config("__PULSAR_JOBS_DIRECTORY__/123")
+    assert _remote_job_directory(config) == "__PULSAR_JOBS_DIRECTORY__/123"
+    assert _remote_tool_directory(config) == "__PULSAR_JOBS_DIRECTORY__/123/tool_files"
+
+
+def test_remote_job_directory_preserves_a_non_posix_separator():
+    config = {
+        "job_directory": "C:\\pulsar\\staging\\123",
+        "working_directory": "C:\\pulsar\\staging\\123\\working",
+        "tools_directory": "C:\\pulsar\\staging\\123\\tool_files",
+    }
+    assert _remote_job_directory(config) == "C:\\pulsar\\staging\\123"
+    assert _remote_tool_directory(config) == "C:\\pulsar\\staging\\123\\tool_files"
