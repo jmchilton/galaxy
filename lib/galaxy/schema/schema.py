@@ -47,7 +47,7 @@ from galaxy.schema.fields import (
     literal_to_value,
     ModelClassField,
 )
-from galaxy.schema.states import (
+from galaxy.schema.states import (  # noqa: F401 - compatibility re-exports
     DatasetCollectionPopulatedState,
     DatasetSourceTransformActionType,
     DatasetSourceTransformActionTypeLiteral as DatasetSourceTransformActionTypeLiteral,

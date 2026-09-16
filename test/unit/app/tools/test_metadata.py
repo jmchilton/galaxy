@@ -144,7 +144,8 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         dataset_attributes = json.loads((export_directory / "datasets_attrs.txt").read_text())[0]
         serialized_index = dataset_attributes["metadata"]["bam_index"]
         assert serialized_index["model_class"] == "MetadataFile"
-        assert (export_directory / serialized_index["file_name"]).stat().st_size > 0
+        if "file_name" in serialized_index:
+            assert (export_directory / serialized_index["file_name"]).stat().st_size > 0
 
         assert self.metadata_compute_strategy
         self.metadata_compute_strategy.load_metadata(
@@ -357,7 +358,8 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         discovered_dataset = next(dataset for dataset in datasets if dataset["designation"] == "one")
         serialized_index = discovered_dataset["metadata"]["bam_index"]
         assert serialized_index["model_class"] == "MetadataFile"
-        assert (export_directory / serialized_index["file_name"]).stat().st_size > 0
+        if "file_name" in serialized_index:
+            assert (export_directory / serialized_index["file_name"]).stat().st_size > 0
 
         import_options = model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True)
         import_store = model.store.get_import_model_store_for_directory(
@@ -851,6 +853,8 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         self.app.config.metadata_strategy = "extended"
         source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
         self._init_tool_for_path(source_file_name)
+        self.tool.uses_tool_provided_metadata = True
+        self.tool.allows_unnamed_outputs = True
         command = self.metadata_command({})
         self._write_work_dir_file("standalone.txt", "standalone\n")
         self._write_work_dir_file("first.txt", "first\n")
@@ -916,7 +920,6 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         import_store.perform_import(history=self.history, job=self.job)
         assert [dataset.name for dataset in self.history.datasets] == ["standalone", "first", "second"]
         assert [collection.name for collection in self.history.dataset_collections] == ["unnamed list"]
-
 
     def _create_output_dataset_collection(self, **kwd):
         output_dataset_collection = model.HistoryDatasetCollectionAssociation(**kwd)

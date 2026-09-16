@@ -21,18 +21,19 @@ from typing import (
 )
 
 import galaxy.model
+from galaxy.datatypes.sniff import resolve_sniffed_dataset
 from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.job_execution.output_collect_utils import (
-    OutputCollectionSecurityError as OutputCollectionSecurityError,
-    InvalidDiscoveredFilePathError as InvalidDiscoveredFilePathError,
-    UntrustedToolProvidedMetadataError as UntrustedToolProvidedMetadataError,
-    ExternalOutputPathNotAllowedError as ExternalOutputPathNotAllowedError,
-    ensure_path_in_directory as ensure_path_in_directory,
-    safe_path_from_directory as safe_path_from_directory,
+from galaxy.job_execution.output_collect_utils import (  # noqa: F401 - compatibility re-exports
     discover_target_directory as discover_target_directory,
     discovered_file_for_element,
     DiscoveredResult,
+    ensure_path_in_directory as ensure_path_in_directory,
+    ExternalOutputPathNotAllowedError as ExternalOutputPathNotAllowedError,
+    InvalidDiscoveredFilePathError as InvalidDiscoveredFilePathError,
     MaxDiscoveredFilesExceededError,
+    OutputCollectionSecurityError as OutputCollectionSecurityError,
+    safe_path_from_directory as safe_path_from_directory,
+    UntrustedToolProvidedMetadataError as UntrustedToolProvidedMetadataError,
 )
 from galaxy.model import (
     Dataset,
@@ -48,7 +49,6 @@ from galaxy.objectstore import (
 from galaxy.util import (
     chunk_iterable,
     ExecutionTimer,
-    StrPath,
 )
 from galaxy.util.hash_util import HASH_NAME_MAP
 
@@ -308,6 +308,8 @@ class ModelPersistenceContext(metaclass=abc.ABCMeta):
                     )
 
             try:
+                if primary_data.extension == "_sniff_":
+                    resolve_sniffed_dataset(primary_data, galaxy.model._get_datatypes_registry())
                 metadata_dict = dataset_attributes.get("metadata", None)
                 if metadata_dict:
                     if "dbkey" in dataset_attributes:

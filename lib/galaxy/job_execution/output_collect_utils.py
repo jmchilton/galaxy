@@ -23,9 +23,9 @@ from galaxy.tool_util.parser.output_collection_def import (
     ToolProvidedMetadataDatasetCollection,
 )
 from galaxy.util import (
-    StrPath,
     in_directory,
     shrink_and_unicodify,
+    StrPath,
     unicodify,
 )
 
@@ -53,9 +53,9 @@ class DiscoveryContext(Protocol):
 class DiscoveredFile(NamedTuple):
     path: str
     collector: Any | None
-    match: "JsonCollectedDatasetMatch"
+    match: JsonCollectedDatasetMatch
 
-    def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> "DiscoveredResultState":
+    def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> DiscoveredResultState:
         return DiscoveredResultState(element.get("info"), final_job_state)
 
 
@@ -66,7 +66,7 @@ class DiscoveredResultState(NamedTuple):
 
 class DiscoveredDeferredFile(NamedTuple):
     collector: Any | None
-    match: "JsonCollectedDatasetMatch"
+    match: JsonCollectedDatasetMatch
 
     def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> DiscoveredResultState:
         state = "deferred" if final_job_state == "ok" else final_job_state
@@ -80,7 +80,7 @@ class DiscoveredDeferredFile(NamedTuple):
 class DiscoveredFileError(NamedTuple):
     error_message: str
     collector: Any | None
-    match: "JsonCollectedDatasetMatch"
+    match: JsonCollectedDatasetMatch
     path: str | None = None
 
     def discovered_state(self, element: dict[str, Any], final_job_state="ok") -> DiscoveredResultState:
@@ -191,7 +191,6 @@ def discover_target_directory(dir_name, job_working_directory):
         return job_working_directory
 
 
-
 def discovered_file_for_element(
     dataset,
     model_persistence_context: DiscoveryContext,
@@ -230,7 +229,6 @@ def discovered_file_for_element(
             collector,
             JsonCollectedDatasetMatch(dataset, collector, None, parent_identifiers=parent_identifiers),
         )
-
 
 
 class ToolMetadataDatasetCollector:
@@ -311,7 +309,6 @@ def discover_files(output_name, tool_provided_metadata, extra_file_collectors, j
             yield DiscoveredFile(match.path, collector, match)
 
 
-
 def walk_over_file_collectors(collectors, job_working_directory, matchable):
     for collector in collectors:
         assert collector.discover_via == "pattern"
@@ -354,7 +351,6 @@ def walk_over_extra_files(target_dir, extra_file_collector, job_working_director
     )
 
 
-
 DEFAULT_DATASET_COLLECTOR = DatasetCollector(DEFAULT_DATASET_COLLECTOR_DESCRIPTION)
 DEFAULT_TOOL_PROVIDED_DATASET_COLLECTOR = ToolMetadataDatasetCollector(ToolProvidedMetadataDatasetCollection())
 
@@ -385,7 +381,7 @@ def default_exit_code_file(files_dir, id_tag):
 
 def collect_extra_files(
     object_store: ObjectStore,
-    dataset: "DatasetInstance",
+    dataset: DatasetInstance,
     job_working_directory: str,
     outputs_to_working_directory: bool = False,
 ):
@@ -443,11 +439,9 @@ class OutputCollectionSecurityError(ValueError):
     """Raised when job-provided output metadata crosses a collection trust boundary."""
 
 
-
 class InvalidDiscoveredFilePathError(OutputCollectionSecurityError):
     def __init__(self):
         super().__init__("Job output refers to a file outside its allowed working directory.")
-
 
 
 class UntrustedToolProvidedMetadataError(OutputCollectionSecurityError):
@@ -455,11 +449,9 @@ class UntrustedToolProvidedMetadataError(OutputCollectionSecurityError):
         super().__init__("This tool is not permitted to create unnamed outputs.")
 
 
-
 class ExternalOutputPathNotAllowedError(OutputCollectionSecurityError):
     def __init__(self):
         super().__init__("This tool is not permitted to collect output files from outside its working directory.")
-
 
 
 def ensure_path_in_directory(path: StrPath, directory: StrPath) -> StrPath:
@@ -468,12 +460,10 @@ def ensure_path_in_directory(path: StrPath, directory: StrPath) -> StrPath:
     return path
 
 
-
 def safe_path_from_directory(path: StrPath, directory: StrPath) -> str:
     joined = os.path.join(directory, path)
     ensure_path_in_directory(joined, directory)
     return joined
-
 
 
 def validate_unnamed_outputs(job_context: DiscoveryContext) -> list[dict[str, Any]]:
@@ -481,4 +471,3 @@ def validate_unnamed_outputs(job_context: DiscoveryContext) -> list[dict[str, An
     if unnamed_outputs and not job_context.allows_unnamed_outputs:
         raise UntrustedToolProvidedMetadataError()
     return unnamed_outputs
-
