@@ -192,16 +192,6 @@ def _workflow_input_name_upgrades(workflow: Workflow) -> dict[int, tuple[str, st
     return upgrades
 
 
-def _replace_upgraded_input_references(expression: str | None, upgrades: dict[int, tuple[str, str]]) -> str | None:
-    """Rewrite static bracket access to input names changed by an automatic upgrade."""
-    if expression is None:
-        return None
-    for old_name, new_name in upgrades.values():
-        expression = expression.replace(f'inputs["{old_name}"]', f'inputs["{new_name}"]')
-        expression = expression.replace(f"inputs['{old_name}']", f"inputs['{new_name}']")
-    return expression
-
-
 def _upgrade_subworkflow_step_dict(step_dict: dict[str, Any], upgrades: dict[int, tuple[str, str]]) -> None:
     """Apply upgraded subworkflow interface names to a serialized parent step."""
     for field in ("input_connections", "in"):
@@ -210,7 +200,8 @@ def _upgrade_subworkflow_step_dict(step_dict: dict[str, Any], upgrades: dict[int
             for old_name, new_name in upgrades.values():
                 if old_name in inputs:
                     inputs[new_name] = inputs.pop(old_name)
-    step_dict["when"] = _replace_upgraded_input_references(step_dict.get("when"), upgrades)
+    if step_dict.get("when"):
+        log.warning("Renamed subworkflow inputs; when expression was left unchanged and requires manual review.")
 
 
 class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], deletable.DeletableManagerMixin):
@@ -1500,9 +1491,10 @@ class WorkflowContentsManager(UsesAnnotations):
                         _old_name, new_name = input_name_upgrade
                         input_dict["name"] = new_name
                         input_dict["label"] = new_name
-                step_dict["when"] = _replace_upgraded_input_references(
-                    step_dict["when"], subworkflow_input_name_upgrades
-                )
+                if step_dict["when"]:
+                    upgrade_message_dict["subworkflow_input_expressions"] = (
+                        "The when expression was left unchanged; review references to renamed inputs manually."
+                    )
                 renamed_inputs = ", ".join(
                     f"'{old_name}' to '{new_name}'" for old_name, new_name in subworkflow_input_name_upgrades.values()
                 )
