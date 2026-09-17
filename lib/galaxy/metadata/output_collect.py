@@ -147,6 +147,7 @@ class LightweightJobContext:
         except Exception:
             log.exception("Exception occurred while setting dataset peek")
         dataset.set_total_size()
+        self.export_store.add_dataset(dataset)
 
     def add_output_dataset_association(self, output_name, element_identifiers, dataset):
         element_identifier = ":".join(element_identifiers)
@@ -387,6 +388,7 @@ def _collect_unnamed_hdca(context, unnamed_output, output_collections):
             unnamed_output.get("column_definitions"),
         )
         output_collections[name] = hdca
+    context.export_store.add_dataset_collection(hdca)
     if error_message := unnamed_output.get("error_message"):
         hdca.collection.handle_population_failed(error_message)
         return

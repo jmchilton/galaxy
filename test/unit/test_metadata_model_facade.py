@@ -105,6 +105,7 @@ def test_model_facade_exports_mutated_dataset_and_job(tmp_path):
 
     export_store = MetadataModelExportStore(source, destination, example_datatype_registry_for_sample())
     dataset = export_store.datasets.find(1)
+    export_store.add_dataset(dataset)
     dataset.state = "ok"
     dataset.metadata.sequences = 3
     assert export_store.job is not None
@@ -132,7 +133,18 @@ def test_model_facade_stages_metadata_files_for_host_import(tmp_path):
         "metadata": {"dbkey": "?"},
         "dataset": {"id": 2, "state": "ok"},
     }
-    (source / "datasets_attrs.txt").write_text(json.dumps([attributes]))
+    input_attributes = {
+        "id": 3,
+        "model_class": "HistoryDatasetAssociation",
+        "extension": "bam",
+        "metadata": {"dbkey": "?"},
+        "dataset": {"id": 4, "state": "ok"},
+    }
+    (source / "datasets_attrs.txt").write_text(json.dumps([input_attributes, attributes]))
+    (source / "export_attrs.txt").write_text('{"galaxy_export_version": "2"}')
+    (source / "history_attrs.txt").write_text('{"name": "input snapshot"}')
+    (source / "metadata_files").mkdir()
+    (source / "metadata_files" / "input-only.dat").write_text("unregistered metadata")
     (source / "collections_attrs.txt").write_text("[]")
     (source / "jobs_attrs.txt").write_text("[]")
 
@@ -142,11 +154,24 @@ def test_model_facade_stages_metadata_files_for_host_import(tmp_path):
 
     export_store = MetadataModelExportStore(source, destination, example_datatype_registry_for_sample())
     dataset = export_store.datasets.find(1)
+    export_store.add_dataset(dataset)
     dataset.metadata.bam_index = metadata_file
+    input_dataset = export_store.datasets.find(3)
+    assert input_dataset is not None
+    input_metadata_file = MetadataTempFile(metadata_tmp_files_dir=str(tmp_path))
+    Path(input_metadata_file.get_file_name()).write_text("input index")
+    input_dataset.metadata.bam_index = input_metadata_file
     export_store.push_metadata_files()
     export_store._finalize()
 
-    exported_metadata = json.loads((destination / "datasets_attrs.txt").read_text())[0]["metadata"]
+    exported_datasets = json.loads((destination / "datasets_attrs.txt").read_text())
+    assert [dataset["id"] for dataset in exported_datasets] == [1]
+    assert input_dataset.metadata.bam_index is input_metadata_file
+    assert not (destination / "history_attrs.txt").exists()
+    assert not (destination / "metadata_files" / "input-only.dat").exists()
+    assert (destination / "export_attrs.txt").read_bytes() == (source / "export_attrs.txt").read_bytes()
+    assert len(list((destination / "metadata_files").iterdir())) == 1
+    exported_metadata = exported_datasets[0]["metadata"]
     serialized_file = exported_metadata["bam_index"]
     assert serialized_file["model_class"] == "MetadataFile"
     assert serialized_file["name"] == "bam_index"
@@ -186,6 +211,7 @@ def test_model_facade_preserves_existing_metadata_file_identity(tmp_path):
             example_datatype_registry_for_sample(),
             object_store=object_store,
         )
+        export_store.add_dataset(export_store.datasets.find(1))
         metadata_file = export_store.datasets.find(1).metadata.bam_index
         object_store.update_from_file(
             metadata_file,
@@ -245,12 +271,14 @@ def test_model_facade_exports_mutated_dataset_collection(tmp_path):
     hdca = export_store.dataset_collections.find(3)
     assert hdca.dataset_instances == [export_store.datasets.find(1)]
 
+    export_store.add_dataset_collection(hdca)
     hdca.collection.mark_as_populated()
     export_store._finalize()
 
     exported_collection = json.loads((destination / "collections_attrs.txt").read_text())[0]["collection"]
     assert exported_collection["populated_state"] == "ok"
     assert exported_collection["element_count"] == 1
+    assert [dataset["id"] for dataset in json.loads((destination / "datasets_attrs.txt").read_text())] == [1]
 
 
 def test_model_facade_exports_mutated_bare_dataset_collection(tmp_path):
@@ -288,6 +316,7 @@ def test_model_facade_exports_mutated_bare_dataset_collection(tmp_path):
     assert collection.collection is collection
     assert collection.dataset_instances == [export_store.datasets.find(1)]
 
+    export_store.add_dataset_collection(collection)
     collection.mark_as_populated()
     export_store._finalize()
 
@@ -296,3 +325,4 @@ def test_model_facade_exports_mutated_bare_dataset_collection(tmp_path):
     assert "collection" not in exported_collection
     assert exported_collection["populated_state"] == "ok"
     assert exported_collection["element_count"] == 1
+    assert [dataset["id"] for dataset in json.loads((destination / "datasets_attrs.txt").read_text())] == [1]
