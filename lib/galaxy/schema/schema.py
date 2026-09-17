@@ -48,13 +48,13 @@ from galaxy.schema.fields import (
     ModelClassField,
 )
 from galaxy.schema.states import (  # noqa: F401 - compatibility re-exports
-    DatasetCollectionPopulatedState,
-    DatasetSourceTransformActionType,
+    DatasetCollectionPopulatedState as DatasetCollectionPopulatedState,
+    DatasetSourceTransformActionType as DatasetSourceTransformActionType,
     DatasetSourceTransformActionTypeLiteral as DatasetSourceTransformActionTypeLiteral,
-    DatasetState,
-    DatasetValidatedState,
-    JobState,
-    ToolRequestState,
+    DatasetState as DatasetState,
+    DatasetValidatedState as DatasetValidatedState,
+    JobState as JobState,
+    ToolRequestState as ToolRequestState,
 )
 from galaxy.schema.tours import TourDetails
 from galaxy.schema.types import (

@@ -1,18 +1,24 @@
 """Helpers for estimating the in-memory size of nested values."""
 
 from collections import deque
+from collections.abc import (
+    Callable,
+    Iterable,
+    Mapping,
+)
 from itertools import chain
 from sys import getsizeof
+from typing import Any
 
 
-def total_size(value, handlers=None):
+def total_size(value: Any, handlers: Mapping[type, Callable[[Any], Iterable[Any]]] | None = None) -> int:
     """Return the approximate memory footprint of a nested Python value."""
     handlers = handlers or {}
 
     def dict_handler(mapping):
         return chain.from_iterable(mapping.items())
 
-    all_handlers = {
+    all_handlers: dict[type, Callable[[Any], Iterable[Any]]] = {
         tuple: iter,
         list: iter,
         deque: iter,

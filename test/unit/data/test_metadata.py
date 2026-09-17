@@ -1,7 +1,14 @@
+import json
+
 import pytest
 
 import galaxy.datatypes.registry as registry
 import galaxy.model.mapping as mapping
+from galaxy.datatypes.data import Data
+from galaxy.datatypes.metadata import (
+    MetadataElement,
+    PythonObjectParameter,
+)
 from galaxy.model import (
     custom_types,
     HistoryDatasetAssociation,
@@ -63,3 +70,14 @@ def test_get_if_set_returns_default_for_nonexistent_key(sa_session):
     sa_session.commit()
     assert hda.metadata.get_if_set("nonexistent_key") is None
     assert hda.metadata.get_if_set("nonexistent_key", "fallback") == "fallback"
+
+
+def test_python_object_parameter_field_uses_spec_formatter():
+    class ObjectMetadataDatatype(Data):
+        MetadataElement(name="metadata_object", param=PythonObjectParameter, _to_string=json.dumps, no_value=None)
+
+    datatype = ObjectMetadataDatatype()
+    parameter = datatype.metadata_spec["metadata_object"].param
+
+    assert parameter.get_field({"value": 42}).value == '{"value": 42}'
+    assert parameter.get_field().value == "null"

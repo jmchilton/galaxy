@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+import pytest
 
 from galaxy.datatypes.metadata import MetadataTempFile
 from galaxy.datatypes.registry import example_datatype_registry_for_sample
@@ -6,6 +9,7 @@ from galaxy.metadata.model_facade import (
     MetadataDatasetStore,
     MetadataModelExportStore,
 )
+from galaxy.objectstore.unittest_utils import Config as ObjectStoreConfig
 
 
 def test_metadata_dataset_store_supports_datatype_metadata(tmp_path):
@@ -72,12 +76,8 @@ def test_metadata_dataset_store_rejects_non_hda(tmp_path):
         json.dumps([{"id": 1, "model_class": "LibraryDatasetDatasetAssociation"}])
     )
 
-    try:
+    with pytest.raises(ValueError, match="HistoryDatasetAssociation"):
         MetadataDatasetStore.from_directory(tmp_path, example_datatype_registry_for_sample())
-    except ValueError as exc:
-        assert "HistoryDatasetAssociation" in str(exc)
-    else:
-        raise AssertionError("Expected unsupported model class to be rejected")
 
 
 def test_model_facade_exports_mutated_dataset_and_job(tmp_path):
@@ -107,6 +107,7 @@ def test_model_facade_exports_mutated_dataset_and_job(tmp_path):
     dataset = export_store.datasets.find(1)
     dataset.state = "ok"
     dataset.metadata.sequences = 3
+    assert export_store.job is not None
     export_store.job.state = "ok"
     export_store.job.set_streams("stdout", "stderr")
     export_store._finalize()
@@ -153,16 +154,6 @@ def test_model_facade_stages_metadata_files_for_host_import(tmp_path):
 
 
 def test_model_facade_preserves_existing_metadata_file_identity(tmp_path):
-    class MetadataObjectStore:
-        def get_store_by(self, dataset):
-            return "uuid"
-
-        def exists(self, metadata_file, **kwds):
-            return True
-
-        def get_filename(self, metadata_file, **kwds):
-            return str(existing_file)
-
     source = tmp_path / "source"
     destination = tmp_path / "destination"
     source.mkdir()
@@ -188,15 +179,27 @@ def test_model_facade_preserves_existing_metadata_file_identity(tmp_path):
     (source / "collections_attrs.txt").write_text("[]")
     (source / "jobs_attrs.txt").write_text("[]")
 
-    export_store = MetadataModelExportStore(
-        source,
-        destination,
-        example_datatype_registry_for_sample(),
-        object_store=MetadataObjectStore(),
-    )
-    assert export_store.datasets.find(1).metadata.bam_index.get_file_name()
-    export_store.push_metadata_files()
-    export_store._finalize()
+    with ObjectStoreConfig(store_by="uuid") as (_, object_store):
+        export_store = MetadataModelExportStore(
+            source,
+            destination,
+            example_datatype_registry_for_sample(),
+            object_store=object_store,
+        )
+        metadata_file = export_store.datasets.find(1).metadata.bam_index
+        object_store.update_from_file(
+            metadata_file,
+            file_name=str(existing_file),
+            extra_dir="_metadata_files",
+            extra_dir_at_root=True,
+            alt_name=f"metadata_{metadata_file_uuid}.dat",
+            create=True,
+        )
+        assert metadata_file.uuid == metadata_file_uuid
+        assert metadata_file.name == "bam_index"
+        assert Path(metadata_file.get_file_name()).read_text() == "existing index"
+        export_store.push_metadata_files()
+        export_store._finalize()
 
     serialized_file = json.loads((destination / "datasets_attrs.txt").read_text())[0]["metadata"]["bam_index"]
     assert serialized_file["uuid"] == metadata_file_uuid

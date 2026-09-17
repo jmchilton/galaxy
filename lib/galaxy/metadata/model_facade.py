@@ -58,6 +58,8 @@ class MetadataFileReference(MetadataTempFile):
 class MetadataDataset:
     """Dataset-shaped view over the nested model-store dataset attributes."""
 
+    file_size: int | None
+
     states = DatasetState
     non_ready_states = (
         states.NEW,
@@ -605,7 +607,8 @@ class MetadataDatasetCollectionStore:
         collections_path = Path(directory) / "collections_attrs.txt"
         with collections_path.open() as handle:
             attributes = json.load(handle)
-        collections = {}
+        collections: dict[Any, MetadataDatasetCollection | MetadataDatasetCollectionInstance] = {}
+        collection: MetadataDatasetCollection | MetadataDatasetCollectionInstance
         for collection_attributes in attributes:
             model_class = collection_attributes.get("model_class")
             if model_class == "DatasetCollection":

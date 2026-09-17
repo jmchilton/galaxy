@@ -8,7 +8,7 @@ from typing import (
 )
 
 from galaxy.job_execution.datasets import DeferrableObjectsT
-from galaxy.job_execution.paths import dataset_path_to_extra_path
+from galaxy.job_execution.paths import dataset_path_to_extra_path as dataset_path_to_extra_path
 from galaxy.job_execution.setup import JobIO
 from galaxy.model import Job
 

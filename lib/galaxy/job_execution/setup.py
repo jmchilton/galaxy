@@ -23,8 +23,8 @@ from galaxy.job_execution.datasets import (
     get_path_rewriter,
 )
 from galaxy.job_execution.metadata_constants import (  # noqa: F401 - compatibility re-export
-    TOOL_PROVIDED_JOB_METADATA_FILE,
-    TOOL_PROVIDED_JOB_METADATA_KEYS,
+    TOOL_PROVIDED_JOB_METADATA_FILE as TOOL_PROVIDED_JOB_METADATA_FILE,
+    TOOL_PROVIDED_JOB_METADATA_KEYS as TOOL_PROVIDED_JOB_METADATA_KEYS,
 )
 from galaxy.model import (
     DatasetInstance,

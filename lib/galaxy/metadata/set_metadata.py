@@ -21,7 +21,10 @@ import sys
 import traceback
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import (
+    Any,
+    cast,
+)
 
 # Keep the worker independent of pulsar.client: importing its staging package
 # pulls in Galaxy's job runner and ORM graph merely to obtain this stable name.
@@ -74,10 +77,14 @@ from galaxy.model import (
 )
 from galaxy.model.store import SessionlessContext
 from galaxy.objectstore import (
+    BaseObjectStore,
     build_object_store_from_config,
     ObjectStore,
 )
-from galaxy.schema.states import DatasetState
+from galaxy.schema.states import (
+    DatasetState,
+    JobState,
+)
 from galaxy.tool_util.output_checker import (
     AnyJobMessage,
     check_output,
@@ -293,15 +300,15 @@ def set_metadata_portable(
     if not use_lightweight_store:
         if os.environ.get(LIGHTWEIGHT_MODELS_ENV) == "1":
             defer_pydantic_model_builds()
-        Dataset.object_store = object_store
+        Dataset.object_store = cast(BaseObjectStore | None, object_store)
         galaxy.model.set_datatypes_registry(datatypes_registry)
 
     job_context = None
     lightweight_job_context = None
     version_string = None
 
-    export_store = None
-    final_job_state = "ok"
+    export_store: MetadataModelExportStore | store.DirectoryModelExportStore | None = None
+    final_job_state = JobState.OK
     discovery_failed = False
     job_messages: list[AnyJobMessage] = []
     if extended_metadata_collection:
@@ -363,9 +370,9 @@ def set_metadata_portable(
             stdio_regexes, stdio_exit_codes, tool_stdout, tool_stderr, tool_exit_code
         )
         if check_output_detected_state == DETECTED_JOB_STATE.OK and not tool_provided_metadata.has_failed_outputs():
-            final_job_state = "ok"
+            final_job_state = JobState.OK
         else:
-            final_job_state = "error"
+            final_job_state = JobState.ERROR
 
         default_version_string_path = os.path.join("outputs", COMMAND_VERSION_FILENAME)
         version_string_path = metadata_params.get("compute_version_path", default_version_string_path)
@@ -397,15 +404,17 @@ def set_metadata_portable(
         assert isinstance(import_model_store.sa_session, SessionlessContext)
 
     tool_script_file = tool_job_working_directory / "tool_script.sh"
-    job: Any | None = export_store.job if use_lightweight_store and export_store else None
+    job: Any | None = export_store.job if isinstance(export_store, MetadataModelExportStore) else None
     if export_store:
         if not use_lightweight_store:
             assert import_model_store
+            assert isinstance(import_model_store.sa_session, SessionlessContext)
             job = next(iter(import_model_store.sa_session.objects[galaxy.model.Job].values()))
 
     job_context = None
     if not use_lightweight_store:
         assert import_model_store
+        assert export_store is None or isinstance(export_store, store.DirectoryModelExportStore)
         job_context = SessionlessJobContext(
             metadata_params,
             tool_provided_metadata,
@@ -431,7 +440,9 @@ def set_metadata_portable(
 
     output_collection_security_error = None
     try:
-        unnamed_outputs = validate_unnamed_outputs(lightweight_job_context if use_lightweight_store else job_context)
+        discovery_context = lightweight_job_context if use_lightweight_store else job_context
+        assert discovery_context is not None
+        unnamed_outputs = validate_unnamed_outputs(discovery_context)
     except OutputCollectionSecurityError as e:
         output_collection_security_error = e
         unnamed_outputs = []
@@ -442,7 +453,7 @@ def set_metadata_portable(
             raise Exception("export_store not built")
         if use_lightweight_store:
             assert lightweight_job_context
-            assert export_store
+            assert isinstance(export_store, MetadataModelExportStore)
             output_collections = {
                 name: export_store.dataset_collections.find(output_collection["id"])
                 for name, output_collection in metadata_params["output_collections"].items()
@@ -475,15 +486,17 @@ def set_metadata_portable(
             if output_collection_security_error:
                 raise output_collection_security_error
             if use_lightweight_store:
+                assert lightweight_job_context is not None
                 collect_primary_datasets_lightweight(lightweight_job_context, output_instances, input_ext)
                 collect_dynamic_outputs_lightweight(lightweight_job_context, output_collections)
             else:
+                assert job_context is not None
                 collect_primary_datasets(job_context, output_instances, input_ext=input_ext)
                 collect_dynamic_outputs(job_context, output_collections)
         except (MaxDiscoveredFilesExceededError, output_name_error, OutputCollectionSecurityError) as e:
             log.warning("Job failed during extended metadata output discovery: %s", e)
             discovery_failed = True
-            final_job_state = "error"
+            final_job_state = JobState.ERROR
             message: AnyJobMessage
             if isinstance(e, OutputCollectionSecurityError):
                 message = OutputCollectionSecurityJobMessage(
@@ -503,12 +516,12 @@ def set_metadata_portable(
         except MessageException as e:
             log.warning("Job failed during extended metadata output discovery: %s", e)
             discovery_failed = True
-            final_job_state = "error"
+            final_job_state = JobState.ERROR
             job_messages.append(output_discovery_job_message(unicodify(e)))
         except Exception:
             log.exception("Unexpected failure during extended metadata output discovery")
             discovery_failed = True
-            final_job_state = "error"
+            final_job_state = JobState.ERROR
             if job:
                 job.traceback = unicodify(traceback.format_exc(), strip_null=True)
             job_messages.append(output_discovery_job_message())
@@ -707,6 +720,7 @@ def set_metadata_portable(
             # job_messages) we set on the job is not persisted. Export the job
             # once here so perform_import on the host side picks it up from
             # the jobs attrs file.
+            assert isinstance(export_store, store.DirectoryModelExportStore)
             export_store.export_job(job, include_job_data=False)
     write_job_metadata(
         tool_job_working_directory,
