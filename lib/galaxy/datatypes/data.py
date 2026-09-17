@@ -206,7 +206,7 @@ class Data(metaclass=DataMeta):
     >>> DataTest.metadata_spec.test.desc
     'test'
     >>> type( DataTest.metadata_spec.test.param )
-    <class 'galaxy.model.metadata.MetadataParameter'>
+    <class 'galaxy.datatypes.metadata.MetadataParameter'>
     """
 
     edam_data = "data_0006"
