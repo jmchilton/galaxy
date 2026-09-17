@@ -190,7 +190,16 @@ class MetadataDatasetInstance:
                 metadata[name] = MetadataFileReference(value, self.dataset, metadata_tmp_files_dir)
         object.__setattr__(self, "_metadata", metadata)
         object.__setattr__(self, "_metadata_collection", MetadataCollection(self))
-        object.__setattr__(self, "_state", None)
+        association_state = attributes.get("state")
+        object.__setattr__(
+            self,
+            "_state",
+            (
+                association_state
+                if association_state in (DatasetState.FAILED_METADATA, DatasetState.SETTING_METADATA)
+                else None
+            ),
+        )
         object.__setattr__(self, "_pending_uploaded_metadata", {})
 
     def __getattr__(self, name):
@@ -247,12 +256,12 @@ class MetadataDatasetInstance:
 
     @state.setter
     def state(self, value):
+        self._attributes["state"] = value
         if value in (DatasetState.FAILED_METADATA, DatasetState.SETTING_METADATA):
             self._state = value
         else:
             self._state = None
             self.dataset.state = value
-            self._attributes["state"] = value
 
     @property
     def extra_files_path(self):

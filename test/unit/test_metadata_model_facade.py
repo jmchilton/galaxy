@@ -326,3 +326,30 @@ def test_model_facade_exports_mutated_bare_dataset_collection(tmp_path):
     assert exported_collection["populated_state"] == "ok"
     assert exported_collection["element_count"] == 1
     assert [dataset["id"] for dataset in json.loads((destination / "datasets_attrs.txt").read_text())] == [1]
+
+
+@pytest.mark.parametrize("association_state", ["failed_metadata", "setting_metadata"])
+def test_model_facade_roundtrips_association_metadata_state(tmp_path, association_state):
+    source = tmp_path / "source"
+    source.mkdir()
+    attributes = {
+        "id": 1,
+        "model_class": "HistoryDatasetAssociation",
+        "extension": "txt",
+        "metadata": {"dbkey": "?"},
+        "state": association_state,
+        "dataset": {"id": 2, "state": "ok"},
+    }
+    (source / "datasets_attrs.txt").write_text(json.dumps([attributes]))
+    (source / "collections_attrs.txt").write_text("[]")
+    (source / "jobs_attrs.txt").write_text("[]")
+    store = MetadataModelExportStore(source, tmp_path / "destination", example_datatype_registry_for_sample())
+    dataset = store.datasets.find(1)
+    assert dataset.state == association_state
+    dataset.state = "ok"
+    dataset.state = association_state
+    store.add_dataset(dataset)
+    store._finalize()
+    exported = json.loads((tmp_path / "destination" / "datasets_attrs.txt").read_text())[0]
+    assert exported["state"] == association_state
+    assert exported["dataset"]["state"] == "ok"
