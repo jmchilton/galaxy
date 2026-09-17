@@ -114,6 +114,65 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         self.app.config.metadata_strategy = "extended"
         self._test_simple_output()
 
+    def test_lightweight_metadata_preserves_input_edits(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool_for_path(os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml"))
+        input_dataset = self._create_output_dataset(extension="fasta", name="original input")
+        self._write_output_dataset_contents(input_dataset, ">input\nACGT\n")
+        input_dataset.set_meta()
+        collection = model.DatasetCollection(collection_type="list")
+        model.DatasetCollectionElement(
+            collection=collection, element=input_dataset, element_identifier="input", element_index=0
+        )
+        input_collection = self._create_output_dataset_collection(collection=collection, name="original collection")
+        output_dataset = self._create_output_dataset(extension="fasta")
+        self._write_output_dataset_contents(output_dataset, ">output\nACGT\n")
+        self.job.add_input_dataset("input1", input_dataset)
+        self.job.add_input_dataset_collection("input_collection", input_collection)
+        session = self.app.model.session
+        session.commit()
+        self.metadata_command({"out_file1": output_dataset})
+        self._write_job_files(stdout="", stderr="")
+
+        # The snapshot predates these edits, which output import must preserve.
+        input_dataset.name = "renamed input"
+        input_dataset.metadata.dbkey = "updated dbkey"
+        input_collection.name = "renamed collection"
+        session.commit()
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = os.path.abspath("lib")
+        environment["GALAXY_SET_METADATA_LIGHTWEIGHT_MODELS"] = "1"
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from galaxy.metadata.set_metadata import set_metadata_portable; set_metadata_portable()",
+            ],
+            cwd=self.job_working_directory,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
+        export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        exported_datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
+        assert [dataset["id"] for dataset in exported_datasets] == [output_dataset.id]
+        assert json.loads((export_directory / "collections_attrs.txt").read_text()) == []
+        import_store = model.store.get_import_model_store_for_directory(
+            export_directory,
+            app=self.app,
+            import_options=model.store.ImportOptions(allow_dataset_object_edit=True, allow_edit=True),
+            user=self.job.user,
+            tag_handler=self.app.tag_handler.create_tag_handler_session(self.job.galaxy_session),
+        )
+        import_store.perform_import(history=self.history, job=self.job)
+        assert input_dataset.name == "renamed input"
+        assert input_dataset.metadata.dbkey == "updated dbkey"
+        assert input_collection.name == "renamed collection"
+        assert output_dataset.metadata.sequences == 1
+        assert output_dataset.state == "ok"
+
     def test_setup_does_not_sync_empty_job_output(self):
         self.app.config.metadata_strategy = "directory"
         source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")

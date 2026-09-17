@@ -459,6 +459,8 @@ def set_metadata_portable(
                 for name, output_collection in metadata_params["output_collections"].items()
             }
             assert all(output_collections.values())
+            for collection in output_collections.values():
+                export_store.add_dataset_collection(collection)
             output_instances = {
                 name: export_store.datasets.find(output["id"]) for name, output in metadata_params["outputs"].items()
             }

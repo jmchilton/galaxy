@@ -678,7 +678,7 @@ class MetadataJob:
 
 
 class MetadataModelExportStore:
-    """Edit an existing metadata model-store without materializing ORM objects."""
+    """Read a job snapshot and export registered outputs without materializing ORM objects."""
 
     def __init__(self, import_directory, export_directory, datatypes_registry, object_store=None):
         self.import_directory = Path(import_directory)
@@ -696,11 +696,23 @@ class MetadataModelExportStore:
         with jobs_path.open() as handle:
             self._job_attributes = json.load(handle)
         self.job = MetadataJob(self._job_attributes[0]) if self._job_attributes else None
+        # Inputs remain available for lookup, but only explicitly registered
+        # outputs may be written back to the host database.
+        self.included_datasets: dict[MetadataDatasetInstance, bool] = {}
+        self.included_collections: dict[MetadataDatasetCollection | MetadataDatasetCollectionInstance, None] = {}
 
-    def add_dataset(self, dataset, include_files=True):
-        # Fixed outputs already occur in the input store. Mutations are made
-        # directly against their canonical serialized dictionaries.
-        return None
+    def add_dataset(self, dataset: MetadataDatasetInstance, include_files: bool = True):
+        self.included_datasets[dataset] = include_files
+
+    def add_dataset_collection(self, collection: MetadataDatasetCollection | MetadataDatasetCollectionInstance):
+        self.included_collections[collection] = None
+
+    def _include_collection_datasets(self):
+        # Discoveries can replace a collection's elements after registration.
+        # Resolve its members only when preparing the populated output store.
+        for collection in self.included_collections:
+            for dataset in collection.dataset_instances:
+                self.add_dataset(dataset)
 
     def add_job_output_dataset_associations(self, job_id, name, dataset):
         job_attributes = next((job for job in self._job_attributes if job.get("id") == job_id), None)
@@ -711,8 +723,11 @@ class MetadataModelExportStore:
         output_mapping.setdefault(name, []).append(dataset._attributes.get("id", dataset._attributes["encoded_id"]))
 
     def push_metadata_files(self):
+        self._include_collection_datasets()
         metadata_files_directory = self.export_directory / "metadata_files"
-        for dataset in self.datasets._datasets.values():
+        for dataset, include_files in self.included_datasets.items():
+            if not include_files:
+                continue
             for name, value in dataset._metadata.items():
                 if MetadataTempFile.is_JSONified_value(value):
                     value = MetadataTempFile.from_JSON(value)
@@ -738,9 +753,22 @@ class MetadataModelExportStore:
                 dataset._metadata[name] = serialized_file
 
     def _finalize(self):
-        shutil.copytree(self.import_directory, self.export_directory, dirs_exist_ok=True)
-        (self.export_directory / "datasets_attrs.txt").write_text(json.dumps(self.datasets._attributes, sort_keys=True))
+        self._include_collection_datasets()
+        self.export_directory.mkdir(parents=True, exist_ok=True)
+        # Preserve the store format marker, not the input snapshot's other
+        # attribute files or staged metadata.
+        export_attributes = self.import_directory / "export_attrs.txt"
+        if export_attributes.exists():
+            shutil.copyfile(export_attributes, self.export_directory / export_attributes.name)
+        for include_files, filename in (
+            (True, "datasets_attrs.txt"),
+            (False, "datasets_attrs.txt.provenance"),
+        ):
+            attributes = [
+                dataset._attributes for dataset, included in self.included_datasets.items() if included == include_files
+            ]
+            (self.export_directory / filename).write_text(json.dumps(attributes, sort_keys=True))
         (self.export_directory / "collections_attrs.txt").write_text(
-            json.dumps(self.dataset_collections._attributes, sort_keys=True)
+            json.dumps([collection._attributes for collection in self.included_collections], sort_keys=True)
         )
         (self.export_directory / "jobs_attrs.txt").write_text(json.dumps(self._job_attributes, sort_keys=True))
