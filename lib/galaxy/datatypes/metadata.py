@@ -17,6 +17,7 @@ from collections.abc import (
 from os.path import abspath
 from typing import (
     Any,
+    Protocol,
     TYPE_CHECKING,
     Union,
 )
@@ -38,24 +39,23 @@ from galaxy.util.json import safe_dumps
 if TYPE_CHECKING:
     from sqlalchemy.orm import scoped_session
 
-    from galaxy.model import DatasetInstance
-    from galaxy.model.none_like import NoneDataset
+    from galaxy.model import MetadataFile
     from galaxy.model.store import SessionlessContext
 
 log = logging.getLogger(__name__)
 
 STATEMENTS = "__galaxy_statements__"  # this is the name of the property in a Datatype class where new metadata spec element Statements are stored
-_METADATA_FILE_CLASS: type | None = None
+_METADATA_FILE_CLASS: type["MetadataFile"] | None = None
 _METADATA_JSON_ENCODER = None
 
 
-def configure_model_metadata(metadata_file_class: type, metadata_json_encoder) -> None:
+def configure_model_metadata(metadata_file_class: type["MetadataFile"], metadata_json_encoder) -> None:
     global _METADATA_FILE_CLASS, _METADATA_JSON_ENCODER
     _METADATA_FILE_CLASS = metadata_file_class
     _METADATA_JSON_ENCODER = metadata_json_encoder
 
 
-def _metadata_file_class() -> type:
+def _metadata_file_class() -> type["MetadataFile"]:
     assert _METADATA_FILE_CLASS is not None, "Galaxy model did not configure the MetadataFile type"
     return _METADATA_FILE_CLASS
 
@@ -92,6 +92,23 @@ class Statement:
             )  # statement.target is MetadataElementSpec, element is a Datatype class
 
 
+class MetadataCollectionParent(Protocol):
+    _metadata: Any
+    id: Any
+    extension: str
+    validated_state: Any
+    validated_state_message: Any
+
+    @property
+    def datatype(self) -> Any: ...
+
+    @property
+    def metadata(self) -> Any: ...
+
+    @property
+    def dataset(self) -> Any: ...
+
+
 class MetadataCollection(Mapping):
     """
     MetadataCollection is not a collection at all, but rather a proxy
@@ -102,7 +119,7 @@ class MetadataCollection(Mapping):
 
     def __init__(
         self,
-        parent: Union["DatasetInstance", "NoneDataset"],
+        parent: MetadataCollectionParent,
         session: Union["scoped_session", "SessionlessContext"] | None = None,
     ) -> None:
         self.parent = parent
@@ -113,21 +130,26 @@ class MetadataCollection(Mapping):
             self.parent._metadata = {}
 
     @property
-    def parent(self) -> Union["DatasetInstance", "NoneDataset", None]:
+    def parent(self) -> MetadataCollectionParent | None:
         if "_parent" in self.__dict__:
             return self.__dict__["_parent"]()
         return None
 
     @parent.setter
-    def parent(self, parent: Union["DatasetInstance", "NoneDataset"]) -> None:
+    def parent(self, parent: MetadataCollectionParent) -> None:
         # use weakref to prevent a circular reference interfering with garbage
         # collection: hda/lda (parent) <--> MetadataCollection (self) ; needs to be
         # hashable, so cannot use proxy.
         self.__dict__["_parent"] = weakref.ref(parent)
 
+    def _require_parent(self) -> MetadataCollectionParent:
+        parent = self.parent
+        assert parent is not None, "Metadata collection parent is no longer available"
+        return parent
+
     @property
     def spec(self):
-        return self.parent.datatype.metadata_spec
+        return self._require_parent().datatype.metadata_spec
 
     def _object_session(self, item):
         if self._session:
@@ -161,17 +183,17 @@ class MetadataCollection(Mapping):
         return dict(self.items()).__str__()
 
     def __bool__(self):
-        return bool(self.parent._metadata)
+        return bool(self._require_parent()._metadata)
 
     __nonzero__ = __bool__
 
     def __getattr__(self, name):
         if name in self.spec:
-            if name in self.parent._metadata:
-                return self.spec[name].wrap(self.parent._metadata[name], self._object_session(self.parent))
+            if name in self._require_parent()._metadata:
+                return self.spec[name].wrap(self._require_parent()._metadata[name], self._object_session(self.parent))
             return self.spec[name].wrap(self.spec[name].default, self._object_session(self.parent))
-        if name in self.parent._metadata:
-            return self.parent._metadata[name]
+        if name in self._require_parent()._metadata:
+            return self._require_parent()._metadata[name]
         # Instead of raising an AttributeError for non-existing metadata, we return None
         return None
 
@@ -186,14 +208,14 @@ class MetadataCollection(Mapping):
             super().__setattr__(name, value)
         else:
             if name in self.spec:
-                self.parent._metadata[name] = self.spec[name].unwrap(value)
+                self._require_parent()._metadata[name] = self.spec[name].unwrap(value)
             else:
-                self.parent._metadata[name] = value
+                self._require_parent()._metadata[name] = value
             _flag_modified_if_mapped(self.parent, "_metadata")
 
     def remove_key(self, name):
-        if name in self.parent._metadata:
-            del self.parent._metadata[name]
+        if name in self._require_parent()._metadata:
+            del self._require_parent()._metadata[name]
         else:
             log.info(f"Attempted to delete invalid key '{name}' from MetadataCollection")
 
@@ -254,7 +276,7 @@ class MetadataCollection(Mapping):
         return False
 
     def from_JSON_dict(self, filename=None, path_rewriter=None, json_dict=None):
-        dataset = self.parent
+        dataset = self._require_parent()
         if filename is not None:
             log.debug(f"loading metadata from file for: {dataset.__class__.__name__} {dataset.id}")
             with open(filename) as fh:
@@ -301,7 +323,7 @@ class MetadataCollection(Mapping):
 
     def to_JSON_dict(self, filename=None):
         meta_dict = {}
-        dataset_meta_dict = self.parent._metadata
+        dataset_meta_dict = self._require_parent()._metadata
         for name, spec in self.spec.items():
             if name in dataset_meta_dict:
                 meta_dict[name] = spec.param.to_external_value(dataset_meta_dict[name])
@@ -620,7 +642,7 @@ class PythonObjectParameter(MetadataParameter):
     def get_field(self, value=None, context=None, other_values=None, **kwd):
         context = context or {}
         other_values = other_values or {}
-        return form_builder.TextField(self.spec.name, value=self._to_string(value))
+        return form_builder.TextField(self.spec.name, value=self.to_string(value))
 
     @classmethod
     def marshal(cls, value):

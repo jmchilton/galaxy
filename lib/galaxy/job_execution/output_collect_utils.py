@@ -6,6 +6,7 @@ import logging
 import operator
 import os
 import re
+from collections.abc import Callable
 from tempfile import NamedTemporaryFile
 from typing import (
     Any,
@@ -44,10 +45,13 @@ class MaxDiscoveredFilesExceededError(ValueError):
 class DiscoveryContext(Protocol):
     job_working_directory: str
     allows_external_output_paths: bool
-    allows_unnamed_outputs: bool
-    tool_provided_metadata: Any
 
     def increment_discovered_file_count(self): ...
+
+
+class JobDiscoveryContext(DiscoveryContext, Protocol):
+    allows_unnamed_outputs: bool
+    tool_provided_metadata: Any
 
 
 class DiscoveredFile(NamedTuple):
@@ -271,7 +275,7 @@ class DatasetCollector:
     def sort(self, matches):
         assert self.sort_key in ["filename", "dbkey", "name", "designation"]
         assert self.sort_comp in ["lexical", "numeric"]
-        key = operator.attrgetter(self.sort_key)
+        key: Callable[[Any], Any] = operator.attrgetter(self.sort_key)
         if self.sort_comp == "numeric":
             lexical_key = key
 
@@ -466,7 +470,7 @@ def safe_path_from_directory(path: StrPath, directory: StrPath) -> str:
     return joined
 
 
-def validate_unnamed_outputs(job_context: DiscoveryContext) -> list[dict[str, Any]]:
+def validate_unnamed_outputs(job_context: JobDiscoveryContext) -> list[dict[str, Any]]:
     unnamed_outputs = job_context.tool_provided_metadata.get_unnamed_outputs()
     if unnamed_outputs and not job_context.allows_unnamed_outputs:
         raise UntrustedToolProvidedMetadataError()

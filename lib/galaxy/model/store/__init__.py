@@ -1606,8 +1606,9 @@ class FileTracebackException(Exception):
 
 
 def get_import_model_store_for_directory(
-    archive_dir: str, **kwd
+    archive_dir: StrPath, **kwd
 ) -> Union["DirectoryImportModelStore1901", "DirectoryImportModelStoreLatest"]:
+    archive_dir = os.fspath(archive_dir)
     traceback_file = os.path.join(archive_dir, TRACEBACK)
     if not os.path.isdir(archive_dir):
         raise Exception(

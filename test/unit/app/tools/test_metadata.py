@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ import pytest
 from galaxy import model
 from galaxy.app_unittest_utils import tools_support
 from galaxy.job_execution.datasets import DatasetPath
+from galaxy.job_execution.metadata_constants import LAZY_IMPORTS_ENV
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.metadata.set_metadata import load_job_metadata
 from galaxy.model.store.discover import InvalidDiscoveredFilePathError
@@ -79,6 +81,10 @@ def test_extended_metadata_rejects_metadata_file_symlink_outside_working_directo
 
 
 class TestMetadata(TestCase, tools_support.UsesTools):
+    @pytest.fixture(autouse=True, params=["normal", "all"] if hasattr(sys, "set_lazy_imports") else ["normal"])
+    def configure_metadata_import_mode(self, request):
+        self.metadata_import_mode = request.param
+
     def setUp(self):
         super().setUp()
         self.setup_app()
@@ -1004,6 +1010,8 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         ):
             _environ = os.environ.copy()
             _environ["PYTHONPATH"] = os.path.abspath("lib")
+            _environ["PATH"] = os.pathsep.join((str(Path(sys.executable).parent), _environ.get("PATH", "")))
+            _environ[LAZY_IMPORTS_ENV] = self.metadata_import_mode
             proc = subprocess.Popen(
                 args=command,
                 shell=True,
