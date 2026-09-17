@@ -99,7 +99,7 @@ def validate_result(
         output_dataset, "out_file1", sa_session, working_directory=case.job_working_directory
     ):
         raise RuntimeError("set_metadata did not produce a successful metadata result")
-    if expected_metadata_files or expected_sniffed_extension:
+    if strategy.write_object_store_conf and (expected_metadata_files or expected_sniffed_extension):
         export_directory = Path(case.job_working_directory) / "metadata" / "outputs_populated"
         dataset_attributes = next(
             attributes
@@ -122,7 +122,20 @@ def validate_result(
                     raise RuntimeError(f"staged metadata file {file_name!r} does not exist")
         if expected_metadata_files:
             return
+    if expected_sniffed_extension and not strategy.write_object_store_conf:
+        metadata_path = Path(case.job_working_directory) / "metadata" / "metadata_out_out_file1"
+        actual_extension = json.loads(metadata_path.read_text()).get("__extension__")
+        if actual_extension != expected_sniffed_extension:
+            raise RuntimeError(f"sniffed extension: expected {expected_sniffed_extension!r}, got {actual_extension!r}")
+        # Load against the sniffed datatype's spec, not the original data spec.
+        output_dataset.extension = actual_extension
     strategy.load_metadata(output_dataset, "out_file1", sa_session, working_directory=case.job_working_directory)
+    for name in expected_metadata_files:
+        metadata_file = getattr(output_dataset.metadata, name)
+        if metadata_file is None or not Path(metadata_file.get_file_name()).is_file():
+            raise RuntimeError(f"metadata file {name!r} was not restored")
+        if Path(metadata_file.get_file_name()).stat().st_size == 0:
+            raise RuntimeError(f"metadata file {name!r} is empty")
     for name, expected_value in expected_metadata.items():
         actual_value = getattr(output_dataset.metadata, name)
         if actual_value != expected_value:

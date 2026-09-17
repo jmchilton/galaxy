@@ -10,7 +10,10 @@ import pytest
 from galaxy import model
 from galaxy.app_unittest_utils import tools_support
 from galaxy.job_execution.datasets import DatasetPath
-from galaxy.job_execution.metadata_constants import LAZY_IMPORTS_ENV
+from galaxy.job_execution.metadata_constants import (
+    LAZY_IMPORTS_ENV,
+    LIGHTWEIGHT_MODELS_ENV,
+)
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.metadata.set_metadata import load_job_metadata
 from galaxy.model.store.discover import InvalidDiscoveredFilePathError
@@ -139,22 +142,7 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         input_dataset.metadata.dbkey = "updated dbkey"
         input_collection.name = "renamed collection"
         session.commit()
-        environment = os.environ.copy()
-        environment["PYTHONPATH"] = os.path.abspath("lib")
-        environment["GALAXY_SET_METADATA_LIGHTWEIGHT_MODELS"] = "1"
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "from galaxy.metadata.set_metadata import set_metadata_portable; set_metadata_portable()",
-            ],
-            cwd=self.job_working_directory,
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=60,
-        )
+        self._run_lightweight_metadata()
         export_directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
         exported_datasets = json.loads((export_directory / "datasets_attrs.txt").read_text())
         assert [dataset["id"] for dataset in exported_datasets] == [output_dataset.id]
@@ -172,6 +160,104 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         assert input_collection.name == "renamed collection"
         assert output_dataset.metadata.sequences == 1
         assert output_dataset.state == "ok"
+
+    def _run_lightweight_metadata(self):
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = os.path.abspath("lib")
+        environment[LIGHTWEIGHT_MODELS_ENV] = "1"
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from galaxy.metadata.set_metadata import set_metadata_portable; set_metadata_portable()",
+            ],
+            cwd=self.job_working_directory,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
+        directory = Path(self.job_working_directory) / "metadata" / "outputs_populated"
+        return {
+            name: json.loads((directory / f"{name}_attrs.txt").read_text())
+            for name in ("datasets", "collections", "jobs")
+        }
+
+    def test_lightweight_discovery_preserves_failed_metadata(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool(tool_contents="""<tool id="bam_discovery" name="bam" version="1">
+<command>true</command><inputs/><outputs><collection name="out" type="list">
+<discover_datasets pattern="__name__" directory="outputs" ext="bam"/>
+</collection></outputs></tool>""")
+        output = self._create_output_dataset_collection(
+            collection=model.DatasetCollection(collection_type="list", populated=False)
+        )
+        self.metadata_command({}, {"out": output})
+        directory = Path(self.tool_working_directory) / "outputs"
+        directory.mkdir()
+        (directory / "invalid.bam").write_text("invalid bam")
+        self._write_job_files(stdout="", stderr="")
+        results = self._run_lightweight_metadata()
+        assert len(results["datasets"]) == 1
+        assert results["datasets"][0]["state"] == "failed_metadata"
+        assert results["datasets"][0]["dataset"]["state"] == "ok"
+
+    def test_lightweight_primary_discovery_copies_existing_bam_index(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool(tool_contents="""<tool id="bam_primary" name="bam" version="1">
+<command>true</command><inputs/><outputs><data name="out_file1" format="bam">
+<discover_datasets pattern="__name__" directory="outputs" ext="bam"/>
+</data></outputs></tool>""")
+        output = self._create_output_dataset(extension="bam")
+        contents = Path(galaxy_directory(), "test-data/1.bam").read_bytes()
+        Path(output.dataset.get_file_name()).write_bytes(contents)
+        output.set_meta()
+        self.app.model.session.commit()
+        self.metadata_command({"out_file1": output})
+        directory = Path(self.tool_working_directory) / "outputs"
+        directory.mkdir()
+        (directory / "discovered.bam").write_bytes(contents)
+        self._write_job_files(stdout="", stderr="")
+        results = self._run_lightweight_metadata()
+        assert results["jobs"][0]["state"] == "ok"
+        assert len(results["datasets"]) == 2
+        discovered = next(dataset for dataset in results["datasets"] if dataset.get("id") != output.id)
+        assert discovered["state"] == "ok"
+        index = discovered["metadata"]["bam_index"]
+        assert index["model_class"] == "MetadataFile"
+        assert (Path(self.job_working_directory) / "metadata/outputs_populated" / index["file_name"]).stat().st_size > 0
+
+    def test_lightweight_samplesheet_rejects_invalid_integer(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool(
+            tool_contents='<tool id="unnamed" name="unnamed" version="1"><command>true</command><inputs/><outputs/></tool>'
+        )
+        self.tool.uses_tool_provided_metadata = True
+        self.tool.allows_unnamed_outputs = True
+        self.metadata_command({})
+        self._write_work_dir_file("sample.txt", "sample contents")
+        self._write_galaxy_json(
+            json.dumps(
+                {
+                    "__unnamed_outputs": [
+                        {
+                            "destination": {"type": "hdca"},
+                            "name": "samples",
+                            "collection_type": "sample_sheet",
+                            "column_definitions": [{"type": "int", "name": "replicate", "optional": False}],
+                            "rows": {"sample": ["wrong type"]},
+                            "elements": [{"name": "sample", "filename": "sample.txt", "ext": "txt"}],
+                        }
+                    ]
+                }
+            )
+        )
+        self._write_job_files(stdout="", stderr="")
+        results = self._run_lightweight_metadata()
+        assert results["jobs"][0]["state"] == "error"
+        assert any("not an integer" in message["desc"] for message in results["jobs"][0]["job_messages"])
+        assert results["collections"][0]["collection"]["populated_state"] != "ok"
 
     def test_setup_does_not_sync_empty_job_output(self):
         self.app.config.metadata_strategy = "directory"

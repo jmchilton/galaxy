@@ -6,6 +6,7 @@ import copy
 import json
 import logging
 import os
+import shutil
 import sys
 import tempfile
 import weakref
@@ -695,7 +696,10 @@ class FileParameter(MetadataParameter):
         session = target_context._object_session(target_context.parent)
         value = self.wrap(value, session=session)
         if isinstance(value, MetadataTempFile):
-            new_value = self.new_file(dataset=target_context.parent)
+            new_value = self.new_file(
+                dataset=target_context.parent,
+                metadata_tmp_files_dir=getattr(target_context.parent, "_metadata_tmp_files_dir", None),
+            )
             new_value.update_from_file(value.get_file_name())
             return self.unwrap(new_value)
         value_parent = (
@@ -770,10 +774,13 @@ class FileParameter(MetadataParameter):
         return value
 
     def new_file(self, dataset=None, metadata_tmp_files_dir=None, **kwds):
-        # If there is a place to store the file (i.e. an object_store has been bound to
-        # Dataset) then use a MetadataFile and assume it is accessible. Otherwise use
-        # a MetadataTempFile.
-        if getattr(dataset.dataset, "object_store", False) and not metadata_tmp_files_dir:
+        # Persisted metadata files require a mapped dataset association.
+        # Workers use temporary files even when their dataset has an object store.
+        if (
+            getattr(dataset.dataset, "object_store", False)
+            and hasattr(dataset, "_sa_instance_state")
+            and not metadata_tmp_files_dir
+        ):
             mf = _metadata_file_class()(name=self.spec.name, dataset=dataset, **kwds)
             sa_session = object_session(dataset)
             if sa_session:
@@ -802,6 +809,12 @@ class MetadataTempFile:
             self._filename = abspath(tempfile.NamedTemporaryFile(dir=self.tmp_dir, prefix="metadata_temp_file_").name)
             open(self._filename, "wb+")  # create an empty file, so it can't be reused using tempfile
         return self._filename
+
+    def update_from_file(self, file_name):
+        """Copy contents into this temporary metadata file."""
+        temporary_path = self.get_file_name()
+        if not os.path.samefile(file_name, temporary_path):
+            shutil.copyfile(file_name, temporary_path)
 
     def to_JSON(self):
         return {"__class__": self.__class__.__name__, "filename": self.get_file_name(), "kwds": self.kwds}

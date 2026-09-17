@@ -135,7 +135,21 @@ def push_if_necessary(object_store: ObjectStore, dataset, external_filename):
         object_store.update_from_file(dataset.dataset, file_name=external_filename, create=True)
 
 
-def _requires_dynamic_persistence(metadata_params, tool_provided_metadata):
+def _requires_dynamic_persistence(metadata_params, tool_provided_metadata, collection_attributes):
+    # Sample-sheet population validates rows through the collection type plugin.
+    # The lightweight builder does not implement that contract, including for
+    # nested sheets or existing collections targeted by unnamed outputs.
+    collection_types = [
+        definition.get("collection_type")
+        for definition in metadata_params.get("tool", {}).get("output_collections", {}).values()
+    ]
+    collection_types.extend(output.get("collection_type") for output in tool_provided_metadata.get_unnamed_outputs())
+    collection_types.extend(
+        attributes.get("collection", attributes).get("type") for attributes in collection_attributes
+    )
+    if any("sample_sheet" in (collection_type or "").split(":") for collection_type in collection_types):
+        return True
+
     if any(
         definition.get("format_source") or definition.get("metadata_source")
         for definition in metadata_params.get("tool", {}).get("output_collections", {}).values()
@@ -284,9 +298,12 @@ def set_metadata_portable(
         for output in outputs.values()
     )
     if use_lightweight_store and extended_metadata_collection:
+        with (tool_job_working_directory / "metadata/outputs_new/collections_attrs.txt").open() as handle:
+            collection_attributes = json.load(handle)
         use_lightweight_store = not _requires_dynamic_persistence(
             metadata_params,
             tool_provided_metadata,
+            collection_attributes,
         )
 
     lightweight_store = None
