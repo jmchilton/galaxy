@@ -11,8 +11,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.job_execution.output_collect_utils import (  # noqa: F401 - compatibility re-exports
+from galaxy.datatypes.discovery import (  # noqa: F401 - compatibility re-exports
     collect_extra_files as collect_extra_files,
     collect_shrinked_content_from_path as collect_shrinked_content_from_path,
     dataset_collector as dataset_collector,
@@ -27,6 +26,7 @@ from galaxy.job_execution.output_collect_utils import (  # noqa: F401 - compatib
     safe_path_from_directory,
     validate_unnamed_outputs as validate_unnamed_outputs,
 )
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.job_execution.output_format import resolve_format_source
 from galaxy.model import (
     Dataset,

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from galaxy.datatypes._json import json_encoder
 from galaxy.datatypes.metadata import (
     MetadataCollection,
     MetadataTempFile,
@@ -234,7 +235,18 @@ class MetadataDatasetInstance:
 
     @property
     def dbkey(self):
-        return self.metadata.dbkey
+        dbkey = self.metadata.dbkey
+        if not isinstance(dbkey, list):
+            dbkey = [dbkey]
+        if dbkey in [[None], []]:
+            return "?"
+        return dbkey[0]
+
+    @dbkey.setter
+    def dbkey(self, value):
+        if "dbkey" in self.datatype.metadata_spec:
+            if not isinstance(value, list):
+                self.metadata.dbkey = [value]
 
     @property
     def metadata(self):
@@ -776,8 +788,8 @@ class MetadataModelExportStore:
             attributes = [
                 dataset._attributes for dataset, included in self.included_datasets.items() if included == include_files
             ]
-            (self.export_directory / filename).write_text(json.dumps(attributes, sort_keys=True))
+            (self.export_directory / filename).write_text(json_encoder.encode(attributes))
         (self.export_directory / "collections_attrs.txt").write_text(
-            json.dumps([collection._attributes for collection in self.included_collections], sort_keys=True)
+            json_encoder.encode([collection._attributes for collection in self.included_collections])
         )
-        (self.export_directory / "jobs_attrs.txt").write_text(json.dumps(self._job_attributes, sort_keys=True))
+        (self.export_directory / "jobs_attrs.txt").write_text(json_encoder.encode(self._job_attributes))

@@ -1,5 +1,8 @@
 import os
+import subprocess
+import sys
 from tempfile import mkdtemp
+from textwrap import dedent
 from typing import (
     Any,
 )
@@ -454,3 +457,31 @@ def _import_directory_to_history(app, target, work_directory):
 
 def _mock_app():
     return GalaxyDataTestApp()
+
+
+def test_discovery_import_without_job_execution():
+    # galaxy-data must be usable without the higher-level galaxy-job-execution
+    # distribution. The monorepo normally masks this package boundary.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            dedent("""\
+                import importlib.abc
+                import sys
+
+                class WithoutJobExecution(importlib.abc.MetaPathFinder):
+                    def find_spec(self, fullname, path=None, target=None):
+                        if fullname == "galaxy.job_execution" or fullname.startswith("galaxy.job_execution."):
+                            raise ModuleNotFoundError(fullname)
+
+                sys.meta_path.insert(0, WithoutJobExecution())
+                from galaxy.model.store.discover import persist_target_to_export_store
+                assert callable(persist_target_to_export_store)
+            """),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr

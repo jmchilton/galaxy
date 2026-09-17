@@ -34,6 +34,16 @@ import galaxy.datatypes.registry
 import galaxy.model
 import galaxy.model.mapping
 from galaxy.datatypes.data import validate
+from galaxy.datatypes.discovery import (
+    collect_extra_files,
+    collect_shrinked_content_from_path,
+    default_exit_code_file,
+    ensure_path_in_directory,
+    MaxDiscoveredFilesExceededError,
+    OutputCollectionSecurityError,
+    read_exit_code_from,
+    validate_unnamed_outputs,
+)
 from galaxy.datatypes.metadata import MetadataTempFile
 from galaxy.exceptions import MessageException
 from galaxy.job_execution.metadata_constants import (
@@ -44,16 +54,6 @@ from galaxy.job_execution.output_collect import (
     collect_dynamic_outputs,
     collect_primary_datasets,
     SessionlessJobContext,
-)
-from galaxy.job_execution.output_collect_utils import (
-    collect_extra_files,
-    collect_shrinked_content_from_path,
-    default_exit_code_file,
-    ensure_path_in_directory,
-    MaxDiscoveredFilesExceededError,
-    OutputCollectionSecurityError,
-    read_exit_code_from,
-    validate_unnamed_outputs,
 )
 from galaxy.job_execution.paths import dataset_path_to_extra_path
 from galaxy.job_execution.pydantic_defer import defer_pydantic_model_builds

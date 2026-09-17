@@ -3,8 +3,7 @@
 import logging
 from uuid import uuid4
 
-from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.job_execution.output_collect_utils import (
+from galaxy.datatypes.discovery import (
     dataset_collector,
     DEFAULT_DATASET_COLLECTOR,
     discover_files,
@@ -14,6 +13,7 @@ from galaxy.job_execution.output_collect_utils import (
     safe_path_from_directory,
     validate_unnamed_outputs,
 )
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.objectstore import persist_extra_files
 from galaxy.tool_util.parser.output_objects import (
     ToolOutput,

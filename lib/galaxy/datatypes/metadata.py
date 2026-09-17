@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import object_session
 from sqlalchemy.orm.attributes import flag_modified
 
+from galaxy.datatypes._json import json_encoder
 from galaxy.security.object_wrapper import sanitize_lists_to_string
 from galaxy.util import (
     form_builder,
@@ -47,13 +48,11 @@ log = logging.getLogger(__name__)
 
 STATEMENTS = "__galaxy_statements__"  # this is the name of the property in a Datatype class where new metadata spec element Statements are stored
 _METADATA_FILE_CLASS: type["MetadataFile"] | None = None
-_METADATA_JSON_ENCODER = None
 
 
-def configure_model_metadata(metadata_file_class: type["MetadataFile"], metadata_json_encoder) -> None:
-    global _METADATA_FILE_CLASS, _METADATA_JSON_ENCODER
+def configure_model_metadata(metadata_file_class: type["MetadataFile"]) -> None:
+    global _METADATA_FILE_CLASS
     _METADATA_FILE_CLASS = metadata_file_class
-    _METADATA_JSON_ENCODER = metadata_json_encoder
 
 
 def _metadata_file_class() -> type["MetadataFile"]:
@@ -335,10 +334,7 @@ class MetadataCollection(Mapping):
         if "__validated_state_message__" in dataset_meta_dict:
             meta_dict["__validated_state_message__"] = dataset_meta_dict["__validated_state_message__"]
         try:
-            if hasattr(self.parent, "_sa_instance_state") and _METADATA_JSON_ENCODER is not None:
-                encoded_meta_dict = _METADATA_JSON_ENCODER.encode(meta_dict)
-            else:
-                encoded_meta_dict = safe_dumps(meta_dict, sort_keys=True)
+            encoded_meta_dict = json_encoder.encode(meta_dict)
         except Exception as e:
             raise Exception(f"Failed encoding metadata dictionary: {meta_dict}") from e
         if filename is None:
