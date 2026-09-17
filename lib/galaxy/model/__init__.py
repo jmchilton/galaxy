@@ -153,7 +153,6 @@ from galaxy.files.templates import (
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.custom_types import (
     DoubleEncodedJsonType,
-    json_encoder as metadata_json_encoder,
     JSONType,
     MetadataType,
     MutableJSONType,
@@ -11355,7 +11354,7 @@ class MetadataFile(Base, StorableObject, Serializable):
         return as_dict
 
 
-model_metadata.configure_model_metadata(MetadataFile, metadata_json_encoder)
+model_metadata.configure_model_metadata(MetadataFile)
 
 
 class FormDefinition(Base, Dictifiable, RepresentById):

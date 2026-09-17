@@ -21,9 +21,7 @@ from typing import (
 )
 
 import galaxy.model
-from galaxy.datatypes.sniff import resolve_sniffed_dataset
-from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.job_execution.output_collect_utils import (  # noqa: F401 - compatibility re-exports
+from galaxy.datatypes.discovery import (  # noqa: F401 - compatibility re-exports
     discover_target_directory as discover_target_directory,
     discovered_file_for_element as discovered_file_for_element,
     DiscoveredResult as DiscoveredResult,
@@ -35,6 +33,8 @@ from galaxy.job_execution.output_collect_utils import (  # noqa: F401 - compatib
     safe_path_from_directory as safe_path_from_directory,
     UntrustedToolProvidedMetadataError as UntrustedToolProvidedMetadataError,
 )
+from galaxy.datatypes.sniff import resolve_sniffed_dataset
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model import (
     Dataset,
     JobOutputNameTooLongError,

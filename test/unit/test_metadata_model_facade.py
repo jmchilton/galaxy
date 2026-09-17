@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import numpy
 import pytest
 
 from galaxy.datatypes.metadata import MetadataTempFile
@@ -353,3 +354,55 @@ def test_model_facade_roundtrips_association_metadata_state(tmp_path, associatio
     exported = json.loads((tmp_path / "destination" / "datasets_attrs.txt").read_text())[0]
     assert exported["state"] == association_state
     assert exported["dataset"]["state"] == "ok"
+
+
+@pytest.mark.parametrize("original_dbkey", ["hg19", ["hg19"], None, []])
+def test_model_facade_updates_genome_build(tmp_path, original_dbkey):
+    source = tmp_path / "source"
+    source.mkdir()
+    attributes = {
+        "id": 1,
+        "model_class": "HistoryDatasetAssociation",
+        "extension": "fasta",
+        "metadata": {"dbkey": original_dbkey},
+        "dataset": {"id": 2, "state": "ok"},
+    }
+    (source / "datasets_attrs.txt").write_text(json.dumps([attributes]))
+    (source / "collections_attrs.txt").write_text("[]")
+    (source / "jobs_attrs.txt").write_text("[]")
+    store = MetadataModelExportStore(source, tmp_path / "destination", example_datatype_registry_for_sample())
+    dataset = store.datasets.find(1)
+    dataset.dbkey = "hg38"
+    assert dataset.dbkey == "hg38"
+    assert json.loads(dataset.metadata.to_JSON_dict())["dbkey"] == ["hg38"]
+    store.add_dataset(dataset)
+    store._finalize()
+    exported = json.loads((tmp_path / "destination" / "datasets_attrs.txt").read_text())[0]
+    assert exported["metadata"]["dbkey"] == ["hg38"]
+
+
+def test_model_facade_serializes_numpy_metadata(tmp_path):
+    from galaxy.datatypes.binary import Anndata
+
+    source = tmp_path / "source"
+    source.mkdir()
+    attributes = {
+        "id": 1,
+        "model_class": "HistoryDatasetAssociation",
+        "extension": "h5ad",
+        "metadata": {},
+        "dataset": {"id": 2, "state": "ok"},
+    }
+    (source / "datasets_attrs.txt").write_text(json.dumps([attributes]))
+    (source / "collections_attrs.txt").write_text("[]")
+    (source / "jobs_attrs.txt").write_text("[]")
+    registry = example_datatype_registry_for_sample()
+    registry.datatypes_by_extension["h5ad"] = Anndata()
+    store = MetadataModelExportStore(source, tmp_path / "destination", registry)
+    dataset = store.datasets.find(1)
+    dataset.metadata.shape = (numpy.int64(50), numpy.int64(100))
+    assert json.loads(dataset.metadata.to_JSON_dict())["shape"] == [50, 100]
+    store.add_dataset(dataset)
+    store._finalize()
+    exported = json.loads((tmp_path / "destination" / "datasets_attrs.txt").read_text())[0]
+    assert exported["metadata"]["shape"] == [50, 100]

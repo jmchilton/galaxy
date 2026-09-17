@@ -1,4 +1,4 @@
-"""Model-free helpers used while collecting job outputs."""
+"""Model-free file discovery helpers shared by data imports and job outputs."""
 
 from __future__ import annotations
 

@@ -4,6 +4,10 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from xml.etree.ElementTree import (
+    Element,
+    parse,
+)
 
 import pytest
 
@@ -183,6 +187,48 @@ class TestMetadata(TestCase, tools_support.UsesTools):
             name: json.loads((directory / f"{name}_attrs.txt").read_text())
             for name in ("datasets", "collections", "jobs")
         }
+
+    def test_lightweight_metadata_preserves_tool_provided_dbkey(self):
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool_for_path(os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml"))
+        self.tool.uses_tool_provided_metadata = True
+        output = self._create_output_dataset(extension="fasta")
+        self.app.model.session.commit()
+        self.metadata_command({"out_file1": output})
+        self._write_output_dataset_contents(output, ">seq\nACGT\n")
+        self._write_galaxy_json(json.dumps({"type": "dataset", "dataset_id": str(output.dataset.id), "dbkey": "hg38"}))
+        self._write_job_files(stdout="", stderr="")
+
+        results = self._run_lightweight_metadata()
+
+        assert results["jobs"][0]["state"] == "ok"
+        assert results["datasets"][0]["metadata"]["dbkey"] == ["hg38"]
+
+    def test_lightweight_metadata_exports_sparse_anndata(self):
+        from galaxy.datatypes.binary import Anndata
+
+        self.app.config.metadata_strategy = "extended"
+        self._init_tool_for_path(os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml"))
+        # The sample registry omits AnnData; include it in the worker snapshot.
+        registry = self.app.datatypes_registry
+        registry.datatypes_by_extension["h5ad"] = Anndata()
+        output = self._create_output_dataset(extension="h5ad")
+        fixture = Path(galaxy_directory(), "lib/galaxy/datatypes/test/adata_0_7_4_small.h5ad")
+        Path(output.dataset.get_file_name()).write_bytes(fixture.read_bytes())
+        self.app.model.session.commit()
+        self.metadata_command({"out_file1": output})
+        registry_path = Path(self.job_working_directory, "metadata/registry.xml")
+        tree = parse(registry_path)
+        tree.getroot().find("registration").append(
+            Element("datatype", extension="h5ad", type="galaxy.datatypes.binary:Anndata")
+        )
+        tree.write(registry_path)
+        self._write_job_files(stdout="", stderr="")
+
+        results = self._run_lightweight_metadata()
+
+        assert results["jobs"][0]["state"] == "ok"
+        assert results["datasets"][0]["metadata"]["shape"] == [50, 100]
 
     def test_lightweight_discovery_preserves_failed_metadata(self):
         self.app.config.metadata_strategy = "extended"

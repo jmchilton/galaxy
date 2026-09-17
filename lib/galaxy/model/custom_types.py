@@ -4,7 +4,6 @@ import json
 import logging
 import uuid
 
-import numpy
 import sqlalchemy
 from sqlalchemy.ext.mutable import Mutable
 from sqlalchemy.inspection import inspect
@@ -15,6 +14,10 @@ from sqlalchemy.types import (
     TypeDecorator,
 )
 
+from galaxy.datatypes._json import (  # noqa: F401 - compatibility re-exports
+    json_encoder as json_encoder,
+    SafeJsonEncoder as SafeJsonEncoder,
+)
 from galaxy.util import (
     smart_str,
     unicodify,
@@ -25,19 +28,6 @@ from galaxy.util.object_size import total_size
 log = logging.getLogger(__name__)
 
 
-class SafeJsonEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, numpy.int_):
-            return int(obj)
-        elif isinstance(obj, numpy.float64):
-            return float(obj)
-        elif isinstance(obj, bytes):
-            return unicodify(obj)
-        # Let the base class default method raise the TypeError
-        return json.JSONEncoder.default(self, obj)
-
-
-json_encoder = SafeJsonEncoder(sort_keys=True)
 json_decoder = json.JSONDecoder()
 
 # Galaxy app will set this if configured to avoid circular dependency
