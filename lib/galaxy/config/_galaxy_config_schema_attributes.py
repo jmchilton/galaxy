@@ -7,6 +7,7 @@ from typing import Any
 class GalaxyAppConfigurationAttributes:
     """Type annotations for schema-defined "galaxy" config attributes."""
 
+    server_name: str
     config_dir: str
     managed_config_dir: str
     data_dir: str
@@ -37,6 +38,8 @@ class GalaxyAppConfigurationAttributes:
     migrated_tools_config: str
     integrated_tool_panel_config: str
     tool_path: str
+    use_cached_toolbox: bool
+    cached_toolbox_cache_size: int
     tool_source_database_connection: str | None
     tool_source_stores: Any
     tool_dependency_dir: str | None
@@ -163,6 +166,7 @@ class GalaxyAppConfigurationAttributes:
     plausible_domain: str | None
     matomo_server: str | None
     matomo_site_id: str | None
+    matomo_disable_cookies: bool
     display_servers: str
     enable_old_display_applications: bool
     aws_estimate: bool
@@ -194,6 +198,7 @@ class GalaxyAppConfigurationAttributes:
     logo_url: str
     logo_src: str
     logo_src_secondary: str | None
+    subdomain_switcher: list[dict[str, str]]
     helpsite_url: str
     wiki_url: str
     quota_url: str

@@ -21,6 +21,7 @@ from galaxy.util.config_templates import (
     OAuth2Configuration,
     populate_default_variables,
     SecretsDict,
+    split_ftp_host_path,
     StrictModel,
     TemplateEnvironmentEntry,
     TemplateExpansion,
@@ -54,6 +55,9 @@ FileSourceTemplateType = Literal[
     "mavedb",
     "omero",
     "ssh",
+    "openbis",
+    "ckan",
+    "commoncrawl",
 ]
 
 FileSourceTemplateAlertVariant = Literal[
@@ -171,7 +175,14 @@ class S3FSFileSourceConfiguration(StrictModel):
     writable: bool = False
 
 
-class FtpFileSourceTemplateConfiguration(StrictModel):
+class FtpConfigMixin:
+    @model_validator(mode="before")
+    @classmethod
+    def split_host_path(cls, data: Any) -> Any:
+        return split_ftp_host_path(data)
+
+
+class FtpFileSourceTemplateConfiguration(FtpConfigMixin, StrictModel):
     type: Literal["ftp"]
     host: str | TemplateExpansion
     port: int | TemplateExpansion = 21
@@ -179,11 +190,12 @@ class FtpFileSourceTemplateConfiguration(StrictModel):
     passwd: str | TemplateExpansion | None = None
     writable: bool | TemplateExpansion = False
     tls: bool | TemplateExpansion = False
+    root: str | TemplateExpansion | None = None
     template_start: str | None = None
     template_end: str | None = None
 
 
-class FtpFileSourceConfiguration(StrictModel):
+class FtpFileSourceConfiguration(FtpConfigMixin, StrictModel):
     type: Literal["ftp"]
     host: str
     port: int = 21
@@ -191,6 +203,7 @@ class FtpFileSourceConfiguration(StrictModel):
     passwd: str | None = None
     writable: bool = False
     tls: bool = False
+    root: str | None = None
 
 
 class SshFileSourceTemplateConfiguration(StrictModel):
@@ -525,6 +538,52 @@ class OmeroFileSourceConfiguration(StrictModel):
     writable: bool = False
 
 
+class OpenBisFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["openbis"]
+    base_url: str | TemplateExpansion
+    token: str | TemplateExpansion
+    verify_certificates: bool | TemplateExpansion = True
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class CKANFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["ckan"]
+    url: str | TemplateExpansion
+    token: str | TemplateExpansion | None = None
+    writable: bool | TemplateExpansion = True
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class OpenBisFileSourceConfiguration(StrictModel):
+    type: Literal["openbis"]
+    base_url: str
+    token: str
+    verify_certificates: bool = True
+    writable: bool = False
+
+
+class CKANFileSourceConfiguration(StrictModel):
+    type: Literal["ckan"]
+    url: str
+    token: str | None = None
+    writable: bool = True
+
+
+class CommonCrawlFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["commoncrawl"]
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class CommonCrawlFileSourceConfiguration(StrictModel):
+    type: Literal["commoncrawl"]
+    writable: bool = False
+
+
 FileSourceTemplateConfiguration = Annotated[
     PosixFileSourceTemplateConfiguration
     | S3FSFileSourceTemplateConfiguration
@@ -548,7 +607,10 @@ FileSourceTemplateConfiguration = Annotated[
     | IIIFFileSourceTemplateConfiguration
     | MaveDBFileSourceTemplateConfiguration
     | OmeroFileSourceTemplateConfiguration
-    | SshFileSourceTemplateConfiguration,
+    | SshFileSourceTemplateConfiguration
+    | OpenBisFileSourceTemplateConfiguration
+    | CKANFileSourceTemplateConfiguration
+    | CommonCrawlFileSourceTemplateConfiguration,
     Field(discriminator="type"),
 ]
 
@@ -575,7 +637,10 @@ FileSourceConfiguration = Annotated[
     | IIIFFileSourceConfiguration
     | MaveDBFileSourceConfiguration
     | OmeroFileSourceConfiguration
-    | SshFileSourceConfiguration,
+    | SshFileSourceConfiguration
+    | OpenBisFileSourceConfiguration
+    | CKANFileSourceConfiguration
+    | CommonCrawlFileSourceConfiguration,
     Field(discriminator="type"),
 ]
 
@@ -663,6 +728,9 @@ TypesToConfigurationClasses: dict[FileSourceTemplateType, type[FileSourceConfigu
     "mavedb": MaveDBFileSourceConfiguration,
     "omero": OmeroFileSourceConfiguration,
     "ssh": SshFileSourceConfiguration,
+    "openbis": OpenBisFileSourceConfiguration,
+    "ckan": CKANFileSourceConfiguration,
+    "commoncrawl": CommonCrawlFileSourceConfiguration,
 }
 
 

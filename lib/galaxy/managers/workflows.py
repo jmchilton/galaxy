@@ -54,6 +54,7 @@ from galaxy.managers import (
     sharable,
 )
 from galaxy.managers.base import (
+    apply_sort_column,
     decode_id,
     security_check,
 )
@@ -290,9 +291,7 @@ class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], dele
             stmt = stmt.order_by(desc(StoredWorkflow.update_time))
         else:
             sort_column = getattr(StoredWorkflow, payload.sort_by)
-            if payload.sort_desc:
-                sort_column = sort_column.desc()
-            stmt = stmt.order_by(sort_column)
+            stmt = apply_sort_column(stmt, sort_column, payload.sort_desc, StoredWorkflow.id)
         if payload.limit is not None:
             stmt = stmt.limit(payload.limit)
         if payload.offset is not None:
@@ -1161,6 +1160,7 @@ class WorkflowContentsManager(UsesAnnotations):
                     raise exceptions.MessageException(
                         f"Following tool missing or inaccessible: '{step.tool_id}/{step.tool_uuid}'"
                     )
+                tool = trans.app.toolbox.materialize_tool(tool, reason="validation")
                 assert step.state is not None
                 params_to_incoming(incoming, tool.inputs, step.state.inputs, trans.app)
                 step_model = tool.to_json(
@@ -1336,6 +1336,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 assert (
                     tool is not None
                 ), f"Tool '{step.tool_id}' unexpectedly missing after successful runtime state computation"
+                tool = trans.app.toolbox.materialize_tool(tool, reason="serialization")
                 step_dict["tool_id"] = step.tool_id
                 step_dict["tool_version"] = step.tool_version
                 step_dict["label"] = step.label or tool.name
@@ -2018,6 +2019,8 @@ class WorkflowContentsManager(UsesAnnotations):
         """Create a WorkflowStep model object and corresponding module
         representing type-specific functionality from the incoming dictionary.
         """
+        if "id" not in step_dict:
+            raise exceptions.ObjectAttributeMissingException("Workflow step is missing required 'id' attribute.")
         dry_run = kwds.get("dry_run", False)
         step = model.WorkflowStep()
         step.position = step_dict.get("position", model.WorkflowStep.DEFAULT_POSITION)

@@ -47,17 +47,15 @@ TOOLS_THAT_USE_UNQUALIFIED_PARAMETER_ACCESS = [
     "disambiguate_cond.xml",
     "multi_repeats.xml",
     "implicit_default_conds.xml",
+    "async_min_repeat_unqualified.xml",
+    "async_repeat_unqualified_no_min.xml",
 ]
 
 TOOLS_THAT_USE_SELECT_BY_VALUE = [
     "multi_select.xml",
 ]
 
-# Figure out the problem and resolve.
-TOOLS_THAT_ARE_OUTSTANDING_ISSUES = [
-    "gx_conditional_boolean_optional.xml",
-    "gx_conditional_boolean_discriminate_on_string_value.xml",
-]
+TOOLS_THAT_ARE_OUTSTANDING_ISSUES: list[str] = []
 
 TEST_TOOL_THAT_DO_NOT_VALIDATE = (
     TOOLS_THAT_USE_UNQUALIFIED_PARAMETER_ACCESS
@@ -420,19 +418,28 @@ def test_legacy_partial_conditional_paths_are_resolved_for_request_state():
     dict_verify_each(tool_state.input_state, expectations)
 
 
-def test_legacy_unqualified_repeat_inputs_are_expanded_for_request_state():
+def test_legacy_unqualified_repeat_inputs_are_not_expanded():
+    # Unqualified repeat params (the multi_repeats anti-pattern) are no longer synthesized into
+    # repeat instances; use explicit <repeat> tags. The bare param is rejected on validation.
     tool_source = tool_source_for("multi_repeats")
     test_cases = tool_source.parse_tests_to_dict()["tests"]
+    with pytest.raises(Exception, match="Invalid parameter name found input2"):
+        case_state_for(tool_source, test_cases[2])
 
-    test_case_state = case_state_for(tool_source, test_cases[2]).tool_state
 
-    expectations = [
-        (["queries", 0, "input2", "path"], "simple_line.txt"),
-        (["queries", 1, "input2", "path"], "simple_line.txt"),
-        (["more_queries", 0, "more_queries_input", "path"], "simple_line.txt"),
-        (["more_queries", 1, "more_queries_input", "path"], "simple_line.txt"),
-    ]
-    dict_verify_each(test_case_state.input_state, expectations)
+def test_legacy_unqualified_repeat_inputs_are_qualified_on_load():
+    # Loading a legacy test resolves its unqualified repeat params against the tool's input
+    # tree, the way the sync path does, so the nth bare occurrence lands in the nth instance
+    # and sibling repeats stay separate. The request is then representable.
+    tests = list(parse_tool_test_descriptions(tool_source_for("multi_repeats")))
+    description = tests[2].to_dict()
+    assert description["error"] is False
+    request = description["request"]
+    assert request is not None
+    assert len(request["queries"]) == 2
+    assert len(request["more_queries"]) == 2
+    assert request["queries"][0]["input2"]["path"] == "simple_line.txt"
+    assert request["more_queries"][1]["more_queries_input"]["path"] == "simple_line.txt"
 
 
 def test_legacy_unqualified_repeat_inside_conditional_is_resolved():

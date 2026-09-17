@@ -2,7 +2,6 @@
 Classes encapsulating galaxy tools and tool configuration.
 """
 
-import itertools
 import json
 import logging
 import math
@@ -10,15 +9,11 @@ import os
 import re
 import tarfile
 import tempfile
-from collections.abc import (
-    MutableMapping,
-    Sequence,
-)
-from pathlib import Path
+from collections.abc import MutableMapping
+from datetime import datetime
 from typing import (
     Any,
     cast,
-    NamedTuple,
     Optional,
     TYPE_CHECKING,
 )
@@ -49,6 +44,7 @@ from galaxy.job_execution.output_collect import (
     MetadataSourceProvider,
     PermissionProvider,
 )
+from galaxy.job_execution.setup import JobWorkingDirectory
 from galaxy.managers.credentials import build_credentials_context_response
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.model import (
@@ -65,10 +61,15 @@ from galaxy.model import (
 from galaxy.model.dataset_collections.matching import MatchingCollections
 from galaxy.model.dataset_collections.types.paired_or_unpaired import SINGLETON_IDENTIFIER
 from galaxy.model.dataset_collections.types.sample_sheet_workbook import _sample_sheet_to_list_collection_type
+from galaxy.model.store.discover import safe_path_from_directory
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.schema.credentials import CredentialsContext
 from galaxy.tool_shed.util.repository_util import get_installed_repository
 from galaxy.tool_shed.util.shed_util_common import set_image_paths
+from galaxy.tool_util.abstract_tool import (
+    AbstractTool,
+    parse_tool_version_for_comparison,
+)
 from galaxy.tool_util.deps import (
     build_dependency_manager,
     CachedDependencyManager,
@@ -77,33 +78,29 @@ from galaxy.tool_util.deps import (
 from galaxy.tool_util.deps.requirements import CredentialsRequirement
 from galaxy.tool_util.fetcher import ToolLocationFetcher
 from galaxy.tool_util.identifiers import uri_safe_tool_id
-from galaxy.tool_util.loader import (
-    imported_macro_paths,
-    raw_tool_xml_tree,
-    template_macro_params,
-)
+from galaxy.tool_util.loader import template_macro_params
 from galaxy.tool_util.loader_directory import looks_like_a_tool
-from galaxy.tool_util.model_factory import parse_tool
-from galaxy.tool_util.ontologies.ontology_data import (
-    biotools_reference,
-    expand_ontology_data,
-)
+from galaxy.tool_util.ontologies.ontology_data import expand_ontology_data
 from galaxy.tool_util.output_checker import DETECTED_JOB_STATE
 from galaxy.tool_util.parameters import (
     fill_static_defaults,
     input_models_for_pages,
     JobInternalToolState,
     RequestInternalDereferencedToolState,
+    UnmodelableToolInputs,
 )
 from galaxy.tool_util.parser import (
     get_tool_source,
     RequiredFiles,
-    ToolOutputCollectionPart,
 )
 from galaxy.tool_util.parser.interface import (
     InputSource,
     PageSource,
     ToolSource,
+)
+from galaxy.tool_util.parser.output_objects import (
+    ToolOutputBase,
+    ToolOutputCollection,
 )
 from galaxy.tool_util.parser.util import (
     parse_profile_version,
@@ -114,7 +111,10 @@ from galaxy.tool_util.parser.xml import (
     XmlToolSource,
 )
 from galaxy.tool_util.parser.yaml import YamlToolSource
-from galaxy.tool_util.provided_metadata import parse_tool_provided_metadata
+from galaxy.tool_util.provided_metadata import (
+    NullToolProvidedMetadata,
+    parse_tool_provided_metadata,
+)
 from galaxy.tool_util.toolbox import (
     AbstractToolBox,
     AbstractToolTagManager,
@@ -128,24 +128,19 @@ from galaxy.tool_util.toolbox.entry import (
 )
 from galaxy.tool_util.toolbox.views.sources import StaticToolBoxViewSources
 from galaxy.tool_util.verify.interactor import ToolTestDescription
-from galaxy.tool_util.verify.parse import parse_tool_test_descriptions
 from galaxy.tool_util.verify.test_data import TestDataNotFoundError
 from galaxy.tool_util.version import (
     parse_version,
 )
 from galaxy.tool_util.version_updates import WORKFLOW_SAFE_TOOL_VERSION_UPDATES
-from galaxy.tool_util_models import ParsedTool
 from galaxy.tool_util_models.parameters import (
     MaybeToolParameterBundle,
     ToolParameterBundleModel,
     ToolParameterT,
 )
 from galaxy.tool_util_models.tool_source import (
-    FileSourceConfigFile,
     HelpContent,
-    InputConfigFile,
     JavascriptRequirement,
-    TemplateConfigFile,
 )
 from galaxy.tools import expressions
 from galaxy.tools.actions import (
@@ -207,8 +202,6 @@ from galaxy.util import (
     in_directory,
     Params,
     parse_xml_string,
-    parse_xml_string_to_etree,
-    rst_to_html,
     string_as_bool,
     unicodify,
     UNKNOWN,
@@ -224,10 +217,6 @@ from galaxy.util.json import (
 )
 from galaxy.util.path import StrPath
 from galaxy.util.rules_dsl import RuleSet
-from galaxy.util.template import (
-    fill_template,
-    refactoring_tool,
-)
 from galaxy.util.tool_shed.common_util import (
     get_tool_shed_repository_url,
     get_tool_shed_url_from_tool_shed_registry,
@@ -281,12 +270,7 @@ if TYPE_CHECKING:
     from galaxy.model.tool_shed_install import ToolShedRepository
     from galaxy.objectstore import ObjectStore
     from galaxy.schema.schema import JobState
-    from galaxy.tool_util.parser.output_objects import (
-        ToolOutputBase,
-        ToolOutputCollection,
-    )
     from galaxy.tool_util.provided_metadata import BaseToolProvidedMetadata
-    from galaxy.tool_util.toolbox.lineages.interface import ToolLineage
     from galaxy.tools.actions.metadata import SetMetadataToolAction
     from galaxy.tools.parameters import ToolInputsT
 
@@ -369,6 +353,68 @@ GALAXY_LIB_TOOLS_VERSIONED = {
     "Interval2Maf1": parse_version("1.0.1+galaxy0"),
 }
 
+
+def tool_requires_galaxy_python_environment(
+    *,
+    tool_type: str,
+    profile: float,
+    preserve_python_environment: str,
+    tool_shed: str | None,
+    old_id: str | None,
+    version: str | None,
+) -> bool:
+    """Return the runtime-environment policy from metadata available at population time."""
+    if tool_type not in {
+        "default",
+        "manage_data",
+        "interactive",
+        "data_source",
+        "data_source_async",
+        "user_defined",
+    }:
+        return True
+    if tool_type == "manage_data" and Version(str(profile)) < Version("18.09"):
+        return True
+    if tool_type == "data_source" and Version(str(profile)) < Version("21.09"):
+        return True
+    if tool_type == "data_source_async" and profile < 24.0:
+        return True
+    if preserve_python_environment == "always":
+        return True
+    if preserve_python_environment == "legacy_and_local" and tool_shed is None:
+        return True
+    if old_id in GALAXY_LIB_TOOLS_UNVERSIONED:
+        return True
+    if old_id is None:
+        return False
+    fixed_version = GALAXY_LIB_TOOLS_VERSIONED.get(old_id)
+    if fixed_version is None:
+        return False
+    parsed_version = parse_tool_version_for_comparison(version or "")
+    return parsed_version < fixed_version
+
+
+def load_tool_action_class(module_name: str, class_name: str) -> type[ToolAction]:
+    """Load and validate a configured tool action class."""
+    module = __import__(module_name, globals(), locals(), [class_name])
+    try:
+        action_class: object = getattr(module, class_name)
+    except AttributeError as exc:
+        raise AttributeError(f"Tool action module {module_name!r} has no class {class_name!r}") from exc
+    if not isinstance(action_class, type) or not issubclass(action_class, ToolAction):
+        raise TypeError(f"Configured tool action {module_name}.{class_name} is not a ToolAction subclass")
+    return action_class
+
+
+def tool_produces_real_jobs(tool_type: str, action_module: tuple[str, str] | None) -> bool:
+    """Return the action policy without constructing a complete tool."""
+    if action_module is not None:
+        action_class = load_tool_action_class(*action_module)
+    else:
+        action_class = tool_types.get(tool_type, Tool).default_tool_action
+    return action_class.produces_real_jobs
+
+
 REQUIRE_FULL_DIRECTORY = {
     "includes": [{"path": "**", "path_type": "glob"}],
 }
@@ -396,18 +442,6 @@ IMPLICITLY_REQUIRED_TOOL_FILES: dict[str, dict] = {
     "sqlite_to_tabular": {"required": {"includes": [{"path": "*.py", "path_type": "glob"}]}},
     "sucos_max_score": {"required": {"includes": [{"path": "*.py", "path_type": "glob"}]}},
 }
-
-
-class RawToolSource(NamedTuple):
-    """Compact representation of a tool's raw source for transport/serialization.
-
-    Attributes:
-        raw_tool_source: String form of the tool source (typically XML or YAML).
-        tool_source_class: The class name of the ToolSource implementation (e.g., 'XmlToolSource').
-    """
-
-    raw_tool_source: str
-    tool_source_class: str
 
 
 def get_safe_version(tool: "Tool", requested_tool_version: str) -> str | None:
@@ -524,6 +558,8 @@ class ToolBox(AbstractToolBox):
         self, config_filenames: list[str], tool_root_dir, app, save_integrated_tool_panel: bool = True
     ) -> None:
         self._reload_count = 0
+        self._tools_loaded_from_store = 0
+        self._tools_parsed_from_file = 0
         self.tool_location_fetcher = ToolLocationFetcher()
         # This is here to deal with the old default value, which doesn't make
         # sense in an "installed Galaxy" world.
@@ -543,14 +579,44 @@ class ToolBox(AbstractToolBox):
             view_sources=view_sources,
             default_panel_view=default_panel_view,
             save_integrated_tool_panel=save_integrated_tool_panel,
+            load_panel_views=not app.config.display_builtin_converters,
         )
         # Load built-in converters
         if app.config.display_builtin_converters:
             self.load_builtin_converters()
-        if old_toolbox := getattr(app, "toolbox", None):
+        if old_toolbox := app.toolbox_or_none:
             self.dependency_manager = old_toolbox.dependency_manager
         else:
             self._init_dependency_manager()
+
+        # Log tool loading summary
+        self._log_tool_loading_summary()
+
+    def _log_tool_loading_summary(self):
+        """Log a summary of how tools were loaded (from store vs parsed from file)."""
+        total_tools = len(self._tools_by_id)
+        store_count = self._tools_loaded_from_store
+        file_count = self._tools_parsed_from_file
+
+        if store_count > 0 or file_count > 0:
+            store = self.app.tool_source_store
+            backend = "unknown"
+            if store:
+                try:
+                    stats = store.get_stats()
+                    backend = stats.get("backend", "unknown")
+                except Exception:
+                    pass
+
+            if store_count > 0 and file_count == 0:
+                log.info(f"Loaded {total_tools} tools from tool source store ({backend}), 0 parsed from files")
+            elif store_count == 0:
+                log.info(f"Loaded {total_tools} tools by parsing from files (no store configured or empty)")
+            else:
+                log.info(
+                    f"Loaded {total_tools} tools: {store_count} from store ({backend}), "
+                    f"{file_count} parsed from files"
+                )
 
     def tool_tag_manager(self):
         if hasattr(self.app.config, "get_bool") and self.app.config.get_bool("enable_tool_tags", False):
@@ -620,20 +686,85 @@ class ToolBox(AbstractToolBox):
         return self._tools_by_id
 
     def create_tool(self, config_file: StrPath, **kwds) -> "Tool":
-        tool_source = self.get_expanded_tool_source(config_file)
+        # Pass guid to enable direct store lookup for shed tools
+        guid = kwds.get("guid")
+        tool_source = self.get_expanded_tool_source(config_file, tool_id=guid)
         return self._create_tool_from_source(tool_source, config_file=config_file, **kwds)
 
-    def get_expanded_tool_source(self, config_file: StrPath) -> ToolSource:
+    def get_expanded_tool_source(self, config_file: StrPath, tool_id: str | None = None) -> ToolSource:
+        # Try to load from tool source store first (pre-parsed, macro-expanded)
+        tool_source = self._get_tool_source_from_store(config_file, tool_id=tool_id)
+        if tool_source is not None:
+            self._tools_loaded_from_store += 1
+            return tool_source
+
+        # Fall back to parsing from file
         try:
-            return get_tool_source(
+            tool_source = get_tool_source(
                 config_file,
                 enable_beta_formats=getattr(self.app.config, "enable_beta_tool_formats", False),
                 tool_location_fetcher=self.tool_location_fetcher,
             )
+            self._tools_parsed_from_file += 1
+            return tool_source
         except Exception as e:
             # capture and log parsing errors
             global_tool_errors.add_error(config_file, "Tool XML parsing", e)
             raise e
+
+    def _get_tool_source_from_store(self, config_file: StrPath, tool_id: str | None = None) -> ToolSource | None:
+        """
+        Try to load tool source from the pre-parsed store.
+
+        Args:
+            config_file: Path to the tool XML file.
+            tool_id: Optional tool ID (guid for shed tools) to look up directly.
+
+        Returns:
+            ToolSource if found in store, None otherwise.
+        """
+        # Default (eager) deployments parse from disk; only consult the store
+        # when the operator opted into ``use_cached_toolbox``. The silent-wrong-source
+        # defect that used to live on this path only manifested under the cached
+        # toolbox, so default deployments stay on the eager parse path.
+        if not self.app.config.use_cached_toolbox:
+            return None
+
+        store = self.app.tool_source_store
+        if store is None:
+            return None
+
+        # Resolve by the on-disk file path first. ``source_path`` is recorded
+        # at populate time and the populator updates that per-path row in place,
+        # so a hit here is content-current and exact (no regex shortcut, no
+        # ``sources[0]`` fallback that could silently return a different tool's
+        # source).
+        stored = store.get_by_source_path(os.path.abspath(str(config_file)))
+
+        # Shed installs hand us the full guid; fall back to it only when the
+        # path lookup misses. ``get_by_tool_id`` has no ORDER BY and the
+        # append-only store accumulates superseded content rows for the same
+        # tool_id, so pick the most recently stored one rather than an
+        # arbitrary row.
+        if stored is None and tool_id:
+            sources = store.get_by_tool_id(tool_id)
+            if sources:
+                stored = max(sources, key=lambda s: (s.stored_at is not None, s.stored_at or datetime.min))
+
+        if stored is None:
+            return None
+
+        # Create tool source from stored content
+        try:
+            tool_source = get_tool_source(
+                raw_tool_source=stored.raw_source,
+                tool_source_class=stored.tool_source_class,
+            )
+            log.debug(f"Loaded tool source from store: {stored.tool_id} ({config_file})")
+            return tool_source
+        except Exception as e:
+            log.warning(f"Error loading tool source from store for {config_file}: {e}")
+            return None
 
     def _create_tool_from_source(self, tool_source: ToolSource, **kwds):
         return create_tool_from_source(self.app, tool_source, **kwds)
@@ -691,7 +822,8 @@ class ToolBox(AbstractToolBox):
                     raise exceptions.ItemAccessibilityException("Tool not accessible.")
                 return tool
             return self.dynamic_tool_to_tool(dynamic_tool)
-        return self.get_tool(job.tool_id, tool_version=tool_version or job.tool_version, exact=exact)
+        tool_like = self.get_tool(job.tool_id, tool_version=tool_version or job.tool_version, exact=exact)
+        return self.materialize_tool(tool_like, reason="execution") if tool_like else None
 
     def create_dynamic_tool(self, dynamic_tool: "DynamicTool") -> "Tool":
         tool = self.dynamic_tool_to_tool(dynamic_tool)
@@ -838,6 +970,8 @@ class JobContext(BaseJobContext):
         self.max_discovered_files = float("inf") if max_discovered_files is None else max_discovered_files
         self.discovered_file_count = 0
         self._tag_handler = None
+        self.allows_unnamed_outputs = tool.allows_unnamed_outputs
+        self.allows_external_output_paths = tool.allows_external_output_paths
 
     @property
     def change_datatype_actions(self):
@@ -989,7 +1123,7 @@ class JobContext(BaseJobContext):
         return self.job.implicit_collection_jobs_association and self.job.implicit_collection_jobs_association.id
 
 
-class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
+class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
     """
     Represents a computational tool that can be executed through Galaxy.
     """
@@ -1003,7 +1137,8 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     tool_type_local = False
     dict_collection_visible_keys = ["id", "name", "version", "description", "labels"]
     job_search: "JobSearch"
-    version: str
+    uses_tool_provided_metadata: bool
+    allows_unnamed_outputs: bool
 
     def __init__(
         self,
@@ -1069,7 +1204,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.guid = guid
         self.old_id: str | None = None
         self.python_template_version: Version | None = None
-        self._lineage: ToolLineage | None = None
+        self._lineage = None
         self.dependencies: list = []
         # populate toolshed repository info, if available
         self.populate_tool_shed_info(tool_shed_repository)
@@ -1086,15 +1221,15 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.shell_command: str | None = None
         self.javascript_requirements: list[JavascriptRequirement] | None = None
         self.credentials: list[CredentialsRequirement] | None = None
-        self._is_workflow_compatible = None
-        self.__tests: str | None = None
-        self.__tests_parsed: bool = False
+        self._tests: str | None = None
+        self._tests_parsed: bool = False
         self.parameters: list[ToolParameterT] | None = None
         self.template_macro_params: dict = {}
         self._macro_paths: list = []
         self.ports: list = []
         try:
             self.parse(tool_source, guid=guid, dynamic=dynamic)
+            self.is_workflow_compatible = self.check_workflow_compatible(self.tool_source)
         except Exception as e:
             global_tool_errors.add_error(self.config_file, "Tool Loading", e)
             raise e
@@ -1110,58 +1245,14 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     def history_manager(self):
         return self.app.history_manager
 
-    def parsed_tool(self) -> ParsedTool:
-        """Return a ParsedTool model for this tool.
-
-        After tool loading, mem_optimize destroys the XML tree to save memory.
-        When that has happened, re-parse from the stored string representation.
-        """
-        tool_source = self.tool_source
-        if getattr(tool_source, "root", None) is None:
-            tool_source = get_tool_source(xml_tree=parse_xml_string_to_etree(tool_source.to_string()))
-        return parse_tool(tool_source)
-
     @property
     def _view(self):
         return self.app.dependency_resolvers_view
 
     @property
-    def version_object(self):
-        """Parse version string, handling special Galaxy version format."""
-        GALAXY_VERSION_SUFFIX = "+galaxy"
-        version = self.version
-
-        # Check if version has Galaxy suffix that we need to modify (e.g., "1.0+galaxy123")
-        if GALAXY_VERSION_SUFFIX not in version:
-            return parse_version(version)
-
-        base_version, suffix = version.split(GALAXY_VERSION_SUFFIX, 1)
-
-        # Handle Galaxy versions that need numeric sorting
-        if suffix:
-            # Per PEP-440 a version like <base_version>+galaxy<suffix> would be sorted lexicographically if not separated by a '.'.
-            # Injecting a '.' here will force a numeric sort if the suffix is an integer, otherwise the outcome will be the same.
-            version = f"{base_version}{GALAXY_VERSION_SUFFIX}.{suffix.lstrip('.')}"
-
-        return parse_version(version)
-
-    @property
     def sa_session(self):
         """Returns a SQLAlchemy session"""
         return self.app.model.context
-
-    @property
-    def lineage(self):
-        """Return ToolLineage for this tool."""
-        return self._lineage
-
-    @property
-    def tool_versions(self):
-        # If we have versions, return them.
-        if self.lineage:
-            return list(self.lineage.tool_versions)
-        else:
-            return []
 
     @property
     def hidden_tool_versions(self):
@@ -1176,15 +1267,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         return hidden_versions
 
     @property
-    def is_latest_version(self):
-        tool_versions = self.tool_versions
-        return not tool_versions or self.version == self.tool_versions[-1]
-
-    @property
     def latest_version(self):
         if self.is_latest_version:
             return self
         else:
+            assert self.lineage is not None
             return self.app.tool_cache.get_tool_by_id(self.lineage.get_versions()[-1].id)
 
     @property
@@ -1205,57 +1292,24 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             )
 
     @property
-    def produces_collections_with_unknown_structure(self):
-        def output_is_dynamic(output):
-            if not output.collection:
-                return False
-            return output.dynamic_structure
-
-        return any(map(output_is_dynamic, self.outputs.values()))
-
-    @property
     def valid_input_states(self):
         return model.Dataset.valid_input_states
 
     @property
     def requires_galaxy_python_environment(self):
         """Indicates this tool's runtime requires Galaxy's Python environment."""
-        # All special tool types (data source, history import/export, etc...)
-        # seem to require Galaxy's Python.
-        # FIXME: the (instantiated) tool class should emit this behavior, and not
-        #        use inspection by string check
-        if self.tool_type not in [
-            "default",
-            "manage_data",
-            "interactive",
-            "data_source",
-            "data_source_async",
-            "user_defined",
-        ]:
-            return True
+        return tool_requires_galaxy_python_environment(
+            tool_type=self.tool_type,
+            profile=self.profile,
+            preserve_python_environment=self.app.config.preserve_python_environment,
+            tool_shed=self.tool_shed,
+            old_id=self.old_id,
+            version=self.version,
+        )
 
-        if self.tool_type == "manage_data" and Version(str(self.profile)) < Version("18.09"):
-            return True
-
-        if self.tool_type == "data_source" and Version(str(self.profile)) < Version("21.09"):
-            return True
-
-        if self.tool_type == "data_source_async" and self.profile < 24.0:
-            return True
-
-        config = self.app.config
-        preserve_python_environment = config.preserve_python_environment
-        if preserve_python_environment == "always":
-            return True
-        elif preserve_python_environment == "legacy_and_local" and self.tool_shed is None:
-            return True
-        else:
-            unversioned_legacy_tool = self.old_id in GALAXY_LIB_TOOLS_UNVERSIONED
-            versioned_legacy_tool = self.old_id in GALAXY_LIB_TOOLS_VERSIONED
-            legacy_tool = unversioned_legacy_tool or (
-                versioned_legacy_tool and self.old_id and self.version_object < GALAXY_LIB_TOOLS_VERSIONED[self.old_id]
-            )
-            return legacy_tool
+    @property
+    def produces_real_jobs(self) -> bool:
+        return self.tool_action.produces_real_jobs
 
     def __get_job_tool_configuration(self, job_params: dict | None = None) -> "JobToolConfiguration":
         """Generalized method for getting this tool's job configuration.
@@ -1473,7 +1527,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
 
         if self.app.is_webapp:
             self.raw_help = self.__get_help_with_images(tool_source.parse_help())
-        self.__parse_legacy_features(tool_source)
+        self._parse_legacy_features(tool_source)
 
         # Load any tool specific options (optional)
         self.options = _Options(
@@ -1486,6 +1540,8 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         # Read in name of galaxy.json metadata file and how to parse it.
         self.provided_metadata_file = tool_source.parse_provided_metadata_file()
         self.provided_metadata_style = tool_source.parse_provided_metadata_style()
+        self.uses_tool_provided_metadata = self._uses_tool_provided_metadata(tool_source)
+        self.allows_unnamed_outputs = tool_source.allows_tool_provided_metadata()
 
         # Parse result handling for tool exit codes and stdout/stderr messages:
         self.parse_stdio(tool_source)
@@ -1493,18 +1549,18 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.strict_shell = tool_source.parse_strict_shell()
 
         # Any extra generated config files for the tool
-        self.__parse_config_files(tool_source)
+        self._parse_config_files(tool_source)
         # Action
         action = tool_source.parse_action_module()
         if action is None:
             self.tool_action = self.default_tool_action()
         else:
             module, cls = action
-            mod = __import__(module, globals(), locals(), [cls])
-            self.tool_action = getattr(mod, cls)()
+            self.tool_action = load_tool_action_class(module, cls)()
             if getattr(self.tool_action, "requires_js_runtime", False):
                 try:
-                    expressions.find_engine(self.app.config)
+                    # Register the QuickJS worker as the cwl_utils JS engine.
+                    expressions.register()
                 except Exception:
                     message = REQUIRES_JS_RUNTIME_MESSAGE % self.id or getattr(self, "uuid", "unknown tool id")
                     raise Exception(message)
@@ -1556,85 +1612,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self._macro_paths = tool_source.macro_paths
         self.ports = tool_source.parse_interactivetool()
 
-        self._is_workflow_compatible = self.check_workflow_compatible(self.tool_source)
         self.timelimit = None
         for rr in self.resource_requirements:
             if rr.resource_type == "timelimit" and not rr.runtime_required:
                 self.timelimit = rr.get_value()
                 break
-
-    def __parse_legacy_features(self, tool_source: ToolSource):
-        self.code_namespace: dict[str, Any] = {}
-        self.hook_map: dict[str, str] = {}
-
-        if not hasattr(tool_source, "root"):
-            return
-
-        # TODO: Move following logic into XmlToolSource.
-        root = tool_source.root
-        # Load any tool specific code (optional) Edit: INS 5/29/2007,
-        # allow code files to have access to the individual tool's
-        # "module" if it has one.  Allows us to reuse code files, etc.
-        for code_elem in root.findall("code"):
-            for hook_elem in code_elem.findall("hook"):
-                for key, value in hook_elem.items():
-                    # map hook to function
-                    self.hook_map[key] = value
-            file_name = code_elem.get("file")
-            assert self.tool_dir is not None
-            code_path = os.path.join(self.tool_dir, file_name)
-            if self._allow_code_files:
-                with open(code_path) as f:
-                    code_string = f.read()
-                try:
-                    compiled_code = compile(code_string, code_path, "exec")
-                    exec(compiled_code, self.code_namespace)
-                except Exception:
-                    if (
-                        refactoring_tool
-                        and self.python_template_version
-                        and self.python_template_version.release[0] < 3
-                    ):
-                        # Could be a code file that uses python 2 syntax
-                        translated_code = str(
-                            refactoring_tool.refactor_string(code_string, name="auto_translated_code_file")
-                        )
-                        compiled_code = compile(translated_code, f"futurized_{code_path}", "exec")
-                        exec(compiled_code, self.code_namespace)
-                    else:
-                        raise
-
-    def __parse_config_files(self, tool_source: ToolSource):
-        self.config_files: Sequence[TemplateConfigFile | InputConfigFile | FileSourceConfigFile] = []
-
-        self.config_files.extend(tool_source.parse_input_configfiles())
-        self.config_files.extend(tool_source.parse_template_configfiles())
-        self.config_files.extend(tool_source.parse_file_sources())
-
-    def parse_tests(self):
-        self.__tests_parsed = True
-        source = self.tool_source
-        if source is None:
-            return
-        # ``Tool.__init__`` calls ``tool_source.mem_optimize()`` after parsing,
-        # which frees an ``XmlToolSource``'s element tree (``root`` becomes
-        # ``None``). A deferred test parse therefore rebuilds the source from
-        # its retained string — the same round-trip a stored tool source uses.
-        # Non-XML sources have no ``root`` and keep their data, so they parse
-        # directly.
-        if getattr(source, "root", False) is None:
-            try:
-                source = get_tool_source(raw_tool_source=source.to_string(), tool_source_class=type(source).__name__)
-            except Exception:
-                self.__tests = None
-                log.exception("Failed to rebuild tool source for deferred test parsing of '%s'", self.id)
-                return
-        test_descriptions = parse_tool_test_descriptions(source, self.id, self.parameters)
-        try:
-            self.__tests = json.dumps([t.to_dict() for t in test_descriptions], indent=None)
-        except Exception:
-            self.__tests = None
-            log.exception("Failed to parse tool tests for tool '%s'", self.id)
 
     @property
     def tests(self) -> list[ToolTestDescription] | None:
@@ -1642,24 +1624,10 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         # test-data and tarball endpoints, so pay the (potentially
         # seconds-long) validation cost on first access rather than at
         # construction.
-        if not self.__tests_parsed and self.app.is_webapp:
+        if not self._tests_parsed and self.app.is_webapp:
             self.parse_tests()
-        if self.__tests:
-            return [ToolTestDescription(d) for d in json.loads(self.__tests)]
-        return None
-
-    @property
-    def _repository_dir(self):
-        """If tool shed installed tool, the base directory of the repository installed."""
-        if self.tool_shed:
-            assert self.tool_dir is not None
-            tool_dir = Path(self.tool_dir)
-            for repo_dir in itertools.chain([tool_dir], tool_dir.parents):
-                if repo_dir.name == self.repository_name and repo_dir.parent.name == self.installed_changeset_revision:
-                    return str(repo_dir)
-            else:
-                log.error(f"Problem finding repository dir for tool '{self.id}'")
-
+        if self._tests:
+            return [ToolTestDescription(d) for d in json.loads(self._tests)]
         return None
 
     def test_data_path(self, filename):
@@ -1699,33 +1667,12 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                         return result
 
     def tool_provided_metadata(self, job_wrapper):
-        meta_file = os.path.join(job_wrapper.tool_working_directory, self.provided_metadata_file)
+        if not self.uses_tool_provided_metadata:
+            return NullToolProvidedMetadata()
+        meta_file = safe_path_from_directory(self.provided_metadata_file, job_wrapper.tool_working_directory)
         return parse_tool_provided_metadata(
             meta_file, provided_metadata_style=self.provided_metadata_style, job_wrapper=job_wrapper
         )
-
-    def parse_command(self, tool_source):
-        """ """
-        # Command line (template). Optional for tools that do not invoke a local program
-        if (command := tool_source.parse_command()) is not None:
-            self.command = command.lstrip()  # get rid of leading whitespace
-            # Must pre-pend this AFTER processing the cheetah command template
-            self.interpreter = tool_source.parse_interpreter()
-        else:
-            self.command = ""
-            self.interpreter = None
-
-    def parse_shell_command(self, tool_source: ToolSource):
-        self.shell_command = tool_source.parse_shell_command()
-
-    def parse_base_command(self, tool_source: ToolSource):
-        self.base_command = tool_source.parse_base_command()
-
-    def parse_arguments(self, tool_source: ToolSource):
-        self.arguments = tool_source.parse_arguments()
-
-    def parse_environment_variables(self, tool_source):
-        return tool_source.parse_environment_variables()
 
     def parse_inputs(self, tool_source: ToolSource):
         """
@@ -1739,6 +1686,10 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         try:
             parameters = input_models_for_pages(pages, self.profile)
             self.parameters = parameters
+        except UnmodelableToolInputs as e:
+            # Expected for the upload tools rather than a failure. Leaving parameters unset keeps
+            # every consumer on the path it already takes for a tool without a parameter schema.
+            log.debug("No parameter model for tool '%s': %s", self.id, e)
         except Exception:
             log.warning("Failed to generate parameter models for tool '%s'", self.id, exc_info=True)
         if pages.inputs_defined:
@@ -1804,28 +1755,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         Parse <outputs> elements and fill in self.outputs (keyed by name)
         """
         self.outputs, self.output_collections = tool_source.parse_outputs(self.app)
-
-    def to_raw_tool_source(self) -> RawToolSource:
-        """Return a compact representation of this tool's source for external processing.
-
-        Provides both the raw tool source string and the concrete ToolSource class name.
-        """
-        return RawToolSource(
-            raw_tool_source=self.tool_source.to_string(),
-            tool_source_class=type(self.tool_source).__name__,
-        )
-
-    # TODO: Include the tool's name in any parsing warnings.
-    def parse_stdio(self, tool_source: ToolSource):
-        """
-        Parse <stdio> element(s) and fill in self.return_codes,
-        self.stderr_rules, and self.stdout_rules. Return codes have a range
-        and an error type (fault or warning).  Stderr and stdout rules have
-        a regular expression and an error level (fault or warning).
-        """
-        exit_codes, regexes = tool_source.parse_stdio()
-        self.stdio_exit_codes = exit_codes
-        self.stdio_regexes = regexes
 
     def _parse_citations(self, tool_source):
         citation_models = tool_source.parse_citations()
@@ -1904,6 +1833,9 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                             f"Tool with id '{self.id}': declares a conditional test parameter as optional, this is invalid and will be ignored."
                         )
                         group_c.test_param.optional = False
+                        if isinstance(group_c.test_param, BooleanToolParameter) and group_c.test_param.checked is None:
+                            # Covered by parameters/gx_conditional_boolean_optional.
+                            group_c.test_param.checked = False
                     possible_cases = list(
                         group_c.test_param.legal_values
                     )  # store possible cases, undefined whens will have no inputs
@@ -2018,34 +1950,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                 self.app, self.tool_shed, self.repository_owner, self.repository_name
             )
 
-    @property
-    def help_html(self) -> str:
-        """Returns the help content converted from RST to HTML (without variable substitution)."""
-        help_content = self.raw_help
-        assert help_content
-        assert help_content.format == "restructuredtext"
-        try:
-            return rst_to_html(help_content.content)
-        except Exception:
-            log.warning("Exception while parsing help for tool with id '%s'", self.id, exc_info=True)
-            return ""
-
-    def render_help(self, static_path: str, host_url: str) -> str:
-        """Renders the help HTML with variable substitution for static_path and host_url."""
-        help_html = self.help_html
-        # Replace Mako-style variables with actual values
-        help_html = help_html.replace("${static_path}", static_path)
-        help_html = help_html.replace("${host_url}", host_url)
-        return help_html
-
-    @property
-    def biotools_reference(self) -> str | None:
-        """Return a bio.tools ID if external reference to it is found.
-
-        If multiple bio.tools references are found, return just the first one.
-        """
-        return biotools_reference(self.xrefs)
-
     def __get_help_with_images(self, help_content: HelpContent | None) -> HelpContent | None:
         if help_content and help_content.format == "restructuredtext":
             help_text = help_content.content or ""
@@ -2066,46 +1970,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             help_content = HelpContent(format="restructuredtext", content=help_text)
         return help_content
 
-    def find_output_def(self, name):
-        # name is JobToOutputDatasetAssociation name.
-        # TODO: to defensive, just throw IndexError and catch somewhere
-        # up that stack.
-        if ToolOutputCollectionPart.is_named_collection_part_name(name):
-            collection_name, part = ToolOutputCollectionPart.split_output_name(name)
-            collection_def = self.output_collections.get(collection_name, None)
-            if not collection_def:
-                return None
-            return collection_def.outputs.get(part, None)
-        else:
-            return self.outputs.get(name, None)
-
-    @property
-    def is_workflow_compatible(self):
-        return self._is_workflow_compatible
-
-    def check_workflow_compatible(self, tool_source):
-        """
-        Determine if a tool can be used in workflows. External tools and the
-        upload tool are currently not supported by workflows.
-        """
-        # Multiple page tools are not supported -- we're eliminating most
-        # of these anyway
-        if self.has_multiple_pages:
-            return False
-        # This is probably the best bet for detecting external web tools
-        # right now
-        if self.tool_type.startswith("data_source"):
-            return False
-
-        if hasattr(tool_source, "root"):
-            root = tool_source.root
-            if not string_as_bool(root.get("workflow_compatible", "True")):
-                return False
-
-        # TODO: Anyway to capture tools that dynamically change their own
-        #       outputs?
-        return True
-
     def new_state(self, trans: "ProvidesHistoryContext"):
         """
         Create a new `DefaultToolState` for this tool. It will be initialized
@@ -2114,26 +1978,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         state = DefaultToolState()
         state.initialize(trans, self)
         return state
-
-    def get_param(self, key):
-        """
-        Returns the parameter named `key` or None if there is no such
-        parameter.
-        """
-        return self.inputs.get(key, None)
-
-    def get_hook(self, name):
-        """
-        Returns an object from the code file referenced by `code_namespace`
-        (this will normally be a callable object)
-        """
-        if self.code_namespace:
-            # Try to look up hook in self.hook_map, otherwise resort to default
-            if name in self.hook_map and self.hook_map[name] in self.code_namespace:
-                return self.code_namespace[self.hook_map[name]]
-            elif name in self.code_namespace:
-                return self.code_namespace[name]
-        return None
 
     def visit_inputs(self, values, callback):
         """
@@ -2748,39 +2592,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         return installed_tool_dependencies
 
     @property
-    def tool_requirements(self):
-        """
-        Return all requirements of type package
-        """
-        return self.requirements.packages
-
-    @property
     def tool_requirements_status(self):
         """
         Return a list of dictionaries for all tool dependencies with their associated status
         """
         return self._view.get_requirements_status({self.id: self.tool_requirements}, self.installed_tool_dependencies)
-
-    @property
-    def output_discover_patterns(self):
-        # patterns to collect for remote job execution
-        patterns = []
-        for output in self.outputs.values():
-            patterns.extend(output.output_discover_patterns)
-        return patterns
-
-    def build_redirect_url_params(self, param_dict):
-        """
-        Substitute parameter values into self.redirect_url_params
-        """
-        if not self.redirect_url_params:
-            return
-        redirect_url_params = None
-        # Substituting parameter values into the url params
-        redirect_url_params = fill_template(self.redirect_url_params, context=param_dict)
-        # Remove newlines
-        redirect_url_params = redirect_url_params.replace("\n", " ").replace("\r", " ")
-        return redirect_url_params
 
     def parse_redirect_url(self, data, param_dict):
         """
@@ -2797,6 +2613,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         """
         redirect_url = param_dict.get("REDIRECT_URL")
         redirect_url_params = self.build_redirect_url_params(param_dict)
+        assert redirect_url_params is not None
         # Add the parameters to the redirect url.  We're splitting the param
         # string on '**^**' because the self.parse() method replaced white
         # space with that separator.
@@ -2821,22 +2638,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             USERNAME = "Anonymous"
         redirect_url += f"&USERNAME={USERNAME}"
         return redirect_url
-
-    def call_hook(self, hook_name, *args, **kwargs):
-        """
-        Call the custom code hook function identified by 'hook_name' if any,
-        and return the results
-        """
-        try:
-            code = self.get_hook(hook_name)
-            if code:
-                return code(*args, **kwargs)
-        except Exception as e:
-            original_message = ""
-            if len(e.args):
-                original_message = e.args[0]
-            e.args = (f"Error in '{self.name}' hook '{hook_name}', original message: {original_message}",)
-            raise
 
     def exec_before_job(self, app, inp_data: InpDataDictT, out_data: OutDataDictT, param_dict=None):
         pass
@@ -3297,6 +3098,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                 raise exceptions.MessageException(
                     f"This dataset was created by an obsolete tool ({tool_id}). Can't re-run."
                 )
+            tool = self.app.toolbox.materialize_tool(tool, reason="detail")
             assert tool_id
             if (self.id != tool_id and self.old_id != tool_id) or self.version != tool_version:
                 if self.id == tool_id:
@@ -3325,23 +3127,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
 
     def get_default_history_by_trans(self, trans: "ProvidesHistoryContext", create=False):
         return trans.get_history(create=create)
-
-    @classmethod
-    def get_externally_referenced_paths(self, path):
-        """Return relative paths to externally referenced files by the tool
-        described by file at `path`. External components should not assume things
-        about the structure of tool xml files (this is the tool's responsibility).
-        """
-        tree = raw_tool_xml_tree(path)
-        root = tree.getroot()
-        external_paths = []
-        for code_elem in root.findall("code"):
-            external_path = code_elem.get("file")
-            if external_path:
-                external_paths.append(external_path)
-        external_paths.extend(imported_macro_paths(root))
-        # May also need to load external citation files as well at some point.
-        return external_paths
 
 
 class OutputParameterJSONTool(Tool):
@@ -3652,8 +3437,12 @@ class SetMetadataTool(Tool):
     tool_action: "SetMetadataToolAction"
 
     def regenerate_imported_metadata_if_needed(
-        self, hda: HistoryDatasetAssociation, history: History, user: model.User, session_id: int
-    ):
+        self,
+        hda: HistoryDatasetAssociation,
+        history: History,
+        user: model.User | None,
+        session_id: int | None,
+    ) -> None:
         if hda.has_metadata_files:
             job, *_ = self.tool_action.execute_via_app(
                 self,
@@ -3667,7 +3456,7 @@ class SetMetadataTool(Tool):
             self.app.job_manager.enqueue(job=job, tool=self)
 
     def exec_after_process(self, app, inp_data, out_data, param_dict, job, final_job_state=None):
-        working_directory = app.object_store.get_filename(job, base_dir="job_work", dir_only=True, obj_dir=True)
+        working_directory = JobWorkingDirectory(job, app.object_store).resolve()
         for name, dataset in inp_data.items():
             external_metadata = get_metadata_compute_strategy(app.config, job.id, tool_id=self.id)
             sa_session = app.model.context

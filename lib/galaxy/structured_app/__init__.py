@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from galaxy.tools import ToolBox
     from galaxy.tools.cache import ToolCache
     from galaxy.tools.error_reports import ErrorReports
+    from galaxy.util.custom_logging.fluent_log import FluentTraceLogger
     from galaxy.visualization.genomes import Genomes
 
 
@@ -92,6 +93,11 @@ class BasicSharedApp(Container):
     def toolbox(self) -> "ToolBox":
         raise NotImplementedError()
 
+    @property
+    def toolbox_or_none(self) -> "ToolBox | None":
+        """The registered toolbox, or None before one has been configured."""
+        raise NotImplementedError()
+
 
 class MinimalToolApp(Protocol):
     is_webapp: bool
@@ -117,6 +123,7 @@ class MinimalApp(BasicSharedApp):
     security_agent: GalaxyRBACAgent
     host_security_agent: HostAgent
     server_starttime: int
+    trace_logger: "FluentTraceLogger | None"
 
 
 class MinimalManagerApp(MinimalApp):
@@ -154,6 +161,8 @@ class MinimalManagerApp(MinimalApp):
     def is_job_handler(self) -> bool: ...
 
     def wait_for_toolbox_reload(self, old_toolbox: "ToolBox") -> None: ...
+
+    def reindex_tool_search(self) -> None: ...
 
 
 class StructuredApp(MinimalManagerApp):
