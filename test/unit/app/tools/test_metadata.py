@@ -219,9 +219,9 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         self.metadata_command({"out_file1": output})
         registry_path = Path(self.job_working_directory, "metadata/registry.xml")
         tree = parse(registry_path)
-        tree.getroot().find("registration").append(
-            Element("datatype", extension="h5ad", type="galaxy.datatypes.binary:Anndata")
-        )
+        registration = tree.getroot().find("registration")
+        assert registration is not None
+        registration.append(Element("datatype", extension="h5ad", type="galaxy.datatypes.binary:Anndata"))
         tree.write(registry_path)
         self._write_job_files(stdout="", stderr="")
 

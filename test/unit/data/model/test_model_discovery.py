@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 from tempfile import mkdtemp
 from textwrap import dedent
 from typing import (
@@ -11,6 +12,7 @@ from sqlalchemy import select
 
 from galaxy import model
 from galaxy.model import store
+from galaxy.model.store import discover as model_store_discover
 from galaxy.model.store.discover import persist_target_to_export_store
 from galaxy.model.unittest_utils import GalaxyDataTestApp
 
@@ -462,6 +464,12 @@ def _mock_app():
 def test_discovery_import_without_job_execution():
     # galaxy-data must be usable without the higher-level galaxy-job-execution
     # distribution. The monorepo normally masks this package boundary.
+    # The subprocess only inherits sys.path through PYTHONPATH, so point it at
+    # whichever root holds galaxy here - lib/ in the monorepo, site-packages
+    # once galaxy-data is installed.
+    galaxy_path_root = Path(model_store_discover.__file__).parents[3]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(filter(None, [str(galaxy_path_root), environment.get("PYTHONPATH")]))
     result = subprocess.run(
         [
             sys.executable,
@@ -480,6 +488,7 @@ def test_discovery_import_without_job_execution():
                 assert callable(persist_target_to_export_store)
             """),
         ],
+        env=environment,
         capture_output=True,
         text=True,
         timeout=60,
