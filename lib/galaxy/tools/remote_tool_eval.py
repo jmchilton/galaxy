@@ -18,7 +18,11 @@ from galaxy.metadata.set_metadata import (
     get_object_store,
     validate_and_load_datatypes_config,
 )
-from galaxy.model import store
+from galaxy.model import (
+    Dataset,
+    set_datatypes_registry,
+    store,
+)
 from galaxy.model.store import SessionlessContext
 from galaxy.objectstore import BaseObjectStore
 from galaxy.structured_app import MinimalToolApp
@@ -83,6 +87,10 @@ def evaluate_tool(tmpdir: str, working_directory: str, import_store_directory: s
         datatypes_config = os.path.join(working_directory, "configs", datatypes_config)
     datatypes_registry = validate_and_load_datatypes_config(datatypes_config)
     object_store = get_object_store(working_directory)
+    # neither helper installs these module-level globals any more, and evaluating the tool
+    # below reads dataset metadata and output paths through both
+    set_datatypes_registry(datatypes_registry)
+    Dataset.object_store = object_store
     import_store = store.imported_store_for_metadata(import_store_directory)
     assert isinstance(import_store.sa_session, SessionlessContext)
     # TODO: clean up random places from which we read files in the working directory
