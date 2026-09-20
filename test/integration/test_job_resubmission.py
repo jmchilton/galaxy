@@ -22,6 +22,9 @@ JOB_RESUBMISSION_TOOL_DETECTED_ALWAYS_ERROR_JOB_CONFIG_FILE = os.path.join(
 JOB_RESUBMISSION_TOOL_DETECTED_RESUBMIT_JOB_CONFIG_FILE = os.path.join(
     SCRIPT_DIRECTORY, "resubmission_tool_detected_resubmit_job_conf.xml"
 )
+JOB_RESUBMISSION_TOOL_DETECTED_RESUBMIT_TWICE_JOB_CONFIG_FILE = os.path.join(
+    SCRIPT_DIRECTORY, "resubmission_tool_detected_resubmit_twice_job_conf.xml"
+)
 JOB_RESUBMISSION_JOB_RESOURCES_CONFIG_FILE = os.path.join(
     SCRIPT_DIRECTORY, "resubmission_job_resource_parameters_conf.xml"
 )
@@ -308,6 +311,24 @@ class TestJobResubmissionToolDetectedErrorResubmitsIntegration(_BaseResubmission
         # the tool test assumes that the test fails (expect_failure="true")
         # _assert_job_fails checks if this test fails, i.e. the tool is running
         # successfully after the resubmit
+        self._assert_job_fails("exit_code_from_env")
+
+
+# Verify a chain of static destinations can resubmit more than once, and that
+# each hop's <env> is applied to the attempt that runs there:
+# local_resubmit (exit 4) -> local_not_yet_good (exit 4) -> local_good (exit 0).
+class TestJobResubmissionToolDetectedErrorResubmitsTwiceIntegration(_BaseResubmissionIntegrationTestCase):
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["job_config_file"] = JOB_RESUBMISSION_TOOL_DETECTED_RESUBMIT_TWICE_JOB_CONFIG_FILE
+
+    def test_static_chain_resubmits_twice(self):
+        # exit_code_from_env's tool test is expect_failure="true", so _run_tool_test
+        # raises when the job *succeeds*. _assert_job_fails asserts that raise, which
+        # means this asserts the job finished cleanly on the third destination.
+        # Drop an <env> and the final hop exits 1 via ${GX_TARGET_EXIT_CODE:-1};
+        # stop after one resubmit and it exits 4. Either way this goes red.
         self._assert_job_fails("exit_code_from_env")
 
 
