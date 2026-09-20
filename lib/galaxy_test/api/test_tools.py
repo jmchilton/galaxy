@@ -3318,6 +3318,20 @@ class TestToolsApi(ApiTestCase, TestsTools):
             assert len(response_object["jobs"]) == 2
             assert len(response_object["implicit_collections"]) == 1
 
+    def test_nested_dce_rejected_for_single_data_param(self):
+        with self.dataset_populator.test_history() as history_id:
+            pair_id = self.dataset_collection_populator.create_pair_in_history(
+                history_id, contents=["forward", "reverse"], wait=True
+            ).json()["outputs"][0]["id"]
+            list_hdca = self.dataset_collection_populator.create_list_from_pairs(history_id, [pair_id])
+            dce_id = list_hdca.json()["elements"][0]["id"]
+
+            # Without the batch wrapper the paired element would have to fit in one dataset.
+            response = self._run_cat1(history_id, inputs={"input1": {"src": "dce", "id": dce_id}})
+            self._assert_status_code_is(response, 400)
+            message = response.json()["err_msg"]
+            assert "Dataset collection with 2 element(s) supplied to single dataset parameter 'input1'" in message
+
     @skip_without_tool("collection_paired_test")
     def test_request_paired_collection_input_with_dce(self):
         """Regression for https://github.com/galaxyproject/galaxy/issues/22923

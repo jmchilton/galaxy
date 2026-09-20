@@ -413,6 +413,15 @@ class DefaultToolAction(ToolAction):
                         else:
                             # else the tool takes a collection as input so we need everything
                             dataset_instances = value.collection.dataset_instances
+                        if not input.multiple:
+                            # Only multiple="true" can reduce a collection. A single data
+                            # parameter holding a list breaks every downstream consumer
+                            # (wrap_values, ElementIdentifierMapper, DatasetFilenameWrapper).
+                            raise RequestParameterInvalidException(
+                                f"Dataset collection with {len(dataset_instances)} element(s) supplied to single "
+                                f"dataset parameter '{prefixed_name or input.name}'. This parameter accepts one "
+                                "dataset, so the tool has to be mapped over the collection instead."
+                            )
                         if i == 0:
                             target_dict[input.name] = []
                         target_dict[input.name].extend(dataset_instances)

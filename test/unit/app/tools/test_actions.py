@@ -4,9 +4,14 @@ from typing import (
     Optional,
 )
 
+import pytest
+
 from galaxy import model
 from galaxy.app_unittest_utils import tools_support
-from galaxy.exceptions import UserActivationRequiredException
+from galaxy.exceptions import (
+    RequestParameterInvalidException,
+    UserActivationRequiredException,
+)
 from galaxy.objectstore import BaseObjectStore
 from galaxy.tool_util.parser.output_objects import ToolOutput
 from galaxy.tool_util.parser.xml import parse_change_format
@@ -115,6 +120,30 @@ class TestDefaultToolAction(TestCase, tools_support.UsesTools):
         incoming = {"param1": hdca}
         job, output = self._simple_execute(contents=MULTIPLE_DATA_TOOL, incoming=incoming)
         assert output["out1"].name == f"Test Tool on collection {hdca.hid}"
+        # multiple="true" still reduces the collection down to its datasets
+        assert {a.dataset for a in job.input_datasets} >= {hda1, hda2, hda3}
+
+    def test_collection_rejected_for_single_data_param(self):
+        # A non-multiple data parameter cannot reduce a collection, whatever its size.
+        for num_elements in (0, 1, 2):
+            incoming = {"param1": self.__collection(num_elements), "repeat1": []}
+            with pytest.raises(RequestParameterInvalidException) as exc_info:
+                self._simple_execute(tools_support.SIMPLE_CAT_TOOL_CONTENTS, incoming)
+            message = str(exc_info.value)
+            assert "single dataset parameter 'param1'" in message, message
+            assert f"{num_elements} element(s)" in message, message
+
+    def __collection(self, num_elements, collection_type="list"):
+        hdca = model.HistoryDatasetCollectionAssociation()
+        hdca.hid = 55
+        collection = model.DatasetCollection()
+        collection.collection_type = collection_type
+        hdca.collection = collection
+        for _ in range(num_elements):
+            model.DatasetCollectionElement(collection=collection, element=self.__add_dataset())
+        self.history.dataset_collections.append(hdca)
+        self.app.model.context.commit()
+        return hdca
 
     def setUp(self):
         self.setup_app()
