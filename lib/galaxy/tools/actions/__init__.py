@@ -409,6 +409,18 @@ class DefaultToolAction(ToolAction):
                         else:
                             # else the tool takes a collection as input so we need everything
                             dataset_instances = value.collection.dataset_instances
+                        if not input.multiple:
+                            # Only multiple="true" can reduce a collection. Writing the list
+                            # into a single data parameter leaves every downstream consumer
+                            # (wrap_values, ElementIdentifierMapper, DatasetFilenameWrapper)
+                            # holding a list where it expects one dataset, which used to
+                            # surface as an opaque TypeError - "Expected [] to be hashable"
+                            # and friends (issues #19538, #22401, #23521).
+                            raise RequestParameterInvalidException(
+                                f"Dataset collection with {len(dataset_instances)} element(s) supplied to single "
+                                f"dataset parameter '{prefixed_name or input.name}'. This parameter accepts one "
+                                "dataset, so the tool has to be mapped over the collection instead."
+                            )
                         if i == 0:
                             target_dict[input.name] = []
                         target_dict[input.name].extend(dataset_instances)
