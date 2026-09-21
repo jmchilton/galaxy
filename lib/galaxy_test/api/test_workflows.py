@@ -1144,7 +1144,10 @@ steps:
         message_one, message_two = upgrade_result["messages"]
         assert message_one["message"] == "No value found for 'floattest'. Using default: '1.0'."
         assert message_one["input_name"] == "floattest"
-        assert message_two["message"] == "The selected case is unavailable/invalid. Using default: 'b'."
+        assert (
+            message_two["message"]
+            == "No case matching 'bool_to_select' value False. Valid values are ['a', 'b']. Using default: 'b'."
+        )
         assert message_two["input_name"] == "cond|bool_to_select"
 
         refactor_response = self.workflow_populator.refactor_workflow(workflow_id, actions, dry_run=False)
@@ -1181,7 +1184,10 @@ steps:
         assert message_one["message"] == "No value found for 'inttest'. Using default: '1'."
         assert message_two["message"] == "No value found for 'floattest'. Using default: '1.0'."
         assert message_two["input_name"] == "floattest"
-        assert message_three["message"] == "The selected case is unavailable/invalid. Using default: 'b'."
+        assert (
+            message_three["message"]
+            == "No case matching 'bool_to_select' value False. Valid values are ['a', 'b']. Using default: 'b'."
+        )
         assert message_three["input_name"] == "cond|bool_to_select"
 
         refactor_response = self.workflow_populator.refactor_workflow(workflow_id, actions, dry_run=False)

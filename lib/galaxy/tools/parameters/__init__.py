@@ -274,6 +274,10 @@ def visit_input_values(
                 context=context,
                 error=case_error,
             )
+            # callback_helper may have replaced the test parameter's value (e.g.
+            # substituted a tool default for a missing one), so re-resolve the case
+            # against the updated state - current_case above described the input.
+            current_case = get_current_case(input, values)
             values["__current_case__"] = current_case
             if current_case >= 0:
                 visit_input_values(

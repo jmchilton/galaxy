@@ -788,7 +788,10 @@ class Conditional(Group):
                 f"'{test_param_name}' value {values.get(test_param_name)!r}. "
                 f"Valid values are {[case.value for case in self.cases]}."
             )
-        return self.cases[current_case].inputs
+        case_inputs = self.cases[current_case].inputs
+        if case_inputs is None:
+            raise Exception("Must set 'inputs' attribute to use.")
+        return case_inputs
 
     def value_to_basic(self, value, app, use_security=False):
         if self.test_param is None:
