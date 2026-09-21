@@ -1,0 +1,61 @@
+<tool id="conditional_data_arity" name="conditional_data_arity" version="1.0.0">
+    <description>data parameter whose arity differs between conditional cases</description>
+    <!--
+    Mirrors a shape that is common in the wild (e.g. the dada2 suite's
+    batch_cond|derep and paired_cond|reads): the same parameter name appears in
+    more than one <when>, with a different arity each time, and the
+    single-dataset case is last. If the test parameter ever fails to resolve to
+    a case, consumers that index cases[__current_case__] land on cases[-1].
+    -->
+    <command><![CDATA[
+#if str($batch_cond.batch_select) == 'no':
+    #for $read in $batch_cond.reads#
+        echo '$read.element_identifier' >> 'output1';
+    #end for#
+#else:
+    echo '$batch_cond.reads.element_identifier' >> 'output1';
+#end if
+    ]]></command>
+    <inputs>
+        <conditional name="batch_cond">
+            <param name="batch_select" type="select" label="Process samples in batches">
+                <option value="no">no</option>
+                <option value="yes">yes</option>
+            </param>
+            <when value="no">
+                <param name="reads" type="data" multiple="true" format="txt" label="reads (many)" />
+            </when>
+            <when value="yes">
+                <param name="reads" type="data" format="txt" label="reads (one)" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output1" format="tabular" from_work_dir="output1" />
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="batch_cond">
+                <param name="batch_select" value="no" />
+                <param name="reads" value="1.txt,a.txt" />
+            </conditional>
+            <output name="output1">
+                <assert_contents>
+                    <has_text text="1.txt" />
+                    <has_text text="a.txt" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <conditional name="batch_cond">
+                <param name="batch_select" value="yes" />
+                <param name="reads" value="1.txt" />
+            </conditional>
+            <output name="output1">
+                <assert_contents>
+                    <has_text text="1.txt" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+</tool>

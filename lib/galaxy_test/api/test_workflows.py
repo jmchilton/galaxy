@@ -2894,6 +2894,83 @@ should_run:
                 if step["workflow_step_label"] == "cat1":
                     assert sum(1 for j in step["jobs"] if j["state"] == "skipped") == 1
 
+    @skip_without_tool("conditional_data_arity")
+    def test_run_workflow_unresolvable_conditional_case(self):
+        """A conditional test value matching no <when> must be refused with a
+        message naming the parameter and the offending value.
+
+        A tool conditional whose test parameter is connected resolves to no
+        case until the upstream step runs. If such a step is ever scheduled,
+        get_current_case() returns -1, visit_input_values() stores that
+        sentinel as __current_case__, and consumers that index
+        cases[__current_case__] land on cases[-1] - handing a multiple="true"
+        value to a single-dataset parameter, which surfaces as an opaque
+        "Expected [] to be hashable" TypeError naming neither the step nor
+        the parameter (galaxyproject/galaxy#23521).
+
+        check_and_update_state() catches this at invocation-request time,
+        including inside a subworkflow. This pins that it keeps doing so and
+        that the message identifies the parameter and the value.
+        """
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self._upload_yaml_workflow("""class: GalaxyWorkflow
+inputs:
+  case_selector_file:
+    type: data
+  reads_input:
+    type: data
+steps:
+  case_param:
+    tool_id: param_value_from_file
+    state:
+      param_type: text
+      remove_newlines: true
+    in:
+      input1: case_selector_file
+  nested:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_selector:
+          type: text
+        inner_reads:
+          type: data
+      outputs:
+        inner_out:
+          outputSource: arity/output1
+      steps:
+        arity:
+          tool_id: conditional_data_arity
+          state:
+            batch_cond:
+              batch_select:
+                $link: inner_selector
+              reads:
+                $link: inner_reads
+    in:
+      inner_selector: case_param/text_param
+      inner_reads: reads_input
+""")
+            hda = self.dataset_populator.new_dataset(history_id, content="Pooling", wait=True)
+            response = self.workflow_populator.invoke_workflow_raw(
+                workflow_id,
+                {
+                    "history": f"hist_id={history_id}",
+                    "inputs_by": "name",
+                    "inputs": {
+                        "case_selector_file": {"src": "hda", "id": hda["id"]},
+                        "reads_input": {"src": "hda", "id": hda["id"]},
+                    },
+                },
+            )
+            assert response.status_code == 400, response.text
+            reported = json.dumps(response.json())
+            assert "batch_cond|batch_select" in reported, reported
+            assert "No case matching" in reported, reported
+            # names the valid options so the author can spot the typo
+            assert "'no', 'yes'" in reported, reported
+            assert "hashable" not in reported, reported
+
     def test_run_workflow_simple_conditional_step_with_nested_tool_state(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow(

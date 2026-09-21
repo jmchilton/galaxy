@@ -99,9 +99,9 @@ def _json_wrap_input(input, value_wrapper, profile, handle_files=None):
         json_value = repeat_job_value
     elif input_type == "conditional":
         values = value_wrapper
-        current = values["__current_case__"]
+        case_inputs = input.get_current_case_inputs(values)
         conditional_job_value = {}
-        json_wrap(input.cases[current].inputs, values, profile, conditional_job_value, handle_files=handle_files)
+        json_wrap(case_inputs, values, profile, conditional_job_value, handle_files=handle_files)
         test_param = input.test_param
         test_param_name = test_param.name
         test_value = _json_wrap_input(test_param, values[test_param_name], profile, handle_files=handle_files)

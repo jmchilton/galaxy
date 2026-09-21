@@ -464,9 +464,9 @@ class ToolEvaluator:
                         do_walk(input.inputs, d)
                 elif isinstance(input, Conditional):
                     values = input_values[input.name]
-                    current = values["__current_case__"]
+                    case_inputs = input.get_current_case_inputs(values)
                     func(values, input.test_param)
-                    do_walk(input.cases[current].inputs, values)
+                    do_walk(case_inputs, values)
                 elif isinstance(input, Section):
                     values = input_values[input.name]
                     do_walk(input.inputs, values)
