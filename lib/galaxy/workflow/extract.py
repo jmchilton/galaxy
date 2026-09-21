@@ -450,8 +450,7 @@ def __cleanup_param_values(inputs, values):
                     return
                 if input.name in values:
                     group_values = values[input.name]
-                    current_case = group_values["__current_case__"]
-                    cleanup(f"{prefix}{key}|", input.cases[current_case].inputs, group_values)
+                    cleanup(f"{prefix}{key}|", input.get_current_case_inputs(group_values), group_values)
             elif isinstance(input, Section):
                 if input.name in values:
                     cleanup(f"{prefix}{key}|", input.inputs, values[input.name])

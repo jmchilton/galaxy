@@ -125,7 +125,7 @@ def visit_input_values(
     name=c, prefix=b_0|, prefixed_name=b_0|c, prefixed_label=b 1 > c, value=3
     name=e, prefix=b_0|d_0|, prefixed_name=b_0|d_0|e, prefixed_label=b 1 > d 1 > e, value=5
     name=j, prefix=b_0|d_0|, prefixed_name=b_0|d_0|f|j, prefixed_label=b 1 > d 1 > j, value=j
-    The selected case is unavailable/invalid.
+    No case matching 'j' value 'j'. Valid values are ['true', 'false'].
 
     >>> # Test parameter missing in state, value error
     >>> del nested['b'][0]['d'][0]['f']['j']
@@ -255,7 +255,16 @@ def visit_input_values(
                 raise RequestParameterInvalidException(
                     f"Invalid value '{values}' submitted for conditional parameter '{name_prefix + input.name}'."
                 )
-            case_error = None if get_current_case(input, values) >= 0 else "The selected case is unavailable/invalid."
+            current_case = get_current_case(input, values)
+            case_error = (
+                None
+                if current_case >= 0
+                else (
+                    f"No case matching '{input.test_param.name}' value "
+                    f"{values.get(input.test_param.name)!r}. "
+                    f"Valid values are {[case.value for case in input.cases]}."
+                )
+            )
             callback_helper(
                 input.test_param,
                 values,
@@ -265,10 +274,10 @@ def visit_input_values(
                 context=context,
                 error=case_error,
             )
-            values["__current_case__"] = get_current_case(input, values)
-            if values["__current_case__"] >= 0:
+            values["__current_case__"] = current_case
+            if current_case >= 0:
                 visit_input_values(
-                    input.cases[values["__current_case__"]].inputs,
+                    input.cases[current_case].inputs,
                     values,
                     callback,
                     new_name_prefix,
@@ -397,10 +406,10 @@ def params_to_incoming(incoming, inputs, input_values, app, name_prefix=""):
                 params_to_incoming(incoming, input.inputs, d, app, new_name_prefix)
         elif isinstance(input, Conditional):
             values = input_values[input.name]
-            current = values["__current_case__"]
+            case_inputs = input.get_current_case_inputs(values)
             new_name_prefix = f"{name_prefix + input.name}|"
             incoming[new_name_prefix + input.test_param.name] = values[input.test_param.name]
-            params_to_incoming(incoming, input.cases[current].inputs, values, app, new_name_prefix)
+            params_to_incoming(incoming, case_inputs, values, app, new_name_prefix)
         elif isinstance(input, Section):
             values = input_values[input.name]
             new_name_prefix = f"{name_prefix + input.name}|"

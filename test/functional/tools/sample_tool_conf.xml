@@ -16,6 +16,7 @@
   <tool file="color_param.xml" />
   <tool file="inheritance_simple.xml" />
   <tool file="boolean_conditional.xml" />
+  <tool file="conditional_data_arity.xml" />
   <tool file="composite.xml" />
   <tool file="environment_variables.xml" />
   <tool file="environment_variables_inject.xml" />

@@ -21,6 +21,7 @@ from galaxy.datatypes import data
 from galaxy.exceptions import (
     AdminRequiredException,
     ConfigDoesNotAllowException,
+    RequestParameterInvalidException,
 )
 from galaxy.files.uris import stream_to_file
 from galaxy.util import (
@@ -769,6 +770,25 @@ class Conditional(Group):
             if str_value == case.value:
                 return index
         raise ValueError("No case matched value:", self.name, str_value)
+
+    def get_current_case_inputs(self, values: Mapping[str, Any]) -> "ToolInputsT":
+        """Inputs of the case recorded in ``values["__current_case__"]``.
+
+        ``get_current_case`` returns -1 when the test parameter matches no
+        ``<when>``, and ``visit_input_values`` stores that sentinel in the
+        state. Indexing ``self.cases`` with it selects the *last* case rather
+        than failing, so values shaped for one case end up handled as another's
+        - which surfaces far downstream as an opaque TypeError while wrapping.
+        """
+        current_case = values.get("__current_case__")
+        if not isinstance(current_case, int) or not 0 <= current_case < len(self.cases):
+            test_param_name = self.test_param.name if self.test_param else "unknown"
+            raise RequestParameterInvalidException(
+                f"Conditional parameter '{self.name}' has no case matching "
+                f"'{test_param_name}' value {values.get(test_param_name)!r}. "
+                f"Valid values are {[case.value for case in self.cases]}."
+            )
+        return self.cases[current_case].inputs
 
     def value_to_basic(self, value, app, use_security=False):
         if self.test_param is None:

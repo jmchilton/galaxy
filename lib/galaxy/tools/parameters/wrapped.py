@@ -113,8 +113,7 @@ class WrappedParameters:
                     self.wrap_values(input.inputs, d, skip_missing_values=skip_missing_values)
             elif isinstance(input, Conditional):
                 values = value
-                current = values["__current_case__"]
-                self.wrap_values(input.cases[current].inputs, values, skip_missing_values=skip_missing_values)
+                self.wrap_values(input.get_current_case_inputs(values), values, skip_missing_values=skip_missing_values)
             elif isinstance(input, Section):
                 values = value
                 self.wrap_values(input.inputs, values, skip_missing_values=skip_missing_values)
