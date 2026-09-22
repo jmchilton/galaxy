@@ -256,15 +256,7 @@ def visit_input_values(
                     f"Invalid value '{values}' submitted for conditional parameter '{name_prefix + input.name}'."
                 )
             current_case = get_current_case(input, values)
-            case_error = (
-                None
-                if current_case >= 0
-                else (
-                    f"No case matching '{input.test_param.name}' value "
-                    f"{values.get(input.test_param.name)!r}. "
-                    f"Valid values are {[case.value for case in input.cases]}."
-                )
-            )
+            case_error = None if current_case >= 0 else input.no_case_error(values.get(input.test_param.name))
             callback_helper(
                 input.test_param,
                 values,
@@ -410,7 +402,9 @@ def params_to_incoming(incoming, inputs, input_values, app, name_prefix=""):
                 params_to_incoming(incoming, input.inputs, d, app, new_name_prefix)
         elif isinstance(input, Conditional):
             values = input_values[input.name]
-            case_inputs = input.get_current_case_inputs(values)
+            # Rebuilding a form, not running anything - a stale case must not stop
+            # the step from being opened and corrected.
+            case_inputs = input.get_current_case_inputs(values, strict=False)
             new_name_prefix = f"{name_prefix + input.name}|"
             incoming[new_name_prefix + input.test_param.name] = values[input.test_param.name]
             params_to_incoming(incoming, case_inputs, values, app, new_name_prefix)
@@ -513,6 +507,9 @@ def populate_state(
                 else:
                     try:
                         current_case = input.get_current_case(value)
+                    except ValueError:
+                        errors[test_param.name] = input.no_case_error(value)
+                    else:
                         group_state = state[input_name] = {}
                         cast_errors: ParameterValidationErrorsT = {}
                         incoming_for_conditional = cast(ToolStateJobInstanceT, incoming.get(input_name) or {})
@@ -530,8 +527,6 @@ def populate_state(
                         if cast_errors:
                             errors[input_name] = cast_errors
                         group_state["__current_case__"] = current_case
-                    except Exception:
-                        errors[test_param.name] = "The selected case is unavailable/invalid."
                 group_state[test_param.name] = value
 
             elif isinstance(input, Section):
@@ -640,6 +635,9 @@ def _populate_state_legacy(
             else:
                 try:
                     current_case = input.get_current_case(value)
+                except ValueError:
+                    errors[test_param_key] = input.no_case_error(value)
+                else:
                     group_state = state[input.name] = cast(ToolStateJobInstancePopulatedT, {})
                     _populate_state_legacy(
                         request_context,
@@ -653,8 +651,6 @@ def _populate_state_legacy(
                         simple_errors=simple_errors,
                     )
                     group_state["__current_case__"] = current_case
-                except Exception:
-                    errors[test_param_key] = "The selected case is unavailable/invalid."
             group_state[test_param.name] = value
         elif isinstance(input, Section):
             _populate_state_legacy(
@@ -746,6 +742,9 @@ def populate_state_async(
             else:
                 try:
                     current_case = input.get_current_case(value)
+                except ValueError:
+                    errors[test_param.name] = input.no_case_error(value)
+                else:
                     group_state = state[input_name] = {}
                     cast_errors: ParameterValidationErrorsT = {}
                     populate_state_async(
@@ -759,8 +758,6 @@ def populate_state_async(
                     if cast_errors:
                         errors[input_name] = cast_errors
                     group_state["__current_case__"] = current_case
-                except Exception:
-                    errors[test_param.name] = "The selected case is unavailable/invalid."
             group_state[test_param.name] = value
 
         elif isinstance(input, Section):
@@ -849,15 +846,15 @@ def fill_dynamic_defaults(
             test_param_value = job_tool_state.get(input_name, {}).get(test_param.name)
             try:
                 current_case = input.get_current_case(test_param_value)
-                fill_dynamic_defaults(
-                    request_context,
-                    input.cases[current_case].inputs,
-                    cast(ToolStateJobInstanceT, job_tool_state.get(input_name)),
-                    cast(ToolStateJobInstancePopulatedT, params.get(input_name)),
-                    context=context,
-                )
-            except Exception:
-                raise Exception("The selected case is unavailable/invalid.")
+            except ValueError as exc:
+                raise RequestParameterInvalidException(input.no_case_error(test_param_value)) from exc
+            fill_dynamic_defaults(
+                request_context,
+                input.cases[current_case].inputs,
+                cast(ToolStateJobInstanceT, job_tool_state.get(input_name)),
+                cast(ToolStateJobInstancePopulatedT, params.get(input_name)),
+                context=context,
+            )
 
         elif isinstance(input, Section):
             fill_dynamic_defaults(

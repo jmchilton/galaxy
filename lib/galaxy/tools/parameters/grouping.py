@@ -771,7 +771,15 @@ class Conditional(Group):
                 return index
         raise ValueError("No case matched value:", self.name, str_value)
 
-    def get_current_case_inputs(self, values: Mapping[str, Any]) -> "ToolInputsT":
+    def no_case_error(self, value: Any) -> str:
+        """Message for a test parameter value matching no ``<when>``."""
+        test_param_name = self.test_param.name if self.test_param else "unknown"
+        return (
+            f"No case matching '{test_param_name}' value {value!r}. "
+            f"Valid values are {[case.value for case in self.cases]}."
+        )
+
+    def get_current_case_inputs(self, values: Mapping[str, Any], strict: bool = True) -> "ToolInputsT":
         """Inputs of the case recorded in ``values["__current_case__"]``.
 
         ``get_current_case`` returns -1 when the test parameter matches no
@@ -779,15 +787,19 @@ class Conditional(Group):
         state. Indexing ``self.cases`` with it selects the *last* case rather
         than failing, so values shaped for one case end up handled as another's
         - which surfaces far downstream as an opaque TypeError while wrapping.
+
+        Execution paths want the exception. Callers that rebuild a form or scrub
+        stored state pass ``strict=False`` and get no inputs instead, so a stale
+        conditional stays editable rather than locking its own repair UI.
         """
         current_case = values.get("__current_case__")
         if not isinstance(current_case, int) or not 0 <= current_case < len(self.cases):
             test_param_name = self.test_param.name if self.test_param else "unknown"
-            raise RequestParameterInvalidException(
-                f"Conditional parameter '{self.name}' has no case matching "
-                f"'{test_param_name}' value {values.get(test_param_name)!r}. "
-                f"Valid values are {[case.value for case in self.cases]}."
-            )
+            message = f"Conditional parameter '{self.name}': {self.no_case_error(values.get(test_param_name))}"
+            if not strict:
+                log.warning("%s Ignoring its case inputs.", message)
+                return {}
+            raise RequestParameterInvalidException(message)
         case_inputs = self.cases[current_case].inputs
         if case_inputs is None:
             raise Exception("Must set 'inputs' attribute to use.")
