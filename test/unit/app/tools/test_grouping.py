@@ -87,3 +87,18 @@ def test_get_current_case_inputs_rejects_missing_case():
     cond = _arity_conditional()
     with pytest.raises(RequestParameterInvalidException):
         cond.get_current_case_inputs({"batch_select": "no"})
+
+
+def test_get_current_case_inputs_non_strict_yields_no_inputs():
+    """Form building and state scrubbing must not hard-fail on a stale case -
+    that would lock the UI needed to correct it."""
+    cond = _arity_conditional()
+    values = {"batch_select": "Pooling", "reads": [], "__current_case__": -1}
+    assert cond.get_current_case_inputs(values, strict=False) == {}
+
+
+def test_no_case_error_names_value_and_options():
+    cond = _arity_conditional()
+    assert cond.no_case_error("Pooling") == (
+        "No case matching 'batch_select' value 'Pooling'. Valid values are ['no', 'yes']."
+    )
