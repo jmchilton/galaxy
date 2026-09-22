@@ -2902,22 +2902,8 @@ should_run:
 
     @skip_without_tool("conditional_data_arity")
     def test_run_workflow_unresolvable_conditional_case(self):
-        """A conditional test value matching no <when> must be refused with a
-        message naming the parameter and the offending value.
-
-        A tool conditional whose test parameter is connected resolves to no
-        case until the upstream step runs. If such a step is ever scheduled,
-        get_current_case() returns -1, visit_input_values() stores that
-        sentinel as __current_case__, and consumers that index
-        cases[__current_case__] land on cases[-1] - handing a multiple="true"
-        value to a single-dataset parameter, which surfaces as an opaque
-        "Expected [] to be hashable" TypeError naming neither the step nor
-        the parameter (galaxyproject/galaxy#23521).
-
-        check_and_update_state() catches this at invocation-request time,
-        including inside a subworkflow. This pins that it keeps doing so and
-        that the message identifies the parameter and the value.
-        """
+        """A conditional test value matching no <when> is refused at request time,
+        with a message naming the parameter and the offending value (#23521)."""
         with self.dataset_populator.test_history() as history_id:
             workflow_id = self._upload_yaml_workflow("""class: GalaxyWorkflow
 inputs:
