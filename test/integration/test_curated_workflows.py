@@ -54,53 +54,58 @@ MALICIOUS_ANNOTATION = '<img src=x onerror="alert(1)"><script>alert(2)</script>S
 DOCKSTORE_TRS_TOOLS = "https://dockstore.org/api/ga4gh/trs/v2/tools"
 
 
-# Use the normal integration-test toolbox rather than coupling this test to the
-# upload-only toolbox used by the minimal server configuration. ``cat1`` is a
-# regular workflow tool in that toolbox; fastp is a real IWC dependency that is
-# not installed there.
 INSTALLED_TOOL_ID = "cat1"
 UNAVAILABLE_TOOL_ID = "toolshed.g2.bx.psu.edu/repos/iuc/fastp/fastp/0.23.4+galaxy0"
 
 
-def _catalog_entry(
-    slug: str, name: str, tags: list[str], updated: str, tool_ids: list[str] | None = None
+def _manifest_workflow(
+    slug: str, name: str, tags: list[str], updated: str, tool_ids: tuple[str, ...] = ()
 ) -> dict[str, Any]:
-    """Build one projected catalog row in the shape ``project_manifest`` emits."""
+    """Build a small workflow in the shape of an IWC manifest entry."""
     return {
-        "id": slug,
-        "name": name,
-        "description": "Example curated workflow.",
-        "tags": tags,
+        "iwcID": slug,
+        "trsID": f"#workflow/github.com/iwc-workflows/{slug}/main",
         "collections": ["examples"],
-        "number_of_steps": 4,
-        "update_time": updated,
-        "release": "0.1",
         "doi": "10.0000/zenodo.0000000",
-        "external_url": f"https://iwc.galaxyproject.org/workflow/{slug}/",
-        "owner": None,
-        "stored_workflow_id": None,
-        "trs_url": f"{DOCKSTORE_TRS_TOOLS}/%23workflow%2Fgithub.com%2Fiwc-workflows%2F{slug}%2Fmain/versions/v0.1",
-        "trs_fallback_url": f"{DOCKSTORE_TRS_TOOLS}/%23workflow%2Fgithub.com%2Fiwc-workflows%2F{slug}%2Fmain/versions/main",
-        "tool_ids": [INSTALLED_TOOL_ID] if tool_ids is None else tool_ids,
+        "updated": updated,
+        "definition": {
+            "name": name,
+            "annotation": "Example curated workflow.",
+            "tags": tags,
+            "release": "0.1",
+            "steps": {str(index): {"tool_id": tool_id} for index, tool_id in enumerate(tool_ids)},
+        },
     }
 
 
-# Ordered newest-first. Two of them need a tool this Galaxy lacks.
-CATALOG_ENTRIES = [
-    _catalog_entry("assembly-hifi", "HiFi genome assembly", ["assembly"], "2024-05-01T00:00:00"),
-    _catalog_entry(
-        "assembly-flye",
-        "Flye long read assembly",
-        ["assembly"],
-        "2024-04-01T00:00:00",
-        tool_ids=[INSTALLED_TOOL_ID, UNAVAILABLE_TOOL_ID],
-    ),
-    _catalog_entry(
-        "variant-calling", "Variant calling", ["variants"], "2024-03-01T00:00:00", tool_ids=[UNAVAILABLE_TOOL_ID]
-    ),
-    _catalog_entry("rnaseq-counts", "RNA-seq counts", ["transcriptomics"], "2024-02-01T00:00:00"),
-    _catalog_entry("chipseq-peaks", "ChIP-seq peaks", ["epigenetics"], "2024-01-01T00:00:00", tool_ids=[]),
-]
+# Ordered newest-first. The projection derives tool ids from these workflow
+# definitions just as the real IWC refresh does.
+CATALOG_ENTRIES = curated.project_manifest(
+    [
+        {
+            "name": "integration-test-workflows",
+            "workflows": [
+                _manifest_workflow("assembly-hifi", "HiFi genome assembly", ["assembly"], "2024-05-01T00:00:00"),
+                _manifest_workflow(
+                    "assembly-flye",
+                    "Flye long read assembly",
+                    ["assembly"],
+                    "2024-04-01T00:00:00",
+                    tool_ids=(INSTALLED_TOOL_ID, UNAVAILABLE_TOOL_ID),
+                ),
+                _manifest_workflow(
+                    "variant-calling",
+                    "Variant calling",
+                    ["variants"],
+                    "2024-03-01T00:00:00",
+                    tool_ids=(UNAVAILABLE_TOOL_ID,),
+                ),
+                _manifest_workflow("rnaseq-counts", "RNA-seq counts", ["transcriptomics"], "2024-02-01T00:00:00"),
+                _manifest_workflow("chipseq-peaks", "ChIP-seq peaks", ["epigenetics"], "2024-01-01T00:00:00"),
+            ],
+        }
+    ]
+)
 NEWEST_FIRST_IDS = [entry["id"] for entry in CATALOG_ENTRIES]
 # The default ordering: what will run here first, newest-first within each group.
 CATALOG_IDS = ["assembly-hifi", "rnaseq-counts", "chipseq-peaks", "assembly-flye", "variant-calling"]
