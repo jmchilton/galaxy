@@ -54,9 +54,12 @@ MALICIOUS_ANNOTATION = '<img src=x onerror="alert(1)"><script>alert(2)</script>S
 DOCKSTORE_TRS_TOOLS = "https://dockstore.org/api/ga4gh/trs/v2/tools"
 
 
-# An integration Galaxy loads only the upload tool; this Tool Shed tool is installed on none.
-PRESENT_TOOL_ID = "upload1"
-ABSENT_TOOL_ID = "toolshed.g2.bx.psu.edu/repos/iuc/not_installed_here/not_installed_here/1.0"
+# Use the normal integration-test toolbox rather than coupling this test to the
+# upload-only toolbox used by the minimal server configuration. ``cat1`` is a
+# regular workflow tool in that toolbox; fastp is a real IWC dependency that is
+# not installed there.
+INSTALLED_TOOL_ID = "cat1"
+UNAVAILABLE_TOOL_ID = "toolshed.g2.bx.psu.edu/repos/iuc/fastp/fastp/0.23.4+galaxy0"
 
 
 def _catalog_entry(
@@ -78,7 +81,7 @@ def _catalog_entry(
         "stored_workflow_id": None,
         "trs_url": f"{DOCKSTORE_TRS_TOOLS}/%23workflow%2Fgithub.com%2Fiwc-workflows%2F{slug}%2Fmain/versions/v0.1",
         "trs_fallback_url": f"{DOCKSTORE_TRS_TOOLS}/%23workflow%2Fgithub.com%2Fiwc-workflows%2F{slug}%2Fmain/versions/main",
-        "tool_ids": [PRESENT_TOOL_ID] if tool_ids is None else tool_ids,
+        "tool_ids": [INSTALLED_TOOL_ID] if tool_ids is None else tool_ids,
     }
 
 
@@ -90,10 +93,10 @@ CATALOG_ENTRIES = [
         "Flye long read assembly",
         ["assembly"],
         "2024-04-01T00:00:00",
-        tool_ids=[PRESENT_TOOL_ID, ABSENT_TOOL_ID],
+        tool_ids=[INSTALLED_TOOL_ID, UNAVAILABLE_TOOL_ID],
     ),
     _catalog_entry(
-        "variant-calling", "Variant calling", ["variants"], "2024-03-01T00:00:00", tool_ids=[ABSENT_TOOL_ID]
+        "variant-calling", "Variant calling", ["variants"], "2024-03-01T00:00:00", tool_ids=[UNAVAILABLE_TOOL_ID]
     ),
     _catalog_entry("rnaseq-counts", "RNA-seq counts", ["transcriptomics"], "2024-02-01T00:00:00"),
     _catalog_entry("chipseq-peaks", "ChIP-seq peaks", ["epigenetics"], "2024-01-01T00:00:00", tool_ids=[]),
@@ -311,6 +314,7 @@ class TestCuratedWorkflowsLocal(_CuratedWorkflowsTestCase):
 class TestCuratedWorkflowsCatalog(_CuratedWorkflowsTestCase):
     """``curated_workflows_source: iwc``: the tab serves the on-disk IWC projection."""
 
+    framework_tool_and_types = True
     projection_path: ClassVar[str] = ""
 
     @classmethod
@@ -347,13 +351,16 @@ class TestCuratedWorkflowsCatalog(_CuratedWorkflowsTestCase):
             assert workflow["trs_fallback_url"].endswith("/versions/main")
             assert workflow["external_url"].startswith("https://iwc.galaxyproject.org/workflow/")
 
-    def test_catalog_reports_missing_tools(self):
+    def test_catalog_reports_missing_tools_from_the_loaded_toolbox(self):
+        assert self._app.toolbox.has_tool(INSTALLED_TOOL_ID)
+        assert not self._app.toolbox.has_tool(UNAVAILABLE_TOOL_ID)
+
         index = self._curated_index(limit=10)
         missing = {workflow["id"]: workflow["missing_tools"] for workflow in index["workflows"]}
         assert missing == {
             "assembly-hifi": [],
-            "assembly-flye": [ABSENT_TOOL_ID],
-            "variant-calling": [ABSENT_TOOL_ID],
+            "assembly-flye": [UNAVAILABLE_TOOL_ID],
+            "variant-calling": [UNAVAILABLE_TOOL_ID],
             "rnaseq-counts": [],
             "chipseq-peaks": [],
         }
