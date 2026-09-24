@@ -36,4 +36,6 @@ Overview of available API resources is available at https://galaxyproject.org/de
 
     Quickstart <api/quickstart>
 
+    Best Practices <api/best_practices>
+
     Documentation <api/api>
