@@ -10,9 +10,9 @@ import typing
 from abc import abstractmethod
 from collections.abc import (
     Callable,
+    Iterable,
     Sequence,
 )
-from collections.abc import Iterable
 from typing import (
     Any,
     NamedTuple,
