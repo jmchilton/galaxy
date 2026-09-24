@@ -10,6 +10,7 @@ import typing
 from abc import abstractmethod
 from collections.abc import (
     Callable,
+    Iterable,
     Sequence,
 )
 from typing import (
@@ -534,7 +535,7 @@ class ExecutionTracker:
 
     @staticmethod
     def _collection_info_to_collection_hids_element_ids(
-        items: list[model.DatasetCollectionElement | model.HistoryDatasetCollectionAssociation],
+        items: Iterable[model.DatasetCollectionElement | model.HistoryDatasetCollectionAssociation],
     ) -> tuple[list[int], list[str]]:
         element_ids = []
         collection_hids = []
