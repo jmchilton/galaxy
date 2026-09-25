@@ -297,6 +297,43 @@ def test_nested_axis_conditions_are_indexed_by_leaf_coordinate():
     assert [when_value for _items, when_value in matched.slice_collections()] == [True, False, True, False]
 
 
+def test_outer_element_conditions_repeat_across_nested_coordinates():
+    nested = collection_instance(
+        collection_type="list:list",
+        elements=[
+            collection_element("X", list_instance(ids=["XP", "XQ"]).collection),
+            collection_element("Y", list_instance(ids=["YP", "YQ", "YR"]).collection),
+        ],
+    )
+    matched = build_matching_collections(("nested", nested))
+    matched.set_when_values([True, False], by_outer_element=True)
+
+    assert [when_value for _items, when_value in matched.slice_collections()] == [
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+
+
+def test_outer_element_condition_handles_empty_nested_collection():
+    nested = collection_instance(
+        collection_type="list:list",
+        elements=[
+            collection_element("X", list_instance(ids=["XP", "XQ"]).collection),
+            collection_element("Y", collection("list", [])),
+        ],
+    )
+    matched = build_matching_collections(("nested", nested))
+    matched.set_when_values([True, False], by_outer_element=True)
+
+    assert [when_value for _items, when_value in matched.slice_collections()] == [True, True]
+
+    matched.when_values = [True, False]
+    assert [when_value for _items, when_value in matched.slice_collections()] == [True, False]
+
+
 def test_product_condition_can_depend_on_every_axis():
     outer = build_matching_collections(("outer", list_instance(ids=["X", "Y"]))).mapping_axes[0]
     inner_match = build_matching_collections(("inner", list_instance(ids=["P", "Q", "R"])))

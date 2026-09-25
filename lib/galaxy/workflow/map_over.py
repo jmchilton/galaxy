@@ -45,7 +45,7 @@ class MapOverPlanner:
             if progress.subworkflow_collection_info:
                 # We've mapped over a subworkflow. Slices of the invocation might be conditional
                 # and progress.subworkflow_collection_info.when_values holds the appropriate when_values
-                collection_info.when_values = progress.subworkflow_collection_info.when_values
+                collection_info.set_when_values(progress.subworkflow_collection_info.when_values, by_outer_element=True)
             else:
                 # The invocation is not mapped over, but it might still be conditional.
                 # Multiplication and linking should be handled by slice_collection()

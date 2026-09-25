@@ -445,6 +445,7 @@ class MatchingCollections:
         self.bindings: dict[str, MatchingCollectionBinding] = {}
         self.conditions: list[MatchingCollectionCondition] = []
         self._when_values: list[bool | None] | None = None
+        self._when_condition: MatchingCollectionCondition | None = None
 
     def __attempt_add_to_linked_match(
         self,
@@ -557,17 +558,35 @@ class MatchingCollections:
 
     @when_values.setter
     def when_values(self, when_values: list[bool | None] | None) -> None:
+        self.set_when_values(when_values)
+
+    def set_when_values(self, when_values: list[bool | None] | None, *, by_outer_element: bool = False) -> None:
+        """Set a condition over all coordinates or over the outermost elements."""
         self._when_values = when_values
+        full_axis_indices = tuple(range(len(self.mapping_axes)))
         self.conditions = [
-            condition for condition in self.conditions if condition.axis_indices != tuple(range(len(self.mapping_axes)))
+            condition
+            for condition in self.conditions
+            if condition is not self._when_condition and condition.axis_indices != full_axis_indices
         ]
+        self._when_condition = None
         if when_values:
-            self.conditions.append(
-                MatchingCollectionCondition(
-                    axis_indices=tuple(range(len(self.mapping_axes))),
-                    values=when_values,
-                )
-            )
+            axis_indices = full_axis_indices
+            condition_values = when_values
+            if by_outer_element:
+                first_axis = self.mapping_axes[0]
+                if not isinstance(first_axis.structure, Tree):
+                    raise ValueError("Cannot index outer-element conditions without known collection children")
+                if len(when_values) not in (1, len(first_axis.structure.children)):
+                    raise ValueError("Condition values do not match outer collection elements")
+                axis_indices = (0,)
+                condition_values = [
+                    when_values[0] if len(when_values) == 1 else when_values[path[0]]
+                    for path, _ordinal in first_axis.coordinates()
+                ]
+            condition = MatchingCollectionCondition(axis_indices=axis_indices, values=condition_values)
+            self.conditions.append(condition)
+            self._when_condition = condition
 
     def subcollection_mapping_type(self, input_name: str) -> "str | CollectionTypeDescription | None":
         return self.subcollection_types[input_name]
