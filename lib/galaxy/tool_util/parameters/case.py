@@ -86,6 +86,7 @@ class TestCaseStateValidationResult:
     validation_error: Exception | None
     tool_parameter_bundle: list[ToolParameterT]
     profile: str
+    expect_inputs_invalid: bool = False
 
     def to_dict(self):
         tool_state_json = self.tool_state.input_state
@@ -96,6 +97,7 @@ class TestCaseStateValidationResult:
             "warnings": warnings,
             "validation_error": validation_error,
             "validated_with_profile": self.profile,
+            "expect_inputs_invalid": self.expect_inputs_invalid,
         }
 
 
@@ -380,6 +382,7 @@ def test_case_validation(
         exception,
         tool_parameter_bundle,
         profile,
+        expect_inputs_invalid=test_dict.get("expect_inputs_invalid", False),
     )
 
 

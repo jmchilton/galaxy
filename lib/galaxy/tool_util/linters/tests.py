@@ -191,7 +191,13 @@ class TestsCaseValidation(Linter):
             return
         for test_idx, validation_result in enumerate(validation_results, start=1):
             error = validation_result.validation_error
-            if error:
+            if validation_result.expect_inputs_invalid:
+                if not error:
+                    lint_log(
+                        f"Test {test_idx}: declares expect_inputs_invalid but its inputs validate against the tool's inputs.",
+                        linter=cls.name(),
+                    )
+            elif error:
                 error_str = _cleanup_pydantic_error(error)
                 lint_log(
                     f"Test {test_idx}: failed to validate test parameters against inputs - tests won't run on a modern Galaxy tool profile version. Validation errors are [{error_str}]",
@@ -261,7 +267,10 @@ class TestsExpectNumOutputs(Linter):
                 tool_xml.find("./outputs/data/filter") is None and tool_xml.find("./outputs/collection/filter") is None
             )
             if not (
-                has_no_filter or "expect_num_outputs" in test.attrib or asbool(test.attrib.get("expect_failure", False))
+                has_no_filter
+                or "expect_num_outputs" in test.attrib
+                or asbool(test.attrib.get("expect_failure", False))
+                or asbool(test.attrib.get("expect_inputs_invalid", False))
             ):
                 lint_ctx.warn(
                     f"Test {test_idx}: should specify 'expect_num_outputs' if outputs have filters",
@@ -590,6 +599,26 @@ class TestsExpectNumOutputsFailing(Linter):
                 )
 
 
+class TestsExpectInputsInvalidExpectations(Linter):
+    """A test with invalid inputs runs no job, so it cannot check anything about one."""
+
+    @classmethod
+    def lint(cls, tool_source: "ToolSource", lint_ctx: "LintContext") -> None:
+        tool_xml = getattr(tool_source, "xml_tree", None)
+        if not tool_xml:
+            return
+        tests = tool_xml.findall("./tests/test")
+        for test_idx, test in enumerate(tests, start=1):
+            if not asbool(test.attrib.get("expect_inputs_invalid", False)):
+                continue
+            if _has_job_expectations(test):
+                lint_ctx.error(
+                    f"Test {test_idx}: Cannot specify outputs or other expectations in a test expecting invalid inputs.",
+                    linter=cls.name(),
+                    node=test,
+                )
+
+
 class TestsHasExpectations(Linter):
     """ """
 
@@ -645,9 +674,18 @@ class TestsValid(Linter):
             lint_ctx.warn("No valid test(s) found.", linter=cls.name(), node=general_node)
 
 
+_JOB_EXPECTATION_TAGS = ("output", "output_collection", "assert_stdout", "assert_stderr", "assert_command")
+
+
+def _has_job_expectations(test: "Element") -> bool:
+    if set(test.attrib) & {"expect_failure", "expect_exit_code", "expect_num_outputs"}:
+        return True
+    return any(test.find(tag) is not None for tag in _JOB_EXPECTATION_TAGS)
+
+
 def _iter_tests(tests: list["Element"], valid: bool) -> Iterator[tuple[int, "Element"]]:
     for test_idx, test in enumerate(tests, start=1):
-        is_valid = False
+        is_valid = asbool(test.attrib.get("expect_inputs_invalid", False))
         is_valid |= bool(set(test.attrib) & {"expect_failure", "expect_exit_code", "expect_num_outputs"})
         for ta in ("assert_stdout", "assert_stderr", "assert_command"):
             if test.find(ta) is not None:

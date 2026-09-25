@@ -74,6 +74,9 @@ def parse_tool_test_descriptions(
     tests: list[ToolTestDescription] = []
 
     for i, raw_test_dict in enumerate(raw_tests_dict.get("tests", [])):
+        expect_inputs_invalid = raw_test_dict.get("expect_inputs_invalid", False)
+        # tests declaring invalid inputs are checked regardless of profile
+        validate = validate_on_load or expect_inputs_invalid
         validation_exception: Exception | None = None
         request_and_schema: TestRequestAndSchema | None = None
         tool_parameter_bundle: ToolParameterBundleModel | None = None
@@ -84,7 +87,7 @@ def parse_tool_test_descriptions(
             qualified_test_dict = cast(
                 ToolSourceTest, {**raw_test_dict, "inputs": _qualify_test_inputs(tool_source, raw_test_dict)}
             )
-            validated_test_case = case_state(qualified_test_dict, parameters, profile, validate=validate_on_load)
+            validated_test_case = case_state(qualified_test_dict, parameters, profile, validate=validate)
             if validated_test_case.unhandled_inputs:
                 # Inputs that map to no parameter (e.g. legacy unqualified repeats) can't be
                 # represented in a modern request; fall back to the legacy API.
@@ -97,26 +100,29 @@ def parse_tool_test_descriptions(
                     tool_parameter_bundle or ToolParameterBundleModel(parameters=parameters),
                 )
         except Exception as e:
-            if validate_on_load:
+            if validate:
                 validation_exception = e
             else:
                 validation_skipped_reason = f"could not build request: {e}"
 
-        if validation_exception:
-            tool_id, tool_version = _tool_id_and_version(tool_source, tool_guid)
-            test = ToolTestDescription.from_tool_source_dict(
-                InvalidToolTestDict(
-                    {
-                        "tool_id": tool_id,
-                        "tool_version": tool_version,
-                        "test_index": i,
-                        "inputs": {},
-                        "error": True,
-                        "exception": unicodify(validation_exception),
-                        "request_unavailable_reason": "validation exception during tool loading",
-                        "maxseconds": None,
-                    }
+        if expect_inputs_invalid:
+            if validation_exception:
+                test = _inputs_invalid_description(tool_source, i, tool_guid, validation_exception)
+            else:
+                test = _invalid_description(
+                    tool_source,
+                    i,
+                    tool_guid,
+                    "Test declares expect_inputs_invalid but its inputs validate against the tool's inputs.",
+                    "expect_inputs_invalid test with valid inputs",
                 )
+        elif validation_exception:
+            test = _invalid_description(
+                tool_source,
+                i,
+                tool_guid,
+                unicodify(validation_exception),
+                "validation exception during tool loading",
             )
         else:
             test = _description_from_tool_source(
@@ -124,6 +130,50 @@ def parse_tool_test_descriptions(
             )
         tests.append(test)
     return tests
+
+
+def _invalid_description(
+    tool_source: ToolSource, test_index: int, tool_guid: str | None, exception: str, request_unavailable_reason: str
+) -> ToolTestDescription:
+    tool_id, tool_version = _tool_id_and_version(tool_source, tool_guid)
+    return ToolTestDescription.from_tool_source_dict(
+        InvalidToolTestDict(
+            {
+                "tool_id": tool_id,
+                "tool_version": tool_version,
+                "test_index": test_index,
+                "inputs": {},
+                "error": True,
+                "exception": exception,
+                "request_unavailable_reason": request_unavailable_reason,
+                "maxseconds": None,
+            }
+        )
+    )
+
+
+def _inputs_invalid_description(
+    tool_source: ToolSource, test_index: int, tool_guid: str | None, validation_exception: Exception
+) -> ToolTestDescription:
+    """Describe a test whose inputs failed validation as it declared - no job is run for it."""
+    tool_id, tool_version = _tool_id_and_version(tool_source, tool_guid)
+    return ToolTestDescription.from_tool_source_dict(
+        ValidToolTestDict(
+            {
+                "inputs": {},
+                "request": None,
+                "request_unavailable_reason": f"inputs invalid as expected: {unicodify(validation_exception)}",
+                "outputs": [],
+                "output_collections": [],
+                "expect_inputs_invalid": True,
+                "tool_id": tool_id,
+                "tool_version": tool_version,
+                "test_index": test_index,
+                "maxseconds": None,
+                "error": False,
+            }
+        )
+    )
 
 
 @dataclass

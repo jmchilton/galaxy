@@ -963,6 +963,33 @@ TESTS_EXPECT_FAILURE_OUTPUT = """
 </tool>
 """
 
+TESTS_EXPECT_INPUTS_INVALID = """
+<tool id="id" name="name" profile="24.2">
+    <inputs>
+        <param name="taxid" type="text" value="1">
+            <validator type="regex" message="Enter numeric tax IDs">^\\d+$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="test"/>
+    </outputs>
+    <tests>
+        <test expect_inputs_invalid="true">
+            <param name="taxid" value="f5"/>
+        </test>
+        <test expect_inputs_invalid="true">
+            <param name="taxid" value="5"/>
+        </test>
+        <test expect_inputs_invalid="true" expect_failure="true">
+            <param name="taxid" value="f5"/>
+            <assert_stdout>
+                <has_text text="f5"/>
+            </assert_stdout>
+        </test>
+    </tests>
+</tool>
+"""
+
 ASSERTS = """
 <tool id="id" name="name">
     <outputs>
@@ -2236,6 +2263,22 @@ def test_tests_expect_failure_output(lint_ctx):
     assert len(lint_ctx.error_messages) == 2
 
 
+def test_tests_expect_inputs_invalid(lint_ctx):
+    tool_source = get_xml_tool_source(TESTS_EXPECT_INPUTS_INVALID)
+    run_lint_module(lint_ctx, tests, tool_source)
+    assert not [m for m in lint_ctx.error_messages if str(m).startswith("Test 1:")]
+    assert "No valid test(s) found." not in lint_ctx.warn_messages
+    assert (
+        "Test 2: declares expect_inputs_invalid but its inputs validate against the tool's inputs."
+        in lint_ctx.error_messages
+    )
+    assert (
+        "Test 3: Cannot specify outputs or other expectations in a test expecting invalid inputs."
+        in lint_ctx.error_messages
+    )
+    assert len(lint_ctx.error_messages) == 2
+
+
 def test_tests_without_expectations(lint_ctx):
     tool_source = get_xml_tool_source(TESTS_WO_EXPECTATIONS)
     run_lint_module(lint_ctx, tests, tool_source)
@@ -2677,7 +2720,7 @@ def test_list_linters():
     linter_names = Linter.list_listers()
     # make sure to add/remove a test for new/removed linters if this number changes
     # (156 = 148 tool linters + 8 repository data-table linters registered via list_linters)
-    assert len(linter_names) == 156
+    assert len(linter_names) == 157
     assert "Linter" not in linter_names
     # make sure that linters from all modules are available
     for prefix in [

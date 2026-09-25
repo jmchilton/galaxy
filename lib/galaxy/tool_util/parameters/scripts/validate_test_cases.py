@@ -69,7 +69,12 @@ def report_results(results_for_tool: ToolTestValidationResults) -> None:
         f"Found {len(test_results)} test cases to validate for tool {results_for_tool.tool_id} / {results_for_tool.tool_version} (@ {results_for_tool.tool_path})"
     )
     for i, result in enumerate(test_results):
-        if result.validation_error is not None:
+        if result.expect_inputs_invalid:
+            if result.validation_error is not None:
+                print(f"Test Case {i + 1}: validation failed as expected - {str(result.validation_error)}")
+            else:
+                print(f"Test Case {i + 1}: validated but test declares expect_inputs_invalid")
+        elif result.validation_error is not None:
             print(f"Test Case {i + 1}: validation failed - {str(result.validation_error)}")
         elif len(result.warnings) == 0:
             print(f"Test Case {i + 1}: validated")

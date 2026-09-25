@@ -129,6 +129,7 @@ class ToolSourceTest(TypedDict):
     expect_exit_code: XmlInt | None
     expect_failure: bool
     expect_test_failure: bool
+    expect_inputs_invalid: bool
     maxseconds: XmlInt | None
     expect_num_outputs: XmlInt | None
     command: AssertionList

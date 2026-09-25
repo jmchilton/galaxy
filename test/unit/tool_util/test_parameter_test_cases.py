@@ -6,6 +6,7 @@ from typing import (
 
 import pytest
 
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.tool_util.model_factory import parse_tool
 from galaxy.tool_util.parameters import (
     DataCollectionRequest,
@@ -860,6 +861,10 @@ def _validate_path(tool_path: str):
     test_cases: list[ToolSourceTest] = tool_source.parse_tests_to_dict()["tests"]
     for test_case in test_cases:
         if test_case.get("expect_failure"):
+            continue
+        if test_case.get("expect_inputs_invalid"):
+            with pytest.raises(RequestParameterInvalidException):
+                case_state(test_case, parsed_tool.inputs, profile, name=model_name)
             continue
         test_case_state_and_warnings = case_state(test_case, parsed_tool.inputs, profile, name=model_name)
         tool_state = test_case_state_and_warnings.tool_state

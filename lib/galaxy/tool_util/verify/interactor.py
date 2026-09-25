@@ -166,6 +166,7 @@ class ValidToolTestDict(TypedDict):
     expect_exit_code: NotRequired[str | int | None]
     expect_failure: NotRequired[bool]
     expect_test_failure: NotRequired[bool]
+    expect_inputs_invalid: NotRequired[bool]
     maxseconds: NotRequired[int | None]
     num_outputs: NotRequired[str | int | None]
     command_line: NotRequired[AssertionList]
@@ -1838,6 +1839,12 @@ def verify_tool(
     tool_test_dict.setdefault("maxseconds", maxseconds)
     testdef = ToolTestDescription(tool_test_dict)
     _handle_def_errors(testdef)
+    if testdef.expect_inputs_invalid:
+        # Inputs were checked against the tool's parameter models when the test was loaded.
+        if register_job_data is not None:
+            job_data["status"] = "success"
+            register_job_data(job_data)
+        return
 
     created_history = False
     if test_history is None:
@@ -2108,6 +2115,7 @@ DEFAULT_OUTPUTS: ToolSourceTestOutputs = []
 DEFAULT_EXPECT_EXIT_CODE: int | None = None
 DEFAULT_EXPECT_FAILURE: bool = False
 DEFAULT_EXPECT_TEST_FAILURE: bool = False
+DEFAULT_EXPECT_INPUTS_INVALID: bool = False
 DEFAULT_EXCEPTION: str | None = None
 
 
@@ -2135,6 +2143,7 @@ def adapt_tool_source_dict(processed_dict: ToolTestDict) -> ToolTestDescriptionD
     expect_exit_code: int | None = DEFAULT_EXPECT_EXIT_CODE
     expect_failure: bool = DEFAULT_EXPECT_FAILURE
     expect_test_failure: bool = DEFAULT_EXPECT_TEST_FAILURE
+    expect_inputs_invalid: bool = DEFAULT_EXPECT_INPUTS_INVALID
     inputs: ExpandedToolInputsJsonified = {}
     maxseconds: int | None = None
     request: dict[str, Any] | None = None
@@ -2163,6 +2172,7 @@ def adapt_tool_source_dict(processed_dict: ToolTestDict) -> ToolTestDescriptionD
 
         expect_failure = processed_test_dict.get("expect_failure", DEFAULT_EXPECT_FAILURE)
         expect_test_failure = processed_test_dict.get("expect_test_failure", DEFAULT_EXPECT_TEST_FAILURE)
+        expect_inputs_invalid = processed_test_dict.get("expect_inputs_invalid", DEFAULT_EXPECT_INPUTS_INVALID)
         inputs = processed_test_dict.get("inputs", {})
         request = processed_test_dict.get("request", None)
         request_schema = processed_test_dict.get("request_schema", None)
@@ -2196,6 +2206,7 @@ def adapt_tool_source_dict(processed_dict: ToolTestDict) -> ToolTestDescriptionD
         expect_exit_code=expect_exit_code,
         expect_failure=expect_failure,
         expect_test_failure=expect_test_failure,
+        expect_inputs_invalid=expect_inputs_invalid,
         inputs=inputs,
         request=request,
         request_schema=request_schema,
@@ -2259,6 +2270,7 @@ class ToolTestDescription:
     expect_exit_code: int | None
     expect_failure: bool
     expect_test_failure: bool
+    expect_inputs_invalid: bool
     exception: str | None
     request_unavailable_reason: str | None
     inputs: ExpandedToolInputs
@@ -2294,6 +2306,7 @@ class ToolTestDescription:
         self.expect_exit_code = json_dict.get("expect_exit_code", DEFAULT_EXPECT_EXIT_CODE)
         self.expect_failure = json_dict.get("expect_failure", DEFAULT_EXPECT_FAILURE)
         self.expect_test_failure = json_dict.get("expect_test_failure", DEFAULT_EXPECT_TEST_FAILURE)
+        self.expect_inputs_invalid = json_dict.get("expect_inputs_invalid", DEFAULT_EXPECT_INPUTS_INVALID)
         self.inputs = expanded_inputs_from_json(json_dict.get("inputs", {}))
         self.request = json_dict.get("request", None)
         self.request_schema = json_dict.get("request_schema", None)
@@ -2323,6 +2336,7 @@ class ToolTestDescription:
             "expect_exit_code": self.expect_exit_code,
             "expect_failure": self.expect_failure,
             "expect_test_failure": self.expect_test_failure,
+            "expect_inputs_invalid": self.expect_inputs_invalid,
             "name": self.name,
             "test_index": self.test_index,
             "tool_id": self.tool_id,

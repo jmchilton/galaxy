@@ -78,6 +78,26 @@ COLLECTION_TEST_PAIRED_Y_EXPECTATIONS = [
 ]
 
 
+EXPECT_INPUTS_INVALID_TEMPLATE = """
+<tool id="expect_inputs_invalid_template" name="expect_inputs_invalid_template" version="0.1.0" profile="{profile}">
+    <command>echo '$taxid' > '$output'</command>
+    <inputs>
+        <param name="taxid" type="text" value="1">
+            <validator type="regex" message="Enter numeric tax IDs">^\\d+[\\d ]*$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data format="txt" name="output"/>
+    </outputs>
+    <tests>
+        <test expect_inputs_invalid="true">
+            <param name="taxid" value="{value}"/>
+        </test>
+    </tests>
+</tool>
+"""
+
+
 class TestTestParsing(TestCase):
     def _parse_tests(self):
         return parse_tool_test_descriptions(self.tool_source)
@@ -85,6 +105,9 @@ class TestTestParsing(TestCase):
     def _init_tool_for_path(self, path):
         tool_source = get_tool_source(path)
         self.tool_source = tool_source
+
+    def _init_tool_for_xml(self, xml: str):
+        self.tool_source = get_tool_source(tool_source_class="XmlToolSource", raw_tool_source=xml)
 
     def test_maxseconds_not_filled_with_default(self):
         self._init_tool_for_path(functional_test_tool_path("simple_constructs.xml"))
@@ -135,6 +158,29 @@ class TestTestParsing(TestCase):
         test_dicts = self._parse_tests()
         test_0 = test_dicts[0].to_dict()
         assert test_0["error"] is True
+
+    def test_expect_inputs_invalid(self):
+        self._init_tool_for_path(functional_test_tool_path("expect_inputs_invalid.xml"))
+        test_dicts = [td.to_dict() for td in self._parse_tests()]
+        assert test_dicts[0]["expect_inputs_invalid"] is False
+        test_1 = test_dicts[1]
+        assert test_1["error"] is False
+        assert test_1["expect_inputs_invalid"] is True
+        assert test_1["request"] is None
+        assert "Enter a space-separated list of numeric tax IDs" in test_1["request_unavailable_reason"]
+
+    def test_expect_inputs_invalid_validated_below_24_2(self):
+        self._init_tool_for_xml(EXPECT_INPUTS_INVALID_TEMPLATE.format(profile="21.01", value="10386 f5"))
+        test_dict = self._parse_tests()[0].to_dict()
+        assert test_dict["error"] is False
+        assert test_dict["expect_inputs_invalid"] is True
+
+    def test_expect_inputs_invalid_with_valid_inputs_is_error(self):
+        for profile in ["21.01", "24.2"]:
+            self._init_tool_for_xml(EXPECT_INPUTS_INVALID_TEMPLATE.format(profile=profile, value="10386"))
+            test_dict = self._parse_tests()[0].to_dict()
+            assert test_dict["error"] is True
+            assert "expect_inputs_invalid" in test_dict["exception"]
 
     def test_field_collection_inputs(self):
         self._init_tool_for_path(functional_test_tool_path("collection_record_test_two_files.xml"))

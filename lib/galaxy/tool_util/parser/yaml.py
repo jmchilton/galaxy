@@ -445,6 +445,7 @@ def _parse_test(i: int, test_dict: dict) -> ToolSourceTest:
     test_dict["expect_exit_code"] = test_dict.get("expect_exit_code", None)
     test_dict["expect_failure"] = test_dict.get("expect_failure", False)
     test_dict["expect_test_failure"] = test_dict.get("expect_test_failure", False)
+    test_dict["expect_inputs_invalid"] = test_dict.get("expect_inputs_invalid", False)
     test_dict["value_state_representation"] = "test_case_json"
     test_dict["credentials"] = __parse_credentials_yaml(test_dict.get("credentials", None))
     return cast(ToolSourceTest, test_dict)

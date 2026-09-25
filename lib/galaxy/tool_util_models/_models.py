@@ -966,6 +966,12 @@ class YamlToolTest(BaseModel):
         bool | None,
         Field(description="If true, the test itself is expected to fail."),
     ] = None
+    expect_inputs_invalid: Annotated[
+        bool | None,
+        Field(
+            description="If true, the test inputs are expected to fail validation against the tool's inputs and no job is run."
+        ),
+    ] = None
     credentials: Annotated[
         list[YamlTestCredential] | None,
         Field(description="Credentials to inject for this test case."),

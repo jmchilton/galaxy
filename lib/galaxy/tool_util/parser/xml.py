@@ -832,6 +832,7 @@ def _test_elem_to_dict(test_elem, i, profile=None) -> ToolSourceTest:
         expect_exit_code=test_elem.get("expect_exit_code"),
         expect_failure=string_as_bool(test_elem.get("expect_failure", False)),
         expect_test_failure=string_as_bool(test_elem.get("expect_test_failure", False)),
+        expect_inputs_invalid=string_as_bool(test_elem.get("expect_inputs_invalid", False)),
         maxseconds=test_elem.get("maxseconds", None),
         value_state_representation="test_case_xml",
         credentials=__parse_credentials_elems(test_elem),

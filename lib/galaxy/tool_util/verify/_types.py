@@ -51,6 +51,7 @@ class ToolTestDescriptionDict(TypedDict):
     expect_exit_code: int | None
     expect_failure: bool
     expect_test_failure: bool
+    expect_inputs_invalid: NotRequired[bool]
     num_outputs: int | None
     command_line: AssertionList | None
     command_version: AssertionList | None
