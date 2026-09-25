@@ -612,14 +612,11 @@ class TestsExpectInputsInvalidExpectations(Linter):
         except Exception:
             # reported by TestsCaseValidation
             return
-        tool_xml = getattr(tool_source, "xml_tree", None)
-        test_nodes = tool_xml.findall("./tests/test") if tool_xml else []
         for test_idx, test in enumerate(raw_tests, start=1):
             if test.get("expect_inputs_invalid") and _has_job_expectations(test):
                 lint_ctx.error(
                     f"Test {test_idx}: Cannot specify outputs or other expectations in a test expecting invalid inputs.",
                     linter=cls.name(),
-                    node=test_nodes[test_idx - 1] if test_idx <= len(test_nodes) else None,
                 )
 
 
