@@ -26,7 +26,10 @@ from ._util import is_datasource
 
 if TYPE_CHECKING:
     from galaxy.tool_util.lint import LintContext
-    from galaxy.tool_util.parser.interface import ToolSource
+    from galaxy.tool_util.parser.interface import (
+        ToolSource,
+        ToolSourceTest,
+    )
     from galaxy.util.etree import Element
 
 lint_tool_types = ["default", "data_source", "manage_data"]
@@ -604,18 +607,19 @@ class TestsExpectInputsInvalidExpectations(Linter):
 
     @classmethod
     def lint(cls, tool_source: "ToolSource", lint_ctx: "LintContext") -> None:
-        tool_xml = getattr(tool_source, "xml_tree", None)
-        if not tool_xml:
+        try:
+            raw_tests = tool_source.parse_tests_to_dict()["tests"]
+        except Exception:
+            # reported by TestsCaseValidation
             return
-        tests = tool_xml.findall("./tests/test")
-        for test_idx, test in enumerate(tests, start=1):
-            if not asbool(test.attrib.get("expect_inputs_invalid", False)):
-                continue
-            if _has_job_expectations(test):
+        tool_xml = getattr(tool_source, "xml_tree", None)
+        test_nodes = tool_xml.findall("./tests/test") if tool_xml else []
+        for test_idx, test in enumerate(raw_tests, start=1):
+            if test.get("expect_inputs_invalid") and _has_job_expectations(test):
                 lint_ctx.error(
                     f"Test {test_idx}: Cannot specify outputs or other expectations in a test expecting invalid inputs.",
                     linter=cls.name(),
-                    node=test,
+                    node=test_nodes[test_idx - 1] if test_idx <= len(test_nodes) else None,
                 )
 
 
@@ -674,13 +678,12 @@ class TestsValid(Linter):
             lint_ctx.warn("No valid test(s) found.", linter=cls.name(), node=general_node)
 
 
-_JOB_EXPECTATION_TAGS = ("output", "output_collection", "assert_stdout", "assert_stderr", "assert_command")
-
-
-def _has_job_expectations(test: "Element") -> bool:
-    if set(test.attrib) & {"expect_failure", "expect_exit_code", "expect_num_outputs"}:
+def _has_job_expectations(test: "ToolSourceTest") -> bool:
+    if test.get("expect_failure") or test.get("expect_exit_code") is not None:
         return True
-    return any(test.find(tag) is not None for tag in _JOB_EXPECTATION_TAGS)
+    if test.get("expect_num_outputs") is not None:
+        return True
+    return any(test.get(key) for key in ("outputs", "output_collections", "stdout", "stderr", "command"))
 
 
 def _iter_tests(tests: list["Element"], valid: bool) -> Iterator[tuple[int, "Element"]]:

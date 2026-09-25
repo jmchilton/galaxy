@@ -169,6 +169,16 @@ class TestTestParsing(TestCase):
         assert test_1["request"] is None
         assert "Enter a space-separated list of numeric tax IDs" in test_1["request_unavailable_reason"]
 
+    def test_expect_inputs_invalid_from_yaml(self):
+        self._init_tool_for_path(functional_test_tool_path("expect_inputs_invalid_y.yml"))
+        test_dicts = [td.to_dict() for td in self._parse_tests()]
+        assert test_dicts[0]["error"] is False
+        assert test_dicts[0]["expect_inputs_invalid"] is False
+        test_1 = test_dicts[1]
+        assert test_1["error"] is False
+        assert test_1["expect_inputs_invalid"] is True
+        assert "Enter a space-separated list of numeric tax IDs" in test_1["request_unavailable_reason"]
+
     def test_expect_inputs_invalid_validated_below_24_2(self):
         self._init_tool_for_xml(EXPECT_INPUTS_INVALID_TEMPLATE.format(profile="21.01", value="10386 f5"))
         test_dict = self._parse_tests()[0].to_dict()

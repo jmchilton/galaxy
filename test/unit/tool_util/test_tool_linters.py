@@ -990,6 +990,36 @@ TESTS_EXPECT_INPUTS_INVALID = """
 </tool>
 """
 
+TESTS_EXPECT_INPUTS_INVALID_YAML = """
+class: GalaxyTool
+id: id
+name: name
+version: '1.0'
+container: busybox
+shell_command: echo test
+inputs:
+  - name: taxid
+    type: text
+    value: "1"
+    validators:
+      - type: regex
+        expression: '^\\d+$'
+        message: Enter numeric tax IDs
+outputs:
+  - name: test
+    type: data
+    format: txt
+    from_work_dir: out.txt
+tests:
+  - inputs:
+      taxid: f5
+    expect_inputs_invalid: true
+  - inputs:
+      taxid: f5
+    expect_inputs_invalid: true
+    expect_failure: true
+"""
+
 ASSERTS = """
 <tool id="id" name="name">
     <outputs>
@@ -2277,6 +2307,16 @@ def test_tests_expect_inputs_invalid(lint_ctx):
         in lint_ctx.error_messages
     )
     assert len(lint_ctx.error_messages) == 2
+
+
+def test_tests_expect_inputs_invalid_yaml(lint_ctx):
+    tool_source = get_tool_source(TESTS_EXPECT_INPUTS_INVALID_YAML)
+    run_lint_module(lint_ctx, tests, tool_source)
+    assert (
+        "Test 2: Cannot specify outputs or other expectations in a test expecting invalid inputs."
+        in lint_ctx.error_messages
+    )
+    assert len(lint_ctx.error_messages) == 1
 
 
 def test_tests_without_expectations(lint_ctx):

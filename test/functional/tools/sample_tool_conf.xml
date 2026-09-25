@@ -255,6 +255,7 @@
   <tool file="config_vars.xml" />
   <tool file="expect_num_outputs.xml" />
   <tool file="expect_inputs_invalid.xml" />
+  <tool file="expect_inputs_invalid_y.yml" />
   <tool file="text_repeat.xml" />
   <tool file="integer_default.xml" />
   <tool file="float_default.xml" />
