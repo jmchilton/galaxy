@@ -116,6 +116,11 @@
       <div id="rerender-inner">Drop here too</div>
     </div>
 
+    <!-- The page redirects itself a moment after the click, the way an async
+         form submit does once its POST lands. Whatever navigation is in flight
+         when that happens loses the race. -->
+    <button id="navigate-away-later">Navigate away</button>
+
     <!-- Frame for iframe testing -->
     <iframe
       name="frame"
@@ -177,6 +182,14 @@
         dropTarget.textContent =
           "Dropped: " + e.dataTransfer.getData("text/plain");
       });
+
+      document
+        .getElementById("navigate-away-later")
+        .addEventListener("click", function () {
+          setTimeout(function () {
+            window.location = "basic.html?navigated-away=1";
+          }, 50);
+        });
 
       // The zone listens, but dragenter replaces the inner box the caller is
       // holding a reference to - so a non-atomic event sequence loses the drop.
