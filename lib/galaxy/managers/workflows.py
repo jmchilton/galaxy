@@ -156,6 +156,15 @@ INDEX_SEARCH_FILTERS = {
 }
 
 
+def _steps_recursive(workflow: model.Workflow) -> list[model.WorkflowStep]:
+    steps = []
+    for step in workflow.steps:
+        steps.append(step)
+        if step.type == "subworkflow" and step.subworkflow:
+            steps.extend(_steps_recursive(step.subworkflow))
+    return steps
+
+
 class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], deletable.DeletableManagerMixin):
     """Handle CRUD type operations related to workflows. More interesting
     stuff regarding workflow execution, step sorting, etc... can be found in
@@ -2337,8 +2346,14 @@ class WorkflowContentsManager(UsesAnnotations):
         )
 
         module_injector = WorkflowModuleInjector(trans, allow_tool_state_corrections=True)
+        # The executor uses the source version's steps as scratch space (e.g. upgrades
+        # set tool_version / subworkflow on them); the new version is built from
+        # raw_workflow_description, so discard those edits before anything is committed.
+        source_steps = _steps_recursive(workflow)
         refactor_executor = WorkflowRefactorExecutor(raw_workflow_description, workflow, module_injector)
         action_executions = refactor_executor.refactor(refactor_request)
+        for step in source_steps:
+            trans.sa_session.expire(step)
         refactored_workflow, errors = self.update_workflow_from_raw_description(
             trans,
             stored_workflow,
