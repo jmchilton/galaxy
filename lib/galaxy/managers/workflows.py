@@ -156,6 +156,16 @@ INDEX_SEARCH_FILTERS = {
 }
 
 
+def _tool_steps(workflow: model.Workflow) -> list[model.WorkflowStep]:
+    steps = []
+    for step in workflow.steps:
+        if step.type == "tool":
+            steps.append(step)
+        elif step.type == "subworkflow" and step.subworkflow:
+            steps.extend(_tool_steps(step.subworkflow))
+    return steps
+
+
 def _steps_recursive(workflow: model.Workflow) -> list[model.WorkflowStep]:
     steps = []
     for step in workflow.steps:
@@ -163,10 +173,6 @@ def _steps_recursive(workflow: model.Workflow) -> list[model.WorkflowStep]:
         if step.type == "subworkflow" and step.subworkflow:
             steps.extend(_steps_recursive(step.subworkflow))
     return steps
-
-
-def _tool_steps(workflow: model.Workflow) -> list[model.WorkflowStep]:
-    return [step for step in _steps_recursive(workflow) if step.type == "tool"]
 
 
 class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], deletable.DeletableManagerMixin):
