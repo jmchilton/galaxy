@@ -9,6 +9,7 @@ import {
     type WorkflowVersion,
 } from "@/api/workflows";
 import { useConfirmDialog } from "@/composables/confirmDialog";
+import { useToast } from "@/composables/toast";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GModal from "@/components/BaseComponents/GModal.vue";
@@ -32,10 +33,51 @@ const emit = defineEmits<{
     (e: "onRefactor", data: RefactorResponse): void;
 }>();
 
+type RefactorMessage = RefactorResponseActionExecution["messages"][number];
+
+const UPGRADE_ACTION_TYPES = ["upgrade_all_steps", "upgrade_tool", "upgrade_subworkflow"];
+
 const show = ref(props.refactorActions.length > 0);
 const confirmActionExecutions = ref<RefactorResponseActionExecution[]>([]);
 
 const { confirm } = useConfirmDialog();
+const Toast = useToast();
+
+const isUpgrade = computed(
+    () =>
+        props.refactorActions.length > 0 &&
+        props.refactorActions.every((action) => UPGRADE_ACTION_TYPES.includes(action.action_type)),
+);
+
+const title = computed(() => (isUpgrade.value ? "Review Workflow Upgrade" : "Potential Issues Reworking Workflow"));
+
+const allMessages = computed(() => confirmActionExecutions.value.flatMap((execution) => execution.messages));
+
+/** Messages without a cause come from servers predating it - treat them as forced. */
+function isRequested(message: RefactorMessage) {
+    return message.cause === "requested";
+}
+
+const requestedMessages = computed(() => allMessages.value.filter(isRequested));
+const forcedMessages = computed(() => allMessages.value.filter((message) => !isRequested(message)));
+
+function stepName(message: RefactorMessage) {
+    if (message.step_label) {
+        return message.step_label;
+    }
+    if (message.order_index !== null && message.order_index !== undefined) {
+        return `Step ${message.order_index + 1}`;
+    }
+    return "Workflow";
+}
+
+function changeDescription(message: RefactorMessage) {
+    if (message.message_type === "tool_version_change" && message.to_tool_version) {
+        const toolId = message.to_tool_id ?? message.from_tool_id;
+        return `${toolId}: ${message.from_tool_version ?? "unspecified"} → ${message.to_tool_version}`;
+    }
+    return message.message;
+}
 
 /** Determines if the current version is not the latest */
 const isNotLatestVersion = computed(
@@ -97,6 +139,8 @@ async function onDryRunResponse(data: RefactorResponse) {
     if (anyRequireConfirmation) {
         confirmActionExecutions.value = actionExecutions;
         show.value = true;
+    } else if (isUpgrade.value) {
+        Toast.info("All tools and subworkflows in this workflow are already up to date.");
     } else {
         await executeRefactoring();
     }
@@ -120,29 +164,39 @@ async function executeRefactoring() {
     <GModal
         confirm
         :show.sync="show"
-        title="Potential Issues Reworking Workflow"
+        :title="title"
         fixed-height
         ok-text="Proceed"
+        data-description="workflow refactor modal"
         @ok="executeRefactoring">
         <div class="workflow-refactor-modal">
-            <GAlert>
-                <div>The following issues were detected when attempting to rework this workflow.</div>
-                <div>
-                    Please review the messages below and click "Proceed" to continue with the rework, or "Cancel" to
-                    abort.
-                </div>
+            <div v-if="requestedMessages.length" data-description="refactor requested changes">
+                <p>The following changes will be made to this workflow:</p>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Step</th>
+                            <th>Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(message, index) in requestedMessages" :key="index">
+                            <td>{{ stepName(message) }}</td>
+                            <td>{{ changeDescription(message) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <GAlert v-if="forcedMessages.length" variant="warning" data-description="refactor forced changes">
+                <div v-if="requestedMessages.length">Galaxy will also need to make the following adjustments.</div>
+                <div v-else>The following issues were detected when attempting to rework this workflow.</div>
+                <ul class="mb-0">
+                    <li v-for="(message, index) in forcedMessages" :key="index">
+                        <strong>{{ stepName(message) }}:</strong> {{ message.message }}
+                    </li>
+                </ul>
             </GAlert>
-            <ol>
-                <li v-for="(actionExecution, executionIndex) in confirmActionExecutions" :key="executionIndex">
-                    <code>{{ actionExecution.action.action_type }}</code>
-                    <span v-if="actionExecution.messages.length">:</span>
-                    <ul>
-                        <li v-for="(actionMessage, messageIndex) in actionExecution.messages" :key="messageIndex">
-                            {{ actionMessage.message }}
-                        </li>
-                    </ul>
-                </li>
-            </ol>
+            <div>Click "Proceed" to apply these changes, or "Cancel" to abort.</div>
         </div>
     </GModal>
 </template>

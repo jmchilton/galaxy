@@ -679,6 +679,11 @@ steps:
         self.assert_workflow_has_changes_and_save()
 
         editor.tool_bar.upgrade_all.wait_for_and_click()
+        changes = editor.refactor_modal_requested_changes.wait_for_visible()
+        assert "multiple_versions: 0.1 → 0.2" in changes.text
+        self.screenshot("workflow_editor_upgrade_all_summary")
+        editor.refactor_modal_proceed.wait_for_and_click()
+        editor.refactor_modal.wait_for_absent_or_hidden()
         self.workflow_editor_ensure_tool_form_open(node=0)
         node = self.components.tool_form.tool_version.wait_for_present()
         version = node.get_attribute("data-version")

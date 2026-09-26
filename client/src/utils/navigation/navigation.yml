@@ -1148,6 +1148,9 @@ workflow_editor:
     save_button: '#workflow-save-button'
     state_upgrade_modal: '[data-description="workflow state upgrade modal"]'
     state_upgrade_modal_close: '[data-description="workflow state upgrade modal"] .g-modal-close-button'
+    refactor_modal: '[data-description="workflow refactor modal"]'
+    refactor_modal_requested_changes: '[data-description="workflow refactor modal"] [data-description="refactor requested changes"]'
+    refactor_modal_proceed: '[data-description="workflow refactor modal"] .g-modal-confirm-buttons button:last-child'
     save_as_modal_close: '[data-description="save-as-modal"] .g-modal-close-button'
     workflow_activity: '#activity-workflow-editor-workflows'
     save_as_activity: "#activity-save-workflow-as"

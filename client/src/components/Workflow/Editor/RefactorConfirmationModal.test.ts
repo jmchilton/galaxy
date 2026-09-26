@@ -4,6 +4,7 @@ import flushPromises from "flush-promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { refactor, type RefactorResponse } from "@/api/workflows";
+import { Toast } from "@/composables/toast";
 
 import RefactorConfirmationModal from "./RefactorConfirmationModal.vue";
 import GModal from "@/components/BaseComponents/GModal.vue";
@@ -11,6 +12,8 @@ import GModal from "@/components/BaseComponents/GModal.vue";
 vi.mock("@/api/workflows", () => ({
     refactor: vi.fn(),
 }));
+
+vi.mock("@/composables/toast");
 
 const mockConfirm = vi.fn();
 vi.mock("@/composables/confirmDialog", () => ({
@@ -22,6 +25,34 @@ vi.mock("@/composables/confirmDialog", () => ({
 const localVue = getLocalVue();
 const TEST_WORKFLOW_ID = "test123";
 const TEST_ACTION_TYPE = "upgrade_subworkflow";
+const NON_UPGRADE_ACTION_TYPE = "fill_defaults";
+
+function mockDryRun(messages: object[], actionType = "upgrade_all_steps") {
+    vi.mocked(refactor).mockResolvedValue({
+        action_executions: [{ action: { action_type: actionType }, messages }],
+    } as unknown as RefactorResponse);
+}
+
+const TOOL_VERSION_CHANGE = {
+    message_type: "tool_version_change",
+    cause: "requested",
+    message: "Tool 'multiple_versions' upgraded from version '0.1' to '0.2'.",
+    step_label: "the step",
+    order_index: 0,
+    from_tool_id: "multiple_versions",
+    from_tool_version: "0.1",
+    to_tool_id: "multiple_versions",
+    to_tool_version: "0.2",
+};
+
+const FORCED_STATE_ADJUSTMENT = {
+    message_type: "tool_state_adjustment",
+    cause: "forced",
+    message: "No value found for 'floattest'. Using default: '1.0'.",
+    step_label: null,
+    order_index: 1,
+    input_name: "floattest",
+};
 
 describe("RefactorConfirmationModal.vue", () => {
     let wrapper: Wrapper<Vue>;
@@ -73,7 +104,7 @@ describe("RefactorConfirmationModal.vue", () => {
             }),
         );
         await wrapper.setProps({
-            refactorActions: [{ action_type: TEST_ACTION_TYPE }],
+            refactorActions: [{ action_type: NON_UPGRADE_ACTION_TYPE }],
         });
         await flushPromises();
         expect(wrapper.emitted().onWorkflowError).toBeFalsy();
@@ -211,5 +242,70 @@ describe("RefactorConfirmationModal.vue", () => {
 
         // Refactor should proceed directly
         expect(vi.mocked(refactor)).toHaveBeenCalled();
+    });
+
+    it("should report an up to date workflow instead of executing an upgrade with no changes", async () => {
+        mockDryRun([]);
+        await wrapper.setProps({
+            refactorActions: [{ action_type: "upgrade_all_steps" }],
+        });
+        await flushPromises();
+        // only the dry run was performed
+        expect(vi.mocked(refactor).mock.calls.length).toBe(1);
+        expect(vi.mocked(refactor).mock.calls[0]![3]).toBeTruthy();
+        expect(wrapper.emitted().onRefactor).toBeFalsy();
+        expect(wrapper.findComponent(GModal).props().show).toBeFalsy();
+        expect(Toast.info).toHaveBeenCalledWith(expect.stringContaining("up to date"));
+    });
+
+    it("should summarize requested version changes before upgrading", async () => {
+        mockDryRun([TOOL_VERSION_CHANGE]);
+        await wrapper.setProps({
+            refactorActions: [{ action_type: "upgrade_all_steps" }],
+        });
+        await flushPromises();
+        expect(vi.mocked(refactor).mock.calls.length).toBe(1);
+        const modal = wrapper.findComponent(GModal);
+        expect(modal.props().show).toBeTruthy();
+        expect(modal.props().title).toBe("Review Workflow Upgrade");
+        const changes = wrapper.find("[data-description='refactor requested changes']");
+        expect(changes.text()).toContain("the step");
+        expect(changes.text()).toContain("multiple_versions");
+        expect(changes.text()).toContain("0.1");
+        expect(changes.text()).toContain("0.2");
+        expect(wrapper.find("[data-description='refactor forced changes']").exists()).toBeFalsy();
+
+        await modal.find(".g-modal-confirm-buttons .g-button.g-blue").trigger("click");
+        await flushPromises();
+        expect(vi.mocked(refactor).mock.calls[1]![3]).toBeFalsy();
+        expect(wrapper.emitted().onRefactor!.length).toBe(1);
+    });
+
+    it("should warn about forced changes separately from requested ones", async () => {
+        mockDryRun([TOOL_VERSION_CHANGE, FORCED_STATE_ADJUSTMENT]);
+        await wrapper.setProps({
+            refactorActions: [{ action_type: "upgrade_all_steps" }],
+        });
+        await flushPromises();
+        const modal = wrapper.findComponent(GModal);
+        expect(modal.props().show).toBeTruthy();
+        expect(modal.props().title).toBe("Review Workflow Upgrade");
+        const requested = wrapper.find("[data-description='refactor requested changes']");
+        expect(requested.text()).toContain("0.2");
+        expect(requested.text()).not.toContain("floattest");
+        const forced = wrapper.find("[data-description='refactor forced changes']");
+        expect(forced.text()).toContain("Step 2");
+        expect(forced.text()).toContain("No value found for 'floattest'");
+    });
+
+    it("should keep the potential issues framing for non-upgrade actions", async () => {
+        mockDryRun([FORCED_STATE_ADJUSTMENT], NON_UPGRADE_ACTION_TYPE);
+        await wrapper.setProps({
+            refactorActions: [{ action_type: NON_UPGRADE_ACTION_TYPE }],
+        });
+        await flushPromises();
+        const modal = wrapper.findComponent(GModal);
+        expect(modal.props().show).toBeTruthy();
+        expect(modal.props().title).toBe("Potential Issues Reworking Workflow");
     });
 });
