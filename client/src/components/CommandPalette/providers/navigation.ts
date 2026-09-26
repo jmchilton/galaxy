@@ -1,6 +1,6 @@
 import { faBell, faInfoCircle, faMapSigns, faPuzzlePiece, faUserCog } from "@fortawesome/free-solid-svg-icons";
 
-import { defaultActivities } from "@/stores/activitySetup";
+import { defaultActivities, isActivityAvailable } from "@/stores/activitySetup";
 import { useActivityStore } from "@/stores/activityStore";
 
 import type { CommandPaletteProvider, PaletteContext, PaletteItem } from "../types";
@@ -78,16 +78,9 @@ function activityAvailable(activityId: string, anonymous: boolean, ctx: PaletteC
     if (!anonymous && ctx.isAnonymous) {
         return false;
     }
-    if (activityId === "user-defined-tools" && !ctx.canUseUnprivilegedTools) {
-        return false;
-    }
-    if (activityId === "interactivetools" && !ctx.config.interactivetools_enable) {
-        return false;
-    }
-    if (activityId === "galaxyai" && !ctx.config.llm_api_configured) {
-        return false;
-    }
-    return true;
+    // the configuration and permission gates are the activity bar's, shared so
+    // the palette cannot offer a destination the bar hides
+    return isActivityAvailable(activityId, ctx);
 }
 
 /**
