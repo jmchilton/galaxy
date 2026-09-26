@@ -81,3 +81,20 @@ class CommandInfo(Linter):
         if interpreter_type := command.attrib.get("interpreter", None):
             interpreter_info = f" with interpreter of type [{interpreter_type}]"
         lint_ctx.info(f"Tool contains a command{interpreter_info}.", linter=cls.name(), node=command)
+
+
+class VersionCommandInterpreterDeprecated(Linter):
+    @classmethod
+    def lint(cls, tool_source: "ToolSource", lint_ctx: "LintContext"):
+        tool_xml = getattr(tool_source, "xml_tree", None)
+        if not tool_xml:
+            return
+        version_command = tool_xml.find("./version_command")
+        if version_command is None:
+            return
+        if version_command.attrib.get("interpreter", None) is not None:
+            lint_ctx.warn(
+                "version_command uses deprecated 'interpreter' attribute.",
+                linter=cls.name(),
+                node=version_command,
+            )

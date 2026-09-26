@@ -115,6 +115,19 @@ COMMAND_DETECT_ERRORS_INTERPRETER = """
 </tool>
 """
 
+VERSION_COMMAND_INTERPRETER = """
+<tool id="id" name="name">
+    <command>bwa</command>
+    <version_command interpreter="python">count_reads.py --version</version_command>
+</tool>
+"""
+VERSION_COMMAND_PLAIN = """
+<tool id="id" name="name">
+    <command>bwa</command>
+    <version_command>bwa 2&gt;&amp;1 | grep Version</version_command>
+</tool>
+"""
+
 
 # tests tool xml for general linter
 GENERAL_MISSING_TOOL_ID_NAME_VERSION = """
@@ -1332,6 +1345,21 @@ def test_command_detect_errors_interpreter(lint_ctx):
     assert lint_ctx.info_messages == ["Tool contains a command with interpreter of type [python]."]
     assert not lint_ctx.valid_messages
     assert len(lint_ctx.error_messages) == 2
+
+
+def test_version_command_interpreter_deprecated(lint_ctx):
+    """interpreter is deprecated on version_command as it is on command - planemo#577."""
+    tool_source = get_xml_tool_source(VERSION_COMMAND_INTERPRETER)
+    run_lint_module(lint_ctx, command, tool_source)
+    assert lint_ctx.warn_messages == ["version_command uses deprecated 'interpreter' attribute."]
+    assert not lint_ctx.error_messages
+
+
+def test_version_command_plain(lint_ctx):
+    tool_source = get_xml_tool_source(VERSION_COMMAND_PLAIN)
+    run_lint_module(lint_ctx, command, tool_source)
+    assert not lint_ctx.warn_messages
+    assert not lint_ctx.error_messages
 
 
 def test_general_missing_tool_id_name_version(lint_ctx):
@@ -2676,8 +2704,8 @@ def test_skip_by_module(lint_ctx):
 def test_list_linters():
     linter_names = Linter.list_listers()
     # make sure to add/remove a test for new/removed linters if this number changes
-    # (156 = 148 tool linters + 8 repository data-table linters registered via list_linters)
-    assert len(linter_names) == 156
+    # (157 = 149 tool linters + 8 repository data-table linters registered via list_linters)
+    assert len(linter_names) == 157
     assert "Linter" not in linter_names
     # make sure that linters from all modules are available
     for prefix in [
@@ -2690,6 +2718,7 @@ def test_list_linters():
         "Outputs",
         "StdIO",
         "Tests",
+        "VersionCommand",
         "XMLOrder",
         "XSD",
     ]:
