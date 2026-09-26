@@ -19,6 +19,7 @@ from axe_selenium_python import Axe
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException as SeleniumTimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
@@ -176,6 +177,35 @@ class HasDriver(TimeoutMessageMixin, WaitMethodsMixin, Generic[WaitTypeT]):
             url: The URL to navigate to
         """
         self.driver.get(url)
+        if self._navigation_was_cancelled(url):
+            self.driver.get(url)
+
+    def _navigation_was_cancelled(self, url: str) -> bool:
+        """
+        Report whether the page navigated itself instead of us.
+
+        A page that assigns window.location while a navigation is on the wire
+        cancels it, and get() says nothing at all - it just returns wherever the
+        page went. The document that did load names itself in its navigation
+        timing entry, which a redirect explains and a client-side route change
+        does not touch, so anything else is a navigation that never happened.
+
+        Args:
+            url: The URL that was requested
+
+        Returns:
+            True if the requested document is not the one that loaded
+        """
+        try:
+            entry = self.driver.execute_script(
+                "var e = performance.getEntriesByType('navigation')[0];"
+                "return e ? {name: e.name, redirects: e.redirectCount} : null;"
+            )
+        except WebDriverException:
+            return False
+        if not entry or entry["redirects"]:
+            return False
+        return bool(entry["name"] != url)
 
     def refresh(self) -> None:
         """Reload the current page."""
