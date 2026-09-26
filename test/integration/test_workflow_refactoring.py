@@ -21,7 +21,12 @@ from galaxy.model import (
     WorkflowStepConnection,
 )
 from galaxy.tools.parameters.workflow_utils import workflow_building_modes
-from galaxy.workflow.refactor.schema import RefactorActionExecutionMessageTypeEnum
+from galaxy.workflow.refactor.schema import (
+    RefactorActionExecution,
+    RefactorActionExecutionMessage,
+    RefactorActionExecutionMessageCauseEnum,
+    RefactorActionExecutionMessageTypeEnum,
+)
 from galaxy_test.base.populators import WorkflowPopulator
 from galaxy_test.base.uses_shed_api import UsesShedApi
 from galaxy_test.base.workflow_fixtures import (
@@ -664,9 +669,19 @@ steps:
         # t = self._app.toolbox.get_tool("multiple_versions", tool_version="0.1")
         # assert t is not None
         # assert t.version == "0.1"
+        dry_run_executions = self._dry_run(actions).action_executions
+        assert len(dry_run_executions) == 1
+        _assert_tool_version_change(dry_run_executions[0].messages, "the_step", "0.1", "0.2")
+        assert self._latest_workflow.step_by_label("the_step").tool_version == "0.1"
+
         action_executions = self._refactor(actions).action_executions
         assert len(action_executions) == 1
-        assert len(action_executions[0].messages) == 0
+        messages = action_executions[0].messages
+        assert len(messages) == 1
+        message = _assert_tool_version_change(messages, "the_step", "0.1", "0.2")
+        assert message.order_index == 0
+        assert message.from_tool_id == "multiple_versions"
+        assert message.to_tool_id == "multiple_versions"
         assert self._latest_workflow.step_by_label("the_step").tool_version == "0.2"
 
     def test_tool_version_upgrade_preserves_source_version(self):
@@ -693,6 +708,23 @@ steps:
         assert stored_workflow.get_internal_version(0).step_by_label("the_step").tool_version == "0.1"
         assert stored_workflow.get_internal_version(1).step_by_label("the_step").tool_version == "0.2"
 
+    def test_tool_version_upgrade_already_latest(self):
+        self.workflow_populator.upload_yaml_workflow("""
+class: GalaxyWorkflow
+steps:
+  the_step:
+    tool_id: multiple_versions
+    tool_version: '0.2'
+    state:
+      inttest: 0
+""")
+        actions: ActionsJson = [
+            {"action_type": "upgrade_all_steps"},
+        ]
+        action_executions = self._dry_run(actions).action_executions
+        assert len(action_executions) == 1
+        assert len(action_executions[0].messages) == 0
+
     def test_tool_version_upgrade_keeps_when_expression(self):
         self.workflow_populator.upload_yaml_workflow("""
 class: GalaxyWorkflow
@@ -715,7 +747,8 @@ steps:
         ]
         action_executions = self._refactor(actions).action_executions
         assert len(action_executions) == 1
-        assert len(action_executions[0].messages) == 0
+        assert len(_forced_messages(action_executions[0])) == 0
+        _assert_tool_version_change(action_executions[0].messages, "the_step", "0.1", "0.2")
         step = self._latest_workflow.step_by_label("the_step")
         assert step.tool_version == "0.2"
         assert step.when_expression
@@ -739,7 +772,8 @@ steps:
         assert self._latest_workflow.step_by_label("the_step").tool_version == "0.2"
 
         assert len(action_executions) == 1
-        messages = action_executions[0].messages
+        _assert_tool_version_change(action_executions[0].messages, "the_step", "0.1", "0.2")
+        messages = _forced_messages(action_executions[0])
         assert len(messages) == 2
         message = messages[0]
         assert message.message_type == RefactorActionExecutionMessageTypeEnum.tool_state_adjustment
@@ -769,14 +803,20 @@ steps:
         actions: ActionsJson = [
             {"action_type": "upgrade_subworkflow", "step": {"label": "nested_workflow"}},
         ]
+        latest_nested_id = self._app.security.encode_id(nested_stored_workflow.latest_workflow.id)
         response = self._dry_run(actions)
         action_executions = response.action_executions
         assert len(action_executions) == 1
-        assert len(action_executions[0].messages) == 0
+        assert len(_forced_messages(action_executions[0])) == 0
+        message = _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        assert message.to_content_id == latest_nested_id
 
         action_executions = self._refactor(actions).action_executions
         assert len(action_executions) == 1
-        assert len(action_executions[0].messages) == 0
+        assert len(action_executions[0].messages) == 1
+        message = _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        assert message.from_content_id != message.to_content_id
+        assert message.to_content_id == latest_nested_id
 
         post_upgrade_native = self._download_native(self._most_recent_stored_workflow)
         self._assert_nested_workflow_num_lines_is(post_upgrade_native, "2")
@@ -822,11 +862,15 @@ steps:
         ]
         action_executions = self._dry_run(actions).action_executions
         assert len(action_executions) == 1
-        assert len(action_executions[0].messages) == 0
+        assert len(_forced_messages(action_executions[0])) == 0
+        message = _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        assert message.to_content_id == middle_workflow_id
 
         action_executions = self._refactor(actions).action_executions
         assert len(action_executions) == 1
-        assert len(action_executions[0].messages) == 0
+        assert len(action_executions[0].messages) == 1
+        message = _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        assert message.to_content_id == middle_workflow_id
         post_upgrade_native = self._download_native(self._most_recent_stored_workflow)
         self._assert_nested_workflow_num_lines_is(post_upgrade_native, "20")
 
@@ -849,7 +893,8 @@ steps:
         # inbound inputs
         assert nested_step["subworkflow"]["steps"]["0"]["label"] == "renamed_inner_input"
         assert len(action_executions) == 1
-        messages = action_executions[0].messages
+        _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        messages = _forced_messages(action_executions[0])
         assert len(messages) == 1
 
         message = messages[0]
@@ -879,7 +924,8 @@ steps:
         ]
         action_executions = self._refactor(actions).action_executions
         assert len(action_executions) == 1
-        messages = action_executions[0].messages
+        _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        messages = _forced_messages(action_executions[0])
 
         # it was connected to two inputs on second_cat step
         assert len(messages) == 2
@@ -910,7 +956,8 @@ steps:
         ]
         action_executions = self._refactor(actions).action_executions
         assert len(action_executions) == 1
-        messages = action_executions[0].messages
+        _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        messages = _forced_messages(action_executions[0])
         assert len(messages) == 1
 
         message = messages[0]
@@ -949,7 +996,17 @@ steps:
         )
 
         assert len(action_executions) == 1
-        messages = action_executions[0].messages
+        _assert_tool_version_change(action_executions[0].messages, "tool_update_step", "0.1", "0.2")
+        _assert_subworkflow_version_change(action_executions[0].messages, "nested_workflow")
+        compose_message = _assert_tool_version_change(
+            action_executions[0].messages, "compose_text_param", "0.1.0", "0.1.1"
+        )
+        assert compose_message.to_tool_id == (
+            "toolshed.g2.bx.psu.edu/repos/iuc/compose_text_param/compose_text_param/0.1.1"
+        )
+        assert compose_message.from_tool_id != compose_message.to_tool_id
+        assert len(_requested_messages(action_executions[0])) == 3
+        messages = _forced_messages(action_executions[0])
         assert len(messages) == 1
         message = messages[0]
         assert message.message_type == RefactorActionExecutionMessageTypeEnum.connection_drop_forced
@@ -1081,6 +1138,47 @@ steps:
         assert "num_lines" not in first_step.tool_inputs
         second_step = self._latest_workflow.step_by_label("random2")
         assert "num_lines" not in second_step.tool_inputs
+
+
+def _forced_messages(execution: RefactorActionExecution) -> list[RefactorActionExecutionMessage]:
+    return [m for m in execution.messages if m.cause == RefactorActionExecutionMessageCauseEnum.forced]
+
+
+def _requested_messages(execution: RefactorActionExecution) -> list[RefactorActionExecutionMessage]:
+    return [m for m in execution.messages if m.cause == RefactorActionExecutionMessageCauseEnum.requested]
+
+
+def _assert_tool_version_change(
+    messages: list[RefactorActionExecutionMessage], step_label: str, from_version: str, to_version: str
+) -> RefactorActionExecutionMessage:
+    matching = [
+        m
+        for m in messages
+        if m.message_type == RefactorActionExecutionMessageTypeEnum.tool_version_change and m.step_label == step_label
+    ]
+    assert len(matching) == 1, messages
+    message = matching[0]
+    assert message.cause == RefactorActionExecutionMessageCauseEnum.requested
+    assert message.from_tool_version == from_version
+    assert message.to_tool_version == to_version
+    return message
+
+
+def _assert_subworkflow_version_change(
+    messages: list[RefactorActionExecutionMessage], step_label: str
+) -> RefactorActionExecutionMessage:
+    matching = [
+        m
+        for m in messages
+        if m.message_type == RefactorActionExecutionMessageTypeEnum.subworkflow_version_change
+        and m.step_label == step_label
+    ]
+    assert len(matching) == 1, messages
+    message = matching[0]
+    assert message.cause == RefactorActionExecutionMessageCauseEnum.requested
+    assert message.from_content_id
+    assert message.to_content_id
+    return message
 
 
 def _step_with_label(native_dict, label):

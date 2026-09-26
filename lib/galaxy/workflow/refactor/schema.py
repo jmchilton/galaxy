@@ -269,9 +269,15 @@ class RefactorActions(BaseModel):
 
 class RefactorActionExecutionMessageTypeEnum(str, Enum):
     tool_version_change = "tool_version_change"
+    subworkflow_version_change = "subworkflow_version_change"
     tool_state_adjustment = "tool_state_adjustment"
     connection_drop_forced = "connection_drop_forced"
     workflow_output_drop_forced = "workflow_output_drop_forced"
+
+
+class RefactorActionExecutionMessageCauseEnum(str, Enum):
+    requested = "requested"
+    forced = "forced"
 
 
 INPUT_REFERENCE = """
@@ -288,6 +294,12 @@ step with the previously connected input.
 class RefactorActionExecutionMessage(BaseModel):
     message: str
     message_type: RefactorActionExecutionMessageTypeEnum
+    cause: RefactorActionExecutionMessageCauseEnum = Field(
+        RefactorActionExecutionMessageCauseEnum.forced,
+        description="""'requested' if the change is the direct result of the requested action
+(e.g. the tool version bump of an upgrade), 'forced' if Galaxy had to make the change
+to keep the workflow valid (e.g. a dropped connection or a defaulted parameter).""",
+    )
     step_label: str | None = Field(None, description=f"Reference to the step the message refers to. ${INPUT_REFERENCE}")
     order_index: int | None = Field(
         None, description=f"Reference to the step the message refers to. ${INPUT_REFERENCE}"
@@ -315,6 +327,22 @@ side of the connection that was dropped.""",
     )
     output_label: str | None = Field(
         None, description="If the message_type is workflow_output_drop_forced, this is the output label dropped."
+    )
+    from_tool_id: str | None = Field(
+        None, description="If the message_type is tool_version_change, the previous tool id."
+    )
+    from_tool_version: str | None = Field(
+        None, description="If the message_type is tool_version_change, the previous tool version."
+    )
+    to_tool_id: str | None = Field(None, description="If the message_type is tool_version_change, the new tool id.")
+    to_tool_version: str | None = Field(
+        None, description="If the message_type is tool_version_change, the new tool version."
+    )
+    from_content_id: str | None = Field(
+        None, description="If the message_type is subworkflow_version_change, the previous encoded workflow id."
+    )
+    to_content_id: str | None = Field(
+        None, description="If the message_type is subworkflow_version_change, the new encoded workflow id."
     )
 
 
