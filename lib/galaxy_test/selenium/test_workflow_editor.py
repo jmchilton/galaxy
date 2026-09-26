@@ -680,7 +680,8 @@ steps:
 
         editor.tool_bar.upgrade_all.wait_for_and_click()
         changes = editor.refactor_modal_requested_changes.wait_for_visible()
-        assert "multiple_versions: 0.1 → 0.2" in changes.text
+        assert "target label" in changes.text
+        assert "multiple_versions: 0.1+galaxy6 → 0.2" in changes.text
         self.screenshot("workflow_editor_upgrade_all_summary")
         editor.refactor_modal_proceed.wait_for_and_click()
         editor.refactor_modal.wait_for_absent_or_hidden()
@@ -688,6 +689,11 @@ steps:
         node = self.components.tool_form.tool_version.wait_for_present()
         version = node.get_attribute("data-version")
         assert version == "0.2"
+
+        # a second upgrade has nothing to do and says so instead of saving a new version
+        editor.tool_bar.upgrade_all.wait_for_and_click()
+        toast = self.wait_for_selector_visible("[data-description='toast message']")
+        assert "already up to date" in toast.text
 
     @selenium_test
     def test_editor_tool_upgrade_message(self):
