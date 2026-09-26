@@ -21689,6 +21689,18 @@ export interface components {
         /** RefactorActionExecutionMessage */
         RefactorActionExecutionMessage: {
             /**
+             * @description 'requested' if the change is the direct result of the requested action
+             *     (e.g. the tool version bump of an upgrade), 'forced' if Galaxy had to make the change
+             *     to keep the workflow valid (e.g. a dropped connection or a defaulted parameter).
+             * @default forced
+             */
+            cause: components["schemas"]["RefactorActionExecutionMessageCauseEnum"];
+            /**
+             * From Content Id
+             * @description If the message_type is subworkflow_version_change, the previous encoded workflow id.
+             */
+            from_content_id?: string | null;
+            /**
              * From Order Index
              * @description For dropped connections these optional attributes refer to the output
              *     side of the connection that was dropped.
@@ -21700,6 +21712,16 @@ export interface components {
              *     side of the connection that was dropped.
              */
             from_step_label?: string | null;
+            /**
+             * From Tool Id
+             * @description If the message_type is tool_version_change, the previous tool id.
+             */
+            from_tool_id?: string | null;
+            /**
+             * From Tool Version
+             * @description If the message_type is tool_version_change, the previous tool version.
+             */
+            from_tool_version?: string | null;
             /**
              * Input Name
              * @description If this message is about an input to a step,
@@ -21744,13 +21766,34 @@ export interface components {
              *     step with the previously connected input.
              */
             step_label?: string | null;
+            /**
+             * To Content Id
+             * @description If the message_type is subworkflow_version_change, the new encoded workflow id.
+             */
+            to_content_id?: string | null;
+            /**
+             * To Tool Id
+             * @description If the message_type is tool_version_change, the new tool id.
+             */
+            to_tool_id?: string | null;
+            /**
+             * To Tool Version
+             * @description If the message_type is tool_version_change, the new tool version.
+             */
+            to_tool_version?: string | null;
         };
+        /**
+         * RefactorActionExecutionMessageCauseEnum
+         * @enum {string}
+         */
+        RefactorActionExecutionMessageCauseEnum: "requested" | "forced";
         /**
          * RefactorActionExecutionMessageTypeEnum
          * @enum {string}
          */
         RefactorActionExecutionMessageTypeEnum:
             | "tool_version_change"
+            | "subworkflow_version_change"
             | "tool_state_adjustment"
             | "connection_drop_forced"
             | "workflow_output_drop_forced";

@@ -1247,7 +1247,13 @@ steps:
         refactor_result = refactor_response.json()
         upgrade_result = refactor_result["action_executions"][0]
         assert upgrade_result["action"]["action_type"] == "upgrade_all_steps"
-        message_one, message_two = upgrade_result["messages"]
+        version_message, message_one, message_two = upgrade_result["messages"]
+        assert version_message["message_type"] == "tool_version_change"
+        assert version_message["cause"] == "requested"
+        assert version_message["step_label"] == "multiple_versions_changes"
+        assert version_message["from_tool_version"] == "0.1"
+        assert version_message["to_tool_version"] == "0.2"
+        assert message_one["cause"] == "forced"
         assert message_one["message"] == "No value found for 'floattest'. Using default: '1.0'."
         assert message_one["input_name"] == "floattest"
         assert message_two["message"] == "The selected case is unavailable/invalid. Using default: 'b'."

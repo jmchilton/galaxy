@@ -25,6 +25,7 @@ from .schema import (
     Position,
     RefactorActionExecution,
     RefactorActionExecutionMessage,
+    RefactorActionExecutionMessageCauseEnum,
     RefactorActionExecutionMessageTypeEnum,
     RefactorActions,
     RemoveUnlabeledWorkflowOutputs,
@@ -447,11 +448,24 @@ class WorkflowRefactorExecutor:
             old_workflow = trans.app.workflow_manager.get_owned_workflow(trans, step_def["content_id"])
             stored_workflow = old_workflow.stored_workflow
             content_id = trans.security.encode_id(stored_workflow.latest_workflow.id)
+        from_content_id = step_def["content_id"]
         step_def["content_id"] = content_id
         step = self.workflow.steps[step_def["id"]]
         new_workflow = trans.app.workflow_manager.get_owned_workflow(trans, content_id)
         step.subworkflow = new_workflow
+        message_index = len(execution.messages)
         self._inject_for_updated_step(step, execution)
+        if from_content_id != content_id:
+            message = RefactorActionExecutionMessage(
+                message=f"Subworkflow '{new_workflow.name}' upgraded to a newer version.",
+                message_type=RefactorActionExecutionMessageTypeEnum.subworkflow_version_change,
+                cause=RefactorActionExecutionMessageCauseEnum.requested,
+                step_label=step_def.get("label"),
+                order_index=step_def["id"],
+                from_content_id=from_content_id,
+                to_content_id=content_id,
+            )
+            execution.messages.insert(message_index, message)
 
         self._patch_step(execution, step, step_def)
 
@@ -465,9 +479,28 @@ class WorkflowRefactorExecutor:
             tool_version = latest_tool.version
             tool_id = latest_tool.id
         step = self.workflow.steps[step_def["id"]]
+        # step_def may already reflect a load-time substitution; the stored step is what the user had.
+        from_tool_id = step.tool_id
+        from_tool_version = step.tool_version
         step.tool_id = tool_id
         step.tool_version = tool_version
+        message_index = len(execution.messages)
         self._inject_for_updated_step(step, execution)
+        to_tool_id = step.module.get_content_id()
+        to_tool_version = step.module.get_version()
+        if (from_tool_id, from_tool_version) != (to_tool_id, to_tool_version):
+            message = RefactorActionExecutionMessage(
+                message=f"Tool '{to_tool_id}' upgraded from version '{from_tool_version}' to '{to_tool_version}'.",
+                message_type=RefactorActionExecutionMessageTypeEnum.tool_version_change,
+                cause=RefactorActionExecutionMessageCauseEnum.requested,
+                step_label=step_def.get("label"),
+                order_index=step_def["id"],
+                from_tool_id=from_tool_id,
+                from_tool_version=from_tool_version,
+                to_tool_id=to_tool_id,
+                to_tool_version=to_tool_version,
+            )
+            execution.messages.insert(message_index, message)
         step_def["tool_version"] = tool_version
         step_def["tool_state"] = step.module.get_tool_state()
         if step_def.get("tool_id"):
