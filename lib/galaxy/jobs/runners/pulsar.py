@@ -567,6 +567,13 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 remote_job_config,
                 compute_environment=compute_environment,
             )
+            if job_wrapper.remote_command_line and not remote_metadata:
+                # Remote evaluation still needs the exported job and datatype registry.
+                datatypes_config = os.path.join(job_wrapper.working_directory, "registry.xml")
+                job_wrapper.extra_filenames.append(datatypes_config)
+                job_wrapper.setup_external_metadata(
+                    tmp_dir=job_wrapper.working_directory, datatypes_config=datatypes_config, **metadata_kwds
+                )
             remote_working_directory = remote_job_config["working_directory"]
             remote_job_directory = os.path.abspath(os.path.join(remote_working_directory, os.path.pardir))
             remote_tool_directory = os.path.abspath(os.path.join(remote_job_directory, "tool_files"))

@@ -10,7 +10,7 @@ from typing import (
 
 from galaxy.datatypes.registry import Registry
 from galaxy.files import ConfiguredFileSources
-from galaxy.job_execution.compute_environment import SharedComputeEnvironment
+from galaxy.job_execution.compute_environment import RemoteComputeEnvironment, SharedComputeEnvironment
 from galaxy.job_execution.setup import JobIO
 from galaxy.managers.dbkeys import GenomeBuilds
 from galaxy.metadata.set_metadata import (
@@ -117,7 +117,14 @@ def main(TMPDIR, WORKING_DIRECTORY, IMPORT_STORE_DIRECTORY) -> None:
     tool_evaluator = evaluation.RemoteToolEvaluator(
         app=app, tool=tool, job=job_io.job, local_working_directory=WORKING_DIRECTORY
     )
-    tool_evaluator.set_compute_environment(compute_environment=SharedComputeEnvironment(job_io=job_io, job=job_io.job))
+    environment_path = os.path.join(IMPORT_STORE_DIRECTORY, "compute_environment.json")
+    if os.path.exists(environment_path):
+        with open(environment_path) as environment_file:
+            compute_environment = RemoteComputeEnvironment(job_io, job_io.job, json.load(environment_file))
+    else:
+        # Jobs prepared by older Galaxy versions still use shared filesystem paths.
+        compute_environment = SharedComputeEnvironment(job_io=job_io, job=job_io.job)
+    tool_evaluator.set_compute_environment(compute_environment=compute_environment)
     with open(os.path.join(WORKING_DIRECTORY, "tool_script.sh"), "a") as out:
         command_line, version_command_line, extra_filenames, environment_variables, *_ = tool_evaluator.build()
         out.write(f"{version_command_line or ''}{command_line}")

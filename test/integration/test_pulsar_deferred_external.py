@@ -23,6 +23,8 @@ pytestmark = pytest.mark.skipif(
 
 
 class _ExternalPulsarCases(_DeferredPulsarCases):
+    remote_metadata = True
+
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
@@ -84,7 +86,7 @@ class _ExternalPulsarCases(_DeferredPulsarCases):
                     "pulsar": {
                         "runner": "pulsar",
                         "url": f'http://127.0.0.1:{cls.ready["port"]}/',
-                        "remote_metadata": True,
+                        "remote_metadata": cls.remote_metadata,
                         "default_file_action": "transfer",
                     },
                 },
@@ -185,3 +187,9 @@ class TestExternalPulsarLocalEvaluation(_ExternalPulsarCases):
 class TestExternalPulsarRemoteEvaluation(_ExternalPulsarCases):
     tool_evaluation_strategy = "remote"
     metadata_strategy = "extended"
+
+
+class TestExternalPulsarRemoteEvaluationLocalMetadata(TestExternalPulsarRemoteEvaluation):
+    """Remote evaluation with extended metadata collected by Galaxy after transfer."""
+
+    remote_metadata = False

@@ -116,5 +116,76 @@ is `/private/tmp/deferred_external_http_diagnostic.log`.
 
 The tests and reproduction report are preserved on the research branch
 [`jmchilton/galaxy:deferred-pulsar-matrix-20260926`](https://github.com/jmchilton/galaxy/tree/deferred-pulsar-matrix-20260926).
-No production code has been changed. The external cases remain failing
-regressions until execution-side path resolution is repaired.
+The baseline above predates the production path fix described below.
+
+## 2026-09-27: runner-resolved paths and output transfer
+
+The branch now exports the runner's resolved compute environment alongside
+`job_io.json`. Remote evaluation uses this snapshot for ordinary input paths,
+output paths, extra-file paths, metadata-file mappings, and job directories.
+Deferred inputs are omitted from the input snapshot so their materialized
+execution-side paths continue to be used. Old jobs without the snapshot retain
+the shared-environment fallback.
+
+Do not register absent input extra-file directories while taking the snapshot:
+Pulsar treats registered paths as files to stage, even for a plain text input.
+
+The original isolated remote-evaluation cases now expose a second boundary:
+extended metadata on Pulsar writes directly to Galaxy's serialized object store.
+A disk object store on Galaxy is unavailable under the sandbox. Output recovery
+for extended remote metadata therefore still needs a separate repair; the
+original failing cases remain enabled and their assertions are preserved.
+
+An additional four-case class,
+`TestExternalPulsarRemoteEvaluationLocalMetadata`, exercises a configuration
+with remote tool evaluation and **Galaxy-side extended metadata** after output
+transfer (`remote_metadata: false`). This also required staging the job export
+and datatype registry for remote evaluation independently of remote metadata.
+The existing local-evaluation cases and shared-storage embedded cases remain.
+
+The HTTP test continues to verify that the remote evaluator fetches the input,
+that no GET occurs at deferred dataset creation, that Galaxy does not materialize
+the input, and that the recovered output matches the original bytes.
+
+The unit regression checks the environment snapshot across JSON serialization,
+including inaccessible Galaxy object-store paths, metadata and extra-file
+mappings, absent extra-file directories, and deferred input fallback. Composite
+and metadata-dependent tools still need end-to-end coverage; this patch does not
+establish general support for reference-data path rewriting or all tool types.
+
+### Next implementation boundary
+
+Define how extended metadata returns output files and discovered datasets when
+Pulsar cannot access Galaxy's object store. Preserve the original isolated
+remote-metadata cases as the acceptance tests. Avoid interpreting successful
+remote downloads alone as successful jobs.
+
+### Verification results
+
+Across the selected final and control runs:
+
+| Configuration                                                   | Result                          |
+| --------------------------------------------------------------- | ------------------------------- |
+| Embedded Pulsar, local evaluation                               | 3 passed                        |
+| Embedded Pulsar, remote evaluation                              | 3 passed                        |
+| Isolated Pulsar, local evaluation                               | 4 passed                        |
+| Isolated Pulsar, remote evaluation, metadata in Galaxy          | 4 passed                        |
+| Isolated Pulsar, remote evaluation, extended metadata in Pulsar | 4 failed at object-store writes |
+| Compute environment and JobIO unit regressions                  | 3 passed                        |
+
+The final remote-configuration plus embedded-remote run reports **7 passed** in
+176.30 seconds. The original isolated remote-metadata run reports **4 failed**
+in 103.89 seconds. All four of those remote outputs independently match the
+fixtures; the remaining failure is a denied object-store write. The earlier
+control run caught the missing-extra-directory registration regression; its
+ordinary embedded case passed in the final rerun after the fix.
+
+HTTP evidence for the passing configuration:
+`/private/tmp/deferred_pulsar_external_s9ihz7rr/http_evidence.json` (remote
+evaluator PID 37076, Galaxy PID 36340, isolation probe denied).
+
+Final report: `/private/tmp/deferred_path_fix_verified.html`.
+Original remote-metadata failure evidence:
+`/private/tmp/deferred_pulsar_external_pixucq4o/`.
+All Python formatting/lint hooks pass. Service logs and runtime credentials are
+retained locally and are not committed.

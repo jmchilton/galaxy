@@ -55,7 +55,7 @@ from galaxy.exceptions import (
 )
 from galaxy.files import ProvidesFileSourcesUserContext
 from galaxy.job_execution.actions.post import ActionBox
-from galaxy.job_execution.compute_environment import SharedComputeEnvironment
+from galaxy.job_execution.compute_environment import serialize_compute_environment, SharedComputeEnvironment
 from galaxy.job_execution.output_collect import (
     collect_extra_files,
     collect_shrinked_content_from_path,
@@ -1310,6 +1310,10 @@ class MinimalJobWrapper(HasResourceParameters):
             self.app.datatypes_registry.to_xml_file(os.path.join(self.working_directory, "registry.xml"))
         if self.remote_command_line:
             os.makedirs(os.path.join(self.working_directory, "metadata", "outputs_new"), exist_ok=True)
+            with open(
+                os.path.join(self.working_directory, "metadata", "outputs_new", "compute_environment.json"), "w"
+            ) as out:
+                json.dump(serialize_compute_environment(compute_environment, self.job_io), out)
             self.job_io.to_json(path=os.path.join(self.working_directory, "metadata", "outputs_new", "job_io.json"))
             self.app.tool_data_tables.to_json(
                 path=os.path.join(self.working_directory, "metadata", "outputs_new", "tool_data_tables.json")

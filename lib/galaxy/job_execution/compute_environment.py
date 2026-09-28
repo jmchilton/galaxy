@@ -9,7 +9,7 @@ from typing import (
 
 from galaxy.job_execution.datasets import DeferrableObjectsT
 from galaxy.job_execution.setup import JobIO
-from galaxy.model import Job
+from galaxy.model import Job, MetadataFile
 
 
 def dataset_path_to_extra_path(path: str) -> str:
@@ -172,3 +172,111 @@ class SharedComputeEnvironment(SimpleComputeEnvironment, ComputeEnvironment):
 
     def galaxy_url(self):
         return self.job_io.galaxy_url
+
+
+def serialize_compute_environment(compute_environment: ComputeEnvironment, job_io: JobIO) -> dict[str, Any]:
+    """Capture runner-resolved paths before exporting the job for remote evaluation."""
+    paths: dict[str, dict[str, str]] = {
+        "inputs": {},
+        "outputs": {},
+        "input_extra_files": {},
+        "output_extra_files": {},
+        "metadata": {},
+    }
+    for dataset in job_io.get_input_datasets():
+        if dataset.state == dataset.states.DEFERRED:
+            # Materialization on the execution host supplies its own paths.
+            continue
+        paths["inputs"][str(dataset.dataset.uuid)] = (
+            compute_environment.input_path_rewrite(dataset) or dataset.get_file_name()
+        )
+        if dataset.extra_files_path_exists():
+            paths["input_extra_files"][str(dataset.dataset.uuid)] = (
+                compute_environment.input_extra_files_rewrite(dataset) or dataset.extra_files_path
+            )
+        else:
+            paths["input_extra_files"][str(dataset.dataset.uuid)] = dataset_path_to_extra_path(
+                paths["inputs"][str(dataset.dataset.uuid)]
+            )
+        for value in dataset.metadata.values():
+            if isinstance(value, MetadataFile):
+                filename = value.get_file_name()
+                paths["metadata"][filename] = compute_environment.input_metadata_rewrite(dataset, filename) or filename
+    for dataset, _ in job_io.output_hdas_and_paths.values():
+        paths["outputs"][str(dataset.dataset.uuid)] = (
+            compute_environment.output_path_rewrite(dataset) or dataset.get_file_name()
+        )
+        paths["output_extra_files"][str(dataset.dataset.uuid)] = (
+            compute_environment.output_extra_files_rewrite(dataset) or dataset.extra_files_path
+        )
+    directories = {
+        name: getattr(compute_environment, name)()
+        for name in (
+            "working_directory",
+            "config_directory",
+            "env_config_directory",
+            "new_file_path",
+            "tool_directory",
+            "version_path",
+            "home_directory",
+            "tmp_directory",
+            "galaxy_url",
+        )
+    }
+    return {"paths": paths, "directories": directories}
+
+
+class RemoteComputeEnvironment(SharedComputeEnvironment):
+    """Use paths resolved by the runner instead of querying Galaxy's object store."""
+
+    def __init__(self, job_io: JobIO, job: Job, environment: dict[str, Any]):
+        super().__init__(job_io, job)
+        self.paths = environment["paths"]
+        self.directories = environment["directories"]
+
+    def input_path_rewrite(self, dataset):
+        path = self.paths["inputs"].get(str(dataset.dataset.uuid))
+        return path if path is not None else super().input_path_rewrite(dataset)
+
+    def output_path_rewrite(self, dataset):
+        return self.paths["outputs"][str(dataset.dataset.uuid)]
+
+    def input_extra_files_rewrite(self, dataset):
+        path = self.paths["input_extra_files"].get(str(dataset.dataset.uuid))
+        return path if path is not None else super().input_extra_files_rewrite(dataset)
+
+    def output_extra_files_rewrite(self, dataset):
+        return self.paths["output_extra_files"][str(dataset.dataset.uuid)]
+
+    def input_metadata_rewrite(self, dataset, metadata_value):
+        return self.paths["metadata"].get(metadata_value)
+
+    def output_names(self):
+        return [os.path.basename(path) for path in self.paths["outputs"].values()]
+
+    def working_directory(self):
+        return self.directories["working_directory"]
+
+    def config_directory(self):
+        return self.directories["config_directory"]
+
+    def env_config_directory(self):
+        return self.directories["env_config_directory"]
+
+    def new_file_path(self):
+        return self.directories["new_file_path"]
+
+    def tool_directory(self):
+        return self.directories["tool_directory"]
+
+    def version_path(self):
+        return self.directories["version_path"]
+
+    def home_directory(self):
+        return self.directories["home_directory"]
+
+    def tmp_directory(self):
+        return self.directories["tmp_directory"]
+
+    def galaxy_url(self):
+        return self.directories["galaxy_url"]
