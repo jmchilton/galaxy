@@ -71,4 +71,45 @@ describe("Monitor", () => {
             vi.useRealTimers();
         }
     });
+
+    it("does not resume polling when a request resolves after unmount", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            getInstalledRepositories.mockClear();
+            const wrapper = mount(Monitor);
+            await flushPromises();
+
+            let resolvePending;
+            getInstalledRepositories.mockImplementationOnce(() => new Promise((resolve) => (resolvePending = resolve)));
+            vi.advanceTimersByTime(5000);
+            await flushPromises();
+            expect(getInstalledRepositories).toHaveBeenCalledTimes(2);
+
+            wrapper.destroy();
+            resolvePending([]);
+            await flushPromises();
+            vi.advanceTimersByTime(15000);
+            await flushPromises();
+            expect(getInstalledRepositories).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("stops polling after a request fails", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+            getInstalledRepositories.mockClear();
+            getInstalledRepositories.mockRejectedValueOnce(new Error("boom"));
+            const wrapper = mount(Monitor);
+            await flushPromises();
+            expect(wrapper.find(".alert-danger").text()).toContain("boom");
+
+            vi.advanceTimersByTime(15000);
+            await flushPromises();
+            expect(getInstalledRepositories).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
