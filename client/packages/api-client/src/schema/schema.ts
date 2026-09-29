@@ -19819,6 +19819,35 @@ export interface components {
          * @default []
          */
         LibrarySummaryList: components["schemas"]["LibrarySummary"][];
+        /**
+         * LicenseAgreement
+         * @description License terms a user must affirm before running the tool, as declared by the tool.
+         *
+         *     Terms are given inline (``text``) or as a file relative to the tool's directory
+         *     (``path``); a ``path`` is not read here - see ``galaxy.tool_util.license_agreements``.
+         */
+        LicenseAgreement: {
+            /** Affirmation */
+            affirmation: string;
+            /**
+             * Binds
+             * @default submission
+             * @enum {string}
+             */
+            binds: "submission" | "user";
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Path */
+            path?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Version */
+            version: string;
+        };
         /** LicenseMetadataModel */
         LicenseMetadataModel: {
             /**
@@ -21220,6 +21249,8 @@ export interface components {
             )[];
             /** License */
             license: string | null;
+            /** License Agreements */
+            license_agreements?: components["schemas"]["LicenseAgreement"][];
             /** Name */
             name: string;
             /** Outputs */

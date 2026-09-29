@@ -1,0 +1,27 @@
+<tool id="license_agreement_shared_tool" name="license_agreement_shared_tool" version="1.0" profile="26.2">
+    <requirements>
+        <!-- Different id, identical affirmation and terms (byte-identical file copy): shares one acceptance with license_agreement_path_tool -->
+        <license_agreement id="license_agreement_shared" version="3" path="license_agreement_shared_tool_license.txt">
+            <label>A different label for the same terms</label>
+            <affirmation>I certify that I am not using this tool for commercial purposes.</affirmation>
+        </license_agreement>
+    </requirements>
+    <command><![CDATA[
+echo 'licensed' > '$output'
+    ]]></command>
+    <inputs>
+        <param name="input" type="text" value="x"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt"/>
+    </outputs>
+    <tests>
+        <test>
+            <output name="output">
+                <assert_contents>
+                    <has_line line="licensed"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+</tool>

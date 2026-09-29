@@ -20,6 +20,7 @@ from galaxy.tool_util.linters import (
     general,
     help,
     inputs,
+    license_agreements,
     output,
     required_files,
     stdio,
@@ -2706,8 +2707,8 @@ def test_skip_by_module(lint_ctx):
 def test_list_linters():
     linter_names = Linter.list_listers()
     # make sure to add/remove a test for new/removed linters if this number changes
-    # (156 = 148 tool linters + 8 repository data-table linters registered via list_linters)
-    assert len(linter_names) == 156
+    # (161 = 153 tool linters + 8 repository data-table linters registered via list_linters)
+    assert len(linter_names) == 161
     assert "Linter" not in linter_names
     # make sure that linters from all modules are available
     for prefix in [
@@ -2734,6 +2735,77 @@ def test_linting_functional_tool_multi_select(lint_ctx):
         "Test 2: failed to validate test parameters against inputs - tests won't run on a modern Galaxy tool profile version. Validation errors are [6 validation errors for"
         in str(warn_message)
     )
+
+
+def test_license_agreement_path_valid(lint_ctx):
+    run_lint_module(lint_ctx, license_agreements, functional_test_tool_source("license_agreement_path_tool.xml"))
+    assert not lint_ctx.error_messages
+    assert not lint_ctx.warn_messages
+    assert not lint_ctx.info_messages
+
+
+def test_license_agreement_inline_terms_info(lint_ctx):
+    run_lint_module(lint_ctx, license_agreements, functional_test_tool_source("license_agreement_tool.xml"))
+    assert not lint_ctx.error_messages
+    assert lint_ctx.info_messages == [
+        (
+            "License agreement [license_agreement_inline] uses inline text - prefer shipping the terms as a file "
+            "referenced by path, so wrappers can share one verbatim copy"
+        )
+    ]
+
+
+def test_license_agreement_missing_path(lint_ctx):
+    run_lint_module(
+        lint_ctx, license_agreements, functional_test_tool_source("license_agreement_missing_path_tool.xml")
+    )
+    assert len(lint_ctx.error_messages) == 1
+    assert "license_agreement_missing_path_tool_license.txt" in str(lint_ctx.error_messages[0])
+    assert lint_ctx.error_messages[0].line is not None
+
+
+def test_license_agreement_profile_too_old(lint_ctx):
+    run_lint_module(lint_ctx, license_agreements, functional_test_tool_source("license_agreement_low_profile_tool.xml"))
+    assert lint_ctx.error_messages == [
+        "License agreements require tool profile 26.2 or newer, tool declares profile 26.1 - the tool will fail to load"
+    ]
+
+
+def test_license_agreement_declaration_invalid(lint_ctx):
+    tool_source = get_xml_tool_source("""<tool id="id" name="name" version="1" profile="26.2">
+    <requirements>
+        <license_agreement id="nc" version="1">
+            <label>Label</label>
+            <affirmation>I agree.</affirmation>
+        </license_agreement>
+    </requirements>
+</tool>""")
+    run_lint_module(lint_ctx, license_agreements, tool_source)
+    assert (
+        "Invalid license agreement [nc]: Value error, must declare exactly one of path or text"
+        in lint_ctx.error_messages
+    )
+
+
+def test_license_agreement_inline_terms_on_opening_line_warns(lint_ctx):
+    tool_source = get_xml_tool_source("""<tool id="id" name="name" version="1" profile="26.2">
+    <requirements>
+        <license_agreement id="nc" version="1">
+            <label>Label</label>
+            <affirmation>I agree.</affirmation>
+            <text>First line of the terms
+            second line keeps this indentation</text>
+        </license_agreement>
+    </requirements>
+</tool>""")
+    run_lint_module(lint_ctx, license_agreements, tool_source)
+    assert lint_ctx.warn_messages == [
+        (
+            "License agreement [nc] inline text starts on the same line as its opening tag, so the indentation of "
+            "following lines becomes part of the terms - start the terms on a new line"
+        )
+    ]
+    assert lint_ctx.warn_messages[0].line is not None
 
 
 def functional_test_tool_source(name: str) -> ToolSource:

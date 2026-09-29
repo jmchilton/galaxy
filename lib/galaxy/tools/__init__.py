@@ -78,6 +78,11 @@ from galaxy.tool_util.deps import (
 from galaxy.tool_util.deps.requirements import CredentialsRequirement
 from galaxy.tool_util.fetcher import ToolLocationFetcher
 from galaxy.tool_util.identifiers import uri_safe_tool_id
+from galaxy.tool_util.license_agreements import (
+    check_license_agreement_profile,
+    resolve_license_agreement,
+    ResolvedLicenseAgreement,
+)
 from galaxy.tool_util.loader import template_macro_params
 from galaxy.tool_util.loader_directory import looks_like_a_tool
 from galaxy.tool_util.ontologies.ontology_data import expand_ontology_data
@@ -1225,6 +1230,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.shell_command: str | None = None
         self.javascript_requirements: list[JavascriptRequirement] | None = None
         self.credentials: list[CredentialsRequirement] | None = None
+        self.license_agreements: list[ResolvedLicenseAgreement] = []
         self._tests: str | None = None
         self._tests_parsed: bool = False
         self.parameters: list[ToolParameterT] | None = None
@@ -1583,6 +1589,13 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.resource_requirements = resource_requirements
         self.javascript_requirements = javasscript_requirements
         self.credentials = credentials
+
+        license_agreements = tool_source.parse_license_agreements()
+        check_license_agreement_profile(tool_source.parse_profile(), license_agreements)
+        # Remote tool evaluation rebuilds the tool where its directory (and so a license
+        # file) may be absent; agreements only matter before a job is created.
+        if self.app.name != "tool_app":
+            self.license_agreements = [resolve_license_agreement(a, self.tool_dir) for a in license_agreements]
 
         # Add credential inject_as_env names to docker_env_pass_through
         # so they are passed into containerized environments (Docker -e, Singularity SINGULARITYENV_)

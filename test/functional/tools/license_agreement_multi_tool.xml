@@ -1,0 +1,36 @@
+<tool id="license_agreement_multi_tool" name="license_agreement_multi_tool" version="1.0" profile="26.2">
+    <requirements>
+        <license_agreement id="license_agreement_inline" version="1">
+            <label>Inline non-commercial terms</label>
+            <affirmation>I certify that I am not using this tool for commercial purposes.</affirmation>
+            <text><![CDATA[
+                Inline Test Terms
+
+                This software may be used free of charge for non-commercial purposes only.
+            ]]></text>
+        </license_agreement>
+        <license_agreement id="license_agreement_path" version="1" path="license_agreement_tool_license.txt">
+            <label>Test Tool Non-Commercial License</label>
+            <url>https://example.org/test-tool-license</url>
+            <affirmation>I certify that I am not using this tool for commercial purposes.</affirmation>
+        </license_agreement>
+    </requirements>
+    <command><![CDATA[
+echo 'licensed' > '$output'
+    ]]></command>
+    <inputs>
+        <param name="input" type="text" value="x"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt"/>
+    </outputs>
+    <tests>
+        <test>
+            <output name="output">
+                <assert_contents>
+                    <has_line line="licensed"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+</tool>

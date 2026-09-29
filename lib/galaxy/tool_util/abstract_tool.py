@@ -39,7 +39,6 @@ from galaxy.tool_util.parser.output_objects import (
 from galaxy.tool_util.verify.parse import parse_tool_test_descriptions
 from galaxy.tool_util.version import parse_version
 from galaxy.util import (
-    parse_xml_string_to_etree,
     rst_to_html,
     string_as_bool,
 )
@@ -164,7 +163,9 @@ class AbstractTool:
         """
         tool_source = self.tool_source
         if getattr(tool_source, "root", None) is None:
-            tool_source = get_tool_source(xml_tree=parse_xml_string_to_etree(tool_source.to_string()))
+            tool_source = get_tool_source(
+                raw_tool_source=tool_source.to_string(), tool_source_class=type(tool_source).__name__
+            )
         return parse_tool(tool_source)
 
     @property

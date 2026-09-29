@@ -9,6 +9,7 @@ from typing import (
 from pydantic import (
     ConfigDict,
     Field,
+    field_validator,
     model_validator,
     with_config,
 )
@@ -147,6 +148,45 @@ class JavascriptRequirement(ToolSourceBaseModel):
             ]
         ]
     )
+
+
+LicenseAgreementBinds = Literal["submission", "user"]
+
+
+class LicenseAgreement(ToolSourceBaseModel):
+    """License terms a user must affirm before running the tool, as declared by the tool.
+
+    Terms are given inline (``text``) or as a file relative to the tool's directory
+    (``path``); a ``path`` is not read here - see ``galaxy.tool_util.license_agreements``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: Annotated[str, Field(min_length=1)]
+    version: Annotated[str, Field(min_length=1)]
+    label: Annotated[str, Field(min_length=1)]
+    affirmation: str
+    binds: LicenseAgreementBinds = "submission"
+    url: str | None = None
+    path: str | None = None
+    text: str | None = None
+
+    @field_validator("affirmation")
+    @classmethod
+    def _canonical_affirmation(cls, affirmation: str) -> str:
+        # Part of the agreement hash - normalize line endings and strip, but otherwise keep it exactly.
+        canonical = affirmation.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not canonical:
+            raise ValueError("affirmation must not be empty")
+        if "\n" in canonical:
+            raise ValueError("affirmation must be a single line")
+        return canonical
+
+    @model_validator(mode="after")
+    def _path_or_text(self) -> "LicenseAgreement":
+        if (self.path is None) == (self.text is None):
+            raise ValueError("must declare exactly one of path or text")
+        return self
 
 
 @with_config(ConfigDict(field_title_generator=lambda field_name, field_info: field_name.lower()))

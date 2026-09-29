@@ -41,6 +41,7 @@ from galaxy.tool_util_models.tool_source import (
     JsonTestCollectionDefDict,
     JsonTestCollectionDefElementDict,
     JsonTestDatasetDefDict,
+    LicenseAgreement,
     OutputCompareType,
     TemplateConfigFile,
     XrefDict,
@@ -344,6 +345,10 @@ class ToolSource(metaclass=ABCMeta):
         list["CredentialsRequirement"],
     ]:
         """Return triple of ToolRequirement, ContainerDescription, ResourceRequirement, JavascriptRequirement, and CredentialsRequirement objects."""
+
+    def parse_license_agreements(self) -> list[LicenseAgreement]:
+        """Return license agreements a user must affirm before running the tool."""
+        return []
 
     @abstractmethod
     def parse_input_pages(self) -> "PagesSource":

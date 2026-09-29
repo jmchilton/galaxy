@@ -12,7 +12,12 @@ from typing import (
     Literal,
 )
 
-from galaxy.tool_util_models.tool_source import JavascriptRequirement
+from pydantic import ValidationError
+
+from galaxy.tool_util_models.tool_source import (
+    JavascriptRequirement,
+    LicenseAgreement,
+)
 from galaxy.util import (
     asbool,
     string_as_bool,
@@ -514,6 +519,41 @@ def container_from_element(container_elem) -> ContainerDescription:
         shell=shell,
     )
     return container
+
+
+def parse_license_agreements_from_xml(xml_root) -> list[LicenseAgreement]:
+    requirements_elem = xml_root.find("requirements")
+    if requirements_elem is None:
+        return []
+    return [license_agreement_from_element(e) for e in requirements_elem.findall("license_agreement")]
+
+
+def license_agreement_from_element(license_agreement_elem) -> LicenseAgreement:
+    def child_text(name: str) -> str | None:
+        # Unlike xml_text, keep line breaks: the affirmation must be rejected
+        # rather than silently joined if it spans lines, and terms are verbatim.
+        child = license_agreement_elem.find(name)
+        return None if child is None else (child.text or "")
+
+    agreement_id = license_agreement_elem.get("id")
+    kwds: dict[str, Any] = {
+        "id": agreement_id or "",
+        "version": license_agreement_elem.get("version") or "",
+        "label": (child_text("label") or "").strip(),
+        "affirmation": child_text("affirmation") or "",
+        "url": (child_text("url") or "").strip() or None,
+        "path": license_agreement_elem.get("path"),
+        "text": child_text("text"),
+    }
+    if (binds := license_agreement_elem.get("binds")) is not None:
+        kwds["binds"] = binds
+    try:
+        return LicenseAgreement(**kwds)
+    except ValidationError as e:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" if err["loc"] else err["msg"] for err in e.errors()
+        )
+        raise ValueError(f"Invalid license agreement [{agreement_id}]: {problems}")
 
 
 def credentials_from_element(credentials_elem) -> CredentialsRequirement:

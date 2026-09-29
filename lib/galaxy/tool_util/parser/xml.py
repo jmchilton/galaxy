@@ -438,6 +438,9 @@ class XmlToolSource(ToolSource):
     def parse_requirements(self):
         return requirements.parse_requirements_from_xml(self.root, parse_resources_and_credentials=True)
 
+    def parse_license_agreements(self):
+        return requirements.parse_license_agreements_from_xml(self.root)
+
     def parse_input_pages(self) -> "XmlPagesSource":
         return XmlPagesSource(self.root)
 

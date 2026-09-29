@@ -128,6 +128,11 @@ A ``data_source`` tool contains a few more relevant attributes.
             <xs:selector xpath="credentials"/>
             <xs:field xpath="@name"/>
           </xs:unique>
+          <!-- Ensure unique license agreement ids across all license_agreement elements -->
+          <xs:unique name="uniqueLicenseAgreementIds">
+            <xs:selector xpath="license_agreement"/>
+            <xs:field xpath="@id"/>
+          </xs:unique>
         </xs:element>
         <xs:element name="required_files" type="RequiredFiles" minOccurs="0"/>
         <xs:element name="entry_points" type="EntryPoints" minOccurs="0" maxOccurs="1"/>
@@ -662,8 +667,8 @@ practice.
     <xs:annotation>
       <xs:documentation xml:lang="en"><![CDATA[
 
-This is a container tag set for the ``requirement``, ``resource``, ``container`` and
-``credentials`` tags described in greater detail below. ``requirement``s describe
+This is a container tag set for the ``requirement``, ``resource``, ``container``,
+``credentials`` and ``license_agreement`` tags described in greater detail below. ``requirement``s describe
 software packages and other individual computing requirements required to execute a tool,
 while ``container``s describe Docker or Singularity containers that should be able to
 serve as complete descriptions of the runtime of a tool.
@@ -686,6 +691,7 @@ serve as complete descriptions of the runtime of a tool.
           <xs:field xpath="@inject_as_env"/>
         </xs:unique>
       </xs:element>
+      <xs:element name="license_agreement" type="LicenseAgreement" gxdocs:added="26.2"/>
     </xs:choice>
   </xs:complexType>
   <xs:complexType name="Requirement">
@@ -902,6 +908,101 @@ i.e. we do not need to set it on the command line (which would expose them on th
       <xs:annotation>
         <xs:documentation xml:lang="en">If true, tools can run without credentials; if false, credentials must be provided before execution.</xs:documentation>
       </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+  <xs:complexType name="LicenseAgreement">
+    <xs:annotation>
+      <xs:documentation xml:lang="en"><![CDATA[
+The ``license_agreement`` element declares license terms a user must affirm before
+running the tool, for example software restricted to non-commercial or academic use.
+
+Requires ``profile="26.2"`` or newer - a tool with an older profile declaring a
+``license_agreement`` fails to load.
+
+The terms are given either by ``path`` - a file relative to the tool's directory, which is
+**preferred** (the file often already ships with the software, and several tools can share one
+copy) - or inline in a ``text`` element. Exactly one of the two must be present.
+
+An agreement is identified by its affirmation and terms alone: two tools declaring the same
+affirmation and terms declare the same agreement, regardless of ``id``, ``version``, ``label``
+or ``url``. Line endings, whitespace-only lines, surrounding blank lines, a UTF-8 byte order
+mark and (for inline ``text``) common indentation are ignored when comparing terms. Start
+inline terms on the line after ``<text>`` so their indentation can be removed.
+
+``binds`` says what the affirmation is about:
+
+- ``submission`` (the default) - a statement about the work being done, such as *"I certify that I am
+  not using this tool for commercial purposes."*
+- ``user`` - a statement about the person, such as *"I have read and agree to these terms."*
+
+Galaxy never fetches ``url``.
+
+### Example
+
+```xml
+<requirements>
+    <requirement type="package" version="5.5.8">meme</requirement>
+    <license_agreement id="meme-suite-academic" version="2" path="meme_license.txt">
+        <label>MEME Suite academic-use license</label>
+        <url>https://meme-suite.org/meme/doc/copyright.html</url>
+        <affirmation>I certify that I am not using this tool for commercial purposes, under the MEME Suite academic-use license terms.</affirmation>
+    </license_agreement>
+</requirements>
+```
+]]></xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="label" type="xs:string">
+        <xs:annotation>
+          <xs:documentation xml:lang="en">Short name for the agreement.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="affirmation" type="xs:string">
+        <xs:annotation>
+          <xs:documentation xml:lang="en">The single-line statement the user affirms.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="url" type="xs:anyURI" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation xml:lang="en">Canonical upstream location of the terms. Display only.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="text" type="xs:string" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation xml:lang="en">Inline license terms. Use ``path`` instead unless the terms are short.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+    <xs:attribute name="id" use="required">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Readable handle for the agreement, used in logs and lint messages. It does not identify the agreement across tools.</xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:minLength value="1"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="version" type="xs:string" use="required">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Version of the upstream agreement, displayed for provenance.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="path" type="xs:string">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">File containing the terms (UTF-8), relative to the tool's directory. Read when the tool is loaded - it is not shipped with jobs.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="binds" default="submission">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Whether the affirmation is a statement about each submission (``submission``) or about the user (``user``).</xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="submission"/>
+          <xs:enumeration value="user"/>
+        </xs:restriction>
+      </xs:simpleType>
     </xs:attribute>
   </xs:complexType>
   <xs:complexType name="CredentialsVariable">

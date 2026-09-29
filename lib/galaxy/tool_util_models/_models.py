@@ -56,6 +56,7 @@ from .tool_source import (
     ContainerRequirement,
     HelpContent,
     JavascriptRequirement,
+    LicenseAgreement,
     OutputCompareType,
     PackageRequirement,
     ResourceRequirement,
@@ -660,6 +661,7 @@ class ParsedTool(ToolSourceBaseModel):
         Field(default_factory=list)
     )
     containers: list[Container] = Field(default_factory=list)
+    license_agreements: list[LicenseAgreement] = Field(default_factory=list)
     stdio: Stdio = Field(default_factory=Stdio)
     inputs: list[ToolParameterT]
     outputs: list[ToolOutput]

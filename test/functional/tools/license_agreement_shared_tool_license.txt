@@ -1,0 +1,5 @@
+Test Tool Non-Commercial License
+
+This software may be used free of charge for non-commercial research and
+teaching. Any commercial use requires a separate written license from the
+copyright holder.
