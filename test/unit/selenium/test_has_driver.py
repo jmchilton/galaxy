@@ -1281,6 +1281,28 @@ class TestVisitNewWindow:
         assert has_driver_instance.find_element_by_id("open-new-window") is not None
 
 
+class TestScopedCssSelectors:
+    """Test CSS selectors evaluated against an element."""
+
+    def test_find_element_matches_selector_naming_the_element_itself(self, has_driver_instance, base_url):
+        """A selector whose leading part names the scope element still finds its children."""
+        has_driver_instance.navigate_to(f"{base_url}/basic.html")
+        container = has_driver_instance.find_element_by_id("scoped-container")
+
+        found = container.find_element("css selector", ".tag-editor button")
+
+        assert found.get_attribute("id") == "scoped-button"
+
+    def test_find_elements_matches_selector_naming_the_element_itself(self, has_driver_instance, base_url):
+        """The plural form scopes the same way."""
+        has_driver_instance.navigate_to(f"{base_url}/basic.html")
+        container = has_driver_instance.find_element_by_id("scoped-container")
+
+        found = container.find_elements("css selector", ".tag-editor button")
+
+        assert [element.get_attribute("id") for element in found] == ["scoped-button"]
+
+
 class TestPageTitle:
     """Test page_title property."""
 

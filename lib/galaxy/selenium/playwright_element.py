@@ -42,6 +42,10 @@ class PlaywrightShadowRoot:
         raise Exception(f"No element found in shadow root with {by}='{value}'")
 
 
+# The Selenium locator strategies that become a plain CSS selector.
+CSS_LOCATORS = ("id", "css selector", "class name", "name", "tag name")
+
+
 class PlaywrightElement:
     """
     Wrapper around Playwright ElementHandle that implements WebElementProtocol.
@@ -192,8 +196,12 @@ class PlaywrightElement:
         if value is None:
             raise ValueError("value parameter is required")
         selector = self._driver._selenium_locator_to_playwright_selector(by, value)
-        if found_element := self._element.query_selector(selector):
-            return PlaywrightElement(found_element, self._driver)
+        if by in CSS_LOCATORS:
+            found = next(iter(self._query_selector_all(selector)), None)
+        else:
+            found = self._element.query_selector(selector)
+        if found:
+            return PlaywrightElement(found, self._driver)
         raise Exception(f"No element found with {by}='{value}'")
 
     def find_elements(self, by: str = "id", value: str | None = None) -> list["WebElementProtocol"]:
@@ -201,8 +209,31 @@ class PlaywrightElement:
         if value is None:
             raise ValueError("value parameter is required")
         selector = self._driver._selenium_locator_to_playwright_selector(by, value)
-        found_elements = self._element.query_selector_all(selector)
+        if by in CSS_LOCATORS:
+            found_elements = self._query_selector_all(selector)
+        else:
+            found_elements = self._element.query_selector_all(selector)
         return [PlaywrightElement(elem, self._driver) for elem in found_elements]
+
+    def _query_selector_all(self, css: str) -> list[ElementHandle]:
+        """
+        Scope a CSS selector the way Selenium's find element from element does.
+
+        Playwright matches a selector relative to the element, so ".tags button"
+        wants a .tags inside it; the DOM matches the selector against the whole
+        document and keeps the descendants, so the same selector finds a button
+        in an element that is itself the .tags. Tests name the container's own
+        class often enough that the difference is not academic - go through the
+        browser and both backends answer alike.
+        """
+        array_handle = self._element.evaluate_handle(
+            "(element, selector) => Array.from(element.querySelectorAll(selector))", css
+        )
+        try:
+            handles = [value.as_element() for value in array_handle.get_properties().values()]
+        finally:
+            array_handle.dispose()
+        return [handle for handle in handles if handle is not None]
 
     def content_frame(self):
         """

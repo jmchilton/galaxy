@@ -2,7 +2,6 @@ from selenium.webdriver.common.by import By
 
 from .framework import (
     retry_assertion_during_transitions,
-    selenium_only,
     selenium_test,
     SharedStateSeleniumTestCase,
 )
@@ -281,7 +280,6 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
         self.sleep_for(self.wait_types.UX_RENDER)
         return self.components.histories.history_cards.all()
 
-    @selenium_only("Tag editor never renders under Playwright - no .stateless-tags button")
     @selenium_test
     def test_tags(self):
         self._login()
