@@ -197,6 +197,10 @@ from galaxy.tools.parameters.pagination import OptionsPaginationT
 from galaxy.tools.parameters.populate_model import populate_model
 from galaxy.tools.parameters.workflow_utils import workflow_building_modes
 from galaxy.tools.parameters.wrapped_json import json_wrap
+from galaxy.tools.preconditions import (
+    TOOL_ACCESS_PRECONDITION,
+    ToolExecutionPrecondition,
+)
 from galaxy.util import (
     asbool,
     in_directory,
@@ -1362,6 +1366,10 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
 
     def get_panel_section(self) -> tuple[str, str] | tuple[None, None]:
         return self.app.toolbox.get_section_for_tool(self)
+
+    @property
+    def execution_preconditions(self) -> list[ToolExecutionPrecondition]:
+        return [TOOL_ACCESS_PRECONDITION]
 
     def allow_user_access(self, user, attempting_access: bool = True) -> bool:
         """
