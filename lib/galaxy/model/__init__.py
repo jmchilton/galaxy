@@ -70,6 +70,7 @@ from sqlalchemy import (
     Boolean,
     case,
     Cast,
+    CheckConstraint,
     Column,
     column,
     ColumnElement,
@@ -163,7 +164,12 @@ from galaxy.model.custom_types import (
     TrimmedString,
     UUIDType,
 )
-from galaxy.model.database_object_names import NAMING_CONVENTION
+from galaxy.model.database_object_names import (
+    build_check_constraint_name,
+    build_index_name,
+    build_unique_constraint_name,
+    NAMING_CONVENTION,
+)
 from galaxy.model.database_utils import supports_skip_locked as _check_supports_skip_locked
 from galaxy.model.item_attrs import (
     get_item_annotation_str,
@@ -1753,6 +1759,9 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         back_populates="job", uselist=False
     )
     credentials_context_associations: Mapped[list["JobCredentialsContextAssociation"]] = relationship(
+        back_populates="job"
+    )
+    license_acceptance_associations: Mapped[list["JobLicenseAcceptanceAssociation"]] = relationship(
         back_populates="job"
     )
 
@@ -9994,6 +10003,9 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
         back_populates="workflow_invocation",
         uselist=False,
     )
+    license_acceptance_associations: Mapped[list["WorkflowInvocationLicenseAcceptanceAssociation"]] = relationship(
+        back_populates="workflow_invocation"
+    )
 
     dict_collection_visible_keys = [
         "id",
@@ -13192,6 +13204,135 @@ class Credential(Base):
     value: Mapped[str | None] = mapped_column(nullable=True)
     create_time: Mapped[datetime] = mapped_column(default=now)
     update_time: Mapped[datetime] = mapped_column(default=now, onupdate=now)
+
+
+def _enum_check_constraint(table_name: str, column_name: str, values: type[Enum]) -> CheckConstraint:
+    allowed = ", ".join(f"'{value.value}'" for value in values)
+    return CheckConstraint(f"{column_name} IN ({allowed})", name=build_check_constraint_name(table_name, column_name))
+
+
+class ToolLicenseAgreement(Base):
+    """License terms and affirmation as displayed to users, stored once per distinct agreement.
+
+    Content-addressed by ``agreement_hash`` (see ``galaxy.tool_util.license_agreements``)
+    and never deleted - job and acceptance records reference it.
+    """
+
+    __tablename__ = "tool_license_agreement"
+
+    agreement_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    affirmation: Mapped[str] = mapped_column(Text)
+    terms: Mapped[str] = mapped_column(Text)
+    create_time: Mapped[datetime] = mapped_column(default=now)
+
+
+class ToolLicenseAcceptanceEvent(Base, RepresentById):
+    """A user accepting or revoking a license agreement.
+
+    Append-only in normal operation - a user's current state for an agreement is
+    their newest event. Deleting the user removes their events.
+    """
+
+    __tablename__ = "tool_license_acceptance_event"
+
+    class actions(str, Enum):
+        ACCEPT = "accept"
+        REVOKE = "revoke"
+
+    class granted_by_types(str, Enum):
+        USER = "user"
+        ADMIN = "admin"
+
+    __table_args__ = (
+        _enum_check_constraint(__tablename__, "action", actions),
+        _enum_check_constraint(__tablename__, "granted_by", granted_by_types),
+        # Also serves lookups by user_id alone.
+        Index(build_index_name(__tablename__, ["user_id", "agreement_hash", "id"]), "user_id", "agreement_hash", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id", ondelete="CASCADE"))
+    agreement_hash: Mapped[str] = mapped_column(
+        ForeignKey("tool_license_agreement.agreement_hash", ondelete="RESTRICT"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    # Display and provenance only - never used for authorization.
+    license_id: Mapped[str | None] = mapped_column(TrimmedString(255))
+    license_version: Mapped[str | None] = mapped_column(TrimmedString(255))
+    license_label: Mapped[str | None] = mapped_column(TrimmedString(255))
+    license_url: Mapped[str | None] = mapped_column(Text)
+    granted_by: Mapped[str] = mapped_column(String(16))
+    granted_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("galaxy_user.id", ondelete="SET NULL"), index=True
+    )
+    prompting_tool_id: Mapped[str | None] = mapped_column(TrimmedString(255))
+    prompting_tool_version: Mapped[str | None] = mapped_column(TrimmedString(255))
+    create_time: Mapped[datetime] = mapped_column(default=now)
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    granted_by_user: Mapped[Optional["User"]] = relationship(foreign_keys=[granted_by_user_id])
+    agreement: Mapped["ToolLicenseAgreement"] = relationship()
+
+
+class JobLicenseAcceptanceAssociation(Base, RepresentById):
+    """The license agreement authorization a job was created under.
+
+    ``agreement_hash`` and ``authorization_kind`` survive removal of the acceptance
+    event (which nulls ``acceptance_event_id``), so a retained job still resolves
+    the exact terms that authorized it.
+    """
+
+    __tablename__ = "job_license_acceptance"
+
+    class authorization_kinds(str, Enum):
+        PERSISTENT = "persistent"
+        ONE_TIME = "one_time"
+
+    __table_args__ = (
+        _enum_check_constraint(__tablename__, "authorization_kind", authorization_kinds),
+        # Also serves lookups by job_id alone.
+        UniqueConstraint(
+            "job_id", "agreement_hash", name=build_unique_constraint_name(__tablename__, ["job_id", "agreement_hash"])
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("job.id", ondelete="CASCADE"))
+    acceptance_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tool_license_acceptance_event.id", ondelete="SET NULL"), index=True
+    )
+    agreement_hash: Mapped[str] = mapped_column(
+        ForeignKey("tool_license_agreement.agreement_hash", ondelete="RESTRICT"), index=True
+    )
+    authorization_kind: Mapped[str] = mapped_column(String(16))
+
+    job: Mapped["Job"] = relationship(back_populates="license_acceptance_associations")
+    acceptance_event: Mapped[Optional["ToolLicenseAcceptanceEvent"]] = relationship()
+    agreement: Mapped["ToolLicenseAgreement"] = relationship()
+
+
+class WorkflowInvocationLicenseAcceptanceAssociation(Base, RepresentById):
+    """A one-time license agreement acceptance pinned for the lifetime of a workflow invocation."""
+
+    __tablename__ = "workflow_invocation_license_acceptance"
+    __table_args__ = (
+        # Also serves lookups by workflow_invocation_id alone.
+        UniqueConstraint(
+            "workflow_invocation_id",
+            "agreement_hash",
+            name=build_unique_constraint_name(__tablename__, ["workflow_invocation_id", "agreement_hash"]),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workflow_invocation_id: Mapped[int] = mapped_column(ForeignKey("workflow_invocation.id", ondelete="CASCADE"))
+    agreement_hash: Mapped[str] = mapped_column(
+        ForeignKey("tool_license_agreement.agreement_hash", ondelete="RESTRICT"), index=True
+    )
+    create_time: Mapped[datetime] = mapped_column(default=now)
+
+    workflow_invocation: Mapped["WorkflowInvocation"] = relationship(back_populates="license_acceptance_associations")
+    agreement: Mapped["ToolLicenseAgreement"] = relationship()
 
 
 # The following models (HDA, LDDA) are mapped imperatively (for details see discussion in PR #12064)
