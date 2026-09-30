@@ -33,6 +33,7 @@ from galaxy.model import (
 )
 from galaxy.model.db.license_agreement import get_accepted_license_agreements
 from galaxy.model.scoped_session import galaxy_scoped_session
+from galaxy.schema.license_agreements import ToolLicenseAgreementResponse
 from galaxy.tool_util.license_agreements import ResolvedLicenseAgreement
 
 log = logging.getLogger(__name__)
@@ -147,6 +148,28 @@ class LicenseAcceptanceManager:
         self.session.add(event)
         self.session.flush()
         return event
+
+    def describe(
+        self, user: User | None, agreements: Iterable[ResolvedLicenseAgreement]
+    ) -> list[ToolLicenseAgreementResponse]:
+        """Declared agreements as shown to ``user``, once per agreement hash, with whether their persistent
+        acceptance satisfies each."""
+        agreements = _unique(agreements)
+        unmet = {agreement.agreement_hash for agreement in self.unmet(user, agreements)}
+        return [
+            ToolLicenseAgreementResponse(
+                agreement_hash=agreement.agreement_hash,
+                affirmation=agreement.agreement.affirmation,
+                terms=agreement.terms,
+                id=agreement.agreement.id,
+                version=agreement.agreement.version,
+                label=agreement.agreement.label,
+                url=agreement.agreement.url,
+                binds=agreement.agreement.binds,
+                accepted=agreement.agreement_hash not in unmet,
+            )
+            for agreement in agreements
+        ]
 
     def unmet(
         self,

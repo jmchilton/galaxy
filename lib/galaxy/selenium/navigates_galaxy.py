@@ -2271,6 +2271,12 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def tool_form_execute(self):
         self.components.tool_form.execute.wait_for_and_click()
 
+    def tool_form_affirm_license_agreement(self, license_id: str):
+        """Tick a license agreement's affirmation (tool and workflow run forms) and wait for it to register."""
+        tool_form = self.components.tool_form
+        tool_form.license_affirm(license_id=license_id).wait_for_and_click()
+        tool_form.license_affirm_unchecked(license_id=license_id).wait_for_absent()
+
     def tool_form_select_data(self, parameter: str, value: str, multiple: bool = False):
         select_field = self.components.tool_form.parameter_data_select(parameter=parameter)
         self.select_set_value(select_field, value, multiple=multiple)
