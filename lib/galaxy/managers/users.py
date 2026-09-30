@@ -44,6 +44,7 @@ from galaxy.managers.context import (
     ProvidesHistoryContext,
     ProvidesUserContext,
 )
+from galaxy.managers.license_agreements import LicenseAcceptanceManager
 from galaxy.model import (
     Job,
     User,
@@ -327,6 +328,7 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
         # Delete UserAuthnzTokens, unlinking any external identities
         for authnz in user.social_auth:
             self.session().delete(authnz)
+        LicenseAcceptanceManager(self.session()).purge_user(user)
         compliance_log = logging.getLogger("COMPLIANCE")
         compliance_log.info(f"delete-user-event: {user.username}")
         # Maybe there is some case in the future where an admin needs
