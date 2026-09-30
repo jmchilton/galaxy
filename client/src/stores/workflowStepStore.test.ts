@@ -100,7 +100,7 @@ describe("getCombinedStepInputs", () => {
     const stepWithWhen = createTestStep(1, {
         inputs: [regularInput],
         outputs: [],
-        when: "${check_value}",
+        when: "$(inputs.check_value)",
         inputConnections: {
             check_value: { output_name: "output", id: 0 },
         },
@@ -139,6 +139,46 @@ describe("getCombinedStepInputs", () => {
         // Extra inputs should come first
         expect(combinedInputs[0]?.name).toBe("check_value");
         expect(combinedInputs[1]?.name).toBe("input_dataset");
+    });
+
+    function extraInputNames(when: string, connectionName: string) {
+        const stepStore = useWorkflowStepStore("mock-workflow");
+        stepStore.addStep(workflowStepZero);
+        const step = stepStore.addStep(
+            createTestStep(1, {
+                when,
+                inputConnections: { [connectionName]: { output_name: "output", id: 0 } },
+            }),
+        );
+        return getCombinedStepInputs(step, stepStore).map((input) => input.name);
+    }
+
+    it.each([
+        { when: "$(inputs.flag)", connection: "flag" },
+        { when: '$(inputs["flag"])', connection: "flag" },
+        { when: "$(inputs['flag'])", connection: "flag" },
+        { when: "$(inputs?.flag)", connection: "flag" },
+        { when: '$(inputs?.["flag"])', connection: "flag" },
+        { when: "$(!inputs.flag)", connection: "flag" },
+        { when: "${inputs.when}", connection: "when" },
+        { when: '$(inputs["my-flag"])', connection: "my-flag" },
+        { when: "$(inputs.cond.flag)", connection: "cond|flag" },
+        { when: '$(inputs["cond"]["flag"])', connection: "cond|flag" },
+        { when: "$(inputs.cond?.flag)", connection: "cond|flag" },
+        { when: '$(inputs["cond|flag"])', connection: "cond|flag" },
+    ])("shows a terminal for connection $connection read by $when", ({ when, connection }) => {
+        expect(extraInputNames(when, connection)).toEqual([connection]);
+    });
+
+    it.each([
+        { when: "$(inputs.flag_2)", connection: "flag", reason: "a longer name" },
+        { when: "$(inputs.check_value)", connection: "check", reason: "a longer name" },
+        { when: "$(inputs.other_flag)", connection: "flag", reason: "a name with the same suffix" },
+        { when: "$(other.inputs.flag)", connection: "flag", reason: "a property of another object" },
+        { when: "$(inputs.cond.flag2)", connection: "cond|flag", reason: "a longer nested name" },
+        { when: "$(inputs.flag.cond)", connection: "cond|flag", reason: "the segments reversed" },
+    ])("shows no terminal for connection $connection when $when reads $reason", ({ when, connection }) => {
+        expect(extraInputNames(when, connection)).toEqual([]);
     });
 
     it("handles step with no inputs gracefully", () => {

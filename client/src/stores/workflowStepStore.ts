@@ -5,6 +5,7 @@ import { isWorkflowInput } from "@/components/Workflow/constants";
 import type { CollectionTypeDescriptor } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
 import { getConnectionId, useConnectionStore } from "@/stores/workflowConnectionStore";
 import { assertDefined } from "@/utils/assertions";
+import { escapeRegExp } from "@/utils/regExp";
 
 import { defineScopedStore } from "./scopedStore";
 import { useWorkflowStateStore } from "./workflowEditorStateStore";
@@ -475,9 +476,10 @@ function stepToConnections(step: Step): Connection[] {
 
 function findStepExtraInputs(step: Step) {
     const extraInputs: InputTerminalSource[] = [];
-    if (step.when !== undefined) {
+    const when = step.when;
+    if (when) {
         Object.keys(step.input_connections).forEach((inputName) => {
-            if (!step.inputs.find((input) => input.name === inputName) && step.when?.includes(inputName)) {
+            if (!step.inputs.find((input) => input.name === inputName) && whenReadsInput(when, inputName)) {
                 const terminalSource = {
                     name: inputName,
                     optional: false,
@@ -492,4 +494,33 @@ function findStepExtraInputs(step: Step) {
         });
     }
     return extraInputs;
+}
+
+/**
+ * True when a `when` expression reads the connection `inputName`, as `inputs.name` or `inputs["name"]`.
+ *
+ * Names are matched whole, so `input1` is not read by `inputs.input10`. A connection named
+ * `cond|input1` counts as read by `inputs.cond.input1` or by `inputs["cond|input1"]`. Matching
+ * is textual: a reference inside a string or comment still counts, which only shows the terminal
+ * of a connection that already exists.
+ */
+function whenReadsInput(expression: string, inputName: string): boolean {
+    const spellings = [inputName.split("|").map(propertyAccessPattern).join("")];
+    if (inputName.includes("|")) {
+        // A connection matching no tool parameter reaches the expression under its flat name.
+        spellings.push(propertyAccessPattern(inputName));
+    }
+    return new RegExp(`(?<![\\w$.])inputs(?:${spellings.join("|")})`).test(expression);
+}
+
+/** Pattern for reading one property: `.name`, `?.name`, `["name"]`, `['name']`, or `?.["name"]`. */
+function propertyAccessPattern(name: string): string {
+    const escaped = escapeRegExp(name);
+    const bracketAccess = `(?:\\?\\.)?\\[\\s*(?:"${escaped}"|'${escaped}')\\s*\\]`;
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) {
+        // Only bracket access can spell a name that is not a JavaScript identifier.
+        return `\\s*${bracketAccess}`;
+    }
+    const dotAccess = `\\??\\.\\s*${escaped}(?![\\w$])`;
+    return `\\s*(?:${dotAccess}|${bracketAccess})`;
 }
