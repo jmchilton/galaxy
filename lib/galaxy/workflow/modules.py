@@ -42,6 +42,7 @@ from galaxy.exceptions import (
 from galaxy.job_execution.actions.post import ActionBox
 from galaxy.job_execution.compute_environment import ComputeEnvironment
 from galaxy.managers.credentials import _build_user_credentials_query
+from galaxy.managers.license_agreements import one_time_hashes_for_invocation
 from galaxy.managers.tool_source import get_or_create_tool_source
 from galaxy.model import (
     DatasetCollection,
@@ -72,12 +73,14 @@ from galaxy.schema.invocation import (
     InvocationCancellationReviewFailed,
     InvocationFailureDatasetFailed,
     InvocationFailureExpressionEvaluationFailed,
+    InvocationFailureLicenseNotAccepted,
     InvocationFailureOutputNotFound,
     InvocationFailureStepInputDeleted,
     InvocationFailureWhenNotBoolean,
     InvocationFailureWorkflowParameterInvalid,
     InvocationUnexpectedFailure,
 )
+from galaxy.schema.schema import UnmetLicenseAgreementPrecondition
 from galaxy.tool_util.cwl.util import set_basename_and_derived_properties
 from galaxy.tool_util.parameters import (
     fill_static_defaults,
@@ -157,6 +160,10 @@ from galaxy.tools.parameters.workflow_utils import (
     workflow_building_modes,
 )
 from galaxy.tools.parameters.wrapped import make_dict_copy
+from galaxy.tools.preconditions import (
+    ToolExecutionContext,
+    ToolExecutionPreconditionUnmet,
+)
 from galaxy.tools.runtime import dataset_path
 from galaxy.util import (
     listify,
@@ -3335,6 +3342,9 @@ class ToolModule(WorkflowModule):
                     validate_outputs = True
 
             credentials_context = self._resolve_credentials_context(tool)
+            execution_context = ToolExecutionContext(
+                one_time_license_acceptances=one_time_hashes_for_invocation(invocation)
+            )
             execution_tracker = execute(
                 trans=trans,
                 tool=tool,
@@ -3352,10 +3362,23 @@ class ToolModule(WorkflowModule):
                 completed_jobs=completed_jobs,
                 workflow_resource_parameters=resource_parameters,
                 credentials_context=credentials_context,
+                execution_context=execution_context,
             )
             complete = True
         except PartialJobExecution as pje:
             execution_tracker = pje.execution_tracker
+        except ToolExecutionPreconditionUnmet as e:
+            license_refusals = [unmet for unmet in e.unmet if isinstance(unmet, UnmetLicenseAgreementPrecondition)]
+            if not license_refusals:
+                raise
+            agreement_ids = [agreement.id for unmet in license_refusals for agreement in unmet.details.agreements]
+            raise FailWorkflowEvaluation(
+                why=InvocationFailureLicenseNotAccepted(
+                    reason=FailureReason.license_not_accepted,
+                    workflow_step_id=step.id,
+                    details=", ".join(agreement_ids),
+                )
+            )
 
         except ToolInputsNotReadyException:
             delayed_why = f"tool [{tool.id}] inputs are not ready, this special tool requires inputs to be ready"

@@ -17958,6 +17958,29 @@ export interface components {
              */
             workflow_step_index_path?: number[] | null;
         };
+        /** InvocationFailureLicenseNotAcceptedResponse */
+        InvocationFailureLicenseNotAcceptedResponse: {
+            /**
+             * Details
+             * @description Ids of the step tool's license agreements that are not accepted.
+             */
+            details: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            reason: "license_not_accepted";
+            /**
+             * Workflow Step Id
+             * @description Workflow step id of step that failed.
+             */
+            workflow_step_id: number;
+            /**
+             * Workflow Step Index Path
+             * @description Path of workflow step IDs from parent workflow through subworkflows (excludes the failing step itself).
+             */
+            workflow_step_index_path?: number[] | null;
+        };
         /** InvocationFailureOutputNotFoundResponse */
         InvocationFailureOutputNotFoundResponse: {
             /**
@@ -18141,7 +18164,8 @@ export interface components {
             | components["schemas"]["InvocationUnexpectedFailureResponse"]
             | components["schemas"]["InvocationEvaluationWarningWorkflowOutputNotFoundResponse"]
             | components["schemas"]["InvocationFailureWorkflowParameterInvalidResponse"]
-            | components["schemas"]["InvocationFailureStepInputDeletedResponse"];
+            | components["schemas"]["InvocationFailureStepInputDeletedResponse"]
+            | components["schemas"]["InvocationFailureLicenseNotAcceptedResponse"];
         /** InvocationOutput */
         InvocationOutput: {
             /**
@@ -18599,6 +18623,11 @@ export interface components {
                       [key: string]: unknown;
                   }[]
                 | null;
+            /**
+             * One-time License Acceptances
+             * @description Hashes of license agreements declared by the workflow's tools that the user accepts for this invocation only.
+             */
+            one_time_license_acceptances?: string[] | null;
             /**
              * Legacy Step Parameters
              * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}.
@@ -26815,6 +26844,8 @@ export interface components {
         };
         /** UnmetLicenseAgreement */
         UnmetLicenseAgreement: {
+            /** Affirmation */
+            affirmation: string;
             /** Agreement Hash */
             agreement_hash: string;
             /**
@@ -26826,15 +26857,20 @@ export interface components {
             id: string;
             /** Label */
             label: string;
+            /** Url */
+            url?: string | null;
             /** Version */
             version: string;
         };
         /**
          * UnmetLicenseAgreementPrecondition
-         * @description License agreements the tool declares are not accepted.
+         * @description License agreements the tool, or the workflow's tools, declare are not accepted.
          */
         UnmetLicenseAgreementPrecondition: {
-            details: components["schemas"]["UnmetToolLicenseAgreementDetails"];
+            /** Details */
+            details:
+                | components["schemas"]["UnmetToolLicenseAgreementDetails"]
+                | components["schemas"]["UnmetWorkflowLicenseAgreementDetails"];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -26844,6 +26880,15 @@ export interface components {
             message: string;
             /** Remedy Route */
             remedy_route?: string | null;
+        };
+        /** UnmetLicenseAgreementStep */
+        UnmetLicenseAgreementStep: {
+            /** Path */
+            path: number[];
+            /** Tool Id */
+            tool_id: string;
+            /** Tool Version */
+            tool_version: string;
         };
         UnmetPrecondition:
             | components["schemas"]["UnmetAccessPrecondition"]
@@ -26856,6 +26901,33 @@ export interface components {
             tool_id: string;
             /** Tool Version */
             tool_version: string;
+        };
+        /** UnmetWorkflowLicenseAgreement */
+        UnmetWorkflowLicenseAgreement: {
+            /** Affirmation */
+            affirmation: string;
+            /** Agreement Hash */
+            agreement_hash: string;
+            /**
+             * Binds
+             * @enum {string}
+             */
+            binds: "submission" | "user";
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Steps */
+            steps: components["schemas"]["UnmetLicenseAgreementStep"][];
+            /** Url */
+            url?: string | null;
+            /** Version */
+            version: string;
+        };
+        /** UnmetWorkflowLicenseAgreementDetails */
+        UnmetWorkflowLicenseAgreementDetails: {
+            /** Agreements */
+            agreements: components["schemas"]["UnmetWorkflowLicenseAgreement"][];
         };
         /** UnprivilegedToolResponse */
         UnprivilegedToolResponse: {

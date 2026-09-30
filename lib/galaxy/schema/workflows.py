@@ -135,6 +135,12 @@ class InvokeWorkflowPayload(GetTargetHistoryPayload):
         title="Batch",
         description="Indicates if the workflow is invoked as a batch.",
     )
+    one_time_license_acceptances: list[str] | None = Field(
+        None,
+        title="One-time License Acceptances",
+        description="Hashes of license agreements declared by the workflow's tools that the user accepts for this "
+        "invocation only.",
+    )
     require_exact_tool_versions: bool | None = Field(
         True,
         title="Require Exact Tool Versions",
