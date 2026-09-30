@@ -1592,6 +1592,9 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
 
         license_agreements = tool_source.parse_license_agreements()
         check_license_agreement_profile(tool_source.parse_profile(), license_agreements)
+        if license_agreements:
+            # An affirmation binds a person, not an anonymous session.
+            self.require_login = True
         # Remote tool evaluation rebuilds the tool where its directory (and so a license
         # file) may be absent; agreements only matter before a job is created.
         if self.app.name != "tool_app":

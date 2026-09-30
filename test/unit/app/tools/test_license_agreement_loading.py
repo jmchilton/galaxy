@@ -104,3 +104,7 @@ class TestLicenseAgreementFixtures(TestCase, tools_support.UsesTools):
     def test_low_profile_fixture_fails_tool_load(self):
         with pytest.raises(Exception, match="26.2"):
             self._init_tool_for_path(functional_test_tool_path("license_agreement_low_profile_tool.xml"))
+
+    def test_license_agreement_implies_require_login(self):
+        tool = self._init_tool_for_path(functional_test_tool_path("license_agreement_tool.xml"))
+        assert tool.require_login is True

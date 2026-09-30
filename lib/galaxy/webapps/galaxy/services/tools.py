@@ -68,6 +68,10 @@ from galaxy.tool_util_models.parameters import (
 from galaxy.tools import Tool
 from galaxy.tools._types import InputFormatT
 from galaxy.tools.cached_toolbox import CachedToolBox
+from galaxy.tools.preconditions import (
+    check_preconditions,
+    TOOL_ACCESS_PRECONDITION,
+)
 from galaxy.tools.search import ToolBoxSearch
 from galaxy.util.path import safe_contains
 from galaxy.webapps.galaxy.services._fetch_util import validate_and_normalize_targets
@@ -102,6 +106,28 @@ def get_tool(trans: ProvidesHistoryContext, tool_ref: ToolRunReference) -> Tool:
         log.debug(f"Not found tool with kwds [{tool_ref}]")
         raise exceptions.ToolMissingException("Tool not found.")
     return trans.app.toolbox.materialize_tool(tool, reason="execution")
+
+
+def get_accessible_tool(
+    trans: ProvidesUserContext,
+    tool_id: str,
+    tool_version: str | None,
+    *,
+    reason: MaterializationReasonName,
+) -> Tool:
+    """The materialized tool, exactly ``tool_version`` when given, if the current user may access it.
+
+    Raises ``ObjectNotFound`` for an unknown tool or version and the structured
+    ``ToolExecutionPreconditionUnmet`` (with a login remedy when applicable) if access is denied.
+    """
+    tool = trans.app.toolbox.get_tool(tool_id, tool_version)
+    # get_tool falls back to another version of the lineage when the requested one is missing.
+    if tool is None or (tool_version is not None and tool.version != tool_version):
+        version = f" with version '{tool_version}'" if tool_version is not None else ""
+        raise exceptions.ObjectNotFound(f"Could not find tool with id '{tool_id}'{version}.")
+    tool = trans.app.toolbox.materialize_tool(tool, reason=reason)
+    check_preconditions(trans, tool, [TOOL_ACCESS_PRECONDITION])
+    return tool
 
 
 def validate_tool_for_running(trans: ProvidesHistoryContext, tool_ref: ToolRunReference) -> Tool:

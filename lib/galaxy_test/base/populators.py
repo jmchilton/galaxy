@@ -2577,6 +2577,66 @@ class CredentialsPopulator(GalaxyInteractorHttpMixin, BaseCredentialsPopulator):
         self.galaxy_interactor = galaxy_interactor
 
 
+class BaseLicenseAgreementsPopulator(BasePopulator):
+    """Tool license agreements and the current user's acceptance of them."""
+
+    def tool_license_agreements(
+        self, tool_id: str, tool_version: str | None = None, expected_status: int = 200
+    ) -> list[dict[str, Any]]:
+        params = {"tool_version": tool_version} if tool_version else None
+        response = self._get(f"tools/{tool_id}/license_agreements", data=params)
+        api_asserts.assert_status_code_is(response, expected_status)
+        return response.json()
+
+    def license_agreement_hashes(self, tool_id: str) -> list[str]:
+        return [agreement["agreement_hash"] for agreement in self.tool_license_agreements(tool_id)]
+
+    def accept_license_agreement(
+        self,
+        tool_id: str,
+        license_id: str,
+        tool_version: str | None = None,
+        agreement_hash: str | None = None,
+        expected_status: int = 200,
+    ) -> dict[str, Any]:
+        """Accept as the tool form would, confirming the displayed hash unless ``agreement_hash`` is given."""
+        if agreement_hash is None:
+            agreement_hash = self._displayed_agreement_hash(tool_id, license_id, tool_version)
+        payload = {
+            "tool_id": tool_id,
+            "tool_version": tool_version,
+            "license_id": license_id,
+            "agreement_hash": agreement_hash,
+        }
+        response = self._post("users/current/license_acceptances", data=payload, json=True)
+        api_asserts.assert_status_code_is(response, expected_status)
+        return response.json()
+
+    def list_license_acceptances(self, include_history: bool = False, expected_status: int = 200) -> dict[str, Any]:
+        response = self._get("users/current/license_acceptances", data={"include_history": include_history})
+        api_asserts.assert_status_code_is(response, expected_status)
+        return response.json()
+
+    def revoke_license_acceptance(self, agreement_hash: str, expected_status: int = 204) -> None:
+        response = self._delete(f"users/current/license_acceptances/{agreement_hash}")
+        api_asserts.assert_status_code_is(response, expected_status)
+
+    def _displayed_agreement_hash(self, tool_id: str, license_id: str, tool_version: str | None) -> str:
+        params = {"tool_version": tool_version} if tool_version else None
+        response = self._get(f"tools/{tool_id}/license_agreements", data=params)
+        if response.status_code == 200:
+            for agreement in response.json():
+                if agreement["id"] == license_id:
+                    return agreement["agreement_hash"]
+        # Nothing displayed - a well-formed hash lets the server report what is actually wrong.
+        return "0" * 64
+
+
+class LicenseAgreementsPopulator(GalaxyInteractorHttpMixin, BaseLicenseAgreementsPopulator):
+    def __init__(self, galaxy_interactor: ApiTestInteractor) -> None:
+        self.galaxy_interactor = galaxy_interactor
+
+
 # Things gxformat2 knows how to upload as workflows
 YamlContentT = StrPath | dict
 

@@ -10,6 +10,7 @@ from typing import (
 from galaxy.exceptions import (
     AuthenticationRequired,
     ConfigDoesNotAllowException,
+    ItemOwnershipException,
 )
 from galaxy.managers.base import (
     decode_with_security,
@@ -30,6 +31,7 @@ from galaxy.model.store import (
 )
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
+    FlexibleUserIdType,
     ToolRequestDetailedModel,
     ToolRequestModel,
 )
@@ -240,3 +242,14 @@ def tool_request_detailed_to_model(tool_request: ToolRequest, security: IdEncodi
     }
     model = ToolRequestDetailedModel.model_validate(as_dict)
     return model
+
+
+def ensure_user_access(trans: ProvidesUserContext, user_id: FlexibleUserIdType, resource: str) -> User:
+    """The current user, if ``user_id`` names them - users may only access their own ``resource``."""
+    if trans.anonymous:
+        raise AuthenticationRequired(f"You need to be logged in to access your {resource}.")
+    user: User | None = trans.user
+    assert user is not None
+    if user_id != "current" and user_id != user.id:
+        raise ItemOwnershipException(f"You can only access your own {resource}.")
+    return user
