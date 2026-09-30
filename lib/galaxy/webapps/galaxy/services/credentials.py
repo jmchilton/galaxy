@@ -8,9 +8,7 @@ from sqlalchemy.orm import scoped_session
 
 from galaxy.exceptions import (
     AuthenticationFailed,
-    AuthenticationRequired,
     Conflict,
-    ItemOwnershipException,
     ObjectNotFound,
     RequestParameterInvalidException,
     ToolMetaParameterException,
@@ -44,6 +42,7 @@ from galaxy.schema.schema import FlexibleUserIdType
 from galaxy.security.vault import UserVaultWrapper
 from galaxy.structured_app import StructuredApp
 from galaxy.tool_util.deps.requirements import CredentialsRequirement
+from galaxy.webapps.galaxy.services.base import ensure_user_access
 
 GetToolCredentialsDefinition = Callable[[User, str, str, str, str], CredentialsRequirement | None]
 
@@ -589,9 +588,4 @@ class CredentialsService:
         trans: ProvidesUserContext,
         user_id: FlexibleUserIdType,
     ) -> User:
-        if trans.anonymous:
-            raise AuthenticationRequired("You need to be logged in to access your credentials.")
-        assert trans.user is not None
-        if user_id != "current" and user_id != trans.user.id:
-            raise ItemOwnershipException("You can only access your own credentials.")
-        return trans.user
+        return ensure_user_access(trans, user_id, "credentials")

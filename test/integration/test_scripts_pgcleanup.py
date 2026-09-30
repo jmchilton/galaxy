@@ -1,6 +1,16 @@
 import string
 
-from galaxy_test.base.populators import skip_without_tool
+from sqlalchemy import (
+    select,
+    text,
+)
+
+from galaxy.model import ToolLicenseAcceptanceEvent
+from galaxy_test.base.api_util import random_name
+from galaxy_test.base.populators import (
+    LicenseAgreementsPopulator,
+    skip_without_tool,
+)
 from galaxy_test.driver import integration_util
 from .test_scripts import BaseScriptsIntegrationTestCase
 
@@ -29,6 +39,8 @@ USER_OBJECT_STORE_CATALOG = """
 """
 
 SCRIPT = "cleanup_datasets/pgcleanup.py"
+USER_BOUND_LICENSE_TOOL = "license_agreement_variant_tool"
+USER_BOUND_LICENSE_ID = "license_agreement_path"
 
 
 class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
@@ -240,6 +252,60 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         )
 
         assert not self.is_purged(history_id, hda)
+
+    @skip_without_tool(USER_BOUND_LICENSE_TOOL)
+    def test_purge_deleted_users_removes_license_acceptance_events(self):
+        self._skip_unless_postgres()
+        self._assert_purge_removes_license_acceptance_events("purge_deleted_users")
+
+    @skip_without_tool(USER_BOUND_LICENSE_TOOL)
+    def test_purge_deleted_users_gdpr_removes_license_acceptance_events(self):
+        self._skip_unless_postgres()
+        # The GDPR action obfuscates emails with pgcrypto's digest().
+        session = self._app.model.session
+        session.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        session.commit()
+        self._assert_purge_removes_license_acceptance_events("purge_deleted_users_gdpr")
+
+    def _assert_purge_removes_license_acceptance_events(self, action: str) -> None:
+        purged_email = f"{random_name()}@galaxy.org"
+        purged_user_id = self._setup_user(purged_email)["id"]
+        with self._different_user(purged_email):
+            LicenseAgreementsPopulator(self.galaxy_interactor).accept_license_agreement(
+                USER_BOUND_LICENSE_TOOL, USER_BOUND_LICENSE_ID
+            )
+        survivor_email = f"{random_name()}@galaxy.org"
+        survivor_id = self._app.security.decode_id(self._setup_user(survivor_email)["id"])
+        with self._different_user(survivor_email):
+            survivor_populator = LicenseAgreementsPopulator(self.galaxy_interactor)
+            survivor_populator.accept_license_agreement(USER_BOUND_LICENSE_TOOL, USER_BOUND_LICENSE_ID)
+        decoded_purged_user_id = self._app.security.decode_id(purged_user_id)
+        (granted,) = self._license_acceptance_events(survivor_id)
+        # No API grants an acceptance on another user's behalf yet.
+        granted.granted_by = ToolLicenseAcceptanceEvent.granted_by_types.ADMIN
+        granted.granted_by_user_id = decoded_purged_user_id
+        granted_id = granted.id
+        self._app.model.session.commit()
+        assert self._license_acceptance_events(decoded_purged_user_id)
+
+        delete_response = self._delete(f"users/{purged_user_id}", admin=True)
+        assert delete_response.status_code == 200
+        self._pgcleanup_check_output(["--older-than", "0", "--sequence", action])
+
+        assert self._license_acceptance_events(decoded_purged_user_id) == []
+        (retained,) = self._license_acceptance_events(survivor_id)
+        assert retained.id == granted_id
+        assert retained.granted_by == ToolLicenseAcceptanceEvent.granted_by_types.ADMIN
+        assert retained.granted_by_user_id is None
+        with self._different_user(survivor_email):
+            (agreement,) = survivor_populator.tool_license_agreements(USER_BOUND_LICENSE_TOOL)
+            assert agreement["accepted"] is True
+
+    def _license_acceptance_events(self, user_id: int) -> list[ToolLicenseAcceptanceEvent]:
+        session = self._app.model.session
+        session.expire_all()
+        stmt = select(ToolLicenseAcceptanceEvent).where(ToolLicenseAcceptanceEvent.user_id == user_id)
+        return list(session.scalars(stmt))
 
 
 class TestPgCleanupUserObjectStoreIntegration(

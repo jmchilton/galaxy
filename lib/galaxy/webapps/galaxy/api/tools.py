@@ -13,7 +13,6 @@ from typing import (
 from fastapi import (
     Body,
     Depends,
-    Path,
     Query,
     Request,
     Response,
@@ -91,7 +90,12 @@ from galaxy.web import (
 )
 from galaxy.webapps.base.controller import UsesVisualizationMixin
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
-from galaxy.webapps.galaxy.api.common import serve_workbook
+from galaxy.webapps.galaxy.api.common import (
+    serve_workbook,
+    ToolIDPathParam,
+    ToolVersionPathParam,
+    ToolVersionQueryParam,
+)
 from galaxy.webapps.galaxy.services.base import tool_request_detailed_to_model
 from galaxy.webapps.galaxy.services.tools import (
     get_tool,
@@ -150,18 +154,6 @@ FetchWorkbookFilenameQueryParam: str | None = Query(
 router = Router(tags=["tools"])
 
 FetchDataForm = as_form(FetchDataFormPayload)
-
-ToolIDPathParam: str = Path(
-    ...,
-    title="Tool ID",
-    description="The tool ID for the lineage stored in Galaxy's toolbox.",
-)
-ToolVersionPathParam: str = Path(
-    ...,
-    title="Tool Version",
-    description="The full version string defined on the Galaxy tool wrapper.",
-)
-ToolVersionQueryParam: str | None = Query(default=None, title="Tool Version", description="")
 
 
 async def get_files(request: Request, files: list[UploadFile] | None = None):
