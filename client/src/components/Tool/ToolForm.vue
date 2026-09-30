@@ -439,7 +439,10 @@ async function onExecute() {
     userStore.addRecentTool(formConfig.value?.id);
 
     try {
-        await acceptRememberedLicenseAgreements(formConfig.value.id, formConfig.value.version);
+        await acceptRememberedLicenseAgreements(() => ({
+            toolId: formConfig.value.id,
+            toolVersion: formConfig.value.version,
+        }));
     } catch (e) {
         showExecuting.value = false;
         errorMessage.value = errorMessageAsString(e);

@@ -122,6 +122,7 @@ from galaxy.util.search import (
 )
 from galaxy.work.context import WorkRequestContext
 from galaxy.workflow.curated import parse_curated_search
+from galaxy.workflow.license_agreements import describe_workflow_license_agreements
 from galaxy.workflow.modules import (
     module_factory,
     PickValueModule,
@@ -1350,6 +1351,7 @@ class WorkflowContentsManager(UsesAnnotations):
             "step_version_changes": step_version_changes,
             "has_upgrade_messages": has_upgrade_messages,
             "workflow_resource_parameters": self._workflow_resource_parameters(trans, stored, workflow),
+            "license_agreements": describe_workflow_license_agreements(trans, workflow),
         }
 
     def _workflow_to_dict_preview(self, trans: ProvidesHistoryContext, workflow):

@@ -23,7 +23,7 @@
                     id="run-workflow"
                     title="Run Workflow"
                     :tooltip="runButtonTooltip"
-                    :disabled="!canRunOnHistory || hasCredentialErrors"
+                    :disabled="!canRunOnHistory || hasCredentialErrors || unaffirmedLicenseAgreements.length > 0"
                     :wait="showExecuting"
                     @onClick="onExecute" />
             </div>
@@ -46,6 +46,14 @@
         </BAlert>
 
         <WorkflowCredentials v-if="credentialTools.length" :tool-identifiers="credentialTools" />
+
+        <ToolLicenseAgreements
+            v-if="licenseAgreements.length"
+            :agreements="licenseAgreements"
+            :affirmed="affirmedLicenseAgreements"
+            :remembered="rememberedLicenseAgreements"
+            @update:affirmed="affirmedLicenseAgreements = $event"
+            @update:remembered="rememberedLicenseAgreements = $event" />
 
         <FormCard v-if="wpInputsAvailable" title="Workflow Parameters">
             <template v-slot:body>
@@ -95,11 +103,15 @@
 <script>
 import { BAlert } from "bootstrap-vue";
 import { mapState } from "pinia";
+import { computed } from "vue";
 
+import { declaringTool } from "@/api/licenseAgreements";
+import { useLicenseAgreementAffirmations } from "@/composables/licenseAgreementAffirmations";
 import { useUserMultiToolCredentials } from "@/composables/userMultiToolCredentials";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useToolsServiceCredentialsDefinitionsStore } from "@/stores/toolsServiceCredentialsDefinitionsStore";
 import { useUserStore } from "@/stores/userStore";
+import { errorMessageAsString } from "@/utils/simple-error";
 
 import { getReplacements } from "./model";
 import { invokeWorkflow } from "./services";
@@ -111,6 +123,7 @@ import ButtonSpinner from "@/components/Common/ButtonSpinner.vue";
 import FormCard from "@/components/Form/FormCard.vue";
 import FormDisplay from "@/components/Form/FormDisplay.vue";
 import FormElement from "@/components/Form/FormElement.vue";
+import ToolLicenseAgreements from "@/components/Tool/ToolLicenseAgreements.vue";
 import OnCompleteActions from "@/components/Workflow/Run/OnCompleteActions.vue";
 import WorkflowCredentials from "@/components/Workflow/Run/WorkflowCredentials.vue";
 
@@ -123,6 +136,7 @@ export default {
         FormCard,
         FormElement,
         OnCompleteActions,
+        ToolLicenseAgreements,
         WorkflowCredentials,
         WorkflowRunDefaultStep,
         WorkflowRunInputStep,
@@ -144,6 +158,24 @@ export default {
             type: String,
             default: undefined,
         },
+    },
+    setup(props) {
+        const licenseAgreements = computed(() => props.model.runData.license_agreements ?? []);
+        const {
+            affirmed: affirmedLicenseAgreements,
+            remembered: rememberedLicenseAgreements,
+            unaffirmed: unaffirmedLicenseAgreements,
+            oneTimeHashes: oneTimeLicenseAcceptances,
+            acceptRemembered: acceptRememberedLicenseAgreements,
+        } = useLicenseAgreementAffirmations(licenseAgreements);
+        return {
+            licenseAgreements,
+            affirmedLicenseAgreements,
+            rememberedLicenseAgreements,
+            unaffirmedLicenseAgreements,
+            oneTimeLicenseAcceptances,
+            acceptRememberedLicenseAgreements,
+        };
     },
     data() {
         return {
@@ -235,6 +267,9 @@ export default {
             if (this.hasCredentialErrors) {
                 return "Please provide all required credentials before running the workflow.";
             }
+            if (this.unaffirmedLicenseAgreements.length) {
+                return "Please accept all license agreements before running the workflow.";
+            }
             return "Run workflow";
         },
     },
@@ -266,7 +301,7 @@ export default {
         onValidation(stepId, validation) {
             this.stepValidations[stepId] = validation;
         },
-        onExecute() {
+        async onExecute() {
             for (const [stepId, stepValidation] of Object.entries(this.stepValidations)) {
                 if (stepValidation) {
                     this.stepScrollTo = {
@@ -310,9 +345,19 @@ export default {
                 // Completion actions to run when workflow finishes
                 on_complete: this.onCompleteActions.length > 0 ? this.onCompleteActions : null,
             };
+            if (this.oneTimeLicenseAcceptances.length) {
+                jobDef.one_time_license_acceptances = this.oneTimeLicenseAcceptances;
+            }
 
             console.debug("WorkflowRunForm::onExecute()", "Ready for submission.", jobDef);
             this.showExecuting = true;
+            try {
+                await this.acceptRememberedLicenseAgreements(declaringTool);
+            } catch (e) {
+                this.showExecuting = false;
+                this.$emit("submissionError", errorMessageAsString(e));
+                return;
+            }
             invokeWorkflow(this.model.workflowId, jobDef)
                 .then((invocations) => {
                     console.debug("WorkflowRunForm::onExecute()", "Submission successful.", invocations);

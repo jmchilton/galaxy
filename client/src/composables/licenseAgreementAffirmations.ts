@@ -1,6 +1,7 @@
 import { computed, type Ref, ref } from "vue";
 
 import { acceptLicenseAgreement, type ToolLicenseAgreement } from "@/api/licenseAgreements";
+import type { ToolIdentifier } from "@/api/tools";
 
 /**
  * What the user affirmed for the license agreements a submission needs.
@@ -8,7 +9,7 @@ import { acceptLicenseAgreement, type ToolLicenseAgreement } from "@/api/license
  * Affirmed agreements are sent with the submission as one-time acceptances; remembered ones
  * (``binds="user"`` only) are instead accepted persistently before submitting.
  */
-export function useLicenseAgreementAffirmations(agreements: Ref<ToolLicenseAgreement[]>) {
+export function useLicenseAgreementAffirmations<T extends ToolLicenseAgreement>(agreements: Ref<T[]>) {
     /** Hashes of the agreements the user has affirmed. */
     const affirmed = ref<string[]>([]);
     /** Hashes of affirmed agreements the user wants remembered. */
@@ -28,10 +29,14 @@ export function useLicenseAgreementAffirmations(agreements: Ref<ToolLicenseAgree
             ),
     );
 
-    /** Persistently accept the remembered agreements, so the submission is authorized by those acceptances. */
-    async function acceptRemembered(toolId: string, toolVersion: string | undefined) {
+    /**
+     * Persistently accept the remembered agreements, so the submission is authorized by those acceptances.
+     * ``declaringTool`` names a tool declaring each agreement - acceptance is recorded against it.
+     */
+    async function acceptRemembered(declaringTool: (agreement: T) => ToolIdentifier) {
         for (const agreement of agreements.value) {
             if (remembered.value.includes(agreement.agreement_hash)) {
+                const { toolId, toolVersion } = declaringTool(agreement);
                 await acceptLicenseAgreement(toolId, toolVersion, agreement);
             }
         }

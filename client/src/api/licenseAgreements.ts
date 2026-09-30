@@ -1,10 +1,16 @@
 import { type components, GalaxyApi } from "@/api";
+import type { ToolIdentifier } from "@/api/tools";
 import { rethrowSimple } from "@/utils/simple-error";
 
 export type ToolLicenseAgreement = components["schemas"]["ToolLicenseAgreementResponse"];
 export type LicenseAcceptance = components["schemas"]["LicenseAcceptanceResponse"];
 export type LicenseAcceptanceEvent = components["schemas"]["LicenseAcceptanceEventResponse"];
 export type UserLicenseAcceptances = components["schemas"]["UserLicenseAcceptancesResponse"];
+
+/** An agreement declared by a workflow's tools, with the steps (through subworkflows) that declare it. */
+export interface WorkflowLicenseAgreement extends ToolLicenseAgreement {
+    steps: { path: number[]; tool_id: string; tool_version: string }[];
+}
 
 /** Persistently accept an agreement the tool declares, confirming the terms that were displayed. */
 export async function acceptLicenseAgreement(
@@ -44,4 +50,10 @@ export async function revokeLicenseAcceptance(agreementHash: string): Promise<vo
     if (error) {
         rethrowSimple(error);
     }
+}
+
+/** A tool of the workflow declaring ``agreement``, to record a persistent acceptance against. */
+export function declaringTool(agreement: WorkflowLicenseAgreement): ToolIdentifier {
+    const [step] = agreement.steps;
+    return { toolId: step!.tool_id, toolVersion: step!.tool_version };
 }

@@ -8,6 +8,7 @@ import { computed, onBeforeMount, ref, watch } from "vue";
 
 import type { WriteStoreToPayload } from "@/api/exports";
 import type { WorkflowInvocationRequestInputs } from "@/api/invocations";
+import { declaringTool, type WorkflowLicenseAgreement } from "@/api/licenseAgreements";
 import type { ToolIdentifier } from "@/api/tools";
 import type { DataOption } from "@/components/Form/Elements/FormData/types";
 import { DEFAULT_OPTIONS_PAGE_SIZE } from "@/components/Form/Elements/FormData/types";
@@ -15,6 +16,7 @@ import type { FormParameterTypes } from "@/components/Form/parameterTypes";
 import { isWorkflowInput } from "@/components/Workflow/constants";
 import { useConfig } from "@/composables/config";
 import { useFileSources } from "@/composables/fileSources";
+import { useLicenseAgreementAffirmations } from "@/composables/licenseAgreementAffirmations";
 import { usePersistentToggle } from "@/composables/persistentToggle";
 import { usePanels } from "@/composables/usePanels";
 import { useUserMultiToolCredentials } from "@/composables/userMultiToolCredentials";
@@ -44,6 +46,7 @@ import Heading from "@/components/Common/Heading.vue";
 import FormDisplay from "@/components/Form/FormDisplay.vue";
 import HelpText from "@/components/Help/HelpText.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
+import ToolLicenseAgreements from "@/components/Tool/ToolLicenseAgreements.vue";
 import WorkflowCredentials from "@/components/Workflow/Run/WorkflowCredentials.vue";
 
 interface Props {
@@ -439,8 +442,33 @@ const exportEnabled = computed({
     },
 });
 
+const licenseAgreements = computed<WorkflowLicenseAgreement[]>(() => props.model.runData.license_agreements ?? []);
+const {
+    affirmed: affirmedLicenseAgreements,
+    remembered: rememberedLicenseAgreements,
+    unaffirmed: unaffirmedLicenseAgreements,
+    oneTimeHashes: oneTimeLicenseAcceptances,
+    acceptRemembered: acceptRememberedLicenseAgreements,
+} = useLicenseAgreementAffirmations(licenseAgreements);
+
+function onUpdateAffirmedLicenseAgreements(value: string[]) {
+    affirmedLicenseAgreements.value = value;
+}
+
+function onUpdateRememberedLicenseAgreements(value: string[]) {
+    rememberedLicenseAgreements.value = value;
+}
+
 async function onExecute() {
     waitingForRequest.value = true;
+
+    try {
+        await acceptRememberedLicenseAgreements(declaringTool);
+    } catch (error) {
+        emit("submissionError", errorMessageAsString(error));
+        waitingForRequest.value = false;
+        return;
+    }
 
     const replacementParams: Record<string, any> = {};
     const inputs: Record<string, any> = {};
@@ -479,6 +507,9 @@ async function onExecute() {
         version: props.model.runData.version,
         on_complete: onCompleteActions.length > 0 ? onCompleteActions : null,
     };
+    if (oneTimeLicenseAcceptances.value.length) {
+        data.one_time_license_acceptances = oneTimeLicenseAcceptances.value;
+    }
     if (props.landingUuid) {
         data.landing_uuid = props.landingUuid;
     }
@@ -569,7 +600,12 @@ onBeforeMount(() => {
             <div class="mb-2">
                 <WorkflowNavigationTitle
                     :workflow-id="model.runData.workflow_id"
-                    :run-disabled="hasValidationErrors || !canRunOnHistory || hasCredentialErrors"
+                    :run-disabled="
+                        hasValidationErrors ||
+                        !canRunOnHistory ||
+                        hasCredentialErrors ||
+                        unaffirmedLicenseAgreements.length > 0
+                    "
                     :run-waiting="waitingForRequest"
                     :valid-rerun="isValidRerun"
                     @on-execute="onExecute">
@@ -713,6 +749,15 @@ onBeforeMount(() => {
             :hide-hr="Boolean(showRightPanel)" />
 
         <WorkflowCredentials v-if="credentialTools?.length" :tool-identifiers="credentialTools" />
+
+        <ToolLicenseAgreements
+            v-if="licenseAgreements.length"
+            class="px-2"
+            :agreements="licenseAgreements"
+            :affirmed="affirmedLicenseAgreements"
+            :remembered="rememberedLicenseAgreements"
+            @update:affirmed="onUpdateAffirmedLicenseAgreements"
+            @update:remembered="onUpdateRememberedLicenseAgreements" />
 
         <div class="overflow-auto h-100">
             <div class="d-flex h-100">

@@ -169,6 +169,19 @@ class TestLicenseAcceptanceWorkflows(integration_util.IntegrationTestCase):
             assert len(self._jobs_for_tool(SUBMISSION_BOUND_TOOL)) == 2
 
     @skip_without_tool(SUBMISSION_BOUND_TOOL)
+    def test_run_form_lists_nested_license_agreements_once(self):
+        with self._fresh_user():
+            workflow_id = self.workflow_populator.upload_yaml_workflow(TWICE_NESTED_WORKFLOW)
+            response = self._get(f"workflows/{workflow_id}/download", data={"style": "run"})
+            self._assert_status_code_is(response, 200)
+            (agreement,) = response.json()["license_agreements"]
+            assert agreement["id"] == LICENSE_ID
+            assert agreement["terms"]
+            assert agreement["accepted"] is False
+            assert [step["path"] for step in agreement["steps"]] == [[0, 0], [1, 0]]
+            assert {step["tool_id"] for step in agreement["steps"]} == {SUBMISSION_BOUND_TOOL}
+
+    @skip_without_tool(SUBMISSION_BOUND_TOOL)
     def test_one_time_acceptance_persisted_on_invocation_tree(self):
         with self._fresh_user():
             hashes = self.license_populator.license_agreement_hashes(SUBMISSION_BOUND_TOOL)

@@ -5,7 +5,10 @@ from dataclasses import (
     dataclass,
     field,
 )
-from typing import TYPE_CHECKING
+from typing import (
+    Any,
+    TYPE_CHECKING,
+)
 
 from galaxy.managers.license_agreements import (
     LicenseAcceptanceManager,
@@ -100,14 +103,7 @@ def check_workflow_license_agreements(
                         "agreements": [
                             {
                                 **license_agreement_details(agreement),
-                                "steps": [
-                                    {
-                                        "path": list(declaring.path),
-                                        "tool_id": declaring.tool.id,
-                                        "tool_version": declaring.tool.version,
-                                    }
-                                    for declaring in declared[agreement.agreement_hash].steps
-                                ],
+                                "steps": _declaring_steps(declared[agreement.agreement_hash]),
                             }
                             for agreement in authorization.unmet
                         ]
@@ -116,3 +112,22 @@ def check_workflow_license_agreements(
             ]
         )
     return WorkflowLicenseAgreements(declared=declared, one_time=one_time)
+
+
+def describe_workflow_license_agreements(trans: "ProvidesUserContext", workflow: "Workflow") -> list[dict[str, Any]]:
+    """Agreements the workflow's tools declare as shown to the user, each with the steps declaring it."""
+    declared = workflow_license_agreements(trans, workflow)
+    described = trans.app[LicenseAcceptanceManager].describe(
+        trans.user, [entry.agreement for entry in declared.values()]
+    )
+    return [
+        {**agreement.model_dump(), "steps": _declaring_steps(declared[agreement.agreement_hash])}
+        for agreement in described
+    ]
+
+
+def _declaring_steps(entry: DeclaredLicenseAgreement) -> list[dict[str, Any]]:
+    return [
+        {"path": list(declaring.path), "tool_id": declaring.tool.id, "tool_version": declaring.tool.version}
+        for declaring in entry.steps
+    ]
