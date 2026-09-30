@@ -3148,10 +3148,17 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
 
         state_inputs_json: ToolStateDumpedToJsonT = params_to_json(self.inputs, state_inputs, self.app)
 
-        license_agreements = [
-            agreement.model_dump()
-            for agreement in self.app[LicenseAcceptanceManager].describe(request_context.user, self.license_agreements)
-        ]
+        # Terms are shown only to users who may access the tool (workflow run forms build every step).
+        license_agreements = (
+            [
+                agreement.model_dump()
+                for agreement in self.app[LicenseAcceptanceManager].describe(
+                    request_context.user, self.license_agreements
+                )
+            ]
+            if self.allow_user_access(request_context.user)
+            else []
+        )
 
         job_credentials_context = None
         # if we have a job, we can extract the credentials context used for the job
