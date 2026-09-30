@@ -6,6 +6,17 @@ export type ToolLicenseAgreement = components["schemas"]["ToolLicenseAgreementRe
 export type LicenseAcceptance = components["schemas"]["LicenseAcceptanceResponse"];
 export type LicenseAcceptanceEvent = components["schemas"]["LicenseAcceptanceEventResponse"];
 export type UserLicenseAcceptances = components["schemas"]["UserLicenseAcceptancesResponse"];
+export type UnmetPrecondition = components["schemas"]["UnmetPrecondition"];
+
+/** Error code for a submission blocked by unmet tool execution preconditions. */
+export const TOOL_EXECUTION_PRECONDITION_UNMET = 403009;
+
+/** Labels of the license agreements an error's unmet preconditions name. */
+export function unmetLicenseAgreementLabels(unmet: UnmetPrecondition[] | null | undefined): string[] {
+    return (unmet ?? [])
+        .flatMap((precondition) => (precondition.kind === "license_agreement" ? precondition.details.agreements : []))
+        .map((agreement) => agreement.label);
+}
 
 /** An agreement declared by a workflow's tools, with the steps (through subworkflows) that declare it. */
 export interface WorkflowLicenseAgreement extends ToolLicenseAgreement {
