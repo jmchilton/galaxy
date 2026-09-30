@@ -30,6 +30,8 @@ class DataManagerToolAction(DefaultToolAction):
     """Tool action used for Data Manager Tools"""
 
     file_source_uri_discovery_complete = True
+    # execute defers to DefaultToolAction.execute.
+    checks_preconditions = True
 
     def execute(
         self,

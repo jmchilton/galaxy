@@ -917,7 +917,8 @@ The ``license_agreement`` element declares license terms a user must affirm befo
 running the tool, for example software restricted to non-commercial or academic use.
 
 Requires ``profile="26.2"`` or newer - a tool with an older profile declaring a
-``license_agreement`` fails to load.
+``license_agreement`` fails to load. A tool declaring one requires login, and cannot use a
+custom tool action that bypasses Galaxy's execution checks (such as a model operation).
 
 The terms are given either by ``path`` - a file relative to the tool's directory, which is
 **preferred** (the file often already ships with the software, and several tools can share one
@@ -932,8 +933,9 @@ inline terms on the line after ``<text>`` so their indentation can be removed.
 ``binds`` says what the affirmation is about:
 
 - ``submission`` (the default) - a statement about the work being done, such as *"I certify that I am
-  not using this tool for commercial purposes."*
-- ``user`` - a statement about the person, such as *"I have read and agree to these terms."*
+  not using this tool for commercial purposes."* It is affirmed for each submission.
+- ``user`` - a statement about the person, such as *"I have read and agree to these terms."* Users may
+  accept it once and have Galaxy remember that until they revoke it.
 
 Galaxy never fetches ``url``.
 

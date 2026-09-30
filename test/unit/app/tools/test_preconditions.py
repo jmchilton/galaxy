@@ -4,11 +4,16 @@ import pytest
 
 from galaxy.exceptions.utils import api_error_to_dict
 from galaxy.managers.context import ProvidesUserContext
-from galaxy.schema.tool_preconditions import UnmetPrecondition
+from galaxy.schema.schema import UnmetPrecondition
 from galaxy.tools import Tool
+from galaxy.tools.actions import DefaultToolAction
+from galaxy.tools.actions.data_manager import DataManagerToolAction
+from galaxy.tools.actions.data_source import DataSourceToolAction
+from galaxy.tools.actions.model_operations import ModelOperationToolAction
 from galaxy.tools.preconditions import (
     check_preconditions,
     TOOL_ACCESS_PRECONDITION,
+    ToolExecutionContext,
     ToolExecutionPrecondition,
     ToolExecutionPreconditionUnmet,
 )
@@ -34,12 +39,12 @@ class AlwaysUnmet(ToolExecutionPrecondition):
         self.message = message
         self.short_circuit = short_circuit
 
-    def unmet(self, trans, tool):
+    def unmet(self, trans, tool, context):
         return UnmetPrecondition(kind="access", message=self.message)
 
 
 class AlwaysMet(ToolExecutionPrecondition):
-    def unmet(self, trans, tool):
+    def unmet(self, trans, tool, context):
         return None
 
 
@@ -66,7 +71,7 @@ def test_short_circuit_skips_remaining_preconditions():
 
 def test_access_unmet_for_inaccessible_logged_out_tool_without_require_login():
     unmet = TOOL_ACCESS_PRECONDITION.unmet(
-        cast(ProvidesUserContext, StubTrans()), cast(Tool, StubTool(accessible=False))
+        cast(ProvidesUserContext, StubTrans()), cast(Tool, StubTool(accessible=False)), ToolExecutionContext()
     )
     assert unmet is not None
     assert unmet.message == "Tool 'stub_tool' is not accessible."
@@ -74,7 +79,12 @@ def test_access_unmet_for_inaccessible_logged_out_tool_without_require_login():
 
 
 def test_access_met_for_accessible_tool():
-    assert TOOL_ACCESS_PRECONDITION.unmet(cast(ProvidesUserContext, StubTrans()), cast(Tool, StubTool())) is None
+    assert (
+        TOOL_ACCESS_PRECONDITION.unmet(
+            cast(ProvidesUserContext, StubTrans()), cast(Tool, StubTool()), ToolExecutionContext()
+        )
+        is None
+    )
 
 
 def test_api_error_dict_includes_unmet():
@@ -90,3 +100,19 @@ def test_api_error_dict_includes_unmet():
     assert error_dict["unmet"] == [
         {"kind": "access", "message": "nope", "details": {"tool_id": "stub_tool"}, "remedy_route": "/login/start"}
     ]
+
+
+def test_action_subclass_replacing_execute_does_not_check_preconditions():
+    class ReplacesExecute(DefaultToolAction):
+        def execute(self, *args, **kwargs):
+            raise NotImplementedError()
+
+    class DefersExecute(DefaultToolAction):
+        pass
+
+    assert DefaultToolAction.checks_preconditions
+    assert DefersExecute.checks_preconditions
+    assert not ReplacesExecute.checks_preconditions
+    assert DataManagerToolAction.checks_preconditions
+    assert DataSourceToolAction.checks_preconditions
+    assert not ModelOperationToolAction.checks_preconditions

@@ -117,6 +117,7 @@ from galaxy.tools._types import (
     ToolStateDumpedToJsonInternalT,
     ToolStateJobInstancePopulatedT,
 )
+from galaxy.tools.preconditions import ToolExecutionContext
 from galaxy.util import (
     defaultdict,
     ExecutionTimer,
@@ -2289,6 +2290,9 @@ class JobSubmitter:
                 rerun_remap_job_id=rerun_remap_job_id,
                 preferred_object_store_id=request.preferred_object_store_id,
                 credentials_context=credentials_context,
+                execution_context=ToolExecutionContext(
+                    one_time_license_acceptances=frozenset(request.one_time_license_acceptances or ())
+                ),
             )
             if request.tags:
                 execution_tracker.apply_tags(request_context.tag_handler, request_context.user, request.tags)
@@ -2302,9 +2306,11 @@ class JobSubmitter:
             sa_session.rollback()
             tool_request.state = ToolRequest.states.FAILED
             state_message: dict = {"err_msg": str(e)}
-            if isinstance(e, MessageException) and e.extra_error_info:
-                if "err_data" in e.extra_error_info:
-                    state_message["err_data"] = e.extra_error_info["err_data"]
+            if isinstance(e, MessageException):
+                state_message["err_code"] = e.err_code.code
+                for key in ("err_data", "unmet"):
+                    if key in (e.extra_error_info or {}):
+                        state_message[key] = e.extra_error_info[key]
             tool_request.state_message = cast(Any, state_message)
             sa_session.add(tool_request)
             sa_session.commit()

@@ -6,6 +6,10 @@ from galaxy.tool_util.license_agreements import (
     canonical_inline_terms,
 )
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
+from galaxy.tools.preconditions import (
+    LICENSE_ACCEPTANCE_PRECONDITION,
+    TOOL_ACCESS_PRECONDITION,
+)
 from galaxy.util.unittest import TestCase
 
 TERMS = "Free for non-commercial use."
@@ -52,6 +56,18 @@ class TestLicenseAgreementLoading(TestCase, tools_support.UsesTools):
     def test_missing_license_path_fails_tool_load(self):
         with pytest.raises(Exception, match="license.txt"):
             self._init_tool(LICENSE_TOOL, profile="26.2")
+
+    def test_license_agreement_on_action_skipping_preconditions_fails_tool_load(self):
+        contents = LICENSE_TOOL.replace(
+            "<inputs />",
+            '<action module="galaxy.tools.actions.model_operations" class="ModelOperationToolAction" />\n    <inputs />',
+        )
+        with pytest.raises(Exception, match="does not check execution preconditions"):
+            self._init_tool(contents, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")
+
+    def test_license_agreement_adds_license_precondition(self):
+        tool = self._init_tool(LICENSE_TOOL, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")
+        assert tool.execution_preconditions == [TOOL_ACCESS_PRECONDITION, LICENSE_ACCEPTANCE_PRECONDITION]
 
     def test_remote_tool_evaluation_does_not_read_license_path(self):
         # The tool directory - and so the license file - is not shipped to remote tool evaluation.

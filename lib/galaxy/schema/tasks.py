@@ -195,4 +195,5 @@ class QueueJobs(Model):
     data_manager_mode: str | None = None
     send_email_notification: bool = False
     credentials_context: list[dict] | None = None
+    one_time_license_acceptances: list[str] | None = None
     dynamic_tool_id: int | None = None  # link to DynamicTool for custom/user tools

@@ -10,6 +10,7 @@ from typing import Any
 from more_itertools import consecutive_groups
 
 from galaxy.managers.context import ProvidesUserContext
+from galaxy.tools.preconditions import ToolExecutionContext
 
 log = logging.getLogger(__name__)
 
@@ -19,8 +20,9 @@ class ToolExecutionCache:
     the same tool by the same user with slightly different parameters.
     """
 
-    def __init__(self, trans: ProvidesUserContext):
+    def __init__(self, trans: ProvidesUserContext, execution_context: ToolExecutionContext | None = None):
         self.trans = trans
+        self.execution_context = execution_context or ToolExecutionContext()
         self.current_user_roles = trans.get_current_user_roles()
         self.chrom_info: dict[str, Any] = {}
         self.cached_collection_elements: dict[Any, Any] = {}

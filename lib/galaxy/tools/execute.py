@@ -48,6 +48,10 @@ from galaxy.tools.execution_helpers import (
     ToolExecutionCache,
 )
 from galaxy.tools.parameters.workflow_utils import is_runtime_value
+from galaxy.tools.preconditions import (
+    check_preconditions,
+    ToolExecutionContext,
+)
 from galaxy.util.json import swap_inf_nan
 from ._types import (
     ToolRequestT,
@@ -179,6 +183,7 @@ def execute_async(
     job_callback: Callable | None = None,
     workflow_resource_parameters: dict[str, Any] | None = None,
     validate_outputs: bool = False,
+    execution_context: ToolExecutionContext | None = None,
 ) -> "ExecutionTracker":
     """The tool request/async version of execute."""
     completed_jobs = completed_jobs or {}
@@ -200,6 +205,7 @@ def execute_async(
         completed_jobs,
         workflow_resource_parameters,
         validate_outputs,
+        execution_context,
     )
 
 
@@ -220,6 +226,7 @@ def execute(
     completed_jobs: CompletedJobsT | None = None,
     workflow_resource_parameters: WorkflowResourceParametersT | None = None,
     validate_outputs: bool = False,
+    execution_context: ToolExecutionContext | None = None,
 ) -> "ExecutionTracker":
     """
     Execute a tool and return object containing summary (output data, number of
@@ -243,6 +250,7 @@ def execute(
         completed_jobs,
         workflow_resource_parameters,
         validate_outputs,
+        execution_context,
     )
 
 
@@ -263,6 +271,7 @@ def _execute(
     completed_jobs: dict[int, model.Job | None],
     workflow_resource_parameters: dict[str, Any] | None,
     validate_outputs: bool,
+    execution_context: ToolExecutionContext | None,
 ) -> "ExecutionTracker":
     if max_num_jobs is not None:
         assert invocation_step is not None
@@ -281,7 +290,7 @@ def _execute(
         execution_tracker = WorkflowStepExecutionTracker(
             trans, tool, mapping_params, collection_info, invocation_step, completed_jobs=completed_jobs
         )
-    execution_cache = ToolExecutionCache(trans)
+    execution_cache = ToolExecutionCache(trans, execution_context)
 
     def execute_single_job(execution_slice: "ExecutionSlice", completed_job: model.Job | None, skip: bool = False):
         job_timer = tool.app.execution_timer_factory.get_timer(
@@ -339,6 +348,9 @@ def _execute(
             execution_tracker.record_error(result)
 
     tool_action = tool.tool_action
+    if getattr(tool_action, "checks_preconditions", False):
+        # Reject the whole submission before any output collections are created; each job checks again.
+        check_preconditions(trans, tool, tool.execution_preconditions, execution_cache.execution_context)
     if check_inputs_ready := getattr(tool_action, "check_inputs_ready", None):
         for params in execution_tracker.param_combinations:
             # This will throw an exception if the tool is not ready.

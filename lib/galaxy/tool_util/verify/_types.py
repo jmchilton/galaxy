@@ -64,3 +64,4 @@ class ToolTestDescriptionDict(TypedDict):
     maxseconds: NotRequired[int | None]
     value_state_representation: NotRequired[ValueStateRepresentationT]
     credentials: NotRequired[list[DirectCredential] | None]
+    license_agreement_hashes: NotRequired[list[str] | None]

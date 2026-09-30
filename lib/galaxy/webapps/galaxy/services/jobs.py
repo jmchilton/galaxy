@@ -29,6 +29,7 @@ from galaxy.managers.jobs import (
     JobSearch,
     view_show_job,
 )
+from galaxy.managers.license_agreements import validate_one_time_hashes
 from galaxy.managers.tool_source import get_or_create_tool_source
 from galaxy.managers.tools import ToolRunReference
 from galaxy.model import (
@@ -93,6 +94,11 @@ class JobRequest(BaseModel):
     tags: list[str] | None = Field(default=None, title="Tags")
     data_manager_mode: str | None = Field(default=None, title="Data Manager Mode")
     credentials_context: list[dict[str, Any]] | None = Field(default=None, title="Credentials Context")
+    one_time_license_acceptances: list[str] | None = Field(
+        default=None,
+        title="One-time License Acceptances",
+        description="Hashes of license agreements the user accepts for this submission only.",
+    )
 
 
 class JobCreateResponse(BaseModel):
@@ -247,6 +253,9 @@ class JobsService(ServiceBase):
     def create(self, trans: ProvidesHistoryContext, job_request: JobRequest) -> JobCreateResponse:
         tool_run_reference = ToolRunReference(job_request.tool_id, job_request.tool_uuid, job_request.tool_version)
         tool = validate_tool_for_running(trans, tool_run_reference)
+        one_time_license_acceptances = validate_one_time_hashes(
+            tool.license_agreements, job_request.one_time_license_acceptances or []
+        )
         target_history = None
         if (history_id := job_request.history_id) is not None:
             target_history = self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
@@ -293,6 +302,7 @@ class JobsService(ServiceBase):
             data_manager_mode=job_request.data_manager_mode,
             send_email_notification=job_request.send_email_notification,
             credentials_context=job_request.credentials_context,
+            one_time_license_acceptances=sorted(one_time_license_acceptances),
             dynamic_tool_id=tool.dynamic_tool.id if tool.dynamic_tool else None,
         )
         result = queue_jobs.delay(request=task_request)

@@ -32,6 +32,7 @@ from galaxy.managers.context import (
     ProvidesHistoryContext,
     ProvidesUserContext,
 )
+from galaxy.managers.license_agreements import LicenseAcceptanceManager
 from galaxy.model import (
     Dataset,
     History,
@@ -76,7 +77,11 @@ from galaxy.tools.parameters.wrapped import (
     LegacyUnprefixedDict,
     WrappedParameters,
 )
-from galaxy.tools.preconditions import check_preconditions
+from galaxy.tools.preconditions import (
+    check_preconditions,
+    LICENSE_ACCEPTANCE_PRECONDITION,
+    ToolExecutionContext,
+)
 from galaxy.util import ExecutionTimer
 from galaxy.util.template import fill_template
 
@@ -104,6 +109,8 @@ class ToolAction:
 
     produces_real_jobs: bool
     file_source_uri_discovery_complete = False
+    # Whether execute checks the tool's execution preconditions before creating a job.
+    checks_preconditions = False
 
     def has_complete_file_source_uri_discovery(self) -> bool:
         """Return whether this concrete action has audited URI discovery."""
@@ -156,6 +163,13 @@ class DefaultToolAction(ToolAction):
 
     produces_real_jobs: bool = True
     file_source_uri_discovery_complete = True
+    checks_preconditions = True
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # A subclass replacing execute may skip the check - it must declare that it still checks.
+        if "execute" in cls.__dict__ and "checks_preconditions" not in cls.__dict__:
+            cls.checks_preconditions = False
 
     def _collect_input_datasets(
         self,
@@ -419,8 +433,8 @@ class DefaultToolAction(ToolAction):
         tool.visit_inputs(param_values, visitor)
         return input_dataset_collections
 
-    def _check_preconditions(self, tool, trans: ProvidesUserContext):
-        check_preconditions(trans, tool, tool.execution_preconditions)
+    def _check_preconditions(self, tool, trans: ProvidesUserContext, execution_context: ToolExecutionContext):
+        check_preconditions(trans, tool, tool.execution_preconditions, execution_context)
 
     def _collect_inputs(
         self, tool, trans: ProvidesHistoryContext, incoming, history, current_user_roles, collection_info
@@ -488,10 +502,10 @@ class DefaultToolAction(ToolAction):
         """
         trans.check_user_activation()
         incoming = incoming or {}
-        self._check_preconditions(tool, trans)
-        app = trans.app
         if execution_cache is None:
             execution_cache = ToolExecutionCache(trans)
+        self._check_preconditions(tool, trans, execution_cache.execution_context)
+        app = trans.app
         current_user_roles = execution_cache.current_user_roles
         (
             history,
@@ -781,6 +795,7 @@ class DefaultToolAction(ToolAction):
                 data.set_skipped(object_store_populator, replace_dataset=False)
         job.preferred_object_store_id = preferred_object_store_id
         self._handle_credentials_context(trans.sa_session, job, credentials_context)
+        self._handle_license_acceptances(trans, tool, job, execution_cache.execution_context)
         self._record_inputs(trans, tool, job, incoming, inp_data, inp_dataset_collections)
         self._record_outputs(job, out_data, output_collections)
         # execute immediate post job actions and associate post job actions that are to be executed after the job is complete
@@ -1017,6 +1032,14 @@ class DefaultToolAction(ToolAction):
                 selected_group_name=service_context.selected_group.name,
             )
             sa_session.add(association)
+
+    def _handle_license_acceptances(
+        self, trans: ProvidesUserContext, tool, job: Job, execution_context: ToolExecutionContext
+    ) -> None:
+        if not tool.license_agreements:
+            return
+        authorization = LICENSE_ACCEPTANCE_PRECONDITION.authorization(trans, tool, execution_context)
+        trans.app[LicenseAcceptanceManager].associate_with_job(job, authorization)
 
     def _record_inputs(self, trans: ProvidesHistoryContext, tool, job, incoming, inp_data, inp_dataset_collections):
         # FIXME: Don't need all of incoming here, just the defined parameters

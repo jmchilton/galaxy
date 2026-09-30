@@ -18763,6 +18763,11 @@ export interface components {
             inputs?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * One-time License Acceptances
+             * @description Hashes of license agreements the user accepts for this submission only.
+             */
+            one_time_license_acceptances?: string[] | null;
             /** Preferred Object Store ID */
             preferred_object_store_id?: string | null;
             /**
@@ -26012,12 +26017,19 @@ export interface components {
         ToolRequestState: "new" | "submitted" | "failed";
         /** ToolRequestStateMessage */
         ToolRequestStateMessage: {
+            /** Err Code */
+            err_code?: number | null;
             /** Err Data */
             err_data?: {
                 [key: string]: unknown;
             } | null;
             /** Err Msg */
             err_msg: string;
+            /**
+             * Unmet
+             * @description Unmet tool execution preconditions, when those prevented the jobs.
+             */
+            unmet?: components["schemas"]["UnmetPrecondition"][] | null;
         };
         /** ToolStep */
         ToolStep: {
@@ -26198,6 +26210,28 @@ export interface components {
              * @description List of history IDs to be undeleted.
              */
             ids: string[];
+        };
+        /**
+         * UnmetPrecondition
+         * @description A condition that must hold before a tool may create a job, and what the user can do about it.
+         */
+        UnmetPrecondition: {
+            /**
+             * Details
+             * @default {}
+             */
+            details: {
+                [key: string]: unknown;
+            };
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "access" | "license_agreement";
+            /** Message */
+            message: string;
+            /** Remedy Route */
+            remedy_route?: string | null;
         };
         /** UnprivilegedToolResponse */
         UnprivilegedToolResponse: {

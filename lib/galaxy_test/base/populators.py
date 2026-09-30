@@ -1246,6 +1246,8 @@ class BaseDatasetPopulator(BasePopulator):
 
         if "credentials_context" in kwds and not isinstance(kwds["credentials_context"], str):
             kwds["credentials_context"] = json.dumps(kwds["credentials_context"])
+        if "one_time_license_acceptances" in kwds and not isinstance(kwds["one_time_license_acceptances"], str):
+            kwds["one_time_license_acceptances"] = json.dumps(kwds["one_time_license_acceptances"])
         return dict(tool_id=tool_id, inputs=json.dumps(inputs), history_id=history_id, **kwds)
 
     def build_tool_state(self, tool_id: str, history_id: str, inputs: dict | None = None):
@@ -1261,13 +1263,22 @@ class BaseDatasetPopulator(BasePopulator):
         payload = self.run_tool_payload(tool_id, inputs, history_id, **kwds)
         return self.tools_post(payload)
 
-    def tool_request_raw(self, tool_id: str, inputs: dict[str, Any], history_id: str, strict: bool = True) -> Response:
-        payload = {
+    def tool_request_raw(
+        self,
+        tool_id: str,
+        inputs: dict[str, Any],
+        history_id: str,
+        strict: bool = True,
+        one_time_license_acceptances: list[str] | None = None,
+    ) -> Response:
+        payload: dict[str, Any] = {
             "tool_id": tool_id,
             "history_id": history_id,
             "inputs": inputs,
             "strict": strict,
         }
+        if one_time_license_acceptances is not None:
+            payload["one_time_license_acceptances"] = one_time_license_acceptances
         response = self._post("jobs", data=payload, json=True)
         return response
 
