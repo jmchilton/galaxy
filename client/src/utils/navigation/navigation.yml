@@ -901,6 +901,7 @@ tool_form:
     license_accepted: '.tool-license-agreement[data-license-id="${license_id}"] [data-description="license accepted"]'
     license_affirm: 'input[data-test-id="license-affirm-${license_id}-input"]'
     license_affirm_unchecked: 'input[data-test-id="license-affirm-${license_id}-input"]:not(:checked)'
+    license_agreements_notice: '[data-description="tool license agreements notice"]'
     license_remember: 'input[data-test-id="license-remember-${license_id}-input"]'
     license_terms_toggle: '[data-test-id="license-terms-toggle-${license_id}"]'
     license_terms: '[data-test-id="license-terms-${license_id}"]'
