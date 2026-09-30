@@ -7778,6 +7778,21 @@ steps:
             )
             self._assert_status_code_is(response, 200)
             assert response.json()["history_id"] == history_id
+    def test_run_with_missing_tool_creates_no_history(self):
+        workflow = self.workflow_populator.load_workflow_from_resource(name="test_workflow_missing_tool")
+        workflow_id = self.workflow_populator.create_workflow(workflow)
+        history_name = f"missing tool history {uuid4()}"
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, wait=True)
+            dataset = {"src": "hda", "id": hda["id"]}
+            response = self.workflow_populator.invoke_workflow_raw(
+                workflow_id,
+                {"new_history_name": history_name, "inputs": {"0": dataset, "1": dataset}, "inputs_by": "step_index"},
+            )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "the following required tools are not installed: cat_missing_tool")
+        assert not self.workflow_populator.workflow_invocations(workflow_id)
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
 
     def test_run_with_optional_data_specified_to_multi_data(self):
         with self.dataset_populator.test_history() as history_id:
