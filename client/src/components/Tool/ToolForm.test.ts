@@ -170,6 +170,92 @@ describe("ToolForm", () => {
         expect(formDisplay.props("errors")).toBeNull();
     });
 
+    function licenseAgreement(overrides = {}) {
+        return {
+            agreement_hash: "a".repeat(64),
+            id: "test_license",
+            version: "1",
+            label: "Test License",
+            url: null,
+            affirmation: "I agree to the test license.",
+            terms: "Test terms.",
+            binds: "submission",
+            accepted: false,
+            ...overrides,
+        };
+    }
+
+    async function affirmLicense(licenseId: string) {
+        await wrapper.find(`input[data-test-id='license-affirm-${licenseId}-input']`).setValue(true);
+        await flushPromises();
+    }
+
+    it("accepts user-bound license agreements persistently when remembered", async () => {
+        let accepted: Record<string, unknown> | undefined;
+        let submitted: Record<string, unknown> | undefined;
+        server.use(
+            http.untyped.post("/api/users/current/license_acceptances", async ({ request }) => {
+                accepted = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({});
+            }),
+            http.untyped.post("/api/tools", async ({ request }) => {
+                submitted = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({ err_msg: "captured" }, { status: 400 });
+            }),
+        );
+        useBuildResponse({ license_agreements: [licenseAgreement({ binds: "user" })] });
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        const remember = wrapper.find("input[data-test-id='license-remember-test_license-input']");
+        expect(remember.attributes("disabled")).toBeDefined();
+        await affirmLicense("test_license");
+        await remember.setValue(true);
+        await flushPromises();
+        await wrapper.find("[data-description='run tool button']").trigger("click");
+        await flushPromises();
+
+        expect(accepted).toEqual({
+            tool_id: "tool_id",
+            tool_version: "version",
+            license_id: "test_license",
+            agreement_hash: "a".repeat(64),
+        });
+        // The job is authorized by the persistent acceptance, not a one-time one.
+        expect(submitted).toBeDefined();
+        expect(submitted?.one_time_license_acceptances).toBeUndefined();
+    });
+
+    it("does not submit when accepting a remembered license agreement fails", async () => {
+        let submitted = false;
+        server.use(
+            http.untyped.post("/api/users/current/license_acceptances", () =>
+                HttpResponse.json({ err_msg: "License agreement has changed." }, { status: 400 }),
+            ),
+            http.untyped.post("/api/tools", () => {
+                submitted = true;
+                return HttpResponse.json({ err_msg: "captured" }, { status: 400 });
+            }),
+        );
+        useBuildResponse({ license_agreements: [licenseAgreement({ binds: "user" })] });
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        await affirmLicense("test_license");
+        await wrapper.find("input[data-test-id='license-remember-test_license-input']").setValue(true);
+        await flushPromises();
+        await wrapper.find("[data-description='run tool button']").trigger("click");
+        await flushPromises();
+
+        expect(submitted).toBe(false);
+        expect(wrapper.text()).toContain("License agreement has changed.");
+        expect(wrapper.find("[data-description='run tool button']").classes()).not.toContain("g-disabled");
+    });
+
     it("shows an error alert when tool submission returns an error message", async () => {
         const errorMessage = "New identifier [duplicate] appears twice in resulting collection.";
         server.use(

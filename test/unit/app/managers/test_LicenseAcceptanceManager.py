@@ -55,6 +55,14 @@ class TestLicenseAcceptanceManager(BaseTestCase):
         assert (stored.affirmation, stored.terms) == (AFFIRMATION, TERMS)
         assert self.manager.current_state(user) == {agreement.agreement_hash: event}
 
+    def test_describe_for_anonymous_user(self):
+        (described,) = self.manager.describe(None, [resolved()])
+        assert described.accepted is False
+
+    def test_describe_lists_each_agreement_hash_once(self):
+        described = self.manager.describe(None, [resolved(id="nc"), resolved(id="academic")])
+        assert [d.id for d in described] == ["nc"]
+
     def test_different_ids_identical_agreement_share_acceptance(self):
         user = self._create_test_user()
         self.manager.accept(user, resolved(id="nc"))
@@ -125,6 +133,8 @@ class TestLicenseAcceptanceManager(BaseTestCase):
         self.manager.accept(user, user_bound)
         for agreements in ([user_bound, submission_bound], [submission_bound, user_bound]):
             assert self.manager.unmet(user, agreements) == [submission_bound]
+            (described,) = self.manager.describe(user, agreements)
+            assert (described.id, described.binds, described.accepted) == ("submission_bound", "submission", False)
             authorization = self.manager.authorize(user, agreements, {submission_bound.agreement_hash})
             assert (authorization.one_time, authorization.persistent) == ([submission_bound], [])
 

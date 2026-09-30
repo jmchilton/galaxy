@@ -105,6 +105,11 @@ watch(
     },
 );
 
+/** Labels of the license agreements the tool declares, shown where they cannot be accepted. */
+const licenseAgreementLabels = computed(() =>
+    (props.options.license_agreements ?? []).map((agreement) => agreement.label).join(", "),
+);
+
 const credentialToolTip = computed(() => {
     const credentialNames = props.options.credentials?.map((service) => service.name);
     if (!credentialNames.value) {
@@ -222,6 +227,13 @@ onBeforeMount(() => {
         </template>
 
         <template v-slot>
+            <GAlert
+                v-if="props.allowEditingCredentials && licenseAgreementLabels"
+                variant="info"
+                class="mt-2"
+                data-description="tool license agreements notice">
+                Requires accepting license agreements to run this tool: {{ licenseAgreementLabels }}.
+            </GAlert>
             <template v-if="props.options.credentials?.length">
                 <ToolCredentials
                     v-if="!props.allowEditingCredentials"
