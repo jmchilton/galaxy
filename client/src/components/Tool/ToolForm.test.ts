@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import type { AnyHistory } from "@/api/index.js";
 import MockCurrentHistory from "@/components/providers/MockCurrentHistory";
+import { useConfigStore } from "@/stores/configurationStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 
@@ -329,8 +330,49 @@ describe("ToolForm", () => {
 
         const error = wrapper.find("[data-description='tool submission error']");
         expect(error.text()).toContain("Test License");
-        expect(error.text()).toContain("Accept the license agreements shown on the tool form");
+        expect(error.text()).toContain("Accept these license agreements on the tool form");
         expect(builds).toBeGreaterThan(buildsBeforeRun);
+    });
+
+    it("names unaccepted license agreements when a tool request fails", async () => {
+        const unmet = [
+            {
+                kind: "license_agreement",
+                message: "Tool 'tool_id' requires accepting license agreements [test_license].",
+                details: { agreements: [{ id: "test_license", label: "Test License" }] },
+                remedy_route: null,
+            },
+        ];
+        server.use(
+            http.untyped.post("/api/jobs", () =>
+                HttpResponse.json({ tool_request_id: "request_id", task_result: { id: "task", ignored: false } }),
+            ),
+            http.untyped.get("/api/tool_requests/request_id/state", () => HttpResponse.json("failed")),
+            http.untyped.get("/api/tool_requests/request_id", () =>
+                HttpResponse.json({
+                    id: "request_id",
+                    request: {},
+                    state: "failed",
+                    state_message: { err_msg: unmet[0]!.message, err_code: 403009, unmet },
+                    jobs: [],
+                    implicit_collections: [],
+                }),
+            ),
+        );
+        useBuildResponse({ has_parameters: true, license_agreements: [licenseAgreement({ accepted: true })] });
+        mountToolForm();
+        await flushPromises();
+        const configStore = useConfigStore();
+        configStore.config = { ...configStore.config, enable_celery_tasks: true, enable_tool_requests: true };
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        await wrapper.find("[data-description='run tool button']").trigger("click");
+        await flushPromises();
+
+        const error = wrapper.find("[data-description='tool submission error']");
+        expect(error.text()).toContain("Test License");
+        expect(error.text()).toContain("Accept these license agreements on the tool form");
     });
 
     it("shows an error alert when tool submission returns an error message", async () => {

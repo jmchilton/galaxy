@@ -182,6 +182,17 @@ class TestLicenseAcceptanceWorkflows(integration_util.IntegrationTestCase):
             assert {step["tool_id"] for step in agreement["steps"]} == {SUBMISSION_BOUND_TOOL}
 
     @skip_without_tool(SUBMISSION_BOUND_TOOL)
+    def test_workflow_license_agreements_route(self):
+        with self._fresh_user():
+            workflow_id = self.workflow_populator.upload_yaml_workflow(SUBWORKFLOW_WORKFLOW)
+            response = self._get(f"workflows/{workflow_id}/license_agreements")
+            self._assert_status_code_is(response, 200)
+            (agreement,) = response.json()
+            assert agreement["id"] == LICENSE_ID
+            assert agreement["accepted"] is False
+            assert agreement["steps"] == [{"path": [1, 1], "tool_id": SUBMISSION_BOUND_TOOL, "tool_version": "1.0"}]
+
+    @skip_without_tool(SUBMISSION_BOUND_TOOL)
     def test_one_time_acceptance_persisted_on_invocation_tree(self):
         with self._fresh_user():
             hashes = self.license_populator.license_agreement_hashes(SUBMISSION_BOUND_TOOL)

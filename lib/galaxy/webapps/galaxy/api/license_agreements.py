@@ -3,6 +3,7 @@ API operations on tool license agreements and users' acceptance of them.
 """
 
 import logging
+from typing import Annotated
 
 from fastapi import (
     Path,
@@ -12,11 +13,13 @@ from fastapi import (
 )
 
 from galaxy.managers.context import ProvidesUserContext
+from galaxy.schema.fields import DecodedDatabaseIdField
 from galaxy.schema.license_agreements import (
     CreateLicenseAcceptancePayload,
     LicenseAcceptanceResponse,
     ToolLicenseAgreementsResponse,
     UserLicenseAcceptancesResponse,
+    WorkflowLicenseAgreementsResponse,
 )
 from galaxy.schema.schema import FlexibleUserIdType
 from galaxy.webapps.galaxy.api import (
@@ -33,6 +36,11 @@ from galaxy.webapps.galaxy.services.license_agreements import LicenseAgreementsS
 log = logging.getLogger(__name__)
 
 router = Router(tags=["license agreements"])
+
+StoredWorkflowIdPathParam = Annotated[
+    DecodedDatabaseIdField,
+    Path(..., title="Stored Workflow ID", description="The encoded database identifier of the Stored Workflow."),
+]
 
 AgreementHashPathParam: str = Path(
     ...,
@@ -57,6 +65,18 @@ class FastAPILicenseAgreements:
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> ToolLicenseAgreementsResponse:
         return self.service.tool_license_agreements(trans, tool_id, tool_version)
+
+    @router.get(
+        "/api/workflows/{workflow_id}/license_agreements",
+        summary="Return the license agreements a workflow's tools declare, including in subworkflows.",
+    )
+    def workflow_license_agreements(
+        self,
+        workflow_id: StoredWorkflowIdPathParam,
+        version: int | None = Query(None, description="The workflow version; the latest when omitted."),
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> WorkflowLicenseAgreementsResponse:
+        return self.service.workflow_license_agreements(trans, workflow_id, version)
 
     @router.get(
         "/api/users/{user_id}/license_acceptances",

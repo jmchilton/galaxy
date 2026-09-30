@@ -6,12 +6,14 @@ import { useRouter } from "vue-router/composables";
 
 import { canMutateHistory } from "@/api";
 import type { WorkflowInvocationRequestInputs } from "@/api/invocations";
+import { unmetPreconditionsFromError } from "@/api/licenseAgreements";
 import { getWorkflowInfo } from "@/api/workflows";
 import { copyWorkflow } from "@/components/Workflow/workflows.services";
 import { useWorkflowInstance } from "@/composables/useWorkflowInstance";
 import { useHistoryItemsStore } from "@/stores/historyItemsStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
+import localize from "@/utils/localization";
 import { errorMessageAsString } from "@/utils/simple-error";
 
 import { WorkflowRunModel } from "./model";
@@ -106,8 +108,19 @@ function handleInvocations(incomingInvocations: any) {
     }
 }
 
-function handleSubmissionError(error: string) {
-    submissionError.value = errorMessageAsString(error);
+function handleSubmissionError(error: unknown) {
+    const unmetPreconditions = unmetPreconditionsFromError(error);
+    if (unmetPreconditions) {
+        // Unmet preconditions (e.g. a license agreement revoked elsewhere) - reload what the form shows.
+        loadRun();
+    }
+    if (unmetPreconditions?.licenseLabels.length) {
+        submissionError.value = `${localize(
+            "Accept these license agreements on the form and run the workflow again:",
+        )} ${unmetPreconditions.licenseLabels.join(", ")}.`;
+    } else {
+        submissionError.value = errorMessageAsString(error);
+    }
 }
 
 async function loadRun() {

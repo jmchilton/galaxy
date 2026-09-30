@@ -7109,6 +7109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/{workflow_id}/license_agreements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the license agreements a workflow's tools declare, including in subworkflows. */
+        get: operations["workflow_license_agreements_api_workflows__workflow_id__license_agreements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/{workflow_id}/publish": {
         parameters: {
             query?: never;
@@ -20023,6 +20040,24 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** LicenseAgreementDeclaringStep */
+        LicenseAgreementDeclaringStep: {
+            /**
+             * Path
+             * @description Step order indices from the outermost workflow down to the step, through subworkflows.
+             */
+            path: number[];
+            /**
+             * Tool Id
+             * @description The step's tool.
+             */
+            tool_id: string;
+            /**
+             * Tool Version
+             * @description The step's tool version.
+             */
+            tool_version: string;
+        };
         /** LicenseAgreementTermsResponse */
         LicenseAgreementTermsResponse: {
             /**
@@ -28802,6 +28837,62 @@ export interface components {
              */
             workflow_target_type: "stored_workflow" | "workflow" | "trs_url" | "url";
         };
+        /** WorkflowLicenseAgreementResponse */
+        WorkflowLicenseAgreementResponse: {
+            /**
+             * Accepted
+             * @description Whether the current user's persistent acceptance satisfies this agreement.
+             */
+            accepted: boolean;
+            /**
+             * Affirmation
+             * @description The statement the user affirms.
+             */
+            affirmation: string;
+            /**
+             * Agreement Hash
+             * @description Content address of the displayed affirmation and terms; identifies the agreement being accepted.
+             */
+            agreement_hash: string;
+            /**
+             * Binds
+             * @description Whether the affirmation is about each submission ('submission') or about the user ('user'). Only 'user' agreements can be accepted persistently.
+             * @enum {string}
+             */
+            binds: "submission" | "user";
+            /**
+             * Id
+             * @description The agreement id declared by the tool.
+             */
+            id: string;
+            /**
+             * Label
+             * @description Short human-readable name of the agreement.
+             */
+            label: string;
+            /**
+             * Steps
+             * @description The workflow steps whose tools declare the agreement.
+             */
+            steps: components["schemas"]["LicenseAgreementDeclaringStep"][];
+            /**
+             * Terms
+             * @description The license terms exactly as displayed to the user.
+             */
+            terms: string;
+            /**
+             * Url
+             * @description Link to the license for reference; never fetched by Galaxy.
+             */
+            url?: string | null;
+            /**
+             * Version
+             * @description The agreement version declared by the tool.
+             */
+            version: string;
+        };
+        /** WorkflowLicenseAgreementsResponse */
+        WorkflowLicenseAgreementsResponse: components["schemas"]["WorkflowLicenseAgreementResponse"][];
         /**
          * WorkflowReportResponse
          * @description Response from the workflow report generation agent.
@@ -55852,6 +55943,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvocationStep"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    workflow_license_agreements_api_workflows__workflow_id__license_agreements_get: {
+        parameters: {
+            query?: {
+                /** @description The workflow version; the latest when omitted. */
+                version?: number | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded database identifier of the Stored Workflow. */
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowLicenseAgreementsResponse"];
                 };
             };
             /** @description Request Error */

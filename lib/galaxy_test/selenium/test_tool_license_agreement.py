@@ -89,4 +89,4 @@ class TestToolLicenseAgreement(SeleniumTestCase):
 
     def _affirm(self, license_id: str):
         self.components.tool_form.license_affirm(license_id=license_id).wait_for_and_click()
-        self.wait_for_selector_absent(f'input[data-test-id="license-affirm-{license_id}-input"]:not(:checked)')
+        self.components.tool_form.license_affirm_unchecked(license_id=license_id).wait_for_absent()

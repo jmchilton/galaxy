@@ -1351,7 +1351,9 @@ class WorkflowContentsManager(UsesAnnotations):
             "step_version_changes": step_version_changes,
             "has_upgrade_messages": has_upgrade_messages,
             "workflow_resource_parameters": self._workflow_resource_parameters(trans, stored, workflow),
-            "license_agreements": describe_workflow_license_agreements(trans, workflow),
+            "license_agreements": [
+                agreement.model_dump() for agreement in describe_workflow_license_agreements(trans, workflow)
+            ],
         }
 
     def _workflow_to_dict_preview(self, trans: ProvidesHistoryContext, workflow):

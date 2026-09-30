@@ -5,7 +5,7 @@ import { useRoute, useRouter } from "vue-router/composables";
 
 import { canMutateHistory as canMutateHistoryMethod } from "@/api";
 import type { JobRequest, JobResponse } from "@/api/jobs";
-import { TOOL_EXECUTION_PRECONDITION_UNMET, unmetLicenseAgreementLabels } from "@/api/licenseAgreements";
+import { unmetPreconditionsFromError } from "@/api/licenseAgreements";
 import type { ToolFormConfig } from "@/api/tools";
 import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
 import type { DataOption } from "@/components/Form/Elements/FormData/types";
@@ -38,6 +38,7 @@ import ToolCard from "./ToolCard.vue";
 import ToolFormTags from "./ToolFormTags.vue";
 import ToolLicenseAgreements from "./ToolLicenseAgreements.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
+import GLink from "@/components/BaseComponents/GLink.vue";
 import ButtonSpinner from "@/components/Common/ButtonSpinner.vue";
 import Heading from "@/components/Common/Heading.vue";
 import FormSelect from "@/components/Form/Elements/FormSelect.vue";
@@ -77,6 +78,7 @@ const remapAllowed = ref<boolean | "job_produced_collection_elements" | null>(fa
 const errorTitle = ref<string | null>(null);
 const errorContent = ref<any>(null);
 const errorMessage = ref("");
+const errorRemedyRoute = ref<string | null>(null);
 const messageShow = ref(false);
 const messageVariant = ref<"success" | "danger" | undefined>(undefined);
 const messageText = ref("");
@@ -118,14 +120,6 @@ const {
     acceptRemembered: acceptRememberedLicenseAgreements,
     reset: resetLicenseAgreements,
 } = useLicenseAgreementAffirmations(licenseAgreements);
-
-function onUpdateAffirmedLicenseAgreements(value: string[]) {
-    affirmedLicenseAgreements.value = value;
-}
-
-function onUpdateRememberedLicenseAgreements(value: string[]) {
-    rememberedLicenseAgreements.value = value;
-}
 
 const toolId = computed(() => {
     // ensure version is included in tool id, otherwise form inputs are
@@ -434,6 +428,7 @@ async function onExecute() {
         return;
     }
     showExecuting.value = true;
+    errorRemedyRoute.value = null;
     userStore.addRecentTool(formConfig.value?.id);
 
     try {
@@ -535,14 +530,15 @@ async function onExecute() {
         const message = errorMessageAsString(e);
 
         // Unmet preconditions (e.g. a license agreement revoked elsewhere) - reload what the form shows.
-        if ((e?.response?.data?.err_code ?? e?.err_code) === TOOL_EXECUTION_PRECONDITION_UNMET) {
+        const unmetPreconditions = unmetPreconditionsFromError(e);
+        if (unmetPreconditions) {
             requestTool();
-            const licenseLabels = unmetLicenseAgreementLabels(e?.response?.data?.unmet ?? e?.unmet);
-            if (licenseLabels.length) {
+            errorRemedyRoute.value = unmetPreconditions.remedyRoute;
+            if (unmetPreconditions.licenseLabels.length) {
                 errorTitle.value = "License agreement not accepted.";
-                errorMessage.value = `${message} ${localize(
-                    "Accept the license agreements shown on the tool form and run the tool again:",
-                )} ${licenseLabels.join(", ")}.`;
+                errorMessage.value = `${localize(
+                    "Accept these license agreements on the tool form and run the tool again:",
+                )} ${unmetPreconditions.licenseLabels.join(", ")}.`;
                 submissionRequestFailed.value = false;
                 errorContent.value = null;
                 showError.value = true;
@@ -595,6 +591,7 @@ requestTool();
         <GModal :show.sync="showError" size="medium" :title="localize(errorTitle)" fixed-height>
             <GAlert v-if="errorMessage" variant="danger" data-description="tool submission error">
                 {{ errorMessage }}
+                <GLink v-if="errorRemedyRoute" :to="errorRemedyRoute">{{ localize("Resolve this") }}</GLink>
             </GAlert>
             <GAlert v-if="submissionRequestFailed" variant="warning">
                 The server could not complete this request. Please verify your parameter settings, retry submission and
@@ -626,10 +623,8 @@ requestTool();
             <ToolLicenseAgreements
                 v-if="licenseAgreements.length"
                 :agreements="licenseAgreements"
-                :affirmed="affirmedLicenseAgreements"
-                :remembered="rememberedLicenseAgreements"
-                @update:affirmed="onUpdateAffirmedLicenseAgreements"
-                @update:remembered="onUpdateRememberedLicenseAgreements" />
+                :affirmed.sync="affirmedLicenseAgreements"
+                :remembered.sync="rememberedLicenseAgreements" />
             <div class="mt-2 mb-4">
                 <Heading v-localize h2 separator bold size="sm"> Tool Parameters </Heading>
 

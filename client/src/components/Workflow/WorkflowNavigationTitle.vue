@@ -32,6 +32,8 @@ interface Props {
     invocation?: WorkflowInvocationElementView;
     workflowId: string;
     runDisabled?: boolean;
+    /** Why running is disabled, shown in place of the generic message. */
+    runDisabledReason?: string;
     runWaiting?: boolean;
     success?: boolean;
     validRerun?: boolean;
@@ -43,6 +45,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     invocation: undefined,
+    runDisabledReason: undefined,
 });
 
 const emit = defineEmits<{
@@ -98,7 +101,7 @@ const workflowImportTitle = computed(() => {
 
 const executeButtonTooltip = computed(() => {
     if (props.runDisabled) {
-        return localize("Fix the errors in the workflow before running it");
+        return props.runDisabledReason || localize("Fix the errors in the workflow before running it");
     } else if (props.validRerun) {
         return localize("Rerun this workflow with the original inputs");
     } else {

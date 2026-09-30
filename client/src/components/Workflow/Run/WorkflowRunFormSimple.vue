@@ -72,7 +72,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
     (e: "showAdvanced"): void;
     (e: "submissionSuccess", invocations: any): void;
-    (e: "submissionError", error: string): void;
+    (e: "submissionError", error: unknown): void;
 }>();
 
 const { currentUser } = storeToRefs(useUserStore());
@@ -451,13 +451,15 @@ const {
     acceptRemembered: acceptRememberedLicenseAgreements,
 } = useLicenseAgreementAffirmations(licenseAgreements);
 
-function onUpdateAffirmedLicenseAgreements(value: string[]) {
-    affirmedLicenseAgreements.value = value;
-}
-
-function onUpdateRememberedLicenseAgreements(value: string[]) {
-    rememberedLicenseAgreements.value = value;
-}
+/** A specific reason when unaccepted license agreements are all that keep the workflow from running. */
+const runDisabledReason = computed(() =>
+    unaffirmedLicenseAgreements.value.length &&
+    !hasValidationErrors.value &&
+    canRunOnHistory.value &&
+    !hasCredentialErrors.value
+        ? localize("Please accept all license agreements before running the workflow.")
+        : undefined,
+);
 
 async function onExecute() {
     waitingForRequest.value = true;
@@ -535,7 +537,7 @@ async function onExecute() {
         const invocations = await invokeWorkflow(props.model.workflowId, data);
         emit("submissionSuccess", invocations);
     } catch (error) {
-        emit("submissionError", errorMessageAsString(error));
+        emit("submissionError", error);
     } finally {
         waitingForRequest.value = false;
     }
@@ -606,6 +608,7 @@ onBeforeMount(() => {
                         hasCredentialErrors ||
                         unaffirmedLicenseAgreements.length > 0
                     "
+                    :run-disabled-reason="runDisabledReason"
                     :run-waiting="waitingForRequest"
                     :valid-rerun="isValidRerun"
                     @on-execute="onExecute">
@@ -754,10 +757,8 @@ onBeforeMount(() => {
             v-if="licenseAgreements.length"
             class="px-2"
             :agreements="licenseAgreements"
-            :affirmed="affirmedLicenseAgreements"
-            :remembered="rememberedLicenseAgreements"
-            @update:affirmed="onUpdateAffirmedLicenseAgreements"
-            @update:remembered="onUpdateRememberedLicenseAgreements" />
+            :affirmed.sync="affirmedLicenseAgreements"
+            :remembered.sync="rememberedLicenseAgreements" />
 
         <div class="overflow-auto h-100">
             <div class="d-flex h-100">

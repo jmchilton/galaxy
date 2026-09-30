@@ -50,10 +50,8 @@
         <ToolLicenseAgreements
             v-if="licenseAgreements.length"
             :agreements="licenseAgreements"
-            :affirmed="affirmedLicenseAgreements"
-            :remembered="rememberedLicenseAgreements"
-            @update:affirmed="affirmedLicenseAgreements = $event"
-            @update:remembered="rememberedLicenseAgreements = $event" />
+            :affirmed.sync="affirmedLicenseAgreements"
+            :remembered.sync="rememberedLicenseAgreements" />
 
         <FormCard v-if="wpInputsAvailable" title="Workflow Parameters">
             <template v-slot:body>

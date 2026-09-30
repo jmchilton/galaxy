@@ -50,6 +50,25 @@ class ToolLicenseAgreementsResponse(RootModel[list[ToolLicenseAgreementResponse]
     root: list[ToolLicenseAgreementResponse]
 
 
+class LicenseAgreementDeclaringStep(Model):
+    path: Annotated[
+        list[int],
+        Field(description="Step order indices from the outermost workflow down to the step, through subworkflows."),
+    ]
+    tool_id: Annotated[str, Field(description="The step's tool.")]
+    tool_version: Annotated[str, Field(description="The step's tool version.")]
+
+
+class WorkflowLicenseAgreementResponse(ToolLicenseAgreementResponse):
+    steps: Annotated[
+        list[LicenseAgreementDeclaringStep], Field(description="The workflow steps whose tools declare the agreement.")
+    ]
+
+
+class WorkflowLicenseAgreementsResponse(RootModel[list[WorkflowLicenseAgreementResponse]]):
+    root: list[WorkflowLicenseAgreementResponse]
+
+
 class LicenseAcceptanceEventResponse(Model):
     id: EncodedDatabaseIdField
     agreement_hash: AgreementHashField
