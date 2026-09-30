@@ -168,6 +168,131 @@ describe("ToolForm", () => {
         expect(formDisplay.props("errors")).toBeNull();
     });
 
+    function licenseAgreement(overrides = {}) {
+        return {
+            agreement_hash: "a".repeat(64),
+            id: "test_license",
+            version: "1",
+            label: "Test License",
+            url: null,
+            affirmation: "I agree to the test license.",
+            terms: "Test terms.",
+            binds: "submission",
+            accepted: false,
+            ...overrides,
+        };
+    }
+
+    async function affirmLicense(licenseId: string) {
+        await wrapper.find(`input[data-test-id='license-affirm-${licenseId}-input']`).setChecked(true);
+        await flushPromises();
+    }
+
+    it("blocks running until license agreements are affirmed and sends one-time acceptances", async () => {
+        let submitted: Record<string, unknown> | undefined;
+        server.use(
+            http.untyped.post("/api/tools", async ({ request }) => {
+                submitted = (await request.json()) as Record<string, unknown>;
+                // Fail the submission so the form does not navigate away - only the payload matters here.
+                return HttpResponse.json({ err_msg: "captured" }, { status: 400 });
+            }),
+        );
+        useBuildResponse({ license_agreements: [licenseAgreement()] });
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        const button = wrapper.find("[data-description='run tool button']");
+        expect(button.classes()).toContain("g-disabled");
+        expect(button.attributes("data-title")).toBe("Please accept all license agreements before running the tool.");
+        expect(wrapper.text()).toContain("I agree to the test license.");
+        expect(wrapper.find("input[data-test-id='license-remember-test_license-input']").exists()).toBe(false);
+
+        await affirmLicense("test_license");
+        expect(button.classes()).not.toContain("g-disabled");
+        await button.trigger("click");
+        await flushPromises();
+        expect(submitted?.one_time_license_acceptances).toEqual(["a".repeat(64)]);
+    });
+
+    it("does not prompt for license agreements the user already accepts", async () => {
+        useBuildResponse({ license_agreements: [licenseAgreement({ binds: "user", accepted: true })] });
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        expect(wrapper.find("[data-description='license accepted']").exists()).toBe(true);
+        expect(wrapper.find("[data-description='run tool button']").classes()).not.toContain("g-disabled");
+    });
+
+    it("accepts user-bound license agreements persistently when remembered", async () => {
+        let accepted: Record<string, unknown> | undefined;
+        let submitted: Record<string, unknown> | undefined;
+        server.use(
+            http.untyped.post("/api/users/current/license_acceptances", async ({ request }) => {
+                accepted = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({});
+            }),
+            http.untyped.post("/api/tools", async ({ request }) => {
+                submitted = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({ err_msg: "captured" }, { status: 400 });
+            }),
+        );
+        useBuildResponse({ license_agreements: [licenseAgreement({ binds: "user" })] });
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        const remember = wrapper.find("input[data-test-id='license-remember-test_license-input']");
+        expect(remember.attributes("disabled")).toBeDefined();
+        await affirmLicense("test_license");
+        await remember.setChecked(true);
+        await flushPromises();
+        await wrapper.find("[data-description='run tool button']").trigger("click");
+        await flushPromises();
+
+        expect(accepted).toEqual({
+            tool_id: "tool_id",
+            tool_version: "version",
+            license_id: "test_license",
+            agreement_hash: "a".repeat(64),
+        });
+        // The job is authorized by the persistent acceptance, not a one-time one.
+        expect(submitted).toBeDefined();
+        expect(submitted?.one_time_license_acceptances).toBeUndefined();
+    });
+
+    it("does not submit when accepting a remembered license agreement fails", async () => {
+        let submitted = false;
+        server.use(
+            http.untyped.post("/api/users/current/license_acceptances", () =>
+                HttpResponse.json({ err_msg: "License agreement has changed." }, { status: 400 }),
+            ),
+            http.untyped.post("/api/tools", () => {
+                submitted = true;
+                return HttpResponse.json({ err_msg: "captured" }, { status: 400 });
+            }),
+        );
+        useBuildResponse({ license_agreements: [licenseAgreement({ binds: "user" })] });
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+
+        await affirmLicense("test_license");
+        await wrapper.find("input[data-test-id='license-remember-test_license-input']").setChecked(true);
+        await flushPromises();
+        await wrapper.find("[data-description='run tool button']").trigger("click");
+        await flushPromises();
+
+        expect(submitted).toBe(false);
+        expect(wrapper.text()).toContain("License agreement has changed.");
+        expect(wrapper.find("[data-description='run tool button']").classes()).not.toContain("g-disabled");
+    });
+
     it("shows an error alert when tool submission returns an error message", async () => {
         const errorMessage = "New identifier [duplicate] appears twice in resulting collection.";
         server.use(

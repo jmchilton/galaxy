@@ -19,6 +19,7 @@ import ToolHelpForum from "./ToolHelpForum.vue";
 import ToolSelectPreferredObjectStore from "./ToolSelectPreferredObjectStore.vue";
 import ToolTargetPreferredObjectStorePopover from "./ToolTargetPreferredObjectStorePopover.vue";
 import ToolTutorialRecommendations from "./ToolTutorialRecommendations.vue";
+import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GPopover from "@/components/BaseComponents/GPopover.vue";
 import Heading from "@/components/Common/Heading.vue";
 import FormCardSticky from "@/components/Form/FormCardSticky.vue";
@@ -103,6 +104,11 @@ watch(
     () => {
         errorText.value = null;
     },
+);
+
+/** Labels of the license agreements the tool declares, shown where they cannot be accepted. */
+const licenseAgreementLabels = computed(() =>
+    (props.options.license_agreements ?? []).map((agreement) => agreement.label).join(", "),
 );
 
 const credentialToolTip = computed(() => {
@@ -222,6 +228,13 @@ onBeforeMount(() => {
         </template>
 
         <template v-slot>
+            <GAlert
+                v-if="props.allowEditingCredentials && licenseAgreementLabels"
+                variant="info"
+                class="mt-2"
+                data-description="tool license agreements notice">
+                Requires accepting license agreements to run this tool: {{ licenseAgreementLabels }}.
+            </GAlert>
             <template v-if="props.options.credentials?.length">
                 <ToolCredentials
                     v-if="!props.allowEditingCredentials"

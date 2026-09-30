@@ -10,12 +10,10 @@ from galaxy.schema.license_agreements import (
     LicenseAcceptanceEventResponse,
     LicenseAcceptanceResponse,
     LicenseAgreementTermsResponse,
-    ToolLicenseAgreementResponse,
     ToolLicenseAgreementsResponse,
     UserLicenseAcceptancesResponse,
 )
 from galaxy.schema.schema import FlexibleUserIdType
-from galaxy.tool_util.license_agreements import ResolvedLicenseAgreement
 from galaxy.webapps.galaxy.services.base import ensure_user_access
 from galaxy.webapps.galaxy.services.tools import get_accessible_tool
 
@@ -30,15 +28,8 @@ class LicenseAgreementsService:
         self, trans: ProvidesUserContext, tool_id: str, tool_version: str | None
     ) -> ToolLicenseAgreementsResponse:
         tool = get_accessible_tool(trans, tool_id, tool_version, reason="detail")
-        agreements = tool.license_agreements
-        unmet = {
-            agreement.agreement_hash for agreement in self.license_acceptance_manager.unmet(trans.user, agreements)
-        }
         return ToolLicenseAgreementsResponse(
-            root=[
-                _tool_license_agreement_response(agreement, accepted=agreement.agreement_hash not in unmet)
-                for agreement in agreements
-            ]
+            root=self.license_acceptance_manager.describe(trans.user, tool.license_agreements)
         )
 
     def list_acceptances(
@@ -81,23 +72,6 @@ class LicenseAgreementsService:
         user = ensure_user_access(trans, user_id, "license acceptances")
         self.license_acceptance_manager.revoke(user, agreement_hash)
         trans.sa_session.commit()
-
-
-def _tool_license_agreement_response(
-    agreement: ResolvedLicenseAgreement, accepted: bool
-) -> ToolLicenseAgreementResponse:
-    declared = agreement.agreement
-    return ToolLicenseAgreementResponse(
-        agreement_hash=agreement.agreement_hash,
-        affirmation=declared.affirmation,
-        terms=agreement.terms,
-        id=declared.id,
-        version=declared.version,
-        label=declared.label,
-        url=declared.url,
-        binds=declared.binds,
-        accepted=accepted,
-    )
 
 
 def _event_response(event: ToolLicenseAcceptanceEvent) -> LicenseAcceptanceEventResponse:

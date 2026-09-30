@@ -41,6 +41,8 @@ async function waitForToolRequest(toolRequestId: string, { pollInterval = 1000, 
         const error = Object.assign(new Error(stateMessage?.err_msg || "Tool request failed"), {
             err_data: stateMessage?.err_data,
             err_msg: stateMessage?.err_msg,
+            err_code: stateMessage?.err_code,
+            unmet: stateMessage?.unmet,
         });
         throw error;
     }

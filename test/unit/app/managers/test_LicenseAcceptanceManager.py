@@ -70,6 +70,28 @@ class TestLicenseAcceptanceManager(BaseTestCase):
         assert [e.action for e in history] == ["accept", "revoke", "accept"]
         assert self.manager.current_state(user) == {agreement.agreement_hash: reaccept}
 
+    def test_describe_reports_persistent_acceptance(self):
+        user = self._create_test_user()
+        user_bound = resolved()
+        submission_bound = resolved(binds="submission", text="Other terms.")
+        self.manager.accept(user, user_bound)
+        self.manager.accept(user, resolved(text="Other terms."))
+        described = self.manager.describe(user, [user_bound, submission_bound])
+        assert [(d.id, d.binds, d.accepted) for d in described] == [("nc", "user", True), ("nc", "submission", False)]
+        assert described[0].terms == TERMS
+        assert described[0].agreement_hash == user_bound.agreement_hash
+
+    def test_describe_for_anonymous_user(self):
+        (described,) = self.manager.describe(None, [resolved()])
+        assert described.accepted is False
+
+    def test_describe_without_agreements(self):
+        assert self.manager.describe(self._create_test_user(), []) == []
+
+    def test_describe_lists_each_agreement_hash_once(self):
+        described = self.manager.describe(None, [resolved(id="nc"), resolved(id="academic")])
+        assert [d.id for d in described] == ["nc"]
+
     def test_accept_when_already_accepted_records_no_event(self):
         user = self._create_test_user()
         agreement = resolved()

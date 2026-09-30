@@ -96,6 +96,7 @@ preferences:
     preferred_storage: '#g-card-manage-preferred-object-store'
     manage_object_stores: '#g-card-manage-object-stores'
     manage_file_sources: '#g-card-manage-file-sources'
+    manage_license_agreements: '#g-card-edit-preferences-license-agreements'
 
   object_store_selection:
     selectors:
@@ -780,11 +781,28 @@ window_manager:
     focused_title: '.window-manager-window.focused .window-manager-window-title'
     focus_overlay: '.window-manager-window .iframe-focus-overlay'
 
+license_agreements_management:
+  selectors:
+    acceptance: '.license-acceptance[data-license-id="${license_id}"]'
+    acceptances: '.license-acceptance'
+    no_acceptances: '[data-description="no accepted licenses"]'
+    terms_toggle: '[data-test-id="license-terms-toggle-${license_id}"]'
+    terms: '[data-test-id="license-terms-${license_id}"]'
+    revoke: '[data-test-id="license-revoke-${license_id}"]'
+    history_events: '.license-acceptance-event'
+
 tool_form:
   selectors:
     tool_version: '[data-description="galaxy tool version"]'
     options: '.tool-dropdown'
     execute: 'button#execute'
+    execute_disabled: 'button#execute.g-disabled'
+    license_agreement: '.tool-license-agreement[data-license-id="${license_id}"]'
+    license_accepted: '.tool-license-agreement[data-license-id="${license_id}"] [data-description="license accepted"]'
+    license_affirm: 'input[data-test-id="license-affirm-${license_id}-input"]'
+    license_remember: 'input[data-test-id="license-remember-${license_id}-input"]'
+    license_terms_toggle: '[data-test-id="license-terms-toggle-${license_id}"]'
+    license_terms: '[data-test-id="license-terms-${license_id}"]'
     parameter_div: 'div.ui-form-element[id="form-element-${parameter}"]'
     parameter_error: 'div.ui-form-element[id="form-element-${parameter}"] .ui-form-error-text'
     parameter_checkbox: 'div.ui-form-element[id="form-element-${parameter}"] .ui-switch'

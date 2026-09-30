@@ -7,6 +7,7 @@ import {
     faBroadcastTower,
     faCubes,
     faFile,
+    faFileSignature,
     faHdd,
     faIdCard,
     faKey,
@@ -223,6 +224,13 @@ onMounted(async () => {
                     :title="localize('Manage Your Tools Credentials')"
                     :description="localize('Manage your tools credentials groups for accessing external services.')"
                     to="/user/credentials" />
+
+                <UserPreferencesElement
+                    id="edit-preferences-license-agreements"
+                    :icon="faFileSignature"
+                    :title="localize('Manage Your License Agreements')"
+                    :description="localize('Review and revoke the tool license agreements you have accepted.')"
+                    to="/user/license_agreements" />
 
                 <UserPreferencesElement
                     id="edit-preferences-notifications"

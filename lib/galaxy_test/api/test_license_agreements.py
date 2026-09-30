@@ -2,6 +2,7 @@ from contextlib import contextmanager
 
 from galaxy_test.base.api_util import random_name
 from galaxy_test.base.populators import (
+    DatasetPopulator,
     LicenseAgreementsPopulator,
     skip_without_tool,
 )
@@ -17,6 +18,7 @@ class TestLicenseAgreementsApi(ApiTestCase):
     def setUp(self):
         super().setUp()
         self.license_populator = LicenseAgreementsPopulator(self.galaxy_interactor)
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
 
     @skip_without_tool(MULTI_TOOL)
     def test_tool_license_agreements(self):
@@ -77,6 +79,23 @@ class TestLicenseAgreementsApi(ApiTestCase):
         response = self._get(f"tools/{tool_id}/license_agreements")
         self._assert_status_code_is(response, 404)
         assert tool_id in response.json()["err_msg"]
+
+    @skip_without_tool(USER_BOUND_TOOL)
+    def test_tool_form_includes_license_agreements(self):
+        with self._fresh_user():
+            (agreement,) = self._build(USER_BOUND_TOOL)["license_agreements"]
+            assert agreement["id"] == LICENSE_ID
+            assert agreement["terms"]
+            assert agreement["accepted"] is False
+            self.license_populator.accept_license_agreement(USER_BOUND_TOOL, LICENSE_ID)
+            (agreement,) = self._build(USER_BOUND_TOOL)["license_agreements"]
+            assert agreement["accepted"] is True
+
+    def _build(self, tool_id: str) -> dict:
+        history_id = self.dataset_populator.new_history()
+        response = self._get(f"tools/{tool_id}/build", data={"history_id": history_id})
+        self._assert_status_code_is(response, 200)
+        return response.json()
 
     @skip_without_tool(USER_BOUND_TOOL)
     def test_history_ordering(self):

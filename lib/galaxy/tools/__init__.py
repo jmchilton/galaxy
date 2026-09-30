@@ -46,6 +46,7 @@ from galaxy.job_execution.output_collect import (
 )
 from galaxy.job_execution.setup import JobWorkingDirectory
 from galaxy.managers.credentials import build_credentials_context_response
+from galaxy.managers.license_agreements import LicenseAcceptanceManager
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.model import (
     History,
@@ -3008,6 +3009,11 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
 
         state_inputs_json: ToolStateDumpedToJsonT = params_to_json(self.inputs, state_inputs, self.app)
 
+        license_agreements = [
+            agreement.model_dump()
+            for agreement in self.app[LicenseAcceptanceManager].describe(request_context.user, self.license_agreements)
+        ]
+
         job_credentials_context = None
         # if we have a job, we can extract the credentials context used for the job
         if job and job.credentials_context_associations:
@@ -3033,6 +3039,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 "job_id": trans.security.encode_id(job.id) if job else None,
                 "job_remap": job.remappable() if job else None,
                 "job_credentials_context": job_credentials_context.model_dump() if job_credentials_context else None,
+                "license_agreements": license_agreements,
                 "history_id": trans.security.encode_id(history.id) if history else None,
                 "display": self.display_interface,
                 "action": action,

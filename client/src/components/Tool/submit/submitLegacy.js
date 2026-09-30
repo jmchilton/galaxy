@@ -38,5 +38,8 @@ function toLegacyPayload(jobDef, formData) {
     if (jobDef.credentials_context) {
         payload.credentials_context = jobDef.credentials_context;
     }
+    if (jobDef.one_time_license_acceptances) {
+        payload.one_time_license_acceptances = jobDef.one_time_license_acceptances;
+    }
     return payload;
 }

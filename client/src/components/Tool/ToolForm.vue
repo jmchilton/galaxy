@@ -9,6 +9,7 @@ import type { ToolFormConfig } from "@/api/tools";
 import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
 import type { DataOption } from "@/components/Form/Elements/FormData/types";
 import { findInputByDottedName } from "@/components/Form/utilities";
+import { useLicenseAgreementAffirmations } from "@/composables/licenseAgreementAffirmations";
 import { useToast } from "@/composables/toast";
 import { useUserToolCredentials } from "@/composables/userToolCredentials";
 import { useConfigStore } from "@/stores/configurationStore";
@@ -34,6 +35,7 @@ import GModal from "../BaseComponents/GModal.vue";
 import ToolRecommendation from "../ToolRecommendation.vue";
 import ToolCard from "./ToolCard.vue";
 import ToolFormTags from "./ToolFormTags.vue";
+import ToolLicenseAgreements from "./ToolLicenseAgreements.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import ButtonSpinner from "@/components/Common/ButtonSpinner.vue";
 import Heading from "@/components/Common/Heading.vue";
@@ -104,7 +106,28 @@ const { currentHistoryId, currentHistory } = storeToRefs(historyStore);
 const { lastUpdateTime } = storeToRefs(useHistoryItemsStore());
 const { currentTour } = storeToRefs(tourStore);
 
+/** Error code for a submission blocked by unmet tool execution preconditions. */
+const TOOL_EXECUTION_PRECONDITION_UNMET = 403009;
+
 const toolName = computed(() => formConfig.value.name);
+
+const licenseAgreements = computed(() => formConfig.value.license_agreements ?? []);
+const {
+    affirmed: affirmedLicenseAgreements,
+    remembered: rememberedLicenseAgreements,
+    unaffirmed: unaffirmedLicenseAgreements,
+    oneTimeHashes: oneTimeLicenseAcceptances,
+    acceptRemembered: acceptRememberedLicenseAgreements,
+    reset: resetLicenseAgreements,
+} = useLicenseAgreementAffirmations(licenseAgreements);
+
+function onUpdateAffirmedLicenseAgreements(value: string[]) {
+    affirmedLicenseAgreements.value = value;
+}
+
+function onUpdateRememberedLicenseAgreements(value: string[]) {
+    rememberedLicenseAgreements.value = value;
+}
 
 const toolId = computed(() => {
     // ensure version is included in tool id, otherwise form inputs are
@@ -133,6 +156,9 @@ const tooltip = computed(() => {
         if (!hasUserProvidedAllRequiredServiceCredentials.value) {
             return "Please provide all required credentials before running the tool.";
         }
+    }
+    if (unaffirmedLicenseAgreements.value.length) {
+        return "Please accept all license agreements before running the tool.";
     }
     if (showExecuting.value) {
         return "Tool is being executed...";
@@ -184,7 +210,12 @@ const hasConfigOrValErrors = computed(
 );
 
 const runButtonDisabled = computed(
-    () => disabled.value || !canMutateHistory.value || hasConfigOrValErrors.value || hasCredentialsErrors.value,
+    () =>
+        disabled.value ||
+        !canMutateHistory.value ||
+        hasConfigOrValErrors.value ||
+        hasCredentialsErrors.value ||
+        unaffirmedLicenseAgreements.value.length > 0,
 );
 
 watch([() => currentHistoryId.value, () => lastUpdateTime.value], () => {
@@ -363,6 +394,7 @@ async function requestTool(newVersion?: string) {
         });
         currentVersion.value = data.version;
         formConfig.value = data;
+        resetLicenseAgreements();
         remapAllowed.value = (props.jobId && data.job_remap) || false;
         showForm.value = true;
         messageShow.value = false;
@@ -406,6 +438,18 @@ async function onExecute() {
     showExecuting.value = true;
     userStore.addRecentTool(formConfig.value?.id);
 
+    try {
+        await acceptRememberedLicenseAgreements(formConfig.value.id, formConfig.value.version);
+    } catch (e) {
+        showExecuting.value = false;
+        errorMessage.value = errorMessageAsString(e);
+        submissionRequestFailed.value = false;
+        showError.value = true;
+        errorTitle.value = "Accepting the license agreement failed.";
+        errorContent.value = null;
+        return;
+    }
+
     const jobDef: JobRequest = {
         tool_id: formConfig.value.id,
         tool_uuid: toolUuid.value,
@@ -421,6 +465,9 @@ async function onExecute() {
             ? (getCredentialsExecutionContextForTool(formConfig.value.id, formConfig.value.version) as unknown as {
                   [key: string]: unknown;
               }[])
+            : undefined,
+        one_time_license_acceptances: oneTimeLicenseAcceptances.value.length
+            ? oneTimeLicenseAcceptances.value
             : undefined,
         strict: true,
     };
@@ -486,6 +533,11 @@ async function onExecute() {
 
         const message = errorMessageAsString(e);
 
+        // Unmet preconditions (e.g. a license agreement revoked elsewhere) - reload what the form shows.
+        if ((e?.response?.data?.err_code ?? e?.err_code) === TOOL_EXECUTION_PRECONDITION_UNMET) {
+            requestTool();
+        }
+
         // Check for structured error data from both axios responses and tool request failures
         const errorData = e?.response?.data?.err_data || e?.err_data;
         if (errorData) {
@@ -536,7 +588,7 @@ requestTool();
                 The server could not complete this request. Please verify your parameter settings, retry submission and
                 contact the Galaxy Team if this error persists. A transcript of the submitted data is shown below.
             </GAlert>
-            <small class="text-muted">
+            <small v-if="errorContent" class="text-muted">
                 <pre>{{ errorContentPretty }}</pre>
             </small>
         </GModal>
@@ -559,6 +611,13 @@ requestTool();
             itemtype="https://schema.org/CreativeWork"
             @updatePreferredObjectStoreId="onUpdatePreferredObjectStoreId"
             @onChangeVersion="onChangeVersion">
+            <ToolLicenseAgreements
+                v-if="licenseAgreements.length"
+                :agreements="licenseAgreements"
+                :affirmed="affirmedLicenseAgreements"
+                :remembered="rememberedLicenseAgreements"
+                @update:affirmed="onUpdateAffirmedLicenseAgreements"
+                @update:remembered="onUpdateRememberedLicenseAgreements" />
             <div class="mt-2 mb-4">
                 <Heading v-localize h2 separator bold size="sm"> Tool Parameters </Heading>
 

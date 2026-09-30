@@ -395,6 +395,11 @@ class GalaxyTestSeleniumContext(GalaxySeleniumContext):
         """A workflow populator connected to the Galaxy session described by Selenium context."""
         return SeleniumSessionWorkflowPopulator(self)
 
+    @property
+    def license_agreements_populator(self) -> populators.BaseLicenseAgreementsPopulator:
+        """A license agreements populator connected to the Galaxy session described by Selenium context."""
+        return SeleniumSessionLicenseAgreementsPopulator(self)
+
 
 class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin, UsesCeleryTasks):
     # If run one-off via pytest, the next line ensures test
@@ -1551,6 +1556,13 @@ class SeleniumSessionDatasetCollectionPopulator(SeleniumSessionGetPostMixin, pop
     def _create_collection(self, payload: dict) -> Response:
         create_response = self._post("dataset_collections", data=payload, json=True)
         return create_response
+
+
+class SeleniumSessionLicenseAgreementsPopulator(SeleniumSessionGetPostMixin, populators.BaseLicenseAgreementsPopulator):
+    """Implementation of BaseLicenseAgreementsPopulator backed by the Selenium session."""
+
+    def __init__(self, selenium_context: GalaxySeleniumContext):
+        self.selenium_context = selenium_context
 
 
 class SeleniumSessionWorkflowPopulator(SeleniumSessionGetPostMixin, populators.BaseWorkflowPopulator):
