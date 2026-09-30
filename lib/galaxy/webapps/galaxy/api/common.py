@@ -303,3 +303,18 @@ def serve_workbook(content: BytesIO, filename: str | None) -> StreamingResponse:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+ToolIDPathParam: str = Path(
+    ...,
+    title="Tool ID",
+    description="The tool ID for the lineage stored in Galaxy's toolbox.",
+)
+ToolVersionPathParam: str = Path(
+    ...,
+    title="Tool Version",
+    description="The full version string defined on the Galaxy tool wrapper.",
+)
+ToolVersionQueryParam: str | None = Query(
+    default=None, title="Tool Version", description="The tool version; the default version when omitted."
+)
