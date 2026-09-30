@@ -293,6 +293,46 @@ describe("ToolForm", () => {
         expect(wrapper.find("[data-description='run tool button']").classes()).not.toContain("g-disabled");
     });
 
+    it("names unaccepted license agreements and reloads the form when a submission is refused", async () => {
+        let builds = 0;
+        server.use(
+            http.untyped.get("/api/tools/tool_id/build", () => {
+                builds += 1;
+                return HttpResponse.json(buildResponse({ license_agreements: [licenseAgreement({ accepted: true })] }));
+            }),
+            http.untyped.post("/api/tools", () =>
+                HttpResponse.json(
+                    {
+                        err_msg: "Tool 'tool_id' requires accepting license agreements [test_license].",
+                        err_code: 403009,
+                        unmet: [
+                            {
+                                kind: "license_agreement",
+                                message: "Tool 'tool_id' requires accepting license agreements [test_license].",
+                                details: { agreements: [{ id: "test_license", label: "Test License" }] },
+                                remedy_route: null,
+                            },
+                        ],
+                    },
+                    { status: 403 },
+                ),
+            ),
+        );
+        mountToolForm();
+        await flushPromises();
+        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await flushPromises();
+        const buildsBeforeRun = builds;
+
+        await wrapper.find("[data-description='run tool button']").trigger("click");
+        await flushPromises();
+
+        const error = wrapper.find("[data-description='tool submission error']");
+        expect(error.text()).toContain("Test License");
+        expect(error.text()).toContain("Accept the license agreements shown on the tool form");
+        expect(builds).toBeGreaterThan(buildsBeforeRun);
+    });
+
     it("shows an error alert when tool submission returns an error message", async () => {
         const errorMessage = "New identifier [duplicate] appears twice in resulting collection.";
         server.use(

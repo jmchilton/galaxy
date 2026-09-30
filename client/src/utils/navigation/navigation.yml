@@ -797,6 +797,7 @@ tool_form:
     options: '.tool-dropdown'
     execute: 'button#execute'
     execute_disabled: 'button#execute.g-disabled'
+    submission_error: '[data-description="tool submission error"]'
     license_agreement: '.tool-license-agreement[data-license-id="${license_id}"]'
     license_accepted: '.tool-license-agreement[data-license-id="${license_id}"] [data-description="license accepted"]'
     license_affirm: 'input[data-test-id="license-affirm-${license_id}-input"]'

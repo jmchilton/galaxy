@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router/composables";
 
 import { canMutateHistory as canMutateHistoryMethod } from "@/api";
 import type { JobRequest, JobResponse } from "@/api/jobs";
+import { TOOL_EXECUTION_PRECONDITION_UNMET, unmetLicenseAgreementLabels } from "@/api/licenseAgreements";
 import type { ToolFormConfig } from "@/api/tools";
 import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
 import type { DataOption } from "@/components/Form/Elements/FormData/types";
@@ -105,9 +106,6 @@ const { currentUser } = storeToRefs(userStore);
 const { currentHistoryId, currentHistory } = storeToRefs(historyStore);
 const { lastUpdateTime } = storeToRefs(useHistoryItemsStore());
 const { currentTour } = storeToRefs(tourStore);
-
-/** Error code for a submission blocked by unmet tool execution preconditions. */
-const TOOL_EXECUTION_PRECONDITION_UNMET = 403009;
 
 const toolName = computed(() => formConfig.value.name);
 
@@ -539,6 +537,17 @@ async function onExecute() {
         // Unmet preconditions (e.g. a license agreement revoked elsewhere) - reload what the form shows.
         if ((e?.response?.data?.err_code ?? e?.err_code) === TOOL_EXECUTION_PRECONDITION_UNMET) {
             requestTool();
+            const licenseLabels = unmetLicenseAgreementLabels(e?.response?.data?.unmet ?? e?.unmet);
+            if (licenseLabels.length) {
+                errorTitle.value = "License agreement not accepted.";
+                errorMessage.value = `${message} ${localize(
+                    "Accept the license agreements shown on the tool form and run the tool again:",
+                )} ${licenseLabels.join(", ")}.`;
+                submissionRequestFailed.value = false;
+                errorContent.value = null;
+                showError.value = true;
+                return;
+            }
         }
 
         // Check for structured error data from both axios responses and tool request failures
@@ -584,7 +593,7 @@ requestTool();
             <ToolEntryPoints v-for="job in entryPoints" :key="job.id" :job-id="job.id" />
         </div>
         <GModal :show.sync="showError" size="medium" :title="localize(errorTitle)" fixed-height>
-            <GAlert v-if="errorMessage" variant="danger">
+            <GAlert v-if="errorMessage" variant="danger" data-description="tool submission error">
                 {{ errorMessage }}
             </GAlert>
             <GAlert v-if="submissionRequestFailed" variant="warning">
