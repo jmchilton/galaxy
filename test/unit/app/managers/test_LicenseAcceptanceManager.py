@@ -150,8 +150,9 @@ class TestLicenseAcceptanceManager(BaseTestCase):
         invocation = model.WorkflowInvocation()
         invocation.workflow = model.Workflow()
         self.trans.sa_session.add(invocation)
-        self.manager.associate_one_time_with_invocation(invocation, [agreement, agreement])
-        self.manager.associate_one_time_with_invocation(invocation, [agreement])
+        self.manager.ensure_agreement(agreement)
+        self.manager.associate_one_time_with_invocation(invocation, [agreement.agreement_hash] * 2)
+        self.manager.associate_one_time_with_invocation(invocation, [agreement.agreement_hash])
         self.trans.sa_session.commit()
         assert len(invocation.license_acceptance_associations) == 1
 

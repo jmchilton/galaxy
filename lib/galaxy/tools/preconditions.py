@@ -29,6 +29,7 @@ from galaxy.schema.schema import (
     UnmetPrecondition,
     UnmetToolLicenseAgreementDetails,
 )
+from galaxy.tool_util.license_agreements import ResolvedLicenseAgreement
 
 if TYPE_CHECKING:
     from galaxy.managers.context import ProvidesUserContext
@@ -117,21 +118,26 @@ class LicenseAcceptancePrecondition(ToolExecutionPrecondition):
             details=UnmetToolLicenseAgreementDetails(
                 tool_id=tool.id,
                 tool_version=tool.version,
-                agreements=[
-                    UnmetLicenseAgreement(
-                        id=agreement.agreement.id,
-                        version=agreement.agreement.version,
-                        label=agreement.agreement.label,
-                        binds=agreement.agreement.binds,
-                        agreement_hash=agreement.agreement_hash,
-                    )
-                    for agreement in unmet
-                ],
+                agreements=[license_agreement_details(agreement) for agreement in unmet],
             ),
         )
 
 
 LICENSE_ACCEPTANCE_PRECONDITION = LicenseAcceptancePrecondition()
+
+
+def license_agreement_details(agreement: ResolvedLicenseAgreement) -> UnmetLicenseAgreement:
+    """What a client needs to prompt for an unmet agreement."""
+    declared = agreement.agreement
+    return UnmetLicenseAgreement(
+        id=declared.id,
+        version=declared.version,
+        label=declared.label,
+        url=declared.url,
+        affirmation=declared.affirmation,
+        binds=declared.binds,
+        agreement_hash=agreement.agreement_hash,
+    )
 
 
 def check_preconditions(

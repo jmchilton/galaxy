@@ -67,6 +67,7 @@ from galaxy.workflow.extract import (
     ExtractionLabelIndex,
     normalize_output_label_key,
 )
+from galaxy.workflow.license_agreements import check_workflow_license_agreements
 from galaxy.workflow.run import queue_invoke
 from galaxy.workflow.run_request import build_workflow_run_configs
 from galaxy.workflow.scheduling_manager import WorkflowSchedulingManager
@@ -373,11 +374,18 @@ class WorkflowsService(ServiceBase):
             else:
                 missing_tools_message += ", ".join([tool["tool_id"] for tool in missing_tools])
             raise exceptions.MessageException(missing_tools_message)
+        # After the missing tools check - declared agreements are read from the installed tools.
+        license_agreements = check_workflow_license_agreements(
+            trans, workflow, payload.one_time_license_acceptances or []
+        )
 
         run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
         is_batch = payload.batch
         if not is_batch and len(run_configs) != 1:
             raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
+        one_time_license_acceptances_by_step = license_agreements.one_time_by_step()
+        for run_config in run_configs:
+            run_config.one_time_license_acceptances_by_step = one_time_license_acceptances_by_step
 
         invocations = []
         for run_config in run_configs:

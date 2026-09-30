@@ -92,6 +92,7 @@ class FailureReason(str, Enum):
     unexpected_failure = "unexpected_failure"
     workflow_parameter_invalid = "workflow_parameter_invalid"
     step_input_deleted = "step_input_deleted"
+    license_not_accepted = "license_not_accepted"
 
 
 # The reasons below are attached to the invocation and user-actionable.
@@ -107,6 +108,7 @@ FAILURE_REASONS_EXPECTED = (
     FailureReason.output_not_found,
     FailureReason.when_not_boolean,
     FailureReason.step_input_deleted,
+    FailureReason.license_not_accepted,
 )
 
 
@@ -255,6 +257,11 @@ class GenericInvocationFailureStepInputDeleted(InvocationFailureMessageBase[Data
     details: str = Field(..., description="Details about which input referenced a deleted dataset.")
 
 
+class GenericInvocationFailureLicenseNotAccepted(InvocationFailureMessageBase[DatabaseIdT], Generic[DatabaseIdT]):
+    reason: Literal[FailureReason.license_not_accepted]
+    details: str = Field(..., description="Ids of the step tool's license agreements that are not accepted.")
+
+
 InvocationCancellationReviewFailed = GenericInvocationCancellationReviewFailed[int]
 InvocationCancellationHistoryDeleted = GenericInvocationCancellationHistoryDeleted[int]
 InvocationCancellationUserRequest = GenericInvocationCancellationUserRequest[int]
@@ -268,6 +275,7 @@ InvocationUnexpectedFailure = GenericInvocationUnexpectedFailure[int]
 InvocationWarningWorkflowOutputNotFound = GenericInvocationEvaluationWarningWorkflowOutputNotFound[int]
 InvocationFailureWorkflowParameterInvalid = GenericInvocationFailureWorkflowParameterInvalid[int]
 InvocationFailureStepInputDeleted = GenericInvocationFailureStepInputDeleted[int]
+InvocationFailureLicenseNotAccepted = GenericInvocationFailureLicenseNotAccepted[int]
 
 InvocationMessageUnion = (
     InvocationCancellationReviewFailed
@@ -283,6 +291,7 @@ InvocationMessageUnion = (
     | InvocationWarningWorkflowOutputNotFound
     | InvocationFailureWorkflowParameterInvalid
     | InvocationFailureStepInputDeleted
+    | InvocationFailureLicenseNotAccepted
 )
 
 
@@ -305,6 +314,7 @@ InvocationFailureWorkflowParameterInvalidResponseModel = GenericInvocationFailur
     EncodedDatabaseIdField
 ]
 InvocationFailureStepInputDeletedResponseModel = GenericInvocationFailureStepInputDeleted[EncodedDatabaseIdField]
+InvocationFailureLicenseNotAcceptedResponseModel = GenericInvocationFailureLicenseNotAccepted[EncodedDatabaseIdField]
 
 _InvocationMessageResponseUnion = Annotated[
     InvocationCancellationReviewFailedResponseModel
@@ -319,7 +329,8 @@ _InvocationMessageResponseUnion = Annotated[
     | InvocationUnexpectedFailureResponseModel
     | InvocationWarningWorkflowOutputNotFoundResponseModel
     | InvocationFailureWorkflowParameterInvalidResponseModel
-    | InvocationFailureStepInputDeletedResponseModel,
+    | InvocationFailureStepInputDeletedResponseModel
+    | InvocationFailureLicenseNotAcceptedResponseModel,
     Field(discriminator="reason"),
 ]
 
