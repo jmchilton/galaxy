@@ -5,7 +5,10 @@ from sqlalchemy import (
     text,
 )
 
-from galaxy.model import ToolLicenseAcceptanceEvent
+from galaxy.model import (
+    JobLicenseAcceptanceAssociation,
+    ToolLicenseAcceptanceEvent,
+)
 from galaxy_test.base.api_util import random_name
 from galaxy_test.base.populators import (
     LicenseAgreementsPopulator,
@@ -266,6 +269,42 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         session.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         session.commit()
         self._assert_purge_removes_license_acceptance_events("purge_deleted_users_gdpr")
+
+    @skip_without_tool(USER_BOUND_LICENSE_TOOL)
+    def test_purge_deleted_users_keeps_job_license_records(self):
+        self._skip_unless_postgres()
+        email = f"{random_name()}@galaxy.org"
+        user_id = self._setup_user(email)["id"]
+        with self._different_user(email):
+            LicenseAgreementsPopulator(self.galaxy_interactor).accept_license_agreement(
+                USER_BOUND_LICENSE_TOOL, USER_BOUND_LICENSE_ID
+            )
+            history_id = self.dataset_populator.new_history()
+            run = self.dataset_populator.run_tool(USER_BOUND_LICENSE_TOOL, {"input": "x"}, history_id)
+            job_id = run["jobs"][0]["id"]
+            self.dataset_populator.wait_for_job(job_id, assert_ok=True)
+        (before,) = self._job_license_records(job_id)
+        assert before.acceptance_event_id is not None
+        agreement_hash = before.agreement_hash
+
+        delete_response = self._delete(f"users/{user_id}", admin=True)
+        assert delete_response.status_code == 200
+        self._pgcleanup_check_output(["--older-than", "0", "--sequence", "purge_deleted_users"])
+
+        assert self._license_acceptance_events(self._app.security.decode_id(user_id)) == []
+        (after,) = self._job_license_records(job_id)
+        assert after.acceptance_event_id is None
+        assert after.agreement_hash == agreement_hash
+        assert after.agreement.terms
+        assert after.authorization_kind == JobLicenseAcceptanceAssociation.authorization_kinds.PERSISTENT
+
+    def _job_license_records(self, job_id: str) -> list[JobLicenseAcceptanceAssociation]:
+        session = self._app.model.session
+        session.expire_all()
+        stmt = select(JobLicenseAcceptanceAssociation).where(
+            JobLicenseAcceptanceAssociation.job_id == self._app.security.decode_id(job_id)
+        )
+        return list(session.scalars(stmt))
 
     def _assert_purge_removes_license_acceptance_events(self, action: str) -> None:
         purged_email = f"{random_name()}@galaxy.org"

@@ -34,6 +34,7 @@ from pydantic import (
 from pydantic_core import core_schema
 from typing_extensions import (
     NotRequired,
+    TypeAliasType,
     TypedDict,
 )
 
@@ -68,7 +69,10 @@ from galaxy.tool_util_models.sample_sheet import (
     SampleSheetRow,
     SampleSheetRows,
 )
-from galaxy.tool_util_models.tool_source import FieldDict
+from galaxy.tool_util_models.tool_source import (
+    FieldDict,
+    LicenseAgreementBinds,
+)
 from galaxy.util import string_as_bool
 from galaxy.util.config_templates import partial_model
 from galaxy.util.hash_util import HashFunctionNameEnum
@@ -4545,12 +4549,40 @@ class UnmetAccessPrecondition(UnmetPreconditionBase):
     details: UnmetAccessPreconditionDetails
 
 
-UnmetPrecondition: TypeAlias = UnmetAccessPrecondition
+class UnmetLicenseAgreement(Model):
+    id: str
+    version: str
+    label: str
+    binds: LicenseAgreementBinds
+    agreement_hash: str
+
+
+class UnmetToolLicenseAgreementDetails(Model):
+    tool_id: str
+    tool_version: str
+    agreements: list[UnmetLicenseAgreement]
+
+
+class UnmetLicenseAgreementPrecondition(UnmetPreconditionBase):
+    """License agreements the tool declares are not accepted."""
+
+    kind: Literal["license_agreement"]
+    details: UnmetToolLicenseAgreementDetails
+
+
+UnmetPrecondition = TypeAliasType(
+    "UnmetPrecondition",
+    Annotated[UnmetAccessPrecondition | UnmetLicenseAgreementPrecondition, Field(discriminator="kind")],
+)
 
 
 class ToolRequestStateMessage(Model):
     err_msg: str
+    err_code: int | None = None
     err_data: dict[str, Any] | None = None
+    unmet: list[UnmetPrecondition] | None = Field(
+        default=None, description="Unmet tool execution preconditions, when those prevented the jobs."
+    )
 
 
 class ToolRequestModel(Model):

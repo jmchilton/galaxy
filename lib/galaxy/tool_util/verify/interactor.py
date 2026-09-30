@@ -175,6 +175,7 @@ class ValidToolTestDict(TypedDict):
     required_data_tables: NotRequired[RequiredDataTablesT]
     required_loc_files: NotRequired[RequiredLocFileT]
     credentials: NotRequired[list[DirectCredential] | None]
+    license_agreement_hashes: NotRequired[list[str] | None]
     error: Literal[False]
     tool_id: str
     tool_version: str
@@ -971,6 +972,10 @@ class GalaxyInteractorApi:
         created_credentials, credentials_context = self._create_test_credentials(testdef)
         if credentials_context is not None:
             extra_data["credentials_context"] = dumps(credentials_context)
+        if license_agreement_hashes := testdef.license_agreement_hashes:
+            extra_data["one_time_license_acceptances"] = (
+                dumps(license_agreement_hashes) if submit_with_legacy_api else license_agreement_hashes
+            )
 
         for _ in range(DEFAULT_TOOL_TEST_WAIT):
             submit_response = self.__submit_tool(
@@ -2366,6 +2371,8 @@ class ToolTestDescription:
         self.maxseconds = json_dict.get("maxseconds")
         self.value_state_representation = json_dict.get("value_state_representation", "test_case_xml")
         self.credentials = json_dict.get("credentials")
+        # Agreements the tool declares - tool tests affirm them for each submission only.
+        self.license_agreement_hashes: list[str] | None = json_dict.get("license_agreement_hashes")
 
     def test_data(self):
         """
@@ -2406,6 +2413,8 @@ class ToolTestDescription:
             test_description_def["maxseconds"] = self.maxseconds
         if self.credentials is not None:
             test_description_def["credentials"] = self.credentials
+        if self.license_agreement_hashes is not None:
+            test_description_def["license_agreement_hashes"] = self.license_agreement_hashes
         return ToolTestDescriptionDict(**test_description_def)
 
 

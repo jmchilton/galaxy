@@ -28,6 +28,7 @@ from galaxy.managers.context import (
     ProvidesUserContext,
 )
 from galaxy.managers.histories import HistoryManager
+from galaxy.managers.license_agreements import validate_one_time_hashes
 from galaxy.managers.tools import (
     get_tool_from_trans,
     ToolRunReference,
@@ -71,6 +72,7 @@ from galaxy.tools.cached_toolbox import CachedToolBox
 from galaxy.tools.preconditions import (
     check_preconditions,
     TOOL_ACCESS_PRECONDITION,
+    ToolExecutionContext,
 )
 from galaxy.tools.search import ToolBoxSearch
 from galaxy.util.path import safe_contains
@@ -106,6 +108,14 @@ def get_tool(trans: ProvidesHistoryContext, tool_ref: ToolRunReference) -> Tool:
         log.debug(f"Not found tool with kwds [{tool_ref}]")
         raise exceptions.ToolMissingException("Tool not found.")
     return trans.app.toolbox.materialize_tool(tool, reason="execution")
+
+
+def one_time_license_acceptances_from_payload(payload: dict[str, Any]) -> list[str]:
+    """The ``one_time_license_acceptances`` of a tool submission - agreement hashes accepted for it only."""
+    hashes = payload.get("one_time_license_acceptances") or []
+    if not isinstance(hashes, list) or not all(isinstance(h, str) for h in hashes):
+        raise RequestParameterInvalidException("one_time_license_acceptances must be a list of agreement hashes.")
+    return hashes
 
 
 def get_accessible_tool(
@@ -421,6 +431,11 @@ class ToolsService(ServiceBase):
             inputs.get("use_cached_job", "false")
         )
         credentials_context = payload.get("credentials_context")
+        execution_context = ToolExecutionContext(
+            one_time_license_acceptances=validate_one_time_hashes(
+                tool.license_agreements, one_time_license_acceptances_from_payload(payload)
+            )
+        )
         input_format = str(payload.get("input_format", "legacy"))
         if input_format not in get_args(InputFormatT):
             raise exceptions.RequestParameterInvalidException(f"input_format invalid {input_format}")
@@ -438,6 +453,7 @@ class ToolsService(ServiceBase):
             credentials_context=CredentialsContext(root=credentials_context) if credentials_context else None,
             tags=tags,
             send_email_notification=inputs.get("send_email_notification", False),
+            execution_context=execution_context,
         )
         return self._handle_inputs_output_to_api_response(trans, tool, target_history, vars)
 
