@@ -350,11 +350,7 @@ class WorkflowsService(ServiceBase):
             raise exceptions.RequestParameterInvalidException(
                 f"Unknown workflow scheduler '{workflow_scheduler_id}' specified."
             )
-        run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
-        is_batch = payload.batch
-        if not is_batch and len(run_configs) != 1:
-            raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
-
+        # Refuse before build_workflow_run_configs, which commits any requested new histories.
         require_exact_tool_versions = payload.require_exact_tool_versions
         tools = self._workflow_contents_manager.get_all_tools(workflow)
         missing_tools = [
@@ -377,6 +373,11 @@ class WorkflowsService(ServiceBase):
             else:
                 missing_tools_message += ", ".join([tool["tool_id"] for tool in missing_tools])
             raise exceptions.MessageException(missing_tools_message)
+
+        run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
+        is_batch = payload.batch
+        if not is_batch and len(run_configs) != 1:
+            raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
 
         invocations = []
         for run_config in run_configs:
