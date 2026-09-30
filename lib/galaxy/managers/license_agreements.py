@@ -169,8 +169,9 @@ class LicenseAcceptanceManager:
         between checking and job creation cannot leave a job without its authorization.
         """
         authorization = self._resolve(user, agreements, one_time_hashes)
-        for agreement in authorization.one_time:
-            self.ensure_agreement(agreement)
+        if not authorization.unmet:
+            for agreement in authorization.one_time:
+                self.ensure_agreement(agreement)
         return authorization
 
     def associate_with_job(self, job: Job, authorization: LicenseAgreementAuthorization) -> None:

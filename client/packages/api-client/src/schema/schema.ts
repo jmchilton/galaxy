@@ -19151,6 +19151,11 @@ export interface components {
             inputs?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * One-time License Acceptances
+             * @description Hashes of license agreements the user accepts for this submission only.
+             */
+            one_time_license_acceptances?: string[] | null;
             /** Preferred Object Store ID */
             preferred_object_store_id?: string | null;
             /**
@@ -26577,12 +26582,19 @@ export interface components {
         ToolRequestState: "new" | "submitted" | "failed";
         /** ToolRequestStateMessage */
         ToolRequestStateMessage: {
+            /** Err Code */
+            err_code?: number | null;
             /** Err Data */
             err_data?: {
                 [key: string]: unknown;
             } | null;
             /** Err Msg */
             err_msg: string;
+            /**
+             * Unmet
+             * @description Unmet tool execution preconditions, when those prevented the jobs.
+             */
+            unmet?: components["schemas"]["UnmetPrecondition"][] | null;
         };
         /** ToolStep */
         ToolStep: {
@@ -26779,6 +26791,71 @@ export interface components {
              * @constant
              */
             type: "unknown_datatype";
+        };
+        /**
+         * UnmetAccessPrecondition
+         * @description The user may not access the tool, e.g. it requires login.
+         */
+        UnmetAccessPrecondition: {
+            details: components["schemas"]["UnmetAccessPreconditionDetails"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "access";
+            /** Message */
+            message: string;
+            /** Remedy Route */
+            remedy_route?: string | null;
+        };
+        /** UnmetAccessPreconditionDetails */
+        UnmetAccessPreconditionDetails: {
+            /** Tool Id */
+            tool_id: string;
+        };
+        /** UnmetLicenseAgreement */
+        UnmetLicenseAgreement: {
+            /** Agreement Hash */
+            agreement_hash: string;
+            /**
+             * Binds
+             * @enum {string}
+             */
+            binds: "submission" | "user";
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * UnmetLicenseAgreementPrecondition
+         * @description License agreements the tool declares are not accepted.
+         */
+        UnmetLicenseAgreementPrecondition: {
+            details: components["schemas"]["UnmetToolLicenseAgreementDetails"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "license_agreement";
+            /** Message */
+            message: string;
+            /** Remedy Route */
+            remedy_route?: string | null;
+        };
+        UnmetPrecondition:
+            | components["schemas"]["UnmetAccessPrecondition"]
+            | components["schemas"]["UnmetLicenseAgreementPrecondition"];
+        /** UnmetToolLicenseAgreementDetails */
+        UnmetToolLicenseAgreementDetails: {
+            /** Agreements */
+            agreements: components["schemas"]["UnmetLicenseAgreement"][];
+            /** Tool Id */
+            tool_id: string;
+            /** Tool Version */
+            tool_version: string;
         };
         /** UnprivilegedToolResponse */
         UnprivilegedToolResponse: {

@@ -45,6 +45,14 @@ class TestLicenseAgreementLoading(TestCase, tools_support.UsesTools):
         tool = self._init_tool(tools_support.SIMPLE_TOOL_CONTENTS)
         assert tool.license_agreements == []
 
+    def test_license_agreement_on_action_skipping_preconditions_fails_tool_load(self):
+        contents = LICENSE_TOOL.replace(
+            "<inputs />",
+            '<action module="galaxy.tools.actions.model_operations" class="ModelOperationToolAction" />\n    <inputs />',
+        )
+        with pytest.raises(Exception, match="does not check execution preconditions"):
+            self._init_tool(contents, profile="27.0", extra_file_contents=TERMS, extra_file_path="license.txt")
+
     def test_remote_tool_evaluation_does_not_read_license_path(self):
         # The tool directory - and so the license file - is not shipped to remote tool evaluation.
         self.app.name = "tool_app"

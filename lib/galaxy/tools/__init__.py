@@ -232,7 +232,9 @@ from galaxy.tools.parameters.populate_model import populate_model
 from galaxy.tools.parameters.workflow_utils import workflow_building_modes
 from galaxy.tools.parameters.wrapped_json import json_wrap
 from galaxy.tools.preconditions import (
+    LICENSE_ACCEPTANCE_PRECONDITION,
     TOOL_ACCESS_PRECONDITION,
+    ToolExecutionContext,
     ToolExecutionPrecondition,
 )
 from galaxy.util import (
@@ -1459,6 +1461,8 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
 
     @property
     def execution_preconditions(self) -> list[ToolExecutionPrecondition]:
+        if self.license_agreements:
+            return [TOOL_ACCESS_PRECONDITION, LICENSE_ACCEPTANCE_PRECONDITION]
         return [TOOL_ACCESS_PRECONDITION]
 
     def allow_user_access(self, user, attempting_access: bool = True) -> bool:
@@ -1735,7 +1739,11 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
             with loading_untrusted_tools() if self._loaded_untrusted else nullcontext():
                 self.parse_tests()
         if self._tests:
-            return [ToolTestDescription(d) for d in json.loads(self._tests)]
+            tests = [ToolTestDescription(d) for d in json.loads(self._tests)]
+            if self.license_agreements:
+                for test in tests:
+                    test.license_agreement_hashes = [a.agreement_hash for a in self.license_agreements]
+            return tests
         return None
 
     def test_data_path(self, filename):
@@ -1786,6 +1794,11 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         license_agreements = tool_source.parse_license_agreements()
         check_license_agreement_profile(tool_source.parse_profile(), license_agreements)
         if license_agreements:
+            if not self.tool_action.checks_preconditions:
+                raise ValueError(
+                    f"Tool [{self.id}] declares license agreements but its tool action "
+                    f"[{type(self.tool_action).__name__}] does not check execution preconditions"
+                )
             # An affirmation binds a person, not an anonymous session.
             self.require_login = True
         # Remote tool evaluation rebuilds the tool where its directory (and so a license
@@ -2371,6 +2384,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         rerun_remap_job_id: int | None = None,
         credentials_context: CredentialsContext | None = None,
         input_format: str = "legacy",
+        execution_context: ToolExecutionContext | None = None,
     ):
         """The tool request API+tasks version of handle_input."""
         all_params, all_errors, collection_info, job_tool_states = self.expand_incoming_async(
@@ -2391,6 +2405,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
             preferred_object_store_id=preferred_object_store_id,
             credentials_context=credentials_context,
             collection_info=collection_info,
+            execution_context=execution_context,
         )
 
     def handle_input(
@@ -2404,6 +2419,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         input_format: InputFormatT = "legacy",
         tags: list[str] | None = None,
         send_email_notification: bool = False,
+        execution_context: ToolExecutionContext | None = None,
     ):
         """
         Process incoming parameters for this tool from the dict `incoming`,
@@ -2433,6 +2449,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
             credentials_context=credentials_context,
             collection_info=collection_info,
             completed_jobs=completed_jobs,
+            execution_context=execution_context,
         )
 
         if tags:
