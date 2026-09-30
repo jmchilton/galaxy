@@ -4553,8 +4553,20 @@ class UnmetLicenseAgreement(Model):
     id: str
     version: str
     label: str
+    url: str | None = None
+    affirmation: str
     binds: LicenseAgreementBinds
     agreement_hash: str
+
+
+class UnmetLicenseAgreementStep(Model):
+    path: list[int]
+    tool_id: str
+    tool_version: str
+
+
+class UnmetWorkflowLicenseAgreement(UnmetLicenseAgreement):
+    steps: list[UnmetLicenseAgreementStep]
 
 
 class UnmetToolLicenseAgreementDetails(Model):
@@ -4563,11 +4575,15 @@ class UnmetToolLicenseAgreementDetails(Model):
     agreements: list[UnmetLicenseAgreement]
 
 
+class UnmetWorkflowLicenseAgreementDetails(Model):
+    agreements: list[UnmetWorkflowLicenseAgreement]
+
+
 class UnmetLicenseAgreementPrecondition(UnmetPreconditionBase):
-    """License agreements the tool declares are not accepted."""
+    """License agreements the tool, or the workflow's tools, declare are not accepted."""
 
     kind: Literal["license_agreement"]
-    details: UnmetToolLicenseAgreementDetails
+    details: UnmetToolLicenseAgreementDetails | UnmetWorkflowLicenseAgreementDetails
 
 
 UnmetPrecondition = TypeAliasType(

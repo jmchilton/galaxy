@@ -1,0 +1,115 @@
+"""License agreements declared by the tools of a workflow, checked when it is invoked."""
+
+from collections.abc import Collection
+from dataclasses import (
+    dataclass,
+    field,
+)
+from typing import TYPE_CHECKING
+
+from galaxy.managers.license_agreements import (
+    LicenseAcceptanceManager,
+    stricter_declaration,
+    validate_one_time_hashes,
+)
+from galaxy.schema.schema import (
+    UnmetLicenseAgreementPrecondition,
+    UnmetLicenseAgreementStep,
+    UnmetWorkflowLicenseAgreement,
+    UnmetWorkflowLicenseAgreementDetails,
+)
+from galaxy.tool_util.license_agreements import ResolvedLicenseAgreement
+from galaxy.tools.preconditions import (
+    license_agreement_details,
+    ToolExecutionPreconditionUnmet,
+)
+
+if TYPE_CHECKING:
+    from galaxy.managers.context import ProvidesUserContext
+    from galaxy.model import (
+        Workflow,
+        WorkflowStep,
+    )
+    from galaxy.tools import Tool
+
+
+@dataclass
+class DeclaringStep:
+    # Order indices from the outermost workflow down to the step, through subworkflows.
+    path: tuple[int, ...]
+    step: "WorkflowStep"
+    tool: "Tool"
+
+
+@dataclass
+class DeclaredLicenseAgreement:
+    agreement: ResolvedLicenseAgreement
+    steps: list[DeclaringStep] = field(default_factory=list)
+
+
+def workflow_license_agreements(
+    trans: "ProvidesUserContext", workflow: "Workflow"
+) -> dict[str, DeclaredLicenseAgreement]:
+    """Agreements declared by the workflow's tool steps, including those of subworkflows, by agreement hash."""
+    toolbox = trans.app.toolbox
+    declared: dict[str, DeclaredLicenseAgreement] = {}
+    tools: dict[int, Tool] = {}
+    for path, step in workflow.walk_tool_steps():
+        tool_like = toolbox.get_tool(
+            step.effective_tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid, user=trans.user
+        )
+        if tool_like is None:
+            # Missing tools are reported before invocation by the caller.
+            continue
+        if (tool := tools.get(id(tool_like))) is None:
+            tool = tools[id(tool_like)] = toolbox.materialize_tool(tool_like, reason="execution")
+        for agreement in tool.license_agreements:
+            entry = declared.setdefault(agreement.agreement_hash, DeclaredLicenseAgreement(agreement))
+            entry.agreement = stricter_declaration(entry.agreement, agreement)
+            entry.steps.append(DeclaringStep(path, step, tool))
+    return declared
+
+
+def check_workflow_license_agreements(
+    trans: "ProvidesUserContext", workflow: "Workflow", one_time_license_acceptances: Collection[str]
+) -> dict[int, list[str]]:
+    """Validate an invocation request's one-time acceptances and require every declared agreement be accepted.
+
+    Returns the validated one-time acceptances by the id of each step declaring them. Their terms
+    are stored, so invocations can be pinned to them.
+    """
+    declared = workflow_license_agreements(trans, workflow)
+    agreements = [entry.agreement for entry in declared.values()]
+    one_time = validate_one_time_hashes(agreements, one_time_license_acceptances)
+    authorization = trans.app[LicenseAcceptanceManager].authorize(trans.user, agreements, one_time)
+    if authorization.unmet:
+        raise ToolExecutionPreconditionUnmet(
+            [
+                UnmetLicenseAgreementPrecondition(
+                    kind="license_agreement",
+                    message="Workflow requires accepting license agreements "
+                    f"[{', '.join(agreement.agreement.id for agreement in authorization.unmet)}].",
+                    details=UnmetWorkflowLicenseAgreementDetails(
+                        agreements=[
+                            UnmetWorkflowLicenseAgreement(
+                                **license_agreement_details(agreement).model_dump(),
+                                steps=[
+                                    UnmetLicenseAgreementStep(
+                                        path=list(declaring.path),
+                                        tool_id=declaring.tool.id,
+                                        tool_version=declaring.tool.version,
+                                    )
+                                    for declaring in declared[agreement.agreement_hash].steps
+                                ],
+                            )
+                            for agreement in authorization.unmet
+                        ]
+                    ),
+                )
+            ]
+        )
+    by_step: dict[int, list[str]] = {}
+    for agreement_hash in one_time:
+        for declaring in declared[agreement_hash].steps:
+            by_step.setdefault(declaring.step.id, []).append(agreement_hash)
+    return by_step

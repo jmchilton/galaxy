@@ -23,6 +23,7 @@ USER_BOUND_TOOL = "license_agreement_variant_tool"
 SUBMISSION_BOUND_TOOL = "license_agreement_path_tool"
 MULTI_TOOL = "license_agreement_multi_tool"
 DATA_TOOL = "license_agreement_data_tool"
+USER_BOUND_DATA_TOOL = "license_agreement_user_data_tool"
 UNLICENSED_TOOL = "cat1"
 LICENSE_ID = "license_agreement_path"
 
@@ -153,6 +154,34 @@ class TestLicenseAcceptanceEnforcement(BaseLicenseAcceptanceIntegrationTestCase)
             assert self.dataset_populator.get_job_details(job_id).json()["state"] == "ok"
             (association,) = self._job_associations(job_id)
             assert association.acceptance_event_id is not None
+
+    @skip_without_tool(USER_BOUND_DATA_TOOL)
+    @skip_without_tool("job_properties")
+    def test_revoke_does_not_affect_resuming_paused_job(self):
+        with self._different_new_user():
+            accepted = self.license_populator.accept_license_agreement(USER_BOUND_DATA_TOOL, LICENSE_ID)
+            history_id = self.dataset_populator.new_history()
+            failing = self.dataset_populator.run_tool(
+                "job_properties", {"thebool": "true", "failbool": "true"}, history_id
+            )
+            failing_output = next(o for o in failing["outputs"] if o["output_name"] == "out_file1")
+            licensed = self.dataset_populator.run_tool(
+                USER_BOUND_DATA_TOOL, {"input1": {"src": "hda", "id": failing_output["id"]}}, history_id
+            )
+            licensed_job_id = licensed["jobs"][0]["id"]
+            self._wait_for_job_state(licensed_job_id, "paused")
+            self.license_populator.revoke_license_acceptance(accepted["agreement"]["agreement_hash"])
+
+            # Remapping the failed upstream job resumes the paused licensed job, which isn't checked again.
+            self.dataset_populator.run_tool(
+                "job_properties",
+                {"thebool": "true", "failbool": "false", "rerun_remap_job_id": failing["jobs"][0]["id"]},
+                history_id,
+            )
+            self.dataset_populator.wait_for_job(licensed_job_id, assert_ok=True)
+            (association,) = self._job_associations(licensed_job_id)
+            assert association.authorization_kind == "persistent"
+            assert association.acceptance_event_id == self._app.security.decode_id(accepted["event"]["id"])
 
     @skip_without_tool(USER_BOUND_TOOL)
     def test_rerun_and_remap_need_new_authorization(self):

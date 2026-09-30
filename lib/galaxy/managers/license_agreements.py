@@ -196,17 +196,21 @@ class LicenseAcceptanceManager:
             )
 
     def associate_one_time_with_invocation(
-        self, invocation: WorkflowInvocation, agreements: Iterable[ResolvedLicenseAgreement]
+        self, invocation: WorkflowInvocation, agreement_hashes: Iterable[str]
     ) -> None:
-        """Pin one-time acceptances to ``invocation`` so they authorize its jobs for its whole lifetime."""
+        """Pin one-time acceptances to ``invocation`` so they authorize its jobs for its whole lifetime.
+
+        The agreements' terms must already be stored (``authorize`` stores them), so this never flushes -
+        invocations are pinned while they are still being built.
+        """
         pinned = one_time_hashes_for_invocation(invocation)
-        for agreement in _unique(agreements):
-            if agreement.agreement_hash in pinned:
+        for agreement_hash in agreement_hashes:
+            if agreement_hash in pinned:
                 continue
-            self.ensure_agreement(agreement)
             invocation.license_acceptance_associations.append(
-                WorkflowInvocationLicenseAcceptanceAssociation(agreement_hash=agreement.agreement_hash)
+                WorkflowInvocationLicenseAcceptanceAssociation(agreement_hash=agreement_hash)
             )
+            pinned.add(agreement_hash)
 
     def purge_user(self, user: User) -> None:
         """Remove a purged user's personal acceptance events.
