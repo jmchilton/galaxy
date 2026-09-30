@@ -5807,6 +5807,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tools/{tool_id}/license_agreements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the license agreements a tool declares and whether the current user accepts them. */
+        get: operations["tool_license_agreements_api_tools__tool_id__license_agreements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tools/{tool_id}/parameter_landing_request_schema": {
         parameters: {
             query?: never;
@@ -6457,6 +6474,41 @@ export interface paths {
         put: operations["set_user_groups_api_users__user_id__groups_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/license_acceptances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the license agreements the user currently accepts. */
+        get: operations["list_license_acceptances_api_users__user_id__license_acceptances_get"];
+        put?: never;
+        /** Persistently accept a license agreement declared by a tool. */
+        post: operations["accept_license_agreement_api_users__user_id__license_acceptances_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/license_acceptances/{agreement_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke the user's persistent acceptance of a license agreement. */
+        delete: operations["revoke_license_acceptance_api_users__user_id__license_acceptances__agreement_hash__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10202,6 +10254,29 @@ export interface components {
              * @default
              */
             synopsis: string | null;
+        };
+        /** CreateLicenseAcceptancePayload */
+        CreateLicenseAcceptancePayload: {
+            /**
+             * Agreement Hash
+             * @description The agreement hash shown to the user, confirming which terms they accepted.
+             */
+            agreement_hash: string;
+            /**
+             * License Id
+             * @description The agreement id declared by the tool.
+             */
+            license_id: string;
+            /**
+             * Tool Id
+             * @description The tool declaring the agreement.
+             */
+            tool_id: string;
+            /**
+             * Tool Version
+             * @description The tool version; the default version when omitted.
+             */
+            tool_version?: string | null;
         };
         /** CreateLinkFeedback */
         CreateLinkFeedback: {
@@ -20202,6 +20277,72 @@ export interface components {
          * @default []
          */
         LibrarySummaryList: components["schemas"]["LibrarySummary"][];
+        /** LicenseAcceptanceEventResponse */
+        LicenseAcceptanceEventResponse: {
+            /**
+             * Action
+             * @description Whether the agreement was accepted or revoked.
+             * @enum {string}
+             */
+            action: "accept" | "revoke";
+            /**
+             * Agreement Hash
+             * @description Content address of the displayed affirmation and terms; identifies the agreement being accepted.
+             */
+            agreement_hash: string;
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            /**
+             * Granted By
+             * @description Whether the user or an administrator recorded the event.
+             * @enum {string}
+             */
+            granted_by: "user" | "admin";
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * License Id
+             * @description The agreement id displayed when the event was recorded.
+             */
+            license_id: string | null;
+            /**
+             * License Label
+             * @description The agreement label displayed.
+             */
+            license_label: string | null;
+            /**
+             * License Url
+             * @description The agreement URL displayed.
+             */
+            license_url: string | null;
+            /**
+             * License Version
+             * @description The agreement version displayed.
+             */
+            license_version: string | null;
+            /**
+             * Prompting Tool Id
+             * @description The tool the agreement was accepted from.
+             */
+            prompting_tool_id: string | null;
+            /**
+             * Prompting Tool Version
+             * @description The version of the prompting tool.
+             */
+            prompting_tool_version: string | null;
+        };
+        /** LicenseAcceptanceResponse */
+        LicenseAcceptanceResponse: {
+            agreement: components["schemas"]["LicenseAgreementTermsResponse"];
+            /** @description The event that accepted the agreement. */
+            event: components["schemas"]["LicenseAcceptanceEventResponse"];
+        };
         /**
          * LicenseAgreement
          * @description License terms a user must affirm before running the tool, as declared by the tool.
@@ -20230,6 +20371,24 @@ export interface components {
             url?: string | null;
             /** Version */
             version: string;
+        };
+        /** LicenseAgreementTermsResponse */
+        LicenseAgreementTermsResponse: {
+            /**
+             * Affirmation
+             * @description The statement the user affirms.
+             */
+            affirmation: string;
+            /**
+             * Agreement Hash
+             * @description Content address of the displayed affirmation and terms; identifies the agreement being accepted.
+             */
+            agreement_hash: string;
+            /**
+             * Terms
+             * @description The license terms exactly as displayed to the user.
+             */
+            terms: string;
         };
         /** LicenseMetadataModel */
         LicenseMetadataModel: {
@@ -26005,6 +26164,57 @@ export interface components {
              */
             uuid: string;
         };
+        /** ToolLicenseAgreementResponse */
+        ToolLicenseAgreementResponse: {
+            /**
+             * Accepted
+             * @description Whether the current user's persistent acceptance satisfies this agreement.
+             */
+            accepted: boolean;
+            /**
+             * Affirmation
+             * @description The statement the user affirms.
+             */
+            affirmation: string;
+            /**
+             * Agreement Hash
+             * @description Content address of the displayed affirmation and terms; identifies the agreement being accepted.
+             */
+            agreement_hash: string;
+            /**
+             * Binds
+             * @description Whether the affirmation is about each submission ('submission') or about the user ('user'). Only 'user' agreements can be accepted persistently.
+             * @enum {string}
+             */
+            binds: "submission" | "user";
+            /**
+             * Id
+             * @description The agreement id declared by the tool.
+             */
+            id: string;
+            /**
+             * Label
+             * @description Short human-readable name of the agreement.
+             */
+            label: string;
+            /**
+             * Terms
+             * @description The license terms exactly as displayed to the user.
+             */
+            terms: string;
+            /**
+             * Url
+             * @description Link to the license for reference; never fetched by Galaxy.
+             */
+            url?: string | null;
+            /**
+             * Version
+             * @description The agreement version declared by the tool.
+             */
+            version: string;
+        };
+        /** ToolLicenseAgreementsResponse */
+        ToolLicenseAgreementsResponse: components["schemas"]["ToolLicenseAgreementResponse"][];
         /** ToolOutputBoolean */
         ToolOutputBoolean: {
             /**
@@ -27429,6 +27639,19 @@ export interface components {
              * @description Groups the user is a member of, replacing the current ones.
              */
             group_ids: string[];
+        };
+        /** UserLicenseAcceptancesResponse */
+        UserLicenseAcceptancesResponse: {
+            /**
+             * Accepted
+             * @description Agreements the user currently accepts.
+             */
+            accepted: components["schemas"]["LicenseAcceptanceResponse"][];
+            /**
+             * History
+             * @description Every acceptance and revocation by the user, oldest first, when requested.
+             */
+            history?: components["schemas"]["LicenseAcceptanceEventResponse"][] | null;
         };
         /**
          * UserModel
@@ -51774,6 +51997,7 @@ export interface operations {
     tool_inputs_api_tools__tool_id__inputs_get: {
         parameters: {
             query?: {
+                /** @description The tool version; the default version when omitted. */
                 tool_version?: string | null;
             };
             header?: {
@@ -51848,6 +52072,7 @@ export interface operations {
     tools__interop: {
         parameters: {
             query?: {
+                /** @description The tool version; the default version when omitted. */
                 tool_version?: string | null;
             };
             header?: {
@@ -51891,9 +52116,57 @@ export interface operations {
             };
         };
     };
+    tool_license_agreements_api_tools__tool_id__license_agreements_get: {
+        parameters: {
+            query?: {
+                /** @description The tool version; the default version when omitted. */
+                tool_version?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The tool ID for the lineage stored in Galaxy's toolbox. */
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolLicenseAgreementsResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     tools__parameter_landing_request_schema: {
         parameters: {
             query?: {
+                /** @description The tool version; the default version when omitted. */
                 tool_version?: string | null;
             };
             header?: {
@@ -51940,6 +52213,7 @@ export interface operations {
     tools__parameter_request_schema: {
         parameters: {
             query?: {
+                /** @description The tool version; the default version when omitted. */
                 tool_version?: string | null;
             };
             header?: {
@@ -51986,6 +52260,7 @@ export interface operations {
     tools__parameter_test_case_xml_schema: {
         parameters: {
             query?: {
+                /** @description The tool version; the default version when omitted. */
                 tool_version?: string | null;
             };
             header?: {
@@ -54139,6 +54414,142 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GroupModelListResponse"];
                 };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    list_license_acceptances_api_users__user_id__license_acceptances_get: {
+        parameters: {
+            query?: {
+                /** @description Whether to include every acceptance and revocation, oldest first. */
+                include_history?: boolean;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                user_id: string | "current";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserLicenseAcceptancesResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    accept_license_agreement_api_users__user_id__license_acceptances_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                user_id: string | "current";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLicenseAcceptancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseAcceptanceResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    revoke_license_acceptance_api_users__user_id__license_acceptances__agreement_hash__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                user_id: string | "current";
+                /** @description Content address of the accepted agreement. */
+                agreement_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Request Error */
             "4XX": {

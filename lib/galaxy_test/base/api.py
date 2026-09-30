@@ -30,6 +30,7 @@ from .api_util import (
     get_admin_api_key,
     get_user_api_key,
     OTHER_USER,
+    random_name,
     TEST_USER,
 )
 from .interactor import TestCaseGalaxyInteractor as BaseInteractor
@@ -180,6 +181,12 @@ class UsesApiTestCaseMixin:
             self.user_api_key = original_api_key
             self.galaxy_interactor.api_key = original_interactor_key
             self.galaxy_interactor.cookies = original_cookies
+
+    @contextmanager
+    def _different_new_user(self) -> Iterator[None]:
+        """Act as a newly created user (see ``_different_user``), so no state carries over between tests."""
+        with self._different_user(f"{random_name()}@galaxy.org"):
+            yield
 
     def _login_browser_session(self, session: requests.Session, email: str, password: str) -> None:
         """Log ``session`` in through the login form, for routes that need a browser session rather than an API key."""

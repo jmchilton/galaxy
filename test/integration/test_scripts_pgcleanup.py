@@ -1,6 +1,13 @@
 import string
 
-from galaxy_test.base.populators import skip_without_tool
+from sqlalchemy import select
+
+from galaxy.model import ToolLicenseAcceptanceEvent
+from galaxy_test.base.api_util import random_name
+from galaxy_test.base.populators import (
+    LicenseAgreementsPopulator,
+    skip_without_tool,
+)
 from galaxy_test.driver import integration_util
 from .test_scripts import BaseScriptsIntegrationTestCase
 
@@ -240,6 +247,28 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         )
 
         assert not self.is_purged(history_id, hda)
+
+    @skip_without_tool("license_agreement_variant_tool")
+    def test_purge_deleted_users_removes_license_acceptance_events(self):
+        self._skip_unless_postgres()
+        email = f"{random_name()}@galaxy.org"
+        user_id = self._setup_user(email)["id"]
+        with self._different_user(email):
+            LicenseAgreementsPopulator(self.galaxy_interactor).accept_license_agreement(
+                "license_agreement_variant_tool", "license_agreement_path"
+            )
+        decoded_user_id = self._app.security.decode_id(user_id)
+        assert self._license_acceptance_events(decoded_user_id)
+        delete_response = self._delete(f"users/{user_id}", admin=True)
+        assert delete_response.status_code == 200
+        self._pgcleanup_check_output(["--older-than", "0", "--sequence", "purge_deleted_users"])
+        assert self._license_acceptance_events(decoded_user_id) == []
+
+    def _license_acceptance_events(self, user_id: int) -> list[ToolLicenseAcceptanceEvent]:
+        session = self._app.model.session
+        session.expire_all()
+        stmt = select(ToolLicenseAcceptanceEvent).where(ToolLicenseAcceptanceEvent.user_id == user_id)
+        return list(session.scalars(stmt))
 
 
 class TestPgCleanupUserObjectStoreIntegration(
