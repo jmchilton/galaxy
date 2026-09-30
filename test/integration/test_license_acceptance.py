@@ -82,6 +82,7 @@ class TestLicenseAcceptanceEnforcement(BaseLicenseAcceptanceIntegrationTestCase)
             assert (
                 agreement["agreement_hash"] == self.license_populator.license_agreement_hashes(SUBMISSION_BOUND_TOOL)[0]
             )
+            assert [agreement] == self.license_populator.tool_license_agreements(SUBMISSION_BOUND_TOOL)
             assert self._jobs_for_tool(SUBMISSION_BOUND_TOOL) == []
 
     @skip_without_tool(USER_BOUND_TOOL)

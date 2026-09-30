@@ -11,6 +11,7 @@ import sampleRunData1 from "./testdata/run1.json";
 
 import WorkflowMissingToolsRequest from "./WorkflowMissingToolsRequest.vue";
 import WorkflowRun from "./WorkflowRun.vue";
+import WorkflowRunForm from "./WorkflowRunForm.vue";
 
 // Keep the real module (WorkflowMissingToolsError is matched with instanceof
 // in the component) and only replace the API call.
@@ -32,6 +33,19 @@ vi.mock("@/api/workflows", () => ({
         owner: "someone",
     })),
 }));
+
+const LICENSE_AGREEMENT = {
+    agreement_hash: "d".repeat(64),
+    id: "test_license",
+    version: "1",
+    label: "Test License",
+    url: null,
+    affirmation: "I agree to the test license.",
+    terms: "Test terms.",
+    binds: "submission",
+    accepted: false,
+    steps: [{ path: [1], tool_id: "cat1", tool_version: "1.0.0" }],
+};
 
 vi.mock("app", () => ({}));
 
@@ -203,5 +217,35 @@ describe("WorkflowRun.vue", () => {
             expect(wrapper.findComponent(WorkflowMissingToolsRequest).exists()).toBe(false);
             expect(wrapper.vm.workflowModel).not.toBeNull();
         });
+    });
+
+    it("names unaccepted license agreements and reloads the run data when an invocation is refused", async () => {
+        await vi.runAllTimersAsync();
+        await flushPromises();
+        const loads = getRunData.mock.calls.length;
+
+        wrapper.findComponent(WorkflowRunForm).vm.$emit("submissionError", {
+            response: {
+                data: {
+                    err_msg: "Workflow requires accepting license agreements [test_license].",
+                    err_code: 403009,
+                    unmet: [
+                        {
+                            kind: "license_agreement",
+                            message: "Workflow requires accepting license agreements [test_license].",
+                            details: { agreements: [LICENSE_AGREEMENT] },
+                            remedy_route: null,
+                        },
+                    ],
+                },
+            },
+        });
+        await vi.runAllTimersAsync();
+        await flushPromises();
+
+        const error = wrapper.find("[data-description='workflow run error']");
+        expect(error.text()).toContain("Test License");
+        expect(error.text()).toContain("Accept these license agreements on the form");
+        expect(getRunData.mock.calls.length).toBeGreaterThan(loads);
     });
 });

@@ -5,13 +5,20 @@ from typing import (
 )
 
 from pydantic import (
+    BaseModel,
+    ConfigDict,
     Field,
     RootModel,
 )
 
 from galaxy.schema.fields import EncodedDatabaseIdField
-from galaxy.schema.schema import Model
 from galaxy.tool_util_models.tool_source import LicenseAgreementBinds
+
+
+# Not galaxy.schema.schema.Model - that module imports this one.
+class Model(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, use_enum_values=True, protected_namespaces=())
+
 
 AgreementHashField = Annotated[
     str,
@@ -48,6 +55,25 @@ class ToolLicenseAgreementResponse(LicenseAgreementTermsResponse):
 
 class ToolLicenseAgreementsResponse(RootModel[list[ToolLicenseAgreementResponse]]):
     root: list[ToolLicenseAgreementResponse]
+
+
+class LicenseAgreementDeclaringStep(Model):
+    path: Annotated[
+        list[int],
+        Field(description="Step order indices from the outermost workflow down to the step, through subworkflows."),
+    ]
+    tool_id: Annotated[str, Field(description="The step's tool.")]
+    tool_version: Annotated[str, Field(description="The step's tool version.")]
+
+
+class WorkflowLicenseAgreementResponse(ToolLicenseAgreementResponse):
+    steps: Annotated[
+        list[LicenseAgreementDeclaringStep], Field(description="The workflow steps whose tools declare the agreement.")
+    ]
+
+
+class WorkflowLicenseAgreementsResponse(RootModel[list[WorkflowLicenseAgreementResponse]]):
+    root: list[WorkflowLicenseAgreementResponse]
 
 
 class LicenseAcceptanceEventResponse(Model):

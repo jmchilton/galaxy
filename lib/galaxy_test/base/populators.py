@@ -2998,6 +2998,11 @@ steps: []
         api_asserts.assert_status_code_is(response, 200)
         return response
 
+    def workflow_license_agreements(self, workflow_id: str) -> list[dict[str, Any]]:
+        response = self._get(f"workflows/{workflow_id}/license_agreements")
+        api_asserts.assert_status_code_is(response, 200)
+        return response.json()
+
     def download_workflow(
         self,
         workflow_id: str,

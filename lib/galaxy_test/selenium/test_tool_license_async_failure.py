@@ -29,7 +29,7 @@ class TestToolLicenseAsyncFailure(SeleniumTestCase):
 
         error = tool_form.submission_error.wait_for_visible()
         assert LICENSE_LABEL in error.text
-        assert "Accept the license agreements shown on the tool form" in error.text
+        assert "Accept these license agreements on the tool form" in error.text
         # The form reloads and prompts for the agreement again.
         tool_form.license_affirm(license_id=LICENSE_ID).wait_for_present()
         tool_form.execute_disabled.wait_for_present()

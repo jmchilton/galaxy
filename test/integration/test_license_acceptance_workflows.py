@@ -273,6 +273,37 @@ class TestLicenseAcceptanceWorkflows(BaseLicenseAcceptanceIntegrationTestCase):
             assert {step["tool_id"] for step in agreement["steps"]} == {SUBMISSION_BOUND_TOOL}
 
     @skip_without_tool(SUBMISSION_BOUND_TOOL)
+    def test_workflow_license_agreements_route(self):
+        with self._different_new_user():
+            workflow_id = self.workflow_populator.upload_yaml_workflow(SUBWORKFLOW_WORKFLOW)
+            (agreement,) = self.workflow_populator.workflow_license_agreements(workflow_id)
+            assert agreement["id"] == LICENSE_ID
+            assert agreement["accepted"] is False
+            assert agreement["steps"] == [{"path": [1, 1], "tool_id": SUBMISSION_BOUND_TOOL, "tool_version": "1.0"}]
+
+    @skip_without_tool(SUBMISSION_BOUND_TOOL)
+    def test_workflow_license_agreements_hidden_from_users_without_tool_access(self):
+        with self._different_new_user():
+            workflow_ids = [self.workflow_populator.upload_yaml_workflow(SIMPLE_WORKFLOW)]
+            workflow_ids.append(self.workflow_populator.upload_yaml_workflow(SUBWORKFLOW_WORKFLOW))
+            for workflow_id in workflow_ids:
+                self.workflow_populator.make_public(workflow_id)
+            history_id = self.dataset_populator.new_history()
+            owner_run_form = self.workflow_populator.download_workflow(
+                workflow_ids[0], style="run", history_id=history_id
+            )
+            (owner_tool_step,) = [step for step in owner_run_form["steps"] if step["step_type"] == "tool"]
+            assert [agreement["id"] for agreement in owner_tool_step["license_agreements"]] == [LICENSE_ID]
+        # Licensed tools require login, so anonymous users may see the workflow but not its tools' terms.
+        with self._different_user(anon=True):
+            for workflow_id in workflow_ids:
+                assert self.workflow_populator.workflow_license_agreements(workflow_id) == []
+                run_form = self.workflow_populator.download_workflow(workflow_id, style="run")
+                assert run_form["license_agreements"] == []
+                tool_steps = [step for step in run_form["steps"] if step["step_type"] == "tool"]
+                assert all(step["license_agreements"] == [] for step in tool_steps)
+
+    @skip_without_tool(SUBMISSION_BOUND_TOOL)
     def test_one_time_acceptance_persisted_on_invocation_tree(self):
         with self._different_new_user():
             hashes = self.license_populator.license_agreement_hashes(SUBMISSION_BOUND_TOOL)

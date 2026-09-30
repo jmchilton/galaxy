@@ -11,17 +11,30 @@ export type UnmetPrecondition = components["schemas"]["UnmetPrecondition"];
 /** Error code for a submission blocked by unmet tool execution preconditions. */
 export const TOOL_EXECUTION_PRECONDITION_UNMET = 403009;
 
-/** Labels of the license agreements an error's unmet preconditions name. */
-export function unmetLicenseAgreementLabels(unmet: UnmetPrecondition[] | null | undefined): string[] {
-    return (unmet ?? [])
+/** What a submission refused for unmet tool execution preconditions needs. */
+export interface UnmetPreconditionsError {
+    /** Labels of the license agreements that are not accepted. */
+    licenseLabels: string[];
+    /** Where the user can resolve the unmet preconditions, e.g. log in. */
+    remedyRoute: string | null;
+}
+
+/** Unmet tool execution preconditions carried by a refused submission's error, or null for any other error. */
+export function unmetPreconditionsFromError(error: any): UnmetPreconditionsError | null {
+    const data = error?.response?.data ?? error;
+    if (data?.err_code !== TOOL_EXECUTION_PRECONDITION_UNMET) {
+        return null;
+    }
+    const unmet: UnmetPrecondition[] = data.unmet ?? [];
+    const licenseLabels = unmet
         .flatMap((precondition) => (precondition.kind === "license_agreement" ? precondition.details.agreements : []))
         .map((agreement) => agreement.label);
+    const remedyRoute = unmet.find((precondition) => precondition.remedy_route)?.remedy_route ?? null;
+    return { licenseLabels, remedyRoute };
 }
 
 /** An agreement declared by a workflow's tools, with the steps (through subworkflows) that declare it. */
-export interface WorkflowLicenseAgreement extends ToolLicenseAgreement {
-    steps: { path: number[]; tool_id: string; tool_version: string }[];
-}
+export type WorkflowLicenseAgreement = components["schemas"]["WorkflowLicenseAgreementResponse"];
 
 /** Persistently accept an agreement the tool declares, confirming the terms that were displayed. */
 export async function acceptLicenseAgreement(

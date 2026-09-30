@@ -4,6 +4,7 @@ from galaxy.exceptions import (
 )
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.license_agreements import LicenseAcceptanceManager
+from galaxy.managers.workflows import WorkflowsManager
 from galaxy.model import ToolLicenseAcceptanceEvent
 from galaxy.schema.license_agreements import (
     CreateLicenseAcceptancePayload,
@@ -12,17 +13,29 @@ from galaxy.schema.license_agreements import (
     LicenseAgreementTermsResponse,
     ToolLicenseAgreementsResponse,
     UserLicenseAcceptancesResponse,
+    WorkflowLicenseAgreementsResponse,
 )
 from galaxy.schema.schema import FlexibleUserIdType
 from galaxy.webapps.galaxy.services.base import ensure_user_access
 from galaxy.webapps.galaxy.services.tools import get_accessible_tool
+from galaxy.workflow.license_agreements import describe_workflow_license_agreements
 
 
 class LicenseAgreementsService:
     """Tool license agreements and the current user's acceptance of them."""
 
-    def __init__(self, license_acceptance_manager: LicenseAcceptanceManager) -> None:
+    def __init__(
+        self, license_acceptance_manager: LicenseAcceptanceManager, workflows_manager: WorkflowsManager
+    ) -> None:
         self.license_acceptance_manager = license_acceptance_manager
+        self.workflows_manager = workflows_manager
+
+    def workflow_license_agreements(
+        self, trans: ProvidesUserContext, workflow_id: int, version: int | None
+    ) -> WorkflowLicenseAgreementsResponse:
+        stored_workflow = self.workflows_manager.get_stored_accessible_workflow(trans, workflow_id)
+        workflow = stored_workflow.get_internal_version(version)
+        return WorkflowLicenseAgreementsResponse(root=describe_workflow_license_agreements(trans, workflow))
 
     def tool_license_agreements(
         self, trans: ProvidesUserContext, tool_id: str, tool_version: str | None
