@@ -1,5 +1,6 @@
 import { type components, GalaxyApi } from "@/api";
 import { ERROR_STATES, type ShowFullJobResponse } from "@/api/jobs";
+import type { ToolLicenseAgreement } from "@/api/licenseAgreements";
 import type { ServiceCredentialsContext } from "@/api/userCredentials";
 import type { FormInputNode } from "@/components/Form/composables/useFormState";
 import type { Tool, ToolPanelItem, ToolSection, ToolSectionLabel } from "@/stores/toolStore";
@@ -56,6 +57,8 @@ export interface ToolFormConfig extends Tool {
     job_remap: boolean | "job_produced_collection_elements" | null;
     /** Credentials context captured at the time the source job was created. */
     job_credentials_context: Record<string, unknown> | null;
+    /** License agreements the tool declares, with whether the user's persistent acceptance satisfies each. */
+    license_agreements: ToolLicenseAgreement[];
     /** Encoded id of the history the form is bound to, else null. */
     history_id: string | null;
     /** Submission target URL. */
