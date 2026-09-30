@@ -2494,23 +2494,15 @@ class WorkflowContentsManager(UsesAnnotations):
 
     def get_all_tools(self, workflow):
         tools = []
-        for step in workflow.steps:
-            if step.type == "tool":
-                if tool_id := step.effective_tool_id:
-                    if {
-                        "tool_id": tool_id,
-                        "tool_version": step.tool_version,
-                        "tool_uuid": str(step.tool_uuid) if step.tool_uuid else None,
-                    } not in tools:
-                        tools.append(
-                            {
-                                "tool_id": tool_id,
-                                "tool_version": step.tool_version,
-                                "tool_uuid": str(step.tool_uuid) if step.tool_uuid else None,
-                            }
-                        )
-            elif step.type == "subworkflow":
-                tools.extend(self.get_all_tools(step.subworkflow))
+        for _, step in workflow.walk_tool_steps():
+            if tool_id := step.effective_tool_id:
+                tool = {
+                    "tool_id": tool_id,
+                    "tool_version": step.tool_version,
+                    "tool_uuid": str(step.tool_uuid) if step.tool_uuid else None,
+                }
+                if tool not in tools:
+                    tools.append(tool)
         return tools
 
     def get_or_create_workflow_from_trs(

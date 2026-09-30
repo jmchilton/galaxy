@@ -17570,6 +17570,29 @@ export interface components {
              */
             workflow_step_index_path?: number[] | null;
         };
+        /** InvocationFailureLicenseNotAcceptedResponse */
+        InvocationFailureLicenseNotAcceptedResponse: {
+            /**
+             * Details
+             * @description Ids of the step tool's license agreements that are not accepted.
+             */
+            details: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            reason: "license_not_accepted";
+            /**
+             * Workflow Step Id
+             * @description Workflow step id of step that failed.
+             */
+            workflow_step_id: number;
+            /**
+             * Workflow Step Index Path
+             * @description Path of workflow step IDs from parent workflow through subworkflows (excludes the failing step itself).
+             */
+            workflow_step_index_path?: number[] | null;
+        };
         /** InvocationFailureOutputNotFoundResponse */
         InvocationFailureOutputNotFoundResponse: {
             /**
@@ -17753,7 +17776,8 @@ export interface components {
             | components["schemas"]["InvocationUnexpectedFailureResponse"]
             | components["schemas"]["InvocationEvaluationWarningWorkflowOutputNotFoundResponse"]
             | components["schemas"]["InvocationFailureWorkflowParameterInvalidResponse"]
-            | components["schemas"]["InvocationFailureStepInputDeletedResponse"];
+            | components["schemas"]["InvocationFailureStepInputDeletedResponse"]
+            | components["schemas"]["InvocationFailureLicenseNotAcceptedResponse"];
         /** InvocationOutput */
         InvocationOutput: {
             /**
@@ -18211,6 +18235,11 @@ export interface components {
                       [key: string]: unknown;
                   }[]
                 | null;
+            /**
+             * One-time License Acceptances
+             * @description Hashes of license agreements declared by the workflow's tools that the user accepts for this invocation only.
+             */
+            one_time_license_acceptances?: string[] | null;
             /**
              * Legacy Step Parameters
              * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead.

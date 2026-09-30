@@ -1,0 +1,24 @@
+<tool id="license_agreement_user_data_tool" name="license_agreement_user_data_tool" version="1.0" profile="26.2">
+    <requirements>
+        <!-- Same agreement as license_agreement_variant_tool (binds="user"), with a data input -->
+        <license_agreement id="license_agreement_path" version="1" path="license_agreement_tool_license.txt" binds="user">
+            <label>Test Tool Non-Commercial License</label>
+            <affirmation>I have read and agree to the Test Tool Non-Commercial License.</affirmation>
+        </license_agreement>
+    </requirements>
+    <command><![CDATA[
+cat '$input1' > '$output'
+    ]]></command>
+    <inputs>
+        <param name="input1" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input1" value="simple_line.txt"/>
+            <output name="output" file="simple_line.txt"/>
+        </test>
+    </tests>
+</tool>

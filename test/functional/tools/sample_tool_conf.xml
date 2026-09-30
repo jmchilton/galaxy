@@ -366,6 +366,7 @@
   <tool file="license_agreement_multi_tool.xml" />
   <tool file="license_agreement_and_secret_tool.xml" />
   <tool file="license_agreement_data_tool.xml" />
+  <tool file="license_agreement_user_data_tool.xml" />
   <!-- license_agreement_missing_path_tool.xml and license_agreement_low_profile_tool.xml
        intentionally fail to load; unit tests load them directly. -->
 

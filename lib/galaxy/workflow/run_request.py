@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from collections.abc import Mapping
 from typing import (
     Any,
     TYPE_CHECKING,
@@ -14,6 +15,7 @@ from galaxy.managers.hdas import (
     dereference_input_to_hda,
     dereference_input_to_hdca,
 )
+from galaxy.managers.license_agreements import LicenseAcceptanceManager
 from galaxy.model import (
     EffectiveOutput,
     History,
@@ -98,6 +100,7 @@ class WorkflowRunConfig:
         preferred_intermediate_object_store_id: str | None = None,
         effective_outputs: list[EffectiveOutput] | None = None,
         on_complete: list[dict[str, Any]] | None = None,
+        one_time_license_acceptances_by_step: Mapping[int, list[str]] | None = None,
     ) -> None:
         self.target_history = target_history
         self.replacement_dict = replacement_dict or {}
@@ -113,6 +116,8 @@ class WorkflowRunConfig:
         self.preferred_intermediate_object_store_id = preferred_intermediate_object_store_id
         self.effective_outputs = effective_outputs
         self.on_complete = on_complete
+        # Validated agreement hashes accepted for this invocation only, by the id of each step declaring them.
+        self.one_time_license_acceptances_by_step = one_time_license_acceptances_by_step or {}
 
 
 def _normalize_inputs(
@@ -591,6 +596,7 @@ def workflow_run_config_to_request(
                 preferred_intermediate_object_store_id=run_config.preferred_intermediate_object_store_id,
                 preferred_outputs_object_store_id=run_config.preferred_outputs_object_store_id,
                 effective_outputs=effective_outputs,
+                one_time_license_acceptances_by_step=run_config.one_time_license_acceptances_by_step,
             )
             subworkflow_invocation = workflow_run_config_to_request(
                 trans,
@@ -601,6 +607,16 @@ def workflow_run_config_to_request(
                 step,
                 subworkflow_invocation,
             )
+
+    if run_config.one_time_license_acceptances_by_step:
+        trans.app[LicenseAcceptanceManager].associate_one_time_with_invocation(
+            workflow_invocation,
+            [
+                agreement_hash
+                for step in workflow.steps
+                for agreement_hash in run_config.one_time_license_acceptances_by_step.get(step.id, [])
+            ],
+        )
 
     replacement_dict = run_config.replacement_dict
     for name, value in replacement_dict.items():

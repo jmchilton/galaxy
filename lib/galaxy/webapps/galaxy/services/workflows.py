@@ -62,6 +62,7 @@ from galaxy.workflow.extract import (
     extract_workflow_by_ids,
     normalize_output_label_key,
 )
+from galaxy.workflow.license_agreements import check_workflow_license_agreements
 from galaxy.workflow.run import queue_invoke
 from galaxy.workflow.run_request import build_workflow_run_configs
 from galaxy.workflow.scheduling_manager import WorkflowSchedulingManager
@@ -306,6 +307,12 @@ class WorkflowsService(ServiceBase):
             else:
                 missing_tools_message += ", ".join([tool["tool_id"] for tool in missing_tools])
             raise exceptions.MessageException(missing_tools_message)
+        # After the missing tools check - declared agreements are read from the installed tools.
+        license_agreements = check_workflow_license_agreements(
+            trans, workflow, payload.one_time_license_acceptances or []
+        )
+        for run_config in run_configs:
+            run_config.one_time_license_acceptances_by_step = license_agreements.one_time_by_step()
 
         invocations = []
         for run_config in run_configs:

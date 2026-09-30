@@ -21,6 +21,7 @@ from collections import defaultdict
 from collections.abc import (
     Callable,
     Iterable,
+    Iterator,
 )
 from dataclasses import dataclass
 from datetime import (
@@ -9210,6 +9211,23 @@ class Workflow(Base, Dictifiable, RepresentById):
             if order_index == step.order_index:
                 return step
         raise KeyError(f"Workflow has no step with order_index '{order_index}'")
+
+    def walk_tool_steps(
+        self, path: tuple[int, ...] = (), recursion_stack: frozenset[int] = frozenset()
+    ) -> Iterator[tuple[tuple[int, ...], "WorkflowStep"]]:
+        """Yield each tool step with its occurrence path of step order indices, recursing into subworkflows.
+
+        A subworkflow used by several steps is walked once per use, so every occurrence path is reported.
+        """
+        if id(self) in recursion_stack:
+            return
+        recursion_stack = recursion_stack | {id(self)}
+        for step in self.steps:
+            step_path = (*path, step.order_index)
+            if step.type == "tool":
+                yield step_path, step
+            elif step.type == "subworkflow" and step.subworkflow is not None:
+                yield from step.subworkflow.walk_tool_steps(step_path, recursion_stack)
 
     def step_by_label(self, label):
         for step in self.steps:

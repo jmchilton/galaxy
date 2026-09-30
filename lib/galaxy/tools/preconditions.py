@@ -13,7 +13,10 @@ from dataclasses import (
     dataclass,
     field,
 )
-from typing import TYPE_CHECKING
+from typing import (
+    Any,
+    TYPE_CHECKING,
+)
 
 from galaxy.exceptions import ItemAccessibilityException
 from galaxy.exceptions.error_codes import error_codes_by_name
@@ -22,6 +25,7 @@ from galaxy.managers.license_agreements import (
     LicenseAgreementAuthorization,
 )
 from galaxy.schema.schema import UnmetPrecondition
+from galaxy.tool_util.license_agreements import ResolvedLicenseAgreement
 
 if TYPE_CHECKING:
     from galaxy.managers.context import ProvidesUserContext
@@ -101,16 +105,7 @@ class LicenseAcceptancePrecondition(ToolExecutionPrecondition):
             details={
                 "tool_id": tool.id,
                 "tool_version": tool.version,
-                "agreements": [
-                    {
-                        "id": agreement.agreement.id,
-                        "version": agreement.agreement.version,
-                        "label": agreement.agreement.label,
-                        "binds": agreement.agreement.binds,
-                        "agreement_hash": agreement.agreement_hash,
-                    }
-                    for agreement in unmet
-                ],
+                "agreements": [license_agreement_details(agreement) for agreement in unmet],
             },
         )
 
@@ -127,6 +122,20 @@ class LicenseAcceptancePrecondition(ToolExecutionPrecondition):
 
 
 LICENSE_ACCEPTANCE_PRECONDITION = LicenseAcceptancePrecondition()
+
+
+def license_agreement_details(agreement: ResolvedLicenseAgreement) -> dict[str, Any]:
+    """What a client needs to prompt for an unmet agreement."""
+    declared = agreement.agreement
+    return {
+        "id": declared.id,
+        "version": declared.version,
+        "label": declared.label,
+        "url": declared.url,
+        "affirmation": declared.affirmation,
+        "binds": declared.binds,
+        "agreement_hash": agreement.agreement_hash,
+    }
 
 
 def check_preconditions(

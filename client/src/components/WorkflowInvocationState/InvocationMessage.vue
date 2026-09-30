@@ -218,6 +218,12 @@ const messageInfo = computed(() => {
             suffix: "has been deleted.",
             hasStepPath: true,
         };
+    } else if (reason === "license_not_accepted") {
+        return {
+            prefix: `${FAIL_FRAGMENT}`,
+            suffix: `uses a tool whose license agreements are not accepted: ${invocationMessage.details}.`,
+            hasStepPath: true,
+        };
     } else {
         return { text: reason, hasStepPath: false };
     }
