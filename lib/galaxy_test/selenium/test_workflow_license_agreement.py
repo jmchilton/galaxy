@@ -6,7 +6,9 @@ from .framework import (
 )
 
 SUBMISSION_BOUND_TOOL = "license_agreement_path_tool"
+USER_BOUND_TOOL = "license_agreement_variant_tool"
 LICENSE_ID = "license_agreement_path"
+LICENSE_LABEL = "Test Tool Non-Commercial License"
 
 SINGLE_STEP_WORKFLOW = f"""
 class: GalaxyWorkflow
@@ -26,6 +28,19 @@ steps:
       steps:
         licensed:
           tool_id: {SUBMISSION_BOUND_TOOL}
+          state:
+            input: x
+"""
+
+NESTED_USER_BOUND_WORKFLOW = f"""
+class: GalaxyWorkflow
+steps:
+  nested:
+    run:
+      class: GalaxyWorkflow
+      steps:
+        licensed:
+          tool_id: {USER_BOUND_TOOL}
           state:
             input: x
 """
@@ -77,7 +92,7 @@ class TestWorkflowLicenseAgreement(SeleniumTestCase, RunsWorkflows):
         tool_form = self.components.tool_form
         tool_form.license_agreement(license_id=LICENSE_ID).wait_for_visible()
         # Both steps declare the same agreement - it is prompted for once.
-        assert len(self.find_elements_by_selector(".tool-license-agreement")) == 1
+        assert len(tool_form.license_agreements.all()) == 1
         self.components.workflow_run.run_workflow_disabled.wait_for_present()
         self._affirm_and_run()
         self._wait_for_licensed_jobs(2)
@@ -95,19 +110,66 @@ class TestWorkflowLicenseAgreement(SeleniumTestCase, RunsWorkflows):
         self.components.workflow_run.run_workflow_disabled.wait_for_present()
         assert self.license_agreements_populator.list_license_acceptances(include_history=True)["history"] == []
 
+    @selenium_test
+    @managed_history
+    def test_workflow_remembers_nested_user_bound_agreement(self):
+        name = self.workflow_upload_yaml_with_random_name(NESTED_USER_BOUND_WORKFLOW)
+        self.workflow_run_with_name(name)
+        tool_form = self.components.tool_form
+        tool_form.license_agreement(license_id=LICENSE_ID).wait_for_visible()
+        self.tool_form_affirm_license_agreement(LICENSE_ID)
+        tool_form.license_remember(license_id=LICENSE_ID).wait_for_and_click()
+        self.workflow_run_submit()
+        self._wait_for_licensed_jobs(1, tool_id=USER_BOUND_TOOL)
+
+        (acceptance,) = self.license_agreements_populator.list_license_acceptances()["accepted"]
+        assert acceptance["event"]["prompting_tool_id"] == USER_BOUND_TOOL
+        self.workflow_run_with_name(name)
+        tool_form.license_accepted(license_id=LICENSE_ID).wait_for_visible()
+        self.components.workflow_run.run_workflow_disabled.wait_for_absent()
+
+    @selenium_test
+    @managed_history
+    def test_expanded_workflow_run_form_prompts_for_licenses(self):
+        self.workflow_run_open_workflow(SINGLE_STEP_WORKFLOW)
+        self.workflow_run_ensure_expanded()
+        self.components.tool_form.license_agreement(license_id=LICENSE_ID).wait_for_visible()
+        self.components.workflow_run.run_workflow_disabled.wait_for_present()
+        self._affirm_and_run()
+        self._wait_for_licensed_jobs(1)
+
+    @selenium_test
+    @managed_history
+    def test_refused_workflow_submission_prompts_again(self):
+        populator = self.license_agreements_populator
+        accepted = populator.accept_license_agreement(USER_BOUND_TOOL, LICENSE_ID)
+        self.workflow_run_open_workflow(NESTED_USER_BOUND_WORKFLOW)
+        self.components.tool_form.license_accepted(license_id=LICENSE_ID).wait_for_visible()
+
+        # Revoked after the form loaded, so the form still offers Run - the server refuses the invocation.
+        populator.revoke_license_acceptance(accepted["agreement"]["agreement_hash"])
+        self.workflow_run_submit()
+
+        error = self.components.workflow_run.run_error.wait_for_visible()
+        assert LICENSE_LABEL in error.text
+        assert "Accept these license agreements on the form" in error.text
+        # The run form reloads and prompts for the agreement again.
+        self.components.tool_form.license_affirm(license_id=LICENSE_ID).wait_for_present()
+        self.components.workflow_run.run_workflow_disabled.wait_for_present()
+        self.screenshot("workflow_license_submission_refused")
+
     def _affirm_and_run(self):
         self.tool_form_affirm_license_agreement(LICENSE_ID)
         self.workflow_run_submit()
 
-    def _wait_for_licensed_jobs(self, count: int):
+    def _wait_for_licensed_jobs(self, count: int, tool_id: str = SUBMISSION_BOUND_TOOL):
         history_id = self.current_history_id()
 
         def licensed_jobs():
-            response = self.dataset_populator._get(
-                "jobs", data={"history_id": history_id, "tool_id": SUBMISSION_BOUND_TOOL, "state": "ok"}
-            )
-            response.raise_for_status()
-            jobs = response.json()
-            return jobs if len(jobs) == count else None
+            jobs = self.dataset_populator.history_jobs_for_tool(history_id, tool_id)
+            failed = [job for job in jobs if job["state"] in ("error", "failed")]
+            assert not failed, f"Licensed jobs failed: {failed}"
+            done = [job for job in jobs if job["state"] == "ok"]
+            return jobs if len(done) == count else None
 
         self._wait_on(licensed_jobs, f"{count} licensed job(s) to complete")

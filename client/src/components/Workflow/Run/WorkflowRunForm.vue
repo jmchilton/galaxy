@@ -49,11 +49,9 @@
 
         <ToolLicenseAgreements
             v-if="licenseAgreements.length"
-            :agreements="licenseAgreements"
-            :affirmed="affirmedLicenseAgreements"
-            :remembered="rememberedLicenseAgreements"
-            @update:affirmed="onUpdateAffirmedLicenseAgreements"
-            @update:remembered="onUpdateRememberedLicenseAgreements" />
+            v-model:affirmed="affirmedLicenseAgreements"
+            v-model:remembered="rememberedLicenseAgreements"
+            :agreements="licenseAgreements" />
 
         <FormCard v-if="wpInputsAvailable" title="Workflow Parameters">
             <template v-slot:body>
@@ -261,14 +259,6 @@ const {
     oneTimeHashes: oneTimeLicenseAcceptances,
     acceptRemembered: acceptRememberedLicenseAgreements,
 } = useLicenseAgreementAffirmations(licenseAgreements);
-
-function onUpdateAffirmedLicenseAgreements(value: string[]) {
-    affirmedLicenseAgreements.value = value;
-}
-
-function onUpdateRememberedLicenseAgreements(value: string[]) {
-    rememberedLicenseAgreements.value = value;
-}
 
 const runButtonTooltip = computed(() => {
     if (hasCredentialErrors.value) {

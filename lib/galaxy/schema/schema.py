@@ -50,6 +50,10 @@ from galaxy.schema.fields import (
     message_rule_validator,
     ModelClassField,
 )
+from galaxy.schema.license_agreements import (
+    ToolLicenseAgreementResponse,
+    WorkflowLicenseAgreementResponse,
+)
 from galaxy.schema.states import (
     DatasetCollectionPopulatedState,
     DatasetSourceTransformActionType,
@@ -69,10 +73,7 @@ from galaxy.tool_util_models.sample_sheet import (
     SampleSheetRow,
     SampleSheetRows,
 )
-from galaxy.tool_util_models.tool_source import (
-    FieldDict,
-    LicenseAgreementBinds,
-)
+from galaxy.tool_util_models.tool_source import FieldDict
 from galaxy.util import string_as_bool
 from galaxy.util.config_templates import partial_model
 from galaxy.util.hash_util import HashFunctionNameEnum
@@ -4549,34 +4550,14 @@ class UnmetAccessPrecondition(UnmetPreconditionBase):
     details: UnmetAccessPreconditionDetails
 
 
-class UnmetLicenseAgreement(Model):
-    id: str
-    version: str
-    label: str
-    url: str | None = None
-    affirmation: str
-    binds: LicenseAgreementBinds
-    agreement_hash: str
-
-
-class UnmetLicenseAgreementStep(Model):
-    path: list[int]
-    tool_id: str
-    tool_version: str
-
-
-class UnmetWorkflowLicenseAgreement(UnmetLicenseAgreement):
-    steps: list[UnmetLicenseAgreementStep]
-
-
 class UnmetToolLicenseAgreementDetails(Model):
     tool_id: str
     tool_version: str
-    agreements: list[UnmetLicenseAgreement]
+    agreements: list[ToolLicenseAgreementResponse]
 
 
 class UnmetWorkflowLicenseAgreementDetails(Model):
-    agreements: list[UnmetWorkflowLicenseAgreement]
+    agreements: list[WorkflowLicenseAgreementResponse]
 
 
 class UnmetLicenseAgreementPrecondition(UnmetPreconditionBase):
