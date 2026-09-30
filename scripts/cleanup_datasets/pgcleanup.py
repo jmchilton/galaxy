@@ -586,6 +586,9 @@ class PurgeDeletedUsers(PurgesHDAs, RemovesMetadataFiles, Action):
     - Delete all UserAddresses whose user_ids are purged in this step.
     - Delete all OIDC user authnz tokens (external identity associations) whose user_ids are purged
       in this step.
+    - Delete all tool license acceptance events whose user_ids are purged in this step (job license
+      acceptances keep the agreement and drop the event reference), and clear granted_by_user_id
+      on events other users hold that a purged user granted.
     """
 
     _action_sql = """
@@ -623,6 +626,22 @@ class PurgeDeletedUsers(PurgesHDAs, RemovesMetadataFiles, Action):
                     WHERE oidc_user_authnz_tokens.user_id = purged_user_ids.id
                 RETURNING oidc_user_authnz_tokens.user_id AS user_id,
                           oidc_user_authnz_tokens.id AS id),
+             deleted_license_event_ids
+          AS (DELETE FROM tool_license_acceptance_event
+                    USING purged_user_ids
+                    WHERE tool_license_acceptance_event.user_id = purged_user_ids.id
+                RETURNING tool_license_acceptance_event.user_id AS user_id,
+                          tool_license_acceptance_event.id AS id),
+             unattributed_license_event_ids
+          AS (     UPDATE tool_license_acceptance_event
+                      SET granted_by_user_id = NULL
+                     FROM purged_user_ids
+                    WHERE tool_license_acceptance_event.granted_by_user_id = purged_user_ids.id
+                          AND tool_license_acceptance_event.user_id NOT IN
+                            (SELECT id
+                               FROM purged_user_ids)
+                RETURNING tool_license_acceptance_event.granted_by_user_id AS user_id,
+                          tool_license_acceptance_event.id AS id),
              user_events
           AS (INSERT INTO cleanup_event_user_association
                           (create_time, cleanup_event_id, user_id)
@@ -667,7 +686,8 @@ class PurgeDeletedUsers(PurgesHDAs, RemovesMetadataFiles, Action):
              deleted_uga_ids.id AS deleted_uga_id,
              deleted_ura_ids.id AS deleted_ura_id,
              deleted_ua_ids.id AS deleted_ua_id,
-             deleted_oidc_ids.id AS deleted_oidc_id
+             deleted_oidc_ids.id AS deleted_oidc_id,
+             deleted_license_event_ids.id AS deleted_license_event_id
         FROM purged_user_ids
              LEFT OUTER JOIN purged_history_ids
                              ON purged_user_ids.id = purged_history_ids.user_id
@@ -685,6 +705,8 @@ class PurgeDeletedUsers(PurgesHDAs, RemovesMetadataFiles, Action):
                              ON purged_user_ids.id = deleted_ua_ids.user_id
              LEFT OUTER JOIN deleted_oidc_ids
                              ON purged_user_ids.id = deleted_oidc_ids.user_id
+             LEFT OUTER JOIN deleted_license_event_ids
+                             ON purged_user_ids.id = deleted_license_event_ids.user_id
     ORDER BY purged_user_ids.id
     """
     causals = (
@@ -696,6 +718,7 @@ class PurgeDeletedUsers(PurgesHDAs, RemovesMetadataFiles, Action):
         ("purged_user_id", "deleted_ura_id"),
         ("purged_user_id", "deleted_ua_id"),
         ("purged_user_id", "deleted_oidc_id"),
+        ("purged_user_id", "deleted_license_event_id"),
     )
 
     def _init(self):
@@ -771,6 +794,22 @@ class PurgeDeletedUsersGDPR(PurgesHDAs, RemovesMetadataFiles, Action):
                     WHERE oidc_user_authnz_tokens.user_id = purged_user_ids.id
                 RETURNING oidc_user_authnz_tokens.user_id AS user_id,
                           oidc_user_authnz_tokens.id AS id),
+             deleted_license_event_ids
+          AS (DELETE FROM tool_license_acceptance_event
+                    USING purged_user_ids
+                    WHERE tool_license_acceptance_event.user_id = purged_user_ids.id
+                RETURNING tool_license_acceptance_event.user_id AS user_id,
+                          tool_license_acceptance_event.id AS id),
+             unattributed_license_event_ids
+          AS (     UPDATE tool_license_acceptance_event
+                      SET granted_by_user_id = NULL
+                     FROM purged_user_ids
+                    WHERE tool_license_acceptance_event.granted_by_user_id = purged_user_ids.id
+                          AND tool_license_acceptance_event.user_id NOT IN
+                            (SELECT id
+                               FROM purged_user_ids)
+                RETURNING tool_license_acceptance_event.granted_by_user_id AS user_id,
+                          tool_license_acceptance_event.id AS id),
              user_events
           AS (INSERT INTO cleanup_event_user_association
                           (create_time, cleanup_event_id, user_id)
@@ -815,7 +854,8 @@ class PurgeDeletedUsersGDPR(PurgesHDAs, RemovesMetadataFiles, Action):
              deleted_uga_ids.id AS deleted_uga_id,
              deleted_ura_ids.id AS deleted_ura_id,
              deleted_ua_ids.id AS deleted_ua_id,
-             deleted_oidc_ids.id AS deleted_oidc_id
+             deleted_oidc_ids.id AS deleted_oidc_id,
+             deleted_license_event_ids.id AS deleted_license_event_id
         FROM purged_user_ids
              LEFT OUTER JOIN purged_history_ids
                              ON purged_user_ids.id = purged_history_ids.user_id
@@ -833,6 +873,8 @@ class PurgeDeletedUsersGDPR(PurgesHDAs, RemovesMetadataFiles, Action):
                              ON purged_user_ids.id = deleted_ua_ids.user_id
              LEFT OUTER JOIN deleted_oidc_ids
                              ON purged_user_ids.id = deleted_oidc_ids.user_id
+             LEFT OUTER JOIN deleted_license_event_ids
+                             ON purged_user_ids.id = deleted_license_event_ids.user_id
     ORDER BY purged_user_ids.id
     """
     causals = (
@@ -844,6 +886,7 @@ class PurgeDeletedUsersGDPR(PurgesHDAs, RemovesMetadataFiles, Action):
         ("purged_user_id", "deleted_ura_id"),
         ("purged_user_id", "deleted_ua_id"),
         ("purged_user_id", "deleted_oidc_id"),
+        ("purged_user_id", "deleted_license_event_id"),
     )
 
     @classmethod
