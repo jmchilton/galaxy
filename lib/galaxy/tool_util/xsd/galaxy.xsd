@@ -915,10 +915,13 @@ i.e. we do not need to set it on the command line (which would expose them on th
       <xs:documentation xml:lang="en"><![CDATA[
 The ``license_agreement`` element declares license terms a user must affirm before
 running the tool, for example software restricted to non-commercial or academic use.
+See [Tool License Agreements](tool_license_agreements) for the full contract.
 
 Requires ``profile="26.2"`` or newer - a tool with an older profile declaring a
 ``license_agreement`` fails to load. A tool declaring one requires login, and cannot use a
-custom tool action that bypasses Galaxy's execution checks (such as a model operation).
+custom tool action that bypasses Galaxy's execution checks (such as a model operation). Data
+source tools cannot declare one, and Galaxy never selects a datatype converter declaring one
+for a conversion.
 
 The terms are given either by ``path`` - a file relative to the tool's directory, which is
 **preferred** (the file often already ships with the software, and several tools can share one
