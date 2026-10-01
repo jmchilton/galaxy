@@ -65,6 +65,14 @@ class TestLicenseAgreementLoading(TestCase, tools_support.UsesTools):
         with pytest.raises(Exception, match="does not check execution preconditions"):
             self._init_tool(contents, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")
 
+    def test_license_agreement_on_data_source_tool_fails_tool_load(self):
+        for tool_type in ("data_source", "data_source_async"):
+            contents = LICENSE_TOOL.replace(
+                '<tool id="license_tool"', f'<tool id="license_tool" tool_type="{tool_type}"'
+            )
+            with pytest.raises(Exception, match=f"{tool_type} tools cannot carry them"):
+                self._init_tool(contents, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")
+
     def test_license_agreement_adds_license_precondition(self):
         tool = self._init_tool(LICENSE_TOOL, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")
         assert tool.execution_preconditions == [TOOL_ACCESS_PRECONDITION, LICENSE_ACCEPTANCE_PRECONDITION]
@@ -124,23 +132,3 @@ class TestLicenseAgreementFixtures(TestCase, tools_support.UsesTools):
     def test_license_agreement_implies_require_login(self):
         tool = self._init_tool_for_path(functional_test_tool_path("license_agreement_tool.xml"))
         assert tool.require_login is True
-
-
-class TestLicenseAgreementDataSourceTools(TestCase, tools_support.UsesTools):
-    def setUp(self):
-        self.setup_app()
-
-    def tearDown(self):
-        self.tear_down_app()
-
-    def test_license_agreement_on_data_source_tool_fails_tool_load(self):
-        contents = LICENSE_TOOL.replace('<tool id="license_tool"', '<tool id="license_tool" tool_type="data_source"')
-        with pytest.raises(Exception, match="data_source"):
-            self._init_tool(contents, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")
-
-    def test_license_agreement_on_async_data_source_tool_fails_tool_load(self):
-        contents = LICENSE_TOOL.replace(
-            '<tool id="license_tool"', '<tool id="license_tool" tool_type="data_source_async"'
-        )
-        with pytest.raises(Exception, match="data_source_async"):
-            self._init_tool(contents, profile="26.2", extra_file_contents=TERMS, extra_file_path="license.txt")

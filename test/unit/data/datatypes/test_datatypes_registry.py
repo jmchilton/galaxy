@@ -144,3 +144,21 @@ def test_converters_requiring_license_agreements_are_not_offered():
     assert converters["txt"].id == "to_txt"
     assert registry.get_converter_by_target_type("fasta", "tabular") is None
     assert registry.find_conversion_destination_for_dataset_by_extensions("fasta", ["tabular"]) == (False, None, None)
+
+
+def test_reregistered_converter_requiring_license_agreements_is_not_offered():
+    registry = example_datatype_registry_for_sample()
+    registry._register_converter_tool(_StubConverter("to_tabular"), "fasta", "tabular")
+    assert "tabular" in registry.get_converters_by_datatype("fasta")
+    # A toolbox reload registers a new tool object for the same converter.
+    registry._register_converter_tool(_StubConverter("to_tabular", license_agreements=[object()]), "fasta", "tabular")
+    assert "tabular" not in registry.get_converters_by_datatype("fasta")
+
+
+def test_licensed_converter_does_not_hide_inherited_converter():
+    registry = example_datatype_registry_for_sample()
+    registry._register_converter_tool(_StubConverter("data_to_tabular"), "data", "tabular")
+    registry._register_converter_tool(
+        _StubConverter("fasta_to_tabular", license_agreements=[object()]), "fasta", "tabular"
+    )
+    assert registry.get_converters_by_datatype("fasta")["tabular"].id == "data_to_tabular"

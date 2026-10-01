@@ -742,12 +742,12 @@ class Registry:
                 self._register_converter_tool(converter, source_datatype, target_datatype)
             except Exception:
                 self.log.exception(f"Error loading converter ({config_path})")
-        # Drop any cached (empty) converter lookups computed before registration.
-        self._converters_by_datatype = {}
 
     def _register_converter_tool(self, converter: "AbstractTool", source_datatype: str, target_datatype: str) -> None:
         self.converter_tools.add(converter)
         self.datatype_converters.setdefault(source_datatype, {})[target_datatype] = converter
+        # Drop cached lookups, which may hold a replaced converter.
+        self._converters_by_datatype = {}
 
     def load_display_applications(self, app):
         """
@@ -939,9 +939,9 @@ class Registry:
     def get_converters_by_datatype(self, ext):
         """Returns available converters by source type
 
-        Converters declaring license agreements are excluded - conversions run on the
-        user's behalf, so there is no submission to carry an affirmation. They remain
-        runnable directly as tools.
+        Converters declaring license agreements are excluded - an implicit conversion is
+        not a submission the user made, and this lookup is cached per extension rather
+        than per user. They remain runnable directly as tools.
         """
         if ext not in self._converters_by_datatype:
             converters = {}
@@ -949,13 +949,13 @@ class Registry:
             for ext2, converters_dict in self.datatype_converters.items():
                 converter_datatype = type(self.get_datatype_by_extension(ext2))
                 if issubclass(source_datatype, converter_datatype):
-                    converters.update({k: v for k, v in converters_dict.items() if k != ext})
+                    converters.update(
+                        {k: v for k, v in converters_dict.items() if k != ext and not v.license_agreements}
+                    )
             # Ensure ext-level converters are present
             if ext in self.datatype_converters.keys():
-                converters.update(self.datatype_converters[ext])
-            self._converters_by_datatype[ext] = {
-                target: converter for target, converter in converters.items() if not converter.license_agreements
-            }
+                converters.update({k: v for k, v in self.datatype_converters[ext].items() if not v.license_agreements})
+            self._converters_by_datatype[ext] = converters
         return self._converters_by_datatype[ext]
 
     def get_converter_by_target_type(self, source_ext, target_ext):

@@ -1604,7 +1604,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                     f"[{type(self.tool_action).__name__}] does not check execution preconditions"
                 )
             # Data source jobs are created by the remote site's callback, which carries no affirmation.
-            if self.tool_type in ("data_source", "data_source_async"):
+            if isinstance(self, DataSourceTool):
                 raise ValueError(
                     f"Tool [{self.id}] declares license agreements but {self.tool_type} tools cannot carry them"
                 )
