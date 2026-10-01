@@ -37,7 +37,6 @@ from galaxy.exceptions import (
     ConfigDoesNotAllowException,
     ObjectNotFound,
 )
-from galaxy.managers.markdown_util import to_html
 from galaxy.managers.sse_dispatch import SSEEventDispatcher
 from galaxy.model import (
     DatasetStorageOperationRun,
@@ -77,6 +76,7 @@ from galaxy.schema.storage_operations import (
     StorageOperationRunState,
 )
 from galaxy.util import now
+from galaxy.util.markdown_convert import to_html
 
 log = logging.getLogger(__name__)
 
