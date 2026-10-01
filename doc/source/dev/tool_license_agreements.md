@@ -64,10 +64,11 @@ canonical JSON document containing the affirmation and the terms. Nothing else i
   to accept again. Galaxy never fetches `url`.
 - **What prompts again:** changing the wording of the affirmation or the terms produces a new
   agreement, and every user must affirm it again.
-- **Normalization:** these differences do not change the hash: line endings, lines containing
-  only whitespace, blank lines at the start or end, a UTF-8 byte order mark, and (for inline
-  `<text>`) indentation shared by every line. Inline terms and the same terms in a file
-  therefore produce the same hash.
+- **Normalization:** these differences do not change the hash: line endings, whitespace on lines
+  that contain nothing else (they become empty lines, which still count), blank lines at the start
+  or end, a UTF-8 byte order mark, and (for inline `<text>` only) indentation shared by every line.
+  Trailing whitespace on other lines does change the hash. Files are not dedented, so inline terms
+  match a file only when the file has no shared indentation.
 - **Shared agreements:** tools that declare the same affirmation and terms declare the _same_
   agreement, even with different `id`s. A suite of tools sharing one license file shares one
   acceptance.
@@ -85,10 +86,15 @@ each submission. Galaxy never remembers it.
 : The affirmation is a statement about the person, such as _"I have read and agree to these
 terms."_ The user may accept it once, and Galaxy remembers that until the user revokes it.
 
-Keep the default unless the affirmation really is a lasting fact about the user. Do not declare the
-same affirmation and terms with `binds="submission"` in one tool and `binds="user"` in another.
-Because the hash ignores `binds`, both declarations are the same agreement, and how they combine
-is not settled yet.
+Keep the default unless the affirmation really is a lasting fact about the user.
+
+```{warning}
+Do not declare the same affirmation and terms with `binds="submission"` in one place and
+`binds="user"` in another. The hash ignores `binds`, so Galaxy treats both as the same agreement and
+uses whichever declaration it sees first. This is a known defect: a persistent acceptance can then
+satisfy the submission-bound declaration, and a workflow can pass its request-time check but fail
+when the submission-bound step is scheduled.
+```
 
 ### What one tool can express
 
@@ -117,7 +123,8 @@ combination or never runs the tool on the user's behalf:
 ### Testing
 
 Tool tests send one-time acceptances for every agreement the tool declares, so `planemo test` and
-Galaxy's tool framework tests need no changes. This is an automated assertion by the test account,
+Galaxy's tool framework tests need no changes. This requires a Galaxy server and a
+`galaxy-tool-util` release that both include license agreement support. This is an automated assertion by the test account,
 not a person's affirmation.
 
 Workflow framework tests cannot yet supply one-time acceptances.
@@ -127,23 +134,28 @@ Workflow framework tests cannot yet supply one-time acceptances.
 ### Where it is checked
 
 Enforcement lives in the default tool action's preconditions, which run before each job is created.
-Access checks run first: a user who cannot access the tool sees nothing about its agreements. Every
-path that submits through the tool action is covered:
+For each submission they also run once up front, before any jobs or output collections exist, so a
+refused map-over leaves nothing behind. For tool submissions, access checks run first: a user who
+cannot access the tool learns nothing about its agreements. Every path that submits through the
+tool action is covered.
 
-| Entry point                                   | Checked                                                              | Notes                                                                                                     |
-| --------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `POST /api/tools` (the tool form, legacy API) | when the request arrives                                             | The whole submission, including a map-over, is checked before any jobs or output collections are created. |
-| `POST /api/jobs` (tool requests)              | when the Celery task runs                                            | The request is accepted. If agreements are unmet, the tool request fails.                                 |
-| `POST /api/workflows/{id}/invocations`        | when the request arrives, and again for each step as it is scheduled |                                                                                                           |
-| Rerun or remap (a new submission)             | when the request arrives                                             | A new submission needs a new authorization.                                                               |
-| Resuming a paused job, automatic resubmission | not checked again                                                    | These are the same job, already authorized when it was created.                                           |
+The tool form submits to `POST /api/jobs` when tool requests and Celery are enabled and the tool
+has typed parameters. Otherwise it uses `POST /api/tools`.
+
+| Entry point                                   | Checked                                                              | Notes                                                                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/tools`                             | when the request arrives                                             |                                                                                                                          |
+| `POST /api/jobs` (tool requests)              | when the Celery task runs                                            | Tool access and undeclared hashes are checked when the request arrives. If agreements are unmet, the tool request fails. |
+| `POST /api/workflows/{id}/invocations`        | when the request arrives, and again for each step as it is scheduled |                                                                                                                          |
+| Rerun or remap                                | as for the endpoint used                                             | A new submission, so it needs a new authorization.                                                                       |
+| Resuming a paused job, automatic resubmission | not checked again                                                    | These are the same job, already authorized when it was created.                                                          |
 
 ### What a job records
 
 Each job stores how each of its agreements was authorized: the agreement hash, plus whether it was a
 `one_time` or `persistent` acceptance. A persistent acceptance also references its acceptance event.
-Galaxy stores the terms by hash, so the exact text that was affirmed stays available after the tool
-changes.
+Galaxy stores the terms by hash, so the exact text that was affirmed stays in the database after the
+tool changes. There is no API or UI for a job's license records yet.
 
 ### Workflows
 
@@ -151,26 +163,32 @@ changes.
   subworkflows. One prompt covers each distinct agreement, however many steps declare it.
 - **Checked at invocation:** invoking a workflow fails with `403` if any agreement is unaccepted.
   This happens before anything is scheduled.
-- **Pinning:** one-time acceptances are pinned to the invocation (and to subinvocations whose own
-  steps declare them), so they authorize jobs scheduled long after the request.
+- **Pinning:** each invocation and subinvocation pins the one-time acceptances its own tool steps
+  declare, so they authorize jobs scheduled long after the request.
 - **Revocation during a run:** persistent acceptances are checked again when each step is
-  scheduled. If one was revoked in between, the invocation fails with reason
-  `license_not_accepted`, which names the step and its agreement ids. Jobs that were already
-  created keep running.
+  scheduled. If one was revoked in between, the invocation fails with a message whose `reason` is
+  `license_not_accepted`, with `workflow_step_id` and `details` (the comma-separated agreement ids).
+  Jobs that were already created keep running.
 - **Steps skipped by `when`:** these still need acceptance. Agreements are collected from every
   tool step before any condition is evaluated.
 
 ## User experience
 
-- **Tool form:** the form shows each unaccepted agreement with its terms and the affirmation as a
-  checkbox. For `binds="user"` agreements, the user can also choose to have the acceptance
-  remembered. A refused submission names the missing agreements and reloads the form.
+- **Tool form:** the form shows each agreement with its terms, and each unaccepted one with its
+  affirmation as a checkbox. Run stays disabled until every one is affirmed. For `binds="user"`
+  agreements, the user can also choose to have the acceptance remembered. That is recorded before
+  the job is submitted, so it remains even if the submission fails. A refused submission names the
+  missing agreements and reloads the form.
 - **Workflow run forms:** both the simple and expanded forms show one prompt per distinct
-  agreement, including those of subworkflow tools.
+  agreement, including those of subworkflow tools. An invocation that fails at scheduling shows the
+  `license_not_accepted` message.
 - **User Preferences:** the _License Agreements_ page lists current persistent acceptances with
   their terms and history, and lets the user revoke each one.
 
 ## API
+
+The examples use Galaxy's test fixture tools (`test/functional/tools/license_agreement_*.xml`).
+Hashes are shortened.
 
 There are two ways to authorize a submission:
 
@@ -256,6 +274,10 @@ An unaccepted agreement on `POST /api/tools` or a workflow invocation returns `4
 }
 ```
 
+The workflow invocation refusal has the same structure. Its `message` starts "Workflow requires
+accepting license agreements", and its `details` holds only `agreements`, where each entry is a
+full record from the workflow discovery endpoint: terms, `accepted` and `steps` included.
+
 The same error code with `"kind": "access"` means the tool itself is not accessible. For an
 anonymous user it has `"remedy_route": "/login/start"`.
 
@@ -274,15 +296,31 @@ $ curl -X POST -H "x-api-key: $KEY" -H "Content-Type: application/json" \
   }'
 ```
 
-The terms are taken from the installed tool. `agreement_hash` confirms which terms the user was
-shown: if the tool's terms changed since then, the request fails with `400` and the user must review
-them again. Accepting an agreement that is already accepted returns the existing acceptance.
+The payload names a tool declaring the agreement (`tool_id`, plus `tool_version` if needed), the
+agreement's `id` as `license_id`, and its `agreement_hash`. For a workflow agreement, take
+`tool_id` and `tool_version` from any entry in its `steps`. The terms are taken from the installed
+tool. `agreement_hash` confirms which terms the user was shown: if the tool's terms changed since
+then, the request fails with `400` and the user must review them again.
+
+The request also fails with `400` when:
+
+- the agreement is `binds="submission"`;
+- the tool is unknown;
+- the tool does not declare `license_id`.
+
+The response is `{"agreement": {...}, "event": {...}}`: the stored terms and the accept event.
+Accepting an agreement that is already accepted returns the existing acceptance.
 
 - `GET /api/users/current/license_acceptances` lists current acceptances. Add
   `?include_history=true` to get every accept and revoke event, oldest first.
-- `DELETE /api/users/current/license_acceptances/{agreement_hash}` revokes an acceptance.
+- `DELETE /api/users/current/license_acceptances/{agreement_hash}` revokes an acceptance. It
+  returns `204`, or `404` when the agreement is not currently accepted.
 
-Users can only view and change their own acceptances.
+Users can only view and change their own acceptances. This applies to administrators too.
+
+Workflow and tool runs started through Galaxy's MCP server or its AI agents cannot send
+`one_time_license_acceptances`. These runs fail unless every agreement is `binds="user"` and
+already accepted.
 
 ## Operators
 
@@ -294,10 +332,13 @@ Users can only view and change their own acceptances.
 - **Purging users:** both the user manager and `pgcleanup.py` (the `purge_deleted_users` and
   `purge_deleted_users_gdpr` actions) delete a purged user's acceptance events. Jobs keep the agreement hash and how it
   was authorized, with the event reference cleared. Terms are kept. Events the purged user
-  recorded for another account are kept, without the attribution.
+  recorded for another account are kept, without the attribution. The model allows such
+  administrator-granted events, but no API records them yet.
 - **Remote tool evaluation:** this does not read license files. Agreements are checked before a
   job exists.
-- **Changing terms:** if the terms or affirmation on disk change, existing persistent acceptances
-  stop satisfying the tool, and users are prompted again. A one-time acceptance pinned to a
+- **Changing terms:** terms are read when the tool loads, so edits to a license file take effect
+  only after the tool is reloaded or Galaxy restarts. A changed affirmation or terms means existing
+  persistent acceptances no longer satisfy the tool, and users are prompted again. The old
+  acceptance still appears under User Preferences. A one-time acceptance pinned to a
   workflow invocation authorizes only the hash it named. If a tool reload changes that hash, later
   steps of the invocation fail with `license_not_accepted`.
