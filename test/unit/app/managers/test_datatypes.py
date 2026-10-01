@@ -1,5 +1,13 @@
+from dataclasses import (
+    dataclass,
+    field,
+)
+
 from galaxy.datatypes.registry import example_datatype_registry_for_sample
-from galaxy.managers.datatypes import get_preferred_visualization
+from galaxy.managers.datatypes import (
+    get_preferred_visualization,
+    view_converters,
+)
 
 
 def test_preferred_visualization_direct_mapping():
@@ -21,3 +29,19 @@ def test_preferred_visualization_inherited_from_parent_datatype():
         mapping = get_preferred_visualization(registry, extension)
         assert mapping
         assert mapping["visualization"] == visualization
+
+
+@dataclass(eq=False)
+class _StubConverter:
+    id: str
+    license_agreements: list[object] = field(default_factory=list)
+
+
+def test_view_converters_excludes_converters_requiring_license_agreements():
+    registry = example_datatype_registry_for_sample()
+    registry._register_converter_tool(_StubConverter("to_tabular", license_agreements=[object()]), "fasta", "tabular")
+    registry._register_converter_tool(_StubConverter("to_txt"), "fasta", "txt")
+
+    listed = {c.target: c.tool_id for c in view_converters(registry).root if c.source == "fasta"}
+    assert "tabular" not in listed
+    assert listed["txt"] == "to_txt"

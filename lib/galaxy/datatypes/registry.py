@@ -940,26 +940,34 @@ class Registry:
                 tabular.CSV(),
             ]
 
-    def get_converters_by_datatype(self, ext):
-        """Returns available converters by source type
+    def offered_datatype_converters(self) -> dict[str, dict[str, "AbstractTool"]]:
+        """Registered converters by source and target type, without those declaring license agreements.
 
-        Converters declaring license agreements are excluded - conversions run on the
-        user's behalf, so there is no submission to carry an affirmation. They remain
-        runnable directly as tools.
+        An implicit conversion is not a submission the user made, so these converters are never
+        offered. They remain runnable directly as tools.
+        """
+        return {
+            source: {target: converter for target, converter in targets.items() if not converter.license_agreements}
+            for source, targets in self.datatype_converters.items()
+        }
+
+    def get_converters_by_datatype(self, ext):
+        """Returns available converters by source type, as offered by ``offered_datatype_converters``.
+
+        Cached per extension rather than per user.
         """
         if ext not in self._converters_by_datatype:
             converters = {}
+            offered = self.offered_datatype_converters()
             source_datatype = type(self.get_datatype_by_extension(ext))
-            for ext2, converters_dict in self.datatype_converters.items():
+            for ext2, converters_dict in offered.items():
                 converter_datatype = type(self.get_datatype_by_extension(ext2))
                 if issubclass(source_datatype, converter_datatype):
                     converters.update({k: v for k, v in converters_dict.items() if k != ext})
             # Ensure ext-level converters are present
-            if ext in self.datatype_converters.keys():
-                converters.update(self.datatype_converters[ext])
-            self._converters_by_datatype[ext] = {
-                target: converter for target, converter in converters.items() if not converter.license_agreements
-            }
+            if ext in offered:
+                converters.update(offered[ext])
+            self._converters_by_datatype[ext] = converters
         return self._converters_by_datatype[ext]
 
     def get_converter_by_target_type(self, source_ext, target_ext):

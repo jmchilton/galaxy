@@ -73,7 +73,7 @@ def view_sniffers(datatypes_registry: Registry) -> list[str]:
 
 def view_converters(datatypes_registry: Registry) -> DatatypeConverterList:
     converters = []
-    for source_type, targets in datatypes_registry.datatype_converters.items():
+    for source_type, targets in datatypes_registry.offered_datatype_converters().items():
         for target_type in targets:
             converters.append(
                 {
