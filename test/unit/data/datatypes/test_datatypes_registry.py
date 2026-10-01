@@ -126,3 +126,21 @@ def test_rmsx_manifest_visualization_registration():
     assert registry.mimetypes_by_extension["rmsx.json"] == "application/json"
     assert "rmsx.json" in registry.upload_file_formats
     assert registry.get_all_visualization_mappings()["rmsx.json"]["visualization"] == "rmsxflipbook"
+
+
+class _StubConverter:
+    def __init__(self, id, license_agreements=()):
+        self.id = id
+        self.license_agreements = list(license_agreements)
+
+
+def test_converters_requiring_license_agreements_are_not_offered():
+    registry = example_datatype_registry_for_sample()
+    registry._register_converter_tool(_StubConverter("to_tabular", license_agreements=[object()]), "fasta", "tabular")
+    registry._register_converter_tool(_StubConverter("to_txt"), "fasta", "txt")
+
+    converters = registry.get_converters_by_datatype("fasta")
+    assert "tabular" not in converters
+    assert converters["txt"].id == "to_txt"
+    assert registry.get_converter_by_target_type("fasta", "tabular") is None
+    assert registry.find_conversion_destination_for_dataset_by_extensions("fasta", ["tabular"]) == (False, None, None)

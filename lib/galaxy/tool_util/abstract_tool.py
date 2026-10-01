@@ -49,6 +49,7 @@ from galaxy.util.template import (
 
 if TYPE_CHECKING:
     from galaxy.tool_util.deps.requirements import ToolRequirements
+    from galaxy.tool_util.license_agreements import ResolvedLicenseAgreement
     from galaxy.tool_util.parser.interface import ToolSource
     from galaxy.tool_util.parser.output_objects import ToolOutputBase
     from galaxy.tool_util.parser.stdio import (
@@ -136,6 +137,7 @@ class AbstractTool:
     xrefs: "list[XrefDict]"
     config_files: "Sequence[TemplateConfigFile | InputConfigFile | FileSourceConfigFile]"
     requirements: "ToolRequirements"
+    license_agreements: "list[ResolvedLicenseAgreement]"
     parameters: "list[ToolParameterT] | None"
     _tests: str | None
     _tests_parsed: bool

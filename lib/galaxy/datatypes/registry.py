@@ -937,7 +937,12 @@ class Registry:
             ]
 
     def get_converters_by_datatype(self, ext):
-        """Returns available converters by source type"""
+        """Returns available converters by source type
+
+        Converters declaring license agreements are excluded - conversions run on the
+        user's behalf, so there is no submission to carry an affirmation. They remain
+        runnable directly as tools.
+        """
         if ext not in self._converters_by_datatype:
             converters = {}
             source_datatype = type(self.get_datatype_by_extension(ext))
@@ -948,7 +953,9 @@ class Registry:
             # Ensure ext-level converters are present
             if ext in self.datatype_converters.keys():
                 converters.update(self.datatype_converters[ext])
-            self._converters_by_datatype[ext] = converters
+            self._converters_by_datatype[ext] = {
+                target: converter for target, converter in converters.items() if not converter.license_agreements
+            }
         return self._converters_by_datatype[ext]
 
     def get_converter_by_target_type(self, source_ext, target_ext):

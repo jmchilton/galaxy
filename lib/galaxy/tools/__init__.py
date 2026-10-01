@@ -1603,6 +1603,11 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                     f"Tool [{self.id}] declares license agreements but its tool action "
                     f"[{type(self.tool_action).__name__}] does not check execution preconditions"
                 )
+            # Data source jobs are created by the remote site's callback, which carries no affirmation.
+            if self.tool_type in ("data_source", "data_source_async"):
+                raise ValueError(
+                    f"Tool [{self.id}] declares license agreements but {self.tool_type} tools cannot carry them"
+                )
             # An affirmation binds a person, not an anonymous session.
             self.require_login = True
         # Remote tool evaluation rebuilds the tool where its directory (and so a license
