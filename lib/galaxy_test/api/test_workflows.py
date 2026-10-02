@@ -2964,6 +2964,64 @@ steps:
             assert "object at 0x" not in reported, reported
             assert "hashable" not in reported, reported
 
+    @skip_without_tool("conditional_data_arity")
+    def test_run_workflow_corrected_state_unresolvable_conditional_case(self):
+        """With allow_tool_state_corrections (as planemo sends it) a connected test
+        parameter gets past request validation and receives an upstream value that
+        matches no <when>. The step must fail naming that value, not run a case."""
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self._upload_yaml_workflow("""class: GalaxyWorkflow
+inputs:
+  case_selector_file:
+    type: data
+  reads_input:
+    type: data
+steps:
+  case_param:
+    tool_id: param_value_from_file
+    state:
+      param_type: text
+      remove_newlines: true
+    in:
+      input1: case_selector_file
+  arity:
+    tool_id: conditional_data_arity
+    state:
+      batch_cond:
+        batch_select:
+          $link: case_param/text_param
+        reads:
+          $link: reads_input
+""")
+            selector = self.dataset_populator.new_dataset(history_id, content="Pooling", wait=True)
+            reads = self.dataset_populator.new_dataset(history_id, content="abc", wait=True)
+            response = self.workflow_populator.invoke_workflow_raw(
+                workflow_id,
+                {
+                    "history": f"hist_id={history_id}",
+                    "inputs_by": "name",
+                    "allow_tool_state_corrections": True,
+                    "inputs": {
+                        "case_selector_file": {"src": "hda", "id": selector["id"]},
+                        "reads_input": {"src": "hda", "id": reads["id"]},
+                    },
+                },
+            )
+            assert response.status_code == 200, response.text
+            invocation_id = response.json()["id"]
+            self.workflow_populator.wait_for_invocation_and_jobs(
+                history_id, workflow_id, invocation_id, assert_ok=False
+            )
+            invocation = self.workflow_populator.get_invocation(invocation_id)
+            assert invocation["state"] == "failed", invocation
+            (message,) = invocation["messages"]
+            details = message["details"]
+            assert "No case matching 'batch_select' value 'Pooling'" in details, details
+            assert "Valid values are ['no', 'yes']" in details, details
+            steps = self.workflow_populator.get_invocation(invocation_id, step_details=True)["steps"]
+            (arity_step,) = (step for step in steps if step["workflow_step_label"] == "arity")
+            assert not arity_step["jobs"], arity_step
+
     def test_run_workflow_simple_conditional_step_with_nested_tool_state(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow(
