@@ -24,6 +24,7 @@ from galaxy.exceptions import (
     RequestParameterInvalidException,
 )
 from galaxy.files.uris import stream_to_file
+from galaxy.tools.parameters.workflow_utils import is_runtime_value
 from galaxy.util import (
     asbool,
     inflector,
@@ -774,10 +775,13 @@ class Conditional(Group):
     def no_case_error(self, value: Any) -> str:
         """Message for a test parameter value matching no ``<when>``."""
         test_param_name = self.test_param.name if self.test_param else "unknown"
-        return (
-            f"No case matching '{test_param_name}' value {value!r}. "
-            f"Valid values are {[case.value for case in self.cases]}."
-        )
+        valid_values = [case.value for case in self.cases]
+        if is_runtime_value(value):
+            return (
+                f"'{test_param_name}' selects a case of '{self.name}' and cannot be connected "
+                f"or set at runtime. Valid values are {valid_values}."
+            )
+        return f"No case matching '{test_param_name}' value {value!r}. Valid values are {valid_values}."
 
     def get_current_case_inputs(self, values: Mapping[str, Any], strict: bool = True) -> "ToolInputsT":
         """Inputs of the case recorded in ``values["__current_case__"]``.

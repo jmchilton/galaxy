@@ -2901,9 +2901,10 @@ should_run:
                     assert sum(1 for j in step["jobs"] if j["state"] == "skipped") == 1
 
     @skip_without_tool("conditional_data_arity")
-    def test_run_workflow_unresolvable_conditional_case(self):
-        """A conditional test value matching no <when> is refused at request time,
-        with a message naming the parameter and the offending value (#23521)."""
+    def test_run_workflow_connected_conditional_test_param(self):
+        """A conditional's test parameter connected to another step selects no case.
+        The request is refused, even inside a subworkflow, with a message naming
+        the parameter and its valid values (#23521)."""
         with self.dataset_populator.test_history() as history_id:
             workflow_id = self._upload_yaml_workflow("""class: GalaxyWorkflow
 inputs:
@@ -2958,9 +2959,9 @@ steps:
             assert response.status_code == 400, response.text
             reported = json.dumps(response.json())
             assert "batch_cond|batch_select" in reported, reported
-            assert "No case matching" in reported, reported
-            # names the valid options so the author can spot the typo
+            assert "cannot be connected" in reported, reported
             assert "'no', 'yes'" in reported, reported
+            assert "object at 0x" not in reported, reported
             assert "hashable" not in reported, reported
 
     def test_run_workflow_simple_conditional_step_with_nested_tool_state(self):

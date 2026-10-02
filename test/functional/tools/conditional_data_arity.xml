@@ -4,8 +4,8 @@
     Mirrors a shape that is common in the wild (e.g. the dada2 suite's
     batch_cond|derep and paired_cond|reads): the same parameter name appears in
     more than one <when>, with a different arity each time, and the
-    single-dataset case is last. If the test parameter ever fails to resolve to
-    a case, consumers that index cases[__current_case__] land on cases[-1].
+    single-dataset case is last. Handling one case's values with the other
+    case's parameters would hand a list to the single-dataset parameter.
     -->
     <command><![CDATA[
 #if str($batch_cond.batch_select) == 'no':
