@@ -1173,14 +1173,17 @@ class WorkflowContentsManager(UsesAnnotations):
                         input_dict["inputs"] = nested_input_dicts
                 elif input.type == "conditional":
                     group_values = values[input.name]
-                    current_case = group_values["__current_case__"]
                     new_prefix = f"{prefix + input.name}|"
                     row_for_param(
                         input_dict, input.test_param, group_values[input.test_param.name], other_values, prefix, step
                     )
                     try:
                         input_dict["inputs"] = do_inputs(
-                            input.cases[current_case].inputs, group_values, new_prefix, step, other_values
+                            input.get_current_case_inputs(group_values, strict=False),
+                            group_values,
+                            new_prefix,
+                            step,
+                            other_values,
                         )
                     except KeyError:
                         continue

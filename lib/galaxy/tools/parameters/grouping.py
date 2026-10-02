@@ -786,15 +786,10 @@ class Conditional(Group):
     def get_current_case_inputs(self, values: Mapping[str, Any], strict: bool = True) -> "ToolInputsT":
         """Inputs of the case recorded in ``values["__current_case__"]``.
 
-        ``get_current_case`` returns -1 when the test parameter matches no
-        ``<when>``, and ``visit_input_values`` stores that sentinel in the
-        state. Indexing ``self.cases`` with it selects the *last* case rather
-        than failing, so values shaped for one case end up handled as another's
-        - which surfaces far downstream as an opaque TypeError while wrapping.
-
-        Execution paths want the exception. Callers that rebuild a form or scrub
-        stored state pass ``strict=False`` and get no inputs instead, so a stale
-        conditional stays editable rather than locking its own repair UI.
+        Never index ``self.cases`` directly: an unmatched test value is stored
+        as -1, which would select the last case. Form-building callers pass
+        ``strict=False`` to get no inputs instead of an exception, so a stale
+        conditional stays editable.
         """
         current_case = values.get("__current_case__")
         if not isinstance(current_case, int) or not 0 <= current_case < len(self.cases):
