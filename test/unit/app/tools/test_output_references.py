@@ -28,6 +28,36 @@ OUTPUT_REFERENCES_TOOL = """<tool id="test_tool" name="Test Tool" version="1.0" 
 </tool>
 """
 
+YAML_OUTPUT_REFERENCES_TOOL = """id: test_tool
+name: Test Tool
+class: GalaxyTool
+version: 1.0
+profile: "26.0"
+shell_command: echo a > out.txt
+inputs:
+- name: input
+  type: data
+  multiple: true
+- name: cond
+  type: conditional
+  test_parameter:
+    type: boolean
+    name: use
+  when:
+    true:
+      - name: input1
+        type: data
+outputs:
+  out_legacy:
+    from_work_dir: out.txt
+    format: txt
+    format_source: input1
+  out_numbered:
+    from_work_dir: out.txt
+    format: txt
+    format_source: input2
+"""
+
 
 class TestOutputReferences(TestCase, tools_support.UsesTools):
     def setUp(self):
@@ -92,3 +122,8 @@ class TestOutputReferences(TestCase, tools_support.UsesTools):
     def test_unresolvable_reference_fails_load_from_profile_26_2(self):
         with pytest.raises(Exception, match="format_source='input2' does not match any declared input"):
             self._load('<data name="out" format="txt" format_source="input2" />', profile="26.2")
+
+    def test_yaml_tool_references_resolved(self):
+        self._init_tool(YAML_OUTPUT_REFERENCES_TOOL, filename="tool.yml")
+        assert self.tool.outputs["out_legacy"].format_source == "cond|input1"
+        assert self.tool.outputs["out_numbered"].format_source is None
