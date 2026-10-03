@@ -70,6 +70,29 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
             )
         assert response
 
+    def test_boolean_defaults_in_build_and_run(self):
+        for value in (True, False):
+            representation = UserToolSource.model_validate(
+                {
+                    **TOOL_WITH_SHELL_COMMAND,
+                    "id": f"boolean_default_{str(value).lower()}",
+                    "shell_command": "printf '%s\\n' '$(inputs.flag)' > output.txt",
+                    "inputs": [{"name": "flag", "type": "boolean", "value": value}],
+                    "outputs": [{"name": "output", "type": "data", "format": "txt", "from_work_dir": "output.txt"}],
+                }
+            )
+            with (
+                self.dataset_populator.test_history() as history_id,
+                self.dataset_populator.user_tool_execute_permissions(),
+            ):
+                built = self.dataset_populator.build_unprivileged_tool(representation, history_id=history_id)
+                assert built["inputs"][0]["value"] is value
+                dynamic_tool = self.dataset_populator.create_unprivileged_tool(representation)
+                self._run(history_id=history_id, tool_uuid=dynamic_tool["uuid"], inputs={})
+                self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+                output = self.dataset_populator.get_history_dataset_content(history_id)
+                assert output == f"{str(value).lower()}\n"
+
     def test_build_rejects_rst_help(self):
         representation = {**TOOL_WITH_SHELL_COMMAND, "help": {"format": "restructuredtext", "content": "**help**"}}
         payload = {"src": "representation", "representation": representation}
