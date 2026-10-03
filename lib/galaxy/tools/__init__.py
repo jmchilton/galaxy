@@ -102,6 +102,10 @@ from galaxy.tool_util.parser.output_objects import (
     ToolOutputBase,
     ToolOutputCollection,
 )
+from galaxy.tool_util.parser.output_references import (
+    InputReferences,
+    output_reference_problem,
+)
 from galaxy.tool_util.parser.util import (
     parse_profile_version,
     parse_tool_version_with_defaults,
@@ -1524,6 +1528,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.funding = tool_source.parse_funding()
         self.parse_inputs(self.tool_source)
         self.parse_outputs(self.tool_source)
+        self._resolve_output_references(self.tool_source)
         self.raw_help = None
 
         if self.app.is_webapp:
@@ -1756,6 +1761,35 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         Parse <outputs> elements and fill in self.outputs (keyed by name)
         """
         self.outputs, self.output_collections = tool_source.parse_outputs(self.app)
+
+    def _resolve_output_references(self, tool_source: ToolSource) -> None:
+        """Rewrite output references to the runtime key of the declared input they name.
+
+        Job creation also records keys for expanded inputs (``input2``, conversion names) that a
+        reference must not reach, and a legacy alias can collide with one of them.
+        """
+        outputs: list[ToolOutputBase] = []
+        for output in self.outputs.values():
+            outputs.append(output)
+            if isinstance(output, ToolOutputCollection):
+                outputs.extend(output.outputs.values())
+        input_references: InputReferences | None = None
+        for output in outputs:
+            for attribute in ("format_source", "metadata_source"):
+                reference = getattr(output, attribute, None)
+                if not isinstance(reference, str):
+                    continue
+                if input_references is None:
+                    input_references = InputReferences(tool_source)
+                resolved = input_references.resolve(reference)
+                if problem := output_reference_problem(resolved, attribute):
+                    message = f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {problem}."
+                    if self.profile >= 26.2:
+                        raise Exception(message)
+                    log.warning(f"{message} Ignoring it.")
+                    setattr(output, attribute, None)
+                else:
+                    setattr(output, attribute, resolved.runtime_key)
 
     def _parse_citations(self, tool_source):
         citation_models = tool_source.parse_citations()

@@ -212,6 +212,7 @@ def collect_dynamic_outputs(
             dataset_collectors = [
                 dataset_collector(description) for description in output_collection_def.dataset_collector_descriptions
             ]
+            default_format = output_collection_def.default_format
             if output_collection_def.format_source:
                 job = job_context.job
                 input_collections = {}
@@ -224,11 +225,13 @@ def collect_dynamic_outputs(
                     output_collection_def.format_source,
                     job_context.input_datasets,
                     input_collections,
-                    output_collection_def.default_format,
+                    default_format,
                 )
-                for collector in dataset_collectors:
-                    if collector.default_ext is None:
-                        collector.default_ext = default_format
+            # Collectors parsed from a collection that declared format_source leave their default
+            # unset, including when tool loading dropped that format_source as unresolvable.
+            for collector in dataset_collectors:
+                if collector.default_ext is None:
+                    collector.default_ext = default_format
             output_name = output_collection_def.name
             filenames = job_context.find_files(output_name, collection, dataset_collectors)
             job_context.populate_collection_elements(

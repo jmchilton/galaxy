@@ -2,12 +2,13 @@
 
 import json
 import logging
-import re
 from collections.abc import Mapping
 from typing import (
     Optional,
     TYPE_CHECKING,
 )
+
+from galaxy.tool_util.parser.output_references import split_element_selector
 
 if TYPE_CHECKING:
     from galaxy.model import (
@@ -44,13 +45,11 @@ def resolve_format_source(
             pass
     else:
         element_index = None
-        collection_name = format_source
-        if re.match(r"^[^\[\]]*\[[^\[\]]*\]$", format_source):
-            collection_name, element_index = format_source[0:-1].split("[")
+        collection_name, selector = split_element_selector(format_source)
+        if selector:
             # Treat as json to interpret "forward" vs 0 with type
             # Make it feel more like Python, single quote better in XML also.
-            element_index = element_index.replace("'", '"')
-            element_index = json.loads(element_index)
+            element_index = json.loads(selector[1:-1].replace("'", '"'))
 
         if collection_name in input_dataset_collections:
             try:

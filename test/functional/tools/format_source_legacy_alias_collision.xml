@@ -1,0 +1,34 @@
+<tool id="format_source_legacy_alias_collision" name="format_source_legacy_alias_collision" version="0.1.0" profile="26.0">
+    <!-- the legacy alias input1 names cond|input1, not the input1 key job creation adds for
+         the first dataset of the multiple input -->
+    <command><![CDATA[
+        echo 'test' > '$out_legacy' &&
+        echo 'test' > '$out_qualified'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" multiple="true" format="data"/>
+        <conditional name="cond">
+            <param name="select" type="select">
+                <option value="a">a</option>
+            </param>
+            <when value="a">
+                <param name="input1" type="data" format="data"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="out_legacy" format="txt" format_source="input1"/>
+        <data name="out_qualified" format="txt" format_source="cond|input1"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="1.fasta" ftype="fasta"/>
+            <conditional name="cond">
+                <param name="select" value="a"/>
+                <param name="input1" value="1.bed" ftype="bed"/>
+            </conditional>
+            <output name="out_legacy" ftype="bed"/>
+            <output name="out_qualified" ftype="bed"/>
+        </test>
+    </tests>
+</tool>
