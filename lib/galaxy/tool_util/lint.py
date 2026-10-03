@@ -45,6 +45,7 @@ In order to use this.
 """
 
 import inspect
+import types
 from abc import (
     ABC,
     abstractmethod,
@@ -439,7 +440,13 @@ def lint_tool_source_with_modules(lint_context: LintContext, tool_source, linter
                         lint_context.lint(name, value, tool_xml)
                 else:
                     lint_context.lint(name, value, tool_source)
-            elif inspect.isclass(value) and issubclass(value, Linter) and not inspect.isabstract(value):
+            elif (
+                inspect.isclass(value)
+                # Python 3.10 treats aliases like dict[str, str] as classes, but issubclass rejects them.
+                and not isinstance(value, types.GenericAlias)
+                and issubclass(value, Linter)
+                and not inspect.isabstract(value)
+            ):
                 lint_context.lint(name, value.lint, tool_source, module_name=module_name)
     return lint_context
 
