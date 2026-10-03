@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING
 from packaging.version import Version
 
 from galaxy.tool_util.lint import Linter
-from ._util import is_valid_cheetah_placeholder
+from ._util import (
+    is_valid_cheetah_placeholder,
+    iter_output_input_references,
+)
 from ..parser.output_collection_def import NAMED_PATTERNS
 
 if TYPE_CHECKING:
@@ -264,12 +267,10 @@ class OutputsStructuredLikeReference(Linter):
         tool_xml = getattr(tool_source, "xml_tree", None)
         if not tool_xml:
             return
-        param_qualified_paths = _collect_param_qualified_paths(tool_xml)
-        for output in tool_xml.findall("./outputs/collection[@structured_like]"):
-            structured_like = output.attrib["structured_like"]
-            _check_unqualified_reference(
-                lint_ctx, cls.name(), output, structured_like, "structured_like", param_qualified_paths
-            )
+        for output, structured_like, matches in iter_output_input_references(
+            tool_xml, ["./outputs/collection"], "structured_like"
+        ):
+            _check_unqualified_reference(lint_ctx, cls.name(), output, structured_like, "structured_like", matches)
 
 
 class OutputsFormatSourceReference(Linter):
@@ -278,14 +279,10 @@ class OutputsFormatSourceReference(Linter):
         tool_xml = getattr(tool_source, "xml_tree", None)
         if not tool_xml:
             return
-        param_qualified_paths = _collect_param_qualified_paths(tool_xml)
-        for output in tool_xml.findall("./outputs/data[@format_source]") + tool_xml.findall(
-            "./outputs/collection[@format_source]"
+        for output, format_source, matches in iter_output_input_references(
+            tool_xml, ["./outputs/data", "./outputs/collection"], "format_source"
         ):
-            format_source = output.attrib["format_source"]
-            _check_unqualified_reference(
-                lint_ctx, cls.name(), output, format_source, "format_source", param_qualified_paths
-            )
+            _check_unqualified_reference(lint_ctx, cls.name(), output, format_source, "format_source", matches)
 
 
 def _check_unqualified_reference(
@@ -294,15 +291,10 @@ def _check_unqualified_reference(
     node: "Element",
     ref_value: str,
     attr_name: str,
-    param_qualified_paths: dict,
+    matches: list[str] | None,
 ) -> None:
-    if "|" in ref_value:
+    if matches is None:
         return
-    # Check if it matches a top-level param directly
-    top_level_match = any(qp == ref_value for paths in param_qualified_paths.values() for qp in paths)
-    if top_level_match:
-        return
-    matches = param_qualified_paths.get(ref_value, [])
     output_name = node.attrib.get("name", "unknown")
     if len(matches) == 1:
         lint_ctx.warn(
@@ -324,46 +316,6 @@ def _check_unqualified_reference(
             linter=linter_name,
             node=node,
         )
-
-
-def _collect_param_qualified_paths(tool_xml: "ElementTree") -> dict:
-    """Build a map of unqualified param name -> list of qualified paths."""
-    param_paths: dict = {}
-    parent_map = {child: parent for parent in tool_xml.iter() for child in parent}
-    for param in tool_xml.findall("./inputs//param"):
-        name = param.attrib.get("name")
-        if not name:
-            argument = param.attrib.get("argument")
-            if argument:
-                name = argument.lstrip("-").replace("-", "_")
-        if not name:
-            continue
-        qualified = _get_qualified_name(param, parent_map)
-        param_paths.setdefault(name, []).append(qualified)
-    return param_paths
-
-
-def _get_qualified_name(param_elem: "Element", parent_map: dict) -> str:
-    """Walk up the XML tree to build the qualified path for a param element."""
-    name = param_elem.attrib.get("name")
-    if not name:
-        argument = param_elem.attrib.get("argument")
-        if argument:
-            name = argument.lstrip("-").replace("-", "_")
-    parts = [name] if name else []
-    current = param_elem
-    while True:
-        parent = parent_map.get(current)
-        if parent is None:
-            break
-        if parent.tag in ("conditional", "section"):
-            parent_name = parent.attrib.get("name")
-            if parent_name:
-                parts.insert(0, parent_name)
-        elif parent.tag in ("inputs", "tool"):
-            break
-        current = parent
-    return "|".join(parts)
 
 
 def _has_tool_provided_metadata(tool_xml: "ElementTree") -> bool:

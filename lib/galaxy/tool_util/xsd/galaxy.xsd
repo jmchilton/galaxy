@@ -6443,7 +6443,9 @@ dataset to derive "structure" of the output from (output element count and
 identifiers). For instance, if the referenced input has three ordered items with
 identifiers ``sample1``, ``sample2``,  and ``sample3``. If this references input
 elements in conditionals, this value should be qualified (e.g. ``cond|input`` instead
-of ``input`` if ``input`` is in a conditional with ``name="cond"``).</xs:documentation>
+of ``input`` if ``input`` is in a conditional with ``name="cond"``). Starting with
+profile 26.0, unqualified references to nested inputs are no longer resolved when
+the tool is mapped over a collection.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="inherit_format" type="xs:boolean">
