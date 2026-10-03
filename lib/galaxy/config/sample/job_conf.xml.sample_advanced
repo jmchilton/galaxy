@@ -97,6 +97,12 @@
                client to reconnect to the server after each timeout. Set to a
                higher value (in seconds) (or `None` to use blocking connections). -->
           <!-- <param id="amqp_consumer_timeout">None</param> -->
+          <!-- Galaxy learns of job state changes from Pulsar status
+               messages. If one is lost (e.g. a Galaxy handler stopped after
+               consuming it), the job never finishes. Set this to a number of
+               seconds to periodically ask Pulsar to resend the status of
+               running jobs. Disabled (0) by default. -->
+          <!-- <param id="status_poll_interval">0</param> -->
         </plugin>
         <plugin id="pulsar_legacy" type="runner" load="galaxy.jobs.runners.pulsar:PulsarLegacyJobRunner">
           <!-- Pulsar job runner with default parameters matching those

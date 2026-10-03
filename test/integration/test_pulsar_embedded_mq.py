@@ -11,10 +11,12 @@ from galaxy.util import safe_makedirs
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 from .objectstore._purged_handling import purge_while_job_running
+from .pulsar_mq_runners import LosesFirstCompleteStatusJobRunner
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 EMBEDDED_PULSAR_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_mq_job_conf.yml")
 AMQP_URL = os.environ.get("GALAXY_TEST_AMQP_URL", "amqp://guest:guest@localhost:5672//")
+EMBEDDED_MQ_RUNNER = "galaxy.jobs.runners.pulsar:PulsarEmbeddedMQJobRunner"
 
 JOB_CONF_TEMPLATE = """
 runners:
@@ -22,7 +24,8 @@ runners:
     load: galaxy.jobs.runners.local:LocalJobRunner
     workers: 1
   pulsar:
-    load: galaxy.jobs.runners.pulsar:PulsarEmbeddedMQJobRunner
+    load: ${runner_load}
+    status_poll_interval: ${status_poll_interval}
     pulsar_app_config:
       tool_dependency_dir: none
       conda_auto_init: false
@@ -51,7 +54,7 @@ tools:
 """
 
 
-def _handle_galaxy_config_kwds(cls, config):
+def _handle_galaxy_config_kwds(cls, config, runner_load=EMBEDDED_MQ_RUNNER, status_poll_interval=0):
     amqp_url = os.environ.get("GALAXY_TEST_AMQP_URL", None)
     if amqp_url is None:
         pytest.skip("External AMQP URL not configured for test")
@@ -66,6 +69,8 @@ def _handle_galaxy_config_kwds(cls, config):
         amqp_key_prefix=f"pulsar_{uuid.uuid4().hex[:12]}_",
         jobs_directory=jobs_directory,
         galaxy_home=os.path.join(SCRIPT_DIRECTORY, os.pardir),
+        runner_load=runner_load,
+        status_poll_interval=status_poll_interval,
     )
     with tempfile.NamedTemporaryFile(suffix="_mq_job_conf.yml", mode="w", delete=False) as job_conf:
         job_conf.write(job_conf_str)
@@ -101,6 +106,40 @@ class TestEmbeddedMessageQueuePulsarExtendedMetadataPurge(TestEmbeddedMessageQue
     def handle_galaxy_config_kwds(cls, config):
         config["metadata_strategy"] = "extended"
         _handle_galaxy_config_kwds(cls, config)
+
+
+class TestEmbeddedMessageQueuePulsarLostStatusUpdate(integration_util.IntegrationTestCase):
+    dataset_populator: DatasetPopulator
+    framework_tool_and_types = True
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        _handle_galaxy_config_kwds(
+            cls,
+            config,
+            runner_load="integration.pulsar_mq_runners:LosesFirstCompleteStatusJobRunner",
+            status_poll_interval=2,
+        )
+
+    def test_status_poll_recovers_lost_complete_status(self):
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="1 2 3", wait=True)
+            response = self.dataset_populator.run_tool(
+                "cat_data_and_sleep",
+                inputs={"input1": {"src": "hda", "id": hda["id"]}, "sleep_time": 5},
+                history_id=history_id,
+            )
+            encoded_job_id = response["jobs"][0]["id"]
+            self.dataset_populator.wait_for_job(encoded_job_id, assert_ok=True, timeout=60)
+        dispatcher = self._app.job_manager.job_handler.dispatcher
+        assert dispatcher is not None
+        runner = dispatcher.job_runners["pulsar"]
+        assert isinstance(runner, LosesFirstCompleteStatusJobRunner)
+        assert runner.finished_job_ids == [self._app.security.decode_id(encoded_job_id)]
 
 
 class EmbeddedMessageQueuePulsarIntegrationInstance(integration_util.IntegrationInstance):
