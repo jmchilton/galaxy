@@ -2411,6 +2411,44 @@ class TestToolsApi(ApiTestCase, TestsTools):
         self._verify_element(history_id, element0, contents="#col1\tcol2\na\tb\nc\td\n", file_ext="txt")
         self._verify_element(history_id, element1, contents="#col1\tcol2\ne\tf\ng\th\n", file_ext="txt")
 
+    @skip_without_tool("format_source_internal_keys")
+    def test_format_source_internal_keys_collection_for_multiple_input(self, history_id):
+        # A collection given to a multiple data input is expanded into input1, input2, ... and
+        # recorded under the input's name; format_source must reach neither.
+        bed = self.dataset_populator.new_dataset(history_id, content="chr1\t1\t2\n", file_type="bed", wait=True)
+        fasta = self.dataset_populator.new_dataset(history_id, content=">seq\nACGT\n", file_type="fasta", wait=True)
+        pair = self.dataset_collection_populator.create_list_in_history(
+            history_id,
+            element_identifiers=[
+                {"name": "forward", "src": "hda", "id": bed["id"]},
+                {"name": "reverse", "src": "hda", "id": fasta["id"]},
+            ],
+            direct_upload=False,
+            wait=True,
+        ).json()
+        coll = self.dataset_collection_populator.create_list_in_history(
+            history_id,
+            element_identifiers=[{"name": "first", "src": "hda", "id": fasta["id"]}],
+            direct_upload=False,
+            wait=True,
+        ).json()
+        inputs = {
+            "input": {"src": "hdca", "id": pair["id"]},
+            "fasta_input": dataset_to_param(fasta),
+            "coll": {"src": "hdca", "id": coll["id"]},
+        }
+        create = self._run("format_source_internal_keys", history_id, inputs, assert_ok=True)
+        self.dataset_populator.wait_for_job(create["jobs"][0]["id"], assert_ok=True)
+        extensions = {
+            output["output_name"]: self.dataset_populator.get_history_dataset_details(
+                history_id, dataset_id=output["id"]
+            )["file_ext"]
+            for output in create["outputs"]
+        }
+        assert extensions["out_multiple"] == "bed"
+        assert extensions["out_multiple_second"] == "txt"
+        assert extensions["out_multiple_selector"] == "txt"
+
     @skip_without_tool("collection_split_on_column")
     def test_dynamic_list_output(self, history_id):
         new_dataset1 = self.dataset_populator.new_dataset(
