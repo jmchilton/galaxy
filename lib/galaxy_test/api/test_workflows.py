@@ -2937,9 +2937,12 @@ steps:
           state:
             batch_cond:
               batch_select:
-                $link: inner_selector
+                __class__: ConnectedValue
               reads:
-                $link: inner_reads
+                __class__: ConnectedValue
+          in:
+            batch_cond|batch_select: inner_selector
+            batch_cond|reads: inner_reads
     in:
       inner_selector: case_param/text_param
       inner_reads: reads_input
@@ -2989,9 +2992,12 @@ steps:
     state:
       batch_cond:
         batch_select:
-          $link: case_param/text_param
+          __class__: ConnectedValue
         reads:
-          $link: reads_input
+          __class__: ConnectedValue
+    in:
+      batch_cond|batch_select: case_param/text_param
+      batch_cond|reads: reads_input
 """)
             selector = self.dataset_populator.new_dataset(history_id, content="Pooling", wait=True)
             reads = self.dataset_populator.new_dataset(history_id, content="abc", wait=True)
