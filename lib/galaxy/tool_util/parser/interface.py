@@ -541,7 +541,7 @@ class InputSource(metaclass=ABCMeta):
         keys to be supported depend on the parameter type.
         """
 
-    def parse_boolean_default(self, default: bool | None, *, allow_none: bool = True) -> bool | None:
+    def parse_boolean_default(self, default: Optional[bool], *, allow_none: bool = True) -> Optional[bool]:
         """Return the declared Boolean default using this source's syntax."""
         if allow_none:
             return self.get_bool_or_none("checked", default)
