@@ -302,6 +302,13 @@ runners:
     # higher value (in seconds) (or `None` to use blocking connections).
     #amqp_consumer_timeout: None
 
+    # Galaxy learns of job state changes from Pulsar status messages. If
+    # one is lost (e.g. a Galaxy handler stopped after consuming it), the
+    # job never finishes. Set this to a number of seconds to periodically
+    # ask Pulsar to resend the status of running jobs. Disabled (0) by
+    # default.
+    #status_poll_interval: 0
+
   pulsar_k8s:
     # Use Kubernetes pods to run jobs.
     load: galaxy.jobs.runners.pulsar:PulsarKubernetesJobRunner

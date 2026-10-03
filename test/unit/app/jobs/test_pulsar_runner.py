@@ -1,5 +1,6 @@
 """Unit tests for Pulsar job runner utility methods and client construction."""
 
+import threading
 from types import SimpleNamespace
 from typing import (
     Any,
@@ -9,7 +10,11 @@ from typing import (
 import pytest
 
 from galaxy.exceptions import ConfigurationError
-from galaxy.jobs.runners.pulsar import PulsarJobRunner
+from galaxy.jobs.runners.pulsar import (
+    PulsarJobRunner,
+    PulsarJobState,
+)
+from galaxy.model import Job
 
 
 def _container(container_id, image_identifier_is_path=True):
@@ -71,11 +76,15 @@ class RecordingClient:
     def __init__(self, destination_params, **kwargs):
         self.destination_params = destination_params
         self.killed = False
+        self.status_requests = 0
         for key, value in kwargs.items():
             setattr(self, key, value)
 
     def kill(self):
         self.killed = True
+
+    def get_status(self):
+        self.status_requests += 1
 
 
 class RecordingClientManager:
@@ -245,3 +254,137 @@ def test_host_metadata_does_not_resolve_container(config):
     runner = _runner()
     wrapper = SimpleNamespace(job_destination=SimpleNamespace(params=config))
     assert runner._get_metadata_container(wrapper) is None
+
+
+def _mq_runner(status_poll_interval):
+    runner = _runner()
+    runner.use_mq = True
+    runner.status_poll_interval = status_poll_interval
+    runner._finishing_lock = threading.Lock()
+    runner._finishing_job_ids = set()
+    return runner
+
+
+def _watched_job_state(persisted_state, seconds_since_status_request=0):
+    job = SimpleNamespace(get_job_runner_external_id=lambda: None)
+    job_wrapper = SimpleNamespace(
+        app=SimpleNamespace(config=SimpleNamespace(redact_email_in_job_name=True)),
+        job_id=543,
+        get_job=lambda: job,
+        get_id_tag=lambda: "543",
+        get_state=lambda: persisted_state,
+        guest_ports=[],
+        tool=SimpleNamespace(old_id="cat1"),
+    )
+    job_state = PulsarJobState(
+        job_wrapper=cast(Any, job_wrapper),
+        job_destination=cast(Any, SimpleNamespace(params={})),
+        job_id="543",
+    )
+    job_state.last_status_request -= seconds_since_status_request
+    return job_state
+
+
+def test_mq_poll_requests_status_of_running_job_once_interval_elapses():
+    runner = _mq_runner(status_poll_interval=60)
+    job_state = _watched_job_state(Job.states.RUNNING, seconds_since_status_request=61)
+    assert runner.check_watched_item(job_state) is job_state
+    assert runner.client_manager.clients[-1].status_requests == 1
+    # The request resets the clock.
+    assert runner.check_watched_item(job_state) is job_state
+    assert len(runner.client_manager.clients) == 1
+
+
+def test_mq_poll_waits_for_interval():
+    runner = _mq_runner(status_poll_interval=60)
+    job_state = _watched_job_state(Job.states.RUNNING, seconds_since_status_request=30)
+    assert runner.check_watched_item(job_state) is job_state
+    assert not runner.client_manager.clients
+
+
+def test_mq_poll_skips_queued_job():
+    """Pulsar may not have consumed the setup message yet - it would answer lost."""
+    runner = _mq_runner(status_poll_interval=60)
+    job_state = _watched_job_state(Job.states.QUEUED, seconds_since_status_request=61)
+    assert runner.check_watched_item(job_state) is job_state
+    assert not runner.client_manager.clients
+
+
+@pytest.mark.parametrize("persisted_state", [Job.states.FINISHING, Job.states.OK, Job.states.ERROR])
+def test_mq_poll_stops_watching_finished_job(persisted_state):
+    runner = _mq_runner(status_poll_interval=60)
+    job_state = _watched_job_state(persisted_state, seconds_since_status_request=61)
+    assert runner.check_watched_item(job_state) is None
+    assert not runner.client_manager.clients
+
+
+def test_mq_without_poll_interval_stops_watching():
+    runner = _mq_runner(status_poll_interval=0)
+    job_state = _watched_job_state(Job.states.RUNNING, seconds_since_status_request=61)
+    assert runner.check_watched_item(job_state) is None
+    assert not runner.client_manager.clients
+
+
+@pytest.mark.parametrize("pulsar_status", ["complete", "cancelled"])
+@pytest.mark.parametrize("persisted_state", [Job.states.FINISHING, Job.states.OK, Job.states.ERROR])
+def test_repeated_terminal_status_does_not_finish_job_twice(pulsar_status, persisted_state):
+    """A poll reply (or redelivered message) can arrive after the first one was handled."""
+    runner = _mq_runner(status_poll_interval=60)
+    finished = []
+    runner.mark_as_finished = finished.append
+    job_state = _watched_job_state(persisted_state)
+    assert runner._update_job_state_for_status(job_state, pulsar_status) is None
+    assert not finished
+
+
+@pytest.mark.parametrize("persisted_state", [Job.states.DELETING, Job.states.DELETED])
+def test_cancelled_status_finishes_deleted_job(persisted_state):
+    """Finishing a deleted job is what cleans up its working directory and outputs."""
+    runner = _mq_runner(status_poll_interval=0)
+    finished = []
+    runner.mark_as_finished = finished.append
+    job_state = _watched_job_state(persisted_state)
+    assert runner._update_job_state_for_status(job_state, "cancelled") is None
+    assert finished == [job_state]
+
+
+def test_job_being_finished_is_not_finished_again():
+    """The persisted state stays running while the job is finished."""
+    runner = _mq_runner(status_poll_interval=60)
+    queued = []
+    runner.work_queue = SimpleNamespace(put=queued.append)
+    job_state = _watched_job_state(Job.states.RUNNING)
+    runner.mark_as_finished(job_state)
+    runner.mark_as_finished(_watched_job_state(Job.states.RUNNING))
+    assert len(queued) == 1
+    finish, queued_job_state = queued[0]
+    runner.finish_job = lambda job_state: None
+    finish(queued_job_state)
+    runner.mark_as_finished(job_state)
+    assert len(queued) == 2
+
+
+def test_mq_poll_skips_job_being_finished():
+    runner = _mq_runner(status_poll_interval=60)
+    runner.work_queue = SimpleNamespace(put=lambda item: None)
+    job_state = _watched_job_state(Job.states.RUNNING, seconds_since_status_request=61)
+    runner.mark_as_finished(job_state)
+    assert runner.check_watched_item(job_state) is job_state
+    assert not runner.client_manager.clients
+
+
+def test_mq_poll_requests_status_of_stopped_job():
+    """Any reply makes the runner kill and finish a stopped job."""
+    runner = _mq_runner(status_poll_interval=60)
+    job_state = _watched_job_state(Job.states.STOPPED, seconds_since_status_request=61)
+    assert runner.check_watched_item(job_state) is job_state
+    assert runner.client_manager.clients[-1].status_requests == 1
+
+
+def test_terminal_status_finishes_running_job():
+    runner = _mq_runner(status_poll_interval=60)
+    finished = []
+    runner.mark_as_finished = finished.append
+    job_state = _watched_job_state(Job.states.RUNNING)
+    assert runner._update_job_state_for_status(job_state, "complete") is None
+    assert finished == [job_state]
