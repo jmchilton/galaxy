@@ -1,4 +1,4 @@
-"""Resolve output references (e.g. ``format_source``) against declared tool inputs."""
+"""Resolve output references (``format_source``, ``metadata_source``) against declared tool inputs."""
 
 import re
 from typing import (
@@ -46,6 +46,27 @@ class ResolvedReference(NamedTuple):
     selector: str
     matches: list[InputReference]
     legacy: bool
+    runtime_key: str
+    """The key to look the reference up by at job runtime."""
+
+
+# Input types each output reference attribute can name; only format_source reads collections.
+OUTPUT_REFERENCE_PARAM_TYPES = {
+    "format_source": ("data", "data_collection"),
+    "metadata_source": ("data",),
+}
+
+
+def output_reference_problem(resolved: ResolvedReference, attribute: str) -> str | None:
+    """Why job runtime cannot resolve an output reference, or ``None`` if it can."""
+    param_types = OUTPUT_REFERENCE_PARAM_TYPES[attribute]
+    if not resolved.matches:
+        return "does not match any declared input"
+    if not any(r.param_type in param_types for r in resolved.matches):
+        return f"must name a {' or '.join(param_types)} input"
+    if resolved.selector and (attribute != "format_source" or not any(r.is_collection for r in resolved.matches)):
+        return "selects an element of an input that is not a collection"
+    return None
 
 
 class InputReferences:
@@ -99,13 +120,13 @@ class InputReferences:
         )
 
     def normalize(self, reference: str) -> str:
-        segments = []
-        for segment in reference.split("|"):
-            base, _, index = segment.rpartition("_")
-            if index.isdigit() and base in self.repeat_names:
-                segment = f"{base}_0"
-            segments.append(segment)
-        return "|".join(segments)
+        return "|".join(self._normalize_segment(segment)[0] for segment in reference.split("|"))
+
+    def _normalize_segment(self, segment: str) -> tuple[str, bool]:
+        base, _, index = segment.rpartition("_")
+        if index.isdigit() and base in self.repeat_names:
+            return f"{base}_0", True
+        return segment, False
 
     def qualified(self, reference: str) -> list[InputReference]:
         return [r for r in self.references if r.qualified == reference]
@@ -122,4 +143,21 @@ class InputReferences:
         legacy = not matches
         if legacy:
             matches = [r for r in self.references if r.legacy == normalized]
-        return ResolvedReference(reference, path, selector, matches, legacy)
+        runtime_key = reference
+        qualified_names = {r.qualified for r in matches}
+        if legacy and len(qualified_names) == 1:
+            # Runtime looks a legacy alias up only after real keys, and job creation adds real keys
+            # (input1 for a multiple input, conversion names) that can shadow it, so use the
+            # qualified key. Unless that is itself another input's legacy alias, which would make
+            # the reference resolve to an input it never named.
+            (qualified,) = qualified_names
+            if not any(r.legacy == qualified and r.qualified != qualified for r in self.references):
+                runtime_key = self._reindex(qualified, path) + selector
+        return ResolvedReference(reference, path, selector, matches, legacy, runtime_key)
+
+    def _reindex(self, qualified: str, path: str) -> str:
+        # A legacy alias drops conditional and section names but keeps every repeat segment, in order.
+        indexed = iter(segment for segment in path.split("|") if self._normalize_segment(segment)[1])
+        return "|".join(
+            next(indexed) if self._normalize_segment(segment)[1] else segment for segment in qualified.split("|")
+        )

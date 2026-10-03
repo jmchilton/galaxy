@@ -1,0 +1,52 @@
+<tool id="format_source_internal_keys" name="format_source_internal_keys" version="0.1.0" profile="26.0">
+    <!-- format_source may only name declared inputs, not the keys job creation adds for
+         expanded inputs; those references are dropped at load and the output keeps format="txt" -->
+    <command><![CDATA[
+        echo 'test' > '$out_multiple' &&
+        echo 'test' > '$out_multiple_second' &&
+        echo 'test' > '$out_multiple_selector' &&
+        echo 'test' > '$out_conversion' &&
+        echo 'test' > '$out_collection' &&
+        echo 'test' > '$out_collection_second' &&
+        mkdir discovered && echo 'test' > discovered/element
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" multiple="true" format="data"/>
+        <param name="fasta_input" type="data" format="fasta">
+            <conversion name="fasta_input_table" type="tabular"/>
+        </param>
+        <param name="coll" type="data_collection" collection_type="list" format="data"/>
+    </inputs>
+    <outputs>
+        <data name="out_multiple" format="txt" format_source="input"/>
+        <data name="out_multiple_second" format="txt" format_source="input2"/>
+        <data name="out_multiple_selector" format="txt" format_source="input['forward']"/>
+        <data name="out_conversion" format="txt" format_source="fasta_input_table"/>
+        <data name="out_collection" format="txt" format_source="coll"/>
+        <data name="out_collection_second" format="txt" format_source="coll2"/>
+        <collection name="out_discovered" type="list" format="txt" format_source="input2">
+            <discover_datasets pattern="__name__" directory="discovered"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="1.fasta,1.bed"/>
+            <param name="fasta_input" value="1.fasta" ftype="fasta"/>
+            <param name="coll">
+                <collection type="list">
+                    <element name="first" value="1.fasta" ftype="fasta"/>
+                    <element name="second" value="1.bed" ftype="bed"/>
+                </collection>
+            </param>
+            <output name="out_multiple" ftype="fasta"/>
+            <output name="out_multiple_second" ftype="txt"/>
+            <output name="out_multiple_selector" ftype="txt"/>
+            <output name="out_conversion" ftype="txt"/>
+            <output name="out_collection" ftype="fasta"/>
+            <output name="out_collection_second" ftype="txt"/>
+            <output_collection name="out_discovered" type="list">
+                <element name="element" ftype="txt"/>
+            </output_collection>
+        </test>
+    </tests>
+</tool>
