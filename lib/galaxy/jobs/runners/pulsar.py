@@ -9,8 +9,12 @@ import logging
 import os
 import re
 import subprocess
+import threading
 from dataclasses import dataclass
-from time import sleep
+from time import (
+    monotonic,
+    sleep,
+)
 from typing import (
     Any,
     Optional,
@@ -41,6 +45,7 @@ from pulsar.client.staging import DEFAULT_DYNAMIC_COLLECTION_PATTERN
 from sqlalchemy import select
 
 from galaxy import model
+from galaxy.exceptions import ConfigurationError
 from galaxy.job_execution.compute_environment import (
     ComputeEnvironment,
     dataset_path_to_extra_path,
@@ -240,7 +245,17 @@ PULSAR_PARAM_SPECS = dict(
         map=specs.to_str_or_none,
         default=None,
     ),
+    status_poll_interval=dict(
+        map=int,
+        valid=lambda x: int(x) >= 0,
+        default=0,
+    ),
 )
+
+FINISHED_OR_FINISHING_STATES = model.Job.finished_states + [model.Job.states.FINISHING]
+# A repeated complete/cancelled status needs no handling once the job reached these. Deleted jobs
+# are excluded - finishing them is what cleans up their working directory and outputs.
+FINISH_HANDLED_STATES = [model.Job.states.OK, model.Job.states.ERROR, model.Job.states.FINISHING]
 
 
 PARAMETER_SPECIFICATION_REQUIRED = object()
@@ -258,7 +273,14 @@ class PulsarFinishJobResult:
     job_metrics_directory: str
 
 
-class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
+class PulsarJobState(AsynchronousJobState):
+    def __init__(self, job_wrapper: "MinimalJobWrapper", job_destination: JobDestination, **kwds) -> None:
+        super().__init__(job_wrapper, job_destination, **kwds)
+        self.last_status_request = monotonic()
+        self.entry_points_configured = False
+
+
+class PulsarJobRunner(AsynchronousJobRunner[PulsarJobState]):
     """Base class for pulsar job runners."""
 
     start_methods = ["_init_worker_threads", "_init_client_manager", "_monitor"]
@@ -267,11 +289,17 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     use_mq = False
     poll = True
     recovers_finishing_jobs = True
+    supports_status_requests = False
     client_manager_kwargs: dict[str, Any] = {}
 
     def __init__(self, app, nworkers, **kwds):
         """Start the job runner."""
         super().__init__(app, nworkers, runner_param_specs=PULSAR_PARAM_SPECS, **kwds)
+        self.status_poll_interval = self.runner_params.status_poll_interval
+        self._finishing_lock = threading.Lock()
+        self._finishing_job_ids: set[int] = set()
+        if self.status_poll_interval and not self.supports_status_requests:
+            raise ConfigurationError(f"{self.runner_name} does not support status_poll_interval")
         galaxy_url = self.runner_params.galaxy_url
         if not galaxy_url:
             galaxy_url = app.config.galaxy_infrastructure_url
@@ -286,7 +314,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             self.client_manager.ensure_has_status_update_callback(self.__async_update)
             self.client_manager.ensure_has_ack_consumers()
 
-        if self.poll:
+        if self.poll or self.status_poll_interval:
             self._init_monitor_thread()
         else:
             self._init_noop_monitor()
@@ -346,38 +374,58 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         """Convert a legacy URL to a job destination."""
         return JobDestination(runner="pulsar", params=url_to_destination_params(url))
 
-    def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
-        if self.use_mq:
-            # Might still need to check pod IPs.
-            job_wrapper = job_state.job_wrapper
-            guest_ports = job_wrapper.guest_ports
-            if len(guest_ports) > 0:
-                persisted_state = job_wrapper.get_state()
-                if persisted_state in model.Job.terminal_states + [model.Job.states.DELETING]:
-                    log.debug(
-                        "(%s) Watched job in terminal state, will stop monitoring: %s",
-                        job_state.job_id,
-                        persisted_state,
-                    )
-                    return None
-                elif persisted_state == model.Job.states.RUNNING:
-                    client = self.get_client_from_state(job_state)
-                    job_ip = client.job_ip()
-                    if job_ip:
-                        ports_dict = {}
-                        for guest_port in guest_ports:
-                            ports_dict[str(guest_port)] = dict(host=job_ip, port=guest_port, protocol="http")
-                        self.app.interactivetool_manager.configure_entry_points(job_wrapper.get_job(), ports_dict)
-                        log.debug("(%s) Got ports for entry point: %s", job_state.job_id, str(ports_dict))
-                        return None
-            else:
-                # No need to monitor MQ jobs that have no entry points
-                return None
-            return job_state
-        else:
+    def check_watched_item(self, job_state: PulsarJobState) -> PulsarJobState | None:
+        if not self.use_mq:
             return self.check_watched_item_state(job_state)
+        job_wrapper = job_state.job_wrapper
+        guest_ports = job_wrapper.guest_ports
+        if guest_ports and not job_state.entry_points_configured:
+            persisted_state = job_wrapper.get_state()
+            if persisted_state in model.Job.terminal_states + [model.Job.states.DELETING]:
+                log.debug(
+                    "(%s) Watched job in terminal state, will stop monitoring: %s",
+                    job_state.job_id,
+                    persisted_state,
+                )
+                return None
+            elif persisted_state == model.Job.states.RUNNING:
+                client = self.get_client_from_state(job_state)
+                job_ip = client.job_ip()
+                if job_ip:
+                    ports_dict = {}
+                    for guest_port in guest_ports:
+                        ports_dict[str(guest_port)] = dict(host=job_ip, port=guest_port, protocol="http")
+                    self.app.interactivetool_manager.configure_entry_points(job_wrapper.get_job(), ports_dict)
+                    log.debug("(%s) Got ports for entry point: %s", job_state.job_id, str(ports_dict))
+                    job_state.entry_points_configured = True
+            if not job_state.entry_points_configured:
+                return job_state
+        if self.status_poll_interval:
+            return self._request_status_if_due(job_state)
+        return None
 
-    def check_watched_item_state(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
+    def _request_status_if_due(self, job_state: PulsarJobState) -> PulsarJobState | None:
+        """Ask Pulsar to resend the status of a job in case a status update was lost.
+
+        Pulsar answers on the status update queue, handled by ``__async_update``. Queued jobs are
+        never polled - Pulsar may not have consumed the setup message yet and would answer lost.
+        """
+        if monotonic() - job_state.last_status_request < self.status_poll_interval:
+            return job_state
+        job_state.last_status_request = monotonic()
+        persisted_state = job_state.job_wrapper.get_state()
+        if persisted_state in FINISHED_OR_FINISHING_STATES:
+            return None
+        if self._is_finishing(job_state):
+            return job_state
+        if persisted_state in [model.Job.states.RUNNING, model.Job.states.STOPPED]:
+            try:
+                self.get_client_from_state(job_state).get_status()
+            except Exception:
+                log.exception("(%s) Failed to request Pulsar job status", job_state.job_id)
+        return job_state
+
+    def check_watched_item_state(self, job_state: PulsarJobState) -> PulsarJobState | None:
         try:
             client = self.get_client_from_state(job_state)
             status = client.get_status()
@@ -393,12 +441,15 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
 
     def _update_job_state_for_status(
         self,
-        job_state: AsynchronousJobState,
+        job_state: PulsarJobState,
         pulsar_status: str | None,
         full_status: dict[str, Any] | None = None,
-    ) -> AsynchronousJobState | None:
+    ) -> PulsarJobState | None:
         log.debug("(%s) Received status update: %s", job_state.job_id, pulsar_status)
         if pulsar_status in ["complete", "cancelled"]:
+            if job_state.job_wrapper.get_state() in FINISH_HANDLED_STATES:
+                log.debug("(%s) Job already finishing, ignoring repeated %s status", job_state.job_id, pulsar_status)
+                return None
             self.mark_as_finished(job_state)
             return None
         if job_state.job_wrapper.get_state() == model.Job.states.STOPPED:
@@ -418,6 +469,27 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             job_state.running = True
             job_state.job_wrapper.change_state(model.Job.states.RUNNING)
         return job_state
+
+    def mark_as_finished(self, job_state: PulsarJobState) -> None:
+        """Queue the job to be finished unless it already is - its persisted state stays running meanwhile."""
+        job_id = job_state.job_wrapper.job_id
+        with self._finishing_lock:
+            if job_id in self._finishing_job_ids:
+                log.debug("(%s) Job is already being finished", job_state.job_id)
+                return
+            self._finishing_job_ids.add(job_id)
+        self.work_queue.put((self._finish_tracked_job, job_state))
+
+    def _finish_tracked_job(self, job_state: PulsarJobState) -> None:
+        try:
+            self.finish_job(job_state)
+        finally:
+            with self._finishing_lock:
+                self._finishing_job_ids.discard(job_state.job_wrapper.job_id)
+
+    def _is_finishing(self, job_state: PulsarJobState) -> bool:
+        with self._finishing_lock:
+            return job_state.job_wrapper.job_id in self._finishing_job_ids
 
     def queue_job(self, job_wrapper: "MinimalJobWrapper") -> None:
         job_destination = job_wrapper.job_destination
@@ -533,7 +605,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             log.exception("failure running job %d", job_wrapper.job_id)
             return
 
-        pulsar_job_state = AsynchronousJobState(
+        pulsar_job_state = PulsarJobState(
             job_wrapper=job_wrapper, job_destination=job_destination, job_id=external_job_id
         )
         pulsar_job_state.old_state = model.Job.states.NEW
@@ -993,11 +1065,11 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         if self.pulsar_app:
             self.pulsar_app.shutdown()
 
-    def _job_state(self, job: model.Job, job_wrapper: "MinimalJobWrapper") -> AsynchronousJobState:
+    def _job_state(self, job: model.Job, job_wrapper: "MinimalJobWrapper") -> PulsarJobState:
         # TODO: Determine why this is set when using normal message queue updates
         # but not CLI submitted MQ updates...
         raw_job_id = job.get_job_runner_external_id() or str(job_wrapper.job_id)
-        job_state = AsynchronousJobState(
+        job_state = PulsarJobState(
             job_wrapper=job_wrapper, job_destination=job_wrapper.job_destination, job_id=raw_job_id
         )
         return job_state
@@ -1267,6 +1339,7 @@ class PulsarMQJobRunner(PulsarJobRunner):
 
     use_mq = True
     poll = False
+    supports_status_requests = True
 
     destination_defaults = dict(
         default_file_action="remote_transfer",
