@@ -2,6 +2,7 @@
 
 import re
 from typing import (
+    Literal,
     NamedTuple,
     TYPE_CHECKING,
 )
@@ -46,24 +47,28 @@ class ResolvedReference(NamedTuple):
     selector: str
     matches: list[InputReference]
     legacy: bool
+    qualified_key: str | None
+    """The qualified form of the reference, with its own repeat indices, when one input matches."""
     runtime_key: str
     """The key to look the reference up by at job runtime."""
 
 
+OutputReferenceAttribute = Literal["format_source", "metadata_source"]
+
 # Input types each output reference attribute can name; only format_source reads collections.
-OUTPUT_REFERENCE_PARAM_TYPES = {
-    "format_source": ("data", "data_collection"),
-    "metadata_source": ("data",),
+OUTPUT_REFERENCE_PARAM_TYPES: dict[OutputReferenceAttribute, tuple[str, ...]] = {
+    "format_source": ("data", "hidden_data", "data_collection"),
+    "metadata_source": ("data", "hidden_data"),
 }
 
 
-def output_reference_problem(resolved: ResolvedReference, attribute: str) -> str | None:
+def output_reference_problem(resolved: ResolvedReference, attribute: OutputReferenceAttribute) -> str | None:
     """Why job runtime cannot resolve an output reference, or ``None`` if it can."""
     param_types = OUTPUT_REFERENCE_PARAM_TYPES[attribute]
     if not resolved.matches:
         return "does not match any declared input"
     if not any(r.param_type in param_types for r in resolved.matches):
-        return f"must name a {' or '.join(param_types)} input"
+        return f"must name a {', '.join(param_types[:-1])} or {param_types[-1]} input"
     if resolved.selector and (attribute != "format_source" or not any(r.is_collection for r in resolved.matches)):
         return "selects an element of an input that is not a collection"
     return None
@@ -118,13 +123,14 @@ class InputReferences:
         )
 
     def normalize(self, reference: str) -> str:
-        return "|".join(self._normalize_segment(segment)[0] for segment in reference.split("|"))
+        return "|".join(
+            f"{segment.rpartition('_')[0]}_0" if self._is_repeat_segment(segment) else segment
+            for segment in reference.split("|")
+        )
 
-    def _normalize_segment(self, segment: str) -> tuple[str, bool]:
+    def _is_repeat_segment(self, segment: str) -> bool:
         base, _, index = segment.rpartition("_")
-        if index.isdigit() and base in self.repeat_names:
-            return f"{base}_0", True
-        return segment, False
+        return index.isdigit() and base in self.repeat_names
 
     def qualified(self, reference: str) -> list[InputReference]:
         return [r for r in self.references if r.qualified == reference]
@@ -137,25 +143,33 @@ class InputReferences:
         """Match a reference to declared inputs, preferring a qualified path over a legacy alias."""
         path, selector = split_element_selector(reference)
         normalized = self.normalize(path)
-        matches = self.qualified(normalized)
+        # An exact match first, so a parameter named like a repeat instance (rep_1) isn't normalized away.
+        matches = self.qualified(path) or self.qualified(normalized)
         legacy = not matches
         if legacy:
             matches = [r for r in self.references if r.legacy == normalized]
-        runtime_key = reference
+        qualified_key = None
         qualified_names = {r.qualified for r in matches}
-        if legacy and len(qualified_names) == 1:
-            # Runtime looks a legacy alias up only after real keys, and job creation adds real keys
-            # (input1 for a multiple input, conversion names) that can shadow it, so use the
-            # qualified key. Unless that is itself another input's legacy alias, which would make
-            # the reference resolve to an input it never named.
+        if len(qualified_names) == 1:
             (qualified,) = qualified_names
+            qualified_key = self._reindex(qualified, path)
+            if qualified_key is not None:
+                qualified_key += selector
+        runtime_key = reference
+        # Runtime looks a legacy alias up only after real keys, and job creation adds real keys
+        # (input1 for a multiple input, conversion names) that can shadow it, so use the
+        # qualified key. Unless that is itself another input's legacy alias, which would make
+        # the reference resolve to an input it never named.
+        if legacy and qualified_key is not None:
             if not any(r.legacy == qualified and r.qualified != qualified for r in self.references):
-                runtime_key = self._reindex(qualified, path) + selector
-        return ResolvedReference(reference, path, selector, matches, legacy, runtime_key)
+                runtime_key = qualified_key
+        return ResolvedReference(reference, path, selector, matches, legacy, qualified_key, runtime_key)
 
-    def _reindex(self, qualified: str, path: str) -> str:
+    def _reindex(self, qualified: str, path: str) -> str | None:
         # A legacy alias drops conditional and section names but keeps every repeat segment, in order.
-        indexed = iter(segment for segment in path.split("|") if self._normalize_segment(segment)[1])
-        return "|".join(
-            next(indexed) if self._normalize_segment(segment)[1] else segment for segment in qualified.split("|")
-        )
+        indices = [segment for segment in path.split("|") if self._is_repeat_segment(segment)]
+        segments = qualified.split("|")
+        if len(indices) != sum(self._is_repeat_segment(segment) for segment in segments):
+            return None
+        indexed = iter(indices)
+        return "|".join(next(indexed) if self._is_repeat_segment(segment) else segment for segment in segments)

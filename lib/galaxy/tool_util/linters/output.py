@@ -11,6 +11,7 @@ from ..parser.output_collection_def import NAMED_PATTERNS
 from ..parser.output_references import (
     InputReference,
     InputReferences,
+    output_reference_problem,
 )
 
 if TYPE_CHECKING:
@@ -303,19 +304,6 @@ def _check_format_source_reference(
     resolved = input_references.resolve(ref_value)
     matches = resolved.matches
     selector = resolved.selector
-    if matches and resolved.legacy:
-        if node.tag == "collection" and node.find("discover_datasets") is not None:
-            # Discovered elements resolve format_source against the job's input associations,
-            # which are keyed by qualified name only.
-            qualified_names = " or ".join(f"'{name}{selector}'" for name in sorted({r.qualified for r in matches}))
-            lint_ctx.error(
-                f"Output '{_output_name(node)}' uses unqualified format_source='{ref_value}', which discovered "
-                f"elements cannot resolve. Use the qualified name {qualified_names}.",
-                linter=linter_name,
-                node=node,
-            )
-            return
-        _warn_unqualified(lint_ctx, linter_name, node, ref_value, "format_source", matches, selector)
     if not matches:
         _error_unmatched(
             lint_ctx,
@@ -327,10 +315,34 @@ def _check_format_source_reference(
             input_references.normalize(resolved.path),
             selector,
         )
-    elif selector and not any(r.is_collection for r in matches):
+        return
+    if resolved.legacy:
+        if node.tag == "collection" and node.find("discover_datasets") is not None:
+            # Discovered elements resolve format_source against the job's input associations, which are
+            # keyed by qualified name only. Tool loading rewrites the reference to that name unless it
+            # is ambiguous, but older Galaxy releases do not.
+            when = "" if resolved.runtime_key == ref_value else " before Galaxy 26.2"
+            qualified_names = " or ".join(f"'{name}{selector}'" for name in sorted({r.qualified for r in matches}))
+            lint_ctx.error(
+                f"Output '{_output_name(node)}' uses unqualified format_source='{ref_value}', which discovered "
+                f"elements cannot resolve{when}. Use the qualified name {qualified_names}.",
+                linter=linter_name,
+                node=node,
+            )
+            return
+        _warn_unqualified(
+            lint_ctx, linter_name, node, ref_value, "format_source", matches, selector, resolved.qualified_key
+        )
+    if selector and not any(r.is_collection for r in matches):
         lint_ctx.error(
             f"Output '{_output_name(node)}' selects an element with format_source='{ref_value}' "
             f"but '{resolved.path}' is not a collection input.",
+            linter=linter_name,
+            node=node,
+        )
+    elif problem := output_reference_problem(resolved, "format_source"):
+        lint_ctx.error(
+            f"Output '{_output_name(node)}' format_source='{ref_value}' {problem}.",
             linter=linter_name,
             node=node,
         )
@@ -383,12 +395,13 @@ def _warn_unqualified(
     attr_name: str,
     matches: list[InputReference],
     selector: str,
+    qualified_key: str | None = None,
 ) -> None:
     qualified_names = sorted({r.qualified for r in matches})
     if len(qualified_names) == 1:
         lint_ctx.warn(
             f"Output '{_output_name(node)}' uses unqualified {attr_name}='{ref_value}'. "
-            f"Use the qualified name '{qualified_names[0]}{selector}'.",
+            f"Use the qualified name '{qualified_key or qualified_names[0] + selector}'.",
             linter=linter_name,
             node=node,
         )

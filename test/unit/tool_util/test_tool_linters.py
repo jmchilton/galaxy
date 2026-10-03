@@ -1163,6 +1163,51 @@ OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY = """
 </tool>
 """
 
+# cond|input1 is both a parameter and the legacy alias of cond|inner|input1, so tool loading keeps input1
+OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY = """
+<tool id="id" name="name">
+    <inputs>
+        <conditional name="cond">
+            <param name="cond_param" type="select">
+                <option value="flat">Flat</option>
+                <option value="nested">Nested</option>
+            </param>
+            <when value="flat">
+                <param name="input1" type="data" format="data" />
+            </when>
+            <when value="nested">
+                <conditional name="inner">
+                    <param name="inner_param" type="select">
+                        <option value="yes">Yes</option>
+                    </param>
+                    <when value="yes">
+                        <param name="input1" type="data" format="data" />
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="discovered" type="list" format_source="input1">
+            <discover_datasets pattern="__name__" />
+        </collection>
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_FORMAT_SOURCE_NOT_DATA = """
+<tool id="id" name="name">
+    <inputs>
+        <param name="select_param" type="select">
+            <option value="yes">Yes</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="output1" format_source="select_param" />
+    </outputs>
+</tool>
+"""
+
 # tool xml for repeats linter
 REPEATS = """
 <tool id="id" name="name">
@@ -2794,7 +2839,7 @@ def test_outputs_format_source_discovered_legacy(lint_ctx):
     tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY)
     run_lint_module(lint_ctx, output, tool_source)
     assert (
-        "Output 'discovered' uses unqualified format_source='input1', which discovered elements cannot resolve. Use the qualified name 'cond|input1'."
+        "Output 'discovered' uses unqualified format_source='input1', which discovered elements cannot resolve before Galaxy 26.2. Use the qualified name 'cond|input1'."
         in lint_ctx.error_messages
     )
     assert (
@@ -2802,6 +2847,24 @@ def test_outputs_format_source_discovered_legacy(lint_ctx):
         in lint_ctx.warn_messages
     )
     assert len([m for m in lint_ctx.error_messages if "format_source" in m.message]) == 1
+
+
+def test_outputs_format_source_discovered_shadowed_legacy(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert (
+        "Output 'discovered' uses unqualified format_source='input1', which discovered elements cannot resolve. Use the qualified name 'cond|input1'."
+        in lint_ctx.error_messages
+    )
+
+
+def test_outputs_format_source_not_data(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_NOT_DATA)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert (
+        "Output 'output1' format_source='select_param' must name a data, hidden_data or data_collection input."
+        in lint_ctx.error_messages
+    )
 
 
 def test_stdio_default_for_default_profile(lint_ctx):

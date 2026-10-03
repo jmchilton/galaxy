@@ -108,6 +108,7 @@ from galaxy.tool_util.parser.output_objects import (
 )
 from galaxy.tool_util.parser.output_references import (
     InputReferences,
+    OUTPUT_REFERENCE_PARAM_TYPES,
     output_reference_problem,
 )
 from galaxy.tool_util.parser.util import (
@@ -1831,7 +1832,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 outputs.extend(output.outputs.values())
         input_references: InputReferences | None = None
         for output in outputs:
-            for attribute in ("format_source", "metadata_source"):
+            for attribute in OUTPUT_REFERENCE_PARAM_TYPES:
                 reference = getattr(output, attribute, None)
                 if not isinstance(reference, str):
                     continue
@@ -1841,8 +1842,8 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 if problem := output_reference_problem(resolved, attribute):
                     message = f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {problem}."
                     if self.profile >= 26.2:
-                        raise Exception(message)
-                    log.warning(f"{message} Ignoring it.")
+                        raise ToolLoadError(message)
+                    log.warning(f"{message} Ignoring it; tools with profile 26.2 or newer fail to load.")
                     setattr(output, attribute, None)
                 else:
                     setattr(output, attribute, resolved.runtime_key)
