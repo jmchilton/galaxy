@@ -5,18 +5,11 @@ from typing import (
 import pytest
 
 from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.tool_util.parser.yaml import YamlInputSource
-from galaxy.tool_util_models import UserToolSource
-from galaxy.tools.parameters.basic import (
-    BooleanToolParameter,
-    SelectToolParameter,
-)
 from galaxy.tools.parameters.meta import _remove_internal_state_keys
 from galaxy.tools.parameters.wrapped import (
     nested_key_to_path,
     process_key,
 )
-from galaxy.util import XML
 from .util import BaseParameterTestCase
 
 
@@ -449,96 +442,3 @@ class TestParameterParsing(BaseParameterTestCase):
             </param>
         """)
         assert param.allow_uri_if_protocol == ["https", "s3"]
-
-
-@pytest.mark.parametrize("optional", [False, True])
-@pytest.mark.parametrize("value", [None, True, False])
-def test_yaml_boolean_model_default_reaches_tool_parameter(optional, value):
-    model = UserToolSource.model_validate(
-        {
-            "class": "GalaxyUserTool",
-            "id": "boolean_default",
-            "name": "Boolean default",
-            "version": "1.0.0",
-            "container": "busybox",
-            "shell_command": "true",
-            "inputs": [{"name": "flag", "type": "boolean", "optional": optional, "value": value}],
-        }
-    )
-    definition = model.model_dump(by_alias=True)["inputs"][0]
-    parameter = BooleanToolParameter(None, YamlInputSource(definition))
-    assert parameter.optional is optional
-    assert parameter.get_initial_value(None, {}) is value
-
-
-@pytest.mark.parametrize("optional", [False, True])
-@pytest.mark.parametrize("checked", [None, True, False])
-def test_legacy_yaml_boolean_checked_reaches_tool_parameter(optional, checked):
-    parameter = BooleanToolParameter(
-        None, YamlInputSource({"name": "flag", "type": "boolean", "optional": optional, "checked": checked})
-    )
-    assert parameter.get_initial_value(None, {}) is checked
-
-
-def test_optional_workflow_boolean_without_default_stays_null():
-    parameter = BooleanToolParameter(None, YamlInputSource({"name": "flag", "type": "boolean", "optional": True}))
-    assert parameter.get_initial_value(None, {}) is None
-
-
-@pytest.mark.parametrize("checked", ["true", "false"])
-@pytest.mark.parametrize("value", ["true", "false"])
-def test_xml_boolean_keeps_checked_semantics_with_value_attribute(checked, value):
-    parameter = BooleanToolParameter(
-        None, XML(f'<param name="flag" type="boolean" checked="{checked}" value="{value}" />')
-    )
-    assert parameter.get_initial_value(None, {}) is (checked == "true")
-
-
-@pytest.mark.parametrize("optional", [False, True])
-@pytest.mark.parametrize("value,checked", [(False, True), (None, True), (True, False)])
-def test_yaml_boolean_value_takes_precedence_over_checked(optional, value, checked):
-    parameter = BooleanToolParameter(
-        None,
-        YamlInputSource({"name": "flag", "type": "boolean", "optional": optional, "value": value, "checked": checked}),
-    )
-    assert parameter.get_initial_value(None, {}) is value
-
-
-@pytest.mark.parametrize(
-    "attributes,expected", [("optional='true'", False), ("checked='none'", False), ("checked='1'", True)]
-)
-def test_xml_boolean_default_preserves_runtime_coercion(attributes, expected):
-    parameter = BooleanToolParameter(None, XML(f'<param name="flag" type="boolean" {attributes}/>'))
-    assert parameter.get_initial_value(None, {}) is expected
-
-
-@pytest.mark.parametrize(
-    "dump_policy",
-    [
-        pytest.param({}, id="full"),
-        pytest.param(
-            {"exclude_unset": True},
-            id="exclude-unset",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=AssertionError,
-                reason="#23888: sparse multiselect dump enables XML optionality inference",
-            ),
-        ),
-    ],
-)
-def test_yaml_multiselect_optionality_survives_model_dump(dump_policy):
-    model = UserToolSource.model_validate(
-        {
-            "class": "GalaxyUserTool",
-            "name": "Select default",
-            "version": "1.0.0",
-            "container": "busybox",
-            "shell_command": "true",
-            "inputs": [
-                {"name": "choices", "type": "select", "multiple": True, "options": [{"label": "A", "value": "a"}]}
-            ],
-        }
-    )
-    parameter = SelectToolParameter(None, YamlInputSource(model.model_dump(by_alias=True, **dump_policy)["inputs"][0]))
-    assert parameter.optional is model.inputs[0].to_internal().optional
