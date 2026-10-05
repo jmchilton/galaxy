@@ -1178,6 +1178,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         return parse_version(version)
 
     @property
+    def yaml_origin(self) -> bool:
+        """Whether this tool was authored in YAML and so follows the canonical parameter contract."""
+        return self.tool_source.parse_class() in ("GalaxyUserTool", "GalaxyTool")
+
+    @property
     def sa_session(self):
         """Returns a SQLAlchemy session"""
         return self.app.model.context
@@ -2285,8 +2290,12 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             raise RequestParameterInvalidException(f"Tool {self.id} has no parameters defined")
         parameter_bundle = ToolParameterBundleModel(parameters=self.parameters)
         for expanded_incoming, job_tool_state in zip(expanded_incomings, job_tool_states):
-            expanded_incoming = fill_static_defaults(expanded_incoming, parameter_bundle, self.profile)
-            job_tool_state = fill_static_defaults(job_tool_state, parameter_bundle, self.profile)
+            expanded_incoming = fill_static_defaults(
+                expanded_incoming, parameter_bundle, self.profile, yaml_origin=self.yaml_origin
+            )
+            job_tool_state = fill_static_defaults(
+                job_tool_state, parameter_bundle, self.profile, yaml_origin=self.yaml_origin
+            )
             params, errors = self._populate_async(request_context, expanded_incoming)
             # params have had dynamic defaults requiring like dataset contents expanded out
             # so we can use that backfill job_tool_state
