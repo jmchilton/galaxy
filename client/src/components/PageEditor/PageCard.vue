@@ -71,7 +71,7 @@ const badges = computed<CardBadge[]>(() => {
     return retBadges;
 });
 
-const primaryActions: CardAction[] = [
+const primaryActions = computed<CardAction[]>(() => [
     {
         id: "edit-notebook",
         label: "Edit",
@@ -80,9 +80,9 @@ const primaryActions: CardAction[] = [
         handler: () => emit("edit"),
         disabled: props.page.deleted,
     },
-];
+]);
 
-const secondaryActions: CardAction[] = [
+const secondaryActions = computed<CardAction[]>(() => [
     {
         id: "share-access-management",
         label: "Share and Publish",
@@ -99,7 +99,7 @@ const secondaryActions: CardAction[] = [
         title: props.viewTitle,
         handler: () => emit("view"),
     },
-];
+]);
 </script>
 
 <template>
