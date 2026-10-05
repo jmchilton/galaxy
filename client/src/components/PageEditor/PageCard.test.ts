@@ -141,6 +141,17 @@ describe("PageCard actions", () => {
         expect(wrapper.find(getSelector("share", FAKE_PAGE_SUMMARY.id)).exists()).toBe(false);
     });
 
+    it("shows the new title once a page is renamed", async () => {
+        const { wrapper } = mountCard(owner);
+        const titleSelector = getSelector("title", FAKE_PAGE_SUMMARY.id);
+
+        await wrapper.setProps({ page: { ...FAKE_PAGE_SUMMARY, title: "Renamed Analysis" } });
+        expect(wrapper.get(titleSelector).text()).toBe("Renamed Analysis");
+
+        await wrapper.setProps({ page: { ...FAKE_PAGE_SUMMARY, title: "" } });
+        expect(wrapper.get(titleSelector).text()).toBe("Untitled Notebook");
+    });
+
     it("updates Edit and Share actions when a page is deleted and restored", async () => {
         const { wrapper } = mountCard(owner);
         const editSelector = getSelector("edit", FAKE_PAGE_SUMMARY.id);

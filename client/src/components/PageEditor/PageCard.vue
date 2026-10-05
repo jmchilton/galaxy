@@ -31,11 +31,11 @@ const emit = defineEmits<{
 
 const userStore = useUserStore();
 
-const title: Title = {
+const title = computed<Title>(() => ({
     label: props.page.title || props.defaultTitle,
     title: props.editTitle,
     handler: () => emit("edit"),
-};
+}));
 
 const badges = computed<CardBadge[]>(() => {
     const retBadges: CardBadge[] = [
