@@ -203,7 +203,7 @@ class YamlToolSource(ToolSource):
 
     def parse_input_pages(self) -> PagesSource:
         # All YAML tools have only one page (feature is deprecated)
-        page_source = YamlPageSource(self.root_dict.get("inputs", {}), trusted=self._trusted)
+        page_source = YamlPageSource(self.root_dict.get("inputs", {}), trusted=self._trusted, canonical_defaults=True)
         return PagesSource([page_source], "cwl")
 
     def parse_strict_shell(self):
@@ -531,18 +531,29 @@ __to_test_assert_list = to_test_assert_list
 
 
 class YamlPageSource(PageSource):
-    def __init__(self, inputs_list, trusted: bool = True):
+    def __init__(self, inputs_list, trusted: bool = True, canonical_defaults: bool = False):
         self.inputs_list = inputs_list
         self.trusted = trusted
+        self.canonical_defaults = canonical_defaults
 
     def parse_input_sources(self):
-        return [YamlInputSource(input_dict, trusted=self.trusted) for input_dict in self.inputs_list]
+        return [
+            YamlInputSource(input_dict, trusted=self.trusted, canonical_defaults=self.canonical_defaults)
+            for input_dict in self.inputs_list
+        ]
 
 
 class YamlInputSource(InputSource):
-    def __init__(self, input_dict, trusted: bool = True):
+    def __init__(self, input_dict, trusted: bool = True, canonical_defaults: bool = False):
+        """Wrap a parameter dict; ``canonical_defaults`` marks parameters of YAML tool sources.
+
+        YAML tools follow the canonical tool_util_models defaults (omitted ``optional`` and
+        Boolean ``value`` mean False). Dicts Galaxy builds internally (e.g. workflow module
+        forms) keep the XML-era defaults.
+        """
         self.input_dict = input_dict
         self.trusted = trusted
+        self.canonical_defaults = canonical_defaults
         if not trusted and (keys := [key for key in TRUSTED_ONLY_INPUT_KEYS if key in input_dict]):
             raise UntrustedToolSourceError(f"Input parameters of user-defined tools may not set {', '.join(keys)}.")
 
@@ -555,9 +566,25 @@ class YamlInputSource(InputSource):
     def get_bool_or_none(self, key, default):
         return self.input_dict.get(key, default)
 
+    def parse_optional(self, default=None):
+        if self.canonical_defaults:
+            # Omitted means False for every parameter type, without XML-era per-type defaults
+            # (e.g. multiple selects).
+            return self.get_bool("optional", False)
+        return super().parse_optional(default)
+
+    def parse_text_optional(self) -> Tuple[bool, bool]:
+        if self.canonical_defaults:
+            return self.parse_optional(), False
+        return super().parse_text_optional()
+
     def parse_boolean_default(self, default: Optional[bool], *, allow_none: bool = True) -> Optional[bool]:
         if "value" in self.input_dict:
             return self.input_dict["value"]
+        if self.canonical_defaults:
+            # An omitted value is False, even for optional Booleans; only an explicit
+            # ``value: null`` yields None.
+            default = False
         return super().parse_boolean_default(default, allow_none=allow_none)
 
     def parse_input_type(self):
@@ -581,12 +608,14 @@ class YamlInputSource(InputSource):
 
     def parse_nested_inputs_source(self):
         assert self.parse_input_type() == "repeat"
-        return YamlPageSource(self.input_dict["blocks"], trusted=self.trusted)
+        return YamlPageSource(
+            self.input_dict["blocks"], trusted=self.trusted, canonical_defaults=self.canonical_defaults
+        )
 
     def parse_test_input_source(self):
         test_dict = self.input_dict.get("test_parameter", None)
         assert test_dict is not None, "conditional must contain a `test_parameter` definition"
-        return YamlInputSource(test_dict, trusted=self.trusted)
+        return YamlInputSource(test_dict, trusted=self.trusted, canonical_defaults=self.canonical_defaults)
 
     def parse_when_input_sources(self):
         input_dict = self.input_dict
@@ -597,13 +626,17 @@ class YamlInputSource(InputSource):
                 # casting to string because default value for BooleanToolParameter.legal_values is "true" / "false"
                 # Unfortunate, but I guess that's ok for now?
                 discriminator = "true" if key is True else "false" if key is False else key
-                case_page_source = YamlPageSource(value, trusted=self.trusted)
+                case_page_source = YamlPageSource(
+                    value, trusted=self.trusted, canonical_defaults=self.canonical_defaults
+                )
                 sources.append((discriminator, case_page_source))
         else:
             for value in input_dict.get("whens", []):
                 key = value.get("discriminator")
                 discriminator = "true" if key is True else "false" if key is False else key
-                case_page_source = YamlPageSource(value["parameters"], trusted=self.trusted)
+                case_page_source = YamlPageSource(
+                    value["parameters"], trusted=self.trusted, canonical_defaults=self.canonical_defaults
+                )
                 sources.append((discriminator, case_page_source))
         return sources
 
