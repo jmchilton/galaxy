@@ -4801,6 +4801,10 @@ class RequiredTool:
         self._tool_uuid = tool_uuid
         self._default_history_id = default_history_id
 
+    def build(self) -> dict[str, Any]:
+        assert self._tool_id and self._default_history_id, "building a tool form requires a tool ID and history"
+        return self._dataset_populator.build_tool_state(self._tool_id, self._default_history_id)
+
     def execute(self, use_cached_job: bool = False) -> "DescribeToolExecution":
         execution = DescribeToolExecution(
             self._dataset_populator, self._tool_id, use_cached_job=use_cached_job, tool_uuid=self._tool_uuid

@@ -1,6 +1,8 @@
 """Authoring contracts exercised by forms and jobs from raw YAML/JSON sources."""
 
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Union
 
 import pytest
 
@@ -28,18 +30,7 @@ BOOLEAN_OVERRIDES = {
     "optional_true": None,
     "optional_false": True,
 }
-
-
-class InferredOptionality(Exception):
-    pass
-
-
-class MissingOptionalBooleanDefault(Exception):
-    pass
-
-
-class RequestNullBooleanDefault(Exception):
-    pass
+LoadedTool = Union[RequiredTool, DescribeUserTool]
 
 
 def _sources(tool_id, yaml_directory=TOOL_DIR / "parameters"):
@@ -160,127 +151,69 @@ def test_user_checked_is_rejected(user_tool: DescribeUserTool):
         assert "Extra inputs are not permitted" in response.text
 
 
+def _load_paths(tool_id, yaml_path, json_path, *values):
+    """One case per load path: toolbox YAML, API user tool from YAML, API user tool from JSON."""
+    return [
+        pytest.param(tool_id, *values, id=f"{tool_id}-disk", marks=pytest.mark.requires_tool_id(tool_id)),
+        pytest.param(yaml_path, *values, id=f"{tool_id}-api-yaml"),
+        pytest.param(json_path, *values, id=f"{tool_id}-api-json"),
+    ]
+
+
+def _parameter_load_paths(tool_id):
+    return _load_paths(tool_id, TOOL_DIR / "parameters" / f"{tool_id}.yml", SOURCE_DIR / f"{tool_id}.json")
+
+
+@pytest.fixture
+def loaded_tool(dataset_populator: DatasetPopulator, history_id: str, request) -> Iterator[LoadedTool]:
+    """Parametrize indirectly with a toolbox tool ID or a YAML/JSON user tool path."""
+    if isinstance(request.param, str):
+        yield RequiredTool(dataset_populator, request.param, history_id)
+    else:
+        with dataset_populator.user_tool_execute_permissions():
+            yield dataset_populator.describe_user_tool(request.param, history_id)
+
+
 @pytest.mark.parametrize(
-    "user_tool, value",
-    [
-        (SOURCE_DIR / "configfile_user_defined.json", "hello!"),
-        (SOURCE_DIR / "gx_select_multiple_one_default_user.json", "--ex3"),
-    ],
-    indirect=["user_tool"],
+    "loaded_tool, value",
+    _load_paths(
+        "configfile",
+        SOURCE_DIR / "configfile_user_defined.yml",
+        SOURCE_DIR / "configfile_user_defined.json",
+        "hello!",
+    )
+    + _load_paths(
+        "gx_select_multiple_one_default_user",
+        SOURCE_DIR / "gx_select_multiple_one_default_user.yml",
+        SOURCE_DIR / "gx_select_multiple_one_default_user.json",
+        "--ex3",
+    ),
+    indirect=["loaded_tool"],
 )
-def test_user_omitted_optionality(user_tool: DescribeUserTool, value):
-    parameter = user_tool.build()["inputs"][0]
+def test_omitted_optionality(loaded_tool: LoadedTool, value):
+    parameter = loaded_tool.build()["inputs"][0]
     assert parameter["value"] == value
     assert parameter["optional"] is False
 
 
-@pytest.mark.parametrize(
-    "tool_id, value",
-    [
-        pytest.param("configfile", "hello!", marks=pytest.mark.requires_tool_id("configfile")),
-        pytest.param(
-            "gx_select_multiple_one_default_user",
-            "--ex3",
-            marks=pytest.mark.requires_tool_id("gx_select_multiple_one_default_user"),
-        ),
-    ],
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=InferredOptionality,
-    reason="#23888: disk YAML infers XML optionality for omitted optional=False",
-)
-def test_disk_omitted_optionality(dataset_populator: DatasetPopulator, history_id: str, tool_id: str, value):
-    parameter = dataset_populator.build_tool_state(tool_id, history_id)["inputs"][0]
-    assert parameter["value"] == value
-    if parameter["optional"] is True:
-        raise InferredOptionality("Disk YAML infers optional=True instead of canonical False")
-    assert parameter["optional"] is False
-
-
-@pytest.mark.parametrize("user_tool", _sources("gx_user_boolean_optional_omitted"), indirect=True)
-def test_user_optional_boolean_omitted(user_tool: DescribeUserTool, tool_input_format: DescribeToolInputs):
-    parameter = user_tool.build()["inputs"][0]
+@pytest.mark.parametrize("loaded_tool", _parameter_load_paths("gx_user_boolean_optional_omitted"), indirect=True)
+def test_optional_boolean_omitted(loaded_tool: LoadedTool, tool_input_format: DescribeToolInputs):
+    parameter = loaded_tool.build()["inputs"][0]
     assert parameter["value"] is False
     assert parameter["optional"] is True
-    user_tool.execute().with_inputs(tool_input_format.when.any({})).assert_has_single_job.with_output(
+    loaded_tool.execute().with_inputs(tool_input_format.when.any({})).assert_has_single_job.with_output(
         "output"
     ).with_json({"flag": False})
-    user_tool.execute().with_inputs(tool_input_format.when.any({"flag": None})).assert_has_single_job.with_output(
+    loaded_tool.execute().with_inputs(tool_input_format.when.any({"flag": None})).assert_has_single_job.with_output(
         "output"
     ).with_json({"flag": None})
 
 
-@requires_tool_id("gx_user_boolean_optional_omitted")
-@pytest.mark.xfail(
-    strict=True,
-    raises=MissingOptionalBooleanDefault,
-    reason="#23888: disk YAML loses canonical optional Boolean False default",
-)
-def test_disk_optional_boolean_omitted(dataset_populator: DatasetPopulator, history_id: str):
-    parameter = dataset_populator.build_tool_state("gx_user_boolean_optional_omitted", history_id)["inputs"][0]
-    assert parameter["optional"] is True
-    if parameter["value"] is None:
-        raise MissingOptionalBooleanDefault("Disk YAML supplies None instead of canonical False")
-    assert parameter["value"] is False
-
-
-@pytest.mark.parametrize("user_tool", _sources("gx_user_boolean_optional_null"), indirect=True)
-@pytest.mark.parametrize(
-    "tool_input_format",
-    [
-        "legacy",
-        "21.01",
-        pytest.param(
-            "request",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=RequestNullBooleanDefault,
-                reason="#23888: request execution changes omitted null Boolean default to False",
-            ),
-        ),
-    ],
-    indirect=True,
-)
-def test_user_optional_boolean_null(user_tool: DescribeUserTool, tool_input_format: DescribeToolInputs):
-    parameter = user_tool.build()["inputs"][0]
+@pytest.mark.parametrize("loaded_tool", _parameter_load_paths("gx_user_boolean_optional_null"), indirect=True)
+def test_optional_boolean_null(loaded_tool: LoadedTool, tool_input_format: DescribeToolInputs):
+    parameter = loaded_tool.build()["inputs"][0]
     assert parameter["value"] is None
     assert parameter["optional"] is True
-    _assert_null_boolean_job(user_tool, tool_input_format)
-
-
-@requires_tool_id("gx_user_boolean_optional_null")
-@pytest.mark.parametrize(
-    "tool_input_format",
-    [
-        "legacy",
-        "21.01",
-        pytest.param(
-            "request",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=RequestNullBooleanDefault,
-                reason="#23888: request execution changes omitted null Boolean default to False",
-            ),
-        ),
-    ],
-    indirect=True,
-)
-def test_disk_optional_boolean_null(
-    required_tool: RequiredTool,
-    dataset_populator: DatasetPopulator,
-    history_id: str,
-    tool_input_format: DescribeToolInputs,
-):
-    parameter = dataset_populator.build_tool_state("gx_user_boolean_optional_null", history_id)["inputs"][0]
-    assert parameter["value"] is None
-    assert parameter["optional"] is True
-    _assert_null_boolean_job(required_tool, tool_input_format)
-
-
-def _assert_null_boolean_job(tool, tool_input_format):
-    output = tool.execute().with_inputs(tool_input_format.when.any({})).assert_has_single_job.with_output("output")
-    actual = output.json
-    if tool_input_format.is_request and set(actual) == {"flag"} and actual["flag"] is False:
-        raise RequestNullBooleanDefault("Request execution supplies False instead of the declared null default")
-    output.with_json({"flag": None})
+    loaded_tool.execute().with_inputs(tool_input_format.when.any({})).assert_has_single_job.with_output(
+        "output"
+    ).with_json({"flag": None})
