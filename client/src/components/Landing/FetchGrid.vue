@@ -60,12 +60,6 @@ const title = computed(() => {
     return title;
 });
 
-function initializeRowData(rowData: AgRowData[], rows: RowsType) {
-    for (const row of rows) {
-        rowData.push({ ...row });
-    }
-}
-
 const BOOLEAN_COLUMNS: ParsedFetchWorkbookColumnType[] = [
     "to_posix_lines",
     "space_to_tab",
@@ -121,8 +115,7 @@ function initializeTabularVersionOfTarget() {
     collectionTypeRef.value = collectionType;
     autoDecompressRef.value = table.autoDecompress;
     initializeColumns(columns);
-    gridRowData.value.splice(0, gridRowData.value.length);
-    initializeRowData(gridRowData.value, rows);
+    gridRowData.value = rows.map((row) => ({ ...row }));
     richSupportForTarget.value = true;
     viewMode.value = "table";
 }
@@ -220,7 +213,7 @@ function handleDataUpdated(event: any) {
                     the final data import.
                 </GAlert>
                 <AgGridVue
-                    :row-data="gridRowData"
+                    v-model="gridRowData"
                     :column-defs="gridColumns"
                     :default-col-def="defaultColDef"
                     :style="style"

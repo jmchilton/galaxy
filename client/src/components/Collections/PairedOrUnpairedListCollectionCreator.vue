@@ -33,6 +33,9 @@ import {
 } from "./pairing";
 
 import AutoPairing from "./common/AutoPairing.vue";
+import CellDiscardComponent from "./common/CellDiscardComponent.vue";
+import CellStatusComponent from "./common/CellStatusComponent.vue";
+import PairedDatasetCellComponent from "./common/PairedDatasetCellComponent.vue";
 import PairedOrUnpairedListCreatorHelp from "./PairedOrUnpairedListCreatorHelp.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
@@ -139,7 +142,8 @@ const columnDefs = computed(() => {
             headerName: "Dataset(s)",
             field: "datasets",
             editable: false,
-            cellRenderer: "PairedDatasetCellComponent",
+            cellDataType: false,
+            cellRenderer: PairedDatasetCellComponent,
             rowDrag: true,
         };
     } else {
@@ -147,6 +151,7 @@ const columnDefs = computed(() => {
             headerName: "Dataset",
             field: "datasets",
             editable: false,
+            cellDataType: false,
             rowDrag: true,
             valueFormatter: (p) => {
                 if (showHid) {
@@ -183,20 +188,25 @@ const columnDefs = computed(() => {
         headerName: "Discard",
         field: "discard",
         editable: false,
-        cellRenderer: "CellDiscardComponent",
+        cellRenderer: CellDiscardComponent,
         width: 65,
     };
     const status: ColDef = {
         headerName: "Status",
         field: "status",
         editable: false,
-        cellRenderer: "CellStatusComponent",
+        cellRenderer: CellStatusComponent,
         width: 65,
     };
     return [datasets, ...identifierColumns, discard, status];
 });
 
-function onIdentifierChange(e: NewValueParams) {
+// AG Grid edits its own copies of the rows, so edits and swaps are written back to `rowData` by id.
+function onIdentifierChange(e: NewValueParams<RowT>) {
+    const row = rowData.value.find((candidate) => candidate.id === e.data.id);
+    if (row) {
+        row[e.colDef.field as "identifier" | "outerIdentifier"] = e.newValue;
+    }
     nextTick(() => {
         checkForDuplicates(true);
     });
@@ -758,7 +768,7 @@ function onPair(firstId: string, secondId: string, pairBy: PairBy) {
 }
 
 function _refresh() {
-    gridApi.value?.setRowData(rowData.value);
+    gridApi.value?.setGridOption("rowData", rowData.value);
 }
 
 function onUnpair(pair: GenericPair<HistoryItemSummary>) {
@@ -858,9 +868,13 @@ function dismissUnmatchedDatasets() {
 }
 
 function onSwap(pair: GenericPair<HistoryItemSummary>) {
-    const newForward = pair.reverse;
-    pair.reverse = pair.forward;
-    pair.forward = newForward;
+    const row = rowData.value.find(
+        (candidate) => "forward" in candidate.datasets && candidate.datasets.forward.id === pair.forward.id,
+    );
+    if (row) {
+        const datasets = row.datasets as GenericPair<HistoryItemSummary>;
+        [datasets.forward, datasets.reverse] = [datasets.reverse, datasets.forward];
+    }
 }
 
 function goToAutoPairing() {
@@ -882,17 +896,6 @@ const context = {
     onUnpairedClick,
     onRemove,
     onSwap,
-};
-</script>
-
-<script lang="ts">
-// eslint-disable-next-line import/first
-import { components as VueComponents } from "./PairedOrUnpairedComponents";
-
-// defineExpose should work for exposing PairedDatasetCellComponent to AG Grid
-// but doesn't seem to and it has been reported as an issue with Vue 2.7.
-export default {
-    components: VueComponents,
 };
 </script>
 
@@ -972,9 +975,7 @@ export default {
                         </GButton>
                     </div>
                     <div :style="style" :class="theme">
-                        <!-- ag-grid animates rows by default since 31; a removed row would linger at its old index. -->
                         <AgGridVue
-                            :animate-rows="false"
                             :row-drag-managed="true"
                             :row-drag-text="rowDragText"
                             :get-row-id="getRowId"

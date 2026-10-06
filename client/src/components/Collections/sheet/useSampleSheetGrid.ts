@@ -40,7 +40,9 @@ export function toAgGridColumnDefinition(colDef: SampleSheetColumnDefinition): C
     return {
         headerName: colDef.name,
         headerTooltip: headerDescription,
-        headerClass: headerDescription != colDef.name ? "ag-grid-column-has-custom-header-description" : "",
+        // underline headers that have a description in their tooltip
+        headerStyle:
+            headerDescription != colDef.name ? { textDecorationLine: "underline", textDecorationStyle: "dashed" } : {},
         field: colDef.name,
     };
 }

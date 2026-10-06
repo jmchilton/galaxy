@@ -5,7 +5,7 @@ import type { ColDef, ValueSetterParams } from "ag-grid-community";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h, toRaw } from "vue";
+import { defineComponent, h } from "vue";
 
 import type { SampleSheetColumnDefinitions } from "@/api";
 import { useServerMock } from "@/api/client/__mocks__";
@@ -88,16 +88,21 @@ function gridColumn(wrapper: Wrapper, field: string): ColDef {
     return column!;
 }
 
-/** Run a column's `valueSetter` the way the grid does after an edit of `rowIndex`; the grid holds raw rows. */
+/** The grid edits its own copies of the rows it is given. */
+function gridCopies(wrapper: Wrapper): AgRowData[] {
+    return JSON.parse(JSON.stringify(gridRows(wrapper)));
+}
+
+/** Run a column's `valueSetter` the way the grid does after an edit of `rowIndex`. */
 function setCell(column: ColDef, rows: AgRowData[], rowIndex: number, newValue: unknown): boolean {
     const params = {
         newValue,
-        data: toRaw(rows[rowIndex]),
+        data: rows[rowIndex],
         node: { rowIndex },
         colDef: column,
         api: {
             forEachNode: (callback: (node: { rowIndex: number; data: AgRowData }) => void) =>
-                rows.forEach((data, index) => callback({ rowIndex: index, data: toRaw(data) })),
+                rows.forEach((data, index) => callback({ rowIndex: index, data })),
         },
     } as unknown as ValueSetterParams;
     return (column.valueSetter as (params: ValueSetterParams) => boolean)(params);
@@ -121,7 +126,7 @@ describe("SampleSheetGrid", () => {
 
     it("rejects an element identifier another row already uses", async () => {
         const wrapper = await mountGrid(URIS);
-        const rows = gridRows(wrapper);
+        const rows = gridCopies(wrapper);
 
         expect(setCell(gridColumn(wrapper, "list_identifiers"), rows, 0, "b")).toBe(false);
 
@@ -131,7 +136,7 @@ describe("SampleSheetGrid", () => {
 
     it("accepts the booleans the grid's checkbox editor produces", async () => {
         const wrapper = await mountGrid(URIS, [{ name: "control", type: "boolean", optional: false }]);
-        const rows = gridRows(wrapper);
+        const rows = gridCopies(wrapper);
 
         expect(setCell(gridColumn(wrapper, "control"), rows, 0, true)).toBe(true);
 
@@ -140,7 +145,7 @@ describe("SampleSheetGrid", () => {
 
     it("rejects clearing a required integer", async () => {
         const wrapper = await mountGrid(URIS, [{ name: "replicate", type: "int", optional: false }]);
-        const rows = gridRows(wrapper);
+        const rows = gridCopies(wrapper);
 
         expect(setCell(gridColumn(wrapper, "replicate"), rows, 0, "")).toBe(false);
 
@@ -155,8 +160,8 @@ describe("SampleSheetGrid", () => {
         const editorValues = () => (column.cellEditorParams as () => { values: string[] })().values;
         expect(editorValues()).toEqual(["a", "b"]);
 
-        // The grid writes edits into its raw row objects, then emits them through v-model.
-        const rows = gridRows(wrapper).map((row) => toRaw(row));
+        // The grid edits its copies of the rows, then emits them through v-model.
+        const rows = gridCopies(wrapper);
         rows[1]!.list_identifiers = "renamed";
         grid(wrapper).vm.$emit("update:modelValue", Object.freeze(rows));
         await flushPromises();

@@ -1,6 +1,7 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
+import type { ColDef, NewValueParams } from "ag-grid-community";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -92,6 +93,24 @@ async function mountCreator(initialElements: HDASummary[]) {
 /** Row ids as our AG Grid stub renders them - the `RowT.id` contract the namespacing fix targets. */
 function gridRowIds(wrapper: ReturnType<typeof mount>): string[] {
     return wrapper.findAll(".grid-row").map((row) => row.attributes("data-row-id") ?? "");
+}
+
+/** AG Grid edits its own copies of the rows it was given; build one the way it would. */
+function gridCopyOfRow(wrapper: ReturnType<typeof mount>, index: number) {
+    const { rowData } = wrapper.findComponent({ name: "AgGridVue" }).props() as { rowData: object[] };
+    return JSON.parse(JSON.stringify(rowData[index])) as Record<string, any>;
+}
+
+function gridColumn(wrapper: ReturnType<typeof mount>, field: string): ColDef {
+    const attrs = wrapper.findComponent({ name: "AgGridVue" }).vm.$attrs as Record<string, unknown>;
+    const columns = (attrs.columnDefs ?? attrs["column-defs"]) as ColDef[];
+    return columns.find((column) => column.field === field)!;
+}
+
+async function createdElementIdentifiers(wrapper: ReturnType<typeof mount>) {
+    await (wrapper.vm as unknown as { attemptCreate: () => Promise<void> }).attemptCreate();
+    const [payload] = wrapper.emitted("on-create")!.at(-1) as [{ element_identifiers: any[] }];
+    return payload.element_identifiers;
 }
 
 describe("PairedOrUnpairedListCollectionCreator", () => {
@@ -245,5 +264,30 @@ describe("PairedOrUnpairedListCollectionCreator", () => {
         await flushPromises();
 
         expect(gridRowIds(wrapper)).toEqual(["single:b"]);
+    });
+
+    it("keeps an identifier the user edits in the grid", async () => {
+        const wrapper = await mountCreator([buildFakeDataset("a", "sample_1"), buildFakeDataset("b", "sample_2")]);
+        const column = gridColumn(wrapper, "identifier");
+        const edited = { ...gridCopyOfRow(wrapper, 0), identifier: "renamed" };
+
+        column.onCellValueChanged!({ data: edited, newValue: "renamed", colDef: column } as NewValueParams);
+        await flushPromises();
+
+        const [element] = await createdElementIdentifiers(wrapper);
+        expect(element.name).toBe("renamed");
+    });
+
+    it("keeps a swap the user makes in the grid", async () => {
+        const wrapper = await mountCreator([buildFakeDataset("a", "sample_1"), buildFakeDataset("b", "sample_2")]);
+        const { context } = wrapper.findComponent({ name: "AgGridVue" }).vm.$attrs as unknown as {
+            context: { onSwap: (pair: object) => void };
+        };
+
+        context.onSwap(gridCopyOfRow(wrapper, 0).datasets);
+        await flushPromises();
+
+        const [element] = await createdElementIdentifiers(wrapper);
+        expect(element.element_identifiers.map((child: { id: string }) => child.id)).toEqual(["b", "a"]);
     });
 });

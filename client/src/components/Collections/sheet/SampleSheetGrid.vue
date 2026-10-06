@@ -397,9 +397,4 @@ defineExpose({ attemptCreate });
 .below-grid-link {
     padding: 7px;
 }
-
-:deep(.ag-grid-column-has-custom-header-description) {
-    text-decoration-line: underline;
-    text-decoration-style: dashed;
-}
 </style>
