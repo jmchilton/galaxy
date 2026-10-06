@@ -25,7 +25,6 @@ from typing import (
     Any,
     cast,
     Literal,
-    Optional,
     TYPE_CHECKING,
 )
 
@@ -37,10 +36,7 @@ from galaxy.exceptions import (
     ItemAccessibilityException,
 )
 from galaxy.managers.context import ProvidesHistoryContext
-from galaxy.managers.markdown_util import (
-    ContentRef,
-    referenced_content_ids,
-)
+from galaxy.managers.markdown_util import referenced_content_ids
 from galaxy.managers.workflow_extraction_naming import suggested_output_name
 from galaxy.model import (
     History,
@@ -53,6 +49,7 @@ from galaxy.model import (
     Page,
 )
 from galaxy.schema.workflows import (
+    ContentRef,
     InvalidWorkflowExtractionJobReason,
     WorkflowExtractionJob,
     WorkflowExtractionOutput,
@@ -61,8 +58,11 @@ from galaxy.schema.workflows import (
 from galaxy.workflow.extract import (
     get_original_hda,
     get_original_hdca,
+    original_content_ref,
+    resolve_content,
     skip_output_assoc_name,
     summarize,
+    tool_for_job,
 )
 
 if TYPE_CHECKING:
@@ -99,23 +99,6 @@ class ClosureResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def _content_key(content: HistoryItem) -> ContentRef:
-    """Normalize a history item to ``(kind, original_id)`` after following copies."""
-    if content.history_content_type == "dataset_collection":
-        return ("hdca", get_original_hdca(cast(HistoryDatasetCollectionAssociation, content)).id)
-    return ("hda", get_original_hda(cast(HistoryDatasetAssociation, content)).id)
-
-
-def _resolve_content(trans: ProvidesHistoryContext, ref: ContentRef) -> HistoryItem | None:
-    kind, id_ = ref
-    content: HistoryItem | None
-    if kind == "hdca":
-        content = trans.sa_session.get(HistoryDatasetCollectionAssociation, id_)
-    else:
-        content = trans.sa_session.get(HistoryDatasetAssociation, id_)
-    return content
-
-
 def _produced_elsewhere(job: Job, history_id: int, local_keys: set[ContentRef]) -> bool:
     """Whether ``job`` ran in another history and its inputs were not all copied here.
 
@@ -124,15 +107,11 @@ def _produced_elsewhere(job: Job, history_id: int, local_keys: set[ContentRef]) 
     """
     if job.history_id == history_id:
         return False
-    input_keys = {_content_key(content) for content in _job_input_contents(job)}
+    input_keys = {original_content_ref(content) for content in _job_input_contents(job)}
     return not input_keys or not input_keys <= local_keys
 
 
-def _tool_for_job(trans: ProvidesHistoryContext, job: Job) -> Optional["Tool"]:
-    return _job_tool(trans, job)[0]
-
-
-def _job_tool(trans: ProvidesHistoryContext, job: Job) -> tuple[Optional["Tool"], bool]:
+def _job_tool(trans: ProvidesHistoryContext, job: Job) -> tuple["Tool | None", bool]:
     """The job's tool (None when missing or inaccessible) and whether the user may not use it."""
     try:
         return trans.app.toolbox.tool_for_job(job, user=trans.user), False
@@ -221,11 +200,11 @@ def _backward_job_closure(
     result = ClosureResult()
     queue: deque[HistoryItem] = deque()
     for ref in refs:
-        content = _resolve_content(trans, ref)
+        content = resolve_content(trans, ref)
         if content is None:
             result.warnings.append(f"A referenced output ({ref[0]} {ref[1]}) is no longer available and was skipped.")
             continue
-        result.referenced_output_refs.add(_content_key(content))
+        result.referenced_output_refs.add(original_content_ref(content))
         queue.append(content)
 
     for job_id in job_refs:
@@ -233,14 +212,14 @@ def _backward_job_closure(
         if job is None:
             result.warnings.append(f"A referenced job ({job_id}) is no longer available and was skipped.")
             continue
-        tool = _tool_for_job(trans, job)
+        tool = tool_for_job(trans, job)
         # A directly job-referenced non-step (upload, data fetch, cross-history) becomes a
         # seeded input row; flag its outputs so the form can explain why. An upstream upload
         # reached only by an ordinary walk below is not flagged.
         not_a_step = tool is None or not tool.is_workflow_compatible or _produced_elsewhere(job, history_id, local_keys)
         for content in _job_output_contents(job):
             if not_a_step:
-                result.seed_warning_refs.add(_content_key(content))
+                result.seed_warning_refs.add(original_content_ref(content))
             queue.append(content)
 
     for icj_id in icj_refs:
@@ -258,7 +237,7 @@ def _backward_job_closure(
     seen_jobs: set[int] = set()
     while queue:
         content = queue.popleft()
-        key = _content_key(content)
+        key = original_content_ref(content)
         if key in seen_content:
             continue
         seen_content.add(key)
@@ -302,7 +281,7 @@ def _backward_job_closure(
             if icj_assoc is not None and icj_assoc.implicit_collection_jobs_id in result.icj_ids:
                 # Another element job of an already-walked map step.
                 continue
-            tool = _tool_for_job(trans, job)
+            tool = tool_for_job(trans, job)
             if tool is None or not tool.is_workflow_compatible:
                 # Upload / data-fetch / missing tool: an input, not a workflow step.
                 result.boundary_input_refs.add(key)
@@ -344,10 +323,7 @@ def _serialize_output(
     *,
     exposed: bool = False,
 ) -> WorkflowExtractionOutput:
-    suggested = None
-    if output_name is not None:
-        content_kind: Literal["hda", "hdca"] = "hdca" if content.history_content_type == "dataset_collection" else "hda"
-        suggested = suggested_output_name(trans, content.id, content_kind)
+    suggested = suggested_output_name(trans, content) if output_name is not None else None
     return WorkflowExtractionOutput.model_validate(
         {
             "id": content.id,
@@ -410,7 +386,7 @@ def _input_seeding(datasets: SummaryDatasets, closure: ClosureResult | None) -> 
     """``(seeded, seed_warning)`` for an input row holding ``datasets``."""
     if closure is None:
         return False, None
-    content_keys = {_content_key(data) for _, data in datasets}
+    content_keys = {original_content_ref(data) for _, data in datasets}
     seed_warning = SEED_AS_INPUT_WARNING if content_keys & closure.seed_warning_refs else None
     return bool(content_keys & closure.content_refs), seed_warning
 
@@ -418,7 +394,7 @@ def _input_seeding(datasets: SummaryDatasets, closure: ClosureResult | None) -> 
 def _tool_row(
     trans: ProvidesHistoryContext,
     job: Job,
-    tool: Optional["Tool"],
+    tool: "Tool | None",
     custom_tools_inaccessible: bool,
     datasets: SummaryDatasets,
     icj_assoc_by_job_id: dict[int, ImplicitCollectionJobsJobAssociation],
@@ -431,7 +407,7 @@ def _tool_row(
             trans,
             data,
             _workflow_output_name(data, output_name),
-            exposed=bool(referenced) and _content_key(data) in referenced,
+            exposed=bool(referenced) and original_content_ref(data) in referenced,
         )
         for output_name, data in datasets
     ]
@@ -503,7 +479,7 @@ def _synthesize_boundary_inputs(
     for ref in sorted(closure.boundary_input_refs):
         if ref in represented_keys:
             continue
-        content = _resolve_content(trans, ref)
+        content = resolve_content(trans, ref)
         if content is None:
             continue
         seed_warning = SEED_AS_INPUT_WARNING if ref in closure.seed_warning_refs else None
@@ -521,7 +497,7 @@ def _collections_by_original(history: History) -> dict[ContentRef, SummaryDatase
     """
     collections: dict[ContentRef, SummaryDatasets] = {}
     for hdca in history.contents_iter(types=["dataset_collection"]):
-        collections.setdefault(_content_key(hdca), []).append((None, hdca))
+        collections.setdefault(original_content_ref(hdca), []).append((None, hdca))
     return collections
 
 
@@ -559,7 +535,7 @@ def _summary_rows(
                 # Not a workflow step (e.g. upload, data fetch) — treat as input.
                 producer_name = tool.name
         for item in datasets:
-            ref = _content_key(item[1])
+            ref = original_content_ref(item[1])
             copies = inputs.get(ref)
             if copies is None:
                 copies = inputs[ref] = []
@@ -596,7 +572,7 @@ def _serialize_summary(
     if closure is not None:
         # An unseeded tool row (e.g. an invalid one) does not feed the seeded subgraph.
         represented_keys = {
-            _content_key(data)
+            original_content_ref(data)
             for row, datasets in rows
             if row.seeded or row.step_type != "tool"
             for _, data in datasets
@@ -625,7 +601,7 @@ def summary_from_page(trans: ProvidesHistoryContext, page: Page, history: Histor
     content = revision.content if revision is not None else None
     referenced = referenced_content_ids(trans, content or "")
     jobs, warnings = summarize(trans, history)
-    local_keys = {_content_key(data) for datasets in jobs.values() for _, data in datasets}
+    local_keys = {original_content_ref(data) for datasets in jobs.values() for _, data in datasets}
     closure = _backward_job_closure(
         trans, referenced.refs, referenced.job_refs, referenced.icj_refs, history.id, local_keys=local_keys
     )
