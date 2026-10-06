@@ -981,28 +981,30 @@ class TestCollectionOutputXml(FunctionalTestToolTestCase):
         assert len(output_collections) == 1
 
 
+GENERIC_COLLECTION_OUTPUT_ATTRIBUTES = [
+    ('type="list"', 'collection_type="list"', {"collection_type": "list"}),
+    (
+        'type_source="input_collect"',
+        'collection_type_source="input_collect"',
+        {"collection_type_source": "input_collect"},
+    ),
+    ('structured_like="input_collect"', 'structured_like="input_collect"', {"structured_like": "input_collect"}),
+]
+GENERIC_COLLECTION_OUTPUT_CHILDREN = [
+    "",
+    '<discover_datasets pattern="__name__" directory="output" />',
+    '<data name="element" from_work_dir="output.txt" />',
+]
+
+
 @pytest.mark.parametrize(
-    "collection_attributes, output_attributes, expected_structure",
+    "collection_attributes, output_attributes, expected_structure, children",
     [
-        ('type="list"', 'collection_type="list"', {"collection_type": "list"}),
-        (
-            'type_source="input_collect"',
-            'collection_type_source="input_collect"',
-            {"collection_type_source": "input_collect"},
-        ),
-        (
-            'structured_like="input_collect"',
-            'structured_like="input_collect"',
-            {"structured_like": "input_collect"},
-        ),
-    ],
-)
-@pytest.mark.parametrize(
-    "children",
-    [
-        "",
-        '<discover_datasets pattern="__name__" directory="output" />',
-        '<data name="element" from_work_dir="output.txt" />',
+        (*attributes, children)
+        for attributes in GENERIC_COLLECTION_OUTPUT_ATTRIBUTES
+        for children in GENERIC_COLLECTION_OUTPUT_CHILDREN
+        # structured_like with discovered elements is rejected, see the test below.
+        if not ("structured_like" in attributes[2] and "discover_datasets" in children)
     ],
 )
 def test_generic_collection_output_matches_collection(
@@ -1015,11 +1017,6 @@ def test_generic_collection_output_matches_collection(
     ):
         source = build_xml_tool_source(f"<tool><outputs>{element}</outputs></tool>")
         original_xml = xml_to_string(source.root)
-        if "structured_like" in expected_structure and "discover_datasets" in children:
-            with pytest.raises(ValueError, match="Cannot specify dynamic structure"):
-                source.parse_outputs(None)
-            assert xml_to_string(source.root) == original_xml
-            continue
         for _ in range(2):
             outputs, output_collections = source.parse_outputs(None)
             assert list(outputs) == ["out"]
@@ -1036,21 +1033,36 @@ def test_generic_collection_output_matches_collection(
                 assert getattr(collection.structure, attribute) == expected_structure.get(attribute)
             assert xml_to_string(source.root) == original_xml
         collections.append(collection)
-    if collections:
-        assert collections[0].to_model() == collections[1].to_model()
+    assert collections[0].to_model() == collections[1].to_model()
 
 
 @pytest.mark.parametrize(
-    "element",
+    "element, error",
     [
-        '<collection name="out" type="list" type_source="input_collect" />',
-        '<output name="out" type="collection" collection_type="list" collection_type_source="input_collect" />',
+        (
+            '<collection name="out" type="list" type_source="input_collect" />',
+            "Cannot set both type and type_source on collection output",
+        ),
+        (
+            '<output name="out" type="collection" collection_type="list" collection_type_source="input_collect" />',
+            "Cannot set both type and type_source on collection output",
+        ),
+        (
+            '<collection name="out" structured_like="input_collect"><discover_datasets pattern="__name__" /></collection>',
+            "Cannot specify dynamic structure",
+        ),
+        (
+            '<output name="out" type="collection" structured_like="input_collect"><discover_datasets pattern="__name__" /></output>',
+            "Cannot specify dynamic structure",
+        ),
     ],
 )
-def test_collection_output_rejects_type_and_type_source(element):
+def test_collection_output_rejects_invalid_structure(element, error):
     source = build_xml_tool_source(f"<tool><outputs>{element}</outputs></tool>")
-    with pytest.raises(ValueError, match="Cannot set both type and type_source on collection output"):
+    original_xml = xml_to_string(source.root)
+    with pytest.raises(ValueError, match=error):
         source.parse_outputs(None)
+    assert xml_to_string(source.root) == original_xml
 
 
 class TestCollectionOutputYaml(FunctionalTestToolTestCase):
