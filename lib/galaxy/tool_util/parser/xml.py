@@ -50,7 +50,6 @@ from galaxy.util import (
     ElementTree,
     string_as_bool,
     string_as_bool_or_none,
-    unicodify,
     XML,
     xml_text,
     xml_to_string,
@@ -491,13 +490,13 @@ class XmlToolSource(ToolSource):
             expression_dict[output_def.name] = output_def
             return output_def
 
-        def _parse_collection(collection_elem: Element):
+        def _parse_collection(collection_elem: Element, type_attr: str = "type", type_source_attr: str = "type_source"):
             name = collection_elem.get("name")
             assert name
             label = xml_text(collection_elem, "label")
             default_format = collection_elem.get("format", "data")
-            collection_type = collection_elem.get("type", None)
-            collection_type_source = collection_elem.get("type_source", None)
+            collection_type = collection_elem.get(type_attr)
+            collection_type_source = collection_elem.get(type_source_attr)
             collection_type_from_rules = collection_elem.get("type_from_rules", None)
             structured_like = collection_elem.get("structured_like", None)
             inherit_format = False
@@ -559,9 +558,7 @@ class XmlToolSource(ToolSource):
                 if output_type == "data":
                     _parse(out_child)
                 elif output_type == "collection":
-                    out_child.attrib["type"] = unicodify(out_child.get("collection_type"))
-                    out_child.attrib["type_source"] = unicodify(out_child.get("collection_type_source"))
-                    _parse_collection(out_child)
+                    _parse_collection(out_child, "collection_type", "collection_type_source")
                 else:
                     _parse_expression(out_child, app)
             else:
