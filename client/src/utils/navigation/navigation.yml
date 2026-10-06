@@ -427,9 +427,9 @@ tool_panel:
   selectors:
     edam_link: 'a[href^="https://edamontology.github.io/edam-browser"]'
     tool_box: '[data-description="panel toolbox"]'
-    tool_link: 'a[href$$="/?tool_id=${tool_id}&version=latest"]'
-    outer_tool_link: '.toolTitle a[href$$="/?tool_id=${tool_id}&version=latest"]'
-    data_source_tool_link: 'a[href$$="tool_runner/data_source_redirect?tool_id=${tool_id}"]'
+    tool_link: 'a.tool-link[data-tool-id="${tool_id}"][href$$="&version=latest"]'
+    outer_tool_link: '.toolTitle a.tool-link[data-tool-id="${tool_id}"][href$$="&version=latest"]'
+    data_source_tool_link: 'a.tool-link[data-tool-id="${tool_id}"][href*="tool_runner/data_source_redirect?"]'
     search: '.search-query'
     toolbox: '[data-description="panel toolbox"]'
     workflow_names: '#internal-workflows .toolTitle'

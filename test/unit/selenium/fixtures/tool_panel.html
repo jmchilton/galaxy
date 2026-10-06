@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tool Panel Test Page</title>
+  </head>
+  <body>
+    <!-- Mirrors the links client/src/components/Panels/Common/Tool.vue renders. -->
+    <div class="toolTitle">
+      <a
+        class="title-link cursor-pointer tool-link"
+        data-tool-id="cat1"
+        href="/?tool_id=cat1&amp;version=latest"
+      >
+        <span class="name">Concatenate datasets</span>
+      </a>
+    </div>
+    <div class="toolTitle">
+      <a
+        class="title-link cursor-pointer tool-link"
+        data-tool-id="toolshed.g2.bx.psu.edu/repos/iuc/umi_tools_extract/umi_tools_extract/1.1.2+galaxy2"
+        href="/?tool_id=toolshed.g2.bx.psu.edu%2Frepos%2Fiuc%2Fumi_tools_extract%2Fumi_tools_extract%2F1.1.2%2Bgalaxy2&amp;version=latest"
+      >
+        <span class="name">UMI-tools extract</span>
+      </a>
+    </div>
+    <div class="toolTitle">
+      <a
+        class="title-link name text-muted tool-link"
+        data-tool-id="disabled_tool"
+      >
+        <span>Disabled tool</span>
+      </a>
+    </div>
+    <div class="toolTitle">
+      <a
+        class="title-link cursor-pointer tool-link"
+        data-tool-id="ucsc_table_direct1"
+        href="/tool_runner/data_source_redirect?tool_id=ucsc_table_direct1"
+      >
+        <span class="name">UCSC Main</span>
+      </a>
+    </div>
+  </body>
+</html>
