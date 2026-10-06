@@ -19,10 +19,6 @@ from typing import (
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from galaxy.exceptions import (
-    InsufficientPermissionsException,
-    ItemAccessibilityException,
-)
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.markdown_util import referenced_content_ids
 from galaxy.managers.workflow_extraction_naming import suggested_output_name
@@ -94,15 +90,6 @@ def _produced_elsewhere(job: Job, history_id: int, local_keys: set[ContentRef]) 
         return False
     input_keys = {original_content_ref(content) for content in _job_input_contents(job)}
     return not input_keys or not input_keys <= local_keys
-
-
-def _job_tool(trans: ProvidesHistoryContext, job: Job) -> tuple["Tool | None", bool]:
-    """The job's tool (None when missing or inaccessible) and whether the user may not use it."""
-    try:
-        return trans.app.toolbox.tool_for_job(job, user=trans.user), False
-    except (InsufficientPermissionsException, ItemAccessibilityException):
-        # No execute role, or a user tool the viewer doesn't own / that was deactivated.
-        return None, True
 
 
 def _job_output_contents(job: Job) -> list[HistoryItem]:
@@ -369,7 +356,6 @@ def _tool_row(
     trans: ProvidesHistoryContext,
     job: Job,
     tool: "Tool | None",
-    custom_tools_inaccessible: bool,
     datasets: SummaryDatasets,
     icj_assoc_by_job_id: dict[int, ImplicitCollectionJobsJobAssociation],
     closure: ClosureResult | None,
@@ -389,7 +375,7 @@ def _tool_row(
     if tool is None:
         invalid_reason = (
             InvalidWorkflowExtractionJobReason.CUSTOM_TOOL_INACCESSIBLE
-            if custom_tools_inaccessible
+            if job.dynamic_tool is not None
             else InvalidWorkflowExtractionJobReason.TOOL_MISSING_OR_INACCESSIBLE
         )
         return WorkflowExtractionJob(
@@ -490,14 +476,12 @@ def _summary_rows(
             # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
             producer_name = getattr(job, "name", None)
         else:
-            tool, custom_tools_inaccessible = _job_tool(trans, job)
+            tool = tool_for_job(trans, job)
             if closure is not None and _produced_elsewhere(job, history.id, local_keys):
                 # Same boundary as the closure walk: the copies here are workflow inputs.
                 producer_name = tool.name if tool else None
             elif tool is None or tool.is_workflow_compatible:
-                tool_row = _tool_row(
-                    trans, job, tool, custom_tools_inaccessible, datasets, icj_assoc_by_job_id, closure
-                )
+                tool_row = _tool_row(trans, job, tool, datasets, icj_assoc_by_job_id, closure)
                 pending.append((tool_row, datasets, None))
                 continue
             else:

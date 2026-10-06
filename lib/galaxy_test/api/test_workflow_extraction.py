@@ -2441,6 +2441,18 @@ class TestWorkflowExtractionSummaryApi(_ExtractionHelpersMixin, BaseWorkflowsApi
             assert tool_jobs[0]["invalid"] == "custom_tool_inaccessible"
             assert tool_jobs[0]["checked"] is False
 
+    def test_extraction_summary_udt_step_invalid_for_non_owner(self):
+        # Holding the execute role does not grant access to another user's tool.
+        output_id = self._run_user_tool_in_published_history()
+        with self._different_user("udt_non_owner@bx.psu.edu"), self.dataset_populator.user_tool_execute_permissions():
+            history_id = self.dataset_populator.new_history()
+            copied = self._copy_hda_to_history(history_id, {"id": output_id})
+            summary = self._get_extraction_summary(history_id)
+            row = self._row_with_output_id(summary, copied["id"])
+            assert row is not None and row["step_type"] == "tool", summary["jobs"]
+            assert row["invalid"] == "custom_tool_inaccessible", row
+            assert row["checked"] is False, row
+
     @skip_without_tool("random_lines1")
     def test_extraction_summary_mapped_tool_step_icj_metadata(self):
         with self.dataset_populator.test_history() as history_id:
@@ -2595,18 +2607,6 @@ class TestWorkflowExtractionSummaryApi(_ExtractionHelpersMixin, BaseWorkflowsApi
             tool_jobs = [j for j in summary["jobs"] if j["step_type"] == "tool"]
             assert len(tool_jobs) == 1, summary["jobs"]
             assert tool_jobs[0]["implicit_collection_jobs_id"] is not None, tool_jobs[0]
-
-    def test_extraction_summary_udt_step_invalid_for_non_owner(self):
-        # Holding the execute role does not grant access to another user's tool.
-        output_id = self._run_user_tool_in_published_history()
-        with self._different_user("udt_non_owner@bx.psu.edu"), self.dataset_populator.user_tool_execute_permissions():
-            history_id = self.dataset_populator.new_history()
-            copied = self._copy_hda_to_history(history_id, {"id": output_id})
-            summary = self._get_extraction_summary(history_id)
-            row = self._row_with_output_id(summary, copied["id"])
-            assert row is not None and row["step_type"] == "tool", summary["jobs"]
-            assert row["invalid"] == "custom_tool_inaccessible", row
-            assert row["checked"] is False, row
 
 
 RunJobsSummary = namedtuple("RunJobsSummary", ["history_id", "workflow_id", "inputs", "jobs"])
