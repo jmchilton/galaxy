@@ -497,6 +497,8 @@ class XmlToolSource(ToolSource):
             default_format = collection_elem.get("format", "data")
             collection_type = collection_elem.get(type_attr)
             collection_type_source = collection_elem.get(type_source_attr)
+            if collection_type and collection_type_source:
+                raise ValueError(f"Cannot set both {type_attr} and {type_source_attr} on collection output {name}.")
             collection_type_from_rules = collection_elem.get("type_from_rules", None)
             structured_like = collection_elem.get("structured_like", None)
             inherit_format = False

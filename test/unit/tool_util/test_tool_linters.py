@@ -717,6 +717,20 @@ OUTPUTS_UNKNOWN_TAG = """
     </outputs>
 </tool>
 """
+OUTPUTS_GENERIC_COLLECTION = """
+<tool id="id" name="name" version="1">
+    <outputs>
+        <output name="static" type="collection" collection_type="paired" format="txt">
+            <data name="forward" from_work_dir="forward.txt" />
+            <data name="reverse" from_work_dir="reverse.txt" />
+            <filter>True</filter>
+        </output>
+        <output name="discovered" type="collection" collection_type="list" format="txt">
+            <discover_datasets pattern="__name__" directory="output" />
+        </output>
+    </outputs>
+</tool>
+"""
 OUTPUTS_UNNAMED_INVALID_NAME = """
 <tool id="id" name="name">
     <outputs>
@@ -2521,6 +2535,15 @@ def test_outputs_unknown_tag(lint_ctx):
     assert not lint_ctx.valid_messages
     assert len(lint_ctx.warn_messages) == 1
     assert not lint_ctx.error_messages
+
+
+def test_outputs_generic_collection_children(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_GENERIC_COLLECTION)
+    run_lint_module(lint_ctx, xsd, tool_source)
+    assert not lint_ctx.error_messages
+    _, output_collections = tool_source.parse_outputs(None)
+    assert list(output_collections["static"].outputs) == ["forward", "reverse"]
+    assert output_collections["discovered"].structure.dataset_collector_descriptions
 
 
 def test_outputs_unnamed_invalid_name(lint_ctx):

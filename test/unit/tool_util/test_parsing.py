@@ -1041,11 +1041,11 @@ def test_generic_collection_output_matches_collection(
     [
         (
             '<collection name="out" type="list" type_source="input_collect" />',
-            "Cannot set both type and type_source on collection output",
+            "Cannot set both type and type_source on collection output out",
         ),
         (
             '<output name="out" type="collection" collection_type="list" collection_type_source="input_collect" />',
-            "Cannot set both type and type_source on collection output",
+            "Cannot set both collection_type and collection_type_source on collection output out",
         ),
         (
             '<collection name="out" structured_like="input_collect"><discover_datasets pattern="__name__" /></collection>',

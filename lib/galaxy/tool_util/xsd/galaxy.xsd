@@ -6351,6 +6351,16 @@ The default is ``galaxy.json``.
       <xs:element name="actions" type="Actions"/>
     </xs:choice>
   </xs:group>
+  <!-- Allowed tags in a generic output: the union of the data and collection tags, since XSD 1.0 can't select a content model by the type attribute. -->
+  <xs:group name="OutputElement">
+    <xs:choice>
+      <xs:element name="change_format" type="ChangeFormat"/>
+      <xs:element name="filter" type="OutputFilter"/>
+      <xs:element name="discover_datasets" type="OutputDiscoverDatasets"/>
+      <xs:element name="actions" type="Actions"/>
+      <xs:element name="data" type="OutputCollectionData"/>
+    </xs:choice>
+  </xs:group>
   <xs:attributeGroup name="OutputCommon">
     <xs:attribute name="format" type="Format">
       <xs:annotation>
@@ -6699,11 +6709,18 @@ instead of ``input`` if ``input`` is in a conditional with ``name="cond"``).</xs
     <xs:annotation>
       <xs:documentation xml:lang="en"><![CDATA[
 
-This tag describes an output to the tool.
+This tag describes an output to the tool. Prefer ``<data>`` and ``<collection>`` for
+dataset and collection outputs.
+
+With ``type="data"`` it takes the children of ``<data>`` (``change_format``,
+``filter``, ``discover_datasets`` and ``actions``). With ``type="collection"`` it
+takes the children of ``<collection>`` (``data``, ``filter`` and
+``discover_datasets``, where ``assign_primary_output`` does not apply) and
+``collection_type``/``collection_type_source`` replace ``type``/``type_source``.
 ]]></xs:documentation>
     </xs:annotation>
     <xs:sequence>
-      <xs:group ref="OutputDataElement" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:group ref="OutputElement" minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence>
     <xs:attributeGroup ref="OutputCommon"/>
     <xs:attributeGroup ref="OutputCollectionAttributes"/>
