@@ -112,6 +112,11 @@ def _resolve_content(trans: ProvidesHistoryContext, ref: ContentRef) -> HistoryI
     return content
 
 
+def _produced_elsewhere(job: Job, history_id: int) -> bool:
+    """A job from another history is a boundary: its outputs here are workflow inputs."""
+    return bool(job.history_id != history_id)
+
+
 def _tool_for_job(trans: ProvidesHistoryContext, job: Job) -> Optional["Tool"]:
     return _job_tool(trans, job)[0]
 
@@ -199,7 +204,7 @@ def _backward_job_closure(
         # A directly job-referenced non-step (upload, data fetch, cross-history) becomes a
         # seeded input row; flag its outputs so the form can explain why. An upstream upload
         # reached only by an ordinary walk below is not flagged.
-        not_a_step = tool is None or not tool.is_workflow_compatible or job.history_id != history_id
+        not_a_step = tool is None or not tool.is_workflow_compatible or _produced_elsewhere(job, history_id)
         for content in _job_output_contents(job):
             if not_a_step:
                 result.seed_warning_refs.add(_content_key(content))
@@ -251,8 +256,7 @@ def _backward_job_closure(
         produced_in_history = False
         for assoc in creating:
             job = assoc.job
-            if job.history_id != history_id:
-                # Cross-history producer: treat the content as a boundary input.
+            if _produced_elsewhere(job, history_id):
                 continue
             produced_in_history = True
             if job.id in seen_jobs:
@@ -396,12 +400,13 @@ def _tool_row(
     closure: ClosureResult | None,
 ) -> WorkflowExtractionJob:
     """A workflow step row, or an invalid one when ``tool`` is missing or inaccessible."""
+    output_keys: list[ContentRef | None] = (
+        [_content_key(data) for _, data in datasets] if closure else [None] * len(datasets)
+    )
     referenced = closure.referenced_output_refs if closure else set()
     tool_outputs = [
-        _serialize_output(
-            trans, data, _workflow_output_name(data, output_name), exposed=_content_key(data) in referenced
-        )
-        for output_name, data in datasets
+        _serialize_output(trans, data, _workflow_output_name(data, output_name), exposed=key in referenced)
+        for (output_name, data), key in zip(datasets, output_keys)
     ]
 
     if tool is None:
@@ -498,9 +503,10 @@ def _summary_rows(
     history: History,
     jobs: dict[SummaryJob, SummaryDatasets],
     closure: ClosureResult | None,
-) -> list[WorkflowExtractionJob]:
+) -> list[tuple[WorkflowExtractionJob, SummaryDatasets]]:
     """One row per step job, and one input row per original that non-step jobs left here,
-    listing its in-history copies: extraction makes all copies of one original a single input."""
+    listing its in-history copies: extraction makes all copies of one original a single input.
+    Each row is paired with the datasets it holds."""
     icj_assoc_by_job_id = _icj_assoc_by_job_id(trans, jobs)
     collections_here = _collections_by_original(history)
     # Input rows are filled in once all their copies are known; None marks their place.
@@ -512,14 +518,18 @@ def _summary_rows(
             producer_name = getattr(job, "name", None)
         else:
             tool, custom_tools_inaccessible = _job_tool(trans, job)
-            if tool is None or tool.is_workflow_compatible:
+            if closure is not None and _produced_elsewhere(job, history.id):
+                # Same boundary as the closure walk: the copies here are workflow inputs.
+                producer_name = tool.name if tool else None
+            elif tool is None or tool.is_workflow_compatible:
                 tool_row = _tool_row(
                     trans, job, tool, custom_tools_inaccessible, datasets, icj_assoc_by_job_id, closure
                 )
                 pending.append((tool_row, datasets, None))
                 continue
-            # Not a workflow step (e.g. upload, data fetch) — treat as input.
-            producer_name = tool.name
+            else:
+                # Not a workflow step (e.g. upload, data fetch) — treat as input.
+                producer_name = tool.name
         for item in datasets:
             ref = _content_key(item[1])
             copies = inputs.get(ref)
@@ -529,14 +539,14 @@ def _summary_rows(
             for copy in collections_here.get(ref, [item]):
                 if all(data.id != copy[1].id for _, data in copies):
                     copies.append(copy)
-    rows: list[WorkflowExtractionJob] = []
+    rows: list[tuple[WorkflowExtractionJob, SummaryDatasets]] = []
     for row, datasets, producer_name in pending:
         if row is None:
             seeded, seed_warning = _input_seeding(datasets, closure)
             row = _input_extraction_row(
                 trans, datasets, seeded=seeded, tool_name=producer_name, seed_warning=seed_warning
             )
-        rows.append(row)
+        rows.append((row, datasets))
     return rows
 
 
@@ -550,10 +560,17 @@ def build_extraction_summary(
     not already present are synthesized as input rows.
     """
     jobs, warnings = summarize(trans, history)
-    jobs_list = _summary_rows(trans, history, jobs, closure)
+    rows = _summary_rows(trans, history, jobs, closure)
+    jobs_list = [row for row, _ in rows]
     all_warnings = list(warnings)
     if closure is not None:
-        represented_keys = {_content_key(data) for datasets in jobs.values() for _, data in datasets}
+        # An unseeded tool row (e.g. an invalid one) does not feed the seeded subgraph.
+        represented_keys = {
+            _content_key(data)
+            for row, datasets in rows
+            if row.seeded or row.step_type != "tool"
+            for _, data in datasets
+        }
         jobs_list.extend(_synthesize_cross_history_inputs(trans, represented_keys, closure))
         all_warnings.extend(closure.warnings)
 
