@@ -22,7 +22,6 @@ from dataclasses import (
     field,
 )
 from typing import (
-    Any,
     cast,
     Literal,
     TYPE_CHECKING,
@@ -56,6 +55,8 @@ from galaxy.schema.workflows import (
     WorkflowExtractionSummary,
 )
 from galaxy.workflow.extract import (
+    DatasetCollectionCreationJob,
+    FakeJob,
     get_original_hda,
     get_original_hdca,
     original_content_ref,
@@ -71,8 +72,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # The job-like keys and dataset lists of :func:`galaxy.workflow.extract.summarize`.
-# Keys are Jobs or the FakeJob / DatasetCollectionCreationJob stand-ins for inputs.
-SummaryJob = Any
+SummaryJob = Job | FakeJob | DatasetCollectionCreationJob
 SummaryDatasets = list[tuple[str | None, HistoryItem]]
 
 SEED_AS_INPUT_WARNING = (
@@ -517,7 +517,7 @@ def _summary_rows(
     pending: list[tuple[WorkflowExtractionJob | None, SummaryDatasets, str | None]] = []
     inputs: dict[ContentRef, SummaryDatasets] = {}
     for job, datasets in jobs.items():
-        if getattr(job, "is_fake", False):
+        if not isinstance(job, Job):
             # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
             producer_name = getattr(job, "name", None)
         else:
