@@ -1,6 +1,8 @@
 """Unit tests for driver_factory.py - ConfiguredDriver with both Selenium and Playwright backends."""
 
+import json
 from typing import get_args
+from urllib.request import urlopen
 
 import pytest
 
@@ -11,6 +13,7 @@ from galaxy.selenium.driver_factory import (
     PlaywrightBrowserName,
 )
 from galaxy.selenium.has_driver_protocol import fixed_timeout_handler
+from galaxy.util.sockets import unused_port
 from .util import (
     skip_unless_playwright_browser_cached,
     skip_unless_selenium_browser_cached,
@@ -203,6 +206,27 @@ class TestConfiguredDriverPlaywright:
         finally:
             driver.quit()
 
+    @skip_unless_playwright_browser_cached()
+    def test_playwright_remote_debugging_port_exposes_page(self, base_url):
+        """An external CDP client should see the page the driver opened."""
+        port = unused_port()
+        driver = configured_driver(backend_type="playwright", headless=True, remote_debugging_port=port)
+        try:
+            url = f"{base_url}/basic.html"
+            driver.driver_impl.navigate_to(url)
+            with urlopen(f"http://127.0.0.1:{port}/json/list") as response:
+                targets = json.load(response)
+            assert url in [target["url"] for target in targets if target["type"] == "page"]
+            assert driver.to_dict()["remote_debugging_port"] == port
+        finally:
+            driver.quit()
+
+    def test_playwright_remote_debugging_port_requires_chromium(self):
+        """Only Chromium exposes a CDP port, so other browsers should fail before launching."""
+        with pytest.raises(ValueError) as exc_info:
+            configured_driver(backend_type="playwright", browser="FIREFOX", remote_debugging_port=9222)
+        assert "Chromium" in str(exc_info.value)
+
 
 class TestConfiguredDriverValidation:
     """Test ConfiguredDriver validation and error handling."""
@@ -220,3 +244,9 @@ class TestConfiguredDriverValidation:
         error_msg = str(exc_info.value)
         assert "does not support remote" in error_msg
         assert "Selenium Grid" in error_msg
+
+    def test_selenium_remote_debugging_port_raises_error(self):
+        """remote_debugging_port is Playwright-only and should not be silently ignored."""
+        with pytest.raises(ValueError) as exc_info:
+            configured_driver(backend_type="selenium", remote_debugging_port=9222)
+        assert "Playwright" in str(exc_info.value)
