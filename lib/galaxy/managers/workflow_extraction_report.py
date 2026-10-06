@@ -101,7 +101,7 @@ def _rewrite_page_markdown(
     than the bare ValueError the parser raises.
     """
     rewriter = _ReportLabelRewriter(index, page_history_id)
-    markdown = rewriter._walk_directives(trans, internal_markdown)
+    markdown = rewriter.walk_directives(trans, internal_markdown)
     check_galaxy_markdown(markdown)
     # Only removes whole directives/embeds/cells, so the result stays valid.
     markdown, sweep_warnings = _drop_instance_references(markdown)
