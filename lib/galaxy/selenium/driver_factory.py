@@ -53,6 +53,9 @@ VALID_LOCAL_BROWSERS = ["CHROME", "FIREFOX"]
 PLAYWRIGHT_UNAVAILABLE_MESSAGE = "playwright must be installed to use the playwright backend, install with 'pip install playwright' and run 'playwright install chromium'"
 PYVIRTUALDISPLAY_UNAVAILABLE_MESSAGE = "pyvirtualdisplay must be installed to run this test configuration and is not, install with 'pip install pyvirtualdisplay'"
 PLAYWRIGHT_REMOTE_UNSUPPORTED_MESSAGE = "Playwright backend does not support remote drivers (Selenium Grid). Use backend_type='selenium' for remote testing."
+REMOTE_DEBUGGING_PORT_UNSUPPORTED_MESSAGE = (
+    "remote_debugging_port requires the Playwright backend with Chromium (browser 'auto' or 'CHROME')."
+)
 
 
 class _SeleniumDriverImpl(HasDriver[Any]):
@@ -109,6 +112,7 @@ class ConfiguredDriver:
         remote_port: str = DEFAULT_SELENIUM_REMOTE_PORT,
         headless: bool = False,
         backend_type: Literal["selenium", "playwright"] = DEFAULT_BACKEND_TYPE,
+        remote_debugging_port: int | None = None,
     ):
         """
         Initialize a configured driver with the specified backend.
@@ -121,6 +125,8 @@ class ConfiguredDriver:
             remote_port: Remote Selenium Grid port
             headless: Whether to run browser in headless mode
             backend_type: Which backend to use ("selenium" or "playwright")
+            remote_debugging_port: Expose Chromium's DevTools protocol on this port so external
+                clients (e.g. ``playwright-cli attach --cdp``) can drive the same page (Playwright only)
 
         Raises:
             Exception: If Playwright backend is requested with remote=True
@@ -134,11 +140,14 @@ class ConfiguredDriver:
             remote_port=remote_port,
             headless=headless,
             backend_type=backend_type,
+            remote_debugging_port=remote_debugging_port,
         )
 
         # Validate Playwright limitations
         if backend_type == "playwright" and remote:
             raise Exception(PLAYWRIGHT_REMOTE_UNSUPPORTED_MESSAGE)
+        if backend_type == "selenium" and remote_debugging_port is not None:
+            raise ValueError(REMOTE_DEBUGGING_PORT_UNSUPPORTED_MESSAGE)
 
         if backend_type == "selenium":
             # Create Selenium driver
@@ -162,6 +171,7 @@ class ConfiguredDriver:
             resources = get_playwright_driver(
                 browser=browser,
                 headless=headless,
+                remote_debugging_port=remote_debugging_port,
             )
             self.driver_impl = cast(HasDriverProtocol, _PlaywrightDriverImpl(resources, timeout_handler))
 
@@ -259,13 +269,16 @@ def get_playwright_browser_type(browser: str = DEFAULT_BROWSER) -> PlaywrightBro
         )
 
 
-def get_playwright_driver(browser: str = DEFAULT_BROWSER, headless: bool = False) -> PlaywrightResources:
+def get_playwright_driver(
+    browser: str = DEFAULT_BROWSER, headless: bool = False, remote_debugging_port: int | None = None
+) -> PlaywrightResources:
     """
     Create Playwright browser resources.
 
     Args:
         browser: Browser name to launch (CHROME, FIREFOX, auto, etc.)
         headless: Whether to run in headless mode
+        remote_debugging_port: Expose Chromium's DevTools protocol on this port (Chromium only)
 
     Returns:
         PlaywrightResources containing playwright, browser, and page instances
@@ -277,6 +290,8 @@ def get_playwright_driver(browser: str = DEFAULT_BROWSER, headless: bool = False
         raise Exception(PLAYWRIGHT_UNAVAILABLE_MESSAGE)
 
     browser_type_name = get_playwright_browser_type(browser)
+    if remote_debugging_port is not None and browser_type_name != "chromium":
+        raise ValueError(REMOTE_DEBUGGING_PORT_UNSUPPORTED_MESSAGE)
     playwright = sync_playwright().start()
 
     # Get the appropriate browser type
@@ -288,7 +303,8 @@ def get_playwright_driver(browser: str = DEFAULT_BROWSER, headless: bool = False
         browser_type = playwright.chromium
 
     # Launch browser with headless setting
-    browser_instance = browser_type.launch(headless=headless)
+    args = [f"--remote-debugging-port={remote_debugging_port}"] if remote_debugging_port is not None else []
+    browser_instance = browser_type.launch(headless=headless, args=args)
 
     # Create page with viewport size matching Selenium's window size
     page = browser_instance.new_page(viewport={"width": DEFAULT_WINDOW_WIDTH, "height": DEFAULT_WINDOW_HEIGHT})
