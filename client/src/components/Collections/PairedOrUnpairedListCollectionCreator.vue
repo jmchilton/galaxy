@@ -142,6 +142,7 @@ const columnDefs = computed(() => {
             headerName: "Dataset(s)",
             field: "datasets",
             editable: false,
+            cellDataType: false,
             cellRenderer: PairedDatasetCellComponent,
             rowDrag: true,
         };
@@ -150,6 +151,7 @@ const columnDefs = computed(() => {
             headerName: "Dataset",
             field: "datasets",
             editable: false,
+            cellDataType: false,
             rowDrag: true,
             valueFormatter: (p) => {
                 if (showHid) {
@@ -199,7 +201,12 @@ const columnDefs = computed(() => {
     return [datasets, ...identifierColumns, discard, status];
 });
 
-function onIdentifierChange(e: NewValueParams) {
+// AG Grid edits its own copies of the rows, so edits and swaps are written back to `rowData` by id.
+function onIdentifierChange(e: NewValueParams<RowT>) {
+    const row = rowData.value.find((candidate) => candidate.id === e.data.id);
+    if (row) {
+        row[e.colDef.field as "identifier" | "outerIdentifier"] = e.newValue;
+    }
     nextTick(() => {
         checkForDuplicates(true);
     });
@@ -860,9 +867,13 @@ function dismissUnmatchedDatasets() {
 }
 
 function onSwap(pair: GenericPair<HistoryItemSummary>) {
-    const newForward = pair.reverse;
-    pair.reverse = pair.forward;
-    pair.forward = newForward;
+    const row = rowData.value.find(
+        (candidate) => "forward" in candidate.datasets && candidate.datasets.forward.id === pair.forward.id,
+    );
+    if (row) {
+        const datasets = row.datasets as GenericPair<HistoryItemSummary>;
+        [datasets.forward, datasets.reverse] = [datasets.reverse, datasets.forward];
+    }
 }
 
 function goToAutoPairing() {
@@ -963,9 +974,7 @@ const context = {
                         </GButton>
                     </div>
                     <div :style="style" :class="theme">
-                        <!-- ag-grid animates rows by default since 31; a removed row would linger at its old index. -->
                         <AgGridVue
-                            :animate-rows="false"
                             :row-drag-managed="true"
                             :row-drag-text="rowDragText"
                             :get-row-id="getRowId"

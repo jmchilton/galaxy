@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 
 import { useServerMock } from "@/api/client/__mocks__";
-import type { AnyFetchTarget } from "@/api/tools";
+import type { AnyFetchTarget, UrlDataElement } from "@/api/tools";
 
 import FetchGrid from "./FetchGrid.vue";
 import DataFetchRequestParameter from "@/components/JobParameters/DataFetchRequestParameter.vue";
@@ -15,10 +15,10 @@ import DataFetchRequestParameter from "@/components/JobParameters/DataFetchReque
 vi.mock("ag-grid-vue3", () => ({
     AgGridVue: defineComponent({
         name: "AgGridVue",
-        props: { rowData: { type: Array, default: () => [] }, columnDefs: { type: Array, default: () => [] } },
-        emits: ["cellValueChanged"],
+        props: { modelValue: { type: Array, default: () => [] }, columnDefs: { type: Array, default: () => [] } },
+        emits: ["update:modelValue", "cellValueChanged"],
         render() {
-            return h("div", JSON.stringify(this.rowData));
+            return h("div", JSON.stringify(this.modelValue));
         },
     }),
 }));
@@ -54,7 +54,7 @@ describe("FetchGrid", () => {
         await vi.waitFor(() => expect(wrapper.findComponent({ name: "AgGridVue" }).exists()).toBe(true));
         const oldGrid = wrapper.findComponent({ name: "AgGridVue" });
         expect(oldGrid.exists()).toBe(true);
-        const rows = oldGrid.props("rowData");
+        const rows = oldGrid.props("modelValue");
         oldGrid.vm.$emit("cellValueChanged", {});
         await flushPromises();
         const unsupported = {
@@ -73,7 +73,7 @@ describe("FetchGrid", () => {
         await flushPromises();
         await vi.waitFor(() => expect(wrapper.text()).toContain("http://example.com/new.txt"));
         expect(wrapper.text()).not.toContain("http://example.com/a.txt");
-        expect(wrapper.findComponent({ name: "AgGridVue" }).props("rowData")).not.toBe(rows);
+        expect(wrapper.findComponent({ name: "AgGridVue" }).props("modelValue")).not.toBe(rows);
         wrapper.unmount();
     });
     it("gives the grid a fresh row array for each new target", async () => {
@@ -88,15 +88,37 @@ describe("FetchGrid", () => {
         await vi.waitFor(() => expect(wrapper.text()).toContain("http://example.com/a.txt"));
 
         const grid = wrapper.findComponent({ name: "AgGridVue" });
-        let previousRows = grid.props("rowData");
+        let previousRows = grid.props("modelValue");
         for (const url of ["http://example.com/b.txt", "http://example.com/c.txt"]) {
             await wrapper.setProps({ target: urlTarget(url) });
             await flushPromises();
             await vi.waitFor(() => expect(wrapper.text()).toContain(url));
-            const rows = grid.props("rowData");
+            const rows = grid.props("modelValue");
             expect(rows).not.toBe(previousRows);
             previousRows = rows;
         }
         wrapper.unmount();
+    });
+    it("builds its request from the rows as edited in the grid", async () => {
+        const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
+        setActivePinia(pinia);
+        const wrapper = mount(FetchGrid, {
+            props: { target: urlTarget("http://example.com/file1.txt") },
+            global: withPlugins(localVue, pinia),
+        });
+        await flushPromises();
+        await vi.waitFor(() => expect(wrapper.findComponent({ name: "AgGridVue" }).exists()).toBe(true));
+
+        // AG Grid edits its own copies of the rows, then reports them through v-model.
+        const grid = wrapper.findComponent({ name: "AgGridVue" });
+        const rows = JSON.parse(JSON.stringify(grid.props("modelValue"))) as Record<string, unknown>[];
+        const urlKey = Object.keys(rows[0]!).find((key) => rows[0]![key] === "http://example.com/file1.txt")!;
+        rows[0]![urlKey] = "http://example.com/renamed.txt";
+        grid.vm.$emit("update:modelValue", Object.freeze(rows));
+        grid.vm.$emit("cellValueChanged", {});
+        await flushPromises();
+
+        const target = (wrapper.vm as unknown as { asTarget: () => { elements: UrlDataElement[] } }).asTarget();
+        expect(target.elements[0]!.url).toBe("http://example.com/renamed.txt");
     });
 });

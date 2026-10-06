@@ -9,8 +9,16 @@ import { defineAsyncComponent, nextTick, shallowRef } from "vue";
 const VUE3_MODE = { compatConfig: { MODE: 3 as const } };
 const AgGridVue = Object.assign(
     defineAsyncComponent(async () => {
-        const { AgGridVue } = await import("ag-grid-vue3");
-        return { ...AgGridVue, ...VUE3_MODE } as typeof AgGridVue;
+        const [{ AgGridVue }, { AllCommunityModule, enableDevValidations, ModuleRegistry, provideGlobalGridOptions }] =
+            await Promise.all([import("ag-grid-vue3"), import("ag-grid-community")]);
+        ModuleRegistry.registerModules([AllCommunityModule]);
+        if (process.env.NODE_ENV === "development") {
+            enableDevValidations();
+        }
+        // Keep the CSS file themes imported above (and the `ag-theme-alpine` wrapper class), not the Theming API,
+        // and 30's unanimated rows (removed rows linger in the DOM while animating out).
+        provideGlobalGridOptions({ theme: "legacy", animateRows: false });
+        return { ...AgGridVue, ...VUE3_MODE } as unknown as typeof AgGridVue;
     }),
     VUE3_MODE,
 );
