@@ -53,8 +53,8 @@ from galaxy.model import (
     WorkflowStep,
 )
 from galaxy.workflow.extract import (
-    _original_hda,
-    _original_hdca,
+    get_original_hda,
+    get_original_hdca,
     DirectiveLabel,
     ExtractionLabelIndex,
     OutputLabelKind,
@@ -417,5 +417,5 @@ def _resolve_content(trans: ProvidesHistoryContext, kind: str, content_id: int) 
 
 def _original_id(kind: str, content: HistoryItem) -> int:
     if isinstance(content, HistoryDatasetCollectionAssociation):
-        return _original_hdca(content).id
-    return _original_hda(content).id
+        return get_original_hdca(content).id
+    return get_original_hda(content).id

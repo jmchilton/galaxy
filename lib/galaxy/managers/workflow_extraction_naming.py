@@ -16,9 +16,9 @@ from galaxy.model import (
 )
 from galaxy.tool_util.parser.output_objects import ToolOutputBase
 from galaxy.workflow.extract import (
-    _original_hda,
-    _original_hdca,
-    _skip_output_assoc_name,
+    get_original_hda,
+    get_original_hdca,
+    skip_output_assoc_name,
 )
 
 SuggestedNameSource = Literal["renamed", "rendered_label", "bare_label", "port_name"]
@@ -54,11 +54,11 @@ def suggested_output_name(
     if content_kind == "hda":
         hda = trans.sa_session.get(HistoryDatasetAssociation, content_id)
         if hda is not None:
-            suggested = _suggested_hda_output_name(trans, _original_hda(hda))
+            suggested = _suggested_hda_output_name(trans, get_original_hda(hda))
     else:
         hdca = trans.sa_session.get(HistoryDatasetCollectionAssociation, content_id)
         if hdca is not None:
-            suggested = _suggested_hdca_output_name(trans, _original_hdca(hdca))
+            suggested = _suggested_hdca_output_name(trans, get_original_hdca(hdca))
     if suggested is None:
         return None
     name = normalize_generated_label(suggested.name)
@@ -67,7 +67,7 @@ def suggested_output_name(
 
 def _suggested_hda_output_name(trans: ProvidesHistoryContext, hda: HistoryDatasetAssociation) -> SuggestedName | None:
     assoc = next(
-        (assoc for assoc in hda.creating_job_associations if not _skip_output_assoc_name(assoc.name)),
+        (assoc for assoc in hda.creating_job_associations if not skip_output_assoc_name(assoc.name)),
         None,
     )
     if assoc is None:
