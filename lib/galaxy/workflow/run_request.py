@@ -44,7 +44,6 @@ from galaxy.tool_util_models.parameters import (
 from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
-from galaxy.workflow.completion_hooks import completion_hook_names
 from galaxy.workflow.modules import (
     InputModule,
     InputParameterModule,
@@ -403,16 +402,6 @@ def _add_data_input_to_history(
     return content, False
 
 
-def _validate_on_complete(on_complete: list[dict[str, Any]] | None) -> None:
-    available_actions = completion_hook_names()
-    for action in on_complete or []:
-        for action_name in action:
-            if action_name not in available_actions:
-                raise exceptions.RequestParameterInvalidException(
-                    f"Unknown on_complete action '{action_name}', available actions are: {', '.join(available_actions)}"
-                )
-
-
 def _validate_object_store_ids(trans: "ProvidesHistoryContext", payload: dict[str, Any]) -> None:
     preferred_object_store_id = payload.get("preferred_object_store_id")
     preferred_outputs_object_store_id = payload.get("preferred_outputs_object_store_id")
@@ -532,7 +521,6 @@ def build_workflow_run_configs(
     if resource_params:
         _validate_resource_params(trans, workflow, resource_params)
     _validate_object_store_ids(trans, payload)
-    _validate_on_complete(payload.get("on_complete"))
 
     steps_by_id = workflow.steps_by_id
     module_injector = WorkflowModuleInjector(trans, False)

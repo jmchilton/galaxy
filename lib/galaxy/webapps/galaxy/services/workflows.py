@@ -58,6 +58,7 @@ from galaxy.webapps.galaxy.services.base import ServiceBase
 from galaxy.webapps.galaxy.services.notifications import NotificationService
 from galaxy.webapps.galaxy.services.sharable import ShareableService
 from galaxy.workflow import curated
+from galaxy.workflow.completion_hooks import WorkflowCompletionHookRegistry
 from galaxy.workflow.extract import (
     collect_output_label_targets,
     extract_workflow,
@@ -171,9 +172,11 @@ class WorkflowsService(ServiceBase):
         workflow_scheduling_manager: WorkflowSchedulingManager,
         config: GalaxyAppConfiguration,
         landing_manager: LandingRequestManager,
+        completion_hook_registry: WorkflowCompletionHookRegistry,
     ):
         self._workflows_manager = workflows_manager
         self._landing_manager = landing_manager
+        self._completion_hook_registry = completion_hook_registry
         self._workflow_scheduling_manager = workflow_scheduling_manager
         self._workflow_contents_manager = workflow_contents_manager
         self._serializer = serializer
@@ -333,6 +336,7 @@ class WorkflowsService(ServiceBase):
             raise exceptions.RequestParameterInvalidException(
                 f"Unknown workflow scheduler '{workflow_scheduler_id}' specified."
             )
+        self._check_on_complete(payload.on_complete)
         landing_request = None
         if payload.landing_uuid:
             landing_request = self._landing_manager.get_claimed_workflow_landing_request_model(
@@ -620,6 +624,15 @@ class WorkflowsService(ServiceBase):
             if url in shed_url:
                 return shed_url
         return None
+
+    def _check_on_complete(self, on_complete: list[dict[str, Any]] | None) -> None:
+        available_actions = self._completion_hook_registry.get_available_hooks()
+        for action in on_complete or []:
+            for action_name in action:
+                if action_name not in available_actions:
+                    raise exceptions.RequestParameterInvalidException(
+                        f"Unknown on_complete action '{action_name}', available actions are: {', '.join(available_actions)}"
+                    )
 
     def _check_workflow_tools(
         self, trans: ProvidesHistoryContext, workflow: Workflow, require_exact_tool_versions: bool

@@ -30,16 +30,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Re-export WorkflowCompletionHook for backwards compatibility
-__all__ = ["completion_hook_names", "WorkflowCompletionHook", "WorkflowCompletionHookRegistry"]
-
-
-def _completion_hook_classes() -> dict[str, type[WorkflowCompletionHook]]:
-    return plugin_config.plugins_dict(galaxy.workflow.completion_hooks, "plugin_type")
-
-
-def completion_hook_names() -> list[str]:
-    """Names of the actions that may be requested in a workflow invocation's ``on_complete``."""
-    return list(_completion_hook_classes().keys())
+__all__ = ["WorkflowCompletionHook", "WorkflowCompletionHookRegistry"]
 
 
 class WorkflowCompletionHookRegistry:
@@ -67,7 +58,7 @@ class WorkflowCompletionHookRegistry:
     def _load_hooks(self) -> None:
         """Load and instantiate all available hooks."""
         # Auto-discover hooks via plugin_type attribute
-        self.hooks = _completion_hook_classes()
+        self.hooks = plugin_config.plugins_dict(galaxy.workflow.completion_hooks, "plugin_type")
 
         # Instantiate all hooks
         for hook_name, hook_class in self.hooks.items():
