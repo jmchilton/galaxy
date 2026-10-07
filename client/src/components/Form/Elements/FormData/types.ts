@@ -118,25 +118,26 @@ export function isSameItem(a: OptionIdentity, b: OptionIdentity): boolean {
 }
 
 /**
- * Find the option for a value: the entry mapped over the same way, else any entry for the same item.
- * Server-provided values carry no map-over type, so they resolve to the first (direct) entry.
+ * Find the option for a value: the entry mapped over the same way, else one that is likewise mapped
+ * over (or not), else any entry for the same item. Values without a map-over type resolve to the
+ * direct entry.
  */
 export function findDataOption<T>(
     items: T[],
     value: OptionIdentity,
     toOption: (item: T) => DataOption | null | undefined,
 ): T | undefined {
+    const candidates = items.flatMap((item) => {
+        const option = toOption(item);
+        return option && isSameItem(option, value) ? [{ item, option }] : [];
+    });
     const key = itemUniqueKey(value);
-    return (
-        items.find((item) => {
-            const option = toOption(item);
-            return !!option && itemUniqueKey(option) === key;
-        }) ??
-        items.find((item) => {
-            const option = toOption(item);
-            return !!option && isSameItem(option, value);
-        })
-    );
+    const mapsOver = !!value.map_over_type;
+    const best =
+        candidates.find(({ option }) => itemUniqueKey(option) === key) ??
+        candidates.find(({ option }) => !!option.map_over_type === mapsOver) ??
+        candidates[0];
+    return best?.item;
 }
 
 /** Append a fetched page of options, skipping ones already listed */
