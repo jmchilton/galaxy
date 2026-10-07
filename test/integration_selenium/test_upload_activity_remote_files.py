@@ -1,5 +1,5 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_setup import PosixFileSourceSetup
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,

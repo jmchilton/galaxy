@@ -7,6 +7,7 @@ import yaml
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.tools.parameters.pagination import DEFAULT_OPTIONS_PAGE_SIZE
 from galaxy_test.base import rules_test_data
 from galaxy_test.base.workflow_fixtures import (
@@ -38,7 +39,6 @@ from .framework import (
     UsesHistoryItemAssertions,
 )
 from .test_workflow_editor import CHIPSEQ_COLUMNS
-from .upload_activity_helpers import UsesUploadActivity
 
 # Single cat1 step with no workflow-level ``inputs`` — the step's ``input1``
 # stays unconnected so the run form renders it as a dropdown via
