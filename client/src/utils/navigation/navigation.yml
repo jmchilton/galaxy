@@ -457,6 +457,8 @@ multi_history_panel:
     current_label: '.details .name'
     switch_history: '.switch-to'
     history_column: '.multi-history-panel .history-column[data-history-id="${history_id}"]'
+    history_column_item: '.multi-history-panel .history-column[data-history-id="${history_id}"] .content-item[data-hid="${hid}"]'
+    history_column_drop_zone: '.multi-history-panel .history-column[data-history-id="${history_id}"] .history-layout'
     current_history_check: '.multi-history-panel .history-column[data-history-id="${history_id}"] [data-description="name display"]'
     empty_message_check: '#empty-history-message'
     switch_button: '.multi-history-panel .history-column[data-history-id="${history_id}"] [data-description="switch to history button"]'
