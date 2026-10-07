@@ -417,12 +417,20 @@ def _type_source_tool(tool_app, inputs, output):
         (COLLECTION_IN_CONDITIONAL, "input_collect", "cond|input_collect"),
         (COLLECTION_IN_SECTION, "input_collect", "sec|input_collect"),
         (COLLECTION_IN_REPEAT_CONDITIONAL, "rep_0|input_collect", "rep_0|cond|input_collect"),
+        (COLLECTION_IN_REPEAT_CONDITIONAL, "rep_2|input_collect", "rep_2|cond|input_collect"),
     ],
 )
 def test_bare_type_source_alias_fails_to_load(tool_app, inputs, type_source, qualified):
     with pytest.raises(ToolLoadError) as e:
         _type_source_tool(tool_app, inputs, _collection_output(type_source))
     assert f"type_source '{type_source}', which must be qualified as '{qualified}'" in str(e.value)
+
+
+def test_ambiguous_type_source_alias_names_every_input(tool_app):
+    inputs = COLLECTION_IN_CONDITIONAL + COLLECTION_IN_SECTION
+    with pytest.raises(ToolLoadError) as e:
+        _type_source_tool(tool_app, inputs, _collection_output("input_collect"))
+    assert "must be qualified as 'cond|input_collect' or 'sec|input_collect'" in str(e.value)
 
 
 @pytest.mark.parametrize(

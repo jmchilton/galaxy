@@ -55,9 +55,11 @@ class ResolvedReference(NamedTuple):
 
 OutputReferenceAttribute = Literal["format_source", "metadata_source"]
 
+DATA_INPUT_TYPES = ("data", "hidden_data", "data_collection")
+
 # Input types each output reference attribute can name; only format_source reads collections.
 OUTPUT_REFERENCE_PARAM_TYPES: dict[OutputReferenceAttribute, tuple[str, ...]] = {
-    "format_source": ("data", "hidden_data", "data_collection"),
+    "format_source": DATA_INPUT_TYPES,
     "metadata_source": ("data", "hidden_data"),
 }
 

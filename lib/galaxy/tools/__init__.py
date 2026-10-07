@@ -107,6 +107,7 @@ from galaxy.tool_util.parser.output_objects import (
     ToolOutputCollection,
 )
 from galaxy.tool_util.parser.output_references import (
+    DATA_INPUT_TYPES,
     InputReferences,
     OUTPUT_REFERENCE_PARAM_TYPES,
     output_reference_problem,
@@ -177,7 +178,6 @@ from galaxy.tools.parameters import (
     params_to_strings,
     populate_state,
     populate_state_async,
-    qualify_legacy_data_input_reference,
     visit_input_values,
 )
 from galaxy.tools.parameters.basic import (
@@ -1812,25 +1812,35 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         Parse <outputs> elements and fill in self.outputs (keyed by name)
         """
         self.outputs, self.output_collections = tool_source.parse_outputs(self.app)
-        for name, output_collection in self.output_collections.items():
-            type_source = output_collection.structure.collection_type_source
-            if type_source and (qualified := qualify_legacy_data_input_reference(self.inputs, type_source)):
-                raise ToolLoadError(
-                    f"Output collection '{name}' has type_source '{type_source}', which must be qualified as '{qualified}'."
-                )
 
     def _resolve_output_references(self, tool_source: ToolSource) -> None:
         """Rewrite output references to the runtime key of the declared input they name.
 
         Job creation also records keys for expanded inputs (``input2``, conversion names) that a
-        reference must not reach, and a legacy alias can collide with one of them.
+        reference must not reach, and a legacy alias can collide with one of them. A collection's
+        ``type_source`` must already be qualified.
         """
+        input_references: InputReferences | None = None
+        for name, output_collection in self.output_collections.items():
+            type_source = output_collection.structure.collection_type_source
+            if not type_source:
+                continue
+            if input_references is None:
+                input_references = InputReferences(tool_source)
+            resolved = input_references.resolve(type_source)
+            legacy_matches = sorted({r.qualified for r in resolved.matches if r.param_type in DATA_INPUT_TYPES})
+            if resolved.legacy and legacy_matches:
+                qualified = [resolved.qualified_key] if resolved.qualified_key else legacy_matches
+                raise ToolLoadError(
+                    f"Output collection '{name}' has type_source '{type_source}', which must be qualified as "
+                    + " or ".join(f"'{q}'" for q in qualified)
+                    + "."
+                )
         outputs: list[ToolOutputBase] = []
         for output in self.outputs.values():
             outputs.append(output)
             if isinstance(output, ToolOutputCollection):
                 outputs.extend(output.outputs.values())
-        input_references: InputReferences | None = None
         for output in outputs:
             for attribute in OUTPUT_REFERENCE_PARAM_TYPES:
                 reference = getattr(output, attribute, None)
