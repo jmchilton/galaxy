@@ -269,14 +269,9 @@ class LandingRequestManager:
         return self._tool_response(request)
 
     def get_workflow_landing_request(self, trans: ProvidesHistoryContext, uuid: UUID4) -> WorkflowLandingRequest:
-        request = self._get_claimed_workflow_landing_request(trans, uuid)
+        request = self.get_claimed_workflow_landing_request_model(trans, uuid)
         self._ensure_workflow(trans, request)
         return self._workflow_response(request)
-
-    def get_claimed_workflow_landing_request_model(
-        self, trans: ProvidesUserContext, uuid: UUID4
-    ) -> WorkflowLandingRequestModel:
-        return self._get_claimed_workflow_landing_request(trans, uuid)
 
     def _check_can_claim(
         self, trans: ProvidesUserContext, request: LandingRequestModel, claim: ClaimLandingPayload | None
@@ -310,7 +305,7 @@ class LandingRequestManager:
         self._check_ownership(trans, request)
         return request
 
-    def _get_claimed_workflow_landing_request(
+    def get_claimed_workflow_landing_request_model(
         self, trans: ProvidesUserContext, uuid: UUID4
     ) -> WorkflowLandingRequestModel:
         request = self._get_workflow_landing_request(uuid)
