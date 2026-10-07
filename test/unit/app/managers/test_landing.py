@@ -3,6 +3,8 @@ from typing import (
 )
 from uuid import uuid4
 
+import pytest
+
 from galaxy.config import GalaxyAppConfiguration
 from galaxy.exceptions import (
     InsufficientPermissionsException,
@@ -170,6 +172,20 @@ class TestLanding(BaseTestCase):
         assert landing_request.state == LandingRequestState.CLAIMED
         assert landing_request.uuid == uuid
         assert landing_request.workflow_target_type == "workflow"
+
+    def test_claimed_workflow_landing_request_model_checks_ownership(self):
+        landing_request = self.landing_manager.create_workflow_landing_request(self._workflow_request)
+        uuid = landing_request.uuid
+        with pytest.raises(ItemMustBeClaimed):
+            self.landing_manager.get_claimed_workflow_landing_request_model(self.trans, uuid)
+        claim_payload = ClaimLandingPayload(client_secret=CLIENT_SECRET)
+        self.landing_manager.claim_workflow_landing_request(self.trans, uuid, claim_payload)
+        model = self.landing_manager.get_claimed_workflow_landing_request_model(self.trans, uuid)
+        assert str(model.uuid) == str(uuid)
+        model.user_id = self.trans.user.id + 1
+        self.trans.sa_session.commit()
+        with pytest.raises(InsufficientPermissionsException):
+            self.landing_manager.get_claimed_workflow_landing_request_model(self.trans, uuid)
 
     @property
     def _tool_request(self) -> CreateToolLandingRequestPayload:
