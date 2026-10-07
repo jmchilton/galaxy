@@ -1237,13 +1237,6 @@ class RunsWorkflows(GalaxyTestSeleniumContext):
         self.sleep_for(self.wait_types.UX_TRANSITION)
         return history_id
 
-    def workflow_run_wait_for_ok(self, hid: int, expand=False):
-        timeout = self.wait_length(self.wait_types.JOB_COMPLETION)
-        item = self.content_item_by_attributes(hid=hid, state="ok")
-        item.wait_for_present(timeout=timeout)
-        if expand:
-            item.title.wait_for_and_click()
-
 
 def default_web_host_for_selenium_tests():
     if asbool(GALAXY_TEST_SELENIUM_REMOTE):
