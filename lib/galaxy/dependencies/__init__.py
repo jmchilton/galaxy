@@ -255,13 +255,16 @@ class ConditionalDependencies(BaseConditionalDependencies):
         self.file_sources = [c.get("type", None) for c in file_sources_conf]
 
         # Parse file source templates config
-        file_source_templates_conf = load_raw_template_configs(
-            self.config_object.file_source_templates,
-            self.config_object.file_source_templates_config_file,
-            self.config_object.file_source_templates_config_dir,
-        )
-        for file_source_template in apply_syntactic_sugar(file_source_templates_conf):
-            self.file_sources.append(file_source_template["configuration"].get("type"))
+        try:
+            file_source_templates_conf = load_raw_template_configs(
+                self.config_object.file_source_templates,
+                self.config_object.file_source_templates_config_file,
+                self.config_object.file_source_templates_config_dir,
+            )
+            for file_source_template in apply_syntactic_sugar(file_source_templates_conf):
+                self.file_sources.append(file_source_template["configuration"].get("type"))
+        except OSError:
+            pass
 
         # Parse vault config
         vault_conf_yml = self.config_object.vault_config_file

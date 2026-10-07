@@ -35,7 +35,8 @@ Templates can also be dropped into the `object_store_templates.d` directory in G
 configuration directory (or any directory pointed to by `object_store_templates_config_dir`), one
 or more templates per `.yml`/`.yaml` file. These files are loaded in filename order after the
 templates in `object_store_templates_config_file`, so templates can be added or removed by copying
-or deleting files.
+or deleting files. Relative `include:` paths in any of these files are resolved from Galaxy's
+working directory.
 Alternatively, the configuration can be placed directly into `galaxy.yml` using the
 `object_store_templates` configuration option - this replaces both the file and the directory.
 
@@ -338,7 +339,8 @@ Templates can also be dropped into the `file_source_templates.d` directory in Ga
 configuration directory (or any directory pointed to by `file_source_templates_config_dir`), one
 or more templates per `.yml`/`.yaml` file. These files are loaded in filename order after the
 templates in `file_source_templates_config_file`, so templates can be added or removed by copying
-or deleting files.
+or deleting files. Relative `include:` paths in any of these files are resolved from Galaxy's
+working directory.
 Alternatively, the configuration can be placed directly into `galaxy.yml` using the
 `file_source_templates` configuration option - this replaces both the file and the directory.
 

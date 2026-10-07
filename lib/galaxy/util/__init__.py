@@ -1970,6 +1970,15 @@ def config_directories_from_setting(directories_setting, galaxy_root=galaxy_root
     return directories
 
 
+def config_files_in_directory(directory: str, extensions: tuple[str, ...]) -> list[str]:
+    """Paths of the non-hidden files in ``directory`` with one of ``extensions``, sorted by filename."""
+    return [
+        os.path.join(directory, filename)
+        for filename in sorted(os.listdir(directory))
+        if not filename.startswith(".") and filename.endswith(extensions)
+    ]
+
+
 def parse_int(value, min_val=None, max_val=None, default=None, allow_none=False):
     try:
         value = int(value)

@@ -55,6 +55,7 @@ from galaxy.exceptions import (
 from galaxy.tool_util_models.parameter_validators import AnySafeValidatorModel
 from galaxy.util import (
     asbool,
+    config_files_in_directory,
     requests,
 )
 
@@ -325,7 +326,7 @@ def load_raw_template_configs(
 ) -> list[RawTemplateConfig]:
     """Collect an admin's templates from Galaxy's config.
 
-    Inline templates replace both files. Otherwise templates in ``config_file``
+    Inline templates replace the file and directory. Otherwise templates in ``config_file``
     come first, followed by each YAML file in ``config_dir`` (sorted by name)
     as an ``include`` - expanded by :func:`apply_syntactic_sugar`.
     """
@@ -336,10 +337,8 @@ def load_raw_template_configs(
         with open(config_file) as f:
             raw_templates.extend(yaml.safe_load(f) or [])
     if config_dir and os.path.isdir(config_dir):
-        for filename in sorted(os.listdir(config_dir)):
-            if filename.startswith(".") or not filename.endswith(TEMPLATE_CONFIG_DIR_EXTENSIONS):
-                continue
-            raw_templates.append({"include": os.path.join(config_dir, filename)})
+        for path in config_files_in_directory(config_dir, TEMPLATE_CONFIG_DIR_EXTENSIONS):
+            raw_templates.append({"include": path})
     return raw_templates
 
 
@@ -370,7 +369,7 @@ def _expand_include(raw_template: RawTemplateConfig) -> list[RawTemplateConfig]:
     if has_one_key and has_include:
         include = raw_template["include"]
         with open(include) as f:
-            included = yaml.safe_load(f)
+            included = yaml.safe_load(f) or []
             raw_templates: list[RawTemplateConfig]
             if isinstance(included, list):
                 raw_templates = included

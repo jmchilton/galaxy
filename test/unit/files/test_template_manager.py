@@ -78,6 +78,8 @@ def test_manager_loads_config_dir_in_filename_order(tmpdir):
     (config_dir / ".05_hidden.yml").write_text(LIBRARY_AWS, "utf-8")
     (config_dir / "30_aws.yml.sample").write_text(LIBRARY_AWS, "utf-8")
     (config_dir / "README.md").write_text("not a template", "utf-8")
+    (config_dir / "40_empty.yml").write_text("", "utf-8")
+    (config_dir / "50_disabled.yml").write_text("# - id: disabled\n", "utf-8")
     config = MockConfig(None, config_dir=str(config_dir))
     templates = ConfiguredFileSourceTemplates.from_app_config(config)
     assert [t.id for t in templates.catalog.root] == ["home_directory", "scratch_directory"]
