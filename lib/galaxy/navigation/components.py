@@ -179,11 +179,12 @@ class SelectorTemplate(Target):
         assert re.compile(r"\.\w+").match(selector)
         return selector[1:]
 
+    def resolve_component(self, path: str | None = None) -> Target:
+        """The Target for a child path (or this selector itself)."""
+        return self[path] if path else self
+
     def resolve_component_locator(self, path: str | None = None) -> LocatorT:
-        if path:
-            return self[path].component_locator
-        else:
-            return self.component_locator
+        return self.resolve_component(path).component_locator
 
     def __getattr__(self, name):
         if name in self._children:
@@ -246,8 +247,12 @@ class Component:
             raise Exception(f"No _ selector for [{self}]")
 
     def resolve_component_locator(self, path: str | None = None) -> LocatorT:
+        return self.resolve_component(path).component_locator
+
+    def resolve_component(self, path: str | None = None) -> Target:
+        """The Target for a path such as ``history_panel.item(hid=3).title`` (the grammar tours use)."""
         if not path:
-            return self._selectors["_"].resolve_component_locator()
+            return self._selectors["_"]
 
         def arguments() -> tuple[str, dict[str, str] | None, str | None]:
             assert path
@@ -271,16 +276,10 @@ class Component:
             return component_name, None, rest
 
         component_name, parameters, rest = arguments()
-        if not rest:
-            if parameters:
-                return getattr(self, component_name)(**parameters).resolve_component_locator()
-            else:
-                return getattr(self, component_name).resolve_component_locator()
-        else:
-            if parameters:
-                return getattr(self, component_name)(**parameters).resolve_component_locator(rest)
-            else:
-                return getattr(self, component_name).resolve_component_locator(rest)
+        component = getattr(self, component_name)
+        if parameters:
+            component = component(**parameters)
+        return component.resolve_component(rest)
 
     @staticmethod
     def from_dict(name, raw_value):

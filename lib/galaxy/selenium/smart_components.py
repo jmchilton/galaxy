@@ -33,6 +33,10 @@ class SmartComponent:
     def __getitem__(self, name):
         return self._wrap(self._component[name])
 
+    def resolve_component(self, path: str | None = None) -> "SmartTarget":
+        """A SmartTarget for a path such as ``history_panel.item(hid=3).title``."""
+        return SmartTarget(self._component.resolve_component(path), self._has_driver)
+
     def _wrap(self, simple_object):
         if isinstance(simple_object, Component):
             return SmartComponent(simple_object, self._has_driver)
