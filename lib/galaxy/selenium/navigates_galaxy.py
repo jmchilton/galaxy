@@ -28,6 +28,10 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
 )
+from urllib.parse import (
+    quote,
+    urlencode,
+)
 
 import yaml
 from selenium.common.exceptions import NoSuchElementException
@@ -268,6 +272,63 @@ class ColumnDefinition:
     type: Literal["Text", "Integer", "Element Identifier"] = "Text"
     optional: bool = False
     default_value: str | None = None
+
+
+class ToolFormParameter(NamedTuple):
+    """One tool form field, addressed by the path ``tool_form_fill`` takes."""
+
+    path: str
+    label: str
+    type: str
+    value: Any
+    # (label, value) pairs; data options are ("<hid>: <name>", "<hid>").
+    options: list[tuple[str, str]]
+    # ``<test parameter path>=<case value>`` for fields inside one conditional case.
+    condition: str | None = None
+
+
+def tool_form_parameters_from_build(
+    inputs: list[dict[str, Any]], prefix: str = "", condition: str | None = None
+) -> list[ToolFormParameter]:
+    """Flatten a tool build model's inputs into form fields, listing every conditional case."""
+    parameters: list[ToolFormParameter] = []
+    for input in inputs:
+        input_type = input["type"]
+        path = f"{prefix}{input['name']}"
+        if input_type == "conditional":
+            test_param = input["test_param"]
+            test_path = f"{path}|{test_param['name']}"
+            parameters.extend(tool_form_parameters_from_build([test_param], f"{path}|", condition))
+            for case in input["cases"]:
+                case_condition = f"{test_path}={case['value']}"
+                parameters.extend(tool_form_parameters_from_build(case["inputs"], f"{path}|", case_condition))
+        elif input_type == "section":
+            parameters.extend(tool_form_parameters_from_build(input["inputs"], f"{path}|", condition))
+        elif input_type == "repeat":
+            instances = input.get("cache") or [input["inputs"]]
+            label = input.get("title") or input["name"]
+            parameters.append(ToolFormParameter(path, label, "repeat", len(input.get("cache") or []), [], condition))
+            for index, instance in enumerate(instances):
+                parameters.extend(tool_form_parameters_from_build(instance, f"{path}_{index}|", condition))
+        else:
+            label = input.get("label") or input["name"]
+            options, value = _tool_form_options_and_value(input)
+            parameters.append(ToolFormParameter(path, label, input_type, value, options, condition))
+    return parameters
+
+
+def _tool_form_options_and_value(input: dict[str, Any]) -> tuple[list[tuple[str, str]], Any]:
+    options = input.get("options")
+    value = input.get("value")
+    if input["type"] in ("data", "data_collection") and isinstance(options, dict):
+        items = [item for source in ("hda", "hdca") for item in options.get(source, [])]
+        labels = {item["id"]: f"{item['hid']}: {item['name']}" for item in items}
+        selected = [labels.get(v["id"], v["id"]) for v in (value or {}).get("values", [])]
+        value = selected[0] if len(selected) == 1 else selected
+        return [(f"{item['hid']}: {item['name']}", str(item["hid"])) for item in items], value
+    if isinstance(options, list):
+        return [(str(option[0]), str(option[1])) for option in options], value
+    return [], value
 
 
 class NavigatesGalaxy(HasDriverProxy[WaitType]):
@@ -2103,6 +2164,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             # Clear default value
             input_element.clear()
             input_element.send_keys(value)
+
+    def tool_form_parameters(self, tool_id: str, tool_version: str | None = None) -> list[ToolFormParameter]:
+        """Describe a tool's form fields (path, label, type, value, options) for the current history."""
+        query = {"history_id": self.current_history_id()}
+        if tool_version:
+            query["tool_version"] = tool_version
+        build = self.api_get(f"tools/{quote(tool_id, safe='')}/build?{urlencode(query)}")
+        return tool_form_parameters_from_build(build["inputs"])
 
     def tool_form_fill(self, values: dict[str, Any] | None = None, data: dict[str, int | str] | None = None) -> None:
         """Fill the open tool form by parameter path, such as ``cond|param`` or ``repeat_0|param``.
