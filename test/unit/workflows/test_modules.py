@@ -10,7 +10,10 @@ import pytest
 
 from galaxy import model
 from galaxy.managers.workflows import WorkflowContentsManager
-from galaxy.schema.invocation import FailureReason
+from galaxy.schema.invocation import (
+    FAILURE_REASONS_EXPECTED,
+    FailureReason,
+)
 from galaxy.tool_util.parser.output_objects import ToolOutput
 from galaxy.tools.parameters.meta import to_decoded_json
 from galaxy.tools.parameters.workflow_utils import (
@@ -803,3 +806,7 @@ def test_to_decoded_json_lowers_bare_runtime_value():
     result = to_decoded_json({"foo": RuntimeValue()})
     assert result == {"foo": {"__class__": "RuntimeValue"}}
     json.dumps(result)
+
+
+def test_workflow_parameter_invalid_is_expected_failure():
+    assert FailureReason.workflow_parameter_invalid in FAILURE_REASONS_EXPECTED
