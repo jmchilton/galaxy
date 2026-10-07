@@ -1213,6 +1213,10 @@ workflow_extract:
     output_rename_input: '#output-name-input'
     output_rename_confirm: '#rename-modal-output .g-modal-confirm-buttons button:last-of-type'
     output_rename_cancel: '#rename-modal-output .g-modal-confirm-buttons button:first-of-type'
+    input_card_by_hid: '[data-input-hid="${hid}"]'
+    input_rename_for_hid: '[data-input-hid="${hid}"] .g-card-rename'
+    input_rename_input: '#input-name-input'
+    input_rename_confirm: '#rename-modal-input .g-modal-confirm-buttons button:last-of-type'
 
 invocations:
   selectors:

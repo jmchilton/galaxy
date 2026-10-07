@@ -453,6 +453,7 @@ function stepKind(job: ExtractionRow): string {
                 :data-step-type="job.step_type"
                 :data-job-id="job.id || undefined"
                 :data-icj-id="isMappedTool(job) ? job.implicit_collection_jobs_id : undefined"
+                :data-input-hid="isInputStep(job) ? job.outputs[0]?.hid : undefined"
                 :data-step-kind="stepKind(job)"
                 @rename="onJobRename(index)"
                 @toggle-output="(outputIndex: number) => onOutputToggle(index, outputIndex)"
