@@ -45,6 +45,7 @@ from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
 from galaxy.workflow.modules import (
+    disconnected_required_subworkflow_inputs,
     InputModule,
     InputParameterModule,
     populate_module_and_state,
@@ -455,6 +456,22 @@ def _validate_resource_params(
                     raise exceptions.RequestParameterInvalidException(f"Invalid value for parameter '{name}' found.")
 
 
+def _validate_subworkflow_input_connections(workflow: "Workflow", step_path: tuple[str, ...] = ()) -> None:
+    for step in workflow.steps:
+        if step.type != "subworkflow":
+            continue
+        subworkflow = step.subworkflow
+        assert subworkflow
+        subworkflow_step_path = (*step_path, _step_name(step))
+        disconnected_input_steps = disconnected_required_subworkflow_inputs(step, subworkflow)
+        if disconnected_input_steps:
+            input_names = ", ".join(f"'{_step_name(input_step)}'" for input_step in disconnected_input_steps)
+            raise exceptions.RequestParameterInvalidException(
+                f"{' > '.join(subworkflow_step_path)}: Subworkflow has disconnected required input {input_names}"
+            )
+        _validate_subworkflow_input_connections(subworkflow, subworkflow_step_path)
+
+
 def _validate_replacement_params(replacement_dict: dict[str, Any]) -> None:
     for name, value in replacement_dict.items():
         if not isinstance(value, str):
@@ -474,6 +491,7 @@ def build_workflow_run_configs(
         raise exceptions.MessageException("Workflow cannot be run because it does not have any steps")
     if workflow.has_cycles:
         raise exceptions.MessageException("Workflow cannot be run because it contains cycles")
+    _validate_subworkflow_input_connections(workflow)
 
     if "inputs" in payload and "ds_map" in payload:
         raise exceptions.RequestParameterInvalidException("Cannot specify both legacy ds_map and input attributes.")
