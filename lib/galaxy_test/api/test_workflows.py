@@ -8086,6 +8086,7 @@ steps: []
         nonexistent_id = self._get("configuration/encode/999999999", admin=True).json()["encoded_id"]
         response = self._invoke_by_name(workflow_id, history_id, {"input1": {"src": src, "id": nonexistent_id}})
         self._assert_status_code_is(response, 404)
+        assert_error_message_contains(response, "input1: workflow input")
 
     def test_run_with_unknown_scheduler(self, history_id):
         workflow_id = self._upload_yaml_workflow(WORKFLOW_OPTIONAL_TRUE_INPUT_DATA)

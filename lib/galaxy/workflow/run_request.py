@@ -326,15 +326,17 @@ DatasetInstanceT = TypeVar("DatasetInstanceT", HistoryDatasetAssociation, Librar
 
 
 def _get_accessible_dataset_instance(
-    trans: "ProvidesHistoryContext", content: DatasetInstanceT | None, src: str, encoded_id: str
+    trans: "ProvidesHistoryContext", step: "WorkflowStep", content: DatasetInstanceT | None, src: str, encoded_id: str
 ) -> DatasetInstanceT:
     if content is None:
-        raise exceptions.ObjectNotFound(f"Workflow input '{encoded_id}' ({src}) not found")
+        raise exceptions.ObjectNotFound(f"{_step_name(step)}: workflow input '{encoded_id}' ({src}) not found")
     dataset = content.dataset
     if not trans.user_is_admin and (
         dataset is None or not trans.app.security_agent.can_access_dataset(trans.get_current_user_roles(), dataset)
     ):
-        raise exceptions.ItemAccessibilityException(f"Invalid workflow input '{encoded_id}' specified")
+        raise exceptions.ItemAccessibilityException(
+            f"{_step_name(step)}: invalid workflow input '{encoded_id}' specified"
+        )
     return content
 
 
@@ -349,17 +351,19 @@ def _resolve_data_input(trans: "ProvidesHistoryContext", step: "WorkflowStep", i
         decoded_id = trans.security.decode_id(data_request.id)
         if isinstance(data_request, DataRequestLdda):
             ldda = sa_session.get(LibraryDatasetDatasetAssociation, decoded_id)
-            content = _get_accessible_dataset_instance(trans, ldda, data_request.src, data_request.id)
+            content = _get_accessible_dataset_instance(trans, step, ldda, data_request.src, data_request.id)
         elif isinstance(data_request, DataRequestHda):
             hda = sa_session.get(HistoryDatasetAssociation, decoded_id)
-            content = _get_accessible_dataset_instance(trans, hda, data_request.src, data_request.id)
+            content = _get_accessible_dataset_instance(trans, step, hda, data_request.src, data_request.id)
         elif isinstance(data_request, DataRequestLd):
             library_dataset = sa_session.get(LibraryDataset, decoded_id)
             ldda = library_dataset.library_dataset_dataset_association if library_dataset else None
-            content = _get_accessible_dataset_instance(trans, ldda, data_request.src, data_request.id)
+            content = _get_accessible_dataset_instance(trans, step, ldda, data_request.src, data_request.id)
         else:
             if sa_session.get(HistoryDatasetCollectionAssociation, decoded_id) is None:
-                raise exceptions.ObjectNotFound(f"Workflow input '{data_request.id}' ({data_request.src}) not found")
+                raise exceptions.ObjectNotFound(
+                    f"{_step_name(step)}: workflow input '{data_request.id}' ({data_request.src}) not found"
+                )
             content = trans.app.dataset_collection_manager.get_dataset_collection_instance(trans, "history", decoded_id)
         assert isinstance(step.module, InputModule)
         try:
