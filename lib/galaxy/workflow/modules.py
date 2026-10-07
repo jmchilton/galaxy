@@ -56,6 +56,7 @@ from galaxy.model import (
 )
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
+from galaxy.model.dataset_collections.query import HistoryQuery
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
 from galaxy.objectstore import ObjectStorePopulator
@@ -188,6 +189,52 @@ RUNTIME_STEP_META_STATE_KEY = "__STEP_META_STATE__"
 RUNTIME_POST_JOB_ACTIONS_KEY = "__POST_JOB_ACTIONS__"
 
 POSSIBLE_PARAMETER_TYPES: tuple[INPUT_PARAMETER_TYPES] = get_args(INPUT_PARAMETER_TYPES)
+
+
+def _is_string_value(value: Any) -> bool:
+    return isinstance(value, str)
+
+
+def _is_integer_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, str):
+        try:
+            int(value)
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def _is_float_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        try:
+            float(value)
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def _is_boolean_value(value: Any) -> bool:
+    return isinstance(value, bool) or (isinstance(value, str) and value.lower() in ("true", "false"))
+
+
+PARAMETER_VALUE_TYPE_CHECKS: dict[str, tuple[Callable[[Any], bool], str]] = {
+    "text": (_is_string_value, "a string is required"),
+    "color": (_is_string_value, "a string is required"),
+    "directory_uri": (_is_string_value, "a string is required"),
+    "integer": (_is_integer_value, "an integer is required"),
+    "float": (_is_float_value, "a float is required"),
+    "boolean": (_is_boolean_value, "a boolean is required"),
+}
 
 
 class OptionDict(TypedDict):
@@ -1093,6 +1140,13 @@ class InputModule(WorkflowModule):
     def get_all_inputs(self, data_only=False, connectable_only=False) -> list[InputDescription]:
         return []
 
+    def validate_input_content(self, content: model.DatasetInstance | HistoryDatasetCollectionAssociation) -> None:
+        """Raise ``ParameterValueError`` if ``content`` cannot be supplied to this input step."""
+        if isinstance(content, model.HistoryDatasetAssociation) and (content.deleted or content.purged):
+            raise ParameterValueError("the selected dataset has been deleted", "input")
+        if isinstance(content, HistoryDatasetCollectionAssociation) and content.deleted:
+            raise ParameterValueError("the selected dataset collection has been deleted", "input")
+
     def execute(
         self,
         trans: "WorkRequestContext",
@@ -1283,6 +1337,19 @@ class InputDataCollectionModule(InputModule):
         # TODO: this needs to land up part of DataCollectionToolParameter
         input_param = DataCollectionToolParameter(None, collection_param_source, self.trans)
         return dict(input=input_param)
+
+    def validate_input_content(self, content: model.DatasetInstance | HistoryDatasetCollectionAssociation) -> None:
+        if not isinstance(content, HistoryDatasetCollectionAssociation):
+            raise ParameterValueError("a dataset collection is required but a dataset was supplied", "input")
+        super().validate_input_content(content)
+        input_param = self.get_runtime_inputs(self)["input"]
+        history_query = HistoryQuery.from_parameter(input_param, COLLECTION_TYPE_DESCRIPTION_FACTORY)
+        if not history_query.direct_match(content) and not history_query.can_map_over(content):
+            raise ParameterValueError(
+                f"collection type '{content.collection.collection_type}' cannot be used for an input of "
+                f"collection type '{','.join(input_param.collection_types or [])}'",
+                "input",
+            )
 
     def get_all_outputs(self, data_only=False):
         parameter_def = self._parse_state_into_dict()
@@ -1727,6 +1794,40 @@ class InputParameterModule(WorkflowModule):
         input_source = get_input_source(input_source_dict, trusted=False)
         input = parameter_class(None, input_source)
         return dict(input=input)
+
+    def validate_input_value(self, trans: "ProvidesHistoryContext", value: Any) -> Any:
+        """Check a value supplied for this input and return the value to record.
+
+        Raises ``ParameterValueError`` if the value has the wrong type, is not one of the
+        declared restrictions, or fails a declared validator.
+        """
+        parameter_def = self._parse_state_into_dict()
+        parameter_type = parameter_def["parameter_type"]
+        input_param = self.get_runtime_inputs(self)["input"]
+        if value in ("", None) and input_param.optional:
+            return value
+        multiple = bool(parameter_def.get("multiple"))
+        values = value if multiple and isinstance(value, list) else [value]
+        is_value_type, type_message = PARAMETER_VALUE_TYPE_CHECKS[parameter_type]
+        for v in values:
+            # multiple integers may be submitted as delimited text, parsed by the parameter below
+            if not is_value_type(v) and not (multiple and parameter_type == "integer" and isinstance(v, str)):
+                raise ParameterValueError(type_message, input_param.name, v)
+        try:
+            if isinstance(input_param, SelectToolParameter):
+                input_param.from_json(value, trans)
+                input_param.validate(value, trans)
+            elif parameter_type == "text" and multiple:
+                for v in values:
+                    input_param.validate(v, trans)
+            else:
+                input_param.validate(value, trans)
+        except TypeError as e:
+            raise ParameterValueError(str(e), input_param.name, value) from None
+        if isinstance(input_param, IntegerToolParameter) and input_param.multiple:
+            # The run form submits one integer per line.
+            return input_param.to_python(value, trans.app)
+        return value
 
     def get_runtime_state(self):
         state = DefaultToolState()

@@ -15,11 +15,13 @@ from galaxy.schema.invocation import (
     FailureReason,
 )
 from galaxy.tool_util.parser.output_objects import ToolOutput
+from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.parameters.meta import to_decoded_json
 from galaxy.tools.parameters.workflow_utils import (
     ConnectedValue,
     NO_REPLACEMENT,
     RuntimeValue,
+    workflow_building_modes,
 )
 from galaxy.util import (
     bunch,
@@ -806,6 +808,172 @@ def test_to_decoded_json_lowers_bare_runtime_value():
     result = to_decoded_json({"foo": RuntimeValue()})
     assert result == {"foo": {"__class__": "RuntimeValue"}}
     json.dumps(result)
+
+
+def _parameter_input_module(**tool_inputs):
+    trans = MockTrans()
+    trans.workflow_building_mode = workflow_building_modes.DISABLED
+    tool_inputs.setdefault("optional", False)
+    return __from_step(trans=trans, type="parameter_input", tool_inputs=tool_inputs)
+
+
+@pytest.mark.parametrize(
+    "parameter_type,value",
+    [
+        ("text", 5),
+        ("text", 5.5),
+        ("text", True),
+        ("color", 5),
+        ("directory_uri", 5),
+        ("integer", "abc"),
+        ("integer", 5.5),
+        ("integer", True),
+        ("float", "abc"),
+        ("float", False),
+        ("boolean", "maybe"),
+        ("boolean", 1),
+    ],
+)
+def test_parameter_input_value_wrong_type(parameter_type, value):
+    module = _parameter_input_module(parameter_type=parameter_type)
+    with pytest.raises(ParameterValueError):
+        module.validate_input_value(module.trans, value)
+
+
+@pytest.mark.parametrize(
+    "parameter_type,value",
+    [
+        ("text", "ND"),
+        ("text", ""),
+        ("color", "#aabbcc"),
+        ("integer", 5),
+        ("integer", "5"),
+        ("float", 5),
+        ("float", 0.5),
+        ("float", "0.5"),
+        ("boolean", False),
+        ("boolean", "true"),
+        ("boolean", "False"),
+    ],
+)
+def test_parameter_input_value_valid_type_is_recorded_unchanged(parameter_type, value):
+    module = _parameter_input_module(parameter_type=parameter_type)
+    recorded = module.validate_input_value(module.trans, value)
+    assert recorded == value
+    assert type(recorded) is type(value)
+
+
+def test_parameter_input_optional_allows_empty():
+    module = _parameter_input_module(parameter_type="integer", optional=True)
+    assert module.validate_input_value(module.trans, "") == ""
+
+
+def test_parameter_input_restrictions_enforced():
+    module = _parameter_input_module(parameter_type="text", restrictions=["a", "b"])
+    assert module.validate_input_value(module.trans, "a") == "a"
+    with pytest.raises(ParameterValueError, match="invalid option"):
+        module.validate_input_value(module.trans, "c")
+
+
+def test_parameter_input_suggestions_not_enforced():
+    module = _parameter_input_module(parameter_type="text", suggestions=["a", "b"])
+    assert module.validate_input_value(module.trans, "c") == "c"
+
+
+def test_parameter_input_multiple_restrictions_enforced_per_value():
+    module = _parameter_input_module(parameter_type="text", multiple=True, restrictions=["a", "b"])
+    assert module.validate_input_value(module.trans, ["a", "b"]) == ["a", "b"]
+    with pytest.raises(ParameterValueError, match="invalid option"):
+        module.validate_input_value(module.trans, ["a", "c"])
+
+
+def test_parameter_input_regex_validator_on_wrong_type_is_value_error():
+    module = _parameter_input_module(
+        parameter_type="text", validators=[{"type": "regex", "expression": "^a.*$", "message": "must start with a"}]
+    )
+    with pytest.raises(ParameterValueError):
+        module.validate_input_value(module.trans, 5)
+
+
+def test_parameter_input_multiple_text_validated_per_value():
+    module = _parameter_input_module(
+        parameter_type="text",
+        multiple=True,
+        validators=[{"type": "regex", "expression": "^a.*$", "message": "must start with a"}],
+    )
+    assert module.validate_input_value(module.trans, ["a1", "a2"]) == ["a1", "a2"]
+    with pytest.raises(ParameterValueError, match="must start with a"):
+        module.validate_input_value(module.trans, ["a1", "b2"])
+    with pytest.raises(ParameterValueError):
+        module.validate_input_value(module.trans, ["a1", 5])
+
+
+def test_parameter_input_multiple_integer_normalized():
+    module = _parameter_input_module(parameter_type="integer", multiple=True)
+    assert module.validate_input_value(module.trans, "1\n2") == [1, 2]
+    assert module.validate_input_value(module.trans, [1, 2]) == [1, 2]
+    with pytest.raises(ParameterValueError, match="an integer is required"):
+        module.validate_input_value(module.trans, [1, "two"])
+    with pytest.raises(ParameterValueError):
+        module.validate_input_value(module.trans, [1, True])
+
+
+def _hdca(collection_type, deleted=False):
+    collection = model.DatasetCollection(collection_type=collection_type)
+    hdca = model.HistoryDatasetCollectionAssociation(collection=collection)
+    hdca.deleted = deleted
+    return hdca
+
+
+def _collection_input_module(collection_type):
+    return __from_step(type="data_collection_input", tool_inputs={"collection_type": collection_type})
+
+
+@pytest.mark.parametrize(
+    "input_collection_type,content_collection_type",
+    [("list", "list"), ("list", "list:list"), ("paired", "list:paired"), ("paired_or_unpaired", "paired")],
+)
+def test_collection_input_accepts_matching_or_mappable_collection(input_collection_type, content_collection_type):
+    module = _collection_input_module(input_collection_type)
+    module.validate_input_content(_hdca(content_collection_type))
+
+
+@pytest.mark.parametrize(
+    "input_collection_type,content_collection_type",
+    [("paired", "list"), ("list", "paired"), ("list", "list:paired"), ("list:list", "list")],
+)
+def test_collection_input_rejects_incompatible_collection_type(input_collection_type, content_collection_type):
+    module = _collection_input_module(input_collection_type)
+    with pytest.raises(ParameterValueError, match="collection type"):
+        module.validate_input_content(_hdca(content_collection_type))
+
+
+def test_collection_input_rejects_dataset():
+    module = _collection_input_module("list")
+    with pytest.raises(ParameterValueError, match="collection"):
+        module.validate_input_content(model.HistoryDatasetAssociation())
+
+
+def test_collection_input_rejects_deleted_collection():
+    module = _collection_input_module("list")
+    with pytest.raises(ParameterValueError, match="deleted"):
+        module.validate_input_content(_hdca("list", deleted=True))
+
+
+def test_data_input_accepts_collection_for_mapping():
+    module = __from_step(type="data_input")
+    module.validate_input_content(_hdca("list"))
+
+
+@pytest.mark.parametrize("purged", [False, True])
+def test_data_input_rejects_deleted_dataset(purged):
+    module = __from_step(type="data_input")
+    hda = model.HistoryDatasetAssociation()
+    hda.deleted = True
+    hda.purged = purged
+    with pytest.raises(ParameterValueError, match="deleted"):
+        module.validate_input_content(hda)
+    module.validate_input_content(model.HistoryDatasetAssociation())
 
 
 def test_workflow_parameter_invalid_is_expected_failure():
