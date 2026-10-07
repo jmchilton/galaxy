@@ -12117,6 +12117,27 @@ steps:
         assert_error_message_contains(response, "test_data_source")
         assert self._history_jobs(history_id) == []
 
+    @skip_without_tool("validation_repeat")
+    def test_invalid_step_parameter_creates_no_history(self):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+steps:
+  validation:
+    tool_id: validation_repeat
+    state:
+      r2:
+        - text: "abd"
+""")
+        history_name = f"invalid step parameter history {uuid4()}"
+        workflow_request = dict(
+            new_history_name=history_name, parameters=dumps(dict(validation_repeat={"r2_0|text": ""}))
+        )
+        response = self._post(f"workflows/{workflow_id}/invocations", data=workflow_request, json=True)
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "Error computing workflow step runtime state")
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
+
+
 
 
 
