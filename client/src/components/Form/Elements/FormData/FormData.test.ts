@@ -608,7 +608,7 @@ describe("FormData", () => {
             const hint = wrapper.find(PROCESSING_HINT);
             expect(hint.exists()).toBe(true);
             expect(hintText(wrapper)).toBe(
-                "The selected collection will be mapped over this tool: one job per paired element.",
+                "The selected collection will be mapped over this tool: one job per dataset pair.",
             );
         });
 
@@ -621,7 +621,90 @@ describe("FormData", () => {
             });
             await wrapper.vm.$nextTick();
             expect(hintText(wrapper)).toBe(
-                "The selected list:paired collection will be mapped over this tool: one job per paired element.",
+                "The selected list of pairs will be mapped over this tool: one job per dataset pair.",
+            );
+        });
+
+        it("falls back to raw collection types without a label", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["list:list"],
+                value: { values: [{ id: "hdcaLLL", src: "hdca" }] },
+                options: {
+                    hdca: [
+                        {
+                            id: "hdcaLLL",
+                            hid: 8,
+                            name: "deep",
+                            src: "hdca",
+                            collection_type: "list:list:list",
+                            map_over_type: "list:list",
+                        },
+                    ],
+                },
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe(
+                "The selected list:list:list collection will be mapped over this tool: one job per list:list element.",
+            );
+        });
+
+        it("explains each selected dataset of a batch runs separately", async () => {
+            const wrapper = createTarget({
+                value: {
+                    values: [
+                        { id: "hda2", src: "hda" },
+                        { id: "hda3", src: "hda" },
+                    ],
+                },
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe(
+                "Each selected dataset will be run as a separate job, matched in order with other batch inputs.",
+            );
+        });
+
+        it("describes an optional collection input before anything is selected", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["paired"],
+                optional: true,
+                value: null,
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe("A collection selected here will be processed as a whole in a single job.");
+        });
+
+        it("describes the collection tab of an optional dataset input before anything is selected", async () => {
+            const wrapper = createTarget({
+                optional: true,
+                value: null,
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+            await wrapper.find("[title='Dataset collection']").trigger("click");
+            expect(hintText(wrapper)).toBe(
+                "A collection selected here will be mapped over this tool: one job per dataset.",
+            );
+        });
+
+        it("explains several collections are processed together in a single job", async () => {
+            const wrapper = createTarget({
+                value: {
+                    values: [
+                        { id: "hdca5", src: "hdca" },
+                        { id: "hdca6", src: "hdca" },
+                    ],
+                },
+                multiple: true,
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe(
+                "The selected collections will be processed together in a single job. Need one job per element?",
             );
         });
 

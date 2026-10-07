@@ -19,16 +19,13 @@ import {
 import type { CollectionType } from "@/api/datasetCollections";
 import type { HistoryContentType } from "@/api/datasets";
 import { getGalaxyInstance } from "@/app";
-import {
-    COLLECTION_TYPE_TO_LABEL,
-    type CollectionBuilderType,
-} from "@/components/Collections/common/buildCollectionModal";
+import { type CollectionBuilderType, collectionTypeToText } from "@/components/Collections/common/buildCollectionModal";
 import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { useUid } from "@/composables/utils/uid";
 import { type EventData, useEventStore } from "@/stores/eventStore";
 import { orList } from "@/utils/strings";
 
-import { getProcessingMode } from "./processingMode";
+import { getProcessingMode, isBatchSelection } from "./processingMode";
 import type { DataOption, ExtendedCollectionType } from "./types";
 import { containsDataOption, DEFAULT_OPTIONS_PAGE_SIZE, isDataOption } from "./types";
 import { BATCH, SOURCE, VARIANTS } from "./variants";
@@ -288,12 +285,14 @@ const formattedOptions = computed(() => {
     }
 });
 
+/** Tool form inputs, as opposed to workflow run inputs with their own linked/unlinked batch controls */
+const isToolForm = computed(() => !props.flavor && !props.workflowRun);
+
 /**
  * How the tool form will process the selection (one job per item vs. one job overall).
- * Workflow run inputs keep their own linked/unlinked batch controls.
  */
 const processingMode = computed(() => {
-    if (props.flavor || props.workflowRun) {
+    if (!isToolForm.value) {
         return null;
     }
     const values = currentValue.value ?? [];
@@ -448,7 +447,6 @@ function createValue(val?: Array<DataOption> | DataOption | null) {
         values = values.filter((value, index, self) => index === self.findIndex((v) => v.id === value.id));
 
         if (variant.value && values.length > 0 && values[0]) {
-            const hasMapOverType = values.find((v) => !!v.map_over_type);
             const isMultiple = values.length > 1;
 
             // Determine source representation (uses only the initial value)
@@ -475,7 +473,7 @@ function createValue(val?: Array<DataOption> | DataOption | null) {
             }
             // Emit new value
             return {
-                batch: batch !== BATCH.DISABLED || !!hasMapOverType,
+                batch: isBatchSelection(batch, values),
                 product: batch === BATCH.ENABLED && !currentLinked.value,
                 values: values.map((entry) => ({
                     id: entry.id,
@@ -1116,14 +1114,6 @@ watch(
 const formatsVisible = ref(false);
 const formatsButtonId = useUid("form-data-formats-");
 
-function collectionTypeToText(collectionType: string): string {
-    if (COLLECTION_TYPE_TO_LABEL[collectionType]) {
-        return COLLECTION_TYPE_TO_LABEL[collectionType].toLowerCase();
-    } else {
-        return collectionType;
-    }
-}
-
 const warningListAmount = 4;
 const noOptionsWarningMessage = computed(() => {
     const itemType = props.type === "data" ? "datasets" : "dataset collections";
@@ -1255,10 +1245,7 @@ const noOptionsWarningMessage = computed(() => {
 
         <div :class="{ 'd-flex justify-content-between': props.workflowRun }">
             <FormDataProcessingHint v-if="processingMode" :mode="processingMode" />
-            <div
-                v-else-if="
-                    (props.flavor || props.workflowRun) && currentVariant && currentVariant.batch !== BATCH.DISABLED
-                ">
+            <div v-else-if="!isToolForm && currentVariant && currentVariant.batch !== BATCH.DISABLED">
                 <BFormCheckbox
                     v-if="currentVariant.batch === BATCH.ENABLED"
                     v-model="currentLinked"
