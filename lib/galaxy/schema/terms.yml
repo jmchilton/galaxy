@@ -148,6 +148,36 @@ galaxy:
       These lists will be gathered in a nested list structure (collection type `list:list`) where
       the outer element count and structure matches that of the input and the inner list for each of those
       is just the outputs of the tool for the corresponding element of the input.
+
+      A nested collection can also be mapped over an input that itself consumes a collection (or multiple
+      datasets), as long as the inner part of the nested collection matches what the input expects. For instance,
+      if a tool input consumes a `paired` collection and a `list:paired` collection is selected, the tool runs once
+      per `paired` element of the list - one job per pair - and the outputs are gathered into a flat list with the
+      same element identifiers. Likewise, selecting a `list:list` for an input that consumes a `list` runs one job
+      per inner list.
+    reduction: |
+      Some tool inputs consume many datasets at once: inputs that accept a dataset collection, and inputs that
+      accept multiple datasets. When such an input is given a collection matching the type it expects (for
+      instance a flat `list` for an input that consumes a `list`) or a selection of datasets, the input is not
+      split into separate jobs - all of the selected data is handed to the same job and processed together, for
+      example to merge, compare, or co-assemble samples. The tool produces its usual outputs; no new collection
+      is built to gather results per element of this input.
+
+      If the selected collection is nested more deeply than the input expects (for instance a `list:list` for
+      an input that consumes a `list`), the tool is instead *mapped over* the outer level and runs once per
+      inner collection.
+    nestToMapOver: |
+      A tool input that processes a whole collection in a single job can still be run separately on each element
+      (or on each group of elements) by selecting a collection with one extra level of nesting. Galaxy then maps
+      the tool over the outer level and runs one job per inner collection, gathering the outputs into a collection.
+
+      - To run one job per dataset, use the **Nest collection** tool. It turns a `list` into a `list:list` in which
+        each inner list holds a single dataset (and a `list:paired` into one inner list per pair).
+      - To run one job per group of datasets - for instance per sample or per condition - use the **Apply rules**
+        tool to regroup a `list` into a `list:list` with one inner list per group.
+
+      Then select the nested collection for the input. To process selected datasets separately, first build
+      them into a list and nest that list.
     collectionBuilder:
       hideOriginalElements: |
         Toggling this on means that the original history items that will become a part of the collection

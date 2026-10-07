@@ -28,6 +28,7 @@ import { useUid } from "@/composables/utils/uid";
 import { type EventData, useEventStore } from "@/stores/eventStore";
 import { orList } from "@/utils/strings";
 
+import { getProcessingMode } from "./processingMode";
 import type { DataOption, ExtendedCollectionType } from "./types";
 import { containsDataOption, DEFAULT_OPTIONS_PAGE_SIZE, isDataOption } from "./types";
 import { BATCH, SOURCE, VARIANTS } from "./variants";
@@ -36,10 +37,10 @@ import FormSelection from "../FormSelection.vue";
 import FormSelectionPreference from "../FormSelectionPreference.vue";
 import FormDataContextButtons from "./FormDataContextButtons.vue";
 import FormDataExtensions from "./FormDataExtensions.vue";
+import FormDataProcessingHint from "./FormDataProcessingHint.vue";
 import FormDataWorkflowRunTabs from "./FormDataWorkflowRunTabs.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import FormSelect from "@/components/Form/Elements/FormSelect.vue";
-import HelpText from "@/components/Help/HelpText.vue";
 
 type HistoryOrCollectionItem = HistoryItemSummary | DCESummary;
 
@@ -285,6 +286,21 @@ const formattedOptions = computed(() => {
     } else {
         return [];
     }
+});
+
+/**
+ * How the tool form will process the selection (one job per item vs. one job overall).
+ * Workflow run inputs keep their own linked/unlinked batch controls.
+ */
+const processingMode = computed(() => {
+    if (props.flavor || props.workflowRun) {
+        return null;
+    }
+    const values = currentValue.value ?? [];
+    if (values.length === 0 && !formattedOptions.value.some((option) => option.value)) {
+        return null;
+    }
+    return getProcessingMode(currentVariant.value, props.type, values, props.collectionTypes);
 });
 
 /**
@@ -589,7 +605,7 @@ function handleIncoming(incoming: SingleOrMultipleHistoryItems, partial = true) 
 }
 
 function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
-    const { newSrc, datasetCollectionDataset } = getElementAttributes(item);
+    const { newSrc, datasetCollectionDataset, collectionType } = getElementAttributes(item);
 
     // for name, somehow even though schema says otherwise, DCESummary can return a name
     const newName = "name" in item && typeof item.name === "string" ? item.name : null;
@@ -606,6 +622,7 @@ function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
         id: newId,
         src: newSrc,
         batch: false,
+        collection_type: collectionType,
         map_over_type: undefined,
         hid: newHid,
         name: newName || newId,
@@ -1237,7 +1254,11 @@ const noOptionsWarningMessage = computed(() => {
         </div>
 
         <div :class="{ 'd-flex justify-content-between': props.workflowRun }">
-            <div v-if="currentVariant && currentVariant.batch !== BATCH.DISABLED">
+            <FormDataProcessingHint v-if="processingMode" :mode="processingMode" />
+            <div
+                v-else-if="
+                    (props.flavor || props.workflowRun) && currentVariant && currentVariant.batch !== BATCH.DISABLED
+                ">
                 <BFormCheckbox
                     v-if="currentVariant.batch === BATCH.ENABLED"
                     v-model="currentLinked"
@@ -1256,11 +1277,7 @@ const noOptionsWarningMessage = computed(() => {
                 </BFormCheckbox>
                 <div class="info text-info">
                     <FontAwesomeIcon :icon="faExclamation" />
-                    <span v-if="props.type == 'data' && currentVariant.src == SOURCE.COLLECTION" class="ml-1">
-                        The supplied input will be <HelpText text="mapped over" uri="galaxy.collections.mapOver" /> this
-                        tool.
-                    </span>
-                    <span v-else v-localize class="ml-1">
+                    <span v-localize class="ml-1">
                         This is a batch mode input field. Individual jobs will be triggered for each dataset.
                     </span>
                 </div>

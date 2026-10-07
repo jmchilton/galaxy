@@ -580,6 +580,170 @@ describe("FormData", () => {
         expect(nth(selectedValues, 0).text()).toContain("999: OldDataset");
     });
 
+    describe("processing hint", () => {
+        const PROCESSING_HINT = ".form-data-processing-hint";
+
+        /** Hint text without the mocked help popovers, whitespace collapsed */
+        function hintText(wrapper: ReturnType<typeof createTarget>) {
+            return wrapper.find(PROCESSING_HINT).text().replaceAll("Mocked Popover", "").replace(/\s+/g, " ").trim();
+        }
+
+        const listPairedOptions = {
+            hdca: [{ id: "hdcaLP", hid: 7, name: "reads", src: "hdca", map_over_type: "paired" }],
+        };
+
+        it("explains mapping a nested collection over a collection input", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["paired"],
+                value: { values: [{ id: "hdcaLP", src: "hdca" }] },
+                options: listPairedOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(emittedArg(wrapper, "input")).toEqual({
+                batch: true,
+                product: false,
+                values: [{ id: "hdcaLP", map_over_type: "paired", src: "hdca" }],
+            });
+            const hint = wrapper.find(PROCESSING_HINT);
+            expect(hint.exists()).toBe(true);
+            expect(hintText(wrapper)).toBe(
+                "The selected collection will be mapped over this tool: one job per paired element.",
+            );
+        });
+
+        it("names the type of the selected collection when known", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["paired"],
+                value: { values: [{ id: "hdcaLP", src: "hdca" }] },
+                options: { hdca: [{ ...listPairedOptions.hdca[0], collection_type: "list:paired" }] },
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe(
+                "The selected list:paired collection will be mapped over this tool: one job per paired element.",
+            );
+        });
+
+        it("explains a collection mapped over a dataset input", async () => {
+            const wrapper = createTarget({
+                value: { values: [{ id: "hdca5", src: "hdca" }] },
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(wrapper.find(PROCESSING_HINT).attributes("data-processing-mode")).toBe("batch");
+            expect(hintText(wrapper)).toBe(
+                "The selected collection will be mapped over this tool: one job per dataset.",
+            );
+        });
+
+        it("explains a directly matching collection is processed in a single job", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["paired"],
+                value: { values: [{ id: "hdca5", src: "hdca" }] },
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            const hint = wrapper.find(PROCESSING_HINT);
+            expect(hint.attributes("data-processing-mode")).toBe("bulk");
+            // nesting cannot split a pair, so no hint on running per element
+            expect(hintText(wrapper)).toBe("The selected collection will be processed as a whole in a single job.");
+        });
+
+        it("explains multiple datasets are processed together in a single job", async () => {
+            const wrapper = createTarget({
+                value: {
+                    values: [
+                        { id: "hda2", src: "hda" },
+                        { id: "hda3", src: "hda" },
+                    ],
+                },
+                multiple: true,
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            const hint = wrapper.find(PROCESSING_HINT);
+            expect(hint.attributes("data-processing-mode")).toBe("bulk");
+            expect(hintText(wrapper)).toBe(
+                "All selected datasets will be processed together in a single job. Need one job per dataset?",
+            );
+        });
+
+        it("says nothing about a single dataset in a single dataset input", async () => {
+            const wrapper = createTarget({
+                value: { values: [{ id: "hda2", src: "hda" }] },
+                options: defaultOptions,
+            });
+            await wrapper.vm.$nextTick();
+            expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+        });
+
+        it("says nothing when there is nothing to select", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                value: null,
+                options: {},
+            });
+            await wrapper.vm.$nextTick();
+            expect(wrapper.find(".form-data-no-options-alert").exists()).toBe(true);
+            expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+        });
+
+        it("leaves workflow run inputs to their own batch controls", async () => {
+            for (const props of [{ workflowRun: true }, { flavor: "module" }]) {
+                const wrapper = createTarget({
+                    ...props,
+                    type: "data_collection",
+                    collectionTypes: ["paired"],
+                    value: { values: [{ id: "hdcaLP", src: "hdca" }] },
+                    options: listPairedOptions,
+                });
+                await wrapper.vm.$nextTick();
+                expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+            }
+        });
+
+        it("agrees with the submitted batch flag", async () => {
+            const cases: Array<Record<string, unknown>> = [
+                { value: { values: [{ id: "hda2", src: "hda" }] } },
+                { value: { values: [{ id: "hdca5", src: "hdca" }] } },
+                { value: { values: [{ id: "dce2", src: "dce" }] } },
+                { value: { values: [{ id: "dce3", src: "dce" }] } },
+                { value: { values: [{ id: "dce3", src: "dce" }] }, type: "data_collection" },
+                { value: { values: [{ id: "hdca5", src: "hdca" }] }, type: "data_collection" },
+                { value: { values: [{ id: "hdca5", src: "hdca" }] }, multiple: true },
+                {
+                    value: {
+                        values: [
+                            { id: "hda2", src: "hda" },
+                            { id: "hda3", src: "hda" },
+                        ],
+                    },
+                    multiple: true,
+                },
+                {
+                    value: {
+                        values: [
+                            { id: "dce1", src: "dce" },
+                            { id: "dce4", src: "dce" },
+                        ],
+                    },
+                },
+            ];
+            for (const props of cases) {
+                const wrapper = createTarget({ options: defaultOptions, ...props });
+                await wrapper.vm.$nextTick();
+                const emitted = emittedArg(wrapper, "input", wrapper.emitted("input")!.length - 1) as {
+                    batch: boolean;
+                };
+                const hint = wrapper.find(PROCESSING_HINT);
+                const mode = hint.exists() ? hint.attributes("data-processing-mode") : undefined;
+                expect(mode === "batch", JSON.stringify(props)).toBe(emitted.batch);
+            }
+        });
+    });
+
     it("tagging filter", async () => {
         const wrapper_0 = createTarget({
             tag: "tag1",

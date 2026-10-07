@@ -632,8 +632,10 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 assert entry["id"] == expected_id, (entry, expected_id)
                 if expected_kind == "direct":
                     assert "map_over_type" not in entry, entry
+                    assert entry["collection_type"] == "paired", entry
                 else:
                     assert entry.get("map_over_type") == "paired", entry
+                    assert entry["collection_type"] == "list:paired", entry
 
     @skip_without_tool("collection_paired_test")
     def test_build_collection_options_pagination_preserves_interleaved_order(self):
