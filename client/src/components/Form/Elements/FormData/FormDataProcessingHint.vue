@@ -6,7 +6,7 @@ import { computed } from "vue";
 import { collectionTypeLabel } from "@/components/Collections/common/buildCollectionModal";
 import localize from "@/utils/localization";
 
-import { PROCESSING_HELP_TERMS, type ProcessingMode } from "./processingMode";
+import { mapOverUnit, PROCESSING_HELP_TERMS, type ProcessingMode } from "./processingMode";
 
 import HelpText from "@/components/Help/HelpText.vue";
 
@@ -20,9 +20,7 @@ const selectedLabel = computed(() =>
         : undefined,
 );
 
-const mapOverLabel = computed(() =>
-    props.mode.kind === "batch" && props.mode.mapOverType ? collectionTypeLabel(props.mode.mapOverType) : undefined,
-);
+const jobUnit = computed(() => mapOverUnit(props.mode.kind === "batch" ? props.mode.mapOverType : undefined));
 
 /** Sentence start before the help link, for hints without inline collection types */
 const lead = computed(() => {
@@ -68,12 +66,7 @@ const nestText = computed(() =>
                 </template>
                 {{ localize("will be") }}
                 <HelpText :text="localize('mapped over')" :uri="PROCESSING_HELP_TERMS.mapOver" />
-                {{ localize("this tool: one job per") }}
-                <template v-if="mapOverLabel">{{ mapOverLabel }}.</template>
-                <template v-else-if="mode.mapOverType">
-                    <code>{{ mode.mapOverType }}</code> {{ localize("element.") }}
-                </template>
-                <template v-else>{{ localize("dataset.") }}</template>
+                {{ localize("this tool: one job per") }} {{ localize(jobUnit) }}.
             </span>
         </template>
         <template v-else>

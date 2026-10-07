@@ -298,7 +298,7 @@ function isSelected(item: SelectValue): boolean {
             <template v-slot:option="{ option }">
                 <!-- Replace recycled option content when its identity changes. -->
                 <div
-                    :key="`${option.label}:${String(option.value)}`"
+                    :key="`${option.label}:${optionIdentifier(option)}`"
                     class="d-flex align-items-center justify-content-between"
                     :data-option-value="optionIdentifier(option)">
                     <div>
