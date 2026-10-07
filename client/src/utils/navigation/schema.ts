@@ -246,6 +246,7 @@ interface Rootmulti_history_panel extends Component {
     histories: SelectorTemplate;
     current_label: SelectorTemplate;
     switch_history: SelectorTemplate;
+    history_column: SelectorTemplate;
     current_history_check: SelectorTemplate;
     empty_message_check: SelectorTemplate;
     switch_button: SelectorTemplate;
