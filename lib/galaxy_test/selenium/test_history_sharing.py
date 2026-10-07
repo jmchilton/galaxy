@@ -1,9 +1,9 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.util.unittest_utils import transient_failure
 from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 # Remove hack when submit_login works more consistently.
 VALID_LOGIN_RETRIES = 3

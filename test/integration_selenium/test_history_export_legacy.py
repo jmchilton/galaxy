@@ -1,4 +1,4 @@
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumIntegrationTestCase,

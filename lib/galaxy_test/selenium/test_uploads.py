@@ -4,12 +4,12 @@ import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestUploads(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
