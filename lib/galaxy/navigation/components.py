@@ -233,6 +233,7 @@ class Component:
         self._labels = labels
         self._text = text
 
+        self.sub_components = Bunch(**self._sub_components)
         self.selectors = Bunch(**self._selectors)
         self.labels = Bunch(**self._labels)
         self.text = Bunch(**self._text)
