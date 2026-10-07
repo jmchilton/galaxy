@@ -187,6 +187,84 @@ describe("ToolForm", () => {
         expect(wrapper.text()).toContain(errorMessage);
     });
 
+    describe("job count", () => {
+        const twelveJobs = {
+            job_count: 12,
+            reason: null,
+            inputs: [{ name: "input1", count: 12, linked: true }],
+        };
+
+        function respondToBuilds(...responses: Array<{ body: object; gate?: Promise<void> }>) {
+            let call = 0;
+            server.use(
+                http.untyped.post("/api/tools/tool_id/build", async () => {
+                    const { body, gate } = responses[Math.min(call++, responses.length - 1)]!;
+                    await gate;
+                    return HttpResponse.json(buildResponse(body));
+                }),
+            );
+        }
+
+        async function requestUpdate() {
+            wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, true);
+            await flushPromises();
+        }
+
+        function jobCountText() {
+            return wrapper.find(".tool-form-job-count").text();
+        }
+
+        it("shows the count from the build response and clears it once nothing is batched", async () => {
+            respondToBuilds({ body: { job_expansion: twelveJobs } }, { body: {} });
+            await flushPromises();
+
+            await requestUpdate();
+            expect(jobCountText()).toContain("This will run 12 jobs.");
+            const button = wrapper.find("[data-description='run tool button']");
+            expect(button.attributes("data-title")).toBe("Run tool: tool_name (version) - 12 jobs");
+
+            await requestUpdate();
+            expect(jobCountText()).toBe("");
+            expect(button.attributes("data-title")).toBe("Run tool: tool_name (version)");
+        });
+
+        it("ignores a build response that arrives after a newer one", async () => {
+            let releaseStale!: () => void;
+            const stale = new Promise<void>((resolve) => (releaseStale = resolve));
+            respondToBuilds({ body: { job_expansion: twelveJobs }, gate: stale }, { body: {} });
+            await flushPromises();
+
+            const formDisplay = wrapper.findComponent(FormDisplay);
+            formDisplay.vm.$emit("onChange", {}, true);
+            formDisplay.vm.$emit("onChange", {}, true);
+            await flushPromises();
+            expect(wrapper.findComponent(ToolCard).props("disabled")).toBe(false);
+
+            releaseStale();
+            await flushPromises();
+            expect(jobCountText()).toBe("");
+        });
+
+        it("leaves a size mismatch to client-side validation when it already flags one", async () => {
+            const mismatch = {
+                job_count: null,
+                reason: "batch_mismatch",
+                inputs: [
+                    { name: "input1", count: 2, linked: true },
+                    { name: "input2", count: 3, linked: true },
+                ],
+            };
+            respondToBuilds({ body: { job_expansion: mismatch } });
+            await flushPromises();
+
+            await requestUpdate();
+            expect(jobCountText()).toContain("Batch inputs must have matching sizes: input1 has 2, input2 has 3.");
+
+            await wrapper.findComponent(FormDisplay).vm.$emit("onValidation", ["input2", "Please make sure..."]);
+            expect(jobCountText()).toBe("");
+        });
+    });
+
     it("reports a rejected form update and re-enables the form", async () => {
         const { toasts, clearToasts } = useToast();
         clearToasts();
