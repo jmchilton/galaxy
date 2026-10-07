@@ -1077,6 +1077,10 @@ class GalaxyAppConfiguration(GalaxyAppConfigurationAttributes, BaseAppConfigurat
 
         if self.container_resolvers_config_file:
             self.container_resolvers_config_file = self._in_config_dir(self.container_resolvers_config_file)
+        if self.file_source_templates_config_dir:
+            self.file_source_templates_config_dir = self._in_config_dir(self.file_source_templates_config_dir)
+        if self.object_store_templates_config_dir:
+            self.object_store_templates_config_dir = self._in_config_dir(self.object_store_templates_config_dir)
 
         # tool_dependency_dir can be "none" (in old configs). If so, set it to None
         if self.tool_dependency_dir and self.tool_dependency_dir.lower() == "none":

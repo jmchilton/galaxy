@@ -918,16 +918,15 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
-    Directory of Object Store template configuration files. Each
-    ``.yml`` or ``.yaml`` file in it (a single template or a list of
-    templates) is loaded in filename order after the templates in
+    Optional directory of Object Store template configuration files.
+    Each ``.yml`` or ``.yaml`` file in it (a single template or a list
+    of templates) is loaded in filename order after the templates in
     object_store_templates_config_file, so templates can be added or
-    removed by copying or deleting files. Like
+    removed by copying or deleting files. A relative path is resolved
+    with respect to config_dir. Like
     object_store_templates_config_file, ignored when
     object_store_templates is set.
-    The value of this option will be resolved with respect to
-    <config_dir>.
-:Default: ``object_store_templates.d``
+:Default: ``None``
 :Type: str
 
 
@@ -958,16 +957,15 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
-    Directory of user file source template configuration files. Each
-    ``.yml`` or ``.yaml`` file in it (a single template or a list of
-    templates) is loaded in filename order after the templates in
-    file_source_templates_config_file, so templates can be added or
-    removed by copying or deleting files. Like
+    Optional directory of user file source template configuration
+    files. Each ``.yml`` or ``.yaml`` file in it (a single template or
+    a list of templates) is loaded in filename order after the
+    templates in file_source_templates_config_file, so templates can
+    be added or removed by copying or deleting files. A relative path
+    is resolved with respect to config_dir. Like
     file_source_templates_config_file, ignored when
     file_source_templates is set.
-    The value of this option will be resolved with respect to
-    <config_dir>.
-:Default: ``file_source_templates.d``
+:Default: ``None``
 :Type: str
 
 

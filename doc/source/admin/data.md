@@ -31,9 +31,9 @@ your users do not need to navigate seemingly unrelated preferences to get plugin
 Galaxy's object store templates are configured as a YAML list of template objects. This list
 can be placed `object_store_templates.yml` in Galaxy configuration directory (or any path
 pointed to by the configuration option `object_store_templates_config_file` in `galaxy.yml`).
-Templates can also be dropped into the `object_store_templates.d` directory in Galaxy's
-configuration directory (or any directory pointed to by `object_store_templates_config_dir`), one
-or more templates per `.yml`/`.yaml` file. These files are loaded in filename order after the
+Templates can also be split across a directory of `.yml`/`.yaml` files (one or more templates
+per file) by setting `object_store_templates_config_dir` in `galaxy.yml` (a relative path is resolved
+against Galaxy's configuration directory). These files are loaded in filename order after the
 templates in `object_store_templates_config_file`, so templates can be added or removed by copying
 or deleting files. Relative `include:` paths in any of these files are resolved from Galaxy's
 working directory.
@@ -335,9 +335,9 @@ layer provided by Google and lots of links to relevant Google Cloud Storage docu
 Galaxy's file source templates are configured as a YAML list of template objects. This list
 can be placed `file_source_templates.yml` in Galaxy configuration directory (or any path
 pointed to by the configuration option `file_source_templates_config_file` in `galaxy.yml`).
-Templates can also be dropped into the `file_source_templates.d` directory in Galaxy's
-configuration directory (or any directory pointed to by `file_source_templates_config_dir`), one
-or more templates per `.yml`/`.yaml` file. These files are loaded in filename order after the
+Templates can also be split across a directory of `.yml`/`.yaml` files (one or more templates
+per file) by setting `file_source_templates_config_dir` in `galaxy.yml` (a relative path is resolved
+against Galaxy's configuration directory). These files are loaded in filename order after the
 templates in `file_source_templates_config_file`, so templates can be added or removed by copying
 or deleting files. Relative `include:` paths in any of these files are resolved from Galaxy's
 working directory.

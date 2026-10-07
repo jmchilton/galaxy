@@ -309,11 +309,15 @@ def test_object_store_templates_config_dir_installs_their_dependencies():
         assert cds.extras("cloudbridge") == ["openstack"]
 
 
-def test_default_file_source_templates_config_dir_installs_their_dependencies():
+def test_file_source_templates_config_dir_installs_their_dependencies():
     with _config_context() as cc:
         os.mkdir(os.path.join(cc.tempdir, "file_source_templates.d"))
         cc.write_config("file_source_templates.d/dropbox.yml", DROPBOX_FILE_SOURCE_TEMPLATE)
-        cds = cc.get_cond_deps()
+        assert not cc.get_cond_deps().check_dropboxdrivefs()
+        config = {
+            "file_source_templates_config_dir": "file_source_templates.d",
+        }
+        cds = cc.get_cond_deps(config)
         assert cds.check_dropboxdrivefs()
 
 
