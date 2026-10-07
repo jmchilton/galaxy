@@ -1,11 +1,11 @@
 from galaxy.selenium.axe_results import FORMS_VIOLATIONS
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 TEST_ANNOTATION = "my cool annotation"
 TEST_INFO = "my cool info"

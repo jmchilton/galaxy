@@ -1,13 +1,13 @@
 from typing import Literal
 
 from galaxy.schema.schema import CreateWorkflowLandingRequestPayload
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     RunsWorkflows,
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestWorkflowLanding(SeleniumTestCase, RunsWorkflows, UsesUploadActivity):

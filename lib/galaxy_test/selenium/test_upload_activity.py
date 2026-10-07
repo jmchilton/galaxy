@@ -1,5 +1,6 @@
 """Integration coverage for the new Upload Activity."""
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.decorators import (
     requires_admin,
     requires_new_history,
@@ -10,7 +11,6 @@ from .framework import (
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestUploadActivity(SeleniumTestCase, UsesUploadActivity, UsesHistoryItemAssertions):
