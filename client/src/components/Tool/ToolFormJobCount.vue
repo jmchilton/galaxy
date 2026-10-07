@@ -22,7 +22,7 @@ const warnings = computed(() => notices.value.filter((n) => n.variant === "warni
 </script>
 
 <template>
-    <div class="tool-form-job-count">
+    <div class="tool-form-job-count" :class="{ 'mb-4': notices.length }">
         <!-- Always mounted so screen readers announce count changes. -->
         <div role="status" aria-live="polite" aria-atomic="true">
             <div
