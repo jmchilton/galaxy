@@ -5,6 +5,7 @@ from shutil import rmtree
 from tempfile import mkdtemp
 
 import pytest
+import yaml
 from packaging.requirements import Requirement
 
 from galaxy.dependencies import (
@@ -76,6 +77,17 @@ OBJECT_STORE_TEMPLATES_CONFIG = """
       project_name: '{{ variables.project_name }}'
     bucket:
       name: '{{ variables.container }}'
+"""
+DROPBOX_FILE_SOURCE_TEMPLATE = """
+id: dropbox
+name: Dropbox
+description: Your Dropbox files
+secrets:
+  access_token:
+    help: Dropbox access token.
+configuration:
+  type: dropbox
+  accessToken: "{{ secrets.access_token }}"
 """
 FILES_SOURCES_CONFIG = """
 - type: webdav
@@ -282,6 +294,36 @@ def test_fs_configured():
         assert cds.check_webdav4()
         assert cds.check_arcfs_fsspec()
         assert cds.check_fs_irods()
+
+
+def test_object_store_templates_config_dir_installs_their_dependencies():
+    with _config_context() as cc:
+        templates_dir = os.path.join(cc.tempdir, "object_store_templates.d")
+        os.mkdir(templates_dir)
+        cc.write_config("object_store_templates.d/stores.yml", OBJECT_STORE_TEMPLATES_CONFIG)
+        config = {
+            "object_store_templates_config_dir": templates_dir,
+        }
+        cds = cc.get_cond_deps(config)
+        assert cds.check_azure_storage()
+        assert cds.extras("cloudbridge") == ["openstack"]
+
+
+def test_default_file_source_templates_config_dir_installs_their_dependencies():
+    with _config_context() as cc:
+        os.mkdir(os.path.join(cc.tempdir, "file_source_templates.d"))
+        cc.write_config("file_source_templates.d/dropbox.yml", DROPBOX_FILE_SOURCE_TEMPLATE)
+        cds = cc.get_cond_deps()
+        assert cds.check_dropboxdrivefs()
+
+
+def test_inline_file_source_templates_install_their_dependencies():
+    with _config_context() as cc:
+        config = {
+            "file_source_templates": [yaml.safe_load(DROPBOX_FILE_SOURCE_TEMPLATE)],
+        }
+        cds = cc.get_cond_deps(config)
+        assert cds.check_dropboxdrivefs()
 
 
 def test_yaml_jobconf_runners():

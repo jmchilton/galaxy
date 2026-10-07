@@ -573,7 +573,9 @@ _ATTR_TYPE_OVERRIDES: dict[str, dict[str, str]] = {
         "tool_dependency_dir": "str | None",
         # Config file paths that are optional (not required to be set)
         "file_source_templates_config_file": "str | None",
+        "file_source_templates_config_dir": "str | None",
         "object_store_templates_config_file": "str | None",
+        "object_store_templates_config_dir": "str | None",
         "amqp_internal_connection": "str | None",
         # seq attrs with more specific element types
         "file_source_templates": "list[dict[str, Any]] | None",

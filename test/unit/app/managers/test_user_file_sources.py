@@ -64,6 +64,7 @@ SIMPLE_FILE_SOURCE_DESCRIPTION = "a description of my file source"
 class Config:
     file_source_templates: list[RawTemplateConfig] | None = None
     file_source_templates_config_file: str | None = None
+    file_source_templates_config_dir: str | None = None
 
     def __init__(self, templates: list[RawTemplateConfig]):
         self.file_source_templates = templates

@@ -1,15 +1,13 @@
-import os
 from typing import (
     Protocol,
 )
-
-from yaml import safe_load
 
 from galaxy.util.config_templates import (
     apply_syntactic_sugar,
     find_template,
     find_template_by,
     InstanceDefinition,
+    load_raw_template_configs,
     RawTemplateConfig,
     TemplateReference,
     validate_secrets_and_variables,
@@ -28,6 +26,7 @@ SECRETS_NEED_VAULT_MESSAGE = "The file source templates configuration can not be
 class AppConfigProtocol(Protocol):
     file_source_templates: list[RawTemplateConfig] | None
     file_source_templates_config_file: str | None
+    file_source_templates_config_dir: str | None
 
 
 class ConfiguredFileSourceTemplates:
@@ -38,14 +37,11 @@ class ConfiguredFileSourceTemplates:
 
     @staticmethod
     def from_app_config(config: AppConfigProtocol, vault_configured=None) -> "ConfiguredFileSourceTemplates":
-        raw_config = config.file_source_templates
-        if raw_config is None:
-            config_file = config.file_source_templates_config_file
-            if config_file and os.path.exists(config_file):
-                with open(config_file) as f:
-                    raw_config = safe_load(f)
-        if raw_config is None:
-            raw_config = []
+        raw_config = load_raw_template_configs(
+            config.file_source_templates,
+            config.file_source_templates_config_file,
+            config.file_source_templates_config_dir,
+        )
         catalog = raw_config_to_catalog(raw_config)
         verify_vault_configured_if_uses_secrets(
             catalog,

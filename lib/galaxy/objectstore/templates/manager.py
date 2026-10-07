@@ -1,7 +1,4 @@
-import os
-
 from typing_extensions import Protocol
-from yaml import safe_load
 
 from galaxy.objectstore.badges import serialize_badges
 from galaxy.util.config_templates import (
@@ -9,6 +6,7 @@ from galaxy.util.config_templates import (
     find_template,
     find_template_by,
     InstanceDefinition,
+    load_raw_template_configs,
     RawTemplateConfig,
     TemplateReference,
     validate_secrets_and_variables,
@@ -24,6 +22,7 @@ from .models import (
 class AppConfigProtocol(Protocol):
     object_store_templates: list[RawTemplateConfig] | None
     object_store_templates_config_file: str | None
+    object_store_templates_config_dir: str | None
 
 
 SECRETS_NEED_VAULT_MESSAGE = "The object store templates configuration can not be used - a Galaxy vault must be configured for templates that use secrets - please set the vault_config_file configuration option to point at a valid vault configuration."
@@ -37,14 +36,11 @@ class ConfiguredObjectStoreTemplates:
 
     @staticmethod
     def from_app_config(config: AppConfigProtocol, vault_configured=None) -> "ConfiguredObjectStoreTemplates":
-        raw_config = config.object_store_templates
-        if raw_config is None:
-            config_file = config.object_store_templates_config_file
-            if config_file and os.path.exists(config_file):
-                with open(config_file) as f:
-                    raw_config = safe_load(f)
-        if raw_config is None:
-            raw_config = []
+        raw_config = load_raw_template_configs(
+            config.object_store_templates,
+            config.object_store_templates_config_file,
+            config.object_store_templates_config_dir,
+        )
         catalog = raw_config_to_catalog(raw_config)
         verify_vault_configured_if_uses_secrets(
             catalog,

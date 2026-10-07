@@ -29,6 +29,7 @@ SIMPLE_FILE_SOURCE_DESCRIPTION = "a description of my object store"
 class Config:
     object_store_templates: list[RawTemplateConfig] | None = None
     object_store_templates_config_file: str | None = None
+    object_store_templates_config_dir: str | None = None
 
     def __init__(self, templates: list[RawTemplateConfig]):
         self.object_store_templates = templates

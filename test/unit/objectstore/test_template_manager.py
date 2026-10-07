@@ -6,9 +6,10 @@ from .test_template_models import (
 
 
 class MockConfig:
-    def __init__(self, config_path):
+    def __init__(self, config_path, config_dir=None):
         self.object_store_templates = None
         self.object_store_templates_config_file = config_path
+        self.object_store_templates_config_dir = config_dir
 
 
 def test_manager(tmpdir):
@@ -56,3 +57,12 @@ def test_manager_does_not_throw_exception_if_vault_is_not_required(tmpdir):
     except Exception as e:
         exc = e
     assert exc is None
+
+
+def test_manager_loads_config_dir(tmpdir):
+    config_dir = tmpdir / "object_store_templates.d"
+    config_dir.mkdir()
+    (config_dir / "disks.yml").write_text(LIBRARY_2, "utf-8")
+    config = MockConfig(str(tmpdir / "missing.yml"), config_dir=str(config_dir))
+    templates = ConfiguredObjectStoreTemplates.from_app_config(config)
+    assert [t.id for t in templates.catalog.root] == ["general_disk", "secure_disk"]

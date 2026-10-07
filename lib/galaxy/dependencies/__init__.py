@@ -28,7 +28,10 @@ from galaxy.util import (
     parse_xml,
     which,
 )
-from galaxy.util.config_templates import apply_syntactic_sugar
+from galaxy.util.config_templates import (
+    apply_syntactic_sugar,
+    load_raw_template_configs,
+)
 from galaxy.util.properties import (
     find_config_file,
     load_app_properties,
@@ -201,13 +204,12 @@ class ConditionalDependencies(BaseConditionalDependencies):
         # Parse object store templates config. Stores offered as templates need
         # their dependencies as much as ones configured in object_store_conf.
         try:
-            object_store_templates_conf = self.config.get("object_store_templates")
-            if object_store_templates_conf is None:
-                object_store_templates_conf_yml = self.config_object.object_store_templates_config_file
-                if object_store_templates_conf_yml and exists(object_store_templates_conf_yml):
-                    with open(object_store_templates_conf_yml) as f:
-                        object_store_templates_conf = yaml.safe_load(f)
-            for object_store_template in apply_syntactic_sugar(object_store_templates_conf or []):
+            object_store_templates_conf = load_raw_template_configs(
+                self.config_object.object_store_templates,
+                self.config_object.object_store_templates_config_file,
+                self.config_object.object_store_templates_config_dir,
+            )
+            for object_store_template in apply_syntactic_sugar(object_store_templates_conf):
                 configuration = object_store_template.get("configuration") or {}
                 if "type" in configuration:
                     self.collect_object_store(configuration)
@@ -253,12 +255,13 @@ class ConditionalDependencies(BaseConditionalDependencies):
         self.file_sources = [c.get("type", None) for c in file_sources_conf]
 
         # Parse file source templates config
-        file_source_templates_conf_yml = self.config_object.file_source_templates_config_file
-        if file_source_templates_conf_yml and exists(file_source_templates_conf_yml):
-            with open(file_source_templates_conf_yml) as f:
-                file_source_templates_conf = apply_syntactic_sugar(yaml.safe_load(f))
-            for file_source_template in file_source_templates_conf:
-                self.file_sources.append(file_source_template["configuration"].get("type"))
+        file_source_templates_conf = load_raw_template_configs(
+            self.config_object.file_source_templates,
+            self.config_object.file_source_templates_config_file,
+            self.config_object.file_source_templates_config_dir,
+        )
+        for file_source_template in apply_syntactic_sugar(file_source_templates_conf):
+            self.file_sources.append(file_source_template["configuration"].get("type"))
 
         # Parse vault config
         vault_conf_yml = self.config_object.vault_config_file

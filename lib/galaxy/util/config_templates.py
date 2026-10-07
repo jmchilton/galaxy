@@ -315,6 +315,34 @@ def _clean_template_meta_parameters(config: RawTemplateConfig) -> RawTemplateCon
     return config
 
 
+TEMPLATE_CONFIG_DIR_EXTENSIONS = (".yml", ".yaml")
+
+
+def load_raw_template_configs(
+    inline: list[RawTemplateConfig] | None,
+    config_file: str | None,
+    config_dir: str | None,
+) -> list[RawTemplateConfig]:
+    """Collect an admin's templates from Galaxy's config.
+
+    Inline templates replace both files. Otherwise templates in ``config_file``
+    come first, followed by each YAML file in ``config_dir`` (sorted by name)
+    as an ``include`` - expanded by :func:`apply_syntactic_sugar`.
+    """
+    if inline is not None:
+        return inline
+    raw_templates: list[RawTemplateConfig] = []
+    if config_file and os.path.exists(config_file):
+        with open(config_file) as f:
+            raw_templates.extend(yaml.safe_load(f) or [])
+    if config_dir and os.path.isdir(config_dir):
+        for filename in sorted(os.listdir(config_dir)):
+            if filename.startswith(".") or not filename.endswith(TEMPLATE_CONFIG_DIR_EXTENSIONS):
+                continue
+            raw_templates.append({"include": os.path.join(config_dir, filename)})
+    return raw_templates
+
+
 # cwl-like - convert simple dictionary to list of dictionaries for quickly
 # configuring variables and secrets
 def apply_syntactic_sugar(raw_templates: list[RawTemplateConfig]) -> list[RawTemplateConfig]:

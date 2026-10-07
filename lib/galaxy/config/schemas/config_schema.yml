@@ -676,6 +676,18 @@ mapping:
         desc: |
           Configured Object Store templates configuration file.
 
+      object_store_templates_config_dir:
+        type: str
+        default: object_store_templates.d
+        path_resolves_to: config_dir
+        required: false
+        desc: |
+          Directory of Object Store template configuration files. Each ``.yml`` or
+          ``.yaml`` file in it (a single template or a list of templates) is loaded
+          in filename order after the templates in object_store_templates_config_file,
+          so templates can be added or removed by copying or deleting files.
+          Like object_store_templates_config_file, ignored when object_store_templates is set.
+
       object_store_templates:
         type: seq
         sequence:
@@ -690,6 +702,18 @@ mapping:
         required: false
         desc: |
           Configured user file source templates configuration file.
+
+      file_source_templates_config_dir:
+        type: str
+        default: file_source_templates.d
+        path_resolves_to: config_dir
+        required: false
+        desc: |
+          Directory of user file source template configuration files. Each ``.yml`` or
+          ``.yaml`` file in it (a single template or a list of templates) is loaded
+          in filename order after the templates in file_source_templates_config_file,
+          so templates can be added or removed by copying or deleting files.
+          Like file_source_templates_config_file, ignored when file_source_templates is set.
 
       file_source_templates:
         type: seq

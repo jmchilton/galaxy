@@ -73,8 +73,10 @@ class GalaxyAppConfigurationAttributes:
     file_sources_config_file: str
     file_sources: list[Any]
     object_store_templates_config_file: str | None
+    object_store_templates_config_dir: str | None
     object_store_templates: list[dict[str, Any]] | None
     file_source_templates_config_file: str | None
+    file_source_templates_config_dir: str | None
     file_source_templates: list[dict[str, Any]] | None
     user_config_templates_use_saved_configuration: str
     enable_mulled_containers: bool

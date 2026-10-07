@@ -31,8 +31,13 @@ your users do not need to navigate seemingly unrelated preferences to get plugin
 Galaxy's object store templates are configured as a YAML list of template objects. This list
 can be placed `object_store_templates.yml` in Galaxy configuration directory (or any path
 pointed to by the configuration option `object_store_templates_config_file` in `galaxy.yml`).
+Templates can also be dropped into the `object_store_templates.d` directory in Galaxy's
+configuration directory (or any directory pointed to by `object_store_templates_config_dir`), one
+or more templates per `.yml`/`.yaml` file. These files are loaded in filename order after the
+templates in `object_store_templates_config_file`, so templates can be added or removed by copying
+or deleting files.
 Alternatively, the configuration can be placed directly into `galaxy.yml` using the
-`object_store_templates` configuration option.
+`object_store_templates` configuration option - this replaces both the file and the directory.
 
 :::{admonition} Warning
 :class: warning
@@ -329,8 +334,13 @@ layer provided by Google and lots of links to relevant Google Cloud Storage docu
 Galaxy's file source templates are configured as a YAML list of template objects. This list
 can be placed `file_source_templates.yml` in Galaxy configuration directory (or any path
 pointed to by the configuration option `file_source_templates_config_file` in `galaxy.yml`).
+Templates can also be dropped into the `file_source_templates.d` directory in Galaxy's
+configuration directory (or any directory pointed to by `file_source_templates_config_dir`), one
+or more templates per `.yml`/`.yaml` file. These files are loaded in filename order after the
+templates in `file_source_templates_config_file`, so templates can be added or removed by copying
+or deleting files.
 Alternatively, the configuration can be placed directly into `galaxy.yml` using the
-`file_source_templates` configuration option.
+`file_source_templates` configuration option - this replaces both the file and the directory.
 
 A template can define `form_alerts` to show administrator-authored Markdown alerts while a
 user creates an instance. Each alert has a Bootstrap `variant` and optional `condition`; alerts
@@ -692,6 +702,7 @@ OneDrive for your Galaxy instance.
 ```{literalinclude} ../../../lib/galaxy/files/templates/examples/production_onedrive.yml
 :language: yaml
 ```
+
 or
 
 ```{literalinclude} ../../../lib/galaxy/files/templates/examples/production_onedrive_full.yml
@@ -753,7 +764,7 @@ flow. The client ID and client secret identify your Galaxy application to Micros
 but file access is performed with per-user delegated access and refresh tokens.
 
 To configure full-drive access instead of the default app-folder mode, you need to
-change both the Galaxy yml config template and the Microsoft Entra app registration. 
+change both the Galaxy yml config template and the Microsoft Entra app registration.
 In Galaxy yml config, set `drive_mode: full` and request a broader OAuth scope such as
 `oauth2_scope: "offline_access Files.ReadWrite"`. In Microsoft Entra, grant the
 matching delegated Microsoft Graph permission (`Files.ReadWrite` instead of
