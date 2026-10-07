@@ -188,6 +188,44 @@ Run tests from the package directory::
     monorepo root. Running from root can cause fixture scope issues.
 
 
+Driving Galaxy with gxui
+-----------------------
+
+``galaxy-selenium`` includes ``gxui``, a command-line interface that keeps a Galaxy
+browser context in a session daemon. It uses the same navigation methods and
+smart components as the end-to-end tests, without requiring ``galaxy-test-selenium``.
+
+Install the package and Playwright's browser, then start a session::
+
+    pip install galaxy-selenium
+    playwright install chromium
+    gxui --session tutorial start --url http://localhost:8080
+    gxui --session tutorial help
+    gxui --session tutorial login learner@example.org --password PASSWORD
+    gxui --session tutorial history-new "My Analysis"
+    gxui --session tutorial stop
+
+The client can also run as ``python -m galaxy.selenium.gxui.client``. Pass
+``--config galaxy_selenium_context.yml`` to ``start`` to load login credentials
+instead of passing them on the command line. Bare ``gxui`` reports session status;
+``gxui help`` lists verbs, and ``gxui help VERB`` describes their arguments.
+
+Reusable upload helpers are available independently of the daemon::
+
+    from galaxy.selenium.context import GalaxySeleniumContextImpl
+    from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
+
+    class UploadSession(GalaxySeleniumContextImpl, UsesUploadActivity):
+        pass
+
+    session = UploadSession({"driver": {"backend_type": "playwright", "headless": True}})
+    try:
+        session.home()
+        session.upload_context("paste-content").stage_paste_content("example data").start()
+    finally:
+        session.configured_driver.quit()
+
+
 Building CLI Tools
 ------------------
 

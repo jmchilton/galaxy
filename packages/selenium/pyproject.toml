@@ -48,6 +48,7 @@ test = [
 ]
 
 [project.scripts]
+gxui = "galaxy.selenium.gxui.client:main"
 gx-dump-tour = "galaxy.selenium.scripts.dump_tour:main"
 
 [project.urls]

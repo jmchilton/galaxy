@@ -7,11 +7,10 @@ from typing import cast
 from galaxy.selenium.context import GalaxySeleniumContextImpl
 from galaxy.selenium.has_playwright_driver import HasPlaywrightDriver
 from galaxy.selenium.smart_components import SmartTarget
-from galaxy_test.selenium.framework import RunsWorkflows
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 
 
-class GxuiContext(GalaxySeleniumContextImpl, RunsWorkflows, UsesUploadActivity):
+class GxuiContext(GalaxySeleniumContextImpl, UsesUploadActivity):
     def __init__(self, from_dict: dict, artifacts: str) -> None:
         super().__init__(from_dict)
         self.artifacts = artifacts

@@ -12,12 +12,12 @@ import pytest
 
 import galaxy.selenium
 from galaxy.selenium.navigates_galaxy import ToolFormParameter
-from galaxy_test.selenium.gxui.context import (
+from galaxy.selenium.gxui.context import (
     _QUOTED_ARGUMENT,
     GxuiContext,
 )
-from galaxy_test.selenium.gxui.daemon import _summarize
-from galaxy_test.selenium.gxui.verbs import (
+from galaxy.selenium.gxui.daemon import _summarize
+from galaxy.selenium.gxui.verbs import (
     _auto,
     _describe_line,
     _history_id,
@@ -93,7 +93,7 @@ def gxui(tmp_path):
 
     def run(*argv, check=True):
         result = subprocess.run(
-            [sys.executable, "-m", "galaxy_test.selenium.gxui.client", *argv], env=env, capture_output=True, text=True
+            [sys.executable, "-m", "galaxy.selenium.gxui.client", *argv], env=env, capture_output=True, text=True
         )
         if check:
             assert result.returncode == 0, result.stderr
@@ -197,7 +197,7 @@ def test_component_rejects_unknown_actions_before_touching_the_page():
 def test_last_reports_a_running_verb(gxui, fixture_url):
     gxui("start", "--url", fixture_url, "--idle-timeout", "0", "--timeout-multiplier", "0.5")
     env_run = subprocess.Popen(
-        [sys.executable, "-m", "galaxy_test.selenium.gxui.client", "call", "wait_for_selector_visible", "#nope"],
+        [sys.executable, "-m", "galaxy.selenium.gxui.client", "call", "wait_for_selector_visible", "#nope"],
         env={**os.environ, **gxui.env},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
