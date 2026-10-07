@@ -111,24 +111,25 @@ export function itemUniqueKey(item: Pick<DataOption, "id" | "src" | "map_over_ty
 }
 
 /**
- * Find the option for a value: the entry mapped over the same way, else any entry for the same item.
- * Server-provided values carry no map-over type, so they resolve to the first (direct) entry.
+ * Find the option for a value: the entry mapped over the same way, else one that is likewise mapped
+ * over (or not), else any entry for the same item. Server-provided values carry no map-over type,
+ * so they resolve to the direct entry.
  */
 export function findDataOption<T>(
     items: T[],
     value: Pick<DataOption, "id" | "src" | "map_over_type">,
     toOption: (item: T) => DataOption | null | undefined,
 ): T | undefined {
+    const candidates = items.filter((item) => {
+        const option = toOption(item);
+        return !!option && option.id === value.id && option.src === value.src;
+    });
     const key = itemUniqueKey(value);
+    const mapsOver = !!value.map_over_type;
     return (
-        items.find((item) => {
-            const option = toOption(item);
-            return !!option && itemUniqueKey(option) === key;
-        }) ??
-        items.find((item) => {
-            const option = toOption(item);
-            return !!option && option.id === value.id && option.src === value.src;
-        })
+        candidates.find((item) => itemUniqueKey(toOption(item)!) === key) ??
+        candidates.find((item) => !!toOption(item)!.map_over_type === mapsOver) ??
+        candidates[0]
     );
 }
 

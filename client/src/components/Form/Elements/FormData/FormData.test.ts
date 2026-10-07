@@ -688,7 +688,7 @@ describe("FormData", () => {
             expect(markers).toEqual([
                 "one job per dataset pair",
                 "one job per dataset",
-                "one job per list:list element",
+                "one job per nested list:list",
             ]);
         });
 
@@ -738,6 +738,89 @@ describe("FormData", () => {
             await wrapper.vm.$nextTick();
             await openMultiselect(wrapper);
             expect(wrapper.findAll(SELECT_OPTIONS).length).toBe(1);
+        });
+
+        it("keeps a value mapped over a type no longer listed on a mapped-over entry", async () => {
+            const wrapper = createTarget({
+                ...nestedListProps,
+                value: { values: [{ id: "hdcaLL", src: "hdca", map_over_type: "paired" }] },
+            });
+            await wrapper.vm.$nextTick();
+            expect(emittedArg(wrapper, "input", -1)).toEqual({
+                batch: true,
+                product: false,
+                values: [{ id: "hdcaLL", map_over_type: "list", src: "hdca" }],
+            });
+        });
+
+        it("maps a dropped collection over the deepest accepted type, like the server", async () => {
+            const wrapper = createTarget({ ...nestedListProps, options: { hdca: [] }, value: null });
+            await wrapper.vm.$nextTick();
+            const before = wrapper.emitted("input")?.length ?? 0;
+            eventStore.setDragData({
+                id: "hdcaLLL",
+                hid: 10,
+                name: "deep",
+                history_content_type: "dataset_collection",
+                collection_type: "list:list:list",
+            });
+            dispatchEvent(wrapper, "dragenter");
+            dispatchEvent(wrapper, "drop");
+            expect(emittedArg(wrapper, "input", before)).toEqual({
+                batch: true,
+                product: false,
+                values: [{ id: "hdcaLLL", map_over_type: "list:list", src: "hdca" }],
+            });
+        });
+
+        it("lets the listed entry replace a dropped collection once its page loads", async () => {
+            const wrapper = createTarget({ multiple: true, value: null, options: { hdca: [] } });
+            await wrapper.vm.$nextTick();
+            eventStore.setDragData({
+                id: "hdcaLL",
+                hid: 9,
+                name: "nested",
+                history_content_type: "dataset_collection",
+                collection_type: "list:list",
+            });
+            dispatchEvent(wrapper, "dragenter");
+            dispatchEvent(wrapper, "drop");
+            const dropped = emittedArg(wrapper, "input", -1);
+            await wrapper.setProps({
+                value: dropped,
+                options: { hdca: [{ id: "hdcaLL", hid: 9, name: "nested", src: "hdca", map_over_type: "list" }] },
+            });
+            await wrapper.vm.$nextTick();
+            expect(emittedArg(wrapper, "input", -1)).toEqual({
+                batch: true,
+                product: false,
+                values: [{ id: "hdcaLL", map_over_type: "list", src: "hdca" }],
+            });
+            await openMultiselect(wrapper);
+            const options = wrapper.findAll(SELECT_OPTIONS);
+            expect(options.length).toBe(1);
+            expect(nth(options, 0).find(MAP_OVER_MARKER).text()).toBe("one job per list");
+        });
+
+        it("submits a collection once even when both its entries are selected", async () => {
+            const wrapper = createTarget({
+                multiple: true,
+                options: nestedListProps.options,
+                value: {
+                    values: [
+                        { id: "hdcaLL", src: "hdca" },
+                        { id: "hdcaLL", src: "hdca", map_over_type: "list" },
+                    ],
+                },
+            });
+            await wrapper.vm.$nextTick();
+            for (const value of allEmitted(wrapper)) {
+                expect(value).toEqual({
+                    batch: false,
+                    product: false,
+                    values: [{ id: "hdcaLL", map_over_type: null, src: "hdca" }],
+                });
+            }
         });
 
         it("marks map-over entries in the column select", async () => {
@@ -847,7 +930,7 @@ describe("FormData", () => {
             });
             await wrapper.vm.$nextTick();
             expect(hintText(wrapper)).toBe(
-                "The selected list:list:list collection will be mapped over this tool: one job per list:list element.",
+                "The selected list:list:list collection will be mapped over this tool: one job per nested list:list.",
             );
         });
 

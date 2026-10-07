@@ -257,18 +257,16 @@ const formattedOptions = computed(() => {
         // Populate keep-options from cache
         Object.values(keepOptions).forEach((option) => {
             if (option.value && getSourceType(option.value) === currentSource.value) {
-                // check if the same option is already in result, if yes replace it with keepOption
-                const key = itemUniqueKey(option.value);
-                const existingOptionIndex = result.findIndex((v) => v.value && itemUniqueKey(v.value) === key);
-                if (existingOptionIndex >= 0) {
-                    const existingOption = result[existingOptionIndex];
-                    if (existingOption?.value && shouldPreferCanonicalOption(existingOption.value, option.value)) {
-                        return;
-                    }
-                    result[existingOptionIndex] = option;
-                } else {
+                const existingOption = findDataOption(result, option.value, (v) => v.value);
+                if (!existingOption?.value) {
                     result.unshift(option);
+                } else if (itemUniqueKey(existingOption.value) === itemUniqueKey(option.value)) {
+                    // same option already listed, replace it with keepOption unless the listed one is better
+                    if (!shouldPreferCanonicalOption(existingOption.value, option.value)) {
+                        result[result.indexOf(existingOption)] = option;
+                    }
                 }
+                // otherwise the server lists this item mapped over differently than the client built it; keep the server's
             }
         });
         // Add optional entry
@@ -288,7 +286,7 @@ const formattedOptions = computed(() => {
 const isToolForm = computed(() => !props.flavor && !props.workflowRun);
 
 /**
- * Marks options the tool would map over, naming what each job receives. Collections on a dataset
+ * Marks options the tool would map over, naming what each job receives. Collections on a single-dataset
  * input's collection field all map over, so they carry no marker; the field hint covers them.
  */
 function mapOverMarker(value: DataOption | null): string | undefined {
@@ -453,9 +451,9 @@ function createValue(val?: Array<DataOption> | DataOption | null) {
     if (val) {
         let values = Array.isArray(val) ? val : [val];
 
-        // Remove duplicates
+        // Submit each item once, even if it was picked both directly and mapped over
         values = values.filter(
-            (value, index, self) => index === self.findIndex((v) => itemUniqueKey(v) === itemUniqueKey(value)),
+            (value, index, self) => index === self.findIndex((v) => v.id === value.id && v.src === value.src),
         );
 
         if (variant.value && values.length > 0 && values[0]) {
@@ -641,9 +639,10 @@ function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
     if (isHistoryItem(v) && isHDCA(v) && props.collectionTypes?.length > 0) {
         const itemCollectionType = v.collection_type;
         if (!props.collectionTypes.includes(itemCollectionType as CollectionType)) {
-            const mapOverType = props.collectionTypes.find((collectionType) =>
-                itemCollectionType.endsWith(collectionType),
-            );
+            // like the server, map over the deepest accepted type so each job gets as much data as possible
+            const mapOverType = [...props.collectionTypes]
+                .sort((a, b) => b.split(":").length - a.split(":").length)
+                .find((collectionType) => itemCollectionType.endsWith(collectionType));
             if (!mapOverType) {
                 return null;
             }
@@ -1194,7 +1193,8 @@ const noOptionsWarningMessage = computed(() => {
                             {{ noOptionsWarningMessage }}
                         </GAlert>
                     </template>
-                    <template v-slot:after-label="{ option }">
+                    <template v-slot:label-area="{ option }">
+                        <span>{{ option.label }}</span>
                         <span v-if="mapOverMarker(option.value)" class="form-data-map-over-marker">
                             {{ mapOverMarker(option.value) }}
                         </span>
@@ -1225,7 +1225,8 @@ const noOptionsWarningMessage = computed(() => {
                             {{ noOptionsWarningMessage }}
                         </GAlert>
                     </template>
-                    <template v-slot:after-label="{ option }">
+                    <template v-slot:label-area="{ option }">
+                        <span>{{ option.label }}</span>
                         <span v-if="mapOverMarker(option.value)" class="form-data-map-over-marker">
                             {{ mapOverMarker(option.value) }}
                         </span>
