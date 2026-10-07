@@ -132,6 +132,22 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         assert self.dataset_populator.get_history_dataset_content(history_id, hid=3) == "first\nsecond\n"
 
     @selenium_test
+    def test_tool_form_parameters_match_form(self):
+        self.home()
+        self.tool_open("gx_conditional_select")
+        parameters = self.tool_form_parameters("gx_conditional_select")
+        test_path = "conditional_parameter|test_parameter"
+        shown = [p.path for p in parameters if p.condition in (None, f"{test_path}=a")]
+        assert shown == [test_path, "conditional_parameter|integer_parameter"]
+        for path in shown:
+            self.components.tool_form.parameter_div(parameter=path).wait_for_visible()
+
+        boolean = next(p for p in parameters if p.condition == f"{test_path}=b")
+        self.tool_form_fill(values={test_path: "b", boolean.path: True})
+        checkbox = self.components.tool_form.parameter_checkbox_input(parameter=boolean.path).wait_for_present()
+        assert checkbox.is_selected()
+
+    @selenium_test
     def test_repeat_reordering(self):
         self.home()
         self.tool_open("text_repeat")
