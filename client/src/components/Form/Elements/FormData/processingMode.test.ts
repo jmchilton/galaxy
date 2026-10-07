@@ -27,6 +27,8 @@ describe("getProcessingMode", () => {
         expect(getProcessingMode(variant("data", 1), "data", [hda, option("hda2", "hda")])).toEqual({
             kind: "batch",
             source: "datasets",
+            hasSelection: true,
+            perItem: true,
         });
     });
 
@@ -34,19 +36,26 @@ describe("getProcessingMode", () => {
         expect(getProcessingMode(variant("data", 2), "data", [flatList])).toEqual({
             kind: "batch",
             source: "collection",
+            hasSelection: true,
+            perItem: false,
             collectionType: "list",
         });
     });
 
-    it("processes multiple datasets or a flat list together in a multiple input", () => {
+    it("processes multiple datasets or flat lists together in a multiple input", () => {
         expect(getProcessingMode(variant("data_multiple", 0), "data", [hda])).toEqual({
             kind: "bulk",
             source: "datasets",
+            hasSelection: true,
+            plural: false,
             canNest: true,
         });
-        expect(getProcessingMode(variant("data_multiple", 1), "data", [flatList])).toEqual({
+        const otherList = option("hdca6", "hdca", { collection_type: "list" });
+        expect(getProcessingMode(variant("data_multiple", 1), "data", [flatList, otherList])).toEqual({
             kind: "bulk",
             source: "collection",
+            hasSelection: true,
+            plural: true,
             canNest: true,
         });
     });
@@ -56,8 +65,21 @@ describe("getProcessingMode", () => {
         expect(getProcessingMode(variant("data_multiple", 1), "data", [nested])).toEqual({
             kind: "batch",
             source: "collection",
+            hasSelection: true,
+            perItem: false,
             mapOverType: "list",
             collectionType: "list:list",
+        });
+    });
+
+    it("runs one job per selected collection when several are batched", () => {
+        // the server only splits a collection when it is the sole batch value
+        const nested = option("hdca2", "hdca", { map_over_type: "list", collection_type: "list:list" });
+        expect(getProcessingMode(variant("data_multiple", 1), "data", [nested, flatList])).toEqual({
+            kind: "batch",
+            source: "collection",
+            hasSelection: true,
+            perItem: true,
         });
     });
 
@@ -66,13 +88,29 @@ describe("getProcessingMode", () => {
         expect(getProcessingMode(variant("data_collection", 0), "data_collection", [pair], ["paired"])).toEqual({
             kind: "bulk",
             source: "collection",
+            hasSelection: true,
+            plural: false,
             canNest: false,
         });
-        expect(getProcessingMode(variant("data_collection", 0), "data_collection", [flatList], ["list"])).toEqual({
-            kind: "bulk",
-            source: "collection",
-            canNest: true,
-        });
+    });
+
+    it("only suggests nesting when a nested collection would be mapped over", () => {
+        function canNest(collectionTypes: string[]) {
+            const mode = getProcessingMode(
+                variant("data_collection", 0),
+                "data_collection",
+                [flatList],
+                collectionTypes,
+            );
+            return mode?.kind === "bulk" && mode.canNest;
+        }
+        expect(canNest(["list"])).toBe(true);
+        expect(canNest(["list:paired"])).toBe(true);
+        expect(canNest(["paired"])).toBe(false);
+        // untyped collection inputs accept any collection directly, so nothing is mapped over
+        expect(canNest([])).toBe(false);
+        // a nested list matches `list:list` directly
+        expect(canNest(["list", "list:list"])).toBe(false);
     });
 
     it("maps a list of pairs over a paired collection input", () => {
@@ -80,6 +118,8 @@ describe("getProcessingMode", () => {
         expect(getProcessingMode(variant("data_collection", 0), "data_collection", [listPaired], ["paired"])).toEqual({
             kind: "batch",
             source: "collection",
+            hasSelection: true,
+            perItem: false,
             mapOverType: "paired",
         });
     });
@@ -88,15 +128,22 @@ describe("getProcessingMode", () => {
         const list = option("hdca5", "hdca", { map_over_type: "single_datasets", collection_type: "list" });
         expect(
             getProcessingMode(variant("data_collection", 0), "data_collection", [list], ["paired_or_unpaired"]),
-        ).toEqual({ kind: "batch", source: "collection", collectionType: "list" });
+        ).toEqual({ kind: "batch", source: "collection", hasSelection: true, perItem: false, collectionType: "list" });
     });
 
     it("describes the field when nothing is selected yet", () => {
-        expect(getProcessingMode(variant("data_multiple", 0), "data", [])).toMatchObject({ kind: "bulk" });
+        expect(getProcessingMode(variant("data_multiple", 0), "data", [])).toMatchObject({
+            kind: "bulk",
+            hasSelection: false,
+        });
         expect(getProcessingMode(variant("data_collection", 0), "data_collection", [], ["list"])).toMatchObject({
             kind: "bulk",
+            hasSelection: false,
         });
-        expect(getProcessingMode(variant("data", 2), "data", [])).toMatchObject({ kind: "batch" });
+        expect(getProcessingMode(variant("data", 2), "data", [])).toMatchObject({
+            kind: "batch",
+            hasSelection: false,
+        });
         expect(getProcessingMode(variant("data", 0), "data", [])).toBeNull();
     });
 
