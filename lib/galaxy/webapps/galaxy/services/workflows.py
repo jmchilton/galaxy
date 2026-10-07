@@ -629,18 +629,17 @@ class WorkflowsService(ServiceBase):
         incompatible_tool_ids = []
         toolbox = trans.app.toolbox
         for tool_reference in tools:
-            tool_kwds = dict(
+            tool = toolbox.get_tool(
+                tool_reference["tool_id"],
                 tool_version=tool_reference["tool_version"],
                 tool_uuid=tool_reference["tool_uuid"],
                 exact=require_exact_tool_versions,
                 user=trans.user,
             )
-            if not toolbox.has_tool(tool_reference["tool_id"], **tool_kwds):
+            if tool is None:
                 missing_tools.append(tool_reference)
-                continue
-            tool = toolbox.get_tool(tool_reference["tool_id"], **tool_kwds)
-            if tool is not None and not tool.is_workflow_compatible:
-                incompatible_tool_ids.append(tool.id)
+            elif not tool.is_workflow_compatible:
+                incompatible_tool_ids.append(tool_reference["tool_id"])
         if missing_tools:
             missing_tools_message = "Workflow was not invoked; the following required tools are not installed: "
             if require_exact_tool_versions:
