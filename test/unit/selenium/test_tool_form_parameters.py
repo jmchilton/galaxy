@@ -1,6 +1,7 @@
 """Flattening a tool's build model into the parameter paths tool_form_fill takes."""
 
 from galaxy.selenium.navigates_galaxy import (
+    NavigatesGalaxy,
     tool_form_parameters_from_build,
     ToolFormParameter,
 )
@@ -111,3 +112,23 @@ def test_section_and_repeat_instances_use_form_prefixes():
         ("the_repeat_0|texttest", "one"),
         ("the_repeat_1|texttest", "two"),
     ]
+
+
+class _BuildApi:
+    def __init__(self):
+        self.endpoints = []
+
+    def api_get(self, endpoint):
+        self.endpoints.append(endpoint)
+        return {"inputs": [{"name": "inttest", "type": "integer", "label": "Int", "value": 42}]}
+
+    def current_history_id(self):
+        return "h1"
+
+
+def test_parameters_come_from_the_tool_or_from_a_job_to_rerun():
+    api = _BuildApi()
+    NavigatesGalaxy.tool_form_parameters(api, "cat1")  # type: ignore[arg-type]
+    rerun = NavigatesGalaxy.tool_form_parameters(api, job_id="j1")  # type: ignore[arg-type]
+    assert api.endpoints == ["tools/cat1/build?history_id=h1", "jobs/j1/build_for_rerun"]
+    assert [(p.path, p.value) for p in rerun] == [("inttest", 42)]
