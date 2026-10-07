@@ -23,9 +23,10 @@ import { type CollectionBuilderType, collectionTypeToText } from "@/components/C
 import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { useUid } from "@/composables/utils/uid";
 import { type EventData, useEventStore } from "@/stores/eventStore";
+import localize from "@/utils/localization";
 import { orList } from "@/utils/strings";
 
-import { getProcessingMode, isBatchSelection } from "./processingMode";
+import { getProcessingMode, isBatchSelection, mapOverUnit } from "./processingMode";
 import type { DataOption, ExtendedCollectionType } from "./types";
 import { containsDataOption, DEFAULT_OPTIONS_PAGE_SIZE, findDataOption, isDataOption, itemUniqueKey } from "./types";
 import { BATCH, SOURCE, VARIANTS } from "./variants";
@@ -254,10 +255,11 @@ const formattedOptions = computed(() => {
             }
         }
         // Populate keep-options from cache
-        Object.entries(keepOptions).forEach(([key, option]) => {
+        Object.values(keepOptions).forEach((option) => {
             if (option.value && getSourceType(option.value) === currentSource.value) {
-                // check if option (with same id) is already in result, if yes replace it with keepOption
-                const existingOptionIndex = result.findIndex((v) => v.value?.id === option.value?.id);
+                // check if the same option is already in result, if yes replace it with keepOption
+                const key = itemUniqueKey(option.value);
+                const existingOptionIndex = result.findIndex((v) => v.value && itemUniqueKey(v.value) === key);
                 if (existingOptionIndex >= 0) {
                     const existingOption = result[existingOptionIndex];
                     if (existingOption?.value && shouldPreferCanonicalOption(existingOption.value, option.value)) {
@@ -284,6 +286,17 @@ const formattedOptions = computed(() => {
 
 /** Tool form inputs, as opposed to workflow run inputs with their own linked/unlinked batch controls */
 const isToolForm = computed(() => !props.flavor && !props.workflowRun);
+
+/**
+ * Marks options the tool would map over, naming what each job receives. Collections on a dataset
+ * input's collection field all map over, so they carry no marker; the field hint covers them.
+ */
+function mapOverMarker(value: DataOption | null): string | undefined {
+    if (!isToolForm.value || !value?.map_over_type) {
+        return undefined;
+    }
+    return `${localize("one job per")} ${localize(mapOverUnit(value.map_over_type))}`;
+}
 
 /**
  * How the tool form will process the selection (one job per item vs. one job overall).
@@ -440,8 +453,10 @@ function createValue(val?: Array<DataOption> | DataOption | null) {
     if (val) {
         let values = Array.isArray(val) ? val : [val];
 
-        // Remove duplicates based on item.id
-        values = values.filter((value, index, self) => index === self.findIndex((v) => v.id === value.id));
+        // Remove duplicates
+        values = values.filter(
+            (value, index, self) => index === self.findIndex((v) => itemUniqueKey(v) === itemUniqueKey(value)),
+        );
 
         if (variant.value && values.length > 0 && values[0]) {
             const isMultiple = values.length > 1;
@@ -551,9 +566,8 @@ function handleIncoming(incoming: SingleOrMultipleHistoryItems, partial = true) 
                     return false;
                 }
                 // Verify that new value has corresponding option
+                const foundOption = findExistingOption(newValue);
                 const keepKey = itemUniqueKey(newValue);
-                const existingOptions = props.options && props.options[newValue.src];
-                const foundOption = existingOptions && existingOptions.find((option) => option.id === newValue.id);
                 if (!foundOption && !isInKeepOptions(keepKey, newValue)) {
                     keepOptions[keepKey] = {
                         label: `${newValue.hid || "Selected"}: ${newValue.name}`,
@@ -562,8 +576,8 @@ function handleIncoming(incoming: SingleOrMultipleHistoryItems, partial = true) 
                     // this is used to trigger an update on formattedOptions
                     keepOptionsUpdate.value++;
                 }
-                // Add new value to list
-                incomingValues.push(newValue);
+                // Add new value to list, as listed by the server (which knows how it maps over)
+                incomingValues.push(foundOption ?? newValue);
             });
             let hasDuplicates = false;
             if (incomingValues.length > 0 && incomingValues[0]) {
@@ -640,20 +654,24 @@ function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
     return newValue;
 }
 
+/** Server-listed option for a value built on the client, preferring one mapped over the same way */
+function findExistingOption(value: DataOption): DataOption | undefined {
+    return findDataOption(props.options?.[value.src] ?? [], value, (option) => option);
+}
+
 /**
  * Normalize an uploaded option by finding matching options in existing props.
  * Returns the canonical option if found, otherwise returns the uploaded option.
  */
 function normalizeOption(option: DataOption): DataOption {
-    const keepKey = itemUniqueKey(option);
-    const existingOptions = props.options?.[option.src];
-    const foundOption = existingOptions?.find((existing) => existing.id === option.id);
+    const foundOption = findExistingOption(option);
 
     if (foundOption) {
         return foundOption;
     }
 
     // Cache new option in keepOptions if not already present
+    const keepKey = itemUniqueKey(option);
     if (!isInKeepOptions(keepKey, option)) {
         keepOptions[keepKey] = {
             label: `${option.hid || "Selected"}: ${option.name}`,
@@ -1007,7 +1025,10 @@ function onDragEnter(evt: DragEvent) {
                 }
                 // Check if the item is already in the current value
                 const option = toDataOption(item);
-                const isAlreadyInValue = containsDataOption(currentValue.value ?? [], option);
+                const isAlreadyInValue = containsDataOption(
+                    currentValue.value ?? [],
+                    option && (findExistingOption(option) ?? option),
+                );
                 if (isAlreadyInValue) {
                     highlightingState = "warning";
                     $emit("alert", `${getNameForItem(item)} is already selected.`);
@@ -1173,6 +1194,12 @@ const noOptionsWarningMessage = computed(() => {
                             {{ noOptionsWarningMessage }}
                         </GAlert>
                     </template>
+                    <template v-slot:label-area="{ option }">
+                        <span>{{ option.label }}</span>
+                        <span v-if="mapOverMarker(option.value)" class="form-data-map-over-marker">
+                            {{ mapOverMarker(option.value) }}
+                        </span>
+                    </template>
                     <template v-if="hasMoreInCurrentSource" v-slot:after-list>
                         <div ref="loadMoreSentinel" class="form-data-load-more-sentinel text-muted text-center py-2">
                             <small v-if="currentSourceTotalEstimate">
@@ -1198,6 +1225,12 @@ const noOptionsWarningMessage = computed(() => {
                         <GAlert class="form-data-no-options-alert" variant="warning" show>
                             {{ noOptionsWarningMessage }}
                         </GAlert>
+                    </template>
+                    <template v-slot:label-area="{ option }">
+                        <span>{{ option.label }}</span>
+                        <span v-if="mapOverMarker(option.value)" class="form-data-map-over-marker">
+                            {{ mapOverMarker(option.value) }}
+                        </span>
                     </template>
                     <template v-if="hasMoreInCurrentSource" v-slot:after-list>
                         <div ref="loadMoreSentinel" class="form-data-load-more-sentinel text-muted text-center py-2">
@@ -1325,6 +1358,17 @@ const noOptionsWarningMessage = computed(() => {
                 padding-left: 5px;
             }
         }
+    }
+
+    // inherits the option's color so it stays readable on highlighted options
+    .form-data-map-over-marker {
+        margin-left: 0.5rem;
+        padding: 0 0.3rem;
+        border: 1px solid currentColor;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        opacity: 0.8;
     }
 
     .form-data-no-options-alert {
