@@ -490,6 +490,54 @@ describe("FormData", () => {
         expect(wrapper.emitted("alert")).toBeUndefined();
     });
 
+    it("rejects list:paired_or_unpaired collection on paired collection input", async () => {
+        const wrapper = createTarget({
+            value: null,
+            options: defaultOptions,
+            type: "data_collection",
+            collectionTypes: ["paired"],
+        });
+        eventStore.setDragData({
+            id: "whatever",
+            history_content_type: "dataset_collection",
+            collection_type: "list:paired_or_unpaired",
+        });
+        dispatchEvent(wrapper, "dragenter");
+        dispatchEvent(wrapper, "drop");
+        expect(emittedArg(wrapper, "alert")).toEqual(
+            "mixed list of paired and unpaired dataset collection is not a valid input for paired type dataset collection parameter.",
+        );
+    });
+
+    it.each([
+        ["list", "single_datasets"],
+        ["list:paired", "paired"],
+    ])("maps a dropped %s over a paired_or_unpaired input like the server", async (collectionType, mapOverType) => {
+        const wrapper = createTarget({
+            value: null,
+            options: { hdca: [] },
+            type: "data_collection",
+            collectionTypes: ["paired_or_unpaired"],
+        });
+        await wrapper.vm.$nextTick();
+        const before = wrapper.emitted("input")?.length ?? 0;
+        eventStore.setDragData({
+            id: "hdcaX",
+            hid: 3,
+            name: "dropped",
+            history_content_type: "dataset_collection",
+            collection_type: collectionType,
+        });
+        dispatchEvent(wrapper, "dragenter");
+        dispatchEvent(wrapper, "drop");
+        expect(wrapper.emitted("alert")).toBeUndefined();
+        expect(emittedArg(wrapper, "input", before)).toEqual({
+            batch: true,
+            product: false,
+            values: [{ id: "hdcaX", map_over_type: mapOverType, src: "hdca" }],
+        });
+    });
+
     it("linked and unlinked batch mode handling", async () => {
         const wrapper = createTarget({
             value: null,

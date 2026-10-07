@@ -26,7 +26,7 @@ import { type EventData, useEventStore } from "@/stores/eventStore";
 import localize from "@/utils/localization";
 import { orList } from "@/utils/strings";
 
-import { getProcessingMode, isBatchSelection, mapOverUnit } from "./processingMode";
+import { getProcessingMode, isBatchSelection, mapOverUnit, matchCollectionType } from "./processingMode";
 import type { DataOption, ExtendedCollectionType } from "./types";
 import { containsDataOption, DEFAULT_OPTIONS_PAGE_SIZE, findDataOption, isDataOption, itemUniqueKey } from "./types";
 import { BATCH, SOURCE, VARIANTS } from "./variants";
@@ -637,17 +637,13 @@ function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
         tags: [],
     };
     if (isHistoryItem(v) && isHDCA(v) && props.collectionTypes?.length > 0) {
-        const itemCollectionType = v.collection_type;
-        if (!props.collectionTypes.includes(itemCollectionType as CollectionType)) {
-            // like the server, map over the deepest accepted type so each job gets as much data as possible
-            const mapOverType = [...props.collectionTypes]
-                .sort((a, b) => b.split(":").length - a.split(":").length)
-                .find((collectionType) => itemCollectionType.endsWith(collectionType));
-            if (!mapOverType) {
-                return null;
-            }
+        const match = matchCollectionType(v.collection_type, props.collectionTypes);
+        if (!match) {
+            return null;
+        }
+        if (match.mapOverType) {
             newValue["batch"] = true;
-            newValue["map_over_type"] = mapOverType;
+            newValue["map_over_type"] = match.mapOverType;
         }
     }
     return newValue;
@@ -913,18 +909,7 @@ function canAcceptSrc(
             // if no collection_type is set all collections are valid
             return true;
         } else {
-            if (props.collectionTypes.includes(collectionType as CollectionType)) {
-                // Check column_definitions compatibility for sample sheets
-                if (
-                    props.extendedCollectionType?.columnDefinitions &&
-                    !columnDefinitionsCompatible(columnDefinitions, props.extendedCollectionType.columnDefinitions)
-                ) {
-                    $emit("alert", "dataset collection has incompatible column definitions for this parameter.");
-                    return false;
-                }
-                return true;
-            }
-            if (props.collectionTypes.some((element) => collectionType.endsWith(element))) {
+            if (matchCollectionType(collectionType, props.collectionTypes)) {
                 // Check column_definitions compatibility for sample sheets
                 if (
                     props.extendedCollectionType?.columnDefinitions &&
