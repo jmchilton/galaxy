@@ -182,6 +182,7 @@ def make_hdca_entry(
         "name": name,
         "src": "hdca",
         "tags": _tag_strings(hdca),
+        "collection_type": hdca.collection.collection_type,
     }
     if keep is not None:
         entry["keep"] = keep

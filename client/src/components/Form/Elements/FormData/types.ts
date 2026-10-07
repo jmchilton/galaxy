@@ -92,6 +92,7 @@ export type DataOption = {
     is_dataset?: boolean;
     keep: boolean;
     batch: boolean;
+    collection_type?: string;
     map_over_type?: string;
     name: string;
     src: string;
