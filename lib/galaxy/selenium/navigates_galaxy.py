@@ -2275,8 +2275,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return None
 
     def _add_repeat_instances(self, repeat_name: str, count: int):
-        for _ in range(count):
-            self.components.tool_form.repeat_insert_named(name=repeat_name).wait_for_and_click()
+        """Make sure ``count`` instances exist; a repeat with a minimum already renders some."""
+        insert = self.components.tool_form.repeat_insert_named(name=repeat_name)
+        insert.wait_for_visible()
+        existing = 0
+        while self.find_elements_by_selector(f'[id^="form-element-{repeat_name}_{existing}|"]'):
+            existing += 1
+        for _ in range(count - existing):
+            insert.wait_for_and_click()
             self.sleep_for(self.wait_types.UX_RENDER)
 
     def _expand_collapsed_sections(self):

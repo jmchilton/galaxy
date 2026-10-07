@@ -70,3 +70,18 @@ def test_tool_form_fill_works_without_an_execute_button():
     )
     NavigatesGalaxy._expand_collapsed_sections(form)
     assert waited == ["header"]
+
+
+def test_repeat_instances_already_on_the_form_count():
+    # A repeat with min=1 renders one instance; paths up to components_2 need two more, not three.
+    clicks = []
+    insert = SimpleNamespace(wait_for_visible=lambda: None, wait_for_and_click=lambda: clicks.append(1))
+    rendered = {'[id^="form-element-components_0|"]'}
+    form = SimpleNamespace(
+        components=SimpleNamespace(tool_form=SimpleNamespace(repeat_insert_named=lambda name: insert)),
+        find_elements_by_selector=lambda selector: [selector] if selector in rendered else [],
+        sleep_for=lambda wait_type: None,
+        wait_types=SimpleNamespace(UX_RENDER=None),
+    )
+    NavigatesGalaxy._add_repeat_instances(form, "components", 3)
+    assert len(clicks) == 2
