@@ -1824,9 +1824,25 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.get("workflows/import")
 
     def workflow_index_open_with_name(self, name: str):
+        """Open the workflow titled ``name`` in the editor, once the search has narrowed the list to it."""
         self.workflow_index_open()
         self.workflow_index_search_for(name)
-        self.components.workflows.edit_button.wait_for_and_click()
+        card = self._wait_on(
+            lambda: self._workflow_card_named(name),
+            f"a workflow card titled [{name}]",
+            wait_type=self.wait_types.DATABASE_OPERATION,
+        )
+        card.find_element(By.CSS_SELECTOR, '[id^="g-card-action-workflow-edit-"]').click()
+
+    def _workflow_card_named(self, name: str):
+        for card in self.components.workflows.workflow_card.all():
+            try:
+                if card.find_element(By.CSS_SELECTOR, '[id^="g-card-title-"] a').text == name:
+                    return card
+            except Exception as e:
+                if not exception_indicates_stale_element(e):
+                    raise
+        return None
 
     def workflow_shared_with_me_open(self):
         self.workflow_index_open()
