@@ -111,6 +111,7 @@ from galaxy.tool_util.parser.output_references import (
     InputReferences,
     OUTPUT_REFERENCE_PARAM_TYPES,
     output_reference_problem,
+    profile_allows_legacy_output_references,
 )
 from galaxy.tool_util.parser.util import (
     parse_profile_version,
@@ -1815,8 +1816,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
 
     @property
     def legacy_output_references(self) -> bool:
-        """Whether output references resolve legacy aliases, and unresolvable ones are dropped, not load errors."""
-        return bool(self.profile < 26.2)
+        return profile_allows_legacy_output_references(self.profile)
 
     def _resolve_output_references(self, tool_source: ToolSource) -> None:
         """Rewrite output references to the runtime key of the declared input they name.

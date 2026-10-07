@@ -66,3 +66,32 @@ def test_repeat_index_mismatch_is_not_rewritten():
     resolved = _resolve("rep_1|rep_2|x")
     assert not resolved.matches
     assert resolved.runtime_key == "rep_1|rep_2|x"
+
+
+AMBIGUOUS_TOOL = """<tool id="id" name="name">
+    <inputs>
+        <section name="sec_a" title="A"><param name="input1" type="data" /></section>
+        <section name="sec_b" title="B">
+            <param name="input1" type="select"><option value="a">a</option></param>
+        </section>
+        <repeat name="r" title="R">
+            <section name="rs" title="RS"><param name="f" type="data" /></section>
+            <conditional name="rc">
+                <param name="select" type="select"><option value="a">a</option></param>
+                <when value="a"><param name="f" type="data" /></when>
+            </conditional>
+        </repeat>
+    </inputs>
+</tool>
+"""
+
+
+def test_unqualified_problem_suggests_matching_inputs_with_repeat_index():
+    input_references = InputReferences(XmlToolSource(parse_xml_string_to_etree(AMBIGUOUS_TOOL)))
+    unqualified = input_references.resolve("input1")
+    assert output_reference_problem(unqualified, "format_source") is None
+    assert output_reference_problem(unqualified, "format_source", False) == "must be qualified as 'sec_a|input1'"
+    in_repeat = input_references.resolve("r_3|f")
+    assert (
+        output_reference_problem(in_repeat, "format_source", False) == "must be qualified as 'r_3|rc|f' or 'r_3|rs|f'"
+    )

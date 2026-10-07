@@ -1167,6 +1167,10 @@ OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY = """
 </tool>
 """
 
+OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY_PROFILE_26_2 = OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY.replace(
+    '<tool id="id" name="name">', '<tool id="id" name="name" profile="26.2">'
+)
+
 # cond|input1 is both a parameter and the legacy alias of cond|inner|input1, so tool loading keeps input1
 OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY = """
 <tool id="id" name="name">
@@ -2706,7 +2710,7 @@ def test_outputs_format_source_unqualified(lint_ctx):
 def test_outputs_format_source_unqualified_profile_26_2(lint_ctx):
     tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_UNQUALIFIED_PROFILE_26_2)
     run_lint_module(lint_ctx, output, tool_source)
-    assert "Output 'output1' format_source='input1' is unqualified, use 'cond|input1'." in lint_ctx.error_messages
+    assert "Output 'output1' format_source='input1' must be qualified as 'cond|input1'." in lint_ctx.error_messages
     assert "format_source" not in lint_ctx.warn_messages
 
 
@@ -2844,6 +2848,14 @@ def test_outputs_format_source_nested_data_missing(lint_ctx):
         in lint_ctx.error_messages
     )
     assert len([m for m in lint_ctx.error_messages if "format_source" in m.message]) == 1
+
+
+def test_outputs_format_source_discovered_legacy_profile_26_2(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY_PROFILE_26_2)
+    run_lint_module(lint_ctx, output, tool_source)
+    for name in ("discovered", "static"):
+        assert f"Output '{name}' format_source='input1' must be qualified as 'cond|input1'." in lint_ctx.error_messages
+    assert "format_source" not in lint_ctx.warn_messages
 
 
 def test_outputs_format_source_discovered_legacy(lint_ctx):

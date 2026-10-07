@@ -129,12 +129,12 @@ class TestOutputReferences(TestCase, tools_support.UsesTools):
         assert self.tool.outputs["out_numbered"].format_source is None
 
     def test_legacy_alias_fails_load_from_profile_26_2(self):
-        with pytest.raises(Exception, match=r"format_source='input1' is unqualified, use 'cond\|input1'"):
+        with pytest.raises(Exception, match=r"format_source='input1' must be qualified as 'cond\|input1'"):
             self._load('<data name="out" format="txt" format_source="input1" />', profile="26.2")
-        with pytest.raises(Exception, match=r"metadata_source='input1' is unqualified, use 'cond\|input1'"):
+        with pytest.raises(Exception, match=r"metadata_source='input1' must be qualified as 'cond\|input1'"):
             self._load('<data name="out" format="txt" metadata_source="input1" />', profile="26.2")
         with pytest.raises(
-            Exception, match=r"format_source='files_2\|file' is unqualified, use 'files_2\|file_cond\|file'"
+            Exception, match=r"format_source='files_2\|file' must be qualified as 'files_2\|file_cond\|file'"
         ):
             self._load('<data name="out" format="txt" format_source="files_2|file" />', profile="26.2")
 

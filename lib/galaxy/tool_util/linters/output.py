@@ -12,6 +12,7 @@ from ..parser.output_references import (
     InputReference,
     InputReferences,
     output_reference_problem,
+    profile_allows_legacy_output_references,
 )
 
 if TYPE_CHECKING:
@@ -284,7 +285,7 @@ class OutputsFormatSourceReference(Linter):
         if not tool_xml:
             return
         input_references = InputReferences(tool_source)
-        legacy_aliases = Version(tool_source.parse_profile()) < Version("26.2")
+        legacy_aliases = profile_allows_legacy_output_references(tool_source.parse_profile())
         for output in (
             tool_xml.findall("./outputs/data[@format_source]")
             + tool_xml.findall("./outputs/collection[@format_source]")
@@ -324,7 +325,7 @@ def _check_format_source_reference(
             # keyed by qualified name only. Tool loading rewrites the reference to that name unless it
             # is ambiguous, but older Galaxy releases do not.
             when = "" if resolved.runtime_key == ref_value else " before Galaxy 26.2"
-            qualified_names = " or ".join(f"'{name}'" for name in resolved.qualified_names)
+            qualified_names = " or ".join(f"'{key}'" for key in sorted(set(resolved.qualified_keys)))
             lint_ctx.error(
                 f"Output '{_output_name(node)}' uses unqualified format_source='{ref_value}', which discovered "
                 f"elements cannot resolve{when}. Use the qualified name {qualified_names}.",

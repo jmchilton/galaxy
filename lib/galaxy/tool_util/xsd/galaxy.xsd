@@ -90,9 +90,10 @@ List of behavior changes associated with profile versions:
 - An output `format_source` or `metadata_source` that does not name a declared input (see their documentation)
   fails tool loading. Older profiles log a warning and ignore the reference.
 - An output `format_source` or `metadata_source` must use the qualified name of an input nested in a conditional or
-  section (`cond|input1`, not `input1`); an unqualified name fails tool loading. At job runtime the reference
-  only resolves the input it names, so an input in an unselected conditional branch leaves the output's default
-  format. Older profiles also resolve a legacy alias that drops the innermost conditional or section name.
+  section. A name that matches only by dropping the input's innermost conditional or section (`input1` for
+  `cond|input1`) fails tool loading. At job runtime the reference resolves only the input it names: `cond|input1`
+  no longer reaches `cond|inner_cond|input1`, so an input in an unselected branch leaves the output's default format
+  and copies no metadata. Older profiles keep resolving these legacy names.
 
 ### Examples
 
@@ -6429,7 +6430,8 @@ This only applies to collections that are mapped over a non-collection input and
 from the tool's input dataset to serve as default for information that cannot be detected from the output.
 One prominent use case is interval data with a non-standard column order that cannot be deduced from a header line, but which is known to be identical in the input and output datasets.
 References to parameters in sections, conditionals or repeats should be qualified as for ``format_source``
-(e.g. ``cond|input1``, ``queries_0|input1``). The reference must name a ``data`` (or ``hidden_data``) input.</xs:documentation>
+(e.g. ``cond|input1``, ``queries_0|input1``); from profile 26.2 an unqualified name fails tool loading.
+The reference must name a ``data`` (or ``hidden_data``) input.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="from_work_dir" type="xs:string">

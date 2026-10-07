@@ -57,6 +57,36 @@ TWO_OUTPUTS = """<tool id="test_tool" name="Test Tool">
 </tool>
 """
 
+# Outputs reference cond|input1, which is the legacy alias of cond|inner_cond|input1.
+NESTED_CONDITIONAL_REFERENCES_TOOL = """<tool id="test_tool" name="Test Tool" version="1.0" profile="$profile">
+    <command>cp '$$input1' '$$out_format'</command>
+    <inputs>
+        <conditional name="cond">
+            <param name="select" type="select">
+                <option value="no_extra_nesting">No extra nesting</option>
+                <option value="extra_nesting">One more conditional</option>
+            </param>
+            <when value="no_extra_nesting"><param name="input1" type="data" format="data" /></when>
+            <when value="extra_nesting">
+                <conditional name="inner_cond">
+                    <param name="inner_select" type="select"><option value="value">value</option></param>
+                    <when value="value"><param name="input1" type="data" format="data" /></when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="out_format" format="txt" format_source="cond|input1" />
+        <data name="out_metadata" format="tabular" metadata_source="cond|input1" />
+        <data name="out_change_format" format="txt">
+            <change_format>
+                <when input_dataset="cond|input1" attribute="columns" value="5" format="fasta" />
+            </change_format>
+        </data>
+    </outputs>
+</tool>
+"""
+
 # Tool with a multiple="true" data parameter – used to test on_string handling for collections.
 MULTIPLE_DATA_TOOL = """<tool id="test_tool" name="Test Tool" version="1.0" profile="26.1">
     <command>cat "$param1" &lt; $out1</command>
@@ -189,6 +219,27 @@ class TestDefaultToolAction(TestCase, tools_support.UsesTools):
         # Again this is a stupid way to ensure data parameters are wrapped.
         assert output["out1"].name == f"Output ({hda1.dataset.get_file_name()})"
 
+    def test_output_references_resolve_legacy_alias_before_profile_26_2(self):
+        output = self._execute_nested_conditional_references("26.1")
+        assert output["out_format"].extension == "tabular"
+        assert output["out_metadata"].metadata.columns == 5
+        assert output["out_change_format"].extension == "fasta"
+
+    def test_output_references_skip_legacy_alias_from_profile_26_2(self):
+        output = self._execute_nested_conditional_references("26.2")
+        assert output["out_format"].extension == "txt"
+        assert output["out_metadata"].metadata.columns == 0
+        # change_format input_dataset keeps resolving the legacy alias.
+        assert output["out_change_format"].extension == "fasta"
+
+    def _execute_nested_conditional_references(self, profile):
+        hda = self.__add_dataset()
+        hda.extension = "tabular"
+        hda.metadata.columns = 5
+        incoming = {"cond": {"select": "extra_nesting", "inner_cond": {"inner_select": "value", "input1": hda}}}
+        _, output = self._simple_execute(NESTED_CONDITIONAL_REFERENCES_TOOL, incoming, profile=profile)
+        return output
+
     def test_inactive_user_job_create_failure(self):
         self.trans.user_is_active = False
         try:
@@ -207,12 +258,12 @@ class TestDefaultToolAction(TestCase, tools_support.UsesTools):
         session.commit()
         return hda
 
-    def _simple_execute(self, contents=None, incoming=None):
+    def _simple_execute(self, contents=None, incoming=None, profile="16.01"):
         if contents is None:
             contents = tools_support.SIMPLE_TOOL_CONTENTS
         if incoming is None:
             incoming = dict(param1="moo")
-        self._init_tool(contents)
+        self._init_tool(contents, profile=profile)
         job, out_data, *_ = self.action.execute(
             tool=self.tool,
             trans=cast(ProvidesHistoryContext, self.trans),

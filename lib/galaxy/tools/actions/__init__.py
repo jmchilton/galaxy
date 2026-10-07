@@ -5,7 +5,6 @@ from abc import abstractmethod
 from collections.abc import (
     Iterable,
     Mapping,
-    MutableMapping,
 )
 from typing import (
     Any,
@@ -1299,7 +1298,7 @@ def determine_output_format(
     output: "ToolOutput",
     parameter_context,
     input_datasets,
-    input_dataset_collections: MutableMapping[str, model.HistoryDatasetCollectionAssociation],
+    input_dataset_collections: Mapping[str, model.HistoryDatasetCollectionAssociation],
     random_input_ext,
     python_template_version="3",
     execution_cache=None,

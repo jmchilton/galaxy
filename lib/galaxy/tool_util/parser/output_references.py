@@ -7,6 +7,8 @@ from typing import (
     TYPE_CHECKING,
 )
 
+from packaging.version import Version
+
 if TYPE_CHECKING:
     from .interface import (
         InputSource,
@@ -51,11 +53,8 @@ class ResolvedReference(NamedTuple):
     """The qualified form of the reference, with its own repeat indices, when one input matches."""
     runtime_key: str
     """The key to look the reference up by at job runtime."""
-
-    @property
-    def qualified_names(self) -> list[str]:
-        """The qualified path of every matched input, with the reference's selector."""
-        return sorted({f"{r.qualified}{self.selector}" for r in self.matches})
+    qualified_keys: list[str]
+    """The qualified form of the reference for each match, with its own repeat indices where they fit."""
 
 
 OutputReferenceAttribute = Literal["format_source", "metadata_source"]
@@ -67,6 +66,14 @@ OUTPUT_REFERENCE_PARAM_TYPES: dict[OutputReferenceAttribute, tuple[str, ...]] = 
     "format_source": DATA_INPUT_TYPES,
     "metadata_source": ("data", "hidden_data"),
 }
+
+
+def profile_allows_legacy_output_references(profile: str | float) -> bool:
+    """Whether output references of tools at ``profile`` may resolve through legacy aliases.
+
+    Older profiles also drop a reference that does not resolve, instead of failing tool loading.
+    """
+    return Version(str(profile)) < Version("26.2")
 
 
 def output_reference_problem(
@@ -84,8 +91,14 @@ def output_reference_problem(
     if resolved.selector and (attribute != "format_source" or not any(r.is_collection for r in resolved.matches)):
         return "selects an element of an input that is not a collection"
     if resolved.legacy and not legacy_aliases:
-        qualified = [resolved.qualified_key] if resolved.qualified_key else resolved.qualified_names
-        return "is unqualified, use " + " or ".join(f"'{name}'" for name in qualified)
+        qualified = sorted(
+            {
+                key
+                for r, key in zip(resolved.matches, resolved.qualified_keys)
+                if r.param_type in param_types and (r.is_collection or not resolved.selector)
+            }
+        )
+        return "must be qualified as " + " or ".join(f"'{key}'" for key in qualified)
     return None
 
 
@@ -163,6 +176,7 @@ class InputReferences:
         legacy = not matches
         if legacy:
             matches = [r for r in self.references if r.legacy == normalized]
+        qualified_keys = [f"{self._reindex(r.qualified, path) or r.qualified}{selector}" for r in matches]
         qualified_key = None
         qualified_names = {r.qualified for r in matches}
         if len(qualified_names) == 1:
@@ -178,7 +192,7 @@ class InputReferences:
         if legacy and qualified_key is not None:
             if not any(r.legacy == qualified and r.qualified != qualified for r in self.references):
                 runtime_key = qualified_key
-        return ResolvedReference(reference, path, selector, matches, legacy, qualified_key, runtime_key)
+        return ResolvedReference(reference, path, selector, matches, legacy, qualified_key, runtime_key, qualified_keys)
 
     def _reindex(self, qualified: str, path: str) -> str | None:
         # A legacy alias drops conditional and section names but keeps every repeat segment, in order.
