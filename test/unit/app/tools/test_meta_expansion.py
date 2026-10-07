@@ -1,10 +1,7 @@
 """Job-count previews (summarize_meta_expansion) agree with expand_meta_parameters."""
 
 import copy
-from typing import (
-    Any,
-    cast,
-)
+from typing import Any
 
 import pytest
 
@@ -12,10 +9,7 @@ from galaxy import (
     exceptions,
     model,
 )
-from galaxy.app_unittest_utils import (
-    galaxy_mock,
-    tools_support,
-)
+from galaxy.app_unittest_utils import tools_support
 from galaxy.managers.collections import DatasetCollectionManager
 from galaxy.model.dataset_collections import subcollections
 from galaxy.tools.parameters.meta import (
@@ -49,10 +43,11 @@ class TestSummarizeMetaExpansion(TestCase, tools_support.UsesTools):
         self.setup_app()
         self.app.dataset_collection_manager = self.app[DatasetCollectionManager]
         self.session = self.app.model.session
-        self.history = model.History()
+        self.user = self._user("owner")
+        self.history = model.History(user=self.user)
         self.session.add(self.history)
         self.session.commit()
-        self.trans = cast(WorkRequestContext, galaxy_mock.MockTrans(app=self.app, history=self.history))
+        self.trans = WorkRequestContext(app=self.app, user=self.user, history=self.history)
         self._init_tool(BATCH_TOOL_CONTENTS)
 
     def tearDown(self):
@@ -138,6 +133,25 @@ class TestSummarizeMetaExpansion(TestCase, tools_support.UsesTools):
         with pytest.raises(exceptions.MessageException):
             self._expand(incoming)
 
+    def test_inaccessible_collection(self):
+        incoming = {"input1": self._hdca_batch("list", 2)}
+        hdca = self.session.get(model.HistoryDatasetCollectionAssociation, self._decode(incoming["input1"]))
+        other = self._user("other")
+        for hda in hdca.collection.dataset_instances:
+            self.app.security_agent.privately_share_dataset(hda.dataset, users=[other])
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "unknown"
+        assert summary["inputs"] == []
+
+    def test_unknown_collection_id(self):
+        incoming = {"input1": {"batch": True, "values": [{"src": "hdca", "id": self._encode(987654)}]}}
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "unknown"
+        with pytest.raises(exceptions.ObjectNotFound):
+            self._expand(incoming)
+
     def test_does_not_mutate_incoming(self):
         incoming = {"input1": self._hda_batch(2), "input1|__identifier__": "foo"}
         before = copy.deepcopy(incoming)
@@ -148,6 +162,7 @@ class TestSummarizeMetaExpansion(TestCase, tools_support.UsesTools):
         assert incoming_has_batch({"input1": self._hda_batch(2)})
         assert not incoming_has_batch({"input1": {"batch": False, "values": [self._hda_ref()]}})
         assert not incoming_has_batch({"input1": self._hda_ref(), "tool_version": "1.0"})
+        assert not incoming_has_batch({"input1": {"batch": True}})
 
     def test_split_count_agrees_with_split(self):
         cases: list[tuple[str, ShapeT, str]] = [
@@ -158,6 +173,11 @@ class TestSummarizeMetaExpansion(TestCase, tools_support.UsesTools):
             ("list:list", [3, 0, 1], "single_datasets"),
             ("list:list:paired", [[2, 2], [], [2]], "paired"),
             ("list:list:paired", [[2, 2], [], [2]], "list:paired"),
+            ("list:paired_or_unpaired", [2, 1, 2], "paired_or_unpaired"),
+            ("list:paired_or_unpaired", [2, 1, 2], "single_datasets"),
+            ("sample_sheet", 3, "single_datasets"),
+            ("sample_sheet:paired", [2, 2], "paired"),
+            ("sample_sheet:paired", [2, 2], "single_datasets"),
         ]
         for collection_type, shape, split_type in cases:
             collection = self._collection(collection_type, shape)
@@ -186,6 +206,12 @@ class TestSummarizeMetaExpansion(TestCase, tools_support.UsesTools):
 
     def _encode(self, id: int) -> str:
         return self.app.security.encode_id(id)
+
+    def _decode(self, batch: dict[str, Any]) -> int:
+        return self.app.security.decode_id(batch["values"][0]["id"])
+
+    def _user(self, name: str) -> model.User:
+        return self.app.user_manager.create(email=f"{name}@example.org", username=name, password="password123")
 
     def _hda(self) -> model.HistoryDatasetAssociation:
         hda = model.HistoryDatasetAssociation(

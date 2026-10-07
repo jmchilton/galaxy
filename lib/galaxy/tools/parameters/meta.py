@@ -258,7 +258,10 @@ class BatchInputCount(TypedDict):
 
 
 class MetaExpansionSummary(TypedDict):
-    """How many jobs a tool request expands into, without building them."""
+    """How many jobs a tool request expands into, without building them.
+
+    ``inputs`` lists matched (linked) inputs first, then multiplied ones.
+    """
 
     job_count: int | None
     reason: BatchCountUnknownReason | None
@@ -267,17 +270,19 @@ class MetaExpansionSummary(TypedDict):
 
 def incoming_has_batch(incoming: ToolRequestT) -> bool:
     """Whether a flat (legacy) tool request batches over any input."""
-    return any(isinstance(value, dict) and value.get("batch") for value in incoming.values())
+    return any(isinstance(value, dict) and "values" in value and _is_legacy_batch(value) for value in incoming.values())
 
 
-def summarize_meta_expansion(
-    trans: WorkRequestContext, tool, incoming: ToolRequestT, input_format: InputFormatT = "legacy"
-) -> MetaExpansionSummary:
-    """Count the jobs ``expand_meta_parameters`` would produce; never raises."""
+def summarize_meta_expansion(trans: WorkRequestContext, tool, incoming: ToolRequestT) -> MetaExpansionSummary:
+    """Count the jobs ``expand_meta_parameters`` would produce for a flat (legacy) request; never raises."""
     collections_to_match = matching.CollectionsToMatch()
 
     def count_collection(input_key, collection_value, linked) -> Sequence[Any]:
         item, collection, subcollection_type = _batch_collection(trans, collection_value)
+        if not trans.user_is_admin and not trans.app.security_agent.can_access_collection(
+            trans.get_current_user_roles(), collection
+        ):
+            raise exceptions.ItemAccessibilityException("Collection not accessible by user.")
         collections_to_match.add(input_key, item, subcollection_type=subcollection_type, linked=linked)
         # A placeholder of the right length: counting shouldn't load the elements.
         return range(_batch_element_count(collection, subcollection_type))
@@ -285,7 +290,9 @@ def summarize_meta_expansion(
     inputs: list[BatchInputCount] = []
     try:
         classifier = _meta_value_classifier(_is_legacy_batch, count_collection)
-        _, matched, multiplied = _split_meta_inputs(tool, copy.deepcopy(incoming), input_format != "legacy", classifier)
+        # Like expand_meta_parameters, drop identifier keys: nesting them would write into the batch values.
+        incoming = {key: value for key, value in incoming.items() if not key.endswith("|__identifier__")}
+        _, matched, multiplied = _split_meta_inputs(tool, incoming, False, classifier)
         matched_lengths = {key: len(values) for key, values in matched.items()}
         multiplied_lengths = {key: len(values) for key, values in multiplied.items()}
         inputs = [BatchInputCount(name=key, count=count, linked=True) for key, count in matched_lengths.items()]
@@ -306,7 +313,7 @@ def summarize_meta_expansion(
         log.debug("Could not count jobs for tool %s: %s", tool.id, e)
         return MetaExpansionSummary(job_count=None, reason="unknown", inputs=inputs)
     except Exception:
-        log.warning("Unexpected failure counting jobs for tool %s", tool.id, exc_info=True)
+        log.debug("Unexpected failure counting jobs for tool %s", tool.id, exc_info=True)
         return MetaExpansionSummary(job_count=None, reason="unknown", inputs=inputs)
     return MetaExpansionSummary(job_count=job_count, reason=None, inputs=inputs)
 
@@ -320,12 +327,15 @@ def _is_async_batch(value: dict[str, Any]) -> bool:
 
 
 ExpandCollectionT = Callable[[str, Any, bool], Sequence[Any]]
+ClassifierT = Callable[[Any, str], tuple[str, Any]]
 
 
-def _meta_value_classifier(is_batch: Callable[[dict[str, Any]], bool], expand_collection: ExpandCollectionT):
+def _meta_value_classifier(
+    is_batch: Callable[[dict[str, Any]], bool], expand_collection: ExpandCollectionT
+) -> ClassifierT:
     """Build a classifier mapping a request value to (MATCHED/MULTIPLIED/SINGLE, values)."""
 
-    def classifier_from_value(value, input_key):
+    def classifier_from_value(value: Any, input_key: str) -> tuple[str, Any]:
         if isinstance(value, dict) and "values" in value:
             # Explicit meta wrapper for inputs...
             batch = is_batch(value)
@@ -348,7 +358,7 @@ def _meta_value_classifier(is_batch: Callable[[dict[str, Any]], bool], expand_co
     return classifier_from_value
 
 
-def _split_meta_inputs(tool, incoming: ToolRequestT, nested: bool, classifier):
+def _split_meta_inputs(tool, incoming: ToolRequestT, nested: bool, classifier: ClassifierT):
     # If we're going to multiply input dataset combinations
     # order matters, so the following reorders incoming
     # according to tool.inputs (which is ordered).
@@ -512,7 +522,7 @@ CollectionExpansionListT = (
 def __expand_collection_parameter(
     trans: WorkRequestContext,
     input_key,
-    incoming_val,
+    incoming_val: dict[str, Any],
     collections_to_match: "matching.CollectionsToMatch",
     linked=False,
 ) -> CollectionExpansionListT:
@@ -533,29 +543,27 @@ def __expand_collection_parameter(
 
 
 def _batch_collection(
-    trans: WorkRequestContext, incoming_val
+    trans: WorkRequestContext, incoming_val: dict[str, Any]
 ) -> tuple[HistoryDatasetCollectionAssociation | DatasetCollectionElement, DatasetCollection, str | None]:
     """Load the populated collection a batch value maps over, with its ``map_over_type``."""
-    if isinstance(incoming_val, dict):
-        src = incoming_val["src"]
-        if src not in ("hdca", "dce"):
-            raise exceptions.ToolMetaParameterException(f"Invalid dataset collection source type {src}")
-        encoded_id = incoming_val["id"]
-        subcollection_type = incoming_val.get("map_over_type", None)
-    else:
-        src = "hdca"
-        encoded_id = incoming_val
-        subcollection_type = None
-    decoded_id = trans.app.security.decode_id(encoded_id)
+    src = incoming_val["src"]
+    if src not in ("hdca", "dce"):
+        raise exceptions.ToolMetaParameterException(f"Invalid dataset collection source type {src}")
+    subcollection_type = incoming_val.get("map_over_type", None)
+    decoded_id = trans.app.security.decode_id(incoming_val["id"])
     item: HistoryDatasetCollectionAssociation | DatasetCollectionElement
     if src == "dce":
-        dce = trans.sa_session.get_one(DatasetCollectionElement, decoded_id)
+        dce = trans.sa_session.get(DatasetCollectionElement, decoded_id)
+        if dce is None:
+            raise exceptions.ObjectNotFound(f"No dataset collection element found with id {decoded_id}")
         child_collection = dce.child_collection
         if not child_collection:
             raise exceptions.ToolMetaParameterException(f"DCE {decoded_id} does not contain a child collection")
         item, collection = dce, child_collection
     else:
-        hdca = trans.sa_session.get_one(HistoryDatasetCollectionAssociation, decoded_id)
+        hdca = trans.sa_session.get(HistoryDatasetCollectionAssociation, decoded_id)
+        if hdca is None:
+            raise exceptions.ObjectNotFound(f"No dataset collection found with id {decoded_id}")
         item, collection = hdca, hdca.collection
     if not collection.populated_optimized:
         raise exceptions.ToolInputsNotReadyException("An input collection is not populated.")
@@ -570,20 +578,17 @@ def _batch_element_count(collection: DatasetCollection, subcollection_type: str 
 
 
 def __expand_collection_parameter_async(
-    app, input_key, incoming_val, collections_to_match: "matching.CollectionsToMatch", linked=False
+    app,
+    input_key,
+    incoming_val: dict[str, Any],
+    collections_to_match: "matching.CollectionsToMatch",
+    linked=False,
 ) -> CollectionExpansionListT:
-    # If subcollection multirun of data_collection param - value will
-    # be "hdca_id|subcollection_type" else it will just be hdca_id
-    try:
-        src = incoming_val["src"]
-        if src not in ("hdca", "dce"):
-            raise exceptions.ToolMetaParameterException(f"Invalid dataset collection source type {src}")
-        item_id = incoming_val["id"]
-        subcollection_type = incoming_val.get("map_over_type", None)
-    except TypeError:
-        item_id = incoming_val
-        src = "hdca"
-        subcollection_type = None
+    src = incoming_val["src"]
+    if src not in ("hdca", "dce"):
+        raise exceptions.ToolMetaParameterException(f"Invalid dataset collection source type {src}")
+    item_id = incoming_val["id"]
+    subcollection_type = incoming_val.get("map_over_type", None)
     if src == "dce":
         item = app.model.context.get(DatasetCollectionElement, item_id)
         collection = item.child_collection
