@@ -104,8 +104,32 @@ export function isDataOption(item: object): item is DataOption {
     return !!item && "src" in item;
 }
 
-export function itemUniqueKey(item: DataOption): string {
-    return `${item.src}-${item.id}`;
+/** Identifies an option; an item listed both directly and mapped over yields two distinct keys */
+export function itemUniqueKey(item: Pick<DataOption, "id" | "src" | "map_over_type">): string {
+    const key = `${item.src}-${item.id}`;
+    return item.map_over_type ? `${key}-${item.map_over_type}` : key;
+}
+
+/**
+ * Find the option for a value: the entry mapped over the same way, else any entry for the same item.
+ * Server-provided values carry no map-over type, so they resolve to the first (direct) entry.
+ */
+export function findDataOption<T>(
+    items: T[],
+    value: Pick<DataOption, "id" | "src" | "map_over_type">,
+    toOption: (item: T) => DataOption | null | undefined,
+): T | undefined {
+    const key = itemUniqueKey(value);
+    return (
+        items.find((item) => {
+            const option = toOption(item);
+            return !!option && itemUniqueKey(option) === key;
+        }) ??
+        items.find((item) => {
+            const option = toOption(item);
+            return !!option && option.id === value.id && option.src === value.src;
+        })
+    );
 }
 
 export function containsDataOption(items: DataOption[], item: DataOption | null): boolean {

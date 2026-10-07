@@ -162,6 +162,10 @@ defineExpose({
             :options="currentOptions"
             :total-estimate="totalEstimate"
             @search-change="(q: string) => $emit('search-change', q)">
+            <template v-if="$slots['after-label']" v-slot:label-area="{ option }">
+                {{ option.label }}
+                <slot name="after-label" :option="option" />
+            </template>
             <template v-slot:after-list>
                 <slot name="after-list" />
             </template>
@@ -175,6 +179,9 @@ defineExpose({
             @search-change="(q: string) => $emit('search-change', q)">
             <template v-slot:no-options>
                 <slot name="no-options" />
+            </template>
+            <template v-slot:after-label="{ option }">
+                <slot name="after-label" :option="option" />
             </template>
             <template v-slot:after-list>
                 <slot name="after-list" />

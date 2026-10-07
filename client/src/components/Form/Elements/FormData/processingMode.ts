@@ -1,4 +1,5 @@
 import type { CollectionType } from "@/api/datasetCollections";
+import { collectionTypeLabel } from "@/components/Collections/common/buildCollectionModal";
 
 import type { DataOption } from "./types";
 import { BATCH, SOURCE, type VariantInterface } from "./variants";
@@ -12,6 +13,14 @@ export const PROCESSING_HELP_TERMS = {
 
 /** Map-over type the server assigns when a `paired_or_unpaired` input is fed a plain list */
 const SINGLE_DATASETS = "single_datasets";
+
+/** What each job receives when a collection is mapped over, e.g. "dataset pair" or "list:list element" */
+export function mapOverUnit(mapOverType?: string | null): string {
+    if (!mapOverType || mapOverType === SINGLE_DATASETS) {
+        return "dataset";
+    }
+    return collectionTypeLabel(mapOverType) ?? `${mapOverType} element`;
+}
 
 export type ProcessingSource = "datasets" | "collection";
 

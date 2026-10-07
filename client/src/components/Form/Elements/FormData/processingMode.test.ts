@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { hasHelp } from "@/components/Help/terms";
 
-import { getProcessingMode, PROCESSING_HELP_TERMS } from "./processingMode";
+import { getProcessingMode, mapOverUnit, PROCESSING_HELP_TERMS } from "./processingMode";
 import type { DataOption } from "./types";
 import { VARIANTS } from "./variants";
 
@@ -151,5 +151,16 @@ describe("getProcessingMode", () => {
         for (const uri of Object.values(PROCESSING_HELP_TERMS)) {
             expect(hasHelp(uri)).toBe(true);
         }
+    });
+});
+
+describe("mapOverUnit", () => {
+    it("names what each mapped-over job receives", () => {
+        expect(mapOverUnit("paired")).toBe("dataset pair");
+        expect(mapOverUnit("list:paired")).toBe("list of pairs");
+        expect(mapOverUnit("list:list")).toBe("list:list element");
+        // a plain list fed to a paired_or_unpaired input, or a collection fed to a dataset input
+        expect(mapOverUnit("single_datasets")).toBe("dataset");
+        expect(mapOverUnit(null)).toBe("dataset");
     });
 });
