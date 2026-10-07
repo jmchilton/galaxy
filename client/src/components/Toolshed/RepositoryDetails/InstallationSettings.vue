@@ -15,12 +15,12 @@
             v-if="requiresPanel"
             label="Target Section:"
             description="Choose an existing tool panel section or create a new section to contain the installed tools (optional).">
-            <BFormInput v-model="toolSection" list="sectionSelect" />
-            <datalist id="sectionSelect">
-                <option v-for="section in toolSections" :key="section.id">
-                    {{ section.name }}
-                </option>
-            </datalist>
+            <FormSelectOrText
+                id="install-tool-section"
+                v-model="toolSection"
+                :options="sectionOptions"
+                other-label="New section..."
+                placeholder="New section name" />
         </BFormGroup>
         <Heading separator size="sm" :collapse="advancedShow ? 'open' : 'closed'" @click="onAdvanced">
             {{ advancedTitle }} advanced settings
@@ -49,7 +49,7 @@
     </GModal>
 </template>
 <script>
-import { BCard, BFormCheckbox, BFormGroup, BFormInput, BFormRadio } from "bootstrap-vue";
+import { BCard, BFormCheckbox, BFormGroup, BFormRadio } from "bootstrap-vue";
 
 import { GalaxyApi } from "@/api";
 import { useConfig } from "@/composables/config";
@@ -57,14 +57,15 @@ import { useConfig } from "@/composables/config";
 import GCollapse from "@/components/BaseComponents/GCollapse.vue";
 import GModal from "@/components/BaseComponents/GModal.vue";
 import Heading from "@/components/Common/Heading.vue";
+import FormSelectOrText from "@/components/Form/Elements/FormSelectOrText.vue";
 
 export default {
     components: {
         BCard,
         BFormCheckbox,
         BFormGroup,
-        BFormInput,
         BFormRadio,
+        FormSelectOrText,
         GCollapse,
         GModal,
         Heading,
@@ -113,6 +114,12 @@ export default {
         },
         modalTitle() {
             return `Installing '${this.repo.name}'`;
+        },
+        sectionOptions() {
+            return [
+                { label: "No section", value: null },
+                ...this.toolSections.map((section) => ({ label: section.name, value: section.name })),
+            ];
         },
         toolSections() {
             const panel = Object.values(this.currentPanel);

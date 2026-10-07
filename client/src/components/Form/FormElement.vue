@@ -26,6 +26,7 @@ import FormNumberList from "./Elements/FormNumberList.vue";
 import FormOptionalText from "./Elements/FormOptionalText.vue";
 import FormRulesEdit from "./Elements/FormRulesEdit.vue";
 import FormSelection from "./Elements/FormSelection.vue";
+import FormSelectOrText from "./Elements/FormSelectOrText.vue";
 import FormTags from "./Elements/FormTags.vue";
 import FormText from "./Elements/FormText.vue";
 import FormUpload from "./Elements/FormUpload.vue";
@@ -427,6 +428,16 @@ const extendedCollectionType = computed<ExtendedCollectionType>(() => {
                     :cls="attrs.cls"
                     :datalist="attrs.datalist"
                     :type="props.type" />
+                <FormSelectOrText
+                    v-else-if="props.type === 'select_or_text'"
+                    :id="props.id"
+                    v-model="currentValue"
+                    :options="attrs.data"
+                    :other-label="attrs.other_label"
+                    :other-help="attrs.other_help"
+                    :placeholder="attrs.placeholder"
+                    :validate="attrs.validate"
+                    @alert="onAlert" />
                 <FormSelection
                     v-else-if="
                         (props.type === undefined && attrs.options) ||
