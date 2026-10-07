@@ -5,6 +5,8 @@
         size="small"
         :title="modalTitle"
         confirm
+        :ok-disabled="Boolean(sectionError)"
+        :ok-disabled-title="sectionError"
         @ok="onOk"
         @close="onHide">
         <div class="description mb-1">
