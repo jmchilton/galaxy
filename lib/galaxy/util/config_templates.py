@@ -48,6 +48,7 @@ except ImportError:
     UndefinedError = None  # type: ignore[assignment, misc, unused-ignore]
 
 from galaxy.exceptions import (
+    ConfigurationError,
     ObjectNotFound,
     RequestParameterInvalidException,
     RequestParameterMissingException,
@@ -378,6 +379,8 @@ def _expand_include(raw_template: RawTemplateConfig) -> list[RawTemplateConfig]:
                 raw_templates = included
             else:
                 raw_templates = [included]
+            if not all(isinstance(t, dict) for t in raw_templates):
+                raise ConfigurationError(f"{include}: expected a template or a list of templates")
             return _expand_includes(raw_templates)
     else:
         return [raw_template]

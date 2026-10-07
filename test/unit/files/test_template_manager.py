@@ -1,5 +1,9 @@
+import re
+
+import pytest
 from yaml import safe_load
 
+from galaxy.exceptions import ConfigurationError
 from galaxy.files.templates import ConfiguredFileSourceTemplates
 from .test_template_models import (
     LIBRARY_AWS,
@@ -114,3 +118,13 @@ def test_inline_templates_override_config_file_and_dir(tmpdir):
     config = MockConfig(str(config_path), config_dir=str(config_dir), inline=inline)
     templates = ConfiguredFileSourceTemplates.from_app_config(config)
     assert [t.id for t in templates.catalog.root] == ["scratch_directory"]
+
+
+def test_manager_names_config_dir_file_that_is_not_a_template(tmpdir):
+    config_dir = tmpdir / "file_source_templates.d"
+    config_dir.mkdir()
+    not_a_template = config_dir / "10_typo.yml"
+    not_a_template.write_text("- production_dropbox.yml\n", "utf-8")
+    config = MockConfig(None, config_dir=str(config_dir))
+    with pytest.raises(ConfigurationError, match=re.escape(str(not_a_template))):
+        ConfiguredFileSourceTemplates.from_app_config(config)
