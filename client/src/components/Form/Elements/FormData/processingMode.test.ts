@@ -158,7 +158,7 @@ describe("mapOverUnit", () => {
     it("names what each mapped-over job receives", () => {
         expect(mapOverUnit("paired")).toBe("dataset pair");
         expect(mapOverUnit("list:paired")).toBe("list of pairs");
-        expect(mapOverUnit("list:list")).toBe("list:list element");
+        expect(mapOverUnit("list:list")).toBe("nested list:list");
         // a plain list fed to a paired_or_unpaired input, or a collection fed to a dataset input
         expect(mapOverUnit("single_datasets")).toBe("dataset");
         expect(mapOverUnit(null)).toBe("dataset");
