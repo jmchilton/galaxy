@@ -632,6 +632,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return final_state
 
     def history_panel_create_new_with_name(self, name):
+        """Create a new current history and wait until it is named ``name``."""
         self.history_panel_create_new()
         self.history_panel_rename(name)
 
@@ -2019,6 +2020,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             raise KeyError(f"Failed to find tag {tag} on workflow with index {workflow_index}")
 
     def workflow_import_submit_url(self, url):
+        """Import a workflow from ``url`` via the import wizard; call from the workflow import page."""
         # Click the "Fetch URL" card to select that import method
         # (auto-navigates to the URL input step)
         self.components.workflows.import_url_link.wait_for_and_click()
@@ -2119,6 +2121,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return invocations.invocations_table_rows.all()
 
     def open_toolbox(self) -> None:
+        """Open the Tools activity panel (tool search and sections), in the analysis view or workflow editor."""
         self.sleep_for(self.wait_types.UX_RENDER)
 
         toolbox_panel = self.components._.toolbox_panel
@@ -2720,6 +2723,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
     @edit_details
     def history_panel_add_tags(self, tags):
+        """Add each tag in ``tags`` to the current history."""
         tag_area_button = self.components.history_panel.tag_area_button
 
         tag_area_button.wait_for_and_click()
@@ -2733,6 +2737,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.send_escape(input_element)
 
     def history_panel_rename(self, new_name):
+        """Rename the current history from the history panel's name editor."""
         editable_text_input_element = self.history_panel_name_input()
         # a simple .clear() doesn't work here since we perform a .blur because of that
         self.aggressive_clear(editable_text_input_element)
@@ -2772,6 +2777,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         _click_action_in_menu()
 
     def open_history_multi_view(self):
+        """Open History Multiview from the history panel's histories menu."""
         self.components.history_panel.histories_operation_menu.wait_for_and_click()
         self.components.history_panel.multi_view_button.wait_for_and_click()
 
@@ -2799,11 +2805,13 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.edit_dataset_attributes._.wait_for_visible()
 
     def display_dataset(self, hid):
+        """Show dataset ``hid`` in the center panel (the history item's eye icon)."""
         item = self.history_panel_item_component(hid=hid)
         item.display_button.wait_for_and_click()
         self.components.dataset_view._.wait_for_visible()
 
     def show_dataset_details(self, hid):
+        """Open the Details tab for dataset ``hid`` in the center panel."""
         self.display_dataset(hid)
         # Find and click the Details tab
         details_tab_button = self.wait_for_selector_clickable(
@@ -2890,6 +2898,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.history_panel_item_view_dataset_details(hid)
 
     def history_panel_click_item_title(self, hid, **kwds):
+        """Click history item ``hid``'s title to expand or collapse it; ``wait=True`` waits for the toggle."""
         item_component = self.history_panel_item_component(hid=hid)
         details_component = item_component.details
         details_displayed = not details_component.is_absent and details_component.is_displayed
@@ -2995,6 +3004,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             self.logout()
 
     def logout(self):
+        """Log out through the masthead user menu and confirm the API sees no user."""
         self.components.masthead.logged_in_only.wait_for_visible()
         self.components.masthead.user.wait_for_and_click()
         self.components.masthead.logout.wait_for_and_click()
