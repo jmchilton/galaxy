@@ -425,6 +425,87 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         assert_pinned_value_selected()
 
     @selenium_test
+    def test_data_input_map_over_hint(self):
+        """A ``list:paired`` selected for a ``paired`` input is mapped over: the form must say so
+        before running, and the tool must then run once per pair. Regression test for #19234."""
+        history_id = self.current_history_id()
+        pairs = [
+            {
+                "name": f"sample{i}",
+                "elements": [
+                    {"src": "pasted", "paste_content": f"forward{i}\n", "name": "forward"},
+                    {"src": "pasted", "paste_content": f"reverse{i}\n", "name": "reverse"},
+                ],
+            }
+            for i in range(2)
+        ]
+        self.dataset_collection_populator.upload_collection(
+            history_id, "list:paired", elements=pairs, name="pairs", wait=True
+        )
+        self.home()
+        self.tool_open("collection_paired_test")
+        self.tool_set_value("f1", "pairs", expected_type="data_collection")
+
+        @retry_assertion_during_transitions
+        def assert_map_over_hint():
+            hint = self.components.tool_form.parameter_processing_hint(parameter="f1").wait_for_visible()
+            assert hint.get_attribute("data-processing-mode") == "batch"
+            assert "one job per dataset pair" in hint.text, hint.text
+
+        assert_map_over_hint()
+
+        # the dropdown option carries a map-over marker
+        select_field = self.components.tool_form.parameter_data_select(parameter="f1")
+        select_field.wait_for_and_click()
+        marker = self.components.tool_form.parameter_map_over_marker(parameter="f1").wait_for_visible()
+        assert marker.text == "one job per dataset pair"
+        self.send_escape()
+
+        self.tool_form_execute()
+
+        def map_over_jobs():
+            return self.dataset_populator.history_jobs_for_tool(history_id, "collection_paired_test")
+
+        self._wait_on(lambda: len(map_over_jobs()) >= 2, "map-over jobs to be created")
+        self.dataset_populator.wait_for_history_jobs(history_id, assert_ok=True)
+        assert len(map_over_jobs()) == 2
+
+    @selenium_test
+    def test_data_input_reduction_hint(self):
+        """A flat list for a multiple-dataset input is consumed by one job; a ``list:list`` is mapped over."""
+        history_id = self.current_history_id()
+        self.dataset_collection_populator.create_list_in_history(history_id, name="flat", wait=True)
+        # the outer list:list collection is named "list:list"
+        self.dataset_collection_populator.create_list_of_list_in_history(history_id, wait=True)
+        self.home()
+        self.tool_open("multi_data_param")
+        self.components.tool_form.parameter_data_input_collection(parameter="f1").wait_for_and_click()
+        hint = self.components.tool_form.parameter_processing_hint(parameter="f1")
+
+        self.tool_set_value("f1", "flat", expected_type="data", multiple=True)
+
+        @retry_assertion_during_transitions
+        def assert_reduction_hint():
+            element = hint.wait_for_visible()
+            assert element.get_attribute("data-processing-mode") == "bulk"
+            assert "processed as a whole in a single job" in element.text, element.text
+            assert "Need one job per element?" in element.text, element.text
+
+        assert_reduction_hint()
+        self.screenshot("tool_form_data_input_reduction_hint")
+
+        self.tool_form_clear_multiselect_tags("f1")
+        self.tool_set_value("f1", "list:list", expected_type="data", multiple=True)
+
+        @retry_assertion_during_transitions
+        def assert_nested_map_over_hint():
+            element = hint.wait_for_visible()
+            assert element.get_attribute("data-processing-mode") == "batch"
+            assert "one job per list" in element.text, element.text
+
+        assert_nested_map_over_hint()
+
+    @selenium_test
     def test_bibtex_rendering(self):
         self.home()
         # prefetch citations so they will be available quickly when rendering tool form.

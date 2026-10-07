@@ -2092,6 +2092,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             input_element.clear()
             input_element.send_keys(value)
 
+    def tool_form_clear_multiselect_tags(self, expanded_parameter_id: str) -> None:
+        tag_close = self.components.tool_form.parameter_multiselect_tag_close(parameter=expanded_parameter_id)
+        for _ in range(20):
+            close_buttons = tag_close.all()
+            if not close_buttons:
+                break
+            close_buttons[0].click()
+            self.sleep_for(self.wait_types.UX_RENDER)
+
     def tool_form_generate_tour(self):
         self.components.tool_form.options.wait_for_and_click()
         self.components.tool_form.generate_tour.wait_for_and_click()
