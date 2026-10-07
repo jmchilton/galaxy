@@ -20,7 +20,7 @@ class TestDataset(UsesUploadActivity, SeleniumTestCase):
         item = uploader.stage_local_file(test_path)
         if ext is not None:
             item.set_extension(ext)
-        uploader._start_and_wait_for_uploaded_hids()
+        uploader.start_and_wait_for_uploaded_hids()
         after_latest_history_item = self.latest_history_entry()
         assert after_latest_history_item
         if before_latest_history_item is not None:

@@ -682,15 +682,19 @@ class BaseUploadContext:
         self._context.to_paired_list(name)
         return self
 
-    def _start_and_wait_for_uploaded_hids(self) -> list[int]:
+    def start_for_uploaded_hids(self) -> list[int]:
+        """Start the staged uploads and return the hids they will get, without waiting on them."""
         staged_item_count = self._context._item_count
         if staged_item_count < 1:
             raise AssertionError("No staged upload items found. Stage files/content before creating collections.")
 
         initial_hid = self._current_latest_hid() + 1
         self._context.start()
-        last_hid = initial_hid + staged_item_count - 1
-        uploaded_hids = list(range(initial_hid, last_hid + 1))
+        return list(range(initial_hid, initial_hid + staged_item_count))
+
+    def start_and_wait_for_uploaded_hids(self) -> list[int]:
+        """Start the staged uploads, wait until each is ok in the history panel, and return their hids."""
+        uploaded_hids = self.start_for_uploaded_hids()
         for hid in uploaded_hids:
             self._context.driver_wrapper.history_panel_wait_for_hid_ok(hid)
         return uploaded_hids
