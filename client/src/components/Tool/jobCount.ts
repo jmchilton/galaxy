@@ -17,10 +17,6 @@ export function batchInputLabel(inputs: FormInputNode[] | undefined, name: strin
     return node?.label || name;
 }
 
-function jobsText(count: number) {
-    return `${count} ${localize(count === 1 ? "job" : "jobs")}`;
-}
-
 /** "A, B (12 each) × C (3)": matched inputs share a count, multiplied ones multiply it. */
 function breakdown(inputs: ToolFormBatchInputCount[], label: (name: string) => string) {
     const groups: string[] = [];
@@ -61,7 +57,7 @@ export function jobCountNotices(
         notices.push({
             variant: "info",
             kind: "count",
-            text: `${localize("This will run")} ${jobsText(jobCount)}.`,
+            text: `${localize("This will run")} ${jobCount} ${localize("jobs.")}`,
             detail:
                 expansion.inputs.length > 1
                     ? `${localize("Batch inputs:")} ${breakdown(expansion.inputs, label)}`
@@ -71,7 +67,9 @@ export function jobCountNotices(
             notices.push({
                 variant: "warning",
                 kind: "remap",
-                text: `${localize("Remapping replaces a single job, but this request would run")} ${jobsText(jobCount)} ${localize("and will be rejected.")}`,
+                text: localize(
+                    "Remapping replaces a single job, but this request would run several jobs and will be rejected.",
+                ),
             });
         }
     } else if (reason === "inputs_not_ready") {
@@ -88,7 +86,7 @@ export function jobCountNotices(
             kind: "mismatch",
             text: sizesDiffer
                 ? `${localize("Batch inputs must have matching sizes:")} ${matched
-                      .map((i) => `${label(i.name)} ${localize("has")} ${i.count}`)
+                      .map((i) => `${label(i.name)} (${i.count})`)
                       .join(", ")}.`
                 : `${localize("Batch inputs cannot be matched because their collections have different structures:")} ${matched
                       .map((i) => label(i.name))

@@ -120,8 +120,9 @@ const toolUuid = computed(() => props.uuid || formConfig.value.uuid);
 
 const jobExpansion = computed(() => {
     const expansion = formConfig.value.job_expansion;
-    // Client-side batch validation already flags mismatched selections at the field.
-    if (expansion?.reason === "batch_mismatch" && validationInternal.value) {
+    // A client-side error on a batched input already flags the mismatch at that field.
+    const invalidInput = validationInternal.value?.[0];
+    if (expansion?.reason === "batch_mismatch" && expansion.inputs.some((i) => i.name === invalidInput)) {
         return undefined;
     }
     return expansion;
@@ -151,7 +152,7 @@ const tooltip = computed(() => {
     }
     const runTitle = `Run tool: ${toolName.value} (${formConfig.value.version})`;
     const jobCount = jobExpansion.value?.job_count;
-    return jobCount && jobCount > 1 ? `${runTitle} - ${jobCount} jobs` : runTitle;
+    return jobCount && jobCount > 1 ? `${runTitle} - ${jobCount} ${localize("jobs")}` : runTitle;
 });
 
 const emailAllowed = computed(() => config.value.server_mail_configured && !currentUser.value?.isAnonymous);
@@ -233,6 +234,10 @@ async function onChange(newData: FormData, refreshRequest?: boolean) {
 }
 
 async function onUpdate() {
+    if (loading.value) {
+        // A tool (re)load is in flight and its response supersedes this update.
+        return;
+    }
     const requestId = ++buildRequestId;
     disabled.value = true;
     console.debug("ToolForm - Updating input parameters.", formData.value);
@@ -369,8 +374,8 @@ function onChangeVersion(newVersion: string) {
 }
 
 async function requestTool(newVersion?: string) {
-    // Supersede in-flight updates built for the previous version.
-    buildRequestId++;
+    // Supersedes in-flight updates and earlier loads, e.g. after a quick second version switch.
+    const requestId = ++buildRequestId;
     currentVersion.value = newVersion || currentVersion.value;
     disabled.value = true;
     loading.value = true;
@@ -383,6 +388,9 @@ async function requestTool(newVersion?: string) {
             history_id: currentHistoryId.value || undefined,
             tool_uuid: toolUuid.value,
         });
+        if (requestId !== buildRequestId) {
+            return;
+        }
         currentVersion.value = data.version;
         formConfig.value = data;
         remapAllowed.value = (props.jobId && data.job_remap) || false;
@@ -394,13 +402,19 @@ async function requestTool(newVersion?: string) {
             messageText.value = `Now you are using '${data.name}' version ${data.version}, id '${data.id}'.`;
         }
     } catch (error) {
+        if (requestId !== buildRequestId) {
+            return;
+        }
         messageVariant.value = "danger";
         messageText.value = `Loading tool ${props.id} failed: ${error}`;
         messageShow.value = true;
     } finally {
-        disabled.value = false;
-        loading.value = false;
-        showLoading.value = false;
+        // Loads only supersede each other (updates wait for them), so the latest one resets these.
+        if (requestId === buildRequestId) {
+            disabled.value = false;
+            loading.value = false;
+            showLoading.value = false;
+        }
     }
 }
 
@@ -633,10 +647,9 @@ requestTool();
             </div>
 
             <ToolFormJobCount
-                class="mt-2 mb-4"
                 :job-expansion="jobExpansion"
                 :inputs="formConfig.inputs"
-                :remapping="Boolean(remapAllowed) && useJobRemapping" />
+                :remapping="useJobRemapping && Boolean(props.jobId)" />
             <template v-slot:buttons>
                 <ButtonSpinner
                     id="execute"
@@ -645,15 +658,6 @@ requestTool();
                     data-description="run tool button"
                     :disabled="runButtonDisabled"
                     size="small"
-                    :wait="showExecuting"
-                    :tooltip="tooltip"
-                    @onClick="onExecute" />
-            </template>
-            <template v-slot:footer>
-                <ButtonSpinner
-                    :title="localize('Run Tool')"
-                    class="mt-3 mb-3"
-                    :disabled="runButtonDisabled"
                     :wait="showExecuting"
                     :tooltip="tooltip"
                     @onClick="onExecute" />

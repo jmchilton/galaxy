@@ -245,7 +245,7 @@ describe("ToolForm", () => {
             expect(jobCountText()).toBe("");
         });
 
-        it("leaves a size mismatch to client-side validation when it already flags one", async () => {
+        it("leaves a size mismatch to client-side validation when it flags a batch input", async () => {
             const mismatch = {
                 job_count: null,
                 reason: "batch_mismatch",
@@ -258,10 +258,42 @@ describe("ToolForm", () => {
             await flushPromises();
 
             await requestUpdate();
-            expect(jobCountText()).toContain("Batch inputs must have matching sizes: input1 has 2, input2 has 3.");
+            const warning = wrapper.find("[data-job-count-notice='mismatch']");
+            expect(warning.attributes("role")).toBe("alert");
+            expect(warning.text()).toBe("Batch inputs must have matching sizes: input1 (2), input2 (3).");
 
-            await wrapper.findComponent(FormDisplay).vm.$emit("onValidation", ["input2", "Please make sure..."]);
+            const formDisplay = wrapper.findComponent(FormDisplay);
+            await formDisplay.vm.$emit("onValidation", ["other_param", "Please provide a value for this option."]);
+            expect(jobCountText()).toContain("Batch inputs must have matching sizes");
+
+            await formDisplay.vm.$emit("onValidation", ["input2", "Please make sure..."]);
             expect(jobCountText()).toBe("");
+        });
+
+        it("keeps the newest tool version when an older version request finishes last", async () => {
+            let releaseStale!: () => void;
+            const stale = new Promise<void>((resolve) => (releaseStale = resolve));
+            server.use(
+                http.untyped.get("/api/tools/tool_id/build", async ({ request }) => {
+                    const version = new URL(request.url).searchParams.get("tool_version");
+                    if (version === "slow") {
+                        await stale;
+                    }
+                    return HttpResponse.json(buildResponse({ version }));
+                }),
+            );
+            await flushPromises();
+
+            const toolCard = wrapper.findComponent(ToolCard);
+            toolCard.vm.$emit("onChangeVersion", "slow");
+            toolCard.vm.$emit("onChangeVersion", "fast");
+            await flushPromises();
+            expect(toolCard.props("version")).toBe("fast");
+
+            releaseStale();
+            await flushPromises();
+            expect(toolCard.props("version")).toBe("fast");
+            expect(toolCard.props("disabled")).toBe(false);
         });
     });
 
