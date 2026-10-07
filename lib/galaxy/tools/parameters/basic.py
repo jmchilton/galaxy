@@ -458,6 +458,10 @@ class TextToolParameter(SimpleTextToolParameter):
     ['ab']
     >>> TextToolParameter(None, {"name": "_name", "type": "text", "multiple": True, "value": "ab"}).get_initial_value(None, {})
     ['ab']
+    >>> p = TextToolParameter(None, {"name": "_name", "type": "text", "multiple": True, "validators": [{"type": "length", "max": 3, "message": "too long"}]})
+    >>> p.validate(["a", "b", "c", "d"])
+    >>> with assert_throws_param_value_error("Parameter '_name': too long"):
+    ...     p.validate(["abcd"])
     """
 
     def __init__(self, tool: Optional["Tool"], input_source):
@@ -540,6 +544,10 @@ class TextToolParameter(SimpleTextToolParameter):
             and trans.workflow_building_mode is workflow_building_modes.ENABLED
             and contains_workflow_parameter(value, search=search)
         ):
+            if self.multiple and isinstance(value, list):
+                for v in value:
+                    super().validate(v, trans)
+                return
             return super().validate(value, trans)
 
     @property
