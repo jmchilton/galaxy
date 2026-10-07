@@ -14,13 +14,16 @@
         <BFormGroup
             v-if="requiresPanel"
             label="Target Section:"
-            description="Choose an existing tool panel section or create a new section to contain the installed tools (optional).">
+            description="Choose an existing tool panel section or create a new section to contain the installed tools (optional)."
+            :state="sectionError ? false : null"
+            :invalid-feedback="sectionError">
             <FormSelectOrText
                 id="install-tool-section"
                 v-model="toolSection"
                 :options="sectionOptions"
                 other-label="New section..."
-                placeholder="New section name" />
+                other-placeholder="New section name"
+                @alert="sectionError = $event" />
         </BFormGroup>
         <Heading separator size="sm" :collapse="advancedShow ? 'open' : 'closed'" @click="onAdvanced">
             {{ advancedTitle }} advanced settings
@@ -106,6 +109,7 @@ export default {
             toolConfig: null,
             toolConfigs: [],
             toolSection: null,
+            sectionError: undefined,
         };
     },
     computed: {
