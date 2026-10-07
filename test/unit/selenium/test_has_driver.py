@@ -989,6 +989,21 @@ class TestUtilityMethods:
             assert "original message" in str(new_playwright_exception)
 
 
+class TestPlaywrightLocator:
+    """Test playwright_locator, the public Target/tuple to Playwright Locator bridge."""
+
+    def test_playwright_locator_with_target(self, playwright_driver_instance, base_url: str) -> None:
+        playwright_driver_instance.navigate_to(f"{base_url}/basic.html")
+        target = SimpleTarget(element_locator=(By.CLASS_NAME, "item"), description="items")
+        locator = playwright_driver_instance.playwright_locator(target)
+        assert locator.all_inner_texts() == ["Item 1", "Item 2", "Item 3"]
+
+    def test_playwright_locator_with_tuple(self, playwright_driver_instance, base_url: str) -> None:
+        playwright_driver_instance.navigate_to(f"{base_url}/basic.html")
+        locator = playwright_driver_instance.playwright_locator((By.ID, "test-div"))
+        assert locator.inner_text() == "Test Div"
+
+
 class TestJavaScriptExecution:
     """Tests for JavaScript execution methods."""
 
