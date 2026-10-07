@@ -1,9 +1,11 @@
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import (
     Any,
     TYPE_CHECKING,
+    TypeVar,
 )
 
 from pydantic import ValidationError
@@ -27,19 +29,27 @@ from galaxy.model import (
     WorkflowRequestStepState,
 )
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.security.validate_user_input import validate_preferred_object_store_id
 from galaxy.tool_util_models.parameters import (
+    DataOrCollectionRequest,
     DataOrCollectionRequestAdapter,
     DataRequestCollectionUri,
+    DataRequestHda,
+    DataRequestHdca,
+    DataRequestLd,
+    DataRequestLdda,
     DataRequestUri,
     FileRequestUri,
 )
-from galaxy.tools.parameters.basic import (
-    IntegerToolParameter,
-    ParameterValueError,
-)
+from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
-from galaxy.workflow.modules import WorkflowModuleInjector
+from galaxy.workflow.completion_hooks import completion_hook_names
+from galaxy.workflow.modules import (
+    InputModule,
+    InputParameterModule,
+    WorkflowModuleInjector,
+)
 from galaxy.workflow.resources import get_resource_mapper_function
 
 if TYPE_CHECKING:
@@ -118,9 +128,7 @@ class WorkflowRunConfig:
         self.on_complete = on_complete
 
 
-def _normalize_inputs(
-    steps: list["WorkflowStep"], inputs: dict[str, dict[str, Any]], inputs_by: str
-) -> dict[int, dict[str, Any]]:
+def _normalize_inputs(steps: list["WorkflowStep"], inputs: dict[str, Any], inputs_by: str) -> dict[int, Any]:
     normalized_inputs = {}
     for step in steps:
         if step.type not in INPUT_STEP_TYPES:
@@ -268,14 +276,7 @@ def _flatten_step_params(param_dict: dict, prefix: str = "") -> dict:
     return new_params
 
 
-def _get_target_history(
-    trans: "ProvidesHistoryContext",
-    workflow: "Workflow",
-    payload: dict[str, Any],
-    param_keys: list[list] | None = None,
-    index: int = 0,
-) -> History:
-    param_keys = param_keys or []
+def _get_existing_target_history(trans: "ProvidesHistoryContext", payload: dict[str, Any]) -> History | None:
     history_name = payload.get("new_history_name", None)
     history_id = payload.get("history_id", None)
     history_param = payload.get("history", None)
@@ -283,40 +284,194 @@ def _get_target_history(
         raise exceptions.RequestParameterInvalidException(
             "Specified workflow target history multiple ways - at most one of 'history', 'history_id', and 'new_history_name' may be specified."
         )
-    if history_param:
-        if history_param.startswith("hist_id="):
-            history_id = history_param[8:]
+    if history_param and history_param.startswith("hist_id="):
+        history_id = history_param[8:]
+    if not history_id:
+        return None
+    history_manager = trans.app.history_manager
+    return history_manager.get_mutable(trans.security.decode_id(history_id), trans.user, current_history=trans.history)
+
+
+def _new_target_history_name(
+    workflow: "Workflow", payload: dict[str, Any], param_keys: list[list] | None = None, index: int = 0
+) -> str:
+    param_keys = param_keys or []
+    history_param = payload.get("history", None)
+    history_name = payload.get("new_history_name", None) or history_param
+    nh_name = history_name or f"History from {workflow.name} workflow"
+    if len(param_keys) <= index:
+        raise exceptions.MessageException("Incorrect expansion of workflow batch parameters.")
+    ids = param_keys[index]
+    nids = len(ids)
+    if nids == 1:
+        nh_name = f"{nh_name} on {ids[0]}"
+    elif nids > 1:
+        nh_name = f"{nh_name} on {', '.join(ids[0:-1])} and {ids[-1]}"
+    return nh_name
+
+
+def _step_name(step: "WorkflowStep") -> str:
+    return str(step.label or step.order_index + 1)
+
+
+@dataclass
+class _ResolvedDataInput:
+    """A data input request checked against its step, before anything is added to a history."""
+
+    request: DataOrCollectionRequest
+    content: HistoryDatasetAssociation | HistoryDatasetCollectionAssociation | LibraryDatasetDatasetAssociation | None
+
+
+DatasetInstanceT = TypeVar("DatasetInstanceT", HistoryDatasetAssociation, LibraryDatasetDatasetAssociation)
+
+
+def _get_accessible_dataset_instance(
+    trans: "ProvidesHistoryContext", content: DatasetInstanceT | None, src: str, encoded_id: str
+) -> DatasetInstanceT:
+    if content is None:
+        raise exceptions.ObjectNotFound(f"Workflow input '{encoded_id}' ({src}) not found")
+    dataset = content.dataset
+    if not trans.user_is_admin and (
+        dataset is None or not trans.app.security_agent.can_access_dataset(trans.get_current_user_roles(), dataset)
+    ):
+        raise exceptions.ItemAccessibilityException(f"Invalid workflow input '{encoded_id}' specified")
+    return content
+
+
+def _resolve_data_input(trans: "ProvidesHistoryContext", step: "WorkflowStep", input_dict: Any) -> _ResolvedDataInput:
+    try:
+        data_request = DataOrCollectionRequestAdapter.validate_python(input_dict)
+    except ValidationError as e:
+        raise validation_error_to_message_exception(e)
+    sa_session = trans.sa_session
+    content: HistoryDatasetAssociation | HistoryDatasetCollectionAssociation | LibraryDatasetDatasetAssociation | None
+    if isinstance(data_request, (DataRequestLdda, DataRequestHda, DataRequestLd, DataRequestHdca)):
+        decoded_id = trans.security.decode_id(data_request.id)
+        if isinstance(data_request, DataRequestLdda):
+            ldda = sa_session.get(LibraryDatasetDatasetAssociation, decoded_id)
+            content = _get_accessible_dataset_instance(trans, ldda, data_request.src, data_request.id)
+        elif isinstance(data_request, DataRequestHda):
+            hda = sa_session.get(HistoryDatasetAssociation, decoded_id)
+            content = _get_accessible_dataset_instance(trans, hda, data_request.src, data_request.id)
+        elif isinstance(data_request, DataRequestLd):
+            library_dataset = sa_session.get(LibraryDataset, decoded_id)
+            ldda = library_dataset.library_dataset_dataset_association if library_dataset else None
+            content = _get_accessible_dataset_instance(trans, ldda, data_request.src, data_request.id)
         else:
-            history_name = history_param
-    if history_id:
-        history_manager = trans.app.history_manager
-        target_history = history_manager.get_mutable(
-            trans.security.decode_id(history_id), trans.user, current_history=trans.history
-        )
+            if sa_session.get(HistoryDatasetCollectionAssociation, decoded_id) is None:
+                raise exceptions.ObjectNotFound(f"Workflow input '{data_request.id}' ({data_request.src}) not found")
+            content = trans.app.dataset_collection_manager.get_dataset_collection_instance(trans, "history", decoded_id)
+        assert isinstance(step.module, InputModule)
+        try:
+            step.module.validate_input_content(content)
+        except ParameterValueError as e:
+            raise exceptions.RequestParameterInvalidException(f"{_step_name(step)}: {e.message_suffix}")
+    elif isinstance(data_request, (DataRequestCollectionUri, DataRequestUri, FileRequestUri)):
+        content = None
     else:
-        if history_name:
-            nh_name = history_name
+        raise exceptions.RequestParameterInvalidException(f"Unknown workflow input source for '{step.id}' specified.")
+    return _ResolvedDataInput(request=data_request, content=content)
+
+
+def _add_data_input_to_history(
+    trans: "ProvidesHistoryContext", resolved: _ResolvedDataInput, history: History, add_to_history: bool
+) -> tuple[Any, bool]:
+    """Return the content to record for a resolved input and whether it requires materialization."""
+    data_request = resolved.request
+    content: Any = resolved.content
+    if isinstance(data_request, DataRequestCollectionUri):
+        hdca_input = dereference_input_to_hdca(trans, data_request, history)
+        request = data_request.model_dump(mode="json")
+        return InputWithRequest(input=hdca_input, request=request), not data_request.deferred
+    if isinstance(data_request, (DataRequestUri, FileRequestUri)):
+        hda_input = dereference_input_to_hda(trans, data_request, history)
+        request = data_request.model_dump(mode="json")
+        return InputWithRequest(input=hda_input, request=request), not data_request.deferred
+    if isinstance(content, LibraryDatasetDatasetAssociation):
+        content = content.to_history_dataset_association(history, add_to_history=add_to_history)
+    if add_to_history and content.history != history:
+        if isinstance(content, HistoryDatasetCollectionAssociation):
+            content = content.copy(element_destination=history, flush=False)
         else:
-            nh_name = f"History from {workflow.name} workflow"
-        if len(param_keys) <= index:
-            raise exceptions.MessageException("Incorrect expansion of workflow batch parameters.")
-        ids = param_keys[index]
-        nids = len(ids)
-        if nids == 1:
-            nh_name = f"{nh_name} on {ids[0]}"
-        elif nids > 1:
-            nh_name = f"{nh_name} on {', '.join(ids[0:-1])} and {ids[-1]}"
-        new_history = History(user=trans.user, name=nh_name)
-        trans.sa_session.add(new_history)
-        trans.sa_session.commit()
-        target_history = new_history
-    return target_history
+            content = content.copy(copy_tags=content.tags, flush=False)
+        history.stage_addition(content)
+    return content, False
+
+
+def _validate_on_complete(on_complete: list[dict[str, Any]] | None) -> None:
+    available_actions = completion_hook_names()
+    for action in on_complete or []:
+        for action_name in action:
+            if action_name not in available_actions:
+                raise exceptions.RequestParameterInvalidException(
+                    f"Unknown on_complete action '{action_name}', available actions are: {', '.join(available_actions)}"
+                )
+
+
+def _validate_object_store_ids(trans: "ProvidesHistoryContext", payload: dict[str, Any]) -> None:
+    preferred_object_store_id = payload.get("preferred_object_store_id")
+    preferred_outputs_object_store_id = payload.get("preferred_outputs_object_store_id")
+    preferred_intermediate_object_store_id = payload.get("preferred_intermediate_object_store_id")
+    split_object_store_config = bool(
+        preferred_outputs_object_store_id is not None or preferred_intermediate_object_store_id is not None
+    )
+    if split_object_store_config and preferred_object_store_id:
+        raise exceptions.RequestParameterInvalidException(
+            "May specified either 'preferred_object_store_id' or one/both of 'preferred_outputs_object_store_id' and 'preferred_intermediate_object_store_id' but not both"
+        )
+    for object_store_id in (
+        preferred_object_store_id,
+        preferred_outputs_object_store_id,
+        preferred_intermediate_object_store_id,
+    ):
+        if object_store_id:
+            validation_error = validate_preferred_object_store_id(trans.user, trans.app.object_store, object_store_id)
+            if validation_error:
+                raise exceptions.RequestParameterInvalidException(validation_error)
+
+
+def _validate_resource_params(
+    trans: "ProvidesHistoryContext", workflow: "Workflow", resource_params: dict[str, Any]
+) -> None:
+    # quick attempt to validate parameters, just handle select options now since is what
+    # is needed for DTD - arbitrary plugins can define arbitrary logic at runtime in the
+    # destination function. In the future this should be extended to allow arbitrary
+    # pluggable validation.
+    resource_mapper_function = get_resource_mapper_function(trans.app)
+    # TODO: Do we need to do anything with the stored_workflow or can this be removed.
+    resource_parameters = resource_mapper_function(trans=trans, stored_workflow=None, workflow=workflow)
+    for resource_parameter in resource_parameters:
+        if resource_parameter.get("type") == "select":
+            name = resource_parameter.get("name")
+            if name in resource_params:
+                value = resource_params[name]
+                valid_option = False
+                # TODO: How should be handle the case where no selection is made by the user
+                # This can happen when there is a select on the page but the user has no options to select
+                # Here I have the validation pass it through. An alternative may be to remove the parameter if
+                # it is None.
+                if value is None:
+                    valid_option = True
+                else:
+                    for option_elem in resource_parameter.get("data"):
+                        option_value = option_elem.get("value")
+                        if value == option_value:
+                            valid_option = True
+                if not valid_option:
+                    raise exceptions.RequestParameterInvalidException(f"Invalid value for parameter '{name}' found.")
+
+
+def _validate_replacement_params(replacement_dict: dict[str, Any]) -> None:
+    for name, value in replacement_dict.items():
+        if not isinstance(value, str):
+            raise exceptions.RequestParameterInvalidException(
+                f"Replacement parameter '{name}' must be a string, got {type(value).__name__}"
+            )
 
 
 def build_workflow_run_configs(
     trans: "ProvidesHistoryContext", workflow: "Workflow", payload: dict[str, Any]
 ) -> list[WorkflowRunConfig]:
-    app = trans.app
     allow_tool_state_corrections = payload.get("allow_tool_state_corrections", False)
     use_cached_job = payload.get("use_cached_job", False)
 
@@ -326,19 +481,19 @@ def build_workflow_run_configs(
     if workflow.has_cycles:
         raise exceptions.MessageException("Workflow cannot be run because it contains cycles")
 
-    if "step_parameters" in payload and "parameters" in payload:
-        raise exceptions.RequestParameterInvalidException(
-            "Cannot specify both legacy parameters and step_parameters attributes."
-        )
     if "inputs" in payload and "ds_map" in payload:
         raise exceptions.RequestParameterInvalidException("Cannot specify both legacy ds_map and input attributes.")
+    if payload.get("effective_outputs"):
+        raise exceptions.RequestParameterInvalidException(
+            "Cannot declare effective outputs on invocation in this fashion."
+        )
 
-    add_to_history = "no_add_to_history" not in payload
+    add_to_history = not payload.get("no_add_to_history", False)
     legacy = payload.get("legacy", False)
     already_normalized = payload.get("parameters_normalized", False)
     raw_parameters = payload.get("parameters") or {}
-    requires_materialization: bool = False
-    run_configs = []
+    replacement_dict = payload.get("replacement_params", {})
+    resource_params = payload.get("resource_params", {})
     unexpanded_param_map = _normalize_step_parameters(
         workflow.steps, raw_parameters, legacy=legacy, already_normalized=already_normalized
     )
@@ -363,8 +518,24 @@ def build_workflow_run_configs(
     expanded_params, expanded_param_keys, expanded_inputs = expand_workflow_inputs(
         unexpanded_param_map, unexpanded_inputs
     )
+    if not payload.get("batch") and len(expanded_params) != 1:
+        raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
+
+    # Validate the whole request before creating histories or adding anything to them.
+    existing_history = _get_existing_target_history(trans, payload)
+    _validate_replacement_params(replacement_dict)
+    if resource_params:
+        _validate_resource_params(trans, workflow, resource_params)
+    _validate_object_store_ids(trans, payload)
+    _validate_on_complete(payload.get("on_complete"))
+
+    steps_by_id = workflow.steps_by_id
+    module_injector = WorkflowModuleInjector(trans, False)
+    validated_requests: list[tuple[dict, dict[int, Any], str | None]] = []
     for index, (param_map, inputs) in enumerate(zip(expanded_params, expanded_inputs)):
-        history = _get_target_history(trans, workflow, payload, expanded_param_keys, index)
+        new_history_name = None
+        if existing_history is None:
+            new_history_name = _new_target_history_name(workflow, payload, expanded_param_keys, index)
         if inputs or not already_normalized:
             normalized_inputs = _normalize_inputs(workflow.steps, inputs, inputs_by)
         else:
@@ -383,163 +554,56 @@ def build_workflow_run_configs(
                         value = param_map.pop(normalized_key)
                         normalized_inputs[normalized_key] = value["input"]
 
-        steps_by_id = workflow.steps_by_id
-        # Set workflow inputs.
-        module_injector = WorkflowModuleInjector(trans, False)
-        for key, input_dict in normalized_inputs.items():
-            if input_dict is None:
+        for key, input_value in list(normalized_inputs.items()):
+            if input_value is None:
                 continue
             step = steps_by_id[key]
-            if step.type == "parameter_input":
-                if isinstance(input_dict, dict):
+            module_injector.inject(step)
+            if isinstance(step.module, InputParameterModule):
+                if isinstance(input_value, dict):
                     raise exceptions.RequestParameterInvalidException(
-                        f"{step.label or step.order_index + 1}: workflow parameter inputs cannot be dictionaries. "
+                        f"{_step_name(step)}: workflow parameter inputs cannot be dictionaries. "
                         "Pass the parameter value directly in 'inputs', without a 'parameter_value' wrapper."
                     )
-                module_injector.inject(step)
-                assert step.module
-                input_param = step.module.get_runtime_inputs(step.module)["input"]
                 try:
-                    input_param.validate(input_dict, trans=trans)
-                    if isinstance(input_param, IntegerToolParameter) and input_param.multiple:
-                        # The run form submits one integer per line.
-                        normalized_inputs[key] = input_param.to_python(input_dict, trans.app)
+                    normalized_inputs[key] = step.module.validate_input_value(trans, input_value)
                 except ParameterValueError as e:
-                    raise exceptions.RequestParameterInvalidException(
-                        f"{step.label or step.order_index + 1}: {e.message_suffix}"
-                    )
-                continue
-            try:
-                added_to_history = False
-                try:
-                    data_request = DataOrCollectionRequestAdapter.validate_python(input_dict)
-                except ValidationError as e:
-                    raise validation_error_to_message_exception(e)
-                if data_request.src == "ldda":
-                    ldda = trans.sa_session.get(
-                        LibraryDatasetDatasetAssociation, trans.security.decode_id(data_request.id)
-                    )
-                    assert ldda
-                    assert trans.user_is_admin or trans.app.security_agent.can_access_dataset(
-                        trans.get_current_user_roles(), ldda.dataset
-                    )
-                    content = ldda.to_history_dataset_association(history, add_to_history=add_to_history)
-                elif data_request.src == "hda":
-                    # Get dataset handle, add to dict and history if necessary
-                    content = trans.sa_session.get(HistoryDatasetAssociation, trans.security.decode_id(data_request.id))
-                    assert trans.user_is_admin or trans.app.security_agent.can_access_dataset(
-                        trans.get_current_user_roles(), content.dataset
-                    )
-                elif data_request.src == "ld":
-                    library_dataset = trans.sa_session.get(LibraryDataset, trans.security.decode_id(data_request.id))
-                    assert library_dataset
-                    ldda = library_dataset.library_dataset_dataset_association
-                    assert ldda
-                    assert trans.user_is_admin or trans.app.security_agent.can_access_dataset(
-                        trans.get_current_user_roles(), ldda.dataset
-                    )
-                    content = ldda.to_history_dataset_association(history, add_to_history=add_to_history)
-                elif data_request.src == "hdca":
-                    content = app.dataset_collection_manager.get_dataset_collection_instance(
-                        trans, "history", data_request.id
-                    )
-                elif isinstance(data_request, DataRequestCollectionUri):
-                    hdca_input = dereference_input_to_hdca(trans, data_request, history)
-                    added_to_history = True
-                    content = InputWithRequest(
-                        input=hdca_input,
-                        request=data_request.model_dump(mode="json"),
-                    )
-                    if not data_request.deferred:
-                        requires_materialization = True
-                elif isinstance(data_request, (DataRequestUri, FileRequestUri)):
-                    hda_input = dereference_input_to_hda(trans, data_request, history)
-                    added_to_history = True
-                    content = InputWithRequest(
-                        input=hda_input,
-                        request=data_request.model_dump(mode="json"),
-                    )
-                    if not data_request.deferred:
-                        requires_materialization = True
-                else:
-                    raise exceptions.RequestParameterInvalidException(
-                        f"Unknown workflow input source for '{key}' specified."
-                    )
-                if not added_to_history and add_to_history and content.history != history:
-                    if isinstance(content, HistoryDatasetCollectionAssociation):
-                        content = content.copy(element_destination=history, flush=False)
-                    else:
-                        content = content.copy(copy_tags=content.tags, flush=False)
-                    history.stage_addition(content)
-                input_dict["content"] = content
-            except AssertionError:
-                raise exceptions.ItemAccessibilityException(
-                    f"Invalid workflow input '{input_dict.get('id')}' specified"
-                )
-        for key in set(normalized_inputs.keys()):
-            value = normalized_inputs[key]
-            if isinstance(value, dict) and "content" in value:
-                normalized_inputs[key] = value["content"]
+                    raise exceptions.RequestParameterInvalidException(f"{_step_name(step)}: {e.message_suffix}")
             else:
-                normalized_inputs[key] = value
-        resource_params = payload.get("resource_params", {})
-        if resource_params:
-            # quick attempt to validate parameters, just handle select options now since is what
-            # is needed for DTD - arbitrary plugins can define arbitrary logic at runtime in the
-            # destination function. In the future this should be extended to allow arbitrary
-            # pluggable validation.
-            resource_mapper_function = get_resource_mapper_function(trans.app)
-            # TODO: Do we need to do anything with the stored_workflow or can this be removed.
-            resource_parameters = resource_mapper_function(trans=trans, stored_workflow=None, workflow=workflow)
-            for resource_parameter in resource_parameters:
-                if resource_parameter.get("type") == "select":
-                    name = resource_parameter.get("name")
-                    if name in resource_params:
-                        value = resource_params[name]
-                        valid_option = False
-                        # TODO: How should be handle the case where no selection is made by the user
-                        # This can happen when there is a select on the page but the user has no options to select
-                        # Here I have the validation pass it through. An alternative may be to remove the parameter if
-                        # it is None.
-                        if value is None:
-                            valid_option = True
-                        else:
-                            for option_elem in resource_parameter.get("data"):
-                                option_value = option_elem.get("value")
-                                if value == option_value:
-                                    valid_option = True
-                        if not valid_option:
-                            raise exceptions.RequestParameterInvalidException(
-                                f"Invalid value for parameter '{name}' found."
-                            )
+                normalized_inputs[key] = _resolve_data_input(trans, step, input_value)
+        validated_requests.append((param_map, normalized_inputs, new_history_name))
+
+    requires_materialization: bool = False
+    run_configs = []
+    for param_map, normalized_inputs, new_history_name in validated_requests:
+        if existing_history is not None:
+            history = existing_history
+        else:
+            assert new_history_name is not None
+            history = History(user=trans.user, name=new_history_name)
+            trans.sa_session.add(history)
+            trans.sa_session.commit()
+        for key, value in normalized_inputs.items():
+            if isinstance(value, _ResolvedDataInput):
+                content, input_requires_materialization = _add_data_input_to_history(
+                    trans, value, history, add_to_history
+                )
+                normalized_inputs[key] = content
+                requires_materialization = requires_materialization or input_requires_materialization
         history.add_pending_items()
-        preferred_object_store_id = payload.get("preferred_object_store_id")
-        preferred_outputs_object_store_id = payload.get("preferred_outputs_object_store_id")
-        preferred_intermediate_object_store_id = payload.get("preferred_intermediate_object_store_id")
-        if payload.get("effective_outputs"):
-            raise exceptions.RequestParameterInvalidException(
-                "Cannot declare effective outputs on invocation in this fashion."
-            )
-        split_object_store_config = bool(
-            preferred_outputs_object_store_id is not None or preferred_intermediate_object_store_id is not None
-        )
-        if split_object_store_config and preferred_object_store_id:
-            raise exceptions.RequestParameterInvalidException(
-                "May specified either 'preferred_object_store_id' or one/both of 'preferred_outputs_object_store_id' and 'preferred_intermediate_object_store_id' but not both"
-            )
         run_configs.append(
             WorkflowRunConfig(
                 target_history=history,
-                replacement_dict=payload.get("replacement_params", {}),
+                replacement_dict=replacement_dict,
                 inputs=normalized_inputs,
                 param_map=param_map,
                 allow_tool_state_corrections=allow_tool_state_corrections,
                 use_cached_job=use_cached_job,
                 resource_params=resource_params,
                 requires_materialization=requires_materialization,
-                preferred_object_store_id=preferred_object_store_id,
-                preferred_outputs_object_store_id=preferred_outputs_object_store_id,
-                preferred_intermediate_object_store_id=preferred_intermediate_object_store_id,
+                preferred_object_store_id=payload.get("preferred_object_store_id"),
+                preferred_outputs_object_store_id=payload.get("preferred_outputs_object_store_id"),
+                preferred_intermediate_object_store_id=payload.get("preferred_intermediate_object_store_id"),
                 on_complete=payload.get("on_complete"),
             )
         )
@@ -620,10 +684,6 @@ def workflow_run_config_to_request(
 
     replacement_dict = run_config.replacement_dict
     for name, value in replacement_dict.items():
-        if not isinstance(value, str):
-            raise exceptions.RequestParameterInvalidException(
-                f"Replacement parameter '{name}' must be a string, got {type(value).__name__}"
-            )
         add_parameter(
             name=name,
             value=value,
