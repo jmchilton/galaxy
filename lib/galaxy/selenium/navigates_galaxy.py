@@ -2138,8 +2138,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         if deferred:
             self.sleep_for(self.wait_types.UX_RENDER)
             for key, value in deferred:
-                expanded_id = key.replace("|", "-")
-                if self.components.tool_form.parameter_div(parameter=expanded_id).is_absent:
+                if self.components.tool_form.parameter_div(parameter=key).is_absent:
                     continue
                 self.tool_form_set_parameter(key, value)
 
