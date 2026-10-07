@@ -509,6 +509,23 @@ describe("FormData", () => {
         );
     });
 
+    it("rejects paired collection on list:paired_or_unpaired collection input", async () => {
+        const wrapper = createTarget({
+            value: null,
+            options: defaultOptions,
+            type: "data_collection",
+            collectionTypes: ["list:paired_or_unpaired"],
+        });
+        eventStore.setDragData({
+            id: "whatever",
+            history_content_type: "dataset_collection",
+            collection_type: "paired",
+        });
+        dispatchEvent(wrapper, "dragenter");
+        dispatchEvent(wrapper, "drop");
+        expect(emittedArg(wrapper, "alert")).toContain("dataset pair dataset collection is not a valid input");
+    });
+
     it.each([
         ["list", "single_datasets"],
         ["list:paired", "paired"],
@@ -818,6 +835,26 @@ describe("FormData", () => {
                 batch: true,
                 product: false,
                 values: [{ id: "hdcaLLL", map_over_type: "list:list", src: "hdca" }],
+            });
+        });
+
+        it("uses a dropped collection directly when the input also accepts its type", async () => {
+            const wrapper = createTarget({ ...nestedListProps, options: { hdca: [] }, value: null });
+            await wrapper.vm.$nextTick();
+            const before = wrapper.emitted("input")?.length ?? 0;
+            eventStore.setDragData({
+                id: "hdcaLL2",
+                hid: 11,
+                name: "nested2",
+                history_content_type: "dataset_collection",
+                collection_type: "list:list",
+            });
+            dispatchEvent(wrapper, "dragenter");
+            dispatchEvent(wrapper, "drop");
+            expect(emittedArg(wrapper, "input", before)).toEqual({
+                batch: false,
+                product: false,
+                values: [{ id: "hdcaLL2", map_over_type: null, src: "hdca" }],
             });
         });
 

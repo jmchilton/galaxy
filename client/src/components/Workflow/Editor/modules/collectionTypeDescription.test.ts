@@ -72,3 +72,20 @@ describe("compatible (symmetric sibling-matching check)", () => {
         expect(ct("list:list").compatible(ct("list:paired"))).toBe(false);
     });
 });
+
+describe("canMapOver over compound :paired_or_unpaired inputs", () => {
+    // mirrors test_compound_paired_or_unpaired_can_map_over in test_type_descriptions.py
+    it("maps over when ranks above the paired_or_unpaired align", () => {
+        expect(ct("list:list").canMapOver(ct("list:paired_or_unpaired"))).toBe(true);
+        expect(ct("list:list:paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(true);
+        expect(ct("list:list:list").canMapOver(ct("list:paired_or_unpaired"))).toBe(true);
+    });
+
+    it("does not map over without a remaining outer rank", () => {
+        expect(ct("list:paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("list").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("paired:paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("list").canMapOver(ct("list:list:paired_or_unpaired"))).toBe(false);
+    });
+});
