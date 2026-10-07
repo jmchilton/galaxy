@@ -2,6 +2,7 @@ import os
 
 from selenium.webdriver.common.by import By
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.decorators import (
     requires_admin,
     requires_new_library,
@@ -12,7 +13,6 @@ from .framework import (
     SeleniumTestCase,
     UsesLibraryAssertions,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadActivity):

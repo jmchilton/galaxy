@@ -1,10 +1,10 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.util.unittest_utils import skip_if_github_down
 from .framework import (
     selenium_test,
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 REMOTE_ZIP_URL = "https://raw.githubusercontent.com/galaxyproject/galaxy/dev/test-data/rocrate-test.zip"
 

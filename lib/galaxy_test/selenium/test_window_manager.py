@@ -1,12 +1,12 @@
 """E2E tests for Galaxy's window manager (floating windows)."""
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestWindowManager(SeleniumTestCase, UsesUploadActivity):

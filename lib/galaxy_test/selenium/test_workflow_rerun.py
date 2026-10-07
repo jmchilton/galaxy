@@ -1,3 +1,4 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_OPTIONAL_TRUE_INPUT_DATA,
     WORKFLOW_SIMPLE_CAT_TWICE,
@@ -10,7 +11,6 @@ from .framework import (
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 WORKFLOW_BOOLEAN_PARAMETER_DEFAULT_TRUE = """
 class: GalaxyWorkflow

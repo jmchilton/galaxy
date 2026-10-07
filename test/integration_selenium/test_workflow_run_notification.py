@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.workflow_fixtures import WORKFLOW_SIMPLE_CAT_TWICE
 from galaxy_test.selenium.framework import (
     managed_history,
     RunsWorkflows,
     UsesHistoryItemAssertions,
 )
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumIntegrationTestCase,

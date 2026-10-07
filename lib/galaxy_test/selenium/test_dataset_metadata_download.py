@@ -1,10 +1,10 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 FIRST_HID = 1
 

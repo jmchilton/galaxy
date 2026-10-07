@@ -1,10 +1,10 @@
 from galaxy.selenium.navigates_galaxy import edit_details
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     retry_assertion_during_transitions,
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 NEW_HISTORY_NAME = "New History Name"
 HISTORY_PANEL_AXE_IMPACT_LEVEL = "moderate"

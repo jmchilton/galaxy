@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_util import ConfiguresObjectStores
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,

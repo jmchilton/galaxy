@@ -1,3 +1,4 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
@@ -5,7 +6,6 @@ from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestHistoryPages(SeleniumTestCase, UsesUploadActivity):

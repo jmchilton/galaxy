@@ -2032,6 +2032,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.workflow_run.run_workflow_disabled.wait_for_absent()
         self.components.workflow_run.run_workflow.wait_for_and_click()
 
+    def workflow_run_wait_for_ok(self, hid: int, expand: bool = False) -> None:
+        """Wait for a workflow output to be ok in the history panel, optionally expanding it."""
+        timeout = self.wait_length(self.wait_types.JOB_COMPLETION)
+        item = self.content_item_by_attributes(hid=hid, state="ok")
+        item.wait_for_present(timeout=timeout)
+        if expand:
+            item.title.wait_for_and_click()
+
     def workflow_run_ensure_expanded(self):
         workflow_run = self.components.workflow_run
         # Wait for the form to load first - both forms have the run_workflow button
