@@ -74,7 +74,7 @@ describe("jobCountNotices", () => {
             inputs,
         );
         expect(notices[0]!.kind).toBe("mismatch");
-        expect(notices[0]!.text).toBe("Batch inputs must have matching sizes: Input reads has 2, Reverse reads has 3.");
+        expect(notices[0]!.text).toBe("Batch inputs must have matching sizes: Input reads (2), Reverse reads (3).");
     });
 
     it("reports a structural mismatch when sizes agree", () => {
@@ -82,7 +82,7 @@ describe("jobCountNotices", () => {
             expansion({ reason: "batch_mismatch", inputs: [batched("reads", 3), batched("extra", 3)] }),
             inputs,
         );
-        expect(notices[0]!.text).not.toContain("has 3");
+        expect(notices[0]!.text).not.toContain("(3)");
         expect(notices[0]!.text).toContain("different structures: Input reads, Extra.");
     });
 
