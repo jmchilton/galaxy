@@ -411,7 +411,7 @@ def _validate_object_store_ids(trans: "ProvidesHistoryContext", payload: dict[st
     )
     if split_object_store_config and preferred_object_store_id:
         raise exceptions.RequestParameterInvalidException(
-            "May specified either 'preferred_object_store_id' or one/both of 'preferred_outputs_object_store_id' and 'preferred_intermediate_object_store_id' but not both"
+            "May specify either 'preferred_object_store_id' or one/both of 'preferred_outputs_object_store_id' and 'preferred_intermediate_object_store_id' but not both"
         )
     for object_store_id in (
         preferred_object_store_id,
