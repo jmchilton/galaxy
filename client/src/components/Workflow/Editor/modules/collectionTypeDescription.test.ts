@@ -80,4 +80,12 @@ describe("canMapOver over compound :paired_or_unpaired inputs", () => {
         expect(ct("list:list:paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(true);
         expect(ct("list:list:list").canMapOver(ct("list:paired_or_unpaired"))).toBe(true);
     });
+
+    it("does not map over without a remaining outer rank", () => {
+        expect(ct("list:paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("list").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("paired:paired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
+        expect(ct("list").canMapOver(ct("list:list:paired_or_unpaired"))).toBe(false);
+    });
 });
