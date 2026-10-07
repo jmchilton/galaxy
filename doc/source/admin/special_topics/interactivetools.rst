@@ -413,3 +413,57 @@ user desires, this may not be advisable and an admin may want to restrict the
 runtime of InteractiveTools *(and jobs in general)*. However, if the job is
 killed by the DRM, the user is not informed beforehand and data in the container
 could be discarded.
+
+
+Cleaning up orphaned containers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With ``docker run`` the container is started by the Docker daemon, not by the
+job, so it is outside the job's process tree and the DRM cannot kill it
+directly. To handle this, Galaxy's job script sets an ``EXIT`` trap that runs
+``docker kill`` on the container when the job script exits - including when
+the job is stopped by the user or terminated by the DRM with ``SIGTERM``.
+This should be sufficient and no extra configuration ought to be needed.
+
+If the job script is killed with ``SIGKILL`` before it can run the trap,
+however, the container keeps running after Galaxy considers the job finished
+(see `#13511 <https://github.com/galaxyproject/galaxy/issues/13511>`__). If
+``docker ps`` on your compute nodes shows InteractiveTool containers (named
+with a 32 character hex string) whose jobs are no longer running, you can
+clean them up from the DRM's side. usegalaxy.org runs a Slurm epilog script
+as a safety net for exactly this reason.
+
+For InteractiveTools Galaxy writes ``configs/container_config.json`` to the
+job directory, and its ``container_name`` field holds the name the container
+was started with. A Slurm epilog script can use this to kill the container
+when the job ends:
+
+.. code-block:: bash
+
+    #!/bin/bash
+    # Kill any InteractiveTool container left behind by a Galaxy job.
+    [ -n "${SLURM_JOB_ID:-}" ] || exit 0
+    (
+        workdir=$(scontrol show job "$SLURM_JOB_ID" | grep -o 'WorkDir=[^ ]*' | cut -d= -f2-)
+        # Galaxy submits from the job directory; Pulsar may submit from its working subdirectory.
+        for container_config in "${workdir}/configs/container_config.json" "${workdir}/../configs/container_config.json"; do
+            if [ -f "$container_config" ]; then
+                docker kill "$(jq -r '.container_name' "$container_config")"
+                break
+            fi
+        done
+    ) >/dev/null 2>&1 || true
+    exit 0
+
+Install it on each compute node (e.g. as ``/etc/slurm/epilog.sh``, executable
+by root) and enable it in ``slurm.conf``:
+
+.. code-block:: ini
+
+    Epilog=/etc/slurm/epilog.sh
+    PrologEpilogTimeout=90
+
+The epilog runs as root on the node after every job, so ``jq`` and ``docker``
+must be available there. Jobs without a ``container_config.json`` are left
+alone. If your destination sets ``docker_host`` or ``docker_sudo``, adjust the
+``docker kill`` command to match. Other DRMs offer similar post-job hooks.
