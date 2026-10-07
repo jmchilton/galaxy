@@ -1,6 +1,6 @@
-"""Helper classes for testing the Upload Activity.
+"""Helper classes for driving the Upload Activity.
 
-This module provides a fluent API for testing using the new Upload Activity
+This module provides a fluent API for using the Upload Activity
 in Galaxy.
 
 Example usage:
@@ -37,11 +37,18 @@ Example usage:
 from typing import (
     Literal,
     overload,
+    TYPE_CHECKING,
     TypedDict,
     TypeVar,
 )
 
-from .framework import NavigatesGalaxyMixin
+from .navigates_galaxy import NavigatesGalaxy
+
+# Runtime mixins stay independent to support multiple inheritance with Galaxy contexts.
+if TYPE_CHECKING:
+    NavigatesGalaxyMixin = NavigatesGalaxy
+else:
+    NavigatesGalaxyMixin = object
 
 T = TypeVar("T", bound="UploadItem")
 TUploadContext = TypeVar("TUploadContext", bound="BaseUploadContext")
@@ -165,7 +172,7 @@ class _UploadStaging:
     start-specific hooks.
     """
 
-    def __init__(self, driver_wrapper: NavigatesGalaxyMixin):
+    def __init__(self, driver_wrapper: NavigatesGalaxy):
         self.driver_wrapper = driver_wrapper
         self._item_count = 0
         self._current_method_id: UploadMethodId | None = None
@@ -300,7 +307,7 @@ class _UploadStaging:
 
 
 class UploadContext(_UploadStaging):
-    def __init__(self, method_id: UploadMethodId, driver_wrapper: NavigatesGalaxyMixin):
+    def __init__(self, method_id: UploadMethodId, driver_wrapper: NavigatesGalaxy):
         self._collection_config: tuple[str, CollectionType] | None = None
         super().__init__(driver_wrapper)
 
@@ -592,7 +599,7 @@ class UploadContext(_UploadStaging):
 class UploadMethodInlineContext(_UploadStaging):
     """Inline upload context for workflow form inputs."""
 
-    def __init__(self, method_id: UploadMethodId, driver_wrapper: NavigatesGalaxyMixin, label: str | None = None):
+    def __init__(self, method_id: UploadMethodId, driver_wrapper: NavigatesGalaxy, label: str | None = None):
         self._label = label
         super().__init__(driver_wrapper)
         self._select_method(method_id)
@@ -842,7 +849,7 @@ class ExploreZipContext(BaseUploadContext):
 
 
 class RuleImportContext:
-    def __init__(self, driver_wrapper: NavigatesGalaxyMixin):
+    def __init__(self, driver_wrapper: NavigatesGalaxy):
         self.driver_wrapper = driver_wrapper
         self.driver_wrapper.get("rules")
         self.driver_wrapper.components.file_set_wizard.creating_what_datasets.wait_for_visible()
@@ -946,7 +953,7 @@ _CONTEXT_CLASS_MAP: dict[UploadMethodId, type[BaseUploadContext]] = {
 
 
 class UsesUploadActivity(NavigatesGalaxyMixin):
-    """Mixin for using the Upload Activity in the testing framework."""
+    """Mixin for using the Upload Activity with a Galaxy navigation context."""
 
     @overload
     def upload_context(self, method_id: Literal["local-file"]) -> LocalFileContext: ...

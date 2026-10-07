@@ -3,11 +3,11 @@
 import platform
 
 from galaxy.selenium.keys import Key
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestCustomTools(SeleniumTestCase, UsesUploadActivity):

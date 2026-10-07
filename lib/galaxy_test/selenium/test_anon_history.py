@@ -1,9 +1,9 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.decorators import requires_new_user
 from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestAnonymousHistories(SeleniumTestCase, UsesUploadActivity):

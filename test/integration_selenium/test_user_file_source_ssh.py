@@ -6,7 +6,7 @@ from galaxy.selenium.navigates_galaxy import (
     ConfigTemplateParameter,
     FileSourceInstance,
 )
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from ._base_user_file_sources import BaseUserObjectStoreSeleniumIntegration
 from ._sftp_server import SFTPServerMixin
 from .framework import (

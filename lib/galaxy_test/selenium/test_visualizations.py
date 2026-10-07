@@ -1,3 +1,4 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.populators import (
     skip_without_datatype,
     skip_without_visualization_plugin,
@@ -7,7 +8,6 @@ from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 HG18_DBKEY_TEXT = "Human Mar. 2006 (NCBI36/hg18) (hg18)"
 HG18_TITLE = "Human (hg18)"
