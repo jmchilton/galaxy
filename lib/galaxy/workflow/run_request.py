@@ -48,6 +48,7 @@ from galaxy.workflow.completion_hooks import completion_hook_names
 from galaxy.workflow.modules import (
     InputModule,
     InputParameterModule,
+    populate_module_and_state,
     WorkflowModuleInjector,
 )
 from galaxy.workflow.resources import get_resource_mapper_function
@@ -575,6 +576,7 @@ def build_workflow_run_configs(
                     raise exceptions.RequestParameterInvalidException(f"{_step_name(step)}: {e.message_suffix}")
             else:
                 normalized_inputs[key] = _resolve_data_input(trans, step, input_value)
+        populate_module_and_state(trans, workflow, param_map, allow_tool_state_corrections=allow_tool_state_corrections)
         validated_requests.append((param_map, normalized_inputs, new_history_name))
 
     requires_materialization: bool = False
