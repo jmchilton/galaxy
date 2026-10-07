@@ -1,8 +1,15 @@
 """The Galaxy context a gxui daemon holds: Galaxy's standalone context plus the task mixins."""
 
+import json
 import os
 import re
-from typing import cast
+from typing import (
+    Any,
+    cast,
+)
+from urllib.parse import urljoin
+
+from .config import ConfigError, server_url
 
 from galaxy.selenium.context import GalaxySeleniumContextImpl
 from galaxy.selenium.has_playwright_driver import HasPlaywrightDriver
@@ -16,6 +23,31 @@ class GxuiContext(GalaxySeleniumContextImpl, UsesUploadActivity):
         self.artifacts = artifacts
         self.login_email = from_dict.get("login_email")
         self.login_password = from_dict.get("login_password")
+        if state := from_dict.get("storage_state"):
+            try:
+                if isinstance(state, str):
+                    with open(state) as handle:
+                        state = json.load(handle)
+                else:
+                    state = dict(state)
+                binding = state.pop("_gxui", None)
+                if binding and binding["url"] != server_url(self.url):
+                    raise ConfigError("saved login state belongs to a different Galaxy URL")
+                driver = cast(HasPlaywrightDriver, self._driver_impl)
+                resources = driver._playwright_resources
+                old_context = resources.page.context
+                context = resources.browser.new_context(
+                    storage_state=cast(Any, state), viewport=resources.page.viewport_size
+                )
+                driver._playwright_resources = resources._replace(page=context.new_page())
+                old_context.close()
+            except Exception:
+                self.configured_driver.quit()
+                raise
+
+    def build_url(self, url: str, for_selenium: bool = True) -> str:
+        base = self.target_url_from_selenium if for_selenium else self.url
+        return urljoin(base.rstrip("/") + "/", url) if url else base
 
     def _screenshot_path(self, label, extension=".png"):
         directory = os.path.join(self.artifacts, "png")

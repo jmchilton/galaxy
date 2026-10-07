@@ -43,6 +43,7 @@ classifiers = [
 keywords = ["Galaxy"]
 
 [project.optional-dependencies]
+keyring = ["keyring"]
 test = [
     "pytest",
 ]

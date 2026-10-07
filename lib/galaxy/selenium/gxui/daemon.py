@@ -12,14 +12,17 @@ import queue
 import shlex
 import socket
 import subprocess
+import sys
 import threading
 import time
 import traceback
+from pathlib import Path
 from typing import Any
 
 import yaml
 from playwright.sync_api import Error as PlaywrightError
 
+from .config import ConfigError, ConfigFile, private_json, server_url, Settings
 from .context import GxuiContext
 from .verbs import (
     help_text,
@@ -62,7 +65,17 @@ class Daemon:
         self.restarts = 0
         self.dialogs: list = []
         self.stopping = False
-        self.config = _load_config(args.config)
+        startup = getattr(args, "settings", None)
+        self.settings = (
+            Settings(
+                ConfigFile(Path(startup["config"]), {}), startup["profile"], startup["values"], startup["auth"], {}
+            )
+            if startup
+            else None
+        )
+        self.config = _load_config(args.config) if not startup else {}
+        self.secrets: set[str] = set()
+        self.resume_state = None
         self.ctx = self.launch()
         register_method_verbs(GxuiContext)
 
@@ -72,6 +85,8 @@ class Daemon:
         ctx = GxuiContext(
             {
                 **self.config,
+                "storage_state": self.resume_state
+                or (self.settings.auth.get("storage_state") if self.settings else self.args.storage_state),
                 "local_galaxy_url": self.args.url,
                 "timeout_multiplier": self.args.timeout_multiplier,
                 "driver": {
@@ -85,9 +100,6 @@ class Daemon:
         # A passive listener keeps dialogs open for `gxui dialog` or playwright-cli instead of
         # Playwright auto-dismissing them; verbs that expect one still use accept_alert.
         ctx.page.on("dialog", self.on_dialog)
-        if self.args.storage_state:
-            with open(self.args.storage_state) as f:
-                ctx.page.context.add_cookies(json.load(f).get("cookies", []))
         ctx.page.goto(self.args.url)
         self.attach_cli()
         return ctx
@@ -118,6 +130,8 @@ class Daemon:
         parts = [
             f"session {self.args.session}",
             f"galaxy {self.args.url}",
+            f"profile {self.settings.profile if self.settings else None}",
+            f"browser {'headed' if self.args.headed else 'headless'}",
             f"cdp {self.cdp}",
             f"pid {os.getpid()}",
             f"transcript {self.transcript.path}",
@@ -133,7 +147,7 @@ class Daemon:
     def inline(self, req: dict) -> dict:
         op = req.get("op")
         if op == "status":
-            return {"ok": True, "result": self.status()}
+            return {"ok": True, "result": self.status(), "binding": self.binding()}
         if op == "last":
             if self.busy:
                 return {"ok": True, "result": f"still running: {self.busy} (since {self.busy_since})"}
@@ -153,6 +167,100 @@ class Daemon:
         self.transcript.write({"layer": layer, "verb": name, "text": text})
         return {"ok": True, "result": "logged"}
 
+    def binding(self) -> dict:
+        return {
+            "url": self.args.url,
+            "profile": self.settings.profile if self.settings else None,
+            "config": str(self.settings.config.path) if self.settings else self.args.config,
+            "headless": not self.args.headed,
+        }
+
+    def credentials(self, req: dict) -> tuple[str, str]:
+        configured_email = self.settings.auth.get("username", "") if self.settings else self.ctx.login_email or ""
+        email = req.get("email") or configured_email
+        password = req.get("password")
+        # Changing the account also clears the configured password.
+        if password is None and email == configured_email:
+            if self.settings:
+                _, password = self.settings.credentials()
+            else:
+                password = self.ctx.login_password
+        if password:
+            self.secrets.add(password)
+        return email, password or ""
+
+    def auth_info(self, req: dict) -> dict:
+        try:
+            if self.ctx.is_logged_in():
+                return {"ok": True, "result": {"logged_in": True}}
+            email, password = self.credentials(req)
+            return {"ok": True, "result": {"username": email, "password_available": bool(password)}}
+        except ConfigError as e:
+            return {"ok": False, "error": str(e)}
+
+    def run_login(self, req: dict) -> dict:
+        started = time.time()
+        self.busy, self.busy_since = "login", time.strftime("%H:%M:%S")
+        try:
+            if req.get("interactive"):
+                if not self.ctx.is_logged_in():
+                    if not self.args.headed:
+                        self.resume_state = self.ctx.page.context.storage_state()
+                        self.args.headed = True
+                        self.relaunch()
+                    self.ctx.home()
+                    deadline = time.monotonic() + req["timeout"]
+                    while not self.ctx.is_logged_in():
+                        if time.monotonic() >= deadline:
+                            raise ConfigError("interactive login timed out; complete sign-in and retry login --save")
+                        self.ctx.page.wait_for_timeout(250)
+            elif not self.ctx.is_logged_in():
+                email, password = self.credentials(req)
+                if not email or not password:
+                    raise ConfigError("login requires a username and password")
+                self.ctx.home()
+                self.ctx.submit_login(email, password)
+            user = self.ctx.get_logged_in_user()
+            if not user or not user.get("email"):
+                raise ConfigError("Galaxy has not confirmed a logged-in user; state was not saved")
+            expected = req.get("email") or (
+                self.settings.auth.get("username") if self.settings else self.ctx.login_email
+            )
+            if expected and expected.casefold() not in (user["email"].casefold(), user.get("username", "").casefold()):
+                raise ConfigError(f"already logged in as {user['email']}; logout before switching accounts")
+            email = user["email"]
+            if path := req.get("storage_state"):
+                state = self.ctx.page.context.storage_state()
+                state["_gxui"] = {"url": server_url(self.args.url)}
+                private_json(Path(path), state)
+                self.resume_state = state
+                result: dict | str = {"email": email, "storage_state": path}
+            else:
+                result = f"logged in as {email}"
+            reply = {"ok": True, "result": result}
+        except Exception as e:
+            # Authentication failures contain no browser call trace or screenshot artifacts.
+            reply = {"ok": False, "error": self.redact(f"{type(e).__name__}: {e}")}
+        finally:
+            self.busy = None
+        self.transcript.write(
+            {
+                "layer": "verb",
+                "verb": "login",
+                "args": [],
+                "method": "submit_login",
+                "ok": reply["ok"],
+                "duration_ms": int((time.time() - started) * 1000),
+                "result" if reply["ok"] else "error": reply.get("result", reply.get("error")),
+            }
+        )
+        return reply
+
+    def redact(self, text: str) -> str:
+        for secret in sorted(self.secrets, key=len, reverse=True):
+            text = text.replace(secret, "<redacted>")
+        return text
+
     def run_verb(self, argv: list[str]) -> dict:
         name, rest = argv[0], argv[1:]
         if name == "dialog":
@@ -161,14 +269,26 @@ class Daemon:
         if verb is None:
             return {"ok": False, "error": f"unknown verb {name!r}; see `gxui help`"}
         started = time.time()
-        entry: dict[str, Any] = {"layer": verb.layer, "verb": name, "args": rest, "method": verb.method}
+        sensitive = name in ("login", "register") or (
+            name == "call" and rest and rest[0] in ("submit_login", "fill_login_and_submit", "register")
+        )
+        safe_rest = ["<redacted>"] if sensitive else rest
+        if sensitive:
+            for index, value in enumerate(rest):
+                if value.startswith("--password="):
+                    self.secrets.add(value.split("=", 1)[1])
+                elif value == "--password" and index + 1 < len(rest):
+                    self.secrets.add(rest[index + 1])
+            if name == "call" and len(rest) > 2:
+                self.secrets.add(rest[2])
+        entry: dict[str, Any] = {"layer": verb.layer, "verb": name, "args": safe_rest, "method": verb.method}
         try:
             args, kwargs = verb.parse(rest)
-            self.busy, self.busy_since = " ".join(argv), time.strftime("%H:%M:%S")
+            self.busy, self.busy_since = " ".join([name, *safe_rest]), time.strftime("%H:%M:%S")
             result = verb.func(self.ctx, *args, **kwargs)
             reply = {"ok": True, "result": _summarize(result)}
         except UsageError as e:
-            reply = {"ok": False, "error": str(e)}
+            reply = {"ok": False, "error": self.redact(str(e))}
         except PlaywrightError as e:
             if BROWSER_GONE in str(e) or type(e).__name__ == "TargetClosedError":
                 self.relaunch()
@@ -190,14 +310,14 @@ class Daemon:
         return reply
 
     def failure(self, name: str, e: Exception) -> dict:
-        reply = {"ok": False, "error": f"{type(e).__name__}: {str(e).splitlines()[0] if str(e) else ''}"}
+        reply = {"ok": False, "error": self.redact(f"{type(e).__name__}: {str(e).splitlines()[0] if str(e) else ''}")}
         try:
             reply["url"] = self.ctx.page.url
             reply["screenshot"] = self.ctx.screenshot(f"error-{time.strftime('%H%M%S')}-{name}")
         except Exception:
             pass
         reply["hint"] = "inspect with `gxui snapshot`, or `gxui gap REASON` then playwright-cli"
-        print(traceback.format_exc(), flush=True)
+        print(self.redact(traceback.format_exc()), flush=True)
         return reply
 
     def dialog(self, rest: list[str]) -> dict:
@@ -259,9 +379,14 @@ class Daemon:
                     break
                 conn, req = item
                 try:
-                    reply = self.run_verb(req["argv"])
+                    if req.get("op") == "auth-info":
+                        reply = self.auth_info(req)
+                    elif req.get("op") == "login":
+                        reply = self.run_login(req)
+                    else:
+                        reply = self.run_verb(req["argv"])
                 except Exception as e:  # a bug in gxui must not take the browser down with it
-                    print(traceback.format_exc(), flush=True)
+                    print(self.redact(traceback.format_exc()), flush=True)
                     reply = {"ok": False, "error": f"gxui internal error: {type(e).__name__}: {e}"}
                 _reply(conn, reply)
                 self.last_activity = time.time()
@@ -326,7 +451,10 @@ def main() -> None:
     parser.add_argument("--storage-state")
     parser.add_argument("--playwright-cli")
     parser.add_argument("--headed", action="store_true")
-    Daemon(parser.parse_args()).serve()
+    parser.add_argument("--settings-stdin", action="store_true")
+    args = parser.parse_args()
+    args.settings = json.load(sys.stdin) if args.settings_stdin else None
+    Daemon(args).serve()
 
 
 if __name__ == "__main__":

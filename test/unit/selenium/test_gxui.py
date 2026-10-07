@@ -1,14 +1,17 @@
 """gxui tests: verb parsing without a browser, plus a real daemon and client driving the fixture pages."""
 
+import http.server
 import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from urllib.request import urlopen
 
 import pytest
+import yaml
 
 import galaxy.selenium
 from galaxy.selenium.navigates_galaxy import ToolFormParameter
@@ -85,7 +88,9 @@ def fixture_url(base_url):
 @pytest.fixture
 def gxui(tmp_path):
     env = {
-        **os.environ,
+        **{k: v for k, v in os.environ.items() if not k.startswith("GXUI_")},
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_STATE_HOME": str(tmp_path / "state"),
         "GXUI_HOME": str(tmp_path),  # long on macOS, so this also exercises the short-socket fallback
         "GXUI_SESSION": "t",
         "PYTHONPATH": str(GALAXY_LIB),
@@ -332,3 +337,177 @@ def test_open_form_comes_from_the_tool_or_rerun_url():
     assert _open_form(_UrlContext("https://g/root?job_id=bbd44e69cb8906b5")) == {"job_id": "bbd44e69cb8906b5"}
     with pytest.raises(UsageError, match="dataset-rerun"):
         _open_form(_UrlContext("https://g/"))
+
+
+@pytest.fixture
+def login_server():
+    """A tiny fixture exercises the existing Galaxy login helpers and user observation API."""
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path == "/api/users/current":
+                logged_in = "galaxysession=fixture-login" in self.headers.get("Cookie", "")
+                body = json.dumps(
+                    {"id": "fixture", "email": "fixture@example.org", "username": "fixture"} if logged_in else {}
+                ).encode()
+                content_type = "application/json"
+            else:
+                body = b"""<!doctype html><title>Login fixture</title>
+                <div id="masthead"><button class="loggedout-only" data-description="login masthead button"
+                  onclick="document.querySelector('form').hidden=false">Login</button>
+                  <span class="loggedin-only" hidden>Signed in</span></div>
+                <form id="login" hidden onsubmit="event.preventDefault();
+                  if (this.elements.password.value !== 'unit-password') return;
+                  document.cookie='galaxysession=fixture-login; Path=/';
+                  localStorage.setItem('fixture-auth', 'restored');
+                  document.querySelector('.loggedout-only').hidden=true;
+                  document.querySelector('.loggedin-only').hidden=false; this.hidden=true;">
+                  <input name="login"><input type="password" name="password"><button name="login">Submit</button>
+                </form><script>if(document.cookie.includes('fixture-login')) {
+                  document.querySelector('.loggedin-only').hidden=false;
+                  document.querySelector('.loggedout-only').hidden=true; }</script>"""
+                content_type = "text/html"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_port}/"
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+@skip_unless_playwright_browser_cached()
+def test_profile_login_save_restore_and_bound_session(gxui, login_server, tmp_path):
+    config = tmp_path / "profiles.yml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "default_profile": "fixture",
+                "profiles": {
+                    "fixture": {
+                        "url": login_server,
+                        "auth": {"username": "fixture@example.org", "password_env": "FIXTURE_PASSWORD"},
+                    }
+                },
+            }
+        )
+    )
+    gxui.env["GXUI_CONFIG"] = str(config)
+    gxui.env["FIXTURE_PASSWORD"] = "unit-password"
+    gxui("start", "--timeout-multiplier", "0.1", "--idle-timeout", "0")
+    assert "fixture" in gxui("status").stdout
+    assert "logged in as fixture@example.org" in gxui("login", "--save").stdout
+    saved_config = yaml.safe_load(config.read_text())
+    auth = saved_config["profiles"]["fixture"]["auth"]
+    state_path = Path(auth["storage_state"])
+    state = json.loads(state_path.read_text())
+    assert state["_gxui"]["url"] == login_server.rstrip("/")
+    assert state["origins"][0]["localStorage"] == [{"name": "fixture-auth", "value": "restored"}]
+    assert state_path.stat().st_mode & 0o777 == 0o600
+    assert "unit-password" not in (tmp_path / "t" / "transcript.jsonl").read_text()
+    assert "unit-password" not in (tmp_path / "t.log").read_text()
+    assert "already running" in gxui("start").stdout
+    assert "different" in gxui("start", "--url", "https://different.example.org", check=False).stderr
+    gxui("stop")
+    for _ in range(50):
+        if gxui("status", check=False).returncode:
+            break
+        time.sleep(0.1)
+    gxui("start", "--idle-timeout", "0")
+    assert "logged in as fixture@example.org" in gxui("login").stdout
+    from playwright.sync_api import sync_playwright
+
+    cdp = next(line.split()[1] for line in gxui("status").stdout.splitlines() if line.startswith("cdp "))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(cdp)
+        assert browser.contexts[0].pages[0].evaluate("localStorage.getItem('fixture-auth')") == "restored"
+        browser.close()
+
+
+@skip_unless_playwright_browser_cached()
+def test_explicit_login_password_is_not_in_transcript(gxui, login_server, tmp_path):
+    gxui("start", "--url", login_server, "--timeout-multiplier", "0.1", "--idle-timeout", "0")
+    assert (
+        "logged in as fixture@example.org" in gxui("login", "fixture@example.org", "--password", "unit-password").stdout
+    )
+    assert "unit-password" not in gxui("last").stdout
+    assert "unit-password" not in (tmp_path / "t" / "transcript.jsonl").read_text()
+    assert "unit-password" not in (tmp_path / "t.log").read_text()
+
+
+@skip_unless_playwright_browser_cached()
+def test_interactive_login_uses_headed_browser_and_saves(gxui, login_server, tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    gxui("start", "--url", login_server, "--idle-timeout", "0")
+    process = subprocess.Popen(
+        [sys.executable, "-m", "galaxy.selenium.gxui.client", "login", "--interactive", "--timeout", "20"],
+        env=gxui.env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            status = gxui("status").stdout
+            if "browser headed" in status and "browser relaunches 1" in status:
+                break
+            if process.poll() is not None:
+                pytest.fail(str(process.communicate()))
+            time.sleep(0.1)
+        else:
+            pytest.fail("interactive login did not open a headed browser")
+        cdp = next(line.split()[1] for line in status.splitlines() if line.startswith("cdp "))
+        # Simulate the human completing login in the displayed browser, independently of the daemon.
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.connect_over_cdp(cdp)
+            page = browser.contexts[0].pages[0]
+            page.locator('[data-description="login masthead button"]').click()
+            page.locator('input[name="login"]').fill("fixture@example.org")
+            page.locator('input[name="password"]').fill("unit-password")
+            page.locator('button[name="login"]').click()
+            browser.close()
+        stdout, stderr = process.communicate(timeout=25)
+        assert process.returncode == 0, stderr
+        assert "logged in as fixture@example.org" in stdout
+        assert (tmp_path / "state/gxui/t-auth.json").exists()
+        assert "unit-password" not in (tmp_path / "t/transcript.jsonl").read_text()
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=5)
+
+
+@skip_unless_playwright_browser_cached()
+def test_saved_auth_state_rejects_a_different_base_url(tmp_path, fixture_url):
+    from galaxy.selenium.gxui.config import ConfigError
+
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"cookies": [], "origins": [], "_gxui": {"url": "https://different.example.org"}}))
+    with pytest.raises(ConfigError, match="different Galaxy URL"):
+        GxuiContext(
+            {
+                "driver": {"backend_type": "playwright", "headless": True},
+                "local_galaxy_url": fixture_url,
+                "storage_state": str(state),
+            },
+            str(tmp_path),
+        )
+
+
+def test_gxui_url_join_keeps_galaxy_path_prefix():
+    context = object.__new__(GxuiContext)
+    context.url = context.target_url_from_selenium = "https://example.org/galaxy"
+    assert context.build_url("api/users/current") == "https://example.org/galaxy/api/users/current"
+    assert context.build_url("") == context.url

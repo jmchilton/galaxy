@@ -172,7 +172,9 @@ def register_method_verbs(context_class: type) -> None:
 
 @verb("login", "session", "submit_login", positional=("email",))
 def login(ctx, email: str = "", password: str = ""):
-    """Log in. Without arguments, uses the credentials in the daemon's --config (never printed)."""
+    """Log in using the session profile, environment credentials or a masked prompt.
+
+    The client also supports --password-stdin, --save and --interactive for browser/SSO login."""
     email = email or ctx.login_email
     password = password or ctx.login_password
     if not email:
