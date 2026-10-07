@@ -354,6 +354,16 @@ def _input_seeding(datasets: SummaryDatasets, closure: ClosureResult | None) -> 
     return bool(content_keys & closure.content_refs), seed_warning
 
 
+def _report_referenced_outputs(datasets: SummaryDatasets, referenced: set[ContentRef]) -> set[int]:
+    """Indices of ``datasets`` the report uses: one per referenced original, preferring it over in-history copies."""
+    chosen: dict[ContentRef, int] = {}
+    for index, (_, data) in enumerate(datasets):
+        ref = original_content_ref(data)
+        if ref in referenced and (ref not in chosen or data.id == ref[1]):
+            chosen[ref] = index
+    return set(chosen.values())
+
+
 def _tool_row(
     trans: ProvidesHistoryContext,
     job: Job,
@@ -363,16 +373,16 @@ def _tool_row(
     closure: ClosureResult | None,
 ) -> WorkflowExtractionJob:
     """A workflow step row, or an invalid one when ``tool`` is missing or inaccessible."""
-    referenced = closure.referenced_output_refs if closure else set()
+    referenced = _report_referenced_outputs(datasets, closure.referenced_output_refs if closure else set())
     tool_outputs = [
         _serialize_output(
             trans,
             data,
             _workflow_output_name(data, output_name),
-            exposed=original_content_ref(data) in referenced,
-            referenced_by_report=original_content_ref(data) in referenced,
+            exposed=index in referenced,
+            referenced_by_report=index in referenced,
         )
-        for output_name, data in datasets
+        for index, (output_name, data) in enumerate(datasets)
     ]
 
     if tool is None:
