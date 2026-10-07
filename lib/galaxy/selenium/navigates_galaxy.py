@@ -1468,11 +1468,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.DATABASE_OPERATION)
 
     def workflow_editor_search_for_workflow(self, name: str):
-        self.wait_for_and_click(self.components.workflow_editor.workflow_activity)
+        editor = self.components.workflow_editor
+        # The activity button toggles: clicking it with the panel open (a second insert) closes it.
+        if editor.workflow_activity_panel.is_absent:
+            self.wait_for_and_click(editor.workflow_activity)
         self.sleep_for(self.wait_types.UX_RENDER)
         self.clear_tooltips(".workflow-scroll-list")
 
         input = self.wait_for_selector(".activity-panel input")
+        input.clear()
         input.send_keys(name)
 
         self.sleep_for(self.wait_types.UX_RENDER)
