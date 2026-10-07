@@ -884,6 +884,10 @@ OUTPUTS_FORMAT_SOURCE_UNQUALIFIED = """
 </tool>
 """
 
+OUTPUTS_FORMAT_SOURCE_UNQUALIFIED_PROFILE_26_2 = OUTPUTS_FORMAT_SOURCE_UNQUALIFIED.replace(
+    '<tool id="id" name="name">', '<tool id="id" name="name" profile="26.2">'
+)
+
 OUTPUTS_FORMAT_SOURCE_QUALIFIED = """
 <tool id="id" name="name">
     <inputs>
@@ -2697,6 +2701,13 @@ def test_outputs_format_source_unqualified(lint_ctx):
     run_lint_module(lint_ctx, output, tool_source)
     assert "unqualified format_source='input1'" in lint_ctx.warn_messages
     assert "cond|input1" in lint_ctx.warn_messages
+
+
+def test_outputs_format_source_unqualified_profile_26_2(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_UNQUALIFIED_PROFILE_26_2)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert "Output 'output1' format_source='input1' is unqualified, use 'cond|input1'." in lint_ctx.error_messages
+    assert "format_source" not in lint_ctx.warn_messages
 
 
 def test_outputs_format_source_qualified(lint_ctx):

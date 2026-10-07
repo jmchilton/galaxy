@@ -52,6 +52,11 @@ class ResolvedReference(NamedTuple):
     runtime_key: str
     """The key to look the reference up by at job runtime."""
 
+    @property
+    def qualified_names(self) -> list[str]:
+        """The qualified path of every matched input, with the reference's selector."""
+        return sorted({f"{r.qualified}{self.selector}" for r in self.matches})
+
 
 OutputReferenceAttribute = Literal["format_source", "metadata_source"]
 
@@ -64,8 +69,13 @@ OUTPUT_REFERENCE_PARAM_TYPES: dict[OutputReferenceAttribute, tuple[str, ...]] = 
 }
 
 
-def output_reference_problem(resolved: ResolvedReference, attribute: OutputReferenceAttribute) -> str | None:
-    """Why job runtime cannot resolve an output reference, or ``None`` if it can."""
+def output_reference_problem(
+    resolved: ResolvedReference, attribute: OutputReferenceAttribute, legacy_aliases: bool = True
+) -> str | None:
+    """Why job runtime cannot resolve an output reference, or ``None`` if it can.
+
+    Without ``legacy_aliases`` (tool profile 26.2 and later) the reference must be qualified.
+    """
     param_types = OUTPUT_REFERENCE_PARAM_TYPES[attribute]
     if not resolved.matches:
         return "does not match any declared input"
@@ -73,6 +83,9 @@ def output_reference_problem(resolved: ResolvedReference, attribute: OutputRefer
         return f"must name a {', '.join(param_types[:-1])} or {param_types[-1]} input"
     if resolved.selector and (attribute != "format_source" or not any(r.is_collection for r in resolved.matches)):
         return "selects an element of an input that is not a collection"
+    if resolved.legacy and not legacy_aliases:
+        qualified = [resolved.qualified_key] if resolved.qualified_key else resolved.qualified_names
+        return "is unqualified, use " + " or ".join(f"'{name}'" for name in qualified)
     return None
 
 

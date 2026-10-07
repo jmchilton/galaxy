@@ -284,13 +284,14 @@ class OutputsFormatSourceReference(Linter):
         if not tool_xml:
             return
         input_references = InputReferences(tool_source)
+        legacy_aliases = Version(tool_source.parse_profile()) < Version("26.2")
         for output in (
             tool_xml.findall("./outputs/data[@format_source]")
             + tool_xml.findall("./outputs/collection[@format_source]")
             + tool_xml.findall("./outputs/collection/data[@format_source]")
         ):
             _check_format_source_reference(
-                lint_ctx, cls.name(), output, output.attrib["format_source"], input_references
+                lint_ctx, cls.name(), output, output.attrib["format_source"], input_references, legacy_aliases
             )
 
 
@@ -300,6 +301,7 @@ def _check_format_source_reference(
     node: "Element",
     ref_value: str,
     input_references: InputReferences,
+    legacy_aliases: bool,
 ) -> None:
     resolved = input_references.resolve(ref_value)
     matches = resolved.matches
@@ -316,13 +318,13 @@ def _check_format_source_reference(
             selector,
         )
         return
-    if resolved.legacy:
+    if resolved.legacy and legacy_aliases:
         if node.tag == "collection" and node.find("discover_datasets") is not None:
             # Discovered elements resolve format_source against the job's input associations, which are
             # keyed by qualified name only. Tool loading rewrites the reference to that name unless it
             # is ambiguous, but older Galaxy releases do not.
             when = "" if resolved.runtime_key == ref_value else " before Galaxy 26.2"
-            qualified_names = " or ".join(f"'{name}{selector}'" for name in sorted({r.qualified for r in matches}))
+            qualified_names = " or ".join(f"'{name}'" for name in resolved.qualified_names)
             lint_ctx.error(
                 f"Output '{_output_name(node)}' uses unqualified format_source='{ref_value}', which discovered "
                 f"elements cannot resolve{when}. Use the qualified name {qualified_names}.",
@@ -340,7 +342,7 @@ def _check_format_source_reference(
             linter=linter_name,
             node=node,
         )
-    elif problem := output_reference_problem(resolved, "format_source"):
+    elif problem := output_reference_problem(resolved, "format_source", legacy_aliases):
         lint_ctx.error(
             f"Output '{_output_name(node)}' format_source='{ref_value}' {problem}.",
             linter=linter_name,

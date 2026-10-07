@@ -1813,6 +1813,11 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         """
         self.outputs, self.output_collections = tool_source.parse_outputs(self.app)
 
+    @property
+    def legacy_output_references(self) -> bool:
+        """Whether output references resolve legacy aliases, and unresolvable ones are dropped, not load errors."""
+        return bool(self.profile < 26.2)
+
     def _resolve_output_references(self, tool_source: ToolSource) -> None:
         """Rewrite output references to the runtime key of the declared input they name.
 
@@ -1849,9 +1854,9 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 if input_references is None:
                     input_references = InputReferences(tool_source)
                 resolved = input_references.resolve(reference)
-                if problem := output_reference_problem(resolved, attribute):
+                if problem := output_reference_problem(resolved, attribute, self.legacy_output_references):
                     message = f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {problem}."
-                    if self.profile >= 26.2:
+                    if not self.legacy_output_references:
                         raise ToolLoadError(message)
                     log.warning(f"{message} Ignoring it; tools with profile 26.2 or newer fail to load.")
                     setattr(output, attribute, None)

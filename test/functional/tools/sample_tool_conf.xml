@@ -126,6 +126,7 @@
   <tool file="output_format_deprecated_when.xml" />
   <tool file="output_format_collection.xml" />
   <tool file="format_source_in_conditional.xml" />
+  <tool file="format_source_in_conditional_qualified.xml" />
   <tool file="format_source_in_collection.xml" />
   <tool file="format_source_internal_keys.xml" />
   <tool file="format_source_legacy_alias_collision.xml" />

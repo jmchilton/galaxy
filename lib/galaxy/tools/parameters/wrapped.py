@@ -1,11 +1,13 @@
 from collections import UserDict
 from collections.abc import (
     Callable,
+    Mapping,
     Sequence,
 )
 from typing import (
     Any,
     TYPE_CHECKING,
+    TypeVar,
 )
 
 from galaxy.exceptions import RequestParameterInvalidException
@@ -68,6 +70,14 @@ class LegacyUnprefixedDict(UserDict[str, Any]):
         mapped = LegacyUnprefixedDict({k: fn(v) for k, v in self.data.items()})
         mapped._legacy_mapping = dict(self._legacy_mapping)
         return mapped
+
+
+V = TypeVar("V")
+
+
+def without_legacy_aliases(mapping: Mapping[str, V]) -> Mapping[str, V]:
+    """The mapping with only its real keys, if it is a :class:`LegacyUnprefixedDict`."""
+    return mapping.data if isinstance(mapping, LegacyUnprefixedDict) else mapping
 
 
 def copy_identifiers(source, destination):

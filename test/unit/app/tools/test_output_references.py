@@ -127,3 +127,24 @@ class TestOutputReferences(TestCase, tools_support.UsesTools):
         self._init_tool(YAML_OUTPUT_REFERENCES_TOOL, filename="tool.yml")
         assert self.tool.outputs["out_legacy"].format_source == "cond|input1"
         assert self.tool.outputs["out_numbered"].format_source is None
+
+    def test_legacy_alias_fails_load_from_profile_26_2(self):
+        with pytest.raises(Exception, match=r"format_source='input1' is unqualified, use 'cond\|input1'"):
+            self._load('<data name="out" format="txt" format_source="input1" />', profile="26.2")
+        with pytest.raises(Exception, match=r"metadata_source='input1' is unqualified, use 'cond\|input1'"):
+            self._load('<data name="out" format="txt" metadata_source="input1" />', profile="26.2")
+        with pytest.raises(
+            Exception, match=r"format_source='files_2\|file' is unqualified, use 'files_2\|file_cond\|file'"
+        ):
+            self._load('<data name="out" format="txt" format_source="files_2|file" />', profile="26.2")
+
+    def test_qualified_references_load_from_profile_26_2(self):
+        outputs = self._load(
+            """
+            <data name="out_qualified" format="txt" format_source="cond|input1" metadata_source="cond|input1" />
+            <data name="out_repeat" format="txt" format_source="files_2|file_cond|file" />
+            """,
+            profile="26.2",
+        )
+        assert outputs["out_qualified"].format_source == "cond|input1"
+        assert outputs["out_repeat"].format_source == "files_2|file_cond|file"

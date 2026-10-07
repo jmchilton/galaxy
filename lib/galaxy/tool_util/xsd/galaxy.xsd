@@ -89,6 +89,10 @@ List of behavior changes associated with profile versions:
   tabs. Older profiles keep the tab default.
 - An output `format_source` or `metadata_source` that does not name a declared input (see their documentation)
   fails tool loading. Older profiles log a warning and ignore the reference.
+- An output `format_source` or `metadata_source` must use the qualified name of an input nested in a conditional or
+  section (`cond|input1`, not `input1`); an unqualified name fails tool loading. At job runtime the reference
+  only resolves the input it names, so an input in an unselected conditional branch leaves the output's default
+  format. Older profiles also resolve a legacy alias that drops the innermost conditional or section name.
 
 ### Examples
 
@@ -6371,6 +6375,8 @@ discovered data sets on Galaxy versions prior to 24.0 and should be specified us
 This sets the data type of the output dataset(s) to be the same format as that of the specified tool input.
 References to parameters in sections, conditionals or repeats should be qualified using ``|`` (e.g. ``cond|input1``),
 and repeats need an instance index (e.g. ``queries_0|input1``).
+Before profile 26.2 a name without its innermost conditional or section (e.g. ``input1`` for ``cond|input1``) is
+also resolved; from 26.2 it fails tool loading.
 A single element of a collection input can be selected by index or identifier (e.g. ``input_collection['forward']``);
 without a selector the first dataset of the collection is used.
 The reference must name a ``data`` (or ``hidden_data``) or ``data_collection`` input, and a selector is only

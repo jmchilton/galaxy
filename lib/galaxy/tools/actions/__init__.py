@@ -76,6 +76,7 @@ from galaxy.tools.parameters.basic import (
 from galaxy.tools.parameters.workflow_utils import RuntimeValue
 from galaxy.tools.parameters.wrapped import (
     LegacyUnprefixedDict,
+    without_legacy_aliases,
     WrappedParameters,
 )
 from galaxy.util import ExecutionTimer
@@ -623,6 +624,7 @@ class DefaultToolAction(ToolAction):
                     input_ext,
                     python_template_version=tool.python_template_version,
                     execution_cache=execution_cache,
+                    legacy_aliases=tool.legacy_output_references,
                 )
                 create_datasets = True
                 dataset = None
@@ -668,7 +670,8 @@ class DefaultToolAction(ToolAction):
             metadata_source = output.metadata_source
             if metadata_source:
                 if isinstance(metadata_source, str):
-                    metadata_source = inp_data.get(metadata_source)
+                    metadata_sources = inp_data if tool.legacy_output_references else without_legacy_aliases(inp_data)
+                    metadata_source = metadata_sources.get(metadata_source)
 
             if metadata_source is not None:
                 data.init_meta(copy_from=metadata_source)
@@ -1300,6 +1303,7 @@ def determine_output_format(
     random_input_ext,
     python_template_version="3",
     execution_cache=None,
+    legacy_aliases=True,
 ):
     """Determines the output format for a dataset based on an abstract
     description of the output (galaxy.tool_util.parser.ToolOutput), the parameter
@@ -1320,7 +1324,12 @@ def determine_output_format(
                 pass
         ext = random_input_ext
     if (format_source := output.format_source) is not None:
-        ext = resolve_format_source(format_source, input_datasets, input_dataset_collections, ext, execution_cache)
+        if legacy_aliases:
+            source_datasets, source_collections = input_datasets, input_dataset_collections
+        else:
+            source_datasets = without_legacy_aliases(input_datasets)
+            source_collections = without_legacy_aliases(input_dataset_collections)
+        ext = resolve_format_source(format_source, source_datasets, source_collections, ext, execution_cache)
 
     # process change_format tags
     if output.change_format:
