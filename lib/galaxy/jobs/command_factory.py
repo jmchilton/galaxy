@@ -82,9 +82,6 @@ def build_command(
     # environment after dependency resolution, but the task splitting command
     # is still executed in Galaxy's Python environment.
 
-    # One could imagine also allowing dependencies inside of the container but
-    # that is too sophisticated for a first crack at this - build your
-    # containers ready to go!
     if requires_dependency_resolution(container):
         __handle_dependency_resolution(commands_builder, job_wrapper, remote_command_params)
 
