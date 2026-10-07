@@ -55,3 +55,18 @@ def test_tool_form_fill_skips_parameters_that_never_appear():
     form = StubForm(present={"cond|test"})
     NavigatesGalaxy.tool_form_fill(form, values={"cond|test": "b", "cond|other_case": 5})
     assert form.set_calls == [("cond|test", "b")]
+
+
+def test_tool_form_fill_works_without_an_execute_button():
+    # A workflow editor step's form shares the tool form's header but has no execute button.
+    waited = []
+    header = SimpleNamespace(wait_for_visible=lambda: waited.append("header"))
+    form = SimpleNamespace(
+        components=SimpleNamespace(
+            tool_form=SimpleNamespace(tool_version=header, section_header=SimpleNamespace(all=list))
+        ),
+        sleep_for=lambda wait_type: None,
+        wait_types=SimpleNamespace(UX_RENDER=None),
+    )
+    NavigatesGalaxy._expand_collapsed_sections(form)
+    assert waited == ["header"]
