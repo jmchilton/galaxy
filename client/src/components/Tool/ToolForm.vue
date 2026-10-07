@@ -33,6 +33,7 @@ import { submitToolJob } from "./submit";
 import GModal from "../BaseComponents/GModal.vue";
 import ToolRecommendation from "../ToolRecommendation.vue";
 import ToolCard from "./ToolCard.vue";
+import ToolFormJobCount from "./ToolFormJobCount.vue";
 import ToolFormTags from "./ToolFormTags.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import ButtonSpinner from "@/components/Common/ButtonSpinner.vue";
@@ -93,6 +94,8 @@ const bundleOptions = ref([
 ]);
 const tags = ref<string[]>([]);
 const formConfigInitialized = ref(false);
+/** Sequence of the latest build request; older responses are ignored so they can't override newer state. */
+let buildRequestId = 0;
 
 const tourStore = useTourStore();
 const jobStore = useJobStore();
@@ -114,6 +117,15 @@ const toolId = computed(() => {
 });
 
 const toolUuid = computed(() => props.uuid || formConfig.value.uuid);
+
+const jobExpansion = computed(() => {
+    const expansion = formConfig.value.job_expansion;
+    // Client-side batch validation already flags mismatched selections at the field.
+    if (expansion?.reason === "batch_mismatch" && validationInternal.value) {
+        return undefined;
+    }
+    return expansion;
+});
 
 const tooltip = computed(() => {
     if (!canMutateHistory.value) {
@@ -137,7 +149,9 @@ const tooltip = computed(() => {
     if (showExecuting.value) {
         return "Tool is being executed...";
     }
-    return `Run tool: ${toolName.value} (${formConfig.value.version})`;
+    const runTitle = `Run tool: ${toolName.value} (${formConfig.value.version})`;
+    const jobCount = jobExpansion.value?.job_count;
+    return jobCount && jobCount > 1 ? `${runTitle} - ${jobCount} jobs` : runTitle;
 });
 
 const emailAllowed = computed(() => config.value.server_mail_configured && !currentUser.value?.isAnonymous);
@@ -219,6 +233,7 @@ async function onChange(newData: FormData, refreshRequest?: boolean) {
 }
 
 async function onUpdate() {
+    const requestId = ++buildRequestId;
     disabled.value = true;
     console.debug("ToolForm - Updating input parameters.", formData.value);
     try {
@@ -229,12 +244,17 @@ async function onUpdate() {
             history_id: currentHistoryId.value || undefined,
             inputs: formData.value,
         });
-
-        formConfig.value = data;
+        if (requestId === buildRequestId) {
+            formConfig.value = data;
+        }
     } catch (error) {
-        Toast.error(errorMessageAsString(error), "Updating parameters failed");
+        if (requestId === buildRequestId) {
+            Toast.error(errorMessageAsString(error), "Updating parameters failed");
+        }
     } finally {
-        disabled.value = false;
+        if (requestId === buildRequestId) {
+            disabled.value = false;
+        }
     }
 }
 
@@ -349,6 +369,8 @@ function onChangeVersion(newVersion: string) {
 }
 
 async function requestTool(newVersion?: string) {
+    // Supersede in-flight updates built for the previous version.
+    buildRequestId++;
     currentVersion.value = newVersion || currentVersion.value;
     disabled.value = true;
     loading.value = true;
@@ -609,6 +631,12 @@ requestTool();
                     :title="localize('Create dataset bundle instead of adding data table to loc file ?')"></FormSelect>
                 <ToolFormTags v-model:tags="tags" />
             </div>
+
+            <ToolFormJobCount
+                class="mt-2 mb-4"
+                :job-expansion="jobExpansion"
+                :inputs="formConfig.inputs"
+                :remapping="Boolean(remapAllowed) && useJobRemapping" />
             <template v-slot:buttons>
                 <ButtonSpinner
                     id="execute"
