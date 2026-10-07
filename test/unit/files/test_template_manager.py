@@ -96,10 +96,12 @@ def test_manager_loads_config_file_before_config_dir(tmpdir):
     assert [t.id for t in templates.catalog.root] == ["home_directory", "scratch_directory"]
 
 
-def test_manager_ignores_missing_config_dir(tmpdir):
-    config = MockConfig(None, config_dir=str(tmpdir / "missing.d"))
+def test_manager_warns_about_missing_config_dir(tmpdir, caplog):
+    missing_dir = str(tmpdir / "missing.d")
+    config = MockConfig(None, config_dir=missing_dir)
     templates = ConfiguredFileSourceTemplates.from_app_config(config)
     assert templates.catalog.root == []
+    assert missing_dir in caplog.text
 
 
 def test_inline_templates_override_config_file_and_dir(tmpdir):

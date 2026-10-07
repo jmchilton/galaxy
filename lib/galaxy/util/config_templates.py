@@ -336,9 +336,12 @@ def load_raw_template_configs(
     if config_file and os.path.exists(config_file):
         with open(config_file) as f:
             raw_templates.extend(yaml.safe_load(f) or [])
-    if config_dir and os.path.isdir(config_dir):
-        for path in config_files_in_directory(config_dir, TEMPLATE_CONFIG_DIR_EXTENSIONS):
-            raw_templates.append({"include": path})
+    if config_dir:
+        if os.path.isdir(config_dir):
+            for path in config_files_in_directory(config_dir, TEMPLATE_CONFIG_DIR_EXTENSIONS):
+                raw_templates.append({"include": path})
+        else:
+            log.warning("Templates config directory not found, no templates loaded from it: %s", config_dir)
     return raw_templates
 
 
