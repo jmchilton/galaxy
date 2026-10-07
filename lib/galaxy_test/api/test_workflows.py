@@ -8087,6 +8087,12 @@ steps: []
         response = self._invoke_by_name(workflow_id, history_id, {"input1": {"src": src, "id": nonexistent_id}})
         self._assert_status_code_is(response, 404)
 
+    def test_run_with_unknown_scheduler(self, history_id):
+        workflow_id = self._upload_yaml_workflow(WORKFLOW_OPTIONAL_TRUE_INPUT_DATA)
+        response = self._invoke_by_name(workflow_id, history_id, {}, scheduler="not_a_scheduler")
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "not_a_scheduler")
+
     @pytest.mark.parametrize(
         "field",
         ["preferred_object_store_id", "preferred_outputs_object_store_id", "preferred_intermediate_object_store_id"],
@@ -8101,6 +8107,26 @@ steps: []
         response = self._invoke_by_name(workflow_id, history_id, {}, on_complete=[{"not_an_action": {}}])
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, "not_an_action")
+
+    def test_run_with_unknown_landing_uuid(self):
+        workflow_id = self._upload_yaml_workflow(WORKFLOW_OPTIONAL_TRUE_INPUT_DATA)
+        history_name = f"landing history {uuid4()}"
+        response = self._invoke_by_name(workflow_id, None, {}, new_history_name=history_name, landing_uuid=str(uuid4()))
+        self._assert_status_code_is(response, 404)
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
+
+    @skip_without_tool("test_data_source")
+    def test_run_with_workflow_incompatible_tool(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+steps:
+  data_source:
+    tool_id: test_data_source
+""")
+        response = self._invoke_by_name(workflow_id, history_id, {})
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "test_data_source")
+        assert self._history_jobs(history_id) == []
 
     def test_invalid_run_request_creates_no_history(self):
         workflow_id = self._upload_yaml_workflow("""

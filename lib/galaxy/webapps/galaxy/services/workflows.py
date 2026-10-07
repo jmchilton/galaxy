@@ -4,8 +4,6 @@ from typing import (
     Any,
 )
 
-from pydantic import UUID4
-
 from galaxy import (
     exceptions,
     web,
@@ -17,6 +15,7 @@ from galaxy.managers.context import (
     ProvidesUserContext,
 )
 from galaxy.managers.jobs import JobManager
+from galaxy.managers.landing import LandingRequestManager
 from galaxy.managers.markdown_parse import is_quotable_argument_value
 from galaxy.managers.workflow_extraction_naming import normalize_label
 from galaxy.managers.workflow_extraction_report import reconcile_and_build_report
@@ -32,8 +31,7 @@ from galaxy.model import (
     LandingRequestToWorkflowInvocationAssociation,
     Page,
     StoredWorkflow,
-    WorkflowInvocation,
-    WorkflowLandingRequest,
+    Workflow,
 )
 from galaxy.model.item_attrs import get_item_annotation_str
 from galaxy.schema.fields import DecodedDatabaseIdField
@@ -172,8 +170,10 @@ class WorkflowsService(ServiceBase):
         job_manager: JobManager,
         workflow_scheduling_manager: WorkflowSchedulingManager,
         config: GalaxyAppConfiguration,
+        landing_manager: LandingRequestManager,
     ):
         self._workflows_manager = workflows_manager
+        self._landing_manager = landing_manager
         self._workflow_scheduling_manager = workflow_scheduling_manager
         self._workflow_contents_manager = workflow_contents_manager
         self._serializer = serializer
@@ -327,37 +327,22 @@ class WorkflowsService(ServiceBase):
             workflow = stored_workflow.get_internal_version_by_id(workflow_id)
         else:
             workflow = stored_workflow.get_internal_version(version)
+        self._check_workflow_tools(trans, workflow, bool(payload.require_exact_tool_versions))
+        workflow_scheduler_id = payload.scheduler
+        if workflow_scheduler_id and workflow_scheduler_id not in self._workflow_scheduling_manager.workflow_schedulers:
+            raise exceptions.RequestParameterInvalidException(
+                f"Unknown workflow scheduler '{workflow_scheduler_id}' specified."
+            )
+        landing_request = None
+        if payload.landing_uuid:
+            landing_request = self._landing_manager.get_claimed_workflow_landing_request_model(
+                trans, payload.landing_uuid
+            )
         run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
         is_batch = payload.batch
-        if not is_batch and len(run_configs) != 1:
-            raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
-
-        require_exact_tool_versions = payload.require_exact_tool_versions
-        tools = self._workflow_contents_manager.get_all_tools(workflow)
-        missing_tools = [
-            tool
-            for tool in tools
-            if not trans.app.toolbox.has_tool(
-                tool["tool_id"],
-                tool_version=tool["tool_version"],
-                tool_uuid=tool["tool_uuid"],
-                exact=bool(require_exact_tool_versions),
-                user=trans.user,
-            )
-        ]
-        if missing_tools:
-            missing_tools_message = "Workflow was not invoked; the following required tools are not installed: "
-            if require_exact_tool_versions:
-                missing_tools_message += ", ".join(
-                    [f"{tool['tool_id']} (version {tool['tool_version']})" for tool in missing_tools]
-                )
-            else:
-                missing_tools_message += ", ".join([tool["tool_id"] for tool in missing_tools])
-            raise exceptions.MessageException(missing_tools_message)
 
         invocations = []
         for run_config in run_configs:
-            workflow_scheduler_id = payload.scheduler
             # TODO: workflow scheduler hints
             work_request_params = dict(scheduler=workflow_scheduler_id)
             workflow_invocation = queue_invoke(
@@ -370,9 +355,13 @@ class WorkflowsService(ServiceBase):
             )
             invocations.append(workflow_invocation)
 
-        # Create landing request association if provided
-        if payload.landing_uuid:
-            self._create_landing_request_association(trans, payload.landing_uuid, invocations)
+        if landing_request:
+            for invocation in invocations:
+                trans.sa_session.add(
+                    LandingRequestToWorkflowInvocationAssociation(
+                        landing_request=landing_request, workflow_invocation=invocation
+                    )
+                )
 
         trans.sa_session.commit()
         encoded_invocations = [WorkflowInvocationResponse(**invocation.to_dict()) for invocation in invocations]
@@ -632,21 +621,37 @@ class WorkflowsService(ServiceBase):
                 return shed_url
         return None
 
-    def _create_landing_request_association(
-        self, trans: ProvidesUserContext, landing_uuid: UUID4 | None, invocations: list[WorkflowInvocation]
-    ):
-        """Create association between landing request and workflow invocations."""
-        # Look up the workflow landing request by UUID
-        workflow_landing_request = (
-            trans.sa_session.query(WorkflowLandingRequest).where(WorkflowLandingRequest.uuid == landing_uuid).first()
-        )
-
-        if not workflow_landing_request:
-            raise exceptions.ObjectNotFound(f"WorkflowLandingRequest with UUID {landing_uuid} not found")
-
-        # Create associations for each invocation
-        for invocation in invocations:
-            association = LandingRequestToWorkflowInvocationAssociation(
-                landing_request=workflow_landing_request, workflow_invocation=invocation
+    def _check_workflow_tools(
+        self, trans: ProvidesHistoryContext, workflow: Workflow, require_exact_tool_versions: bool
+    ) -> None:
+        tools = self._workflow_contents_manager.get_all_tools(workflow)
+        missing_tools = []
+        incompatible_tool_ids = []
+        toolbox = trans.app.toolbox
+        for tool_reference in tools:
+            tool_kwds = dict(
+                tool_version=tool_reference["tool_version"],
+                tool_uuid=tool_reference["tool_uuid"],
+                exact=require_exact_tool_versions,
+                user=trans.user,
             )
-            trans.sa_session.add(association)
+            if not toolbox.has_tool(tool_reference["tool_id"], **tool_kwds):
+                missing_tools.append(tool_reference)
+                continue
+            tool = toolbox.get_tool(tool_reference["tool_id"], **tool_kwds)
+            if tool is not None and not tool.is_workflow_compatible:
+                incompatible_tool_ids.append(tool.id)
+        if missing_tools:
+            missing_tools_message = "Workflow was not invoked; the following required tools are not installed: "
+            if require_exact_tool_versions:
+                missing_tools_message += ", ".join(
+                    [f"{tool['tool_id']} (version {tool['tool_version']})" for tool in missing_tools]
+                )
+            else:
+                missing_tools_message += ", ".join([tool["tool_id"] for tool in missing_tools])
+            raise exceptions.MessageException(missing_tools_message)
+        if incompatible_tool_ids:
+            raise exceptions.RequestParameterInvalidException(
+                "Workflow was not invoked; the following tools are not workflow-compatible: "
+                + ", ".join(incompatible_tool_ids)
+            )

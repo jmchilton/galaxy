@@ -273,6 +273,11 @@ class LandingRequestManager:
         self._ensure_workflow(trans, request)
         return self._workflow_response(request)
 
+    def get_claimed_workflow_landing_request_model(
+        self, trans: ProvidesUserContext, uuid: UUID4
+    ) -> WorkflowLandingRequestModel:
+        return self._get_claimed_workflow_landing_request(trans, uuid)
+
     def _check_can_claim(
         self, trans: ProvidesUserContext, request: LandingRequestModel, claim: ClaimLandingPayload | None
     ):
