@@ -2165,12 +2165,23 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             input_element.clear()
             input_element.send_keys(value)
 
-    def tool_form_parameters(self, tool_id: str, tool_version: str | None = None) -> list[ToolFormParameter]:
-        """Describe a tool's form fields (path, label, type, value, options) for the current history."""
-        query = {"history_id": self.current_history_id()}
-        if tool_version:
-            query["tool_version"] = tool_version
-        build = self.api_get(f"tools/{quote(tool_id, safe='')}/build?{urlencode(query)}")
+    def tool_form_parameters(
+        self, tool_id: str | None = None, tool_version: str | None = None, job_id: str | None = None
+    ) -> list[ToolFormParameter]:
+        """Describe a tool's form fields (path, label, type, value, options) for the current history.
+
+        With ``job_id``, describe the rerun form instead: the fields hold that job's settings.
+        """
+        if job_id:
+            suffix = f"?{urlencode({'tool_version': tool_version})}" if tool_version else ""
+            build = self.api_get(f"jobs/{job_id}/build_for_rerun{suffix}")
+        else:
+            if not tool_id:
+                raise ValueError("pass tool_id or job_id")
+            query = {"history_id": self.current_history_id()}
+            if tool_version:
+                query["tool_version"] = tool_version
+            build = self.api_get(f"tools/{quote(tool_id, safe='')}/build?{urlencode(query)}")
         return tool_form_parameters_from_build(build["inputs"])
 
     def tool_form_fill(self, values: dict[str, Any] | None = None, data: dict[str, int | str] | None = None) -> None:
