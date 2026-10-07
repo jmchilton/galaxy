@@ -1,3 +1,4 @@
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_WITH_BAD_COLUMN_PARAMETER,
     WORKFLOW_WITH_OLD_TOOL_VERSION,
@@ -8,7 +9,6 @@ from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
-from .upload_activity_helpers import UsesUploadActivity
 
 
 class TestPages(SeleniumTestCase, UsesUploadActivity):

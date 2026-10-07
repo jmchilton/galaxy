@@ -1302,13 +1302,13 @@ Selenium tests inherit from ``SeleniumTestCase`` which combines browser automati
 with Galaxy API access:
 
 ```python
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
     SeleniumTestCase,
     UsesHistoryItemAssertions,
 )
-from galaxy_test.selenium.upload_activity_helpers import UsesUploadActivity
 
 class TestMyFeature(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
     ensure_registered = True  # Auto-login before each test
