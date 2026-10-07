@@ -1816,12 +1816,7 @@ class InputParameterModule(WorkflowModule):
         try:
             if isinstance(input_param, SelectToolParameter):
                 input_param.from_json(value, trans)
-                input_param.validate(value, trans)
-            elif parameter_type == "text" and multiple:
-                for v in values:
-                    input_param.validate(v, trans)
-            else:
-                input_param.validate(value, trans)
+            input_param.validate(value, trans)
         except TypeError as e:
             raise ParameterValueError(str(e), input_param.name, value) from None
         if isinstance(input_param, IntegerToolParameter) and input_param.multiple:
