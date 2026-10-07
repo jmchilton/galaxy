@@ -423,15 +423,15 @@ job, so it is outside the job's process tree and the DRM cannot kill it
 directly. To handle this, Galaxy's job script sets an ``EXIT`` trap that runs
 ``docker kill`` on the container when the job script exits - including when
 the job is stopped by the user or terminated by the DRM with ``SIGTERM``.
-This should be sufficient and no extra configuration ought to be needed.
+Normally no extra configuration is needed.
 
 If the job script is killed with ``SIGKILL`` before it can run the trap,
 however, the container keeps running after Galaxy considers the job finished
 (see `#13511 <https://github.com/galaxyproject/galaxy/issues/13511>`__). If
-``docker ps`` on your compute nodes shows InteractiveTool containers (named
-with a 32 character hex string) whose jobs are no longer running, you can
-clean them up from the DRM's side. usegalaxy.org runs a Slurm epilog script
-as a safety net for exactly this reason.
+``docker ps`` on your compute nodes shows containers named with a 32 character
+hex string (the names Galaxy gives job containers) whose jobs are no longer
+running, you can clean them up from the DRM's side. usegalaxy.org runs a Slurm
+epilog script as a safety net for exactly this reason.
 
 For InteractiveTools Galaxy writes ``configs/container_config.json`` to the
 job directory, and its ``container_name`` field holds the name the container
@@ -445,10 +445,12 @@ when the job ends:
     [ -n "${SLURM_JOB_ID:-}" ] || exit 0
     (
         workdir=$(scontrol show job "$SLURM_JOB_ID" | grep -o 'WorkDir=[^ ]*' | cut -d= -f2-)
-        # Galaxy submits from the job directory; Pulsar may submit from its working subdirectory.
+        # Galaxy submits from the job directory; Pulsar submits from its working subdirectory.
         for container_config in "${workdir}/configs/container_config.json" "${workdir}/../configs/container_config.json"; do
             if [ -f "$container_config" ]; then
-                docker kill "$(jq -r '.container_name' "$container_config")"
+                container_name=$(jq -r '.container_name' "$container_config")
+                # Only kill names Galaxy generates.
+                [[ "$container_name" =~ ^[0-9a-f]{32}$ ]] && docker kill "$container_name"
                 break
             fi
         done
@@ -461,9 +463,24 @@ by root) and enable it in ``slurm.conf``:
 .. code-block:: ini
 
     Epilog=/etc/slurm/epilog.sh
-    PrologEpilogTimeout=90
 
 The epilog runs as root on the node after every job, so ``jq`` and ``docker``
-must be available there. Jobs without a ``container_config.json`` are left
-alone. If your destination sets ``docker_host`` or ``docker_sudo``, adjust the
-``docker kill`` command to match. Other DRMs offer similar post-job hooks.
+must be available there. It always exits 0 and discards its output, because a
+failing epilog drains the node. Jobs without a ``container_config.json`` are
+left alone. Keep in mind:
+
+- The epilog finds the job directory from the job's Slurm ``WorkDir``, so it
+  works with runners that submit from the job directory: Galaxy's ``slurm`` and
+  ``drmaa`` runners and Pulsar's DRMAA-based managers. The CLI runners submit
+  with plain ``sbatch`` and leave ``WorkDir`` wherever the submitting process
+  was running.
+- It only covers jobs Slurm runs. Jobs run directly by Galaxy's local runner or
+  by Pulsar's non-DRM managers never trigger it.
+- ``container_config.json`` is not written when the destination sets
+  ``container_monitor`` to ``false``.
+- If the destination changes how Docker is invoked (``docker_host``,
+  ``docker_sudo``, ``docker_sudo_cmd`` or ``docker_cmd``), adjust the
+  ``docker kill`` command to match. ``container_config.json`` records these
+  settings under ``connection_configuration``.
+
+Other DRMs offer similar post-job hooks.
