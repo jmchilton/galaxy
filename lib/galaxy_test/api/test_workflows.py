@@ -7976,11 +7976,15 @@ steps: []
         "parameter_type,value",
         [
             ("text", 5),
+            ("text", 5.5),
             ("text", True),
             ("integer", "abc"),
+            ("integer", 5.5),
             ("integer", True),
             ("float", "abc"),
+            ("float", False),
             ("boolean", "maybe"),
+            ("boolean", 1),
         ],
     )
     def test_run_with_parameter_input_of_wrong_type(self, history_id, parameter_type, value):
@@ -8009,20 +8013,59 @@ steps: []
         invocation = self.workflow_populator.get_invocation(response.json()["id"])
         assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == value
 
-    def test_run_with_parameter_input_not_in_restrictions(self, history_id):
+    @pytest.mark.parametrize(
+        "parameter_type,invalid_value,valid_value,message",
+        [
+            ("text", "c", "a", "parameter: an invalid option ('c') was selected"),
+            ("[text]", ["a", "c"], ["a", "b"], "parameter: invalid options ('c') were selected"),
+        ],
+    )
+    def test_run_with_parameter_input_not_in_restrictions(
+        self, history_id, parameter_type, invalid_value, valid_value, message
+    ):
+        workflow_id = self._upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: {parameter_type}
+    restrictions: ["a", "b"]
+steps: []
+""")
+        response = self._invoke_by_name(workflow_id, history_id, {"parameter": invalid_value})
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, message)
+        response = self._invoke_by_name(workflow_id, history_id, {"parameter": valid_value})
+        self._assert_status_code_is(response, 200)
+        invocation = self.workflow_populator.get_invocation(response.json()["id"])
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == valid_value
+
+    def test_run_with_parameter_input_not_in_suggestions(self, history_id):
         workflow_id = self._upload_yaml_workflow("""
 class: GalaxyWorkflow
 inputs:
   parameter:
     type: text
-    restrictions: ["a", "b"]
+    suggestions: ["a", "b"]
 steps: []
 """)
         response = self._invoke_by_name(workflow_id, history_id, {"parameter": "c"})
-        self._assert_status_code_is(response, 400)
-        assert_error_message_contains(response, "parameter: an invalid option ('c') was selected")
-        response = self._invoke_by_name(workflow_id, history_id, {"parameter": "a"})
         self._assert_status_code_is(response, 200)
+        invocation = self.workflow_populator.get_invocation(response.json()["id"])
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == "c"
+
+    def test_run_with_optional_parameter_input_empty(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: integer
+    optional: true
+steps: []
+""")
+        response = self._invoke_by_name(workflow_id, history_id, {"parameter": ""})
+        self._assert_status_code_is(response, 200)
+        invocation = self.workflow_populator.get_invocation(response.json()["id"])
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == ""
 
     def _upload_parameter_input_workflow(self, parameter_definition: dict[str, Any]) -> str:
         # gxformat2 does not carry parameter validators through, so set them on the native step state.
@@ -8097,6 +8140,19 @@ steps: []
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, "input1: collection type 'list' cannot be used")
 
+    def test_run_with_mappable_collection_type(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: collection
+    collection_type: list
+steps: []
+""")
+        hdca = self.dataset_collection_populator.create_list_of_list_in_history(history_id, wait=True).json()
+        response = self._invoke_by_name(workflow_id, history_id, {"input1": {"src": "hdca", "id": hdca["id"]}})
+        self._assert_status_code_is(response, 200)
+
     def test_run_with_deleted_inputs(self, history_id):
         workflow_id = self._upload_yaml_workflow("""
 class: GalaxyWorkflow
@@ -8110,6 +8166,8 @@ steps: []
         hda = self.dataset_populator.new_dataset(history_id, wait=True)
         deleted_hda = self.dataset_populator.new_dataset(history_id, wait=True)
         self.dataset_populator.delete_dataset(history_id, deleted_hda["id"])
+        purged_hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        self.dataset_populator.delete_dataset(history_id, purged_hda["id"], purge=True, wait_for_purge=True)
         fetch_response = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()
         hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
         deleted_fetch_response = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()
@@ -8130,6 +8188,13 @@ steps: []
         )
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, "input2: the selected dataset collection has been deleted")
+        response = self._invoke_by_name(
+            workflow_id,
+            history_id,
+            {"input1": {"src": "hda", "id": purged_hda["id"]}, "input2": {"src": "hdca", "id": hdca["id"]}},
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "input1: the selected dataset has been deleted")
 
     @pytest.mark.parametrize("src", ["ld", "ldda"])
     def test_run_with_library_dataset_input(self, history_id, src):
