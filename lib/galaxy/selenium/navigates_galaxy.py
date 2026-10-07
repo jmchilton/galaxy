@@ -1829,6 +1829,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
     def workflow_index_open_with_name(self, name: str):
         """Open the workflow titled ``name`` in the editor, once the search has narrowed the list to it."""
+        self._workflow_card_action(name, '[id^="g-card-action-workflow-edit-"]')
+
+    def _workflow_card_action(self, name: str, action_selector: str):
         self.workflow_index_open()
         self.workflow_index_search_for(name)
         card = self._wait_on(
@@ -1836,7 +1839,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             f"a workflow card titled [{name}]",
             wait_type=self.wait_types.DATABASE_OPERATION,
         )
-        card.find_element(By.CSS_SELECTOR, '[id^="g-card-action-workflow-edit-"]').click()
+        card.find_element(By.CSS_SELECTOR, action_selector).click()
 
     def _workflow_card_named(self, name: str):
         for card in self.components.workflows.workflow_card.all():
@@ -2002,10 +2005,8 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def workflow_run_with_name(self, name: str):
-        """Open the run form of the workflow named ``name`` from the workflow list."""
-        self.workflow_index_open()
-        self.workflow_index_search_for(name)
-        self.components.workflows.run_button.wait_for_and_click()
+        """Open the run form of the workflow titled ``name`` from the workflow list."""
+        self._workflow_card_action(name, '[id^="g-card-action-workflow-run-"]')
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def workflow_run_specify_inputs(self, inputs: dict[str, Any]):
