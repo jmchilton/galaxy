@@ -56,3 +56,16 @@ def _split_dataset_collection(dataset_collection: "DatasetCollection", collectio
                 split_elements.extend(_split_dataset_collection(child_collection, collection_type))
 
     return split_elements
+
+
+def split_count(dataset_collection: "DatasetCollection", collection_type: str) -> int:
+    """Count the elements ``_split_dataset_collection`` would return, with one query."""
+    this_collection_type = dataset_collection.collection_type
+    leaf_depth = this_collection_type.count(":") + 1
+    if collection_type == "single_datasets":
+        depth = leaf_depth
+    elif this_collection_type.endswith(f":{collection_type}"):
+        depth = leaf_depth - (collection_type.count(":") + 1)
+    else:
+        raise exceptions.MessageException("Cannot split collection in desired fashion.")
+    return dataset_collection.element_count_at_depth(depth)

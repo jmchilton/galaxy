@@ -7763,29 +7763,44 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
         _build_nested_collection_attributes_stmt only reaches branches that
         contain datasets.
         """
-        session = required_object_session(self)
-        is_postgres = session.bind and session.bind.dialect.name == "postgresql"
-
-        def in_ids(column, ids):
-            if is_postgres:
-                # Evaluating each level into an array forces index scans, see
-                # _build_nested_collection_attributes_stmt.
-                return column == any_(func.array(ids.scalar_subquery()))
-            return column.in_(ids)
-
-        dce_table = DatasetCollectionElement.__table__
         dc_table = DatasetCollection.__table__
-        level_conditions = []
-        level_ids = None
-        for _ in range(self.collection_type.count(":")):
-            dce = alias(dce_table)
-            if level_ids is None:
-                parent_condition = dce.c.dataset_collection_id == self.id
-            else:
-                parent_condition = in_ids(dce.c.dataset_collection_id, level_ids)
-            level_ids = select(dce.c.child_collection_id).where(parent_condition)
-            level_conditions.append(in_ids(dc_table.c.id, level_ids))
+        level_conditions = [
+            self._ids_in(dc_table.c.id, level_ids)
+            for level_ids in self._nested_collection_ids_selects(self.collection_type.count(":"))
+        ]
         return select(dc_table.c.id).where(or_(*level_conditions), *where)
+
+    def _nested_collection_ids_selects(self, levels: int) -> list:
+        """Selects of the ids of the collections at each of the first ``levels`` nesting levels below this one."""
+        dce_table = DatasetCollectionElement.__table__
+        selects: list = []
+        for _ in range(levels):
+            dce = alias(dce_table)
+            if selects:
+                parent_condition = self._ids_in(dce.c.dataset_collection_id, selects[-1])
+            else:
+                parent_condition = dce.c.dataset_collection_id == self.id
+            selects.append(select(dce.c.child_collection_id).where(parent_condition))
+        return selects
+
+    def _ids_in(self, column, ids):
+        session = required_object_session(self)
+        if session.bind and session.bind.dialect.name == "postgresql":
+            # Evaluating each level into an array forces index scans, see
+            # _build_nested_collection_attributes_stmt.
+            return column == any_(func.array(ids.scalar_subquery()))
+        return column.in_(ids)
+
+    def element_count_at_depth(self, depth: int) -> int:
+        """Count the elements ``depth`` levels down (1 = this collection's own elements) in one query."""
+        dce = alias(DatasetCollectionElement.__table__)
+        parent_ids = self._nested_collection_ids_selects(depth - 1)
+        if parent_ids:
+            condition = self._ids_in(dce.c.dataset_collection_id, parent_ids[-1])
+        else:
+            condition = dce.c.dataset_collection_id == self.id
+        stmt = select(func.count()).select_from(dce).where(condition)
+        return required_object_session(self).scalar(stmt) or 0
 
     @property
     def populated_optimized(self):

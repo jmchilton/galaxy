@@ -27,6 +27,22 @@ export interface ToolIdentifier {
     toolVersion: string;
 }
 
+/** One batched input of a tool request: how many values it contributes and whether it is matched (linked). */
+export interface ToolFormBatchInputCount {
+    /** Flat (`|`-separated) parameter name. */
+    name: string;
+    count: number;
+    linked: boolean;
+}
+
+/** Server preview of how many jobs submitting the current form would create. */
+export interface ToolFormJobExpansion {
+    /** Number of jobs, or null when it cannot be determined (see `reason`). */
+    job_count: number | null;
+    reason: "inputs_not_ready" | "batch_mismatch" | "unknown" | null;
+    inputs: ToolFormBatchInputCount[];
+}
+
 /**
  * The tool-form "build" model returned by `updateToolFormData` /
  * `getToolFormData` in `client/src/components/Tool/services.js`
@@ -66,6 +82,8 @@ export interface ToolFormConfig extends Tool {
     /** How the tool renders its interface, e.g. `tabular`. */
     display?: string;
     has_parameters?: boolean;
+    /** Present only when some input is batched (mapped over). */
+    job_expansion?: ToolFormJobExpansion;
 }
 
 export function getToolKey(toolId: string, toolVersion: string): string {

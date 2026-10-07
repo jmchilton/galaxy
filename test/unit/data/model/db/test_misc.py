@@ -193,6 +193,23 @@ def test_populated_optimized_list_list_not_populated(make_dataset_collection, ma
     assert not c2.populated_optimized
 
 
+def test_element_count_at_depth(session, make_dataset_collection, make_dataset_collection_element, make_hda):
+    outer = make_dataset_collection(collection_type="list:list:paired")
+    for inner_size in (2, 0, 3):
+        inner = make_dataset_collection(collection_type="list:paired")
+        make_dataset_collection_element(collection=outer, element=inner)
+        for _ in range(inner_size):
+            pair = make_dataset_collection(collection_type="paired")
+            make_dataset_collection_element(collection=inner, element=pair)
+            make_dataset_collection_element(collection=pair, element=make_hda(create_dataset=True, sa_session=session))
+            make_dataset_collection_element(collection=pair, element=make_hda(create_dataset=True, sa_session=session))
+    assert outer.element_count_at_depth(1) == 3
+    assert outer.element_count_at_depth(2) == 5
+    assert outer.element_count_at_depth(3) == 10
+    assert outer.element_count_at_depth(3) == len(outer.dataset_elements)
+    assert make_dataset_collection(collection_type="list").element_count_at_depth(1) == 0
+
+
 def test_default_disk_usage(session, make_user):
     u = make_user()
     u.adjust_total_disk_usage(1, None)

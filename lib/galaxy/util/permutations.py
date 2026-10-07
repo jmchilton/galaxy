@@ -34,6 +34,29 @@ def build_combos(single_inputs, matched_multi_inputs, multiplied_multi_inputs, n
     return input_combos
 
 
+def count_combos(matched_lengths: dict[str, int], multiplied_lengths: dict[str, int]) -> int:
+    """Number of combinations ``build_combos`` would build for inputs of these lengths."""
+    count = matched_length(matched_lengths)
+    if count is None:
+        count = 1
+    for length in multiplied_lengths.values():
+        count *= length
+    return count
+
+
+def matched_length(matched_lengths: dict[str, int]) -> int | None:
+    """Common length of matched inputs (None if there are none); raise InputMatchedException if they differ."""
+    if not matched_lengths:
+        return None
+    first_key, first_length = next(iter(matched_lengths.items()))
+    for key, length in matched_lengths.items():
+        if length != first_length:
+            raise InputMatchedException(
+                f"Received {length} inputs for '{key}' and {first_length} inputs for '{first_key}', these should be of equal length"
+            )
+    return first_length
+
+
 def __extend_with_matched_combos(single_inputs, multi_inputs, nested):
     """
 
@@ -48,6 +71,7 @@ def __extend_with_matched_combos(single_inputs, multi_inputs, nested):
     if len(multi_inputs) == 0:
         return [single_inputs]
 
+    matched_length({key: len(values) for key, values in multi_inputs.items()})
     matched_multi_inputs = []
 
     first_multi_input_key = next(iter(multi_inputs.keys()))
@@ -60,11 +84,6 @@ def __extend_with_matched_combos(single_inputs, multi_inputs, nested):
     for multi_input_key, multi_input_values in multi_inputs.items():
         if multi_input_key == first_multi_input_key:
             continue
-        if len(multi_input_values) != len(first_multi_value):
-            raise InputMatchedException(
-                f"Received {len(multi_input_values)} inputs for '{multi_input_key}' and {len(first_multi_value)} inputs for '{first_multi_input_key}', these should be of equal length"
-            )
-
         for index, value in enumerate(multi_input_values):
             state_set_value(matched_multi_inputs[index], multi_input_key, value, nested)
 
