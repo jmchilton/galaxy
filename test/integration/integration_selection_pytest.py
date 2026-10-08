@@ -5,7 +5,7 @@ import os
 import pytest
 
 from galaxy_test import shard
-from galaxy_test.integration_selection import (
+from .integration_selection import (
     FAMILIES,
     selected_families,
 )

@@ -20,10 +20,10 @@ from galaxy_test.conftest import pytest_plugins  # noqa: F401
 from galaxy_test.conftest import (
     pytest_configure as _base_pytest_configure,
 )
-from galaxy_test.integration_selection_pytest import pytest_collection_modifyitems  # noqa: F401
 from galaxy_test.shard import (  # noqa: F401
     pytest_report_collectionfinish,
 )
+from .integration_selection_pytest import pytest_collection_modifyitems  # noqa: F401
 
 
 def pytest_configure(config):

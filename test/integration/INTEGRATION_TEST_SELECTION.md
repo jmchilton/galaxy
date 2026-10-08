@@ -8,7 +8,7 @@ base of the base/head commits to the head; pushes compare before/after commits.
 Renames include both old and new paths. Missing history, invalid comparison
 commits, scheduled runs, and manual runs select every family.
 
-The path policy in `lib/galaxy_test/integration_selection.py` selects individual
+The path policy in `test/integration/integration_selection.py` selects individual
 runner/objectstore plugins for direct plugin edits. Shared utilities, job and
 objectstore plumbing select all expensive families. Shared test infrastructure,
 dependencies, model/config/tool/datatype/metadata code and CI changes also select

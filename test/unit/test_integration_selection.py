@@ -8,12 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from galaxy_test.integration_selection import (
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "test"))
+
+from integration.integration_selection import (
     FAMILIES,
     SELECTION_ENV,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/select_integration_tests.py"
 
 
@@ -38,13 +40,14 @@ def commit(repository, path, content="change"):
     return run("git", "rev-parse", "HEAD", cwd=repository).strip()
 
 
-def select(repository, event_name, event):
+def select(repository, event_name, event, *, python_flags=()):
     event_path = repository / "event.json"
     env_path = repository / "selection.env"
     event_path.write_text(json.dumps(event))
     env_path.unlink(missing_ok=True)
     output = run(
         sys.executable,
+        *python_flags,
         str(SCRIPT),
         "--event-name",
         event_name,
@@ -146,7 +149,7 @@ def suite(tmp_path):
         "[pytest]\nmarkers = ci_integration_family(family): expensive CI integration subsystem\n"
     )
     (tmp_path / "conftest.py").write_text(
-        "from galaxy_test.integration_selection_pytest import pytest_collection_modifyitems\n"
+        "from integration.integration_selection_pytest import pytest_collection_modifyitems\n"
         "from galaxy_test.shard import pytest_configure\n"
         "def pytest_addoption(parser):\n"
         "    parser.addoption('--num-shards', type=int, default=1)\n"
@@ -183,7 +186,7 @@ def suite(tmp_path):
 def pytest_run(suite, environment, *args):
     env = {key: value for key, value in os.environ.items() if not key.startswith("GALAXY_TEST_CI_")}
     env.update(environment)
-    env["PYTHONPATH"] = str(ROOT / "lib")
+    env["PYTHONPATH"] = os.pathsep.join(str(ROOT / directory) for directory in ("test", "lib"))
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     env["GALAXY_TEST_SHARD_DURATIONS"] = str(suite / "durations.json")
     return run(sys.executable, "-m", "pytest", "-q", "-c", str(suite / "pytest.ini"), *args, cwd=suite, env=env)
@@ -306,3 +309,11 @@ def test_missing_or_invalid_event_file_runs_full_suite(tmp_path, content):
     environment = dict(line.split("=", 1) for line in env_path.read_text().splitlines())
     assert families(environment) == FAMILIES
     assert "event data unavailable" in output
+
+
+def test_cli_reads_relocated_policy_without_site_packages(repository):
+    base = commit(repository, "README.md")
+    head = commit(repository, "lib/galaxy/objectstore/azure_blob.py")
+    environment, output = select(repository, "push", {"before": base, "after": head}, python_flags=("-I", "-S"))
+    assert families(environment) == {"azure"}
+    assert "1 changed paths" in output

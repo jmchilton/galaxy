@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from galaxy_test.integration_selection import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test"))
+from integration.integration_selection import (
     classify_paths,
     Selection,
 )
