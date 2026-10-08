@@ -1337,6 +1337,13 @@ class InputDataCollectionModule(InputModule):
         return state_as_dict
 
 
+def _is_default_option(value, default_value) -> bool:
+    """Whether a select option starts selected for a parameter default (any entry of a list default)."""
+    if isinstance(default_value, list):
+        return value in default_value
+    return bool(default_value and value == default_value)
+
+
 class InputParameterModule(WorkflowModule):
     POSSIBLE_PARAMETER_TYPES = POSSIBLE_PARAMETER_TYPES
     type = "parameter_input"
@@ -1652,7 +1659,7 @@ class InputParameterModule(WorkflowModule):
             if static_options and len(static_options) == 1:
                 # If we are connected to a single option, just use it as is so order is preserved cleanly and such.
                 options = [
-                    {"label": o[0], "value": o[1], "selected": bool(default_value and o[1] == default_value)}
+                    {"label": o[0], "value": o[1], "selected": _is_default_option(o[1], default_value)}
                     for o in static_options[0]
                 ]
             elif static_options:
@@ -1666,7 +1673,7 @@ class InputParameterModule(WorkflowModule):
                     {
                         "label": ", ".join(labels),
                         "value": value,
-                        "selected": bool(default_value and value == default_value),
+                        "selected": _is_default_option(value, default_value),
                     }
                     for value, labels in collapsed_labels.items()
                 ]
@@ -1722,7 +1729,10 @@ class InputParameterModule(WorkflowModule):
 
         if is_text and not restricted_inputs and parameter_def.get("restrictions"):
             restriction_values = parameter_def.get("restrictions")
-            parameter_kwds["options"] = _parameter_def_list_to_options(restriction_values)
+            restriction_options = _parameter_def_list_to_options(restriction_values)
+            for option in restriction_options:
+                option["selected"] = _is_default_option(option["value"], default_value)
+            parameter_kwds["options"] = restriction_options
             restricted_inputs = True
 
         if parameter_def.get("validators"):
@@ -1735,9 +1745,7 @@ class InputParameterModule(WorkflowModule):
         parameter_class = parameter_types[client_parameter_type]
 
         if default_value_set:
-            if client_parameter_type == "select":
-                parameter_kwds["selected"] = default_value
-            else:
+            if client_parameter_type != "select":
                 parameter_kwds["value"] = default_value
             if parameter_type == "boolean":
                 parameter_kwds["checked"] = default_value
