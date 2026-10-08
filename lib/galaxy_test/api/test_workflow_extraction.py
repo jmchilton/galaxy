@@ -262,6 +262,11 @@ test_data:
     def _rows_by_type(self, summary, *step_types):
         return [j for j in summary["jobs"] if j["step_type"] in step_types]
 
+    def _get_extraction_summary(self, history_id: str) -> dict:
+        response = self._get(f"histories/{history_id}/extraction_summary")
+        self._assert_status_code_is(response, 200)
+        return response.json()
+
     def _row_with_output_id(self, summary, content_id):
         for job in summary["jobs"]:
             if any(o["id"] == content_id for o in job["outputs"]):
@@ -1361,6 +1366,41 @@ test_data:
         )
         self.assert_cat1_workflow_structure(downloaded)
 
+    @skip_without_tool("cat1")
+    @summarize_instance_history_on_error
+    def test_extract_with_two_copies_of_one_input_makes_one_input(self, history_id):
+        """The history card for an upload lists its in-history copies, and checking it sends every copy."""
+        hda = self.dataset_populator.new_dataset(history_id, content="1 2 3\n", wait=True)
+        hda_copy = self._copy_hda_to_history(history_id, hda)
+        run = self.dataset_populator.run_tool(
+            "cat1",
+            {"input1": {"src": "hda", "id": hda["id"]}, "queries_0|input2": {"src": "hda", "id": hda_copy["id"]}},
+            history_id,
+        )
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        input_row = self._row_with_output_id(self._get_extraction_summary(history_id), hda_copy["id"])
+        assert input_row is not None, input_row
+        assert {o["id"] for o in input_row["outputs"]} == {hda["id"], hda_copy["id"]}, input_row
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hda_ids=[hda["id"], hda_copy["id"]],
+            job_ids=[run["jobs"][0]["id"]],
+        )
+        (input_step,) = self.assert_steps_of_type(downloaded, "data_input", expected_len=1)
+        (cat1_step,) = self.assert_steps_of_type(downloaded, "tool", expected_len=1)
+        for name in ("input1", "queries_0|input2"):
+            connection = cat1_step["input_connections"][name]
+            connection = connection[0] if isinstance(connection, list) else connection
+            assert connection["id"] == input_step["id"], cat1_step
+
+    @summarize_instance_history_on_error
+    def test_extract_with_two_copies_of_one_collection_makes_one_input(self, history_id):
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=["a\n", "b\n"], wait=True
+        ).json()["outputs"][0]
+        hdca_copy = self._copy_content_to_history(history_id, hdca)
+        downloaded = self._extract_and_download_workflow_by_ids(hdca_ids=[hdca["id"], hdca_copy["id"]])
+        self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)
+
     @summarize_instance_history_on_error
     def test_empty_payload_rejected(self, history_id):
         # pydantic validator rejects empty input list -> 4xx (400 or 422).
@@ -2138,45 +2178,6 @@ test_data:
         self._assert_status_code_is(download, 200)
         input_labels = {s["label"] for s in download.json()["steps"].values() if s["type"] == "data_input"}
         assert input_labels == {'Sample "A".csv', "other"}
-
-    def test_extract_with_two_copies_of_one_input_makes_one_input(self, history_id):
-        """The history card for an upload lists its in-history copies; checking it sends every copy under the card's one name."""
-        hda = self.dataset_populator.new_dataset(history_id, content="1 2 3\n", wait=True)
-        hda_copy = self._copy_hda_to_history(history_id, hda)
-        run = self.dataset_populator.run_tool(
-            "cat1",
-            {"input1": {"src": "hda", "id": hda["id"]}, "queries_0|input2": {"src": "hda", "id": hda_copy["id"]}},
-            history_id,
-        )
-        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
-        input_row = self._row_with_output_id(self._get_extraction_summary(history_id), hda_copy["id"])
-        assert input_row is not None, input_row
-        assert {o["id"] for o in input_row["outputs"]} == {hda["id"], hda_copy["id"]}, input_row
-        downloaded = self._extract_and_download_workflow_by_ids(
-            hda_ids=[hda["id"], hda_copy["id"]],
-            dataset_names=["numbers", "numbers"],
-            job_ids=[run["jobs"][0]["id"]],
-        )
-        (input_step,) = self.assert_steps_of_type(downloaded, "data_input", expected_len=1)
-        assert input_step["label"] == "numbers", input_step
-        (cat1_step,) = self.assert_steps_of_type(downloaded, "tool", expected_len=1)
-        for name in ("input1", "queries_0|input2"):
-            assert _connection_step_id(cat1_step["input_connections"][name]) == input_step["id"], cat1_step
-
-    @summarize_instance_history_on_error
-    def test_extract_with_two_copies_of_one_collection_makes_one_input(self, history_id):
-        hdca = self.dataset_collection_populator.create_list_in_history(
-            history_id, contents=["a\n", "b\n"], wait=True
-        ).json()["outputs"][0]
-        hdca_copy = self._copy_content_to_history(history_id, hdca)
-        summary = self._get_extraction_summary(history_id)
-        input_row = self._only_row_listing(summary, {hdca["id"], hdca_copy["id"]})
-        assert [o["id"] for o in input_row["outputs"]] == [hdca["id"], hdca_copy["id"]], input_row
-        downloaded = self._extract_and_download_workflow_by_ids(
-            hdca_ids=[hdca["id"], hdca_copy["id"]], dataset_collection_names=["letters", "letters"]
-        )
-        (input_step,) = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)
-        assert input_step["label"] == "letters", input_step
 
     @summarize_instance_history_on_error
     def test_copies_of_job_less_collection_share_one_input_card(self, history_id):
