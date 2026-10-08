@@ -346,6 +346,11 @@ def _tool_form_options_and_value(input: dict[str, Any]) -> tuple[list[tuple[str,
     return [], value
 
 
+def workflow_search_term(name: str) -> str:
+    """The longest part of ``name`` free of ``:``, which the workflow list's search reads as ``key:value``."""
+    return max((part.strip() for part in name.split(":")), key=len)
+
+
 class NavigatesGalaxy(HasDriverProxy[WaitType]):
     """Class with helpers methods for driving components of the Galaxy interface.
 
@@ -1938,11 +1943,12 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def _workflow_card_action(self, name: str, action: Target):
         """Search the workflow list for ``name``, click ``action`` in its card and return the card."""
         self.workflow_index_open()
-        self.workflow_index_search_for(name)
+        search = workflow_search_term(name)
+        self.workflow_index_search_for(search)
 
         def click_action():
             card = self._wait_on(
-                lambda: self._workflow_card_named(name),
+                lambda: self._workflow_card_named(name, search),
                 f"search results with a workflow titled or uniquely containing [{name}]",
                 wait_type=self.wait_types.DATABASE_OPERATION,
             )
@@ -1952,8 +1958,8 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         # Cards stay mounted under a loading overlay while the search reloads them.
         return retry_call_during_transitions(click_action)
 
-    def _workflow_card_named(self, name: str):
-        """Card titled exactly ``name``, else the only card, once every listed title contains ``name``.
+    def _workflow_card_named(self, name: str, search: str | None = None):
+        """Card titled exactly ``name``, else the only card, once every listed title contains ``search`` (default ``name``).
 
         Until then the list still shows unfiltered workflows (search input is debounced). Like the
         server's search, containment ignores case.
@@ -1966,7 +1972,8 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             if not exception_indicates_stale_element(e):
                 raise
             return None
-        if not titles or any(name.lower() not in title.lower() for title in titles):
+        search = (search or name).lower()
+        if not titles or any(search not in title.lower() for title in titles):
             return None
         if name in titles:
             return cards[titles.index(name)]
