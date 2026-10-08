@@ -8,6 +8,7 @@ import { errorMessageAsString } from "@/utils/simple-error.js";
 
 import WorkflowRun from "./WorkflowRun.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
+import LoadingSpan from "@/components/LoadingSpan.vue";
 
 const props = defineProps<{
     invocationId: string;
@@ -26,7 +27,11 @@ watch(
     async (rerunData) => {
         if (rerunData && !ready.value) {
             // switch to the history with the original workflow inputs first, then render `WorkflowRun`
-            await historyStore.setCurrentHistory(rerunData.history_id);
+            try {
+                await historyStore.setCurrentHistory(rerunData.history_id);
+            } catch (e) {
+                console.error(e);
+            }
 
             // if we were unable to set the history, we need to show an error
             if (historyStore.currentHistoryId !== rerunData.history_id) {
@@ -51,4 +56,5 @@ watch(
         prefer-simple-form
         is-rerun
         :simple-form-use-job-cache="requestData.use_cached_job" />
+    <LoadingSpan v-else message="Loading workflow rerun data" />
 </template>
