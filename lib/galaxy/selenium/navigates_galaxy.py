@@ -338,6 +338,11 @@ def _tool_form_options_and_value(input: dict[str, Any]) -> tuple[list[tuple[str,
     return [], value
 
 
+def workflow_search_term(name: str) -> str:
+    """The longest part of ``name`` free of ``:``, which the workflow list's search reads as ``key:value``."""
+    return max((part.strip() for part in name.split(":")), key=len)
+
+
 class NavigatesGalaxy(HasDriverProxy[WaitType]):
     """Class with helpers methods for driving components of the Galaxy interface.
 
@@ -1834,7 +1839,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
     def _workflow_card_action(self, name: str, action_selector: str):
         self.workflow_index_open()
-        self.workflow_index_search_for(name)
+        self.workflow_index_search_for(workflow_search_term(name))
         card = self._wait_on(
             lambda: self._workflow_card_named(name),
             f"a workflow card titled [{name}]",
