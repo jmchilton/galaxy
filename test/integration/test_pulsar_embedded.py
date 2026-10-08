@@ -2,12 +2,15 @@
 
 import os
 
+import pytest
 from sqlalchemy import select
 
 from galaxy import model
 from galaxy.job_execution.setup import JobWorkingDirectory
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
+
+pytestmark = pytest.mark.ci_integration_family("pulsar")
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 EMBEDDED_PULSAR_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_job_conf.yml")

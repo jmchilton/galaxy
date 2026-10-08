@@ -5,6 +5,8 @@ import string
 import tempfile
 import uuid
 
+import pytest
+
 from galaxy.util import safe_makedirs
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
@@ -12,6 +14,8 @@ from galaxy_test.driver.integration_util import (
     docker_rm,
     docker_run,
 )
+
+pytestmark = pytest.mark.ci_integration_family("pulsar")
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 EMBEDDED_PULSAR_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_mq_job_conf.yml")

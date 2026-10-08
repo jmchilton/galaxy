@@ -343,6 +343,7 @@ def _wait_for_htcondor_schedd(container_name: str, timeout: int = HTCONDOR_START
 
 
 @integration_util.skip_unless_docker()
+@pytest.mark.ci_integration_family("htcondor")
 class TestHTCondorContainerJob(integration_util.IntegrationTestCase):
     """End-to-end tests using a real HTCondor minicondor Docker container.
 

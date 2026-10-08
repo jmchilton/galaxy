@@ -198,6 +198,7 @@ def test_upload_datatype_dos_disk_and_disk(
 
 
 @pytest.mark.parametrize("test_data", TEST_CASES.values(), ids=list(TEST_CASES.keys()))
+@pytest.mark.ci_integration_family("irods")
 def test_upload_datatype_irods(
     irods_instance: IrodsUploadTestDatatypeDataIntegrationInstance, test_data: DatatypeUploadCase, temp_file
 ) -> None:
@@ -206,6 +207,7 @@ def test_upload_datatype_irods(
 
 
 @pytest.mark.parametrize("test_data", TEST_CASES.values(), ids=list(TEST_CASES.keys()))
+@pytest.mark.ci_integration_family("irods")
 def test_upload_datatype_dos_irods_and_disk(
     distributed_and_irods_instance: UploadTestDosIrodsAndDiskIntegrationInstance,
     test_data: DatatypeUploadCase,
@@ -216,6 +218,7 @@ def test_upload_datatype_dos_irods_and_disk(
 
 
 @pytest.mark.parametrize("test_data", SINGLE_TEST_CASE.values(), ids=list(SINGLE_TEST_CASE.keys()))
+@pytest.mark.ci_integration_family("irods")
 def test_upload_datatype_irods_idle_connections(
     idle_connection_irods_instance: IrodsIdleConnectionUploadIntegrationInstance,
     test_data: DatatypeUploadCase,

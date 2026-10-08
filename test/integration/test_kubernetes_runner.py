@@ -31,6 +31,8 @@ from galaxy_test.driver import integration_util
 from .test_containerized_jobs import MulledJobTestCases
 from .test_job_environments import BaseJobEnvironmentIntegrationTestCase
 
+pytestmark = pytest.mark.ci_integration_family("kubernetes")
+
 PERSISTENT_VOLUME_NAME = "pv-galaxy-integration-test"
 PERSISTENT_VOLUME_CLAIM_NAME = "galaxy-pvc-integration-test"
 Config = collections.namedtuple("Config", "path")

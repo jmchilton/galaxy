@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 from .test_containerized_jobs import (
@@ -8,6 +10,8 @@ from .test_containerized_jobs import (
     MulledJobTestCases,
     skip_if_container_type_unavailable,
 )
+
+pytestmark = pytest.mark.ci_integration_family("pulsar")
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 EMBEDDED_PULSAR_JOB_CONFIG_FILE_SINGULARITY = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_singularity_job_conf.yml")

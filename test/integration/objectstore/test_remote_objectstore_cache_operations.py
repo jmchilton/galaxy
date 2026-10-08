@@ -10,6 +10,8 @@ from ._base import (
     get_files,
 )
 
+pytestmark = pytest.mark.ci_integration_family("s3")
+
 
 class TestCacheOperation(BaseSwiftObjectStoreIntegrationTestCase):
     def tearDown(self):

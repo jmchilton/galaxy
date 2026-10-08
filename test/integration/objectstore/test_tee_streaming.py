@@ -11,6 +11,7 @@ SeaweedFS container.
 import os
 import string
 
+import pytest
 import requests
 
 from galaxy_test.base.populators import DatasetPopulator
@@ -113,6 +114,7 @@ class TeeStreamingIntegrationTestCase(BaseObjectStoreIntegrationTestCase):
 
 
 @integration_util.skip_unless_docker()
+@pytest.mark.ci_integration_family("s3")
 class TestTeeStreamingIntegration(TeeStreamingIntegrationTestCase):
     object_store_config = BOTO3_TEE_STREAMING_CONFIG
 
@@ -187,11 +189,13 @@ class TestTeeStreamingIntegration(TeeStreamingIntegrationTestCase):
 
 
 @integration_util.skip_unless_docker()
+@pytest.mark.ci_integration_family("cloud")
 class TestCloudTeeStreamingIntegration(TestTeeStreamingIntegration):
     object_store_config = CLOUD_TEE_STREAMING_CONFIG
 
 
 @integration_util.skip_unless_docker()
+@pytest.mark.ci_integration_family("s3")
 class TestTeeStreamingBiggerThanCacheIntegration(TeeStreamingIntegrationTestCase):
     object_store_config = BOTO3_TINY_CACHE_CONFIG
 

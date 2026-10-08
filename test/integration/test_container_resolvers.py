@@ -8,6 +8,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
+import pytest
 from typing_extensions import (
     Protocol,
 )
@@ -24,6 +25,8 @@ from .test_containerized_jobs import (
     disable_dependency_resolution,
     skip_if_container_type_unavailable,
 )
+
+pytestmark = pytest.mark.ci_integration_family("containers")
 
 if TYPE_CHECKING:
     from requests import Response

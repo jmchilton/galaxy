@@ -1,5 +1,9 @@
+import pytest
+
 from galaxy_test.driver import integration_util
 from ._base import BaseCloudObjectStoreIntegrationTestCase
+
+pytestmark = pytest.mark.ci_integration_family("cloud")
 
 TEST_TOOL_IDS = [
     "multi_output",

@@ -15,6 +15,8 @@ from .test_containerized_jobs import (
     skip_if_container_type_unavailable,
 )
 
+pytestmark = pytest.mark.ci_integration_family("containers")
+
 METADATA_IMAGE = "galaxyproject/galaxy-job-execution:integration-marker"
 METADATA_MARKER = "metadata_container_marker"
 

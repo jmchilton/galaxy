@@ -11,6 +11,8 @@ from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 from .objectstore._purged_handling import purge_while_job_running
 
+pytestmark = pytest.mark.ci_integration_family("pulsar")
+
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 EMBEDDED_PULSAR_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_mq_job_conf.yml")
 AMQP_URL = os.environ.get("GALAXY_TEST_AMQP_URL", "amqp://guest:guest@localhost:5672//")

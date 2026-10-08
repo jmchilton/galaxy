@@ -1,5 +1,9 @@
+import pytest
+
 from galaxy_test.driver import integration_util
 from ._base import BaseOnedataObjectStoreIntegrationTestCase
+
+pytestmark = pytest.mark.ci_integration_family("onedata")
 
 TEST_TOOL_IDS = [
     "multi_output",

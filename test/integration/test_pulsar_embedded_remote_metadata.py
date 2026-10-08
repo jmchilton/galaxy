@@ -2,7 +2,11 @@
 
 import os
 
+import pytest
+
 from galaxy_test.driver import integration_util
+
+pytestmark = pytest.mark.ci_integration_family("pulsar")
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 EMBEDDED_PULSAR_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_metadata_job_conf.yml")

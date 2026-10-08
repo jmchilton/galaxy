@@ -10,6 +10,7 @@ object store, each backed by a disposable SeaweedFS container.
 import os
 import string
 
+import pytest
 import requests
 
 from galaxy_test.base.populators import DatasetPopulator
@@ -49,6 +50,7 @@ CLOUD_DIRECT_DOWNLOAD_CONFIG = string.Template("""
 
 
 @integration_util.skip_unless_docker()
+@pytest.mark.ci_integration_family("s3")
 class TestDirectDownloadRedirectIntegration(BaseObjectStoreIntegrationTestCase):
     object_store_config = BOTO3_DIRECT_DOWNLOAD_CONFIG
     container_name: str
@@ -171,5 +173,6 @@ class TestDirectDownloadRedirectIntegration(BaseObjectStoreIntegrationTestCase):
 
 
 @integration_util.skip_unless_docker()
+@pytest.mark.ci_integration_family("cloud")
 class TestCloudDirectDownloadRedirectIntegration(TestDirectDownloadRedirectIntegration):
     object_store_config = CLOUD_DIRECT_DOWNLOAD_CONFIG

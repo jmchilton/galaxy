@@ -6,6 +6,8 @@ import subprocess
 import unittest
 from typing import Any
 
+import pytest
+
 from galaxy.tool_util.deps.container_resolvers.mulled import list_docker_cached_mulled_images
 from galaxy.util import galaxy_directory
 from galaxy.util.commands import which
@@ -21,6 +23,8 @@ from galaxy_test.driver.integration_util import (
     IntegrationTestCase,
 )
 from .test_job_environments import BaseJobEnvironmentIntegrationTestCase
+
+pytestmark = pytest.mark.ci_integration_family("containers")
 
 SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 

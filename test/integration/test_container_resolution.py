@@ -1,4 +1,8 @@
+import pytest
+
 from galaxy_test.driver import integration_util
+
+pytestmark = pytest.mark.ci_integration_family("containers")
 
 
 class TestContainerResolutionApi(integration_util.IntegrationTestCase):

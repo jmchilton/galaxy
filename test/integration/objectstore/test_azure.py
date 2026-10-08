@@ -1,6 +1,10 @@
+import pytest
+
 from galaxy.util.unittest_utils import skip_unless_environ
 from galaxy_test.driver import integration_util
 from ._base import BaseAzureObjectStoreIntegrationTestCase
+
+pytestmark = pytest.mark.ci_integration_family("azure")
 
 TEST_TOOL_IDS = [
     "multi_output",
