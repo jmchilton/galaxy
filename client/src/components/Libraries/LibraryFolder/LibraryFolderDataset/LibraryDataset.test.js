@@ -2,9 +2,12 @@ import { getLocalVue, injectTestRouter } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getUploadDatatypes, getUploadDbKeys } from "@/components/Upload/utils";
 import { sanitizeHtml } from "@/directives/sanitizeHtml";
+import { useDatatypeStore } from "@/stores/datatypeStore";
+import { useDbKeyStore } from "@/stores/dbKeyStore";
 import { useUserStore } from "@/stores/userStore";
 
 import cannotManageDatasetResponse from "./testData/cannotManageDataset.json";
@@ -18,6 +21,11 @@ vi.mock("app");
 vi.mock("onload/loadConfig", () => ({
     getAppRoot: vi.fn(() => "/"),
 }));
+vi.mock("@/components/Upload/utils", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getUploadDatatypes: vi.fn(),
+    getUploadDbKeys: vi.fn(),
+}));
 
 const FOLDER_ID = "test_folder_id";
 const UNRESTRICTED_DATASET_ID = "unrestricted_dataset_id";
@@ -26,29 +34,8 @@ const CANNOT_MODIFY_DATASET_ID = "cannot_modify_dataset_id";
 const CANNOT_MANAGE_DATASET_ID = "cannot_manage_dataset_id";
 const EXPECTED_DATASET_DATA = unrestrictedDatasetResponse;
 
-// setup() (not an options-API `render() { this.$slots }` method) -- the latter gets
-// routed through Vue compat's legacy `with(this)` render-context wrapping
-// (RENDER_FUNCTION compat), which breaks a hand-built component like this.
-const mockDatatypesProvider = {
-    setup(_props, { slots }) {
-        return () => slots.default?.({ loading: false, item: ["xml"] });
-    },
-};
-const mockFailedDatatypesProvider = {
-    setup(_props, { slots }) {
-        return () => slots.default?.({ loading: false, item: [], error: "unavailable" });
-    },
-};
-const mockFailedDbKeyProvider = {
-    setup(_props, { slots }) {
-        return () => slots.default?.({ loading: false, item: [], error: "unavailable" });
-    },
-};
-const mockDbKeyProvider = {
-    setup(_props, { slots }) {
-        return () => slots.default?.({ loading: false, item: ["?"] });
-    },
-};
+const DATATYPES = [{ id: "xml", text: "xml" }];
+const DBKEYS = [{ id: "?", text: "unspecified (?)" }];
 
 const responseMap = new Map([
     [UNRESTRICTED_DATASET_ID, unrestrictedDatasetResponse],
@@ -75,14 +62,7 @@ const UNRESTRICTED_MESSAGE = '[data-test-id="unrestricted-msg"]';
 const DATASET_TABLE = '[data-test-id="dataset-table"]';
 const PEEK_VIEW = '[data-test-id="peek-view"]';
 
-async function mountLibraryDatasetWrapper(
-    localVue,
-    router,
-    expectDatasetId,
-    isAdmin = false,
-    datatypesProvider = mockDatatypesProvider,
-    dbKeyProvider = mockDbKeyProvider,
-) {
+async function mountLibraryDatasetWrapper(localVue, router, expectDatasetId, isAdmin = false) {
     const pinia = createPinia();
     const propsData = {
         dataset_id: expectDatasetId,
@@ -92,10 +72,6 @@ async function mountLibraryDatasetWrapper(
         global: localVue,
         router,
         propsData,
-        stubs: {
-            DatatypesProvider: datatypesProvider,
-            DbKeyProvider: dbKeyProvider,
-        },
         pinia,
     });
     const userStore = useUserStore();
@@ -107,6 +83,13 @@ async function mountLibraryDatasetWrapper(
 describe("Libraries/LibraryFolder/LibraryFolderDataset/LibraryDataset.vue", () => {
     const localVue = getLocalVue();
     const router = injectTestRouter(localVue);
+
+    beforeEach(() => {
+        useDatatypeStore().$reset();
+        useDbKeyStore().$reset();
+        vi.mocked(getUploadDatatypes).mockReset().mockResolvedValue(DATATYPES);
+        vi.mocked(getUploadDbKeys).mockReset().mockResolvedValue(DBKEYS);
+    });
 
     it("should display all buttons when user is Admin", async () => {
         const isAdmin = true;
@@ -186,14 +169,22 @@ describe("Libraries/LibraryFolder/LibraryFolderDataset/LibraryDataset.vue", () =
         expect(wrapper.find(DATASET_TABLE).html()).toContain("<input");
     });
 
+    it("loads datatypes and Database/Builds only when modifying the dataset", async () => {
+        const wrapper = await mountLibraryDatasetWrapper(localVue, router, UNRESTRICTED_DATASET_ID);
+
+        expect(getUploadDatatypes).not.toHaveBeenCalled();
+        expect(getUploadDbKeys).not.toHaveBeenCalled();
+
+        await wrapper.find(MODIFY_BUTTON).trigger("click");
+        await flushPromises();
+
+        expect(getUploadDatatypes).toHaveBeenCalledTimes(1);
+        expect(getUploadDbKeys).toHaveBeenCalledTimes(1);
+    });
+
     it("shows the current datatype and a load error when datatypes fail to load", async () => {
-        const wrapper = await mountLibraryDatasetWrapper(
-            localVue,
-            router,
-            UNRESTRICTED_DATASET_ID,
-            false,
-            mockFailedDatatypesProvider,
-        );
+        vi.mocked(getUploadDatatypes).mockRejectedValue(new Error("unavailable"));
+        const wrapper = await mountLibraryDatasetWrapper(localVue, router, UNRESTRICTED_DATASET_ID);
         await wrapper.find(MODIFY_BUTTON).trigger("click");
         await flushPromises();
 
@@ -204,14 +195,8 @@ describe("Libraries/LibraryFolder/LibraryFolderDataset/LibraryDataset.vue", () =
     });
 
     it("shows the current Database/Build and a load error when dbkeys fail to load", async () => {
-        const wrapper = await mountLibraryDatasetWrapper(
-            localVue,
-            router,
-            UNRESTRICTED_DATASET_ID,
-            false,
-            mockDatatypesProvider,
-            mockFailedDbKeyProvider,
-        );
+        vi.mocked(getUploadDbKeys).mockRejectedValue(new Error("unavailable"));
+        const wrapper = await mountLibraryDatasetWrapper(localVue, router, UNRESTRICTED_DATASET_ID);
         await wrapper.find(MODIFY_BUTTON).trigger("click");
         await flushPromises();
 
