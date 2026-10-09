@@ -1,7 +1,6 @@
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { createPinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defineComponent, h } from "vue";
 
@@ -23,7 +22,7 @@ function mountHelpTexts(uris: string[]) {
                 uris.map((uri) => h(HelpText, { uri, text: uri.split(".").pop() })),
             ),
     });
-    return mount(Rows as object, { localVue: getLocalVue(), pinia: createPinia(), attachTo: document.body });
+    return mount(Rows, { global: getLocalVue(), attachTo: document.body });
 }
 
 describe("HelpText", () => {

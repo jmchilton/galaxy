@@ -18,12 +18,13 @@ const YAML_TERM = "galaxy.invocations.states.scheduled";
 const DATATYPE_TERM = "galaxy.datatypes.extensions.bed";
 
 // Upload utils cache datatypes at module scope, so reload all modules for each test.
-// `ref` comes from the reloaded vue too, so the store's watchers can track it.
+// `ref` comes from the same reloaded `vue` as the store, or its watchers don't see changes.
 async function setup() {
     const { createPinia, setActivePinia } = await import("pinia");
     setActivePinia(createPinia());
     const { ref } = await import("vue");
-    return { ...(await import("./helpTermsStore")), ref };
+    const { useHelpForTerm } = await import("./helpTermsStore");
+    return { ref, useHelpForTerm };
 }
 
 describe("useHelpForTerm", () => {
@@ -49,7 +50,7 @@ describe("useHelpForTerm", () => {
     });
 
     it("does not load datatypes for YAML terms", async () => {
-        const { useHelpForTerm, ref } = await setup();
+        const { ref, useHelpForTerm } = await setup();
         const helps = Array.from({ length: 10 }, () => useHelpForTerm(ref(YAML_TERM)));
         for (const { loading, hasHelp, help } of helps) {
             expect(loading.value).toBe(false);
@@ -61,7 +62,7 @@ describe("useHelpForTerm", () => {
     });
 
     it("loads datatypes once for many concurrent datatype terms", async () => {
-        const { useHelpForTerm, ref } = await setup();
+        const { ref, useHelpForTerm } = await setup();
         const helps = Array.from({ length: 10 }, () => useHelpForTerm(ref(DATATYPE_TERM)));
         expect(helps[0]!.loading.value).toBe(true);
         await vi.waitFor(() => expect(helps[0]!.loading.value).toBe(false));
@@ -75,7 +76,7 @@ describe("useHelpForTerm", () => {
     });
 
     it("loads datatypes when the term changes to a datatype term", async () => {
-        const { useHelpForTerm, ref } = await setup();
+        const { ref, useHelpForTerm } = await setup();
         const term = ref(YAML_TERM);
         const { loading, help } = useHelpForTerm(term);
         await flushPromises();
@@ -89,7 +90,7 @@ describe("useHelpForTerm", () => {
 
     it("retries loading datatypes for a later term after a failed load", async () => {
         failNext = 1;
-        const { useHelpForTerm, ref } = await setup();
+        const { ref, useHelpForTerm } = await setup();
         const failed = useHelpForTerm(ref(DATATYPE_TERM));
         await vi.waitFor(() => expect(failed.loading.value).toBe(false));
         expect(failed.hasHelp.value).toBe(false);
