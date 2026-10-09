@@ -4,9 +4,14 @@ import { mapActions, mapState } from "pinia";
 
 import { useDbKeyStore } from "@/stores/dbKeyStore";
 import { prependPath } from "@/utils/redirect";
-import { errorMessageAsString } from "@/utils/simple-error";
 
 import { useDatatypeStore } from "../../stores/datatypeStore";
+
+function renderDefaultSlot(vm, slotProps) {
+    // Use $scopedSlots for Vue 3 compat mode
+    const slotFn = vm.$scopedSlots?.default || vm.$slots?.default;
+    return slotFn ? slotFn(slotProps) : null;
+}
 
 export const SimpleProviderMixin = {
     // Renders the slot as a fragment, so there is no root element to put attributes on.
@@ -46,82 +51,60 @@ export const SimpleProviderMixin = {
         },
     },
     render() {
-        // Use $scopedSlots for Vue 3 compat mode
-        const slotFn = this.$scopedSlots?.default || this.$slots?.default;
-        if (slotFn) {
-            return slotFn({
-                loading: this.loading,
-                item: this.item,
-                error: this.error,
-                save: this.save,
-                result: this.item,
+        return renderDefaultSlot(this, {
+            loading: this.loading,
+            item: this.item,
+            error: this.error,
+            save: this.save,
+            result: this.item,
+        });
+    },
+};
+
+/**
+ * Provider over an upload list a store loads once (`fetch` action) and whose loading and
+ * error state it owns. Renders the slot with `item` (the list), `loading` and `error`.
+ */
+function uploadListProvider(useStore, { fetch, items, loading, error }) {
+    return {
+        inheritAttrs: false,
+        props: {
+            id: null,
+        },
+        computed: {
+            ...mapState(useStore, { storeItems: items, storeLoading: loading, storeError: error }),
+        },
+        methods: {
+            ...mapActions(useStore, { fetchItems: fetch }),
+        },
+        created() {
+            // Failures surface through the store's error state.
+            this.fetchItems().catch(() => {});
+        },
+        render() {
+            return renderDefaultSlot(this, {
+                loading: this.storeLoading,
+                item: this.storeItems,
+                result: this.storeItems,
+                error: this.storeError,
             });
-        }
-        return null;
-    },
-};
-
-export const DbKeyProvider = {
-    mixins: [SimpleProviderMixin],
-    props: {
-        id: null,
-    },
-    async mounted() {
-        await this.load();
-    },
-    methods: {
-        ...mapActions(useDbKeyStore, ["fetchUploadDbKeys"]),
-        async load() {
-            this.loading = true;
-            this.error = null;
-            let dbKeys = this.getUploadDbKeys;
-            if (dbKeys == null || dbKeys.length == 0) {
-                try {
-                    await this.fetchUploadDbKeys();
-                } catch (err) {
-                    this.error = errorMessageAsString(err);
-                }
-                dbKeys = this.getUploadDbKeys;
-            }
-            this.item = dbKeys;
-            this.loading = false;
         },
-    },
-    computed: {
-        ...mapState(useDbKeyStore, ["getUploadDbKeys"]),
-    },
-};
+    };
+}
 
-export const DatatypesProvider = {
-    mixins: [SimpleProviderMixin],
-    props: {
-        id: null,
-    },
-    async mounted() {
-        await this.load();
-    },
-    methods: {
-        ...mapActions(useDatatypeStore, ["fetchUploadDatatypes"]),
-        async load() {
-            this.loading = true;
-            this.error = null;
-            let datatypes = this.getUploadDatatypes;
-            if (datatypes == null || datatypes.length == 0) {
-                try {
-                    await this.fetchUploadDatatypes();
-                } catch (err) {
-                    this.error = errorMessageAsString(err);
-                }
-                datatypes = this.getUploadDatatypes;
-            }
-            this.item = datatypes;
-            this.loading = false;
-        },
-    },
-    computed: {
-        ...mapState(useDatatypeStore, ["getUploadDatatypes"]),
-    },
-};
+export const DbKeyProvider = uploadListProvider(useDbKeyStore, {
+    fetch: "fetchUploadDbKeys",
+    items: "getUploadDbKeys",
+    loading: "uploadDbKeysLoading",
+    error: "uploadDbKeysError",
+});
+
+export const DatatypesProvider = uploadListProvider(useDatatypeStore, {
+    fetch: "fetchUploadDatatypes",
+    items: "getUploadDatatypes",
+    loading: "uploadDatatypesLoading",
+    error: "uploadDatatypesError",
+});
 
 export const SuitableConvertersProvider = {
     mixins: [SimpleProviderMixin],

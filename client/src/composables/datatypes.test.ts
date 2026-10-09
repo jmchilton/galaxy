@@ -58,4 +58,33 @@ describe("useUploadDatatypes", () => {
         expect(result.datatypes.value).toEqual([]);
         wrapper.unmount();
     });
+
+    it("clears an earlier error once a later load succeeds", async () => {
+        vi.mocked(getUploadDatatypes).mockRejectedValueOnce(new Error("unavailable")).mockResolvedValue(DATATYPES);
+        const first = mountUploadDatatypes();
+        await flushPromises();
+        expect(first.result.error.value).toBe("unavailable");
+        const second = mountUploadDatatypes();
+        await flushPromises();
+        expect(second.result.error.value).toBeNull();
+        expect(first.result.error.value).toBeNull();
+        expect(first.result.loading.value).toBe(false);
+        expect(first.result.datatypes.value.map((item) => item.id)).toEqual(["auto", "bed"]);
+        first.wrapper.unmount();
+        second.wrapper.unmount();
+    });
+
+    it("does not reload upload datatypes once loaded", async () => {
+        vi.mocked(getUploadDatatypes).mockResolvedValue(DATATYPES);
+        const first = mountUploadDatatypes();
+        await flushPromises();
+        const loaded = first.result.datatypes.value;
+        const second = mountUploadDatatypes();
+        await flushPromises();
+        expect(getUploadDatatypes).toHaveBeenCalledTimes(1);
+        expect(second.result.loading.value).toBe(false);
+        expect(first.result.datatypes.value).toBe(loaded);
+        first.wrapper.unmount();
+        second.wrapper.unmount();
+    });
 });

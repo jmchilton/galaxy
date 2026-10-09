@@ -26,5 +26,7 @@ describe("useDatatypeStore", () => {
         const store = await setup();
         await expect(store.fetchUploadDatatypes()).rejects.toThrow("unavailable");
         expect(store.getUploadDatatypes).toEqual([]);
+        expect(store.uploadDatatypesError).toBe("unavailable");
+        expect(store.uploadDatatypesLoading).toBe(false);
     });
 });

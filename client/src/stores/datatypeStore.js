@@ -2,15 +2,21 @@ import { defineStore } from "pinia";
 
 import { fetchDatatypeDetails } from "@/api/datatypes";
 import { AUTO_EXTENSION, getUploadDatatypes } from "@/components/Upload/utils";
+import { errorMessageAsString } from "@/utils/simple-error";
 
 export const useDatatypeStore = defineStore("datatypeStore", {
     state: () => ({
         uploadDatatypes: [],
+        uploadDatatypesLoaded: false,
+        uploadDatatypesError: /** @type {string | null} */ (null),
         datatypeDetails: {},
     }),
     getters: {
         getUploadDatatypes: (state) => {
             return state.uploadDatatypes;
+        },
+        uploadDatatypesLoading: (state) => {
+            return !state.uploadDatatypesLoaded && !state.uploadDatatypesError;
         },
         getDatatypeDetails: (state) => (extension) => {
             return state.datatypeDetails[extension];
@@ -25,9 +31,22 @@ export const useDatatypeStore = defineStore("datatypeStore", {
         },
     },
     actions: {
+        /** Load upload datatypes once; a failure is kept in `uploadDatatypesError`, rethrown, and retried next call. */
         async fetchUploadDatatypes() {
-            const data = await getUploadDatatypes(false, AUTO_EXTENSION);
-            this.uploadDatatypes = data;
+            if (this.uploadDatatypesLoaded) {
+                return;
+            }
+            this.uploadDatatypesError = null;
+            try {
+                const data = await getUploadDatatypes(false, AUTO_EXTENSION);
+                if (!this.uploadDatatypesLoaded) {
+                    this.uploadDatatypes = data;
+                    this.uploadDatatypesLoaded = true;
+                }
+            } catch (err) {
+                this.uploadDatatypesError = errorMessageAsString(err);
+                throw err;
+            }
         },
         async fetchDatatypeDetails(extension) {
             // Return cached details if available
