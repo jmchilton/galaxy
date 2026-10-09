@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 
 import { getUploadDbKeys } from "@/components/Upload/utils";
-import { useDbKeyStore } from "@/stores/dbKeyStore";
 
 import { useUploadDbKeys } from "./dbKeys";
 
@@ -89,15 +88,23 @@ describe("useUploadDbKeys", () => {
         second.wrapper.unmount();
     });
 
-    it("clears an error recorded while a load was pending once it succeeds", async () => {
-        let resolveLoad: (value: typeof DBKEYS) => void;
-        vi.mocked(getUploadDbKeys).mockReturnValue(new Promise((resolve) => (resolveLoad = resolve)));
-        const { wrapper, result } = mountUploadDbKeys();
-        useDbKeyStore().uploadDbKeysError = "unavailable";
-        resolveLoad!(DBKEYS);
+    it("clears the error from an older failed load once a newer load succeeds", async () => {
+        let rejectOlder: (error: Error) => void;
+        let resolveNewer: (value: typeof DBKEYS) => void;
+        vi.mocked(getUploadDbKeys)
+            .mockReturnValueOnce(new Promise((_resolve, reject) => (rejectOlder = reject)))
+            .mockReturnValueOnce(new Promise((resolve) => (resolveNewer = resolve)));
+        const older = mountUploadDbKeys();
+        const newer = mountUploadDbKeys();
+        rejectOlder!(new Error("unavailable"));
         await flushPromises();
-        expect(result.error.value).toBeNull();
-        expect(result.loading.value).toBe(false);
-        wrapper.unmount();
+        expect(newer.result.error.value).toBe("unavailable");
+        resolveNewer!(DBKEYS);
+        await flushPromises();
+        expect(newer.result.error.value).toBeNull();
+        expect(newer.result.loading.value).toBe(false);
+        expect(newer.result.dbKeys.value.map((item) => item.id)).toEqual(["?", "hg38"]);
+        older.wrapper.unmount();
+        newer.wrapper.unmount();
     });
 });
