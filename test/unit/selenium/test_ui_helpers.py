@@ -16,7 +16,7 @@ GALAXY_LIB = Path(galaxy.selenium.__file__).resolve().parents[2]
 
 @pytest.mark.parametrize(
     "module",
-    ["galaxy.selenium.upload_activity_helpers"],
+    ["galaxy.selenium.upload_activity_helpers", "galaxy.selenium.gxui.context", "galaxy.selenium.gxui.daemon"],
 )
 def test_ui_helpers_import_without_test_framework(module):
     # A fresh interpreter catches transitive imports even when the test runner has already loaded them.
