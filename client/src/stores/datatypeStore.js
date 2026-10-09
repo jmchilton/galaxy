@@ -31,7 +31,10 @@ export const useDatatypeStore = defineStore("datatypeStore", {
         },
     },
     actions: {
-        /** Load upload datatypes once; a failure is kept in `uploadDatatypesError`, rethrown, and retried next call. */
+        /**
+         * Load upload datatypes once. `uploadDatatypesError` is cleared when a load starts or succeeds,
+         * and set (then rethrown) when it fails.
+         */
         async fetchUploadDatatypes() {
             if (this.uploadDatatypesLoaded) {
                 return;
@@ -42,6 +45,7 @@ export const useDatatypeStore = defineStore("datatypeStore", {
                 if (!this.uploadDatatypesLoaded) {
                     this.uploadDatatypes = data;
                     this.uploadDatatypesLoaded = true;
+                    this.uploadDatatypesError = null;
                 }
             } catch (err) {
                 this.uploadDatatypesError = errorMessageAsString(err);

@@ -18,7 +18,10 @@ export const useDbKeyStore = defineStore("dbKeyStore", {
         },
     },
     actions: {
-        /** Load upload dbkeys once; a failure is kept in `uploadDbKeysError`, rethrown, and retried next call. */
+        /**
+         * Load upload dbkeys once. `uploadDbKeysError` is cleared when a load starts or succeeds,
+         * and set (then rethrown) when it fails.
+         */
         async fetchUploadDbKeys() {
             if (this.uploadDbKeysLoaded) {
                 return;
@@ -29,6 +32,7 @@ export const useDbKeyStore = defineStore("dbKeyStore", {
                 if (!this.uploadDbKeysLoaded) {
                     this.uploadDbKeys = data;
                     this.uploadDbKeysLoaded = true;
+                    this.uploadDbKeysError = null;
                 }
             } catch (err) {
                 this.uploadDbKeysError = errorMessageAsString(err);
