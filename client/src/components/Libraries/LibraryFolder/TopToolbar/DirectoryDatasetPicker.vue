@@ -56,7 +56,7 @@ const emit = defineEmits<{
     (e: "onSelect", items: RequestData[]): void;
 }>();
 
-const { datatypes, datatypesLoading } = useDetailedDatatypes();
+const { datatypes, datatypesLoading, error: datatypesError } = useDetailedDatatypes();
 const { dbKeys, error: dbKeysError } = useUploadDbKeys();
 
 const activeTab = ref(0);
@@ -304,7 +304,11 @@ watch(
             </BFormGroup>
 
             <BFormGroup label="Extension">
+                <GAlert v-if="datatypesError" variant="danger">
+                    Unable to load Extensions: {{ datatypesError }}
+                </GAlert>
                 <SingleItemSelector
+                    v-else
                     :current-item="selectedExtension"
                     collection-name="Extensions"
                     :items="extensionsList"
