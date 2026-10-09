@@ -7,10 +7,11 @@ import { computed, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
 import { updateContentFields } from "@/components/History/model/queries";
-import { DbKeyProvider, SuitableConvertersProvider } from "@/components/providers";
+import { SuitableConvertersProvider } from "@/components/providers";
 import { useConfig } from "@/composables/config";
 import { useDetailedCollection } from "@/composables/datasetCollections";
 import { useUploadDatatypes } from "@/composables/datatypes";
+import { useUploadDbKeys } from "@/composables/dbKeys";
 import { useCollectionAttributesStore } from "@/stores/collectionAttributesStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import localize from "@/utils/localization";
@@ -42,6 +43,7 @@ const { currentHistoryId } = storeToRefs(historyStore);
 
 const { collection, collectionLoadError } = useDetailedCollection(props);
 const { datatypes, loading: datatypesLoading, error: datatypesError } = useUploadDatatypes();
+const { dbKeys, loading: dbKeysLoading, error: dbKeysError } = useUploadDbKeys();
 
 const jobError = ref(null);
 const errorMessage = ref("");
@@ -255,18 +257,19 @@ async function saveAttrs() {
                     {{ localize("Database/Build") }}
                 </template>
 
-                <DbKeyProvider v-slot="{ item, loading }">
-                    <div v-if="loading">
-                        <LoadingSpan message="Loading Database/Builds" />
-                    </div>
-                    <div v-else>
-                        <DatabaseEditTab
-                            v-if="item && databaseKeyFromElements"
-                            :database-key-from-elements="databaseKeyFromElements"
-                            :genomes="item"
-                            @clicked-save="clickedSave" />
-                    </div>
-                </DbKeyProvider>
+                <div v-if="dbKeysLoading">
+                    <LoadingSpan message="Loading Database/Builds" />
+                </div>
+                <GAlert v-else-if="dbKeysError" show variant="danger">
+                    {{ localize("Unable to load Database/Builds:") }} {{ dbKeysError }}
+                </GAlert>
+                <div v-else>
+                    <DatabaseEditTab
+                        v-if="databaseKeyFromElements"
+                        :database-key-from-elements="databaseKeyFromElements"
+                        :genomes="dbKeys"
+                        @clicked-save="clickedSave" />
+                </div>
             </GTab>
 
             <SuitableConvertersProvider :id="collectionId" v-slot="{ item }">
