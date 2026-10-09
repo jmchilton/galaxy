@@ -2,8 +2,6 @@
 export {
     // DatasetProvider,
     DatasetCollectionContentProvider,
-    DatatypesProvider,
-    DbKeyProvider,
     JobProvider,
     SuitableConvertersProvider,
 } from "./storeProviders";
