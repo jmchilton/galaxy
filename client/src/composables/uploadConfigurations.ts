@@ -1,9 +1,9 @@
 import { storeToRefs } from "pinia";
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 
-import { DEFAULT_EXTENSION, getUploadDbKeys } from "@/components/Upload/utils";
+import { dbKeySort, DEFAULT_EXTENSION } from "@/components/Upload/utils";
 import { type ExtensionDetails, useUploadDatatypes } from "@/composables/datatypes";
-import type { DbKey } from "@/composables/dbKeys";
+import { useUploadDbKeys } from "@/composables/dbKeys";
 import { Toast } from "@/composables/toast";
 import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { errorMessageAsString } from "@/utils/simple-error";
@@ -71,26 +71,15 @@ export function useUploadConfigurations(extensions: string[] | undefined) {
         effectiveExtensions.value.filter((ext) => ext.composite_files && ext.composite_files.length > 0),
     );
 
-    const listDbKeys = ref<DbKey[]>([]);
-    const dbKeysSet = ref(false);
-    async function loadDbKeys() {
-        try {
-            listDbKeys.value = await getUploadDbKeys(config.value?.default_genome || "");
-            dbKeysSet.value = true;
-        } catch (error) {
-            Toast.error(errorMessageAsString(error), "Unable to load upload genomes");
+    const { dbKeys, loading: dbKeysLoading, error: dbKeysError } = useUploadDbKeys();
+    // Sorted copy with the configured default genome first; the shared store order is left untouched.
+    const listDbKeys = computed(() => [...dbKeys.value].sort(dbKeySort(config.value?.default_genome || "")));
+    const dbKeysSet = computed(() => !dbKeysLoading.value && !dbKeysError.value);
+    watch(dbKeysError, (error) => {
+        if (error) {
+            Toast.error(error, "Unable to load upload genomes");
         }
-    }
-
-    watch(
-        () => config.value,
-        async (c) => {
-            if (c) {
-                await loadDbKeys();
-            }
-        },
-        { immediate: true },
-    );
+    });
 
     const ready = computed(
         () => dbKeysSet.value && extensionsSet.value && !!datatypesMapper.value && !datatypesMapperLoading.value,
