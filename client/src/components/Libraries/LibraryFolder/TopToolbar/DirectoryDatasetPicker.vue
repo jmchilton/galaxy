@@ -5,8 +5,9 @@ import { computed, ref, watch } from "vue";
 import { GalaxyApi } from "@/api";
 import type { Option } from "@/components/Form/Elements/FormDrilldown/utilities";
 import { type DetailedDatatypes, useDetailedDatatypes } from "@/composables/datatypes";
+import { useUploadDbKeys } from "@/composables/dbKeys";
 import { Toast } from "@/composables/toast";
-import { useDbKeyStore } from "@/stores/dbKeyStore";
+import type { DbKey } from "@/composables/uploadConfigurations";
 import { errorMessageAsString } from "@/utils/simple-error";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -29,9 +30,6 @@ const autoExtension = {
                      You can also upload compressed files, which will automatically be decompressed`,
     descriptionUrl: "",
 };
-
-type DbKey = { id: string; text: string };
-type DbKeyList = DbKey[];
 
 type RequestData = {
     path: string;
@@ -59,8 +57,8 @@ const emit = defineEmits<{
     (e: "onSelect", items: RequestData[]): void;
 }>();
 
-const dbKeyStore = useDbKeyStore();
 const { datatypes, datatypesLoading } = useDetailedDatatypes();
+const { dbKeys, error: dbKeysError } = useUploadDbKeys();
 
 const activeTab = ref(0);
 const importing = ref(false);
@@ -68,8 +66,6 @@ const paths = ref<string>("");
 const options = ref<Option[]>([]);
 const optionsLoading = ref(false);
 const selectedDbKey = ref<DbKey>();
-const dbKeyList = ref<DbKeyList>([]);
-const dbKeysError = ref<string | null>(null);
 const errorMessage = ref<string>("");
 const currentValue = ref<string[]>([]);
 const preserveOptions = ref<string[]>([]);
@@ -96,6 +92,8 @@ const importDisable = computed(() => {
 
     return currentValue.value?.length === 0;
 });
+const dbKeyList = computed(() => [...dbKeys.value].sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0)));
+const currentDbKey = computed(() => selectedDbKey.value ?? dbKeys.value.find((item) => item.id === "?"));
 const okButtonText = computed(() => {
     const length = currentValue.value?.length || 0;
 
@@ -160,7 +158,7 @@ function getFullPathById(id: string): string {
     return traverse(options.value, id);
 }
 
-async function fetchExtAndDbKey() {
+function fetchExtensions() {
     extensionsList.value = datatypes.value;
 
     extensionsList.value.sort((a, b) => (a.extension > b.extension ? 1 : a.extension < b.extension ? -1 : 0));
@@ -168,19 +166,6 @@ async function fetchExtAndDbKey() {
     extensionsList.value = [autoExtension, ...extensionsList.value];
 
     selectedExtension.value = autoExtension;
-
-    try {
-        await dbKeyStore.fetchUploadDbKeys();
-    } catch (e) {
-        dbKeysError.value = errorMessageAsString(e);
-        return;
-    }
-
-    dbKeyList.value = dbKeyStore.uploadDbKeys as DbKeyList;
-
-    selectedDbKey.value = dbKeyStore.uploadDbKeys.find((item: DbKey) => item.id === "?");
-
-    dbKeyList.value.sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0));
 }
 
 async function onImport() {
@@ -216,7 +201,7 @@ async function importFileOrFolder(validPaths: string[], source: string) {
         const reqData: RequestData = {
             path: path,
             source: source,
-            dbkey: selectedDbKey.value?.id || "?",
+            dbkey: currentDbKey.value?.id || "?",
             encoded_folder_id: props.folderId,
             link_data: preserveOptions.value.includes("link_files"),
             space_to_tab: preserveOptions.value.includes("space_to_tab"),
@@ -261,7 +246,7 @@ watch(
     () => datatypesLoading.value,
     () => {
         if (!datatypesLoading.value) {
-            fetchExtAndDbKey();
+            fetchExtensions();
         }
     },
 );
@@ -313,7 +298,7 @@ watch(
                 <GAlert v-if="dbKeysError" variant="danger"> Unable to load Database/Builds: {{ dbKeysError }} </GAlert>
                 <SingleItemSelector
                     v-else
-                    :current-item="selectedDbKey"
+                    :current-item="currentDbKey"
                     collection-name="DB Keys"
                     :items="dbKeyList"
                     @update:selected-item="onSelectDbKey" />
