@@ -1097,6 +1097,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                 self.execute_script("$(arguments[0]).click();", checkbox)
 
     def check_advanced_search_filter(self, filter_name):
+        """Tick the advanced search checkbox for ``filter_name``."""
         filter_div = self.wait_for_selector(f"[data-description='filter {filter_name}']")
         checkbox = filter_div.find_element(By.CSS_SELECTOR, "input")
         # bootstrap vue checkbox seems to be hidden by label, but the label is not interactable
@@ -3117,6 +3118,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         component.wait_for_and_click()
 
     def click_history_option_export_to_file(self):
+        """Open History options > Export History to File."""
         self.use_bootstrap_dropdown(option="export to file", menu="history options")
 
     def click_history_option_sharing(self):
@@ -3471,6 +3473,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def history_panel_click_copy_elements(self):
+        """Open History options > Copy Datasets."""
         self.use_bootstrap_dropdown(option="copy datasets", menu="history options")
 
     def use_bootstrap_dropdown(self, option=None, menu=None):
@@ -4243,6 +4246,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         assert_valid=False,
         confirm_permissions_change=False,
     ):
+        """On an open sharing page, add a user (by id or email) under Share with Individual Users and Save."""
         self.share_ensure_by_user_available(sharing_component)
         multiselect = sharing_component.share_with_multiselect.wait_for_and_click()
         sharing_component.share_with_input.wait_for_and_send_keys(user_id or user_email)
