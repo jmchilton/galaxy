@@ -1,5 +1,6 @@
+import { type MaybeRefOrGetter, toValue } from "@vueuse/core";
 import { storeToRefs } from "pinia";
-import { computed, type Ref, ref } from "vue";
+import { computed, type Ref, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
 import type { CompositeFileInfo } from "@/api/datatypes";
@@ -90,15 +91,23 @@ export function useDetailedDatatypes() {
 
 /**
  * Upload datatypes (including "auto") from the shared datatype store, which owns loading and error state.
- * `error` holds the message when loading fails; the next caller retries.
+ * `error` holds the message when loading fails; the next caller retries. Loading waits until `enabled` is true.
  */
-export function useUploadDatatypes() {
+export function useUploadDatatypes({ enabled = true }: { enabled?: MaybeRefOrGetter<boolean> } = {}) {
     const datatypeStore = useDatatypeStore();
     const { getUploadDatatypes, uploadDatatypesLoading, uploadDatatypesError } = storeToRefs(datatypeStore);
     const datatypes = computed(() => getUploadDatatypes.value as ExtensionDetails[]);
 
-    // Failures surface through `uploadDatatypesError`.
-    datatypeStore.fetchUploadDatatypes().catch(() => {});
+    watch(
+        () => toValue(enabled),
+        (isEnabled) => {
+            if (isEnabled) {
+                // Failures surface through `uploadDatatypesError`.
+                datatypeStore.fetchUploadDatatypes().catch(() => {});
+            }
+        },
+        { immediate: true },
+    );
 
     return { datatypes, loading: uploadDatatypesLoading, error: uploadDatatypesError };
 }

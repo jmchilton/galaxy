@@ -2,7 +2,7 @@ import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent } from "vue";
+import { defineComponent, ref } from "vue";
 
 import { getUploadDatatypes } from "@/components/Upload/utils";
 
@@ -18,12 +18,12 @@ const DATATYPES = [
     { id: "bed", text: "bed", description: "BED", description_url: null },
 ];
 
-function mountUploadDatatypes() {
+function mountUploadDatatypes(...args: Parameters<typeof useUploadDatatypes>) {
     let result: ReturnType<typeof useUploadDatatypes>;
     const wrapper = mount(
         defineComponent({
             setup() {
-                result = useUploadDatatypes();
+                result = useUploadDatatypes(...args);
                 return {};
             },
             template: "<div />",
@@ -106,5 +106,17 @@ describe("useUploadDatatypes", () => {
         expect(newer.result.datatypes.value.map((item) => item.id)).toEqual(["auto", "bed"]);
         older.wrapper.unmount();
         newer.wrapper.unmount();
+    });
+
+    it("waits until enabled to load", async () => {
+        vi.mocked(getUploadDatatypes).mockResolvedValue(DATATYPES);
+        const enabled = ref(false);
+        const { wrapper } = mountUploadDatatypes({ enabled });
+        await flushPromises();
+        expect(getUploadDatatypes).not.toHaveBeenCalled();
+        enabled.value = true;
+        await flushPromises();
+        expect(getUploadDatatypes).toHaveBeenCalledTimes(1);
+        wrapper.unmount();
     });
 });

@@ -2,7 +2,7 @@ import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent } from "vue";
+import { defineComponent, ref } from "vue";
 
 import { getUploadDbKeys } from "@/components/Upload/utils";
 
@@ -18,12 +18,12 @@ const DBKEYS = [
     { id: "hg38", text: "Human hg38" },
 ];
 
-function mountUploadDbKeys() {
+function mountUploadDbKeys(...args: Parameters<typeof useUploadDbKeys>) {
     let result: ReturnType<typeof useUploadDbKeys>;
     const wrapper = mount(
         defineComponent({
             setup() {
-                result = useUploadDbKeys();
+                result = useUploadDbKeys(...args);
                 return {};
             },
             template: "<div />",
@@ -106,5 +106,17 @@ describe("useUploadDbKeys", () => {
         expect(newer.result.dbKeys.value.map((item) => item.id)).toEqual(["?", "hg38"]);
         older.wrapper.unmount();
         newer.wrapper.unmount();
+    });
+
+    it("waits until enabled to load", async () => {
+        vi.mocked(getUploadDbKeys).mockResolvedValue(DBKEYS);
+        const enabled = ref(false);
+        const { wrapper } = mountUploadDbKeys({ enabled });
+        await flushPromises();
+        expect(getUploadDbKeys).not.toHaveBeenCalled();
+        enabled.value = true;
+        await flushPromises();
+        expect(getUploadDbKeys).toHaveBeenCalledTimes(1);
+        wrapper.unmount();
     });
 });
