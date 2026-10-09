@@ -77,18 +77,16 @@
             @ok="changeDbkeyOfSelected"
             @cancel="resetDbKey">
             <p v-localize>Select a new Database/Build for {{ numSelected }} items:</p>
-            <DbKeyProvider v-slot="{ item: dbkeys, loading: loadingDbKeys }">
-                <GAlert v-if="dbKeysError" show variant="danger">
-                    {{ localize("Unable to load Database/Builds:") }} {{ dbKeysError }}
-                </GAlert>
-                <SingleItemSelector
-                    v-else
-                    collection-name="Database/Builds"
-                    :loading="loadingDbKeys"
-                    :items="dbkeys"
-                    :current-item="selectedDbKey"
-                    @update:selected-item="onSelectedDbKey" />
-            </DbKeyProvider>
+            <GAlert v-if="dbKeysError" show variant="danger">
+                {{ localize("Unable to load Database/Builds:") }} {{ dbKeysError }}
+            </GAlert>
+            <SingleItemSelector
+                v-else
+                collection-name="Database/Builds"
+                :loading="loadingDbKeys"
+                :items="dbKeys"
+                :current-item="selectedDbKey"
+                @update:selected-item="onSelectedDbKey" />
         </GModal>
         <GModal
             v-model:show="showChangeDatatypeModal"
@@ -100,18 +98,16 @@
             @ok="changeDatatypeOfSelected"
             @cancel="resetDatatype">
             <p v-localize>Select a new data type for {{ numSelected }} items:</p>
-            <DatatypesProvider v-slot="{ item: datatypes, loading: loadingDatatypes, error: datatypesError }">
-                <GAlert v-if="datatypesError" show variant="danger">
-                    {{ localize("Unable to load datatypes:") }} {{ datatypesError }}
-                </GAlert>
-                <SingleItemSelector
-                    v-else
-                    collection-name="Data Types"
-                    :loading="loadingDatatypes"
-                    :items="datatypes"
-                    :current-item="selectedDatatype"
-                    @update:selected-item="onSelectedDatatype" />
-            </DatatypesProvider>
+            <GAlert v-if="datatypesError" show variant="danger">
+                {{ localize("Unable to load datatypes:") }} {{ datatypesError }}
+            </GAlert>
+            <SingleItemSelector
+                v-else
+                collection-name="Data Types"
+                :loading="loadingDatatypes"
+                :items="datatypes"
+                :current-item="selectedDatatype"
+                @update:selected-item="onSelectedDatatype" />
         </GModal>
         <GModal
             v-model:show="showAddTagsModal"
@@ -168,7 +164,6 @@
 </template>
 
 <script>
-import { storeToRefs } from "pinia";
 import { ref } from "vue";
 
 import { HistoryFilters } from "@/components/History/HistoryFilters";
@@ -183,11 +178,11 @@ import {
     undeleteSelectedContent,
     unhideSelectedContent,
 } from "@/components/History/model/crud";
-import { DatatypesProvider, DbKeyProvider } from "@/components/providers";
 import { useConfig } from "@/composables/config";
 import { useConfirmDialog } from "@/composables/confirmDialog";
+import { useUploadDatatypes } from "@/composables/datatypes";
+import { useUploadDbKeys } from "@/composables/dbKeys";
 import { useCollectionBuilderItemSelection } from "@/stores/collectionBuilderItemsStore";
-import { useDbKeyStore } from "@/stores/dbKeyStore";
 import { useObjectStoreStore } from "@/stores/objectStoreStore";
 import { useUserStore } from "@/stores/userStore";
 
@@ -206,8 +201,6 @@ import StatelessTags from "@/components/TagsMultiselect/StatelessTags.vue";
 export default {
     components: {
         CollectionCreatorIndex,
-        DbKeyProvider,
-        DatatypesProvider,
         GAlert,
         GDropdown,
         GDropdownDivider,
@@ -233,8 +226,8 @@ export default {
         const { confirm } = useConfirmDialog();
         const objectStoreStore = useObjectStoreStore();
         const { isAnonymous } = useUserStore();
-        // Read directly so the modal's OK button can see it; DbKeyProvider triggers the load.
-        const { uploadDbKeysError: dbKeysError } = storeToRefs(useDbKeyStore());
+        const { datatypes, loading: loadingDatatypes, error: datatypesError } = useUploadDatatypes();
+        const { dbKeys, loading: loadingDbKeys, error: dbKeysError } = useUploadDbKeys();
 
         // Modals for selection operations
         const showChangeDbKeyModal = ref(false);
@@ -266,6 +259,11 @@ export default {
             showStorageOperationModal,
             selectedDbKey,
             selectedDatatype,
+            datatypes,
+            loadingDatatypes,
+            datatypesError,
+            dbKeys,
+            loadingDbKeys,
             dbKeysError,
             resetDbKey,
             resetDatatype,

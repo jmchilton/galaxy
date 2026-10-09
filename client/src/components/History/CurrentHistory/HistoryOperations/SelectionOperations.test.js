@@ -3,9 +3,11 @@ import { setupMockConfig } from "@tests/vitest/mockConfig";
 import { shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import { useServerMock } from "@/api/client/__mocks__";
+import { getUploadDatatypes, getUploadDbKeys } from "@/components/Upload/utils";
+import { useDatatypeStore } from "@/stores/datatypeStore";
 import { useDbKeyStore } from "@/stores/dbKeyStore";
 
 import SelectionOperations from "./SelectionOperations.vue";
@@ -15,6 +17,12 @@ vi.mock("@/composables/confirmDialog", () => ({
     useConfirmDialog: () => ({
         confirm: vi.fn().mockResolvedValue(true),
     }),
+}));
+
+vi.mock("@/components/Upload/utils", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getUploadDatatypes: vi.fn(),
+    getUploadDbKeys: vi.fn(),
 }));
 
 vi.mock("@/stores/objectStoreStore", () => ({
@@ -48,6 +56,8 @@ const getActiveSelection = () => new Map([["FAKE_ID", { deleted: false }]]);
 
 async function mountSelectionOperationsWrapper(config) {
     setupMockConfig(config);
+    useDatatypeStore().$reset();
+    useDbKeyStore().$reset();
 
     const pinia = createPinia();
     const wrapper = shallowMount(SelectionOperations, {
@@ -69,6 +79,15 @@ async function mountSelectionOperationsWrapper(config) {
 
 describe("History Selection Operations", () => {
     let wrapper;
+
+    beforeEach(() => {
+        vi.mocked(getUploadDatatypes)
+            .mockReset()
+            .mockResolvedValue([{ id: "auto", text: "Auto-detect" }]);
+        vi.mocked(getUploadDbKeys)
+            .mockReset()
+            .mockResolvedValue([{ id: "?", text: "unspecified (?)" }]);
+    });
 
     describe("With Celery Enabled", () => {
         beforeEach(async () => {
@@ -247,23 +266,26 @@ describe("History Selection Operations", () => {
             const findDbKeyModal = () =>
                 wrapper.findAllComponents(GModal).find((modal) => modal.props("title") === "Change Database/Build?");
 
-            afterEach(() => {
-                useDbKeyStore().$reset();
-            });
-
             it("allows confirming the default Database/Build", () => {
                 expect(findDbKeyModal().props("okDisabled")).toBe(false);
             });
 
-            it("disables confirming when Database/Builds fail to load", async () => {
-                server.use(
-                    http.get("/api/genomes", ({ response }) =>
-                        response.untyped(HttpResponse.json({ err_msg: "unavailable", err_code: 0 }, { status: 500 })),
-                    ),
-                );
-                await expect(useDbKeyStore().fetchUploadDbKeys()).rejects.toThrow("unavailable");
-                await flushPromises();
+            it("shows the error and disables confirming when Database/Builds fail to load", async () => {
+                vi.mocked(getUploadDbKeys).mockRejectedValue(new Error("unavailable"));
+                wrapper = await mountSelectionOperationsWrapper(TASKS_CONFIG);
+                expect(findDbKeyModal().text()).toContain("Unable to load Database/Builds: unavailable");
                 expect(findDbKeyModal().props("okDisabled")).toBe(true);
+            });
+        });
+
+        describe("Change data type", () => {
+            const findDatatypeModal = () =>
+                wrapper.findAllComponents(GModal).find((modal) => modal.props("title") === "Change data type?");
+
+            it("shows the error when datatypes fail to load", async () => {
+                vi.mocked(getUploadDatatypes).mockRejectedValue(new Error("unavailable"));
+                wrapper = await mountSelectionOperationsWrapper(TASKS_CONFIG);
+                expect(findDatatypeModal().text()).toContain("Unable to load datatypes: unavailable");
             });
         });
 
