@@ -73,12 +73,13 @@
             confirm
             size="small"
             overflow-visible
+            :ok-disabled="selectedDbKey == null || !!dbKeysError"
             @ok="changeDbkeyOfSelected"
             @cancel="resetDbKey">
             <p v-localize>Select a new Database/Build for {{ numSelected }} items:</p>
-            <DbKeyProvider v-slot="{ item: dbkeys, loading: loadingDbKeys, error: dbKeysError }">
+            <DbKeyProvider v-slot="{ item: dbkeys, loading: loadingDbKeys }">
                 <GAlert v-if="dbKeysError" show variant="danger">
-                    Unable to load Database/Builds: {{ dbKeysError }}
+                    {{ localize("Unable to load Database/Builds:") }} {{ dbKeysError }}
                 </GAlert>
                 <SingleItemSelector
                     v-else
@@ -101,7 +102,7 @@
             <p v-localize>Select a new data type for {{ numSelected }} items:</p>
             <DatatypesProvider v-slot="{ item: datatypes, loading: loadingDatatypes, error: datatypesError }">
                 <GAlert v-if="datatypesError" show variant="danger">
-                    Unable to load datatypes: {{ datatypesError }}
+                    {{ localize("Unable to load datatypes:") }} {{ datatypesError }}
                 </GAlert>
                 <SingleItemSelector
                     v-else
@@ -167,6 +168,7 @@
 </template>
 
 <script>
+import { storeToRefs } from "pinia";
 import { ref } from "vue";
 
 import { HistoryFilters } from "@/components/History/HistoryFilters";
@@ -185,6 +187,7 @@ import { DatatypesProvider, DbKeyProvider } from "@/components/providers";
 import { useConfig } from "@/composables/config";
 import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useCollectionBuilderItemSelection } from "@/stores/collectionBuilderItemsStore";
+import { useDbKeyStore } from "@/stores/dbKeyStore";
 import { useObjectStoreStore } from "@/stores/objectStoreStore";
 import { useUserStore } from "@/stores/userStore";
 
@@ -230,6 +233,8 @@ export default {
         const { confirm } = useConfirmDialog();
         const objectStoreStore = useObjectStoreStore();
         const { isAnonymous } = useUserStore();
+        // Read directly so the modal's OK button can see it; DbKeyProvider triggers the load.
+        const { uploadDbKeysError: dbKeysError } = storeToRefs(useDbKeyStore());
 
         // Modals for selection operations
         const showChangeDbKeyModal = ref(false);
@@ -261,6 +266,7 @@ export default {
             showStorageOperationModal,
             selectedDbKey,
             selectedDatatype,
+            dbKeysError,
             resetDbKey,
             resetDatatype,
         };

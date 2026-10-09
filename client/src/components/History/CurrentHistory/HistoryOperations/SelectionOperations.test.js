@@ -3,11 +3,13 @@ import { setupMockConfig } from "@tests/vitest/mockConfig";
 import { shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useServerMock } from "@/api/client/__mocks__";
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import { useDbKeyStore } from "@/stores/dbKeyStore";
 
 import SelectionOperations from "./SelectionOperations.vue";
+import GModal from "@/components/BaseComponents/GModal.vue";
 
 vi.mock("@/composables/confirmDialog", () => ({
     useConfirmDialog: () => ({
@@ -238,6 +240,30 @@ describe("History Selection Operations", () => {
                 await wrapper.setProps({ totalItemsInQuery: 105 });
                 await wrapper.setProps({ isQuerySelection: true });
                 expect(wrapper.find(buildListOption).exists()).toBe(true);
+            });
+        });
+
+        describe("Change Database/Build", () => {
+            const findDbKeyModal = () =>
+                wrapper.findAllComponents(GModal).find((modal) => modal.props("title") === "Change Database/Build?");
+
+            afterEach(() => {
+                useDbKeyStore().$reset();
+            });
+
+            it("allows confirming the default Database/Build", () => {
+                expect(findDbKeyModal().props("okDisabled")).toBe(false);
+            });
+
+            it("disables confirming when Database/Builds fail to load", async () => {
+                server.use(
+                    http.get("/api/genomes", ({ response }) =>
+                        response.untyped(HttpResponse.json({ err_msg: "unavailable", err_code: 0 }, { status: 500 })),
+                    ),
+                );
+                await expect(useDbKeyStore().fetchUploadDbKeys()).rejects.toThrow("unavailable");
+                await flushPromises();
+                expect(findDbKeyModal().props("okDisabled")).toBe(true);
             });
         });
 
