@@ -1,4 +1,5 @@
 import { createTestingPinia } from "@pinia/testing";
+import { getFakeChatHistoryItem } from "@tests/test-data/chat";
 import { getLocalVue, nth, withPlugins } from "@tests/vitest/helpers";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { disposePinia } from "pinia";
@@ -6,8 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { nextTick } from "vue";
 
 import { useChatStore } from "@/stores/chatStore";
-
-import type { ChatHistoryItem } from "./chatTypes";
 
 import ChatModeSelector from "./ChatModeSelector.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
@@ -229,7 +228,7 @@ describe("ChatModeSelector", () => {
         it("uses first history item when activeChatId is null but history exists", async () => {
             const { wrapper, store } = mountComponent();
             store.activeChatId = null;
-            store.chatHistory = [{ id: "hist-1" } as ChatHistoryItem, { id: "hist-2" } as ChatHistoryItem];
+            store.chatHistory = ["hist-1", "hist-2"].map((id) => getFakeChatHistoryItem({ id }));
             await nth(getButtons(wrapper), 1).trigger("click");
             expect(store.dockChat).toHaveBeenCalledWith("right", "hist-1");
         });
@@ -245,7 +244,7 @@ describe("ChatModeSelector", () => {
         it("prefers activeChatId over first history item when both present", async () => {
             const { wrapper, store } = mountComponent();
             store.activeChatId = "active-chat";
-            store.chatHistory = [{ id: "hist-1" } as ChatHistoryItem];
+            store.chatHistory = [getFakeChatHistoryItem({ id: "hist-1" })];
             await nth(getButtons(wrapper), 1).trigger("click");
             expect(store.dockChat).toHaveBeenCalledWith("right", "active-chat");
         });
