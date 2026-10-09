@@ -31,6 +31,7 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
 )
+from urllib.parse import urljoin
 
 import yaml
 from selenium.webdriver.common.by import By
@@ -284,6 +285,11 @@ class ColumnDefinition:
     type: Literal["Text", "Integer", "Element Identifier"] = "Text"
     optional: bool = False
     default_value: str | None = None
+
+
+def galaxy_url(base: str, path: str = "") -> str:
+    """``path`` under the Galaxy at ``base``, keeping a path prefix such as ``/galaxy`` with or without its ``/``."""
+    return urljoin(base.rstrip("/") + "/", path) if path else base
 
 
 class NavigatesGalaxy(HasDriverProxy[WaitType]):
