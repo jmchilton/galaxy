@@ -1,58 +1,17 @@
 import { http as rawHttp, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { createOpenApiHttp } from "openapi-msw";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
-import type { GalaxyApiPaths } from "@/api/schema";
-import { REQUEST_ID_HEADER } from "@/api/staleCacheRetry";
+import { GALAXY_RESPONSE_HEADERS, http, missingHandlerResponse } from "./http";
 
-export { HttpResponse };
+export { GALAXY_RESPONSE_HEADERS, HttpResponse };
 
-/** Headers Galaxy puts on every response, for tests that build responses with plain `msw`. */
-export const GALAXY_RESPONSE_HEADERS: Readonly<Record<string, string>> = {
-    [REQUEST_ID_HEADER]: "mocked-request-id",
-};
-
-// Galaxy stamps every response it produces with a request id, and the client treats
-// a failed response without one as coming from a proxy. Successful responses are
-// left alone so tests can still describe a foreign one.
-function withGalaxyRequestId(response: unknown) {
-    if (response instanceof Response && !response.ok && !response.headers.has(REQUEST_ID_HEADER)) {
-        response.headers.set(REQUEST_ID_HEADER, GALAXY_RESPONSE_HEADERS[REQUEST_ID_HEADER]!);
-    }
-    return response;
-}
-
-function stampingHandlers<T extends object>(registry: T): T {
-    return new Proxy(registry, {
-        get(target, method, receiver) {
-            const member: unknown = Reflect.get(target, method, receiver);
-            if (method === "untyped" && typeof member === "object" && member !== null) {
-                return stampingHandlers(member);
-            }
-            if (typeof member !== "function") {
-                return member;
-            }
-            return (path: unknown, resolver: (...args: any[]) => unknown, ...rest: unknown[]) =>
-                member(path, async (...args: any[]) => withGalaxyRequestId(await resolver(...args)), ...rest);
-        },
-    });
-}
-
-function createApiClientMock() {
-    return stampingHandlers(createOpenApiHttp<GalaxyApiPaths>({ baseUrl: window.location.origin }));
-}
-
-let http: ReturnType<typeof createApiClientMock>;
 let server: ReturnType<typeof setupServer>;
 
-function missingHandlerMessage(request: Request) {
+function missingHandlerGuidance(request: Request) {
     const method = request.method.toLowerCase();
     const apiPath = request.url.replace(window.location.origin, "");
-    return `
-No request handler found for ${request.method} ${request.url}.
-
-Make sure you have added a request handler for this request in your tests.
+    return `Make sure you have added a request handler for this request in your tests.
 
 Example:
 
@@ -69,10 +28,7 @@ server.use(
 // reaches the caller as the error message. Tests' own handlers take precedence, and
 // resetHandlers() keeps this one.
 const missingHandlerFallback = rawHttp.all("*", ({ request }) =>
-    HttpResponse.json(
-        { err_msg: missingHandlerMessage(request), err_code: 500 },
-        { status: 500, headers: GALAXY_RESPONSE_HEADERS },
-    ),
+    missingHandlerResponse(request, missingHandlerGuidance(request)),
 );
 
 /**
@@ -86,7 +42,6 @@ const missingHandlerFallback = rawHttp.all("*", ({ request }) =>
 export function useServerMock() {
     if (!server) {
         server = setupServer(missingHandlerFallback);
-        http = createApiClientMock();
     }
 
     beforeAll(() => {
