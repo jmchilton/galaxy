@@ -17,6 +17,25 @@ should_skip_package() {
     return 1
 }
 
+wheel_contents() {
+    python -c 'import sys, zipfile; print("\n".join(sorted(n for n in zipfile.ZipFile(sys.argv[1]).namelist() if ".dist-info/" not in n)))' "$1"
+}
+
+# Downstream packagers rebuild the wheel from the sdist without git or the
+# sdist's egg-info, so only MANIFEST.in decides which non-Python files ship.
+check_wheel_from_bare_sdist() {
+    local work_dir
+    work_dir=$(mktemp -d -t gxpkgsdistXXXXXX)
+    tar -xzf dist/*.tar.gz -C "$work_dir"
+    rm -rf "$work_dir"/*/*.egg-info "$work_dir"/*/src/*.egg-info
+    (cd "$work_dir"/*/ && ${BUILD_WHEEL_CMD} --wheel -o "${work_dir}/dist")
+    if ! diff <(wheel_contents dist/*.whl) <(wheel_contents "$work_dir"/dist/*.whl); then
+        echo "Wheel rebuilt from sdist without egg-info differs from dist wheel (< only in dist wheel), update MANIFEST.in" >&2
+        return 1
+    fi
+    rm -rf "$work_dir"
+}
+
 for arg in "$@"; do
     if [ "$arg" = "--for-pulsar" ]; then
         PACKAGE_LIST_FILE=packages_for_pulsar_by_dep_dag.txt
@@ -108,6 +127,7 @@ while read -r package_dir || [ -n "$package_dir" ]; do  # https://stackoverflow.
 
         ${BUILD_WHEEL_CMD} -o dist
         ${TWINE_CMD} check dist/*
+        check_wheel_from_bare_sdist
     fi
     cd ..
     deactivate
