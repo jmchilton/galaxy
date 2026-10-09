@@ -2,6 +2,7 @@
 
 import json
 from typing import get_args
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 import pytest
@@ -221,6 +222,25 @@ class TestConfiguredDriverPlaywright:
         finally:
             driver.quit()
 
+    @skip_unless_playwright_browser_cached()
+    def test_playwright_storage_state_restores_cookies_and_local_storage(self, base_url):
+        """A saved login (cookies and localStorage) should be in the page the driver opens."""
+        url = f"{base_url}/basic.html"
+        origin = base_url.rstrip("/")
+        host = urlsplit(origin).hostname
+        state = {
+            "cookies": [{"name": "galaxysession", "value": "saved", "domain": host, "path": "/"}],
+            "origins": [{"origin": origin, "localStorage": [{"name": "saved-key", "value": "saved-value"}]}],
+        }
+        driver = configured_driver(backend_type="playwright", headless=True, storage_state=state)
+        try:
+            driver.driver_impl.navigate_to(url)
+            page = driver.driver_impl.page
+            assert page.evaluate("localStorage.getItem('saved-key')") == "saved-value"
+            assert {"name": "galaxysession", "value": "saved"}.items() <= page.context.cookies()[0].items()
+        finally:
+            driver.quit()
+
     def test_playwright_remote_debugging_port_requires_chromium(self):
         """Only Chromium exposes a CDP port, so other browsers should fail before launching."""
         with pytest.raises(ValueError) as exc_info:
@@ -244,6 +264,12 @@ class TestConfiguredDriverValidation:
         error_msg = str(exc_info.value)
         assert "does not support remote" in error_msg
         assert "Selenium Grid" in error_msg
+
+    def test_selenium_storage_state_raises_error(self):
+        """storage_state is Playwright-only and should not be silently ignored."""
+        with pytest.raises(ValueError) as exc_info:
+            configured_driver(backend_type="selenium", storage_state={"cookies": [], "origins": []})
+        assert "Playwright" in str(exc_info.value)
 
     def test_selenium_remote_debugging_port_raises_error(self):
         """remote_debugging_port is Playwright-only and should not be silently ignored."""

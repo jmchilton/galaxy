@@ -56,6 +56,7 @@ PLAYWRIGHT_REMOTE_UNSUPPORTED_MESSAGE = "Playwright backend does not support rem
 REMOTE_DEBUGGING_PORT_UNSUPPORTED_MESSAGE = (
     "remote_debugging_port requires the Playwright backend with Chromium (browser 'auto' or 'CHROME')."
 )
+STORAGE_STATE_UNSUPPORTED_MESSAGE = "storage_state requires the Playwright backend."
 
 
 class _SeleniumDriverImpl(HasDriver[Any]):
@@ -113,6 +114,7 @@ class ConfiguredDriver:
         headless: bool = False,
         backend_type: Literal["selenium", "playwright"] = DEFAULT_BACKEND_TYPE,
         remote_debugging_port: int | None = None,
+        storage_state: str | dict[str, Any] | None = None,
     ):
         """
         Initialize a configured driver with the specified backend.
@@ -127,6 +129,8 @@ class ConfiguredDriver:
             backend_type: Which backend to use ("selenium" or "playwright")
             remote_debugging_port: Expose Chromium's DevTools protocol on this port so external
                 clients (e.g. ``playwright-cli attach --cdp``) can drive the same page (Playwright only)
+            storage_state: Cookies and localStorage to start with - a path or the dict Playwright's
+                ``BrowserContext.storage_state()`` returns, e.g. a saved login (Playwright only)
 
         Raises:
             Exception: If Playwright backend is requested with remote=True
@@ -141,6 +145,7 @@ class ConfiguredDriver:
             headless=headless,
             backend_type=backend_type,
             remote_debugging_port=remote_debugging_port,
+            storage_state=storage_state,
         )
 
         # Validate Playwright limitations
@@ -148,6 +153,8 @@ class ConfiguredDriver:
             raise Exception(PLAYWRIGHT_REMOTE_UNSUPPORTED_MESSAGE)
         if backend_type == "selenium" and remote_debugging_port is not None:
             raise ValueError(REMOTE_DEBUGGING_PORT_UNSUPPORTED_MESSAGE)
+        if backend_type == "selenium" and storage_state is not None:
+            raise ValueError(STORAGE_STATE_UNSUPPORTED_MESSAGE)
 
         if backend_type == "selenium":
             # Create Selenium driver
@@ -172,6 +179,7 @@ class ConfiguredDriver:
                 browser=browser,
                 headless=headless,
                 remote_debugging_port=remote_debugging_port,
+                storage_state=storage_state,
             )
             self.driver_impl = cast(HasDriverProtocol, _PlaywrightDriverImpl(resources, timeout_handler))
 
@@ -270,7 +278,10 @@ def get_playwright_browser_type(browser: str = DEFAULT_BROWSER) -> PlaywrightBro
 
 
 def get_playwright_driver(
-    browser: str = DEFAULT_BROWSER, headless: bool = False, remote_debugging_port: int | None = None
+    browser: str = DEFAULT_BROWSER,
+    headless: bool = False,
+    remote_debugging_port: int | None = None,
+    storage_state: str | dict[str, Any] | None = None,
 ) -> PlaywrightResources:
     """
     Create Playwright browser resources.
@@ -279,6 +290,7 @@ def get_playwright_driver(
         browser: Browser name to launch (CHROME, FIREFOX, auto, etc.)
         headless: Whether to run in headless mode
         remote_debugging_port: Expose Chromium's DevTools protocol on this port (Chromium only)
+        storage_state: Cookies and localStorage for the page's context (a path or a storage-state dict)
 
     Returns:
         PlaywrightResources containing playwright, browser, and page instances
@@ -307,7 +319,10 @@ def get_playwright_driver(
     browser_instance = browser_type.launch(headless=headless, args=args)
 
     # Create page with viewport size matching Selenium's window size
-    page = browser_instance.new_page(viewport={"width": DEFAULT_WINDOW_WIDTH, "height": DEFAULT_WINDOW_HEIGHT})
+    page = browser_instance.new_page(
+        viewport={"width": DEFAULT_WINDOW_WIDTH, "height": DEFAULT_WINDOW_HEIGHT},
+        storage_state=cast(Any, storage_state),
+    )
 
     return PlaywrightResources(
         playwright=playwright,
