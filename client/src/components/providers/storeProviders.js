@@ -68,9 +68,6 @@ export const SimpleProviderMixin = {
 function uploadListProvider(useStore, { fetch, items, loading, error }) {
     return {
         inheritAttrs: false,
-        props: {
-            id: null,
-        },
         computed: {
             ...mapState(useStore, { storeItems: items, storeLoading: loading, storeError: error }),
         },
