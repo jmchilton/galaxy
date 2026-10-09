@@ -1,38 +1,14 @@
-import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue, suppressDebugConsole } from "@tests/vitest/helpers";
-import { type DOMWrapper, mount, type VueWrapper } from "@vue/test-utils";
+import { composeStories } from "@storybook/vue3-vite";
+import { suppressDebugConsole } from "@tests/vitest/helpers";
+import { type StoryOf, useStoryMount } from "@tests/vitest/stories";
+import type { DOMWrapper, VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useServerMock } from "@/api/client/__mocks__";
-import type { FileSourceTemplateSummary } from "@/api/fileSources";
 import { SELECTION_STATES, type SelectionItem, type SelectionState } from "@/components/SelectionDialog/selectionTypes";
 
-/**
- * The following imports mock a remote file resource directory structure,
- * which is navigated throughout the test cases further below.
- * The directory tree path is as follows:
- *
- * |-- directory1
- * |   |-- directory1file1
- * |   |-- directory1file2
- * |   |-- directory1file3
- * |   |-- subdirectory1
- * |   |   `-- subsubdirectory
- * |   |       `-- subsubfile
- * |   `-- subdirectory2
- * |       `-- subdirectory2file
- * |-- directory2
- * |   |-- directory2file1
- * |   `-- directory2file2
- * |-- file1
- * |-- file2
- */
-import type { RemoteFilesList } from "./testingData";
+import * as FilesDialogStories from "./FilesDialog.stories";
 import {
-    directory1RecursiveResponse,
-    directory1Response,
-    directory2RecursiveResponse,
     directoryId,
     ftpId,
     pdbResponse,
@@ -41,99 +17,32 @@ import {
     someErrorText,
     subDirectoryId,
     subSubDirectoryId,
-    subsubdirectoryResponse,
 } from "./testingData";
 
-import FilesDialog from "./FilesDialog.vue";
 import SelectionDialog from "@/components/SelectionDialog/SelectionDialog.vue";
 
 vi.mock("app");
 
-vi.mock("@/composables/config", () => ({
-    useConfig: vi.fn(() => ({
-        config: { ftp_upload_site: "Test ftp upload site" },
-        isConfigLoaded: true,
-    })),
-}));
-
-const { server, http } = useServerMock();
+const stories = composeStories(FilesDialogStories);
+const mountStory = useStoryMount();
 
 interface RowElement extends SelectionItem, Element {
     selectionState: SelectionState;
 }
 
-function paramsToKey(query: {
-    target?: string | null;
-    recursive?: string | null;
-    write_intent?: string | null;
-}): string {
-    return `${query.target}?recursive=${query.recursive}&write_intent=${query.write_intent ?? "false"}`;
-}
-
-const mockedOkApiRoutesMap = new Map<string, RemoteFilesList>([
-    [paramsToKey({ target: "gxfiles://pdb-gzip", recursive: "false" }), pdbResponse],
-    [paramsToKey({ target: "gxfiles://pdb-gzip/directory1", recursive: "false" }), directory1Response],
-    [paramsToKey({ target: "gxfiles://pdb-gzip/directory1", recursive: "true" }), directory1RecursiveResponse],
-    [paramsToKey({ target: "gxfiles://pdb-gzip/directory2", recursive: "true" }), directory2RecursiveResponse],
-    [
-        paramsToKey({ target: "gxfiles://pdb-gzip/directory1/subdirectory1", recursive: "false" }),
-        subsubdirectoryResponse,
-    ],
-    [paramsToKey({ target: "gxftp://", recursive: "false" }), pdbResponse],
-]);
-
-const mockedErrorApiRoutesMap = new Map<string, RemoteFilesList>([
-    [paramsToKey({ target: "gxfiles://empty-dir", recursive: "false" }), []],
-]);
-
-const initComponent = async (props: { multiple: boolean; mode?: string }, hasTemplates = false) => {
-    const localVue = getLocalVue();
-
-    server.use(
-        http.get("/api/remote_files/plugins", ({ response }) => {
-            return response(200).json(rootResponse);
-        }),
-
-        http.get("/api/remote_files", ({ response, query }) => {
-            const responseKey = paramsToKey({
-                target: query.get("target"),
-                recursive: query.get("recursive"),
-                write_intent: query.get("write_intent"),
-            });
-            if (mockedErrorApiRoutesMap.has(responseKey)) {
-                return response("4XX").json({ err_msg: someErrorText, err_code: 400 }, { status: 400 });
-            }
-            const mockedResponse = mockedOkApiRoutesMap.get(responseKey);
-            const mockedTotalMatches = mockedResponse?.length.toString() ?? "0";
-            if (!mockedResponse) {
-                return response("5XX").json({ err_msg: "No mocked response found", err_code: 500 }, { status: 500 });
-            }
-            return response(200).json(mockedResponse, { headers: { total_matches: mockedTotalMatches } });
-        }),
-
-        http.get("/api/file_source_templates", ({ response }) => {
-            const fileSourceTemplates = hasTemplates ? [{ id: "test_template" } as FileSourceTemplateSummary] : [];
-            return response(200).json(fileSourceTemplates);
-        }),
-    );
-
-    const testingPinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
-    const wrapper = mount(FilesDialog as object, {
-        localVue,
-        propsData: { ...props },
-        pinia: testingPinia,
-    });
-
+/** Mounts a story and waits for the file sources to load. */
+async function initComponent(story: StoryOf<typeof stories>) {
+    const wrapper = mountStory(story);
     await flushPromises();
     return wrapper;
-};
+}
 
 describe("FilesDialog, file mode", () => {
     let wrapper: VueWrapper<any>;
     let utils: Utils;
 
     beforeEach(async () => {
-        wrapper = await initComponent({ multiple: true });
+        wrapper = await initComponent(stories.MultipleFiles);
         utils = new Utils(wrapper);
     });
 
@@ -270,13 +179,11 @@ describe("FilesDialog, create new file source button", () => {
     let utils: Utils;
 
     beforeEach(async () => {
-        const hasTemplates = true;
-        wrapper = await initComponent({ multiple: false }, hasTemplates);
+        wrapper = await initComponent(stories.SingleFileWithTemplates);
         utils = new Utils(wrapper);
     });
     it("should not render create new button since file source templates are not defined", async () => {
-        const hasTemplates = false;
-        wrapper = await initComponent({ multiple: true }, hasTemplates);
+        wrapper = await initComponent(stories.MultipleFiles);
         const createNewButton = wrapper.find("[data-description='create new file source button']");
         expect(createNewButton.exists()).toBe(false);
     });
@@ -297,7 +204,7 @@ describe("FilesDialog, create new file source button", () => {
 describe("FilesDialog, file mode with templates", () => {
     let wrapper: VueWrapper<any>;
     beforeEach(async () => {
-        wrapper = await initComponent({ multiple: true }, true);
+        wrapper = await initComponent(stories.MultipleFilesWithTemplates);
     });
     it("should render create new button since file source templates are defined", async () => {
         const createNewButton = wrapper.find("[data-description='create new file source button']");
@@ -310,7 +217,7 @@ describe("FilesDialog, directory mode", () => {
     let utils: Utils;
 
     beforeEach(async () => {
-        wrapper = await initComponent({ multiple: false, mode: "directory" });
+        wrapper = await initComponent(stories.Directories);
         utils = new Utils(wrapper);
     });
 
