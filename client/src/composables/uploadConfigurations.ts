@@ -1,28 +1,14 @@
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 
-import type { CompositeFileInfo } from "@/api/datatypes";
 import { DEFAULT_EXTENSION, getUploadDbKeys } from "@/components/Upload/utils";
-import { useUploadDatatypes } from "@/composables/datatypes";
+import { type ExtensionDetails, useUploadDatatypes } from "@/composables/datatypes";
+import type { DbKey } from "@/composables/dbKeys";
 import { Toast } from "@/composables/toast";
 import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
 import { useConfig } from "./config";
-
-export type ExtensionDetails = {
-    id: string;
-    text: string;
-    description: string | null;
-    description_url: string | null;
-    composite_files?: CompositeFileInfo[] | null;
-    upload_warning?: string | null;
-};
-
-export type DbKey = {
-    id: string;
-    text: string;
-};
 
 export type UploadConfigurations = {
     chunkUploadSize: number;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DbKey } from "@/composables/uploadConfigurations";
+import type { DbKey } from "@/composables/dbKeys";
 
 import SingleItemSelector from "@/components/SingleItemSelector.vue";
 

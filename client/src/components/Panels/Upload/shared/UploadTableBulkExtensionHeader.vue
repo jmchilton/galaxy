@@ -3,7 +3,7 @@ import { faExclamationTriangle } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed } from "vue";
 
-import type { ExtensionDetails } from "@/composables/uploadConfigurations";
+import type { ExtensionDetails } from "@/composables/datatypes";
 
 import SingleItemSelector from "@/components/SingleItemSelector.vue";
 

@@ -2,9 +2,18 @@ import { storeToRefs } from "pinia";
 import { computed, type Ref, ref } from "vue";
 
 import { GalaxyApi } from "@/api";
-import type { ExtensionDetails } from "@/composables/uploadConfigurations";
+import type { CompositeFileInfo } from "@/api/datatypes";
 import { useDatatypeStore } from "@/stores/datatypeStore";
 import { rethrowSimple } from "@/utils/simple-error";
+
+export type ExtensionDetails = {
+    id: string;
+    text: string;
+    description: string | null;
+    description_url: string | null;
+    composite_files?: CompositeFileInfo[] | null;
+    upload_warning?: string | null;
+};
 
 export interface DetailedDatatypes {
     extension: string;
