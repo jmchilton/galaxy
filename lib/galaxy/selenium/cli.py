@@ -8,7 +8,6 @@ BACKEND_DESCRIPTION = "Browser automation backend to use (selenium or playwright
 
 import argparse
 from typing import Literal
-from urllib.parse import urljoin
 
 from .driver_factory import (
     ConfiguredDriver,
@@ -16,6 +15,7 @@ from .driver_factory import (
 )
 from .navigates_galaxy import (
     galaxy_timeout_handler,
+    galaxy_url,
     NavigatesGalaxy,
 )
 
@@ -100,7 +100,7 @@ class DriverWrapper(NavigatesGalaxy):
         return self.configured_driver.driver_impl
 
     def build_url(self, url="", for_selenium: bool = True):
-        return urljoin(self.target_url, url)
+        return galaxy_url(self.target_url, url)
 
     def screenshot(self, label: str) -> None:
         """No-op in this context, not saving debugging/testing screenshots.

@@ -31,3 +31,13 @@ def test_context_from_dict():
         assert context.wait_length(WAIT_TYPES.UX_RENDER) == WAIT_TYPES.UX_RENDER.default_length * 3
     finally:
         context.configured_driver.quit()
+
+
+def test_build_url_keeps_a_galaxy_path_prefix():
+    context = object.__new__(GalaxySeleniumContextImpl)
+    context.url = context.target_url_from_selenium = "https://example.org/galaxy"
+    assert context.build_url("api/users/current") == "https://example.org/galaxy/api/users/current"
+    assert context.build_url("api/users/current", for_selenium=False) == "https://example.org/galaxy/api/users/current"
+    assert context.build_url("") == "https://example.org/galaxy"
+    context.url = context.target_url_from_selenium = "http://localhost:8080/"
+    assert context.build_url("workflows/list") == "http://localhost:8080/workflows/list"

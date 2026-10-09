@@ -31,6 +31,7 @@ from typing import (
 from urllib.parse import (
     quote,
     urlencode,
+    urljoin,
 )
 
 import yaml
@@ -336,6 +337,11 @@ def _tool_form_options_and_value(input: dict[str, Any]) -> tuple[list[tuple[str,
     if isinstance(options, list):
         return [(str(option[0]), str(option[1])) for option in options], value
     return [], value
+
+
+def galaxy_url(base: str, path: str = "") -> str:
+    """``path`` under the Galaxy at ``base``, keeping a path prefix such as ``/galaxy`` with or without its ``/``."""
+    return urljoin(base.rstrip("/") + "/", path) if path else base
 
 
 def workflow_search_term(name: str) -> str:

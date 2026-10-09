@@ -1,12 +1,12 @@
 import os
 from abc import abstractmethod
-from urllib.parse import urljoin
 
 import yaml
 
 from .driver_factory import ConfiguredDriver
 from .navigates_galaxy import (
     galaxy_timeout_handler,
+    galaxy_url,
     NavigatesGalaxy,
 )
 
@@ -31,7 +31,7 @@ class GalaxySeleniumContext(NavigatesGalaxy):
             base = self.target_url_from_selenium
         else:
             base = self.url
-        return urljoin(base, url)
+        return galaxy_url(base, url)
 
     def screenshot(self, label: str):
         """If GALAXY_TEST_SCREENSHOTS_DIRECTORY is set create a screenshot there named <label>.png.
