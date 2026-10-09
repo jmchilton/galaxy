@@ -204,6 +204,7 @@ export default {
         CollectionCreatorIndex,
         DbKeyProvider,
         DatatypesProvider,
+        GAlert,
         GDropdown,
         GDropdownDivider,
         GDropdownItem,
