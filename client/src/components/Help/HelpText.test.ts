@@ -1,9 +1,7 @@
 import { getLocalVue } from "@tests/vitest/helpers";
-import { mount, type Wrapper } from "@vue/test-utils";
+import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { createPinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type Vue from "vue";
 import { defineComponent, h } from "vue";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
@@ -21,15 +19,15 @@ function mountHelpTexts(uris: string[]) {
         render: () =>
             h(
                 "div",
-                uris.map((uri) => h(HelpText, { props: { uri, text: uri.split(".").pop() } })),
+                uris.map((uri) => h(HelpText, { uri, text: uri.split(".").pop() })),
             ),
     });
-    return mount(Rows as object, { localVue: getLocalVue(), pinia: createPinia(), attachTo: document.body });
+    return mount(Rows, { global: getLocalVue(), attachTo: document.body });
 }
 
 describe("HelpText", () => {
     let datatypesRequests: number;
-    let wrapper: Wrapper<Vue> | undefined;
+    let wrapper: VueWrapper | undefined;
 
     beforeEach(() => {
         datatypesRequests = 0;
@@ -42,7 +40,7 @@ describe("HelpText", () => {
     });
 
     afterEach(() => {
-        wrapper?.destroy();
+        wrapper?.unmount();
         wrapper = undefined;
     });
 

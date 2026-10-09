@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { h } from "vue";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 
@@ -21,16 +22,19 @@ describe("DatatypesProvider", () => {
     });
 
     afterEach(() => {
-        wrapper?.destroy();
+        wrapper?.unmount();
     });
 
     function mountProvider() {
         return mount(DatatypesProvider, {
-            localVue,
-            propsData: { id: "datatypes" },
-            scopedSlots: {
-                default:
-                    '<div><span class="state">{{ props.loading }}</span><span class="error">{{ props.error }}</span></div>',
+            global: localVue,
+            props: { id: "datatypes" },
+            slots: {
+                default: (props) =>
+                    h("div", [
+                        h("span", { class: "state" }, String(props.loading)),
+                        h("span", { class: "error" }, props.error ?? ""),
+                    ]),
             },
         });
     }
