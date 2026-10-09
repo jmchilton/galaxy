@@ -43,11 +43,13 @@ classifiers = [
 keywords = ["Galaxy"]
 
 [project.optional-dependencies]
+keyring = ["keyring"]
 test = [
     "pytest",
 ]
 
 [project.scripts]
+gxui = "galaxy.selenium.gxui.client:main"
 gx-dump-tour = "galaxy.selenium.scripts.dump_tour:main"
 
 [project.urls]
