@@ -1,7 +1,10 @@
-import { type Ref, ref } from "vue";
+import { storeToRefs } from "pinia";
+import { computed, type Ref, ref } from "vue";
 
 import { GalaxyApi } from "@/api";
-import { rethrowSimple } from "@/utils/simple-error";
+import type { ExtensionDetails } from "@/composables/uploadConfigurations";
+import { useDatatypeStore } from "@/stores/datatypeStore";
+import { errorMessageAsString, rethrowSimple } from "@/utils/simple-error";
 
 export interface DetailedDatatypes {
     extension: string;
@@ -72,4 +75,27 @@ export function useDetailedDatatypes() {
     getDatatypes();
 
     return { datatypes, datatypesLoading };
+}
+
+/**
+ * Upload datatypes (including "auto") from the shared datatype store.
+ * `error` holds the message when loading fails; the next caller retries.
+ */
+export function useUploadDatatypes() {
+    const datatypeStore = useDatatypeStore();
+    const { getUploadDatatypes } = storeToRefs(datatypeStore);
+    const datatypes = computed(() => getUploadDatatypes.value as ExtensionDetails[]);
+    const loading = ref(true);
+    const error = ref<string | null>(null);
+
+    datatypeStore
+        .fetchUploadDatatypes()
+        .catch((e: unknown) => {
+            error.value = errorMessageAsString(e);
+        })
+        .finally(() => {
+            loading.value = false;
+        });
+
+    return { datatypes, loading, error };
 }
