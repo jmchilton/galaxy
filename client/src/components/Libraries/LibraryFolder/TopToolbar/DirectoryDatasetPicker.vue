@@ -5,9 +5,8 @@ import { computed, ref, watch } from "vue";
 import { GalaxyApi } from "@/api";
 import type { Option } from "@/components/Form/Elements/FormDrilldown/utilities";
 import { type DetailedDatatypes, useDetailedDatatypes } from "@/composables/datatypes";
-import { useUploadDbKeys } from "@/composables/dbKeys";
+import { type DbKey, useUploadDbKeys } from "@/composables/dbKeys";
 import { Toast } from "@/composables/toast";
-import type { DbKey } from "@/composables/uploadConfigurations";
 import { errorMessageAsString } from "@/utils/simple-error";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";

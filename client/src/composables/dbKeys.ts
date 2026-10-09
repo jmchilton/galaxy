@@ -1,8 +1,12 @@
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
 
-import type { DbKey } from "@/composables/uploadConfigurations";
 import { useDbKeyStore } from "@/stores/dbKeyStore";
+
+export type DbKey = {
+    id: string;
+    text: string;
+};
 
 /**
  * Upload Database/Builds from the shared dbkey store, which owns loading and error state; unspecified (`?`) first.

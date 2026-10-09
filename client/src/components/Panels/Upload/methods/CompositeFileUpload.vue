@@ -3,9 +3,9 @@ import { faLayerGroup } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, ref, watch } from "vue";
 
+import type { ExtensionDetails } from "@/composables/datatypes";
 import { useUploadDefaults } from "@/composables/upload/uploadDefaults";
 import { useUploadStaging } from "@/composables/upload/useUploadStaging";
-import type { ExtensionDetails } from "@/composables/uploadConfigurations";
 import {
     buildPreparedUploadWithOptions,
     createFileUploadItem,
@@ -284,7 +284,7 @@ defineExpose<UploadMethodComponent>({ prepareUpload, reset });
                 v-for="(slot, index) in slots"
                 :key="slot.slotName"
                 :slot-item="slot"
-                @update:slotItem="(updated: CompositeSlot) => updateSlot(index, updated)" />
+                @update:slot-item="(updated: CompositeSlot) => updateSlot(index, updated)" />
 
             <!-- Actions footer -->
             <div class="d-flex justify-content-end mt-2">

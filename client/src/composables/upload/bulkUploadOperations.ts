@@ -1,7 +1,7 @@
 import { computed, type ComputedRef, type Ref, ref } from "vue";
 
 import { findExtension } from "@/components/Upload/utils";
-import type { ExtensionDetails } from "@/composables/uploadConfigurations";
+import type { ExtensionDetails } from "@/composables/datatypes";
 
 /**
  * Base interface for upload items that support bulk operations.
