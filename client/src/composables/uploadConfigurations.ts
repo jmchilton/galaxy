@@ -82,7 +82,12 @@ export function useUploadConfigurations(extensions: string[] | undefined) {
     });
 
     const ready = computed(
-        () => dbKeysSet.value && extensionsSet.value && !!datatypesMapper.value && !datatypesMapperLoading.value,
+        () =>
+            isConfigLoaded.value &&
+            dbKeysSet.value &&
+            extensionsSet.value &&
+            !!datatypesMapper.value &&
+            !datatypesMapperLoading.value,
     );
 
     return {
