@@ -58,4 +58,33 @@ describe("useUploadDbKeys", () => {
         expect(result.dbKeys.value).toEqual([]);
         wrapper.unmount();
     });
+
+    it("clears an earlier error once a later load succeeds", async () => {
+        vi.mocked(getUploadDbKeys).mockRejectedValueOnce(new Error("unavailable")).mockResolvedValue(DBKEYS);
+        const first = mountUploadDbKeys();
+        await flushPromises();
+        expect(first.result.error.value).toBe("unavailable");
+        const second = mountUploadDbKeys();
+        await flushPromises();
+        expect(second.result.error.value).toBeNull();
+        expect(first.result.error.value).toBeNull();
+        expect(first.result.loading.value).toBe(false);
+        expect(first.result.dbKeys.value.map((item) => item.id)).toEqual(["?", "hg38"]);
+        first.wrapper.unmount();
+        second.wrapper.unmount();
+    });
+
+    it("does not reload upload dbkeys once loaded", async () => {
+        vi.mocked(getUploadDbKeys).mockResolvedValue(DBKEYS);
+        const first = mountUploadDbKeys();
+        await flushPromises();
+        const loaded = first.result.dbKeys.value;
+        const second = mountUploadDbKeys();
+        await flushPromises();
+        expect(getUploadDbKeys).toHaveBeenCalledTimes(1);
+        expect(second.result.loading.value).toBe(false);
+        expect(first.result.dbKeys.value).toBe(loaded);
+        first.wrapper.unmount();
+        second.wrapper.unmount();
+    });
 });

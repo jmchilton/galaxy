@@ -4,7 +4,7 @@ import { computed, type Ref, ref } from "vue";
 import { GalaxyApi } from "@/api";
 import type { ExtensionDetails } from "@/composables/uploadConfigurations";
 import { useDatatypeStore } from "@/stores/datatypeStore";
-import { errorMessageAsString, rethrowSimple } from "@/utils/simple-error";
+import { rethrowSimple } from "@/utils/simple-error";
 
 export interface DetailedDatatypes {
     extension: string;
@@ -78,24 +78,16 @@ export function useDetailedDatatypes() {
 }
 
 /**
- * Upload datatypes (including "auto") from the shared datatype store.
+ * Upload datatypes (including "auto") from the shared datatype store, which owns loading and error state.
  * `error` holds the message when loading fails; the next caller retries.
  */
 export function useUploadDatatypes() {
     const datatypeStore = useDatatypeStore();
-    const { getUploadDatatypes } = storeToRefs(datatypeStore);
+    const { getUploadDatatypes, uploadDatatypesLoading, uploadDatatypesError } = storeToRefs(datatypeStore);
     const datatypes = computed(() => getUploadDatatypes.value as ExtensionDetails[]);
-    const loading = ref(true);
-    const error = ref<string | null>(null);
 
-    datatypeStore
-        .fetchUploadDatatypes()
-        .catch((e: unknown) => {
-            error.value = errorMessageAsString(e);
-        })
-        .finally(() => {
-            loading.value = false;
-        });
+    // Failures surface through `uploadDatatypesError`.
+    datatypeStore.fetchUploadDatatypes().catch(() => {});
 
-    return { datatypes, loading, error };
+    return { datatypes, loading: uploadDatatypesLoading, error: uploadDatatypesError };
 }
