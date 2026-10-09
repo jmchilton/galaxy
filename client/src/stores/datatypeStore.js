@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 
 import { fetchDatatypeDetails } from "@/api/datatypes";
-import UploadUtils from "@/components/Upload/utils";
+import { AUTO_EXTENSION, getUploadDatatypes } from "@/components/Upload/utils";
 
 export const useDatatypeStore = defineStore("datatypeStore", {
     state: () => ({
@@ -26,7 +26,7 @@ export const useDatatypeStore = defineStore("datatypeStore", {
     },
     actions: {
         async fetchUploadDatatypes() {
-            const data = await UploadUtils.getUploadDatatypes(false, UploadUtils.AUTO_EXTENSION);
+            const data = await getUploadDatatypes(false, AUTO_EXTENSION);
             this.uploadDatatypes = data;
         },
         async fetchDatatypeDetails(extension) {

@@ -2,7 +2,8 @@ import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 
 import type { CompositeFileInfo } from "@/api/datatypes";
-import { AUTO_EXTENSION, DEFAULT_EXTENSION, getUploadDatatypes, getUploadDbKeys } from "@/components/Upload/utils";
+import { DEFAULT_EXTENSION, getUploadDbKeys } from "@/components/Upload/utils";
+import { useUploadDatatypes } from "@/composables/datatypes";
 import { Toast } from "@/composables/toast";
 import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { errorMessageAsString } from "@/utils/simple-error";
@@ -50,19 +51,13 @@ export function useUploadConfigurations(extensions: string[] | undefined) {
             : null,
     );
 
-    // Load the list of extensions
-    // TODO: Maybe a store would be better for this
-    const listExtensions = ref<ExtensionDetails[]>([]);
-    const extensionsSet = ref(false);
-    async function loadExtensions() {
-        try {
-            listExtensions.value = await getUploadDatatypes(false, AUTO_EXTENSION);
-            extensionsSet.value = true;
-        } catch (error) {
-            Toast.error(errorMessageAsString(error), "Unable to load upload formats");
+    const { datatypes: listExtensions, loading: extensionsLoading, error: extensionsError } = useUploadDatatypes();
+    const extensionsSet = computed(() => !extensionsLoading.value && !extensionsError.value);
+    watch(extensionsError, (error) => {
+        if (error) {
+            Toast.error(error, "Unable to load upload formats");
         }
-    }
-    loadExtensions();
+    });
 
     const datatypesMapperStore = useDatatypesMapperStore();
     const { datatypesMapper, loading: datatypesMapperLoading } = storeToRefs(datatypesMapperStore);

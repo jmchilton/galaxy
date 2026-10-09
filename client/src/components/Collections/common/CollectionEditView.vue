@@ -7,9 +7,10 @@ import { computed, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
 import { updateContentFields } from "@/components/History/model/queries";
-import { DatatypesProvider, DbKeyProvider, SuitableConvertersProvider } from "@/components/providers";
+import { DbKeyProvider, SuitableConvertersProvider } from "@/components/providers";
 import { useConfig } from "@/composables/config";
 import { useDetailedCollection } from "@/composables/datasetCollections";
+import { useUploadDatatypes } from "@/composables/datatypes";
 import { useCollectionAttributesStore } from "@/stores/collectionAttributesStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import localize from "@/utils/localization";
@@ -40,6 +41,7 @@ const historyStore = useHistoryStore();
 const { currentHistoryId } = storeToRefs(historyStore);
 
 const { collection, collectionLoadError } = useDetailedCollection(props);
+const { datatypes, loading: datatypesLoading, error: datatypesError } = useUploadDatatypes();
 
 const jobError = ref(null);
 const errorMessage = ref("");
@@ -294,21 +296,19 @@ async function saveAttrs() {
                     {{ localize("Datatypes") }}
                 </template>
 
-                <DatatypesProvider v-slot="{ item, loading, error }">
-                    <div v-if="loading">
-                        <LoadingSpan message="Loading Datatypes" />
-                    </div>
-                    <GAlert v-else-if="error" show variant="danger">
-                        {{ localize("Unable to load datatypes:") }} {{ error }}
-                    </GAlert>
-                    <div v-else>
-                        <ChangeDatatypeTab
-                            v-if="item && datatypeFromElements"
-                            :datatype-from-elements="datatypeFromElements"
-                            :datatypes="item"
-                            @clicked-save="clickedDatatypeChange" />
-                    </div>
-                </DatatypesProvider>
+                <div v-if="datatypesLoading">
+                    <LoadingSpan message="Loading Datatypes" />
+                </div>
+                <GAlert v-else-if="datatypesError" show variant="danger">
+                    {{ localize("Unable to load datatypes:") }} {{ datatypesError }}
+                </GAlert>
+                <div v-else>
+                    <ChangeDatatypeTab
+                        v-if="datatypeFromElements"
+                        :datatype-from-elements="datatypeFromElements"
+                        :datatypes="datatypes"
+                        @clicked-save="clickedDatatypeChange" />
+                </div>
             </GTab>
         </GTabs>
     </div>
