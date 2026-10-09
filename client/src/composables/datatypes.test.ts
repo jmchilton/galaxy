@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 
 import { getUploadDatatypes } from "@/components/Upload/utils";
+import { useDatatypeStore } from "@/stores/datatypeStore";
 
 import { useUploadDatatypes } from "./datatypes";
 
@@ -86,5 +87,17 @@ describe("useUploadDatatypes", () => {
         expect(first.result.datatypes.value).toBe(loaded);
         first.wrapper.unmount();
         second.wrapper.unmount();
+    });
+
+    it("clears an error recorded while a load was pending once it succeeds", async () => {
+        let resolveLoad: (value: typeof DATATYPES) => void;
+        vi.mocked(getUploadDatatypes).mockReturnValue(new Promise((resolve) => (resolveLoad = resolve)));
+        const { wrapper, result } = mountUploadDatatypes();
+        useDatatypeStore().uploadDatatypesError = "unavailable";
+        resolveLoad!(DATATYPES);
+        await flushPromises();
+        expect(result.error.value).toBeNull();
+        expect(result.loading.value).toBe(false);
+        wrapper.unmount();
     });
 });

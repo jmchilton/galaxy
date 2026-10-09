@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 
 import { getUploadDbKeys } from "@/components/Upload/utils";
+import { useDbKeyStore } from "@/stores/dbKeyStore";
 
 import { useUploadDbKeys } from "./dbKeys";
 
@@ -86,5 +87,17 @@ describe("useUploadDbKeys", () => {
         expect(first.result.dbKeys.value).toBe(loaded);
         first.wrapper.unmount();
         second.wrapper.unmount();
+    });
+
+    it("clears an error recorded while a load was pending once it succeeds", async () => {
+        let resolveLoad: (value: typeof DBKEYS) => void;
+        vi.mocked(getUploadDbKeys).mockReturnValue(new Promise((resolve) => (resolveLoad = resolve)));
+        const { wrapper, result } = mountUploadDbKeys();
+        useDbKeyStore().uploadDbKeysError = "unavailable";
+        resolveLoad!(DBKEYS);
+        await flushPromises();
+        expect(result.error.value).toBeNull();
+        expect(result.loading.value).toBe(false);
+        wrapper.unmount();
     });
 });
