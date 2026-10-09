@@ -27,7 +27,7 @@ export const RULES_TYPES = [
 /*
  * Local helper utilities.
  */
-function dbKeySort(defaultDbKey) {
+export function dbKeySort(defaultDbKey) {
     return (a, b) => {
         if (a.id == defaultDbKey) {
             return -1;
