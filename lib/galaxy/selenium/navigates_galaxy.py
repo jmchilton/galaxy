@@ -2909,6 +2909,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         component.wait_for_and_click()
 
     def click_history_option_export_to_file(self):
+        """Open History options > Export History to File."""
         self.use_bootstrap_dropdown(option="export to file", menu="history options")
 
     def click_history_option_sharing(self):
@@ -3263,6 +3264,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def history_panel_click_copy_elements(self):
+        """Open History options > Copy Datasets."""
         self.use_bootstrap_dropdown(option="copy datasets", menu="history options")
 
     def use_bootstrap_dropdown(self, option=None, menu=None):
