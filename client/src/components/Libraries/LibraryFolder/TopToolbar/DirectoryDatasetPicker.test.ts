@@ -1,7 +1,7 @@
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { useDbKeyStore } from "@/stores/dbKeyStore";
@@ -48,6 +48,12 @@ describe("DirectoryDatasetPicker", () => {
             .find((selector) => selector.props("collectionName") === "DB Keys");
     }
 
+    function findExtensionSelector() {
+        return wrapper
+            .findAllComponents(SingleItemSelector)
+            .find((selector) => selector.props("collectionName") === "Extensions");
+    }
+
     // Loaded genomes are cached at module scope, so the failure case runs first.
     it("shows an error instead of the Database/Build selector when Database/Builds fail to load", async () => {
         server.use(
@@ -58,6 +64,22 @@ describe("DirectoryDatasetPicker", () => {
         await mountPicker();
         expect(wrapper.text()).toContain("Unable to load Database/Builds: unavailable");
         expect(findDbKeySelector()).toBeUndefined();
+    });
+
+    it("shows an error instead of the Extension selector when datatypes fail to load", async () => {
+        server.use(
+            http.untyped.get("/api/genomes", () => HttpResponse.json(GENOMES)),
+            http.get("/api/datatypes", ({ response }) =>
+                response.untyped(HttpResponse.json({ err_msg: "unavailable", err_code: 0 }, { status: 500 })),
+            ),
+        );
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        await mountPicker();
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+        expect(wrapper.text()).toContain("Unable to load Extensions: unavailable");
+        expect(findExtensionSelector()).toBeUndefined();
+        expect(findDbKeySelector()).toBeDefined();
     });
 
     describe("with Database/Builds loaded", () => {
@@ -71,6 +93,12 @@ describe("DirectoryDatasetPicker", () => {
             const items = selector.props("items") as { id: string }[];
             expect(items.map((item) => item.id)).toEqual(["?", "aa1", "zz1"]);
             expect(selector.props("currentItem")).toEqual({ id: "?", text: "unspecified (?)" });
+        });
+
+        it("offers auto-detect in the Extension selector", () => {
+            const items = findExtensionSelector()!.props("items") as { extension: string }[];
+            expect(items.map((item) => item.extension)).toEqual(["auto"]);
+            expect(wrapper.text()).not.toContain("Unable to load Extensions");
         });
 
         it("leaves the shared Database/Build order unchanged", () => {

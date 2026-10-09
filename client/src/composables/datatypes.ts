@@ -4,7 +4,7 @@ import { computed, type Ref, ref } from "vue";
 import { GalaxyApi } from "@/api";
 import type { CompositeFileInfo } from "@/api/datatypes";
 import { useDatatypeStore } from "@/stores/datatypeStore";
-import { rethrowSimple } from "@/utils/simple-error";
+import { errorMessageAsString, rethrowSimple } from "@/utils/simple-error";
 
 export type ExtensionDetails = {
     id: string;
@@ -29,11 +29,12 @@ export interface DetailedDatatypes {
 
 /**
  * Fetches a detailed array of datatypes available on this galaxy instance.
- * Does not cache the result or use a store.
+ * Does not cache the result or use a store. `error` holds the message when loading fails.
  */
 export function useDetailedDatatypes() {
     const datatypesLoading = ref(true);
     const datatypes: Ref<DetailedDatatypes[]> = ref([]);
+    const error = ref<string | null>(null);
 
     async function getDatatypes() {
         try {
@@ -51,9 +52,9 @@ export function useDetailedDatatypes() {
 
             type BaseTypes = Exclude<typeof baseData, string[]>;
 
-            const error = baseError || edamFormatsError || edamDataError;
-            if (error) {
-                rethrowSimple(error);
+            const requestError = baseError || edamFormatsError || edamDataError;
+            if (requestError) {
+                rethrowSimple(requestError);
             }
 
             const items = baseData as BaseTypes;
@@ -76,6 +77,7 @@ export function useDetailedDatatypes() {
             });
         } catch (e) {
             console.error("unable to fetch available datatypes\n", e);
+            error.value = errorMessageAsString(e);
         } finally {
             datatypesLoading.value = false;
         }
@@ -83,7 +85,7 @@ export function useDetailedDatatypes() {
 
     getDatatypes();
 
-    return { datatypes, datatypesLoading };
+    return { datatypes, datatypesLoading, error };
 }
 
 /**
