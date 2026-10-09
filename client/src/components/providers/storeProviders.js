@@ -73,9 +73,14 @@ export const DbKeyProvider = {
         ...mapActions(useDbKeyStore, ["fetchUploadDbKeys"]),
         async load() {
             this.loading = true;
+            this.error = null;
             let dbKeys = this.getUploadDbKeys;
             if (dbKeys == null || dbKeys.length == 0) {
-                await this.fetchUploadDbKeys();
+                try {
+                    await this.fetchUploadDbKeys();
+                } catch (err) {
+                    this.error = errorMessageAsString(err);
+                }
                 dbKeys = this.getUploadDbKeys;
             }
             this.item = dbKeys;

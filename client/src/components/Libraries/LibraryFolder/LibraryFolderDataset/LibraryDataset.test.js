@@ -39,6 +39,11 @@ const mockFailedDatatypesProvider = {
         return () => slots.default?.({ loading: false, item: [], error: "unavailable" });
     },
 };
+const mockFailedDbKeyProvider = {
+    setup(_props, { slots }) {
+        return () => slots.default?.({ loading: false, item: [], error: "unavailable" });
+    },
+};
 const mockDbKeyProvider = {
     setup(_props, { slots }) {
         return () => slots.default?.({ loading: false, item: ["?"] });
@@ -76,6 +81,7 @@ async function mountLibraryDatasetWrapper(
     expectDatasetId,
     isAdmin = false,
     datatypesProvider = mockDatatypesProvider,
+    dbKeyProvider = mockDbKeyProvider,
 ) {
     const pinia = createPinia();
     const propsData = {
@@ -88,7 +94,7 @@ async function mountLibraryDatasetWrapper(
         propsData,
         stubs: {
             DatatypesProvider: datatypesProvider,
-            DbKeyProvider: mockDbKeyProvider,
+            DbKeyProvider: dbKeyProvider,
         },
         pinia,
     });
@@ -195,5 +201,23 @@ describe("Libraries/LibraryFolder/LibraryFolderDataset/LibraryDataset.vue", () =
         expect(error.exists()).toBe(true);
         expect(error.text()).toContain(EXPECTED_DATASET_DATA.file_ext);
         expect(error.text()).toContain("Unable to load datatypes");
+    });
+
+    it("shows the current Database/Build and a load error when dbkeys fail to load", async () => {
+        const wrapper = await mountLibraryDatasetWrapper(
+            localVue,
+            router,
+            UNRESTRICTED_DATASET_ID,
+            false,
+            mockDatatypesProvider,
+            mockFailedDbKeyProvider,
+        );
+        await wrapper.find(MODIFY_BUTTON).trigger("click");
+        await flushPromises();
+
+        const error = wrapper.find('[data-test-id="dbkeys-error"]');
+        expect(error.exists()).toBe(true);
+        expect(error.text()).toContain(EXPECTED_DATASET_DATA.genome_build);
+        expect(error.text()).toContain("Unable to load Database/Builds");
     });
 });

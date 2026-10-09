@@ -76,8 +76,12 @@
             @ok="changeDbkeyOfSelected"
             @cancel="resetDbKey">
             <p v-localize>Select a new Database/Build for {{ numSelected }} items:</p>
-            <DbKeyProvider v-slot="{ item: dbkeys, loading: loadingDbKeys }">
+            <DbKeyProvider v-slot="{ item: dbkeys, loading: loadingDbKeys, error: dbKeysError }">
+                <GAlert v-if="dbKeysError" show variant="danger">
+                    Unable to load Database/Builds: {{ dbKeysError }}
+                </GAlert>
                 <SingleItemSelector
+                    v-else
                     collection-name="Database/Builds"
                     :loading="loadingDbKeys"
                     :items="dbkeys"

@@ -69,6 +69,7 @@ const options = ref<Option[]>([]);
 const optionsLoading = ref(false);
 const selectedDbKey = ref<DbKey>();
 const dbKeyList = ref<DbKeyList>([]);
+const dbKeysError = ref<string | null>(null);
 const errorMessage = ref<string>("");
 const currentValue = ref<string[]>([]);
 const preserveOptions = ref<string[]>([]);
@@ -168,7 +169,12 @@ async function fetchExtAndDbKey() {
 
     selectedExtension.value = autoExtension;
 
-    await dbKeyStore.fetchUploadDbKeys();
+    try {
+        await dbKeyStore.fetchUploadDbKeys();
+    } catch (e) {
+        dbKeysError.value = errorMessageAsString(e);
+        return;
+    }
 
     dbKeyList.value = dbKeyStore.uploadDbKeys as DbKeyList;
 
@@ -304,7 +310,9 @@ watch(
 
             You can set database/build and extension type for all imported datasets at once:
             <BFormGroup label="Database/Build">
+                <GAlert v-if="dbKeysError" variant="danger"> Unable to load Database/Builds: {{ dbKeysError }} </GAlert>
                 <SingleItemSelector
+                    v-else
                     :current-item="selectedDbKey"
                     collection-name="DB Keys"
                     :items="dbKeyList"

@@ -98,8 +98,13 @@
                     </DatatypesProvider>
                     <DbKeyProvider
                         v-else-if="row.item.name === fieldTitles.genome_build"
-                        v-slot="{ item: dbkeys, loading: loadingDbKeys }">
+                        v-slot="{ item: dbkeys, loading: loadingDbKeys, error: dbKeysError }">
+                        <span v-if="dbKeysError" data-test-id="dbkeys-error">
+                            {{ dataset.genome_build }}
+                            <span class="text-danger">(Unable to load Database/Builds: {{ dbKeysError }})</span>
+                        </span>
                         <SingleItemSelector
+                            v-else
                             collection-name="Database/Builds"
                             :loading="loadingDbKeys"
                             :items="dbkeys"

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 
-import UploadUtils from "@/components/Upload/utils";
+import { DEFAULT_DBKEY, getUploadDbKeys } from "@/components/Upload/utils";
 
 export const useDbKeyStore = defineStore("dbKeyStore", {
     state: () => ({
@@ -13,12 +13,8 @@ export const useDbKeyStore = defineStore("dbKeyStore", {
     },
     actions: {
         async fetchUploadDbKeys() {
-            try {
-                const data = await UploadUtils.getUploadDbKeys(UploadUtils.DEFAULT_DBKEY);
-                this.uploadDbKeys = data;
-            } catch (err) {
-                console.log("Error: unable to load Database/Builds", err);
-            }
+            const data = await getUploadDbKeys(DEFAULT_DBKEY);
+            this.uploadDbKeys = data;
         },
     },
 });
