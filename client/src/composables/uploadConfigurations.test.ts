@@ -18,9 +18,12 @@ vi.mock("@/components/Upload/utils", async (importOriginal) => ({
     getUploadDatatypes: vi.fn(),
     getUploadDbKeys: vi.fn(),
 }));
-const mockConfig = vi.hoisted(() => ({ defaultGenome: "?" }));
+const mockConfig = vi.hoisted(() => ({ defaultGenome: "?", loaded: true }));
 vi.mock("./config", () => ({
-    useConfig: () => ({ config: ref({ default_genome: mockConfig.defaultGenome }), isConfigLoaded: ref(true) }),
+    useConfig: () => ({
+        config: ref(mockConfig.loaded ? { default_genome: mockConfig.defaultGenome } : null),
+        isConfigLoaded: ref(mockConfig.loaded),
+    }),
 }));
 
 const DBKEYS = [
@@ -37,6 +40,7 @@ describe("upload configuration failures", () => {
         setActivePinia(pinia);
         vi.clearAllMocks();
         mockConfig.defaultGenome = "?";
+        mockConfig.loaded = true;
         vi.mocked(getUploadDatatypes).mockResolvedValue([]);
         vi.mocked(getUploadDbKeys).mockResolvedValue([]);
         const store = useDatatypesMapperStore();
@@ -88,6 +92,15 @@ describe("upload configuration failures", () => {
             wrapper.unmount();
         },
     );
+
+    it("is not ready before the Galaxy configuration loads", async () => {
+        mockConfig.loaded = false;
+        const { wrapper, configurations } = mountConfigurations();
+        await flushPromises();
+        expect(configurations.configOptions.value).toBeNull();
+        expect(configurations.ready.value).toBe(false);
+        wrapper.unmount();
+    });
 
     it("becomes ready when genomes load after an initial failure", async () => {
         vi.mocked(getUploadDbKeys).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue(DBKEYS);
