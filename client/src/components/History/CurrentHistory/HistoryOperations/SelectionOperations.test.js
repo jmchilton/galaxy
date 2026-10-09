@@ -54,7 +54,7 @@ const getHiddenSelection = () => new Map([["FAKE_ID", { visible: false }]]);
 const getDeletedSelection = () => new Map([["FAKE_ID", { deleted: true }]]);
 const getActiveSelection = () => new Map([["FAKE_ID", { deleted: false }]]);
 
-async function mountSelectionOperationsWrapper(config) {
+async function mountSelectionOperationsWrapper(config, props = {}) {
     setupMockConfig(config);
     useDatatypeStore().$reset();
     useDbKeyStore().$reset();
@@ -69,6 +69,7 @@ async function mountSelectionOperationsWrapper(config) {
             isQuerySelection: false,
             totalItemsInQuery: 5,
             isMultiViewItem: false,
+            ...props,
         },
         global: localVue,
         pinia,
@@ -259,6 +260,30 @@ describe("History Selection Operations", () => {
                 await wrapper.setProps({ totalItemsInQuery: 105 });
                 await wrapper.setProps({ isQuerySelection: true });
                 expect(wrapper.find(buildListOption).exists()).toBe(true);
+            });
+        });
+
+        describe("Loading datatypes and Database/Builds", () => {
+            beforeEach(() => {
+                vi.mocked(getUploadDatatypes).mockClear();
+                vi.mocked(getUploadDbKeys).mockClear();
+            });
+
+            it("waits until items are selected", async () => {
+                wrapper = await mountSelectionOperationsWrapper(TASKS_CONFIG, { selectionSize: 0 });
+                expect(getUploadDatatypes).not.toHaveBeenCalled();
+                expect(getUploadDbKeys).not.toHaveBeenCalled();
+
+                await wrapper.setProps({ selectionSize: 1 });
+                await flushPromises();
+                expect(getUploadDatatypes).toHaveBeenCalledTimes(1);
+                expect(getUploadDbKeys).toHaveBeenCalledTimes(1);
+            });
+
+            it("loads nothing in a multi-view history panel", async () => {
+                wrapper = await mountSelectionOperationsWrapper(TASKS_CONFIG, { isMultiViewItem: true });
+                expect(getUploadDatatypes).not.toHaveBeenCalled();
+                expect(getUploadDbKeys).not.toHaveBeenCalled();
             });
         });
 

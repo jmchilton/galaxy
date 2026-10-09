@@ -221,13 +221,15 @@ export default {
         isMultiViewItem: { type: Boolean, required: true },
         totalItemsInQuery: { type: Number, default: 0 },
     },
-    setup() {
+    setup(props) {
         const { config, isConfigLoaded } = useConfig(true);
         const { confirm } = useConfirmDialog();
         const objectStoreStore = useObjectStoreStore();
         const { isAnonymous } = useUserStore();
-        const { datatypes, loading: loadingDatatypes, error: datatypesError } = useUploadDatatypes();
-        const { dbKeys, loading: loadingDbKeys, error: dbKeysError } = useUploadDbKeys();
+        // The modals render only with a selection (see the root `v-if`).
+        const enabled = () => props.selectionSize > 0 && !props.isMultiViewItem;
+        const { datatypes, loading: loadingDatatypes, error: datatypesError } = useUploadDatatypes({ enabled });
+        const { dbKeys, loading: loadingDbKeys, error: dbKeysError } = useUploadDbKeys({ enabled });
 
         // Modals for selection operations
         const showChangeDbKeyModal = ref(false);
