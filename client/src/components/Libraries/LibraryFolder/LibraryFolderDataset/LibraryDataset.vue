@@ -81,9 +81,7 @@
                         v-if="row.item.name === fieldTitles.name"
                         v-model="modifiedDataset.name"
                         :value="row.item.value" />
-                    <DatatypesProvider
-                        v-else-if="row.item.name === fieldTitles.file_ext"
-                        v-slot="{ item: datatypes, loading: loadingDatatypes, error: datatypesError }">
+                    <template v-else-if="row.item.name === fieldTitles.file_ext">
                         <span v-if="datatypesError" data-test-id="datatypes-error">
                             {{ dataset.file_ext }}
                             <span class="text-danger">(Unable to load datatypes: {{ datatypesError }})</span>
@@ -93,12 +91,10 @@
                             collection-name="Data Types"
                             :loading="loadingDatatypes"
                             :items="datatypes"
-                            :current-item="datatypes?.find((datatype) => datatype.id === dataset.file_ext)"
+                            :current-item="datatypes.find((datatype) => datatype.id === dataset.file_ext)"
                             @update:selected-item="onSelectedDatatype" />
-                    </DatatypesProvider>
-                    <DbKeyProvider
-                        v-else-if="row.item.name === fieldTitles.genome_build"
-                        v-slot="{ item: dbkeys, loading: loadingDbKeys, error: dbKeysError }">
+                    </template>
+                    <template v-else-if="row.item.name === fieldTitles.genome_build">
                         <span v-if="dbKeysError" data-test-id="dbkeys-error">
                             {{ dataset.genome_build }}
                             <span class="text-danger">(Unable to load Database/Builds: {{ dbKeysError }})</span>
@@ -107,10 +103,10 @@
                             v-else
                             collection-name="Database/Builds"
                             :loading="loadingDbKeys"
-                            :items="dbkeys"
-                            :current-item="dbkeys?.find((dbkey) => dbkey.id === dataset.genome_build)"
+                            :items="dbKeys"
+                            :current-item="dbKeys.find((dbKey) => dbKey.id === dataset.genome_build)"
                             @update:selected-item="onSelectedDbKey" />
-                    </DbKeyProvider>
+                    </template>
                     <BFormInput
                         v-else-if="row.item.name === fieldTitles.message"
                         v-model="modifiedDataset.message"
@@ -151,13 +147,15 @@ import { faBook, faDownload, faPencilAlt, faRedo, faTimes, faUsers } from "@fort
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BFormInput } from "bootstrap-vue";
 import { mapState } from "pinia";
+import { ref } from "vue";
 
 import { buildFields } from "@/components/Libraries/library-utils";
 import { fieldTitles } from "@/components/Libraries/LibraryFolder/LibraryFolderDataset/constants";
 import { Services } from "@/components/Libraries/LibraryFolder/services";
 import download from "@/components/Libraries/LibraryFolder/TopToolbar/download";
 import mod_import_dataset from "@/components/Libraries/LibraryFolder/TopToolbar/import-to-history/import-dataset";
-import { DatatypesProvider, DbKeyProvider } from "@/components/providers";
+import { useUploadDatatypes } from "@/composables/datatypes";
+import { useUploadDbKeys } from "@/composables/dbKeys";
 import { Toast } from "@/composables/toast";
 import { useUserStore } from "@/stores/userStore";
 
@@ -175,8 +173,6 @@ export default {
         CopyToClipboard,
         FontAwesomeIcon,
         GTable,
-        DbKeyProvider,
-        DatatypesProvider,
         SingleItemSelector,
     },
     props: {
@@ -188,6 +184,16 @@ export default {
             type: String,
             required: true,
         },
+    },
+    setup() {
+        const isEditMode = ref(false);
+        const {
+            datatypes,
+            loading: loadingDatatypes,
+            error: datatypesError,
+        } = useUploadDatatypes({ enabled: isEditMode });
+        const { dbKeys, loading: loadingDbKeys, error: dbKeysError } = useUploadDbKeys({ enabled: isEditMode });
+        return { isEditMode, datatypes, loadingDatatypes, datatypesError, dbKeys, loadingDbKeys, dbKeysError };
     },
     data() {
         return {
@@ -203,7 +209,6 @@ export default {
             currentRouteName: window.location.href,
             datasetDownloadFormat: "uncompressed",
             download: download,
-            isEditMode: false,
             fieldTitles: fieldTitles,
             table_items: [],
             fields: [{ key: "name" }, { key: "value" }],
