@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 
 import { getUploadDatatypes } from "@/components/Upload/utils";
-import { useDatatypeStore } from "@/stores/datatypeStore";
 
 import { useUploadDatatypes } from "./datatypes";
 
@@ -89,15 +88,23 @@ describe("useUploadDatatypes", () => {
         second.wrapper.unmount();
     });
 
-    it("clears an error recorded while a load was pending once it succeeds", async () => {
-        let resolveLoad: (value: typeof DATATYPES) => void;
-        vi.mocked(getUploadDatatypes).mockReturnValue(new Promise((resolve) => (resolveLoad = resolve)));
-        const { wrapper, result } = mountUploadDatatypes();
-        useDatatypeStore().uploadDatatypesError = "unavailable";
-        resolveLoad!(DATATYPES);
+    it("clears the error from an older failed load once a newer load succeeds", async () => {
+        let rejectOlder: (error: Error) => void;
+        let resolveNewer: (value: typeof DATATYPES) => void;
+        vi.mocked(getUploadDatatypes)
+            .mockReturnValueOnce(new Promise((_resolve, reject) => (rejectOlder = reject)))
+            .mockReturnValueOnce(new Promise((resolve) => (resolveNewer = resolve)));
+        const older = mountUploadDatatypes();
+        const newer = mountUploadDatatypes();
+        rejectOlder!(new Error("unavailable"));
         await flushPromises();
-        expect(result.error.value).toBeNull();
-        expect(result.loading.value).toBe(false);
-        wrapper.unmount();
+        expect(newer.result.error.value).toBe("unavailable");
+        resolveNewer!(DATATYPES);
+        await flushPromises();
+        expect(newer.result.error.value).toBeNull();
+        expect(newer.result.loading.value).toBe(false);
+        expect(newer.result.datatypes.value.map((item) => item.id)).toEqual(["auto", "bed"]);
+        older.wrapper.unmount();
+        newer.wrapper.unmount();
     });
 });
