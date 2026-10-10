@@ -468,6 +468,24 @@ test_data:
         tool_steps = self.assert_steps_of_type(workflow, "tool", expected_len=1)
         assert tool_steps[0]["label"] == "my cat step", tool_steps[0]
 
+    def test_extract_rename_input(self):
+        """Rename a workflow input from its card and confirm the downloaded workflow uses the new label."""
+        history_id = self.current_history_id()
+        cat1_job_id = self.setup_cat1_history(history_id)
+        job_inputs = self.dataset_populator.get_job_details(cat1_job_id, full=True).json()["inputs"]
+        input_dataset_id = next(iter(job_inputs.values()))["id"]
+        input_hid = self.dataset_populator.get_history_dataset_details(history_id, dataset_id=input_dataset_id)["hid"]
+
+        self.navigate_to_workflow_extraction()
+        self.extract_workflow_rename_input(input_hid, "renamed input")
+
+        workflow_name = "Selenium Rename Input"
+        self.extract_workflow_name_and_submit(workflow_name)
+
+        workflow = self.get_workflow_by_name(workflow_name)
+        input_labels = [step["label"] for step in self.assert_steps_of_type(workflow, "data_input", expected_len=2)]
+        assert "renamed input" in input_labels, input_labels
+
     @skip_without_tool("cat1")
     @selenium_test
     @managed_history
