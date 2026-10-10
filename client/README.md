@@ -309,6 +309,23 @@ beforeEach(() => {
 
 See the [MSW documentation](https://mswjs.io/docs/) for advanced usage patterns.
 
+#### Recorded API Responses
+
+Prefer responses recorded from a real Galaxy over hand-written payloads. They live in
+`src/api/__fixtures__`, named by OpenAPI path, method and scenario, and `apiFixture`
+returns a copy typed from the schema:
+
+```typescript
+import { apiFixture } from "@/api/__fixtures__";
+
+const history = apiFixture("/api/histories/{history_id}", "get", "summary_extended");
+
+server.use(http.get("/api/histories/{history_id}", ({ response }) => response(200).json(history)));
+```
+
+Override only the fields a test is about (`{ ...history, purged: true }`) rather than writing
+a new payload. Pass `apiFixture` string literals: a unit test fails on fixtures nothing loads.
+
 #### Mount vs ShallowMount
 
 Vue Test Utils provides two mounting functions: `mount` and `shallowMount`. In Galaxy, **prefer `shallowMount`** for client unit tests.
