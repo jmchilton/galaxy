@@ -1,11 +1,12 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getFakeHistorySummaryExtended, getFakeRegisteredUser } from "@tests/test-data";
+import { getFakeRegisteredUser } from "@tests/test-data";
 import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HistorySummaryExtended } from "@/api";
+import { apiFixture } from "@/api/__fixtures__";
 import { useServerMock } from "@/api/client/__mocks__";
 import type * as HistoryStoreModule from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
@@ -72,6 +73,13 @@ beforeEach(() => {
     mockGetHistoryLoadError.mockReturnValue(null);
     vi.spyOn(window, "open").mockImplementation(mockWindowOpen);
 });
+
+/** The history Galaxy returns for the store's request, with fields each case controls. */
+function serverHistory(fields: Partial<HistorySummaryExtended>): HistorySummaryExtended {
+    // The store requests view=summary with extra keys, so the response is HistorySummaryExtended.
+    const history = apiFixture("/api/histories/{history_id}", "get", "summary_extended") as HistorySummaryExtended;
+    return { ...history, ...fields };
+}
 
 function mountHistoryLink(history: HistorySummaryExtended, filters?: Record<string, string | boolean>) {
     server.use(http.get("/api/histories/{history_id}", ({ response }) => response(200).json(history)));
@@ -205,7 +213,7 @@ const actionCases = [
 
 describe("SwitchToHistoryLink", () => {
     it("loads the history information from the store", async () => {
-        const history = getFakeHistorySummaryExtended({ id: "history-id-to-load", name: "History Name" });
+        const history = serverHistory({ id: "history-id-to-load", name: "History Name" });
         const wrapper = mountHistoryLink(history);
 
         expect(wrapper.find(selectors.historyLink).exists()).toBe(false);
@@ -219,7 +227,7 @@ describe("SwitchToHistoryLink", () => {
     });
 
     it.each(actionCases)("$name; Ctrl-click only opens a new tab", async (scenario) => {
-        const history = getFakeHistorySummaryExtended({
+        const history = serverHistory({
             id: scenario.id,
             name: scenario.historyName,
             user_id: scenario.user_id ?? "user_id",

@@ -1,0 +1,22 @@
+{
+  "model_class": "History",
+  "id": "adb5f5c93f827949",
+  "name": "Client Fixture History",
+  "deleted": false,
+  "purged": false,
+  "archived": false,
+  "url": "/api/histories/adb5f5c93f827949",
+  "published": false,
+  "count": 1,
+  "annotation": null,
+  "tags": [],
+  "update_time": "2026-10-10T15:58:22.213000",
+  "preferred_object_store_id": null,
+  "size": 6,
+  "user_id": "adb5f5c93f827949",
+  "contents_active": {
+    "active": 1,
+    "hidden": 0,
+    "deleted": 0
+  }
+}
