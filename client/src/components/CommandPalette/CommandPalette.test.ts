@@ -1,12 +1,12 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getFakeAnonymousUser } from "@tests/test-data";
+import { composeStories } from "@storybook/vue3-vite";
 import { getLocalVue, nth } from "@tests/vitest/helpers";
+import { type StoryOf, useStoryMount } from "@tests/vitest/stories";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createMemoryHistory, createRouter, type Router } from "vue-router";
 
-import { useServerMock } from "@/api/client/__mocks__";
 import { resetMockConfig, setMockConfig } from "@/composables/__mocks__/config";
 import { Toast } from "@/composables/toast";
 import { useCommandPalette } from "@/composables/useCommandPalette";
@@ -14,9 +14,9 @@ import { useRecentPaletteItems } from "@/composables/useRecentPaletteItems";
 import { useHistoryStore } from "@/stores/historyStore";
 import { usePageStore } from "@/stores/pageStore";
 import { useToolStore } from "@/stores/toolStore";
-import { useUserStore } from "@/stores/userStore";
 import { useVisualizationStore } from "@/stores/visualizationStore";
 
+import * as CommandPaletteStories from "./CommandPalette.stories";
 import { datasetsProvider } from "./providers/datasets";
 import { PaletteFetchError } from "./providers/errors";
 import { historiesProvider } from "./providers/histories";
@@ -36,13 +36,16 @@ vi.mock("@/composables/toast");
 
 const localVue = getLocalVue(true);
 
-const { server, http } = useServerMock();
+const stories = composeStories(CommandPaletteStories);
+const mountStory = useStoryMount();
 
 const DEBOUNCE_WAIT = 250;
 /** The debounce wait plus the pause before root searches reach the backend */
 const BACKEND_WAIT = DEBOUNCE_WAIT + PALETTE_LIMITS.backendSettle;
 /** The palette only opens once the configuration store holds a configuration */
 const CONFIG_LOADED = { configurationStore: { config: {} } };
+/** Store actions are stubbed: the providers' stores are filled by hand where a test needs rows */
+const PALETTE_PINIA = { stubActions: true, initialState: CONFIG_LOADED };
 
 async function settle(wait = DEBOUNCE_WAIT) {
     await new Promise((resolve) => setTimeout(resolve, wait));
@@ -112,27 +115,21 @@ describe("CommandPalette", () => {
     let wrapper: VueWrapper;
     let router: Router;
 
-    beforeEach(async () => {
-        server.use(
-            http.get("/api/unprivileged_tools", ({ response }) => {
-                return response(200).json([]);
-            }),
-        );
-        router = createRouter({ history: createMemoryHistory(), routes: [] });
-        wrapper = mount(MountTarget as object, {
-            localVue,
-            router,
-            pinia: createTestingPinia({ createSpy: vi.fn, stubActions: true, initialState: CONFIG_LOADED }),
-        });
-        useCommandPalette().openPalette();
+    /** Mounts a story, which opens the palette, and waits for its first search */
+    async function openStory(story: StoryOf<typeof stories>) {
+        wrapper = mountStory(story, { router, pinia: PALETTE_PINIA });
         await settle();
+    }
+
+    beforeEach(async () => {
+        router = createRouter({ history: createMemoryHistory(), routes: [] });
+        await openStory(stories.Open);
     });
 
     afterEach(() => {
         useCommandPalette().closePalette();
         // the MRU list is a module level singleton, shared by every test here
         useRecentPaletteItems().clearRecentItems();
-        wrapper?.unmount();
     });
 
     function input() {
@@ -242,9 +239,10 @@ describe("CommandPalette", () => {
         return wrapper.find("[data-description='palette section login-prompt']");
     }
 
-    /** Turns the current user into a visitor without an account */
-    function browseAnonymously() {
-        useUserStore().currentUser = getFakeAnonymousUser();
+    /** Reopens the palette for a visitor without an account, in place of the signed-in user */
+    async function browseAnonymously() {
+        wrapper.unmount();
+        await openStory(stories.AnonymousVisitor);
     }
 
     it("shows actions and navigation sections for an empty query", () => {
@@ -340,8 +338,6 @@ describe("CommandPalette", () => {
     });
 
     it("opens the picker on plain enter for an action without a default", async () => {
-        useUserStore().currentUser = { id: "u1", email: "user@galaxy.org", username: "user" } as never;
-
         await type("> run workflow");
         expect(nth(wrapper.findAll("[role='option']"), 0).text()).toContain("Run workflow");
 
@@ -351,8 +347,6 @@ describe("CommandPalette", () => {
     });
 
     it("prompts for a free text argument instead of reporting no results", async () => {
-        useUserStore().currentUser = { id: "u1", email: "user@galaxy.org", username: "user" } as never;
-
         await type("> create new history");
         await press("Enter", { shiftKey: true });
         expect(badge().text()).toContain("Create new history");
@@ -370,8 +364,6 @@ describe("CommandPalette", () => {
     });
 
     it("keeps prompting for a free text argument that is only whitespace", async () => {
-        useUserStore().currentUser = { id: "u1", email: "user@galaxy.org", username: "user" } as never;
-
         await type("> create new report");
         await press("Enter", { shiftKey: true });
         expect(badge().text()).toContain("Create new report");
@@ -1091,7 +1083,7 @@ describe("CommandPalette", () => {
     });
 
     it("offers a login when an anonymous visitor types a scope that needs one", async () => {
-        browseAnonymously();
+        await browseAnonymously();
         const push = vi.spyOn(router, "push").mockResolvedValue(undefined as never);
 
         await type("w:rna");
@@ -1106,7 +1098,7 @@ describe("CommandPalette", () => {
     });
 
     it("never asks the login-only providers for an anonymous visitor", async () => {
-        browseAnonymously();
+        await browseAnonymously();
         const stalled = [datasetsProvider, visualizationsProvider, invocationsProvider].map(stallSearch);
         try {
             await type("workflows", BACKEND_WAIT);
@@ -1124,7 +1116,7 @@ describe("CommandPalette", () => {
     });
 
     it("says nothing about a scope this instance does not offer at all", async () => {
-        browseAnonymously();
+        await browseAnonymously();
 
         // interactivetools_enable is off in the mocked config, so an account
         // would not unlock the scope either
@@ -1134,7 +1126,7 @@ describe("CommandPalette", () => {
     });
 
     it("hides the register row where the instance creates no local accounts", async () => {
-        browseAnonymously();
+        await browseAnonymously();
         setMockConfig({ allow_local_account_creation: false });
         try {
             await type("h:");
@@ -1146,7 +1138,7 @@ describe("CommandPalette", () => {
     });
 
     it("registers through the single OIDC provider where local accounts are off", async () => {
-        browseAnonymously();
+        await browseAnonymously();
         setMockConfig({
             allow_local_account_creation: false,
             oidc: { okta: { end_user_registration_endpoint: "https://okta.example.org/register" } },
@@ -1167,7 +1159,7 @@ describe("CommandPalette", () => {
     });
 
     it("lists the scopes an account would add behind a lock in help mode", async () => {
-        browseAnonymously();
+        await browseAnonymously();
 
         await type("?");
         // what an anonymous visitor may search is listed as it always is
@@ -1192,13 +1184,7 @@ describe("CommandPalette", () => {
         setMockConfig({ command_palette_disabled_providers: ["workflows"] });
         const search = vi.spyOn(workflowsProvider, "search");
         try {
-            wrapper = mount(MountTarget as object, {
-                localVue,
-                router,
-                pinia: createTestingPinia({ createSpy: vi.fn, stubActions: true, initialState: CONFIG_LOADED }),
-            });
-            useCommandPalette().openPalette();
-            await settle();
+            await openStory(stories.Open);
 
             await type("workflow");
             expect(sectionIds()).not.toContain("palette section workflows");
@@ -1235,7 +1221,9 @@ describe("CommandPalette", () => {
 
         const searches = countEmptyQuerySearches(navigationProvider);
         try {
+            // the story would open, and so hydrate, before fetchTools could be held
             wrapper = mount(MountTarget as object, { localVue, router, pinia });
+            onTestFinished(() => wrapper.unmount());
             useCommandPalette().openPalette();
             await settle();
 
@@ -1401,7 +1389,6 @@ describe("CommandPalette", () => {
     });
 
     it("surfaces a failing action instead of dropping it", async () => {
-        useUserStore().currentUser = { id: "u1", email: "user@galaxy.org", username: "user" } as never;
         vi.mocked(useHistoryStore().createNewHistory).mockRejectedValue(new Error("history quota exceeded"));
 
         await type("> new history");
@@ -1417,7 +1404,6 @@ describe("CommandPalette", () => {
     });
 
     it("reports a rejected Set as current secondary action", async () => {
-        useUserStore().currentUser = { id: "u1", email: "user@galaxy.org", username: "user" } as never;
         const store = useHistoryStore();
         vi.mocked(store.setCurrentHistory).mockRejectedValue(new Error("history is unavailable"));
         store.storedHistories = {
@@ -1437,7 +1423,6 @@ describe("CommandPalette", () => {
     });
 
     it("reports a synchronous action failure", async () => {
-        useUserStore().currentUser = { id: "u1", email: "user@galaxy.org", username: "user" } as never;
         vi.mocked(useHistoryStore().createNewHistory).mockImplementation(() => {
             throw new Error("cannot start creation");
         });
