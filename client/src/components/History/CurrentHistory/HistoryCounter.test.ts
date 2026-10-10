@@ -184,7 +184,7 @@ describe("HistoryCounter — refresh button", () => {
     it("names count controls with their actions and current counts", async () => {
         setEnableSse(false);
         const history: HistorySummaryExtended = {
-            ...getFakeHistorySummaryExtended(),
+            ...getFakeHistorySummaryExtended({ size: 0 }),
             annotation: "",
             count: 6,
             model_class: "History",
