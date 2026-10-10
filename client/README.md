@@ -325,6 +325,22 @@ server.use(http.get("/api/histories/{history_id}", ({ response }) => response(20
 
 Override only the fields a test is about (`{ ...history, purged: true }`) rather than writing
 a new payload. Pass `apiFixture` string literals: a unit test fails on fixtures nothing loads.
+Factories in `@tests/test-data`, such as `getFakeHistorySummaryExtended`, build on these too.
+
+Fixtures are written by `ClientFixtures.capture` calls in
+`test/integration/test_generate_client_fixtures.py`. Each test class there boots its own
+Galaxy, so a fixture that needs a non-default configuration (quotas, say) gets a class of
+its own. To add or refresh fixtures, edit the captures and run:
+
+```bash
+make update-client-api-fixtures
+```
+
+This rewrites only fixtures that changed meaningfully (ids, datetimes and the server URL
+may differ). `GALAXY_TEST_CLIENT_FIXTURES=rebuild make update-client-api-fixtures` rewrites
+all of them. Integration CI runs the file with `GALAXY_TEST_CLIENT_FIXTURES=check`, which
+fails on any meaningful change, and a unit test fails on committed fixtures no capture
+writes. With the variable unset, captures only run their checks.
 
 #### Mount vs ShallowMount
 

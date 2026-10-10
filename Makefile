@@ -177,6 +177,9 @@ update-client-api-schema: client-node-deps build-api-schema ## Update client API
 	$(IN_VENV) cd client && pnpm openapi-typescript ../_shed_schema.yaml -o ../lib/tool_shed/webapp/frontend/src/schema/schema.ts && pnpm prettier --write ../lib/tool_shed/webapp/frontend/src/schema/schema.ts
 	$(MAKE) remove-api-schema
 
+update-client-api-fixtures: ## Regenerate recorded API responses for client tests (GALAXY_TEST_CLIENT_FIXTURES=rebuild rewrites all)
+	GALAXY_TEST_CLIENT_FIXTURES=$${GALAXY_TEST_CLIENT_FIXTURES:-update} ./run_tests.sh -integration test/integration/test_generate_client_fixtures.py
+
 lint-api-schema: build-api-schema
 	$(IN_VENV) npx --yes @redocly/cli lint _schema.yaml
 	$(IN_VENV) npx --yes @redocly/cli lint _shed_schema.yaml

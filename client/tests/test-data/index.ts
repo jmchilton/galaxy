@@ -1,4 +1,5 @@
 import type { AnonymousUser, HistorySummary, HistorySummaryExtended, RegisteredUser } from "@/api";
+import { apiFixture } from "@/api/__fixtures__";
 
 export function getFakeRegisteredUser(data: Partial<RegisteredUser> = {}): RegisteredUser {
     return {
@@ -45,12 +46,9 @@ export function getFakeHistorySummary(data: Partial<HistorySummary> = {}): Histo
     };
 }
 
+/** A history recorded from Galaxy: one 6 byte dataset, as the history store requests it. */
 export function getFakeHistorySummaryExtended(data: Partial<HistorySummaryExtended> = {}): HistorySummaryExtended {
-    return {
-        ...getFakeHistorySummary(),
-        user_id: "fake_user_id",
-        size: 0,
-        contents_active: { active: 0, deleted: 0, hidden: 0 },
-        ...data,
-    };
+    // The store requests view=summary with these extra keys, so the response is HistorySummaryExtended.
+    const history = apiFixture("/api/histories/{history_id}", "get", "summary_extended") as HistorySummaryExtended;
+    return { ...history, ...data };
 }
