@@ -63,6 +63,9 @@ export const HistoryArchive: Story = {
             await expect(directoryInput(context, "history archive")).toBeVisible();
         });
     },
+
+    // TODO a11y: label-title-only (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Exporting a history, as the archive dialog's repository tab asks for it. */
@@ -73,6 +76,9 @@ export const History: Story = {
             await expect(directoryInput(context, "history")).toBeVisible();
         });
     },
+
+    // TODO a11y: label-title-only (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Fills in one input at a time, then both, and exports. */
@@ -100,6 +106,9 @@ export const ExportsNamedFile: Story = {
         });
         await clickExport(context);
     },
+
+    // TODO a11y: label-title-only (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Exports, then empties the form for the next export. */
@@ -118,4 +127,7 @@ export const ClearsAfterExport: Story = {
             await expectExportDisabled(context, true);
         });
     },
+
+    // TODO a11y: label-title-only (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

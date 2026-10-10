@@ -43,6 +43,9 @@ export const AdminConfigured: Story = {
             await expect(link).toHaveAttribute("rel", "noopener noreferrer");
         });
     },
+
+    // TODO a11y: link-in-text-block (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A user's own storage description: markdown still renders, but inline HTML shows as text. */

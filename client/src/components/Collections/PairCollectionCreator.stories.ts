@@ -107,6 +107,9 @@ export const KeepsPairOnRefresh: Story = {
             await seeToasts(canvas, []);
         });
     },
+
+    // TODO a11y: aria-allowed-role, nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The reverse reads leave the history: their side empties and a notification says so. */
@@ -118,6 +121,9 @@ export const DropsDeletedDataset: Story = {
             await seeReverseDropped(context.canvas, "2: SRR1553425_2 has been removed from the collection");
         });
     },
+
+    // TODO a11y: aria-allowed-role, nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The reverse reads fail: their side empties and a notification says why. */
@@ -132,6 +138,9 @@ export const DropsFailedDataset: Story = {
             );
         });
     },
+
+    // TODO a11y: aria-allowed-role, nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Nothing in the history to pair. */

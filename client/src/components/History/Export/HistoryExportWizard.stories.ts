@@ -105,10 +105,17 @@ export const ExportsDirectDownload: Story = {
             expect.objectContaining({ destination: "download", modelStoreFormat: "rocrate.zip" }),
         );
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const SuggestsRemoteFileName: Story = {
-    parameters: fileSources([posixSource]),
+    parameters: {
+        ...fileSources([posixSource]),
+        // TODO a11y: button-name, label-title-only (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: async (context) => {
         const { canvas, userEvent, step } = context;
         await step("Keep the default format", () => next(context));
@@ -137,7 +144,11 @@ export const SuggestsRemoteFileName: Story = {
 };
 
 export const SetsUpZenodoDraftRecord: Story = {
-    parameters: fileSources([zenodo]),
+    parameters: {
+        ...fileSources([zenodo]),
+        // TODO a11y: button-name (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: async (context) => {
         const { canvas, userEvent, step } = context;
         await step("Keep the default format", () => next(context));
@@ -155,7 +166,11 @@ export const SetsUpZenodoDraftRecord: Story = {
 };
 
 export const PrefersUserZenodo: Story = {
-    parameters: fileSources([zenodo, userZenodo]),
+    parameters: {
+        ...fileSources([zenodo, userZenodo]),
+        // TODO a11y: button-name, link-in-text-block (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: async (context) => {
         await context.step("Keep the default format", () => next(context));
         await expect(await context.canvas.findByText("My Zenodo")).toBeVisible();

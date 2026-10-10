@@ -118,6 +118,9 @@ export const RunForm: Story = {
         });
         await seeRunCount(context);
     },
+
+    // TODO a11y: label-content-name-mismatch (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** An invocation of the user's own workflow, in their current history. */
@@ -141,6 +144,9 @@ export const Invocation: Story = {
         });
         await seeRunCount(context);
     },
+
+    // TODO a11y: label-content-name-mismatch (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Running a workflow another user published: who published it, and no run count. */

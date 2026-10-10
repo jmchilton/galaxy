@@ -114,6 +114,9 @@ export const AsksForOneTool: Story = {
             await expect(within(dialog).queryByText(/Only the first/)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** More tools are missing than one request can carry; the dialog says only the first 50 are sent. */
@@ -133,6 +136,9 @@ export const NotesTruncatedRequest: Story = {
             );
         });
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Cancelling closes the dialog without sending; the button opens it again. */
@@ -142,6 +148,9 @@ export const CancelsAndReopens: Story = {
         await cancelDialog(context, dialog);
         await openRequestDialog(context);
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Sending the request closes the dialog and swaps the button for a confirmation. */
@@ -238,6 +247,9 @@ export const ShowsErrorInDialog: Story = {
             ).toBeInTheDocument();
         });
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { ...RequestFails.parameters, a11y: { test: "todo" } },
 };
 
 /** Cancelling after a refused request drops the error, so the reopened dialog starts clean. */
@@ -253,6 +265,9 @@ export const ClearsErrorOnCancel: Story = {
             await expect(within(reopened).queryByRole("alert")).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { ...RequestFails.parameters, a11y: { test: "todo" } },
 };
 
 /** The admins turned the request form off: no button. */

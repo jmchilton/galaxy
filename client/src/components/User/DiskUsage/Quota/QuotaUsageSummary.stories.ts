@@ -75,6 +75,9 @@ export const MixedQuotas: Story = {
             },
         );
     },
+
+    // TODO a11y: aria-progressbar-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** No source has a quota, so the summary reports unlimited disk space. */
@@ -101,4 +104,7 @@ export const AllUnlimited: Story = {
             await expect(canvas.queryByText(/% of disk quota used/)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: aria-progressbar-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

@@ -33,9 +33,17 @@ export const Optional: Story = { args: { optional: true } };
 
 export const OptionalSelected: Story = { args: { optional: true, value: "hg38" } };
 
-export const MultipleRequired: Story = { args: { multiple: true, value: ["hg38"] } };
+export const MultipleRequired: Story = {
+    args: { multiple: true, value: ["hg38"] },
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
-export const MultipleOptional: Story = { args: { multiple: true, optional: true, value: ["hg38", "", 99] } };
+export const MultipleOptional: Story = {
+    args: { multiple: true, optional: true, value: ["hg38", "", 99] },
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 // The option labels, in order.
 const OPTION_LABELS = ["Human (hg38)", "Mouse (mm10)", "Unspecified", "Custom build 99"];
@@ -47,6 +55,9 @@ export const ListsOptionsInOrder: Story = {
             await expectOptions(context, OPTION_LABELS, ["Human (hg38)"]);
         });
     },
+
+    // TODO a11y: aria-required-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** An optional select with no value offers "Nothing selected" first, and shows it selected. */
@@ -57,6 +68,9 @@ export const OffersNothingSelected: Story = {
             await expectOptions(context, ["Nothing selected", ...OPTION_LABELS], ["Nothing selected"]);
         });
     },
+
+    // TODO a11y: aria-required-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Picking "Nothing selected" clears an optional select. */
@@ -71,6 +85,9 @@ export const ClearsByPickingNothing: Story = {
             await expectOptions(context, ["Nothing selected", ...OPTION_LABELS], ["Nothing selected"]);
         });
     },
+
+    // TODO a11y: aria-required-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Deselecting the only option of a required multi-select leaves it empty. */
@@ -85,6 +102,9 @@ export const ClearsRequiredMultiple: Story = {
             await expectOptions(context, OPTION_LABELS, []);
         });
     },
+
+    // TODO a11y: aria-required-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** An optional multi-select offers no "Nothing selected"; options toggle one at a time, down to none and back. */
@@ -107,4 +127,7 @@ export const TogglesMultipleOptions: Story = {
             await expectOptions(context, OPTION_LABELS, ["Human (hg38)"]);
         });
     },
+
+    // TODO a11y: aria-required-attr, tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

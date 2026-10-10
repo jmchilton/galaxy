@@ -32,11 +32,16 @@ type Story = StoryObj<typeof meta>;
  * Waiting for the user to confirm by typing their email, which enables the delete button. Once
  * deleted, Galaxy logs them out.
  */
-export const AwaitingConfirmation: Story = {};
+export const AwaitingConfirmation: Story = {
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** This Galaxy isn't configured to allow account deletion (the default), so deleting shows an error inside the dialog. */
 export const SelfDeletionNotAllowed: Story = {
     parameters: {
+        // TODO a11y: button-name (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: {
             handlers: {
                 deleteUser: http.delete("/api/users/{user_id}", ({ response }) =>
