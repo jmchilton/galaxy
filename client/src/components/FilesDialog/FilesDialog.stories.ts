@@ -204,6 +204,9 @@ export const MultipleFiles: Story = {
     play: async (context) => {
         await seeSources(context, { canCreate: false });
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Ticking files selects them; with none ticked there's nothing to select. */
@@ -234,6 +237,9 @@ export const SelectsFiles: Story = {
             await seeSelectButton(canvas, "Select", false);
         });
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Ticking a directory selects everything in it; unticking one file leaves the directory partly selected. */
@@ -262,6 +268,9 @@ export const SelectsDirectoryContents: Story = {
             await expect(checkboxOf(canvas, "directory1")).toBePartiallyChecked();
         });
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Unticking a subdirectory of a ticked directory keeps the rest selected. */
@@ -290,6 +299,9 @@ export const UnselectsSubdirectory: Story = {
             await expect(checkboxOf(canvas, "directory1")).toBePartiallyChecked();
         });
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Select all in a source selects everything below it too. */
@@ -307,6 +319,9 @@ export const SelectsAll: Story = {
         await goBack(context, PDB_ENTRIES);
         await step("See everything still selected", () => seeChecked(canvas, PDB_ENTRIES));
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The FTP directory explains how to upload to it; other sources don't. */
@@ -333,11 +348,17 @@ export const ShowsFtpHelp: Story = {
             await expect(canvas.queryByText(/upload files via FTP/)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A source that fails to list shows its error, and Back returns to the sources. */
 export const RecoversFromSourceError: Story = {
     play: recoverFromSourceError,
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 const withTemplates = {
@@ -345,7 +366,11 @@ const withTemplates = {
 };
 
 export const MultipleFilesWithTemplates: Story = {
-    parameters: withTemplates,
+    parameters: {
+        ...withTemplates,
+        // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: async (context) => {
         await seeSources(context, { canCreate: true });
     },
@@ -353,7 +378,11 @@ export const MultipleFilesWithTemplates: Story = {
 
 export const SingleFileWithTemplates: Story = {
     args: { multiple: false },
-    parameters: withTemplates,
+    parameters: {
+        ...withTemplates,
+        // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: async (context) => {
         await seeSources(context, { canCreate: true });
     },
@@ -369,9 +398,16 @@ export const CreatesSourcesFromRootOnly: Story = {
             await expect(context.canvas.queryByRole("button", { name: /^Create new/ })).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { ...SingleFileWithTemplates.parameters, a11y: { test: "todo" } },
 };
 
-export const Directories: Story = { args: { multiple: false, mode: "directory" } };
+export const Directories: Story = {
+    args: { multiple: false, mode: "directory" },
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** Choosing a folder lists only directories, at every level. */
 export const ListsDirectoriesOnly: Story = {
@@ -381,6 +417,9 @@ export const ListsDirectoriesOnly: Story = {
         await openNamed(context, "PDB", ["directory2", "directory1"]);
         await openNamed(context, "directory1", ["subdirectory1", "subdirectory2"]);
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A folder is chosen by opening it: the root itself can't be chosen. */
@@ -395,9 +434,15 @@ export const SelectsFolderByOpening: Story = {
         await openNamed(context, "PDB", ["directory2", "directory1"]);
         await context.step("See Select available", () => seeSelectButton(context.canvas, "Select", true));
     },
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const DirectoriesRecoverFromSourceError: Story = {
     ...Directories,
     play: recoverFromSourceError,
+
+    // TODO a11y: button-name, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

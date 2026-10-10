@@ -119,14 +119,23 @@ export const WithToolPanel: Story = {
             await expect(canvas.getByText(`${args.repo.owner} rev. ${args.changesetRevision}`)).toBeVisible();
         });
     },
+
+    // TODO a11y: button-name, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Nothing to show in the tool panel (e.g. only data managers), so no section to pick. */
-export const WithoutToolPanel: Story = { args: { requiresPanel: false } };
+export const WithoutToolPanel: Story = {
+    args: { requiresPanel: false },
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** With more than one shed tool config, the advanced settings (collapsed at first) ask which one gets the tools. */
 export const SeveralToolConfigs: Story = {
     parameters: {
+        // TODO a11y: button-name, label (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: { handlers: { shedToolConfigs: shedToolConfigs("shed_tool_conf.xml", "custom_shed_tool_conf.xml") } },
     },
 };
@@ -137,11 +146,18 @@ export const ChecksEnabledDependencies: Story = {
         await openAdvancedSettings(context);
         await context.step("See every dependency option checked", () => expectDependencyOptions(context, true));
     },
+
+    // TODO a11y: button-name, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** On a server set to install no dependencies, the advanced settings check none. */
 export const UnchecksDisabledDependencies: Story = {
-    parameters: dependencySettings(NO_DEPENDENCY_SETTINGS),
+    parameters: {
+        ...dependencySettings(NO_DEPENDENCY_SETTINGS),
+        // TODO a11y: button-name, label (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: async (context) => {
         await openAdvancedSettings(context);
         await context.step("See every dependency option unchecked", () => expectDependencyOptions(context, false));

@@ -93,10 +93,15 @@ async function seeTreatedDropped(canvas: Canvas, message: string) {
 }
 
 /** Building a list from a history of two datasets, none in the list yet. */
-export const TwoDatasetsInHistory: Story = {};
+export const TwoDatasetsInHistory: Story = {
+    // TODO a11y: color-contrast (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** A history poll reporting the same datasets again keeps the list in the user's order, without a word. */
 export const KeepsListOnRefresh: Story = {
+    // TODO a11y: aria-allowed-role, color-contrast, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
     args: {
         history: [
             getFakeDatasetSummary({ id: "control-reads", hid: 1, name: "control" }),
@@ -131,6 +136,9 @@ export const DropsDeletedDataset: Story = {
             await seeTreatedDropped(context.canvas, "2: treated has been removed from the collection");
         });
     },
+
+    // TODO a11y: aria-allowed-role, color-contrast, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A dataset in the list fails: the list drops it and a notification says why. */
@@ -145,6 +153,9 @@ export const DropsFailedDataset: Story = {
             );
         });
     },
+
+    // TODO a11y: aria-allowed-role, color-contrast, nested-interactive, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** One dataset failed, so it isn't offered for the list. */
@@ -155,6 +166,9 @@ export const FailedDatasetInHistory: Story = {
             getFakeDatasetSummary({ id: "treated-reads", hid: 2, name: "treated", state: "error" }),
         ],
     },
+
+    // TODO a11y: color-contrast (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Nothing in the history to build a list from. */

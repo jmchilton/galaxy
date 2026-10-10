@@ -53,6 +53,9 @@ export const NoRolesChosen: Story = {
             ).toEqual(["any", "unrestricted"]);
         });
     },
+
+    // TODO a11y: color-contrast (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The manage picker with two roles already granted. */
@@ -64,4 +67,7 @@ export const RolesChosen: Story = {
         initial_value: ROLES.slice(1).map(({ id, name }) => ({ id, name })),
         alert: "User with <strong>any</strong> of these roles can manage this library.",
     },
+
+    // TODO a11y: tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

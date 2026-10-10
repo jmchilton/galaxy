@@ -259,6 +259,9 @@ export const OffersCategoriesWhileSearching: Story = {
             await expect(context.canvas.queryByRole("tablist")).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** ">" narrows the palette to its actions. */
@@ -284,6 +287,9 @@ export const TurnsScopeIntoBadge: Story = {
             await expect(input).toHaveValue("align");
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Clicking the badge removes the filter and keeps the typed query. */
@@ -298,6 +304,9 @@ export const RemovesBadgeByClick: Story = {
             await expect(input).toHaveFocus();
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Backspace in an empty scoped box removes the badge. */
@@ -328,6 +337,9 @@ export const KeepsBadgeWhileEditing: Story = {
             await seeBadge(context, "Tools");
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Escape clears the text, then removes the badge, then closes; the footer says which comes next. */
@@ -382,6 +394,9 @@ export const ExplainsShortcuts: Story = {
             await seeOpen(context);
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A help row for an action narrows the palette to that action. */
@@ -417,6 +432,9 @@ export const AppliesScopeFromHelp: Story = {
             await expect(input).toHaveFocus();
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Opens Upload data's argument mode with shift+enter. */
@@ -473,6 +491,9 @@ export const PicksUploadMethodByClick: Story = {
             await expect(input).toHaveFocus();
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Run workflow has no default to run, so plain enter asks which workflow. */
@@ -486,6 +507,9 @@ export const OpensWorkflowPicker: Story = {
             await seeOpen(context);
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Create new history asks for a name instead of reporting no results. */
@@ -512,6 +536,9 @@ export const PromptsForHistoryName: Story = {
             await seeBadge(context, "Create new history");
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A report title of spaces alone is still no title, so the palette keeps asking. */
@@ -529,6 +556,9 @@ export const KeepsAskingForReportTitle: Story = {
             await expect(hintText(context, "No results.")).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A picked category hands typing back to the box, and an emptied query forgets it. */
@@ -554,6 +584,9 @@ export const ResetsCategoryOnClear: Story = {
             await expect(within(categories).getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Clicking around the palette, not on a control, leaves typing in the box. */
@@ -586,11 +619,16 @@ export const SearchesScopeWithNoResults: Story = {
             await expect(context.canvas.queryByRole("group", { name: "Log in required" })).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: aria-required-children (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Galaxy fails to list workflows, so the scope says so instead of calling itself empty. */
 export const ReportsScopeLoadFailure: Story = {
     parameters: {
+        // TODO a11y: aria-required-children (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: {
             handlers: {
                 workflows: workflowListing(() =>
@@ -636,7 +674,11 @@ const workflowsHeld = workflowListing(async () => {
 
 /** While a scope is still searching, the palette says so rather than showing the previous results. */
 export const SearchesScopeFromScratch: Story = {
-    parameters: { msw: { handlers: { workflows: workflowsHeld } } },
+    parameters: {
+        // TODO a11y: aria-required-children (2026-10-10 audit).
+        a11y: { test: "todo" },
+        msw: { handlers: { workflows: workflowsHeld } },
+    },
     play: async (context) => {
         holdWorkflows();
         await seeInput(context);

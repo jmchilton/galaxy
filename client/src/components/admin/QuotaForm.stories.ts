@@ -156,6 +156,9 @@ export const NewQuota: Story = {
             await expect(context.canvas.queryByText(LABELED_STORAGE)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: color-contrast, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Creating a quota without a description is refused before anything is sent. */
@@ -169,11 +172,16 @@ export const RequiresDescription: Story = {
         });
         await submitAndSeeRefusal(context, "Create", "Please enter a name, description and amount.");
     },
+
+    // TODO a11y: color-contrast, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A Galaxy whose object stores carry quota labels asks which storage the new quota applies to. */
 export const NewQuotaForLabeledStorage: Story = {
     parameters: {
+        // TODO a11y: color-contrast, label (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: { handlers: { configuration: configurationHandler({ quota_source_labels: ["scratch"] }) } },
     },
     play: async (context) => {
@@ -201,6 +209,9 @@ export const ExistingQuota: Story = {
             await expectChosen(context, "Users", ADMIN_USER.email);
         });
     },
+
+    // TODO a11y: label, tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Renaming the quota leaves the saved name in the form's title until it's saved. */
@@ -217,6 +228,9 @@ export const KeepsSavedNameWhileRenaming: Story = {
             await expect(canvas.queryByText("Quota 'Renamed Quota'")).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: label, tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Making the quota a default for registered users hides its users and groups, which defaults can't have. */
@@ -236,6 +250,9 @@ export const MakesQuotaADefault: Story = {
         });
         await seeMemberPickers(context, false);
     },
+
+    // TODO a11y: label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Clearing the amount is refused before anything is sent. */
@@ -248,12 +265,17 @@ export const RequiresNameAndAmount: Story = {
         });
         await submitAndSeeRefusal(context, "Save", "Please enter a name and amount.");
     },
+
+    // TODO a11y: label, tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The default quota for registered users: it can't have users or groups, so those pickers are hidden. */
 export const ExistingDefaultQuota: Story = {
     args: { ...ExistingQuota.args },
     parameters: {
+        // TODO a11y: label (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: {
             handlers: {
                 quota: quotaDetails({

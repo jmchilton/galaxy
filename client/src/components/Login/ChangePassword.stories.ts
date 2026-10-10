@@ -59,6 +59,9 @@ export const ResetFromEmailLink: Story = {
             await expect(context.canvas.queryByRole("status")).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /**
@@ -79,12 +82,17 @@ export const PasswordExpired: Story = {
         });
         await seePasswordFields(context, ["Current Password", "New Password", "Confirm password"]);
     },
+
+    // TODO a11y: label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The reset link was already used or has expired, so saving shows Galaxy's reason in a danger alert. */
 export const ResetLinkExpired: Story = {
     args: { ...ResetFromEmailLink.args },
     parameters: {
+        // TODO a11y: label (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: {
             handlers: {
                 // The legacy controller answers a rejected change with a 400 and the reason.

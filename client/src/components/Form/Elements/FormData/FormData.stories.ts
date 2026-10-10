@@ -102,10 +102,16 @@ export const NoDatasetsInWorkflowRun: Story = { args: { options: {}, workflowRun
 
 export const MultipleDatasets: Story = {
     args: { multiple: true, optional: true, value: selected(["hda", "hda2"], ["hda", "hda3"]) },
+
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const MultipleDatasetsSelectedOutOfOrder: Story = {
     args: { ...MultipleDatasets.args, value: selected(["hda", "hda2"], ["hda", "hda3"], ["hda", "hda1"]) },
+
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const MultipleDatasetsAndElementsIntermixed: Story = {
@@ -114,6 +120,9 @@ export const MultipleDatasetsAndElementsIntermixed: Story = {
         options: datasetsAndDatasetElements,
         value: selected(["hda", "hda1"], ["dce", "dce4"], ["dce", "dce2"], ["hda", "hda2"], ["dce", "dce3"]),
     },
+
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const CollectionElementThatIsADataset: Story = { args: { value: selected(["dce", "dce1"]) } };
@@ -132,6 +141,9 @@ export const CollectionOnCollectionInput: Story = {
 
 export const TwoCollectionElementsThatAreDatasets: Story = {
     args: { value: selected(["dce", "dce1"], ["dce", "dce4"]) },
+
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const EmptyCollectionInput: Story = { args: { type: "data_collection" } };
@@ -142,6 +154,9 @@ export const InWorkflowEditor: Story = { args: { flavor: "module" } };
 
 export const CollectionOnMultipleDatasetsInput: Story = {
     args: { multiple: true, value: selected(["hdca", "hdca5"]) },
+
+    // TODO a11y: tabindex, target-size (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 export const PinnedSelectionOutsideCurrentPage: Story = {

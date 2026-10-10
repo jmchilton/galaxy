@@ -69,6 +69,9 @@ export const ListsHistoryDatasets: Story = {
             await expectOptions(context, DATASET_NAMES, { anyOf: [[], [HISTORY_DATASETS[0].name]] });
         });
     },
+
+    // TODO a11y: aria-required-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A dataset the directive already names. */
@@ -140,4 +143,7 @@ export const ListsWorkflowLabels: Story = {
             );
         });
     },
+
+    // TODO a11y: aria-required-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

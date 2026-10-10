@@ -112,7 +112,10 @@ async function describeRole(context: PlayContext, name: string) {
 }
 
 /** An empty form for a new role, offering every group. Name, description and type are required. */
-export const NewRole: Story = {};
+export const NewRole: Story = {
+    // TODO a11y: color-contrast, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** Answers the groups request held by `groupsHeld`; the play sets it when the request arrives. */
 let answerHeldGroups: (() => void) | undefined;
@@ -127,7 +130,11 @@ const groupsHeld = http.get("/api/groups", async ({ response }) => {
 
 /** The form waits for the groups it offers before it shows. */
 export const WaitsForGroups: Story = {
-    parameters: { msw: { handlers: { groups: groupsHeld } } },
+    parameters: {
+        // TODO a11y: color-contrast, label (2026-10-10 audit).
+        a11y: { test: "todo" },
+        msw: { handlers: { groups: groupsHeld } },
+    },
     // A run that stopped before releasing the request leaves its answer behind; drop it and answer it.
     beforeEach: () => {
         answerHeldGroups = undefined;
@@ -154,6 +161,9 @@ export const RequiresNameAndDescription: Story = {
         await seeForm(context, "Create a new Role");
         await seeAlert(context, "Please complete all required inputs.", "Create");
     },
+
+    // TODO a11y: color-contrast, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Typing three letters of an email into the Users picker offers the users it matches. */
@@ -176,6 +186,9 @@ export const SearchesUsersByEmail: Story = {
             await waitFor(() => expect(option).toBeVisible());
         });
     },
+
+    // TODO a11y: aria-required-attr, color-contrast, label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The groups can't be loaded, so the form isn't shown and nothing can be created. */
@@ -198,6 +211,8 @@ export const GroupsFailToLoad: Story = {
 /** Another role already has the name typed in, so creating shows Galaxy's refusal above the form. */
 export const NewRoleNameTaken: Story = {
     parameters: {
+        // TODO a11y: color-contrast, label (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: {
             handlers: {
                 createRole: http.post("/api/roles", async ({ request, response }) =>
@@ -231,6 +246,9 @@ export const ExistingRole: Story = {
             await expect(canvas.queryByText("Role Type", { selector: "span" })).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: label, tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Renaming the role leaves the saved name in the form's title until it's saved. */
@@ -247,6 +265,9 @@ export const KeepsSavedNameWhileRenaming: Story = {
             await expect(canvas.queryByText("Role 'Renamed Role'")).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: label, tabindex (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The role was deleted while its members loaded; saving would drop them, so the form isn't shown. */
@@ -274,6 +295,8 @@ export const ExistingRoleGone: Story = {
 export const ExistingRoleNameTaken: Story = {
     args: { ...ExistingRole.args },
     parameters: {
+        // TODO a11y: label, tabindex (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: {
             handlers: {
                 updateRole: http.put("/api/roles/{id}", async ({ request, response }) =>

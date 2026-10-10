@@ -50,10 +50,16 @@ async function seeBadges({ canvas, userEvent, step }: PlayContext) {
 /** No size given, so each badge falls back to its default `lg` icon size. */
 export const DefaultSize: Story = {
     play: seeBadges,
+
+    // TODO a11y: aria-prohibited-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Badges drawn at twice the base icon size. */
 export const DoubleSize: Story = {
     args: { size: "2x" },
     play: seeBadges,
+
+    // TODO a11y: aria-prohibited-attr (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

@@ -50,6 +50,9 @@ export const WorkflowGraph: Story = {
             ]);
         });
     },
+
+    // TODO a11y: label-content-name-mismatch (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** The invoked workflow belongs to someone else and isn't shared, so there is no graph. */

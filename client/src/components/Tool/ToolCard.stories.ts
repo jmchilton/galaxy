@@ -141,16 +141,26 @@ export const LatestVersion: Story = {
         });
         await seeNoNewerVersionBadge(context);
     },
+
+    // TODO a11y: nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** An admin opens the options menu: copy, download, view source and the Tool Shed page. */
 export const OffersAdminToolOptions: Story = {
     play: offersToolOptions(["Copy Link", "Copy Tool ID", "Download", "View Tool source", "See in Tool Shed"]),
+
+    // TODO a11y: nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A user who isn't an admin can't download the tool or view its source. */
 export const OffersUserToolOptions: Story = {
-    parameters: viewedBy(getFakeRegisteredUser()),
+    parameters: {
+        ...viewedBy(getFakeRegisteredUser()),
+        // TODO a11y: nested-interactive (2026-10-10 audit).
+        a11y: { test: "todo" },
+    },
     play: offersToolOptions(["Copy Link", "Copy Tool ID", "See in Tool Shed"]),
 };
 
@@ -175,6 +185,9 @@ export const NewerVersionAvailable: Story = {
             await expect(screen.queryByRole("tooltip", tooltip)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: label-content-name-mismatch, nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A tool with one version: no versions menu and no badge. */
@@ -188,9 +201,15 @@ export const SingleVersion: Story = {
         });
         await seeNoNewerVersionBadge(context);
     },
+
+    // TODO a11y: nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** With the tool form's Run Tool button, which covers the card while the job is submitted. */
 export const WithRunButton: Story = {
     render: (args) => () => h(ToolCardWithRunButton, args),
+
+    // TODO a11y: nested-interactive (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

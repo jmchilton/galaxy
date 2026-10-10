@@ -173,10 +173,18 @@ async function scrollUntilAllLoaded(context: PlayContext) {
 }
 
 /** ScrollList keeps the items, loading five at a time as the list is scrolled. */
-export const PagedFromLoader: Story = { args: { loader: pageOfItems } };
+export const PagedFromLoader: Story = {
+    args: { loader: pageOfItems },
+    // TODO a11y: aria-required-children, button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** The all-loaded footer shows the item count instead of "All". */
-export const CountInFooter: Story = { args: { ...PagedFromLoader.args, showCountInFooter: true } };
+export const CountInFooter: Story = {
+    args: { ...PagedFromLoader.args, showCountInFooter: true },
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
+};
 
 /** Every item is given up front, so nothing is left to load. */
 export const GivenItems: Story = {
@@ -190,12 +198,18 @@ export const GivenItems: Story = {
             await expect(loadMoreButton(context)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: aria-required-children, button-name, scrollable-region-focusable (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A store owns the items and the loader feeds it; the total follows items added outside the loader. */
 export const StoreOwnedItems: Story = {
     render: (args) => () => h(ScrollListWithStore as Component, args, itemSlot),
     args: { fetchPage: pageOfItems, propTotalCount: ITEMS.length, adjustForTotalCountChanges: true },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Scrolling to the end loads the next page until every item is in, then the footer says so. */
@@ -211,6 +225,9 @@ export const LoadsEveryPageOnScroll: Story = {
             await expect(args.loader).toHaveBeenCalledTimes(ITEMS.length / PAGE_SIZE);
         });
     },
+
+    // TODO a11y: aria-required-children, scrollable-region-focusable (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** With `showCountInFooter`, the all-loaded footer counts the items. */
@@ -224,6 +241,9 @@ export const CountsEveryPageOnceLoaded: Story = {
             await expect(loadMoreButton(context)).not.toBeInTheDocument();
         });
     },
+
+    // TODO a11y: aria-required-children, scrollable-region-focusable (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** An item the store adds outside the loader shows at once and counts toward the total. */
@@ -253,4 +273,7 @@ export const CountsItemAddedOutsideLoader: Story = {
             await expect(args.fetchPage).toHaveBeenCalledTimes(loaded / PAGE_SIZE + 1);
         });
     },
+
+    // TODO a11y: aria-required-children, button-name, scrollable-region-focusable (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };

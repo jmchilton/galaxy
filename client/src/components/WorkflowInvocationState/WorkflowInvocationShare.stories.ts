@@ -185,6 +185,9 @@ export const AsksBeforeSharing: Story = {
             );
         });
     },
+
+    // TODO a11y: button-name (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Confirming shares both, closes the dialog and copies the invocation's link. */

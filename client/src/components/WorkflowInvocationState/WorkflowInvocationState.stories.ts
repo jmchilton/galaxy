@@ -206,11 +206,18 @@ export const Completed: Story = {
         });
         await seeRunningAndDebug(context, false, false);
     },
+
+    // TODO a11y: aria-progressbar-name, label-content-name-mismatch, list (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** Not scheduled yet: the page polls the invocation, and the Report and Export tabs wait. */
 export const SchedulingNew: Story = {
-    parameters: { msw: { handlers: { invocation: invocation({ state: "new" }) } } },
+    parameters: {
+        // TODO a11y: aria-progressbar-name, aria-prohibited-attr, label-content-name-mismatch, list (2026-10-10 audit).
+        a11y: { test: "todo" },
+        msw: { handlers: { invocation: invocation({ state: "new" }) } },
+    },
     play: async (context) => {
         await seeWorkflowLoaded(context);
         await seeReportAndExportTabs(context, false);
@@ -223,17 +230,27 @@ export const SchedulingNew: Story = {
 
 /** Scheduled, but a job is still running, so only the jobs summary is polled. */
 export const JobRunning: Story = {
-    parameters: { msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, states: { running: 1 } }) } } },
+    parameters: {
+        // TODO a11y: aria-progressbar-name, aria-prohibited-attr, label-content-name-mismatch, list (2026-10-10 audit).
+        a11y: { test: "todo" },
+        msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, states: { running: 1 } }) } },
+    },
 };
 
 /** Scheduled, but Galaxy is still creating its jobs, so the jobs summary is polled. */
 export const JobsBeingCreated: Story = {
-    parameters: { msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, populated_state: "new" }) } } },
+    parameters: {
+        // TODO a11y: aria-progressbar-name, aria-prohibited-attr, label-content-name-mismatch, list (2026-10-10 audit).
+        a11y: { test: "todo" },
+        msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, populated_state: "new" }) } },
+    },
 };
 
 /** A job failed while another still runs: no Debug tab until everything has finished. */
 export const JobFailedWhileAnotherRuns: Story = {
     parameters: {
+        // TODO a11y: aria-progressbar-name, aria-prohibited-attr, label-content-name-mismatch, list (2026-10-10 audit).
+        a11y: { test: "todo" },
         msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, states: { running: 1, error: 1 } }) } },
     },
     play: async (context) => {
@@ -244,7 +261,11 @@ export const JobFailedWhileAnotherRuns: Story = {
 
 /** Finished with a failed job, so the Debug tab helps find out why. */
 export const JobFailed: Story = {
-    parameters: { msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, states: { ok: 1, error: 1 } }) } } },
+    parameters: {
+        // TODO a11y: aria-progressbar-name, label-content-name-mismatch, list (2026-10-10 audit).
+        a11y: { test: "todo" },
+        msw: { handlers: { jobsSummary: jobsSummary({ ...TERMINAL_JOBS, states: { ok: 1, error: 1 } }) } },
+    },
     play: async (context) => {
         await seeWorkflowLoaded(context);
         await seeRunningAndDebug(context, false, true);

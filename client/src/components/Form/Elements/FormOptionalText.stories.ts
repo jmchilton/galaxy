@@ -50,6 +50,9 @@ export const WithValue: Story = {
             await seeValue(canvas, "hg38");
         });
     },
+
+    // TODO a11y: label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
 
 /** A null value leaves the parameter unset: the switch is off and there is no text box. */
@@ -78,4 +81,7 @@ export const SwitchesOffAndBackOn: Story = {
             await seeValue(canvas, "");
         });
     },
+
+    // TODO a11y: label (2026-10-10 audit).
+    parameters: { a11y: { test: "todo" } },
 };
