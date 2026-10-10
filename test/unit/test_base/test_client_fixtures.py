@@ -1,4 +1,15 @@
-from galaxy_test.base.client_fixtures import compare
+import json
+
+import pytest
+
+from galaxy_test.base.client_fixtures import (
+    compare,
+    Difference,
+    fixture_relative_path,
+    format_api_path,
+    resolve_fixture_dir,
+    write_fixture,
+)
 
 HISTORY_ID = "f2db41e1fa331b3e"
 OTHER_HISTORY_ID = "1cd8e2f6b131e891"
@@ -189,3 +200,158 @@ def test_open_dict_with_wildcard():
     old = {"ext_to_class_name": {"txt": "Text"}, "class_to_classes": {"Text": {"Data": True}}}
     new = {"ext_to_class_name": {"txt": "Text", "csv": "Csv"}, "class_to_classes": {"Text": {"Data": True}, "Csv": {}}}
     assert compare(old, new, open_paths=["$.*"]) == []
+
+
+def test_fixture_relative_path():
+    assert (
+        fixture_relative_path("/api/histories/{history_id}", "GET", "view_detailed")
+        == "api/histories/{history_id}/get.view_detailed.json"
+    )
+
+
+def test_fixture_relative_path_success_status_omitted():
+    assert (
+        fixture_relative_path("/api/tools/fetch", "post", "paste_single", status=201)
+        == "api/tools/fetch/post.paste_single.json"
+    )
+
+
+def test_fixture_relative_path_error_status():
+    assert (
+        fixture_relative_path("/api/histories/{history_id}", "get", "missing", status=404)
+        == "api/histories/{history_id}/get.404.missing.json"
+    )
+
+
+@pytest.mark.parametrize("scenario", ["View Detailed", "view-detailed", "", "a.b"])
+def test_fixture_relative_path_rejects_bad_scenario(scenario):
+    with pytest.raises(ValueError):
+        fixture_relative_path("/api/histories", "get", scenario)
+
+
+def test_fixture_relative_path_rejects_unknown_method():
+    with pytest.raises(ValueError):
+        fixture_relative_path("/api/histories", "fetch", "default")
+
+
+def test_fixture_relative_path_requires_absolute_template():
+    with pytest.raises(ValueError):
+        fixture_relative_path("api/histories", "get", "default")
+
+
+def test_format_api_path():
+    assert (
+        format_api_path("/api/histories/{history_id}/contents/{id}", {"history_id": "abc", "id": "def"})
+        == "/api/histories/abc/contents/def"
+    )
+
+
+def test_format_api_path_missing_param():
+    with pytest.raises(ValueError):
+        format_api_path("/api/histories/{history_id}", {})
+
+
+def test_format_api_path_extra_param():
+    with pytest.raises(ValueError):
+        format_api_path("/api/histories", {"history_id": "abc"})
+
+
+def _stub_compare(differences):
+    return lambda old, new, volatile_paths=(), open_paths=(): differences
+
+
+DIFFERENT = [Difference("$.state", "value", "ok", "error")]
+
+
+def _write(tmp_path, mode, response, differences=()):
+    return write_fixture(
+        mode, tmp_path, "api/x/get.default.json", response, compare_fn=_stub_compare(list(differences))
+    )
+
+
+def _read(tmp_path):
+    return json.loads((tmp_path / "api/x/get.default.json").read_text())
+
+
+def _seed(tmp_path, content):
+    target = tmp_path / "api/x/get.default.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(content))
+
+
+def test_write_fixture_keeps_order_and_indent(tmp_path):
+    _write(tmp_path, "rebuild", {"b": 1, "a": ["é"]})
+    assert (tmp_path / "api/x/get.default.json").read_text() == '{\n  "b": 1,\n  "a": [\n    "é"\n  ]\n}\n'
+
+
+def test_unset_mode_writes(tmp_path):
+    assert _write(tmp_path, None, {"state": "ok"}) == "written"
+    assert _read(tmp_path) == {"state": "ok"}
+
+
+def test_update_writes_missing_fixture(tmp_path):
+    assert _write(tmp_path, "update", {"state": "ok"}) == "written"
+    assert _read(tmp_path) == {"state": "ok"}
+
+
+def test_update_keeps_equivalent_fixture(tmp_path):
+    _seed(tmp_path, {"id": "old"})
+    assert _write(tmp_path, "update", {"id": "new"}) == "unchanged"
+    assert _read(tmp_path) == {"id": "old"}
+
+
+def test_update_rewrites_changed_fixture(tmp_path, capsys):
+    _seed(tmp_path, {"state": "ok"})
+    assert _write(tmp_path, "update", {"state": "error"}, DIFFERENT) == "written"
+    assert _read(tmp_path) == {"state": "error"}
+    assert "$.state" in capsys.readouterr().out
+
+
+def test_rebuild_rewrites_equivalent_fixture(tmp_path):
+    _seed(tmp_path, {"id": "old"})
+    assert _write(tmp_path, "rebuild", {"id": "new"}) == "written"
+    assert _read(tmp_path) == {"id": "new"}
+
+
+def test_check_passes_equivalent_fixture(tmp_path):
+    _seed(tmp_path, {"id": "old"})
+    assert _write(tmp_path, "check", {"id": "new"}) == "unchanged"
+    assert _read(tmp_path) == {"id": "old"}
+
+
+def test_check_fails_changed_fixture(tmp_path):
+    _seed(tmp_path, {"state": "ok"})
+    with pytest.raises(AssertionError, match=r"api/x/get.default.json(.|\n)*\$\.state"):
+        _write(tmp_path, "check", {"state": "error"}, DIFFERENT)
+    assert _read(tmp_path) == {"state": "ok"}
+
+
+def test_check_fails_missing_fixture(tmp_path):
+    with pytest.raises(AssertionError, match="api/x/get.default.json"):
+        _write(tmp_path, "check", {"state": "ok"})
+
+
+def test_unknown_mode(tmp_path):
+    with pytest.raises(ValueError):
+        _write(tmp_path, "overwrite", {"state": "ok"})
+
+
+def test_resolve_fixture_dir_defaults_to_client(tmp_path):
+    client = tmp_path / "client"
+    client.mkdir()
+    assert resolve_fixture_dir("update", None, client) == client / "src" / "api" / "__fixtures__"
+
+
+def test_resolve_fixture_dir_explicit(tmp_path):
+    assert resolve_fixture_dir("check", str(tmp_path / "out"), tmp_path / "client") == tmp_path / "out"
+
+
+def test_resolve_fixture_dir_requires_explicit_dir_without_client(tmp_path):
+    with pytest.raises(Exception, match="GALAXY_TEST_CLIENT_FIXTURES_DIR"):
+        resolve_fixture_dir("update", None, tmp_path / "client")
+
+
+def test_resolve_fixture_dir_unset_mode_uses_temp_dir(tmp_path):
+    fixture_dir = resolve_fixture_dir(None, None, tmp_path / "client")
+    assert fixture_dir.is_dir()
+    assert tmp_path not in fixture_dir.parents

@@ -4,10 +4,25 @@ Fixtures are stored verbatim. Values that change on every run (encoded ids,
 UUIDs, datetimes, the server's URL) are tolerated by :func:`compare` rather
 than normalized away, so a regenerated fixture is only rewritten when it
 changed meaningfully.
+
+``GALAXY_TEST_CLIENT_FIXTURES`` selects what a capture does with a response:
+
+- unset: write to a temp dir and leave committed fixtures alone.
+- ``update``: rewrite fixtures that changed meaningfully and print the differences.
+- ``rebuild``: rewrite every fixture.
+- ``check``: fail on any meaningful change or missing fixture.
+
+Fixtures are written to ``client/src/api/__fixtures__`` unless
+``GALAXY_TEST_CLIENT_FIXTURES_DIR`` names another directory.
 """
 
+import json
+import os
 import re
+import string
+import tempfile
 from collections.abc import (
+    Callable,
     Iterable,
     Sequence,
 )
@@ -15,7 +30,21 @@ from dataclasses import (
     dataclass,
     field,
 )
-from typing import Any
+from pathlib import Path
+from typing import (
+    Any,
+    TYPE_CHECKING,
+)
+
+if TYPE_CHECKING:
+    from galaxy_test.base.api import ApiTestInteractor
+
+MODE_ENV = "GALAXY_TEST_CLIENT_FIXTURES"
+DIR_ENV = "GALAXY_TEST_CLIENT_FIXTURES_DIR"
+MODES = (None, "update", "rebuild", "check")
+METHODS = ("get", "put", "post", "delete", "patch")
+CLIENT_DIR = Path(__file__).resolve().parents[3] / "client"
+SCENARIO = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)*")
 
 PathSegment = str | int
 JsonPath = tuple[PathSegment, ...]
@@ -221,3 +250,114 @@ def compare(
     )
     comparison.compare((), old, new)
     return comparison.differences
+
+
+CompareFn = Callable[..., Sequence[Difference]]
+
+
+def fixture_relative_path(path_template: str, method: str, scenario: str, status: int = 200) -> str:
+    """Name a fixture after its OpenAPI path and method, e.g. ``api/histories/{history_id}/get.default.json``."""
+    method = method.lower()
+    if method not in METHODS:
+        raise ValueError(f"Unknown HTTP method {method!r}")
+    if not path_template.startswith("/"):
+        raise ValueError(f"Expected an OpenAPI path starting with '/', got {path_template!r}")
+    if not SCENARIO.fullmatch(scenario):
+        raise ValueError(f"Scenario {scenario!r} must be lower_snake_case")
+    status_part = "" if 200 <= status < 300 else f".{status}"
+    return f"{path_template.strip('/')}/{method}{status_part}.{scenario}.json"
+
+
+def format_api_path(path_template: str, path_params: dict[str, str]) -> str:
+    names = {name for _, name, _, _ in string.Formatter().parse(path_template) if name}
+    if missing := names - path_params.keys():
+        raise ValueError(f"Missing path parameters {sorted(missing)} for {path_template}")
+    if extra := path_params.keys() - names:
+        raise ValueError(f"Unknown path parameters {sorted(extra)} for {path_template}")
+    return path_template.format(**path_params)
+
+
+def resolve_fixture_dir(mode: str | None, explicit_dir: str | None, client_dir: Path = CLIENT_DIR) -> Path:
+    if mode is None:
+        return Path(tempfile.mkdtemp(prefix="galaxy_client_fixtures_"))
+    if explicit_dir:
+        return Path(explicit_dir)
+    if not client_dir.is_dir():
+        raise Exception(f"{MODE_ENV}={mode} needs {DIR_ENV} when Galaxy's client/ directory is absent")
+    return client_dir / "src" / "api" / "__fixtures__"
+
+
+def write_fixture(
+    mode: str | None,
+    fixture_dir: Path,
+    relative_path: str,
+    response: Any,
+    volatile_paths: Iterable[str] = (),
+    open_paths: Iterable[str] = (),
+    compare_fn: CompareFn = compare,
+) -> str:
+    """Apply ``mode`` to a captured response; return ``"written"`` or ``"unchanged"``."""
+    if mode not in MODES:
+        raise ValueError(f"{MODE_ENV} must be one of update, rebuild or check, got {mode!r}")
+    target = fixture_dir / relative_path
+    if mode in ("update", "check") and target.exists():
+        committed = json.loads(target.read_text())
+        differences = compare_fn(committed, response, volatile_paths=volatile_paths, open_paths=open_paths)
+        if not differences:
+            return "unchanged"
+        report = "\n".join(f"  {difference}" for difference in differences)
+        if mode == "check":
+            raise AssertionError(
+                f"{relative_path} differs from the server response; rerun with {MODE_ENV}=update\n{report}"
+            )
+        print(f"Updating client fixture {relative_path}:\n{report}")
+    elif mode == "check":
+        raise AssertionError(f"Missing client fixture {relative_path}; rerun with {MODE_ENV}=update")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(response, indent=2, ensure_ascii=False) + "\n")
+    return "written"
+
+
+class ClientFixtures:
+    """Capture API responses as client fixtures from an API or integration test."""
+
+    def __init__(
+        self, galaxy_interactor: "ApiTestInteractor", mode: str | None = None, fixture_dir: Path | None = None
+    ):
+        self.galaxy_interactor = galaxy_interactor
+        self.mode = mode if mode is not None else (os.environ.get(MODE_ENV) or None)
+        self.fixture_dir = fixture_dir or resolve_fixture_dir(self.mode, os.environ.get(DIR_ENV))
+
+    def capture(
+        self,
+        method: str,
+        path_template: str,
+        scenario: str,
+        *,
+        purpose: Callable[[Any], object],
+        status: int = 200,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+        volatile_paths: Iterable[str] = (),
+        open_paths: Iterable[str] = (),
+        **path_params: str,
+    ) -> Any:
+        """Request ``path_template`` and record the response.
+
+        ``purpose`` asserts what the fixture exists to show (e.g. ``state == "error"``),
+        and runs before anything is written.
+        """
+        relative_path = fixture_relative_path(path_template, method, scenario, status)
+        path = format_api_path(path_template, path_params)
+        request = getattr(self.galaxy_interactor, method.lower())
+        if method.lower() == "get":
+            response = request(path, data=params)
+        else:
+            response = request(path, data=body, json=True)
+        assert (
+            response.status_code == status
+        ), f"{method.upper()} {path} returned {response.status_code}, expected {status}: {response.text}"
+        response_json = response.json()
+        purpose(response_json)
+        write_fixture(self.mode, self.fixture_dir, relative_path, response_json, volatile_paths, open_paths)
+        return response_json
