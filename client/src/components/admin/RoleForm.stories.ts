@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/vue3-vite";
 
 import { http } from "@/api/client/__mocks__/http";
 
-import { ADMIN_GROUPS, adminGroups } from "./test_fixtures";
+import { ADMIN_GROUPS, ADMIN_USER, adminGroups, adminUserSearch } from "./test_fixtures";
 
 import RoleForm from "./RoleForm.vue";
 
@@ -14,7 +14,7 @@ const ROLE = {
     url: "/api/roles/5f1e3a6c7d2b9e04",
     model_class: "Role" as const,
 };
-const ROLE_MEMBER = { id: "f2db41e1fa331b3e", email: "alice@example.org" };
+const ROLE_MEMBER = { id: ADMIN_USER.id, email: ADMIN_USER.email };
 const ROLE_GROUP = ADMIN_GROUPS[0]!;
 
 /** Galaxy's answer when another role already has the name. */
@@ -29,9 +29,7 @@ const meta = {
         msw: {
             handlers: {
                 groups: adminGroups(),
-                userSearch: http.get("/api/users", ({ response }) =>
-                    response(200).json([{ ...ROLE_MEMBER, username: "alice" }]),
-                ),
+                userSearch: adminUserSearch(),
                 createRole: http.post("/api/roles", async ({ request, response }) => {
                     const { name, description } = await request.json();
                     return response(200).json({ ...ROLE, name, description });
