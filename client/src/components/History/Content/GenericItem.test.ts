@@ -2,6 +2,7 @@ import { createTestingPinia } from "@pinia/testing";
 import { getFakeCollectionSummary } from "@tests/test-data/collections";
 import { getFakeDatasetSummary } from "@tests/test-data/datasets";
 import { getLocalVue, suppressLucideVue2Deprecation, withPlugins } from "@tests/vitest/helpers";
+import { VisibleIntersectionObserver } from "@tests/vitest/visibleIntersectionObserver";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,15 +56,6 @@ const collection = getFakeCollectionSummary({
     element_count: 2,
     store_times_summary: undefined,
 });
-
-class VisibleIntersectionObserver {
-    constructor(private callback: IntersectionObserverCallback) {}
-    observe(target: Element) {
-        this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as never);
-    }
-    unobserve() {}
-    disconnect() {}
-}
 
 describe.each([
     { itemSrc: "hda", item: dataset, isDataset: true },
