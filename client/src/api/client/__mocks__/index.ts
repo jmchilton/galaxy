@@ -7,6 +7,9 @@ import { GALAXY_RESPONSE_HEADERS, http, missingHandlerResponse } from "./http";
 export { GALAXY_RESPONSE_HEADERS, HttpResponse };
 
 let server: ReturnType<typeof setupServer>;
+// How many callers' scopes are running. A test that mounts stories (whose helper sets the
+// server up) may ask for it again, and a server listening twice handles every request twice.
+let listeningScopes = 0;
 
 function missingHandlerGuidance(request: Request) {
     const method = request.method.toLowerCase();
@@ -46,7 +49,9 @@ export function useServerMock() {
 
     beforeAll(() => {
         // Enable API mocking before all the tests.
-        server.listen();
+        if (listeningScopes++ === 0) {
+            server.listen();
+        }
     });
 
     afterEach(() => {
@@ -58,7 +63,9 @@ export function useServerMock() {
 
     afterAll(() => {
         // Finally, disable API mocking after the tests are done.
-        server.close();
+        if (--listeningScopes === 0) {
+            server.close();
+        }
     });
 
     return { server, http };
