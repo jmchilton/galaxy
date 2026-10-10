@@ -309,6 +309,38 @@ beforeEach(() => {
 
 See the [MSW documentation](https://mswjs.io/docs/) for advanced usage patterns.
 
+#### Recorded API Responses
+
+Prefer responses recorded from a real Galaxy over hand-written payloads. They live in
+`src/api/__fixtures__`, named by OpenAPI path, method and scenario, and `apiFixture`
+returns a copy typed from the schema:
+
+```typescript
+import { apiFixture } from "@/api/__fixtures__";
+
+const history = apiFixture("/api/histories/{history_id}", "get", "summary_extended");
+
+server.use(http.get("/api/histories/{history_id}", ({ response }) => response(200).json(history)));
+```
+
+Override only the fields a test is about (`{ ...history, purged: true }`) rather than writing
+a new payload. Pass `apiFixture` string literals: a unit test fails on fixtures nothing loads.
+
+Fixtures are written by `ClientFixtures.capture` in API tests
+(`lib/galaxy_test/api/test_client_fixtures.py`) and, for responses that need a non-default
+Galaxy configuration, integration tests (`test/integration/test_client_fixtures_*.py`).
+To add or refresh one, edit the capture and run its test with `GALAXY_TEST_CLIENT_FIXTURES`
+set:
+
+```bash
+GALAXY_TEST_CLIENT_FIXTURES=update ./run_tests.sh -api lib/galaxy_test/api/test_client_fixtures.py
+GALAXY_TEST_CLIENT_FIXTURES=update ./run_tests.sh -integration test/integration/test_client_fixtures_quotas.py
+```
+
+`update` rewrites only fixtures that changed meaningfully (ids, datetimes and the server URL
+may differ), `rebuild` rewrites all of them, and `check` fails on any meaningful change.
+Unset, captures write to a temporary directory.
+
 #### Mount vs ShallowMount
 
 Vue Test Utils provides two mounting functions: `mount` and `shallowMount`. In Galaxy, **prefer `shallowMount`** for client unit tests.
