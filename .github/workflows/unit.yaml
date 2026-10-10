@@ -4,6 +4,7 @@ on:
     paths:
       - '**'
       - '!client/**'
+      - 'client/src/api/__fixtures__/api/**'
       - '!doc/**'
       - '!lib/galaxy_test/selenium/**'
       - '!packages/test_selenium/**'
@@ -14,6 +15,7 @@ on:
     paths:
       - '**'
       - '!client/**'
+      - 'client/src/api/__fixtures__/api/**'
       - '!doc/**'
       - '!lib/galaxy_test/selenium/**'
       - '!packages/test_selenium/**'
