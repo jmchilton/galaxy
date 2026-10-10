@@ -1,0 +1,16 @@
+{
+  "total_disk_usage": 6.0,
+  "nice_total_disk_usage": "6 bytes",
+  "quota_percent": 0.0,
+  "id": "529fd61ab1c6cc36",
+  "username": "client--fixture--quota--bx--psu--edu",
+  "email": "client_fixture_quota@bx.psu.edu",
+  "deleted": false,
+  "display_name": null,
+  "is_admin": false,
+  "purged": false,
+  "preferences": {},
+  "preferred_object_store_id": null,
+  "quota": "100.0 MB",
+  "quota_bytes": 100000000
+}
