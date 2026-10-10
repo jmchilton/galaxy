@@ -13,3 +13,13 @@ export const ADMIN_GROUPS: GroupResponse[] = [
 export function adminGroups(groups: GroupResponse[] = ADMIN_GROUPS) {
     return http.get("/api/groups", ({ response }) => response(200).json(groups));
 }
+
+/** A user an admin form finds by email. */
+export const ADMIN_USER = { id: "f2db41e1fa331b3e", email: "alice@example.org", username: "alice" };
+
+/** Answers the admin forms' user search with the users whose email contains the typed text. */
+export function adminUserSearch(users = [ADMIN_USER]) {
+    return http.get("/api/users", ({ query, response }) =>
+        response(200).json(users.filter((user) => user.email.includes(query.get("f_email") ?? ""))),
+    );
+}
