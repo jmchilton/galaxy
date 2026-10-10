@@ -1,8 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/vue3-vite";
 import { getFakeDatasetSummary } from "@tests/test-data/datasets";
+import { seeToasts, withToasts } from "@tests/test-data/toasts";
+import { expect, waitFor } from "storybook/test";
 import { h } from "vue";
 
 import type { HDASummary } from "@/api";
+import { escapeRegExp } from "@/utils/regExp";
 
 import { collectionCreatorHandlers, CreatorWithHistory } from "./test_fixtures";
 
@@ -17,6 +20,7 @@ const meta = {
         ({ history, ...args }) =>
         () =>
             h(CreatorWithHistory, { creator: ListCollectionCreator, history, ...args }),
+    decorators: [withToasts],
     parameters: { msw: { handlers: collectionCreatorHandlers } },
     args: {
         historyId: "history-1",
@@ -31,8 +35,117 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+type PlayContext = Parameters<NonNullable<Story["play"]>>[0];
+type Canvas = PlayContext["canvas"];
+
+const CONTROL = "1: control (txt)";
+const TREATED = "2: treated (txt)";
+const RESCUED = "3: rescued (txt)";
+
+/**
+ * Checks the datasets under a column's heading, in order, read as one text, and the count the
+ * heading shows. Waits for them: the columns are worked out off the main thread.
+ */
+async function seeColumn(canvas: Canvas, heading: "Unselected" | "Selected", datasets: string[], timeout = 1000) {
+    await waitFor(
+        async () => {
+            const title = canvas.getByText(heading);
+            await expect(title).toHaveTextContent(
+                new RegExp(`^${heading} \\(${datasets.length}\\) \\(Click name to edit\\)$`),
+            );
+            // The options sit in the list right after the heading's row.
+            await expect(title.parentElement?.nextElementSibling).toHaveTextContent(
+                new RegExp(`^${datasets.map(escapeRegExp).join(" ")}$`),
+            );
+        },
+        { timeout },
+    );
+}
+
+/** Moves datasets into the list, one click each, in the given order, from the `offered` ones. */
+async function selectIntoList(
+    { canvas, step, userEvent }: PlayContext,
+    datasets: string[],
+    offered: string[] = [TREATED, CONTROL],
+) {
+    await step(`Move ${datasets.join(", then ")} into the list`, async () => {
+        await seeColumn(canvas, "Unselected", offered, 5000);
+        await seeColumn(canvas, "Selected", []);
+        for (const [index, dataset] of datasets.entries()) {
+            // The option's button, not the dataset view inside it, which shares its name.
+            const [option] = canvas.getAllByRole("button", { name: dataset });
+            await userEvent.click(option!);
+            await seeColumn(canvas, "Selected", datasets.slice(0, index + 1));
+        }
+        await seeColumn(
+            canvas,
+            "Unselected",
+            offered.filter((dataset) => !datasets.includes(dataset)),
+        );
+    });
+}
+
+/** Checks the list kept only the control dataset, and the user was told why the other left. */
+async function seeTreatedDropped(canvas: Canvas, message: string) {
+    await seeColumn(canvas, "Selected", [CONTROL]);
+    await seeColumn(canvas, "Unselected", []);
+    await seeToasts(canvas, [["Invalid element", message]]);
+}
+
 /** Building a list from a history of two datasets, none in the list yet. */
 export const TwoDatasetsInHistory: Story = {};
+
+/** A history poll reporting the same datasets again keeps the list in the user's order, without a word. */
+export const KeepsListOnRefresh: Story = {
+    args: {
+        history: [
+            getFakeDatasetSummary({ id: "control-reads", hid: 1, name: "control" }),
+            getFakeDatasetSummary({ id: "treated-reads", hid: 2, name: "treated" }),
+            getFakeDatasetSummary({ id: "rescued-reads", hid: 3, name: "rescued" }),
+        ],
+    },
+    play: async (context) => {
+        const { canvas, step, userEvent } = context;
+        await selectIntoList(context, [TREATED, CONTROL], [RESCUED, TREATED, CONTROL]);
+        await step("Refresh the history", async () => {
+            await userEvent.click(canvas.getByRole("button", { name: "Refresh history" }));
+        });
+        await step("Add the rescued dataset, and see the list kept in order with no notification", async () => {
+            // The columns show the refreshed list only once worked out again, and this click's
+            // result comes after the refresh's: the list must read in the user's order with it.
+            // Keep these waits short: a toast from the refresh dismisses itself after 3s.
+            await userEvent.click(canvas.getAllByRole("button", { name: RESCUED })[0]!);
+            await seeColumn(canvas, "Selected", [TREATED, CONTROL, RESCUED]);
+            await seeColumn(canvas, "Unselected", []);
+            await seeToasts(canvas, []);
+        });
+    },
+};
+
+/** A dataset in the list leaves the history: the list drops it and a notification says so. */
+export const DropsDeletedDataset: Story = {
+    play: async (context) => {
+        await selectIntoList(context, [CONTROL, TREATED]);
+        await context.step("Delete the treated dataset from the history", async () => {
+            await context.userEvent.click(context.canvas.getByRole("button", { name: "Delete treated" }));
+            await seeTreatedDropped(context.canvas, "2: treated has been removed from the collection");
+        });
+    },
+};
+
+/** A dataset in the list fails: the list drops it and a notification says why. */
+export const DropsFailedDataset: Story = {
+    play: async (context) => {
+        await selectIntoList(context, [CONTROL, TREATED]);
+        await context.step("Fail the treated dataset in the history", async () => {
+            await context.userEvent.click(context.canvas.getByRole("button", { name: "Fail treated" }));
+            await seeTreatedDropped(
+                context.canvas,
+                "2: treated has errored, is paused, or is not accessible and is not a valid element for this collection",
+            );
+        });
+    },
+};
 
 /** One dataset failed, so it isn't offered for the list. */
 export const FailedDatasetInHistory: Story = {
