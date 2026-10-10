@@ -33,6 +33,9 @@ export async function adaptViteConfig(viteConfig: InlineConfig): Promise<InlineC
         ...viteConfig.resolve,
         alias: [
             { find: /^vue$/, replacement: resolve(clientDir, "node_modules/@vue/compat/dist/vue.esm-bundler.js") },
+            // The app picks its build config by NODE_ENV, and vitest's "test" has none.
+            // Stories have no Galaxy build behind them, so use the testing one.
+            { find: /^config$/, replacement: resolve(clientDir, "src/config/testing.js") },
             ...aliasList.filter((alias) => alias.find !== "vue"),
         ],
     };
