@@ -20,7 +20,8 @@ export default defineConfig(async (env) =>
             browser: {
                 enabled: true,
                 headless: true,
-                provider: playwright(),
+                // A fixed zone keeps time-relative stories stable across DST changes.
+                provider: playwright({ contextOptions: { timezoneId: "UTC" } }),
                 instances: [{ browser: "chromium" }],
             },
         },
