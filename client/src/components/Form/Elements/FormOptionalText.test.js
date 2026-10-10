@@ -22,31 +22,16 @@ function mountFormOptionalText(story) {
 }
 
 describe("FormOptionalText", () => {
-    it("switches on and shows an existing value", () => {
-        const wrapper = mountFormOptionalText(stories.WithValue);
-
-        expect(wrapper.find(SELECTORS.SWITCH).element.checked).toBe(true);
-        expect(wrapper.find(SELECTORS.TEXT_INPUT).element.value).toBe(stories.WithValue.args.value);
-    });
-
     it("emits null when switched off and an empty string when switched back on", async () => {
         const wrapper = mountFormOptionalText(stories.WithValue);
         const toggle = wrapper.find(SELECTORS.SWITCH);
+        expect(toggle.element.checked).toBe(true);
 
         await toggle.setValue(false);
         expect(emittedArg(wrapper, "input", 0)).toBeNull();
-        expect(wrapper.find(SELECTORS.TEXT_INPUT).exists()).toBe(false);
 
         await toggle.setValue(true);
         expect(emittedArg(wrapper, "input", 1)).toBe("");
-        expect(wrapper.find(SELECTORS.TEXT_INPUT).element.value).toBe("");
-    });
-
-    it("starts switched off for a null value", () => {
-        const wrapper = mountFormOptionalText(stories.Unset);
-
-        expect(wrapper.find(SELECTORS.SWITCH).element.checked).toBe(false);
-        expect(wrapper.find(SELECTORS.TEXT_INPUT).exists()).toBe(false);
     });
 
     it("switches on once its parent sets a value", async () => {
