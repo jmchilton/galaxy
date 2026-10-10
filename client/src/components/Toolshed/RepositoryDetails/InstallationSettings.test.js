@@ -1,43 +1,15 @@
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { composeStories } from "@storybook/vue3-vite";
+import { useStoryMount } from "@tests/vitest/stories";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { useServerMock } from "@/api/client/__mocks__";
+import * as InstallationSettingsStories from "./InstallationSettings.stories";
 
-import InstallationSettings from "./InstallationSettings.vue";
-
-vi.mock("@/composables/config", () => ({
-    useConfig: () => ({
-        config: {
-            install_tool_dependencies: true,
-            install_repository_dependencies: true,
-            install_resolver_dependencies: true,
-        },
-        isConfigLoaded: true,
-    }),
-}));
-
-const localVue = getLocalVue();
-
-const { server, http } = useServerMock();
+const { WithToolPanel } = composeStories(InstallationSettingsStories);
+const mountStory = useStoryMount();
 
 async function mountInstallationSettings() {
-    const wrapper = mount(InstallationSettings, {
-        global: localVue,
-        props: {
-            repo: {
-                long_description: "long_description",
-                description: "description",
-                owner: "owner",
-                name: "name",
-            },
-            changesetRevision: "changesetRevision",
-            requiresPanel: true,
-            toolshedUrl: "toolshedUrl",
-            currentPanel: {},
-        },
-    });
+    const wrapper = mountStory(WithToolPanel);
     await flushPromises();
     return wrapper;
 }
@@ -52,20 +24,13 @@ function dependencyOptions(wrapper) {
 }
 
 describe("InstallationSettings", () => {
-    beforeEach(() => {
-        server.use(
-            http.get("/api/configuration/dynamic_tool_confs", ({ response }) => {
-                return response(200).json([]);
-            }),
-        );
-    });
-
     it("titles the dialog with the repository and shows its long description, owner and revision", async () => {
         const wrapper = await mountInstallationSettings();
+        const { repo, changesetRevision } = WithToolPanel.args;
 
-        expect(wrapper.find(".g-modal-title").text()).toBe("Installing 'name'");
-        expect(wrapper.find(".description").text()).toBe("long_description");
-        expect(wrapper.find(".revision").text()).toBe("owner rev. changesetRevision");
+        expect(wrapper.find(".g-modal-title").text()).toBe(`Installing '${repo.name}'`);
+        expect(wrapper.find(".description").text()).toBe(repo.long_description);
+        expect(wrapper.find(".revision").text()).toBe(`${repo.owner} rev. ${changesetRevision}`);
     });
 
     it("checks each dependency option the server configuration enables", async () => {
