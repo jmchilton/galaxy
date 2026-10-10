@@ -44,6 +44,8 @@ export interface StoryMountOptions {
     router?: Router;
     /** Testing pinia options. Actions run by default, as they do in the story. */
     pinia?: Partial<TestingOptions>;
+    /** Wrap plugin-localized text (`v-localize`, `l()`) as `test_localized<...>`, for `toBeLocalizationOf`. */
+    instrumentLocalization?: boolean;
 }
 
 function mergeGlobal(base: GlobalOptions, extra: GlobalOptions = {}): GlobalOptions {
@@ -69,14 +71,17 @@ export function useStoryMount() {
     const { server } = useServerMock();
     const mounted: VueWrapper[] = [];
     afterEach(() => mounted.splice(0).forEach((wrapper) => wrapper.unmount()));
-    return function mountStory(story: ComposedStory, { props = {}, global, router, pinia }: StoryMountOptions = {}) {
+    return function mountStory(
+        story: ComposedStory,
+        { props = {}, global, router, pinia, instrumentLocalization = false }: StoryMountOptions = {},
+    ) {
         // Handlers used later take precedence, so the story's override the app's.
         server.use(...Object.values(appHandlers));
         server.use(...storyHandlers(story));
         const testingPinia = createTestingPinia({ createSpy: vi.fn, stubActions: false, ...pinia });
         const wrapper = mount(story, {
             props,
-            global: mergeGlobal(getLocalVue(), global),
+            global: mergeGlobal(getLocalVue(instrumentLocalization), global),
             pinia: testingPinia,
             router,
         });
