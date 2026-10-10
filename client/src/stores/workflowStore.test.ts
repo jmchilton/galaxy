@@ -1,4 +1,5 @@
 import { getFakeWorkflowSummary } from "@tests/test-data/workflows";
+import { deferred } from "@tests/vitest/deferred";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
@@ -27,14 +28,6 @@ const mockWorkflow = {
 
 function workflowSummary(id: string, name: string, extra: Partial<WorkflowSummary> = {}): WorkflowSummary {
     return getFakeWorkflowSummary({ id, name, ...extra });
-}
-
-function deferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((resolvePromise) => {
-        resolve = resolvePromise;
-    });
-    return { promise, resolve };
 }
 
 function mockLoadWorkflowsOnce(data: WorkflowSummary[]) {
