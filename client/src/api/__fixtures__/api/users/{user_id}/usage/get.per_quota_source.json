@@ -1,0 +1,23 @@
+[
+  {
+    "quota_source_label": null,
+    "total_disk_usage": 6.0,
+    "quota_percent": 0.0,
+    "quota_bytes": 100000000,
+    "quota": "100.0 MB"
+  },
+  {
+    "quota_source_label": "ebs",
+    "total_disk_usage": 0.0,
+    "quota_percent": 0.0,
+    "quota_bytes": 10000000,
+    "quota": "10.0 MB"
+  },
+  {
+    "quota_source_label": "s3",
+    "total_disk_usage": 0.0,
+    "quota_percent": null,
+    "quota_bytes": null,
+    "quota": "unlimited"
+  }
+]

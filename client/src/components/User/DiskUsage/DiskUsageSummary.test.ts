@@ -1,14 +1,13 @@
-import { getFakeRegisteredUser } from "@tests/test-data";
 import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { createPinia, disposePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { toAnyUser } from "@/api";
+import { apiFixture } from "@/api/__fixtures__";
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { useUserStore } from "@/stores/userStore";
-
-import type { UserQuotaUsageData } from "./Quota/model/QuotaUsage";
 
 import DiskUsageSummary from "./DiskUsageSummary.vue";
 
@@ -19,32 +18,22 @@ const { server, http } = useServerMock();
 const quotaUsageClassSelector = ".quota-usage";
 const basicDiskUsageSummaryId = "#basic-disk-usage-summary";
 
-const fakeUserWithQuota = getFakeRegisteredUser({
-    total_disk_usage: 1000000,
-    quota_bytes: 100000000,
-    quota_percent: 1,
-});
-
-const fakeQuotaUsages: UserQuotaUsageData[] = [
-    {
-        quota_source_label: "Default",
-        quota_bytes: 100000000,
-        total_disk_usage: 1000000,
-    },
-];
+// A user with one 6 byte dataset under a 100 MB default quota.
+const userWithQuota = apiFixture("/api/users/{user_id}", "get", "under_quota");
+const quotaUsages = apiFixture("/api/users/{user_id}/usage", "get", "under_quota");
 
 const FAKE_TASK_ID = "fakeTaskId";
 
-async function mountDiskUsageSummary(enableQuotas: boolean) {
+async function mountDiskUsageSummary(enableQuotas: boolean, usages = quotaUsages) {
     server.use(
         http.get("/api/configuration", ({ response }) => {
             return response.untyped(HttpResponse.json({ enable_quotas: enableQuotas }));
         }),
         http.get("/api/users/{user_id}", ({ response }) => {
-            return response(200).json(fakeUserWithQuota);
+            return response(200).json(userWithQuota);
         }),
         http.get("/api/users/{user_id}/usage", ({ response }) => {
-            return response(200).json(fakeQuotaUsages);
+            return response(200).json(usages);
         }),
     );
 
@@ -54,7 +43,7 @@ async function mountDiskUsageSummary(enableQuotas: boolean) {
         global: withPlugins(localVue, pinia),
     });
     const userStore = useUserStore(pinia);
-    userStore.currentUser = fakeUserWithQuota;
+    userStore.currentUser = toAnyUser(userWithQuota);
     await flushPromises();
     return wrapper;
 }
@@ -83,26 +72,35 @@ describe("DiskUsageSummary", () => {
         expect(quotaUsages.length).toBe(1);
     });
 
-    it("shows the quota usage in readable units", async () => {
-        const wrapper = await mountDiskUsageSummary(true);
-        const quotaUsage = wrapper.get(quotaUsageClassSelector);
-        expect(quotaUsage.text()).toContain("1 MB");
+    it("should display the correct quota usage", async () => {
+        const enableQuotasInConfig = true;
+        const wrapper = await mountDiskUsageSummary(enableQuotasInConfig);
+        const quotaUsage = wrapper.find(quotaUsageClassSelector);
+        expect(quotaUsage.text()).toContain("6 b of 100 MB used");
     });
 
-    it("refreshes quota usage after the pending recalculation task succeeds", async () => {
-        const wrapper = await mountDiskUsageSummary(true);
-        const quotaUsage = wrapper.get(quotaUsageClassSelector);
-        expect(quotaUsage.text()).toContain("1 MB");
-        const updatedFakeQuotaUsages: UserQuotaUsageData[] = [
-            {
-                quota_source_label: "Default",
-                quota_bytes: 100000000,
-                total_disk_usage: 2000000,
-            },
-        ];
+    it("should label each storage source with its own quota", async () => {
+        // The default source plus an "ebs" source with a 10 MB quota and an unlimited "s3" source.
+        const usagesPerSource = apiFixture("/api/users/{user_id}/usage", "get", "per_quota_source");
+        const wrapper = await mountDiskUsageSummary(true, usagesPerSource);
+        expect(wrapper.findAll(".storage-source-label").map((label) => label.text())).toEqual(["ebs", "s3"]);
+        expect(wrapper.findAll(quotaUsageClassSelector).map((usage) => usage.text())).toEqual([
+            "6 b of 100 MB used",
+            "0 b of 10 MB used",
+            "0 b used",
+        ]);
+    });
+
+    it("should refresh the quota usage when the user clicks the refresh button", async () => {
+        const enableQuotasInConfig = true;
+        const wrapper = await mountDiskUsageSummary(enableQuotasInConfig);
+        const quotaUsage = wrapper.find(quotaUsageClassSelector);
+        expect(quotaUsage.text()).toContain("6 b of 100 MB used");
+        // The same user after uploading a second, 12 byte dataset.
+        const grownQuotaUsages = apiFixture("/api/users/{user_id}/usage", "get", "after_second_upload");
         server.use(
             http.get("/api/users/{user_id}/usage", ({ response }) => {
-                return response(200).json(updatedFakeQuotaUsages);
+                return response(200).json(grownQuotaUsages);
             }),
             http.put("/api/users/current/recalculate_disk_usage", ({ response }) => {
                 return response(200).json({ id: FAKE_TASK_ID, ignored: false });
@@ -125,6 +123,6 @@ describe("DiskUsageSummary", () => {
         await flushPromises();
 
         expect(wrapper.find(".refreshing-alert").exists()).toBe(false);
-        expect(quotaUsage.text()).toContain("2 MB");
+        expect(quotaUsage.text()).toContain("18 b of 100 MB used");
     });
 });
