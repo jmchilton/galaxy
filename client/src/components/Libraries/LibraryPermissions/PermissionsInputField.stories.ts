@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/vue3-vite";
+import { expect, within } from "storybook/test";
 
 import { http } from "@/api/client/__mocks__/http";
 
@@ -38,6 +39,19 @@ export const NoRolesChosen: Story = {
         permission_type: "access_library_role_list",
         initial_value: [],
         alert: "User with <strong>any</strong> of these roles can access this library. If there are no access roles set on the library it is considered <strong>unrestricted</strong>.",
+    },
+    play: async ({ canvas, step }) => {
+        await step("See the note on who can access the library, its key words in bold", async () => {
+            const note = await canvas.findByRole("status");
+            await expect(note).toHaveTextContent(
+                /^User with any of these roles can access this library\. If there are no access roles set on the library it is considered unrestricted\.$/,
+            );
+            await expect(
+                within(note)
+                    .getAllByRole("strong")
+                    .map((bold) => bold.textContent),
+            ).toEqual(["any", "unrestricted"]);
+        });
     },
 };
 
