@@ -1470,12 +1470,6 @@ class ExtractsWorkflows(GalaxyTestSeleniumContext):
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         return run["implicit_collections"][0]["id"]
 
-    def extract_workflow_toggle_job(self, job_id: str):
-        """Toggle the selection checkbox for a specific job card by job_id."""
-        checkbox = self.components.workflow_extract.card_checkbox_by_job_id(job_id=job_id)
-        element = checkbox.wait_for_present()
-        self.execute_script_click(element)
-
     def find_workflow_by_name(self, name: str) -> str:
         """Find workflow ID by name via API. Returns most recently created if multiple match."""
         response = self.workflow_populator._get("workflows")
@@ -1511,37 +1505,6 @@ class ExtractsWorkflows(GalaxyTestSeleniumContext):
         """Get job IDs from all tool-step cards."""
         cards = self.components.workflow_extract.tool_card_with_job_id.all()
         return [card.get_attribute("data-job-id") for card in cards]
-
-    def extract_workflow_toggle_output_star(self, job_id: str):
-        """Star/un-star the first output of the tool card for the given job.
-        The star button in WorkflowExtractionCard.vue is disabled while
-        `!props.job.checked` — a regression that defaults cards to
-        unchecked turns the click into a silent no-op, so the test surfaces
-        the bug directly rather than via a downstream timeout."""
-        star = self.components.workflow_extract.output_star_for_job(job_id=job_id).wait_for_present()
-        assert not star.get_attribute("disabled"), f"star for job {job_id} is disabled — its card is unchecked"
-        self.execute_script_click(star)
-        self.sleep_for(self.wait_types.UX_RENDER)
-
-    def extract_workflow_rename_output(self, job_id: str, new_label: str):
-        """Click the output label button, type a new label in the modal, and
-        click the modal OK button. Requires the output to already be starred
-        (label button is v-if=output.exposed)."""
-        label_button = self.components.workflow_extract.output_label_for_job(job_id=job_id).wait_for_present()
-        self.execute_script_click(label_button)
-        self.components.workflow_extract.output_rename_input.wait_for_and_clear_and_send_keys(new_label)
-        self.components.workflow_extract.output_rename_confirm.wait_for_and_click()
-        # Modal closes asynchronously after the rename callback resolves.
-        self.components.workflow_extract.output_rename_input.wait_for_absent()
-
-    def extract_workflow_cancel_rename_output(self, job_id: str):
-        """Open the rename modal, type some text, and dismiss without
-        confirming. Asserts the modal closes without applying the rename."""
-        label_button = self.components.workflow_extract.output_label_for_job(job_id=job_id).wait_for_present()
-        self.execute_script_click(label_button)
-        self.components.workflow_extract.output_rename_input.wait_for_and_clear_and_send_keys("discarded label")
-        self.components.workflow_extract.output_rename_cancel.wait_for_and_click()
-        self.components.workflow_extract.output_rename_input.wait_for_absent()
 
     def count_active_output_stars(self) -> int:
         return len(self.components.workflow_extract.all_active_output_stars.all())
