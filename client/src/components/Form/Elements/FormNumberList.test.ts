@@ -1,13 +1,14 @@
-import { getLocalVue } from "@tests/vitest/helpers";
-import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { composeStories } from "@storybook/vue3-vite";
+import { type StoryOf, useStoryMount } from "@tests/vitest/stories";
+import { describe, expect, it } from "vitest";
+
+import * as FormNumberListStories from "./FormNumberList.stories";
 
 import FormNumber from "./FormNumber.vue";
 import FormNumberList from "./FormNumberList.vue";
 
-const localVue = getLocalVue();
-
-enableAutoUnmount(afterEach);
+const stories = composeStories(FormNumberListStories);
+const mountStory = useStoryMount();
 
 const SELECTORS = {
     INPUT: "input.ui-input",
@@ -15,30 +16,30 @@ const SELECTORS = {
     REMOVE: "[data-description='remove value']",
 };
 
-function mountFormNumberList(value: number[] | null) {
-    return mount(FormNumberList, {
-        props: { value, type: "integer" },
-        global: localVue,
-    });
+/** Mounts a story, whose harness passes every emitted `input` back as `value`, as the form does. */
+function mountFormNumberList(story: StoryOf<typeof stories>) {
+    return mountStory(story).getComponent(FormNumberList);
 }
 
-function inputValues(wrapper: VueWrapper) {
+type FormNumberListWrapper = ReturnType<typeof mountFormNumberList>;
+
+function inputValues(wrapper: FormNumberListWrapper) {
     return wrapper.findAll(SELECTORS.INPUT).map((input) => (input.element as HTMLInputElement).value);
 }
 
-function lastEmittedValue(wrapper: VueWrapper) {
+function lastEmittedValue(wrapper: FormNumberListWrapper) {
     return wrapper.emitted("input")!.at(-1);
 }
 
 describe("FormNumberList", () => {
     it("renders a number field per value", () => {
-        const wrapper = mountFormNumberList([1, 2]);
+        const wrapper = mountFormNumberList(stories.TwoColumns);
 
         expect(inputValues(wrapper)).toEqual(["1", "2"]);
     });
 
     it("starts with one empty field that cannot be removed", () => {
-        const wrapper = mountFormNumberList(null);
+        const wrapper = mountFormNumberList(stories.Unset);
 
         expect(wrapper.findAllComponents(FormNumber)).toHaveLength(1);
         expect(inputValues(wrapper)).toEqual([""]);
@@ -46,7 +47,7 @@ describe("FormNumberList", () => {
     });
 
     it("emits the entered values as numbers", async () => {
-        const wrapper = mountFormNumberList([1]);
+        const wrapper = mountFormNumberList(stories.OneColumn);
 
         await wrapper.find(SELECTORS.ADD).trigger("click");
         await wrapper.findAll(SELECTORS.INPUT).at(1)!.setValue("3");
@@ -55,7 +56,7 @@ describe("FormNumberList", () => {
     });
 
     it("removes a value", async () => {
-        const wrapper = mountFormNumberList([1, 2]);
+        const wrapper = mountFormNumberList(stories.TwoColumns);
 
         await wrapper.findAll(SELECTORS.REMOVE).at(0)!.trigger("click");
 
@@ -65,7 +66,7 @@ describe("FormNumberList", () => {
     });
 
     it("emits null once every field is empty", async () => {
-        const wrapper = mountFormNumberList([1]);
+        const wrapper = mountFormNumberList(stories.OneColumn);
 
         await wrapper.find(SELECTORS.INPUT).setValue("");
 
