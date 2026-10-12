@@ -1,15 +1,21 @@
-import { mount } from "@vue/test-utils";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
+
+import { Toast } from "@/composables/__mocks__/toast";
 
 import { useDataLoading } from "./util";
 
-const { errorToast } = vi.hoisted(() => ({ errorToast: vi.fn() }));
+vi.mock("@/composables/toast");
 
-vi.mock("@/composables/toast", () => ({
-    useToast: () => ({ error: errorToast, success: vi.fn() }),
-}));
+beforeEach(() => {
+    Toast.error.mockClear();
+});
+afterEach(() => {
+    Toast.error.mockClear();
+});
+enableAutoUnmount(afterEach);
 
 it("reports a failed load and stops loading", async () => {
     const { isLoading, loadDataOnMount } = useDataLoading();
@@ -26,5 +32,5 @@ it("reports a failed load and stops loading", async () => {
     );
     await flushPromises();
     expect(isLoading.value).toBe(false);
-    expect(errorToast).toHaveBeenCalledWith("Failed to fetch", "An error occurred while loading storage data.");
+    expect(Toast.error).toHaveBeenCalledWith("Failed to fetch", "An error occurred while loading storage data.");
 });
