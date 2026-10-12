@@ -1,11 +1,14 @@
 import "@tests/vitest/mockHelpPopovers";
 
+import { composeStories } from "@storybook/vue3-vite";
 import { getFakeHistorySummary, getFakeRegisteredUser } from "@tests/test-data";
+import { getFakeToolFormConfig } from "@tests/test-data/tools";
 import { deferred } from "@tests/vitest/deferred";
 import { createTestRouter, getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { useStoryMount } from "@tests/vitest/stories";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { createPinia, disposePinia } from "pinia";
+import { createPinia, disposePinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 
@@ -16,6 +19,8 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { seedCurrentHistory } from "@/stores/testUtils";
 import { useUserStore } from "@/stores/userStore";
 
+import * as componentStories from "./ToolForm.stories";
+
 import ToolCard from "./ToolCard.vue";
 import ToolForm from "./ToolForm.vue";
 import FormDisplay from "@/components/Form/FormDisplay.vue";
@@ -23,6 +28,8 @@ import FormDisplay from "@/components/Form/FormDisplay.vue";
 const { server, http } = useServerMock();
 
 const localVue = getLocalVue();
+const stories = composeStories(componentStories);
+const mountStory = useStoryMount();
 
 vi.mock("@/composables/userLocalStorageFromHashedId", async () => {
     const { ref } = await import("vue");
@@ -41,15 +48,14 @@ describe("ToolForm", () => {
     });
     enableAutoUnmount(afterEach);
 
-    async function mountToolForm(preloadHistory = false) {
+    // Keep the initial provider-arrival case: story decorators preload user and history.
+    async function mountInitialToolForm() {
         const pinia = createPinia();
+        // Select this Pinia before lookup: a testing Pinia otherwise overrides the explicit argument.
+        setActivePinia(pinia);
         disposeStores = () => disposePinia(pinia);
         const userStore = useUserStore(pinia);
         const history = getFakeHistorySummary({ id: "fakeHistory" });
-        if (preloadHistory) {
-            userStore.currentUser = getFakeRegisteredUser({ id: "fakeUser" });
-            seedCurrentHistory(history, pinia);
-        }
         const wrapper = mount(ToolForm, {
             props: {
                 id: "tool_id",
@@ -72,11 +78,24 @@ describe("ToolForm", () => {
         await nextTick();
         vi.spyOn(historyStore, "startWatchingHistory").mockImplementation(() => {});
         await flushPromises();
+        await vi.waitFor(() => expect(wrapper.find("[data-description='run tool button']").exists()).toBe(true));
         return { wrapper, userStore };
+    }
+
+    async function mountToolForm() {
+        const outer = mountStory(stories.NoInputParameters, {
+            props: { id: "tool_id", version: "version" },
+            global: { stubs: { FormDisplay: true } },
+        });
+        const userStore = useUserStore();
+        vi.spyOn(useHistoryStore(), "startWatchingHistory").mockImplementation(() => {});
+        await flushPromises();
+        return { wrapper: outer.getComponent(ToolForm), userStore };
     }
 
     function buildResponse(overrides = {}) {
         return {
+            ...getFakeToolFormConfig(),
             id: "tool_id",
             name: "tool_name",
             version: "version",
@@ -101,30 +120,15 @@ describe("ToolForm", () => {
     }
 
     beforeEach(() => {
-        // ToolForm reads configurationStore directly, so use the configuration API seam.
-        server.use(
-            http.get("/api/configuration", ({ response }) => {
-                return response.untyped(
-                    HttpResponse.json({
-                        enable_tool_source_display: false,
-                        object_store_allows_id_selection: false,
-                    }),
-                );
-            }),
-            http.untyped.get("/api/webhooks", () => {
-                return HttpResponse.json([]);
-            }),
-            http.untyped.get("/api/tools/tool_id/citations", () => {
-                return HttpResponse.json([]);
-            }),
-        );
+        // Reuse the same configuration, webhooks and citations seams for the provider-arrival mount.
+        server.use(...Object.values(componentStories.default.parameters.msw.handlers));
 
         useBuildResponse();
         useToast().clearToasts();
     });
 
     it("shows the tool title, available actions, empty-input message, help, and creator", async () => {
-        const { wrapper } = await mountToolForm();
+        const { wrapper } = await mountInitialToolForm();
         const button = wrapper.get("[data-description='run tool button']");
         expect(button.attributes("data-title")).toBe("Run tool: tool_name (version)");
         const dropdown = wrapper.findAll(".dropdown-item");
@@ -162,7 +166,7 @@ describe("ToolForm", () => {
         const build = deferred<ReturnType<typeof buildResponse>>();
         server.use(http.untyped.get("/api/tools/tool_id/build", async () => HttpResponse.json(await build.promise)));
         try {
-            const { wrapper } = await mountToolForm(true);
+            const { wrapper } = await mountToolForm();
             expect(wrapper.get("[data-description='loading message']").text()).toBe("Loading Tool...");
             build.resolve(buildResponse());
             await flushPromises();
@@ -205,6 +209,7 @@ describe("ToolForm", () => {
     });
 
     it("shows an error alert when tool submission returns an error message", async () => {
+        // Preserve the original synthetic rejection; standalone stories use shipped tool models.
         const errorMessage = "New identifier [duplicate] appears twice in resulting collection.";
         server.use(
             http.untyped.post("/api/tools", () => {
@@ -224,6 +229,7 @@ describe("ToolForm", () => {
     it("reports a rejected form update and re-enables the form", async () => {
         const { toasts, clearToasts } = useToast();
         clearToasts();
+        // Test-local 429 checks recovery independently of the endpoint's actual error statuses.
         server.use(
             http.untyped.post("/api/tools/tool_id/build", () => {
                 return HttpResponse.json({ err_msg: "Rate limit exceeded" }, { status: 429 });
