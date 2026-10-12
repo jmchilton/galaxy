@@ -1,8 +1,9 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { getLocalVue, nth, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { describe, expect, it, vi } from "vitest";
+import { disposePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { sanitizeHtml } from "@/directives/sanitizeHtml";
 
@@ -11,21 +12,28 @@ import ToolHelpMarkdown from "./ToolHelpMarkdown.vue";
 vi.mock("@/onload/loadConfig", () => ({ getAppRoot: () => "/galaxy/" }));
 
 describe("ToolHelpMarkdown", () => {
-    it("renders help through v-sanitize-html with the markdown profile", async () => {
+    beforeEach(() => {
         vi.mocked(sanitizeHtml).mockClear();
-        const wrapper = mount(ToolHelpMarkdown as object, {
-            localVue: getLocalVue(),
-            pinia: createTestingPinia({ createSpy: vi.fn }),
-            propsData: { content: "See [docs](https://example.org), a [term](gxhelp://tool) and <b>raw</b>" },
-            stubs: { MarkdownHelpPopovers: true },
+    });
+    afterEach(() => {
+        vi.mocked(sanitizeHtml).mockClear();
+    });
+    enableAutoUnmount(afterEach);
+
+    it("renders help through v-sanitize-html with the markdown profile", async () => {
+        const pinia = createTestingPinia({ createSpy: vi.fn });
+        onTestFinished(() => disposePinia(pinia));
+        const wrapper = mount(ToolHelpMarkdown, {
+            global: { ...withPlugins(getLocalVue(), pinia), stubs: { MarkdownHelpPopovers: true } },
+            props: { content: "See [docs](https://example.org), a [term](gxhelp://tool) and <b>raw</b>" },
         });
         await flushPromises();
 
-        const [html, profile] = vi.mocked(sanitizeHtml).mock.calls[0]!;
+        const [html, profile] = nth(vi.mocked(sanitizeHtml).mock.calls, 0);
         expect(profile).toBe("markdown");
         expect(html).toContain('href="https://example.org" target="_blank"');
         expect(html).toContain("&lt;b&gt;raw&lt;/b&gt;");
         const links = wrapper.findAll("a");
-        expect(links.at(1)!.attributes("href")).toBe("/galaxy/help/terms/tool");
+        expect(nth(links, 1).attributes("href")).toBe("/galaxy/help/terms/tool");
     });
 });
