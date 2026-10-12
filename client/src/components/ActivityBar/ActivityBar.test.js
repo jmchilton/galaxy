@@ -1,14 +1,22 @@
 import { createTestingPinia } from "@pinia/testing";
-import { dispatchEvent, emittedArg, getLocalVue, mockUnprivilegedToolsRequest } from "@tests/vitest/helpers";
-import { shallowMount } from "@vue/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+    dispatchEvent,
+    emittedArg,
+    getLocalVue,
+    mockUnprivilegedToolsRequest,
+    withPlugins,
+} from "@tests/vitest/helpers";
+import { enableAutoUnmount, shallowMount } from "@vue/test-utils";
+import flushPromises from "flush-promises";
+import { disposePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { h, ref } from "vue";
 
 import { useServerMock } from "@/api/client/__mocks__";
 import { useActivityStore } from "@/stores/activityStore";
 import { useEventStore } from "@/stores/eventStore";
 
-import mountTarget from "./ActivityBar.vue";
+import ActivityBar from "./ActivityBar.vue";
 
 const mockConfig = ref({});
 
@@ -60,32 +68,57 @@ describe("ActivityBar", () => {
     let activityStore;
     let eventStore;
     let wrapper;
+    let ownedPinia;
+
+    function createOwnedPinia() {
+        const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
+        ownedPinia.push(pinia);
+        // Scoped activity stores resolve through active Pinia rather than accepting an instance.
+        setActivePinia(pinia);
+        return pinia;
+    }
 
     beforeEach(async () => {
+        ownedPinia = [];
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         mockConfig.value = {};
-        const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
+        const pinia = createOwnedPinia();
         activityStore = useActivityStore("default");
-        eventStore = useEventStore();
+        eventStore = useEventStore(pinia);
         mockUnprivilegedToolsRequest(server, http);
         server.use(
             http.get("/api/configuration", ({ response }) => {
                 return response(200).json({});
             }),
         );
-        wrapper = shallowMount(mountTarget, {
-            global: { ...localVue, stubs: { draggable: draggableStub } },
-            pinia,
+        wrapper = shallowMount(ActivityBar, {
+            global: { ...withPlugins(localVue, pinia), stubs: { draggable: draggableStub } },
         });
     });
 
-    it("rendering", async () => {
+    afterEach(() => {
+        ownedPinia.forEach(disposePinia);
+        vi.clearAllTimers();
+        vi.useRealTimers();
+        vi.clearAllMocks();
+        mockConfig.value = {};
+    });
+    enableAutoUnmount(afterEach);
+    afterEach(async () => {
+        // Complete the store's existing 10ms synchronization while its wrappers are still mounted.
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(10);
+        await flushPromises();
+    });
+
+    it("renders each configured activity", async () => {
         activityStore.setAll([testActivity("1"), testActivity("2"), testActivity("3")]);
         await wrapper.vm.$nextTick();
         const items = wrapper.findAll("[title='test-title']");
         expect(items.length).toBe(3);
     });
 
-    it("drag start", async () => {
+    it("emits the workflow run destination when a workflow is dragged onto the bar", async () => {
         activityStore.setAll([testActivity("1"), testActivity("2"), testActivity("3")]);
         eventStore.setDragData({
             id: "workflow-id",
@@ -93,7 +126,7 @@ describe("ActivityBar", () => {
             model_class: "StoredWorkflow",
             name: "workflow-name",
         });
-        const bar = wrapper.find("[data-description='activity bar']");
+        const bar = wrapper.get("[data-description='activity bar']");
         dispatchEvent(bar, "dragenter");
         const emittedEvent = emittedArg(wrapper, "dragstart");
         expect(emittedEvent.to).toBe("/workflows/run?id=workflow-id");
@@ -102,7 +135,7 @@ describe("ActivityBar", () => {
     describe("interactivetools visibility", () => {
         async function mountWithInteractiveToolsConfig(enabled, activityBarId) {
             mockConfig.value = { interactivetools_enable: enabled };
-            const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
+            const pinia = createOwnedPinia();
             const testStore = useActivityStore(activityBarId);
             testStore.setAll([
                 testActivity("1"),
@@ -110,11 +143,9 @@ describe("ActivityBar", () => {
                 testActivity("3"),
             ]);
             mockUnprivilegedToolsRequest(server, http);
-            const testWrapper = shallowMount(mountTarget, {
-                localVue,
-                stubs: { draggable: draggableStub },
-                pinia,
-                propsData: { activityBarId },
+            const testWrapper = shallowMount(ActivityBar, {
+                global: { ...withPlugins(localVue, pinia), stubs: { draggable: draggableStub } },
+                props: { activityBarId },
             });
             await testWrapper.vm.$nextTick();
             return testWrapper;
@@ -132,7 +163,7 @@ describe("ActivityBar", () => {
 
         it("keeps a hidden interactivetools activity when the visible ones are reordered", async () => {
             const testWrapper = await mountWithInteractiveToolsConfig(false, "it-test-reorder");
-            const bar = testWrapper.findComponent(draggableStub);
+            const bar = testWrapper.getComponent(draggableStub);
             const visible = bar.props("modelValue");
             expect(visible.map((activity) => activity.id)).toEqual(["test-1", "test-3"]);
             bar.vm.$emit("update:modelValue", [...visible].reverse());
