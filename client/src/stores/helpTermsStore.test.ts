@@ -1,7 +1,8 @@
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import { ensureDefined } from "@/utils/assertions";
 
 const { server, http } = useServerMock();
 
@@ -19,11 +20,22 @@ const DATATYPE_TERM = "galaxy.datatypes.extensions.bed";
 
 // Upload utils cache datatypes at module scope, so reload all modules for each test.
 // `ref` comes from the reloaded vue too, so the store's watchers can track it.
-async function setup() {
-    const { createPinia, setActivePinia } = await import("pinia");
-    setActivePinia(createPinia());
+async function createHelpObservers() {
+    const { createPinia, disposePinia, setActivePinia } = await import("pinia");
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    onTestFinished(() => {
+        disposePinia(pinia);
+        setActivePinia(undefined);
+    });
     const { ref } = await import("vue");
-    return { ...(await import("./helpTermsStore")), ref };
+    // Reload the helper too, so its effect scopes use this test’s fresh Vue module.
+    const { runInTestScope } = await import("@tests/vitest/effectScope");
+    const { useHelpForTerm } = await import("./helpTermsStore");
+    return {
+        ref,
+        useHelpForTerm: (term: Parameters<typeof useHelpForTerm>[0]) => runInTestScope(() => useHelpForTerm(term)),
+    };
 }
 
 describe("useHelpForTerm", () => {
@@ -49,7 +61,7 @@ describe("useHelpForTerm", () => {
     });
 
     it("does not load datatypes for YAML terms", async () => {
-        const { useHelpForTerm, ref } = await setup();
+        const { useHelpForTerm, ref } = await createHelpObservers();
         const helps = Array.from({ length: 10 }, () => useHelpForTerm(ref(YAML_TERM)));
         for (const { loading, hasHelp, help } of helps) {
             expect(loading.value).toBe(false);
@@ -61,10 +73,10 @@ describe("useHelpForTerm", () => {
     });
 
     it("loads datatypes once for many concurrent datatype terms", async () => {
-        const { useHelpForTerm, ref } = await setup();
+        const { useHelpForTerm, ref } = await createHelpObservers();
         const helps = Array.from({ length: 10 }, () => useHelpForTerm(ref(DATATYPE_TERM)));
-        expect(helps[0]!.loading.value).toBe(true);
-        await vi.waitFor(() => expect(helps[0]!.loading.value).toBe(false));
+        expect(ensureDefined(helps[0]).loading.value).toBe(true);
+        await vi.waitFor(() => expect(ensureDefined(helps[0]).loading.value).toBe(false));
         await flushPromises();
         expect(datatypesRequests).toBe(1);
         for (const { loading, hasHelp, help } of helps) {
@@ -75,7 +87,7 @@ describe("useHelpForTerm", () => {
     });
 
     it("loads datatypes when the term changes to a datatype term", async () => {
-        const { useHelpForTerm, ref } = await setup();
+        const { useHelpForTerm, ref } = await createHelpObservers();
         const term = ref(YAML_TERM);
         const { loading, help } = useHelpForTerm(term);
         await flushPromises();
@@ -89,7 +101,7 @@ describe("useHelpForTerm", () => {
 
     it("retries loading datatypes for a later term after a failed load", async () => {
         failNext = 1;
-        const { useHelpForTerm, ref } = await setup();
+        const { useHelpForTerm, ref } = await createHelpObservers();
         const failed = useHelpForTerm(ref(DATATYPE_TERM));
         await vi.waitFor(() => expect(failed.loading.value).toBe(false));
         expect(failed.hasHelp.value).toBe(false);
