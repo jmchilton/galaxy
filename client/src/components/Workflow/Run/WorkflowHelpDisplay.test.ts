@@ -1,6 +1,6 @@
 import { getLocalVue, nth } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoredWorkflowDetailed } from "@/api/workflows";
 import { sanitizeHtml } from "@/directives/sanitizeHtml";
@@ -9,12 +9,24 @@ import WorkflowHelpDisplay from "./WorkflowHelpDisplay.vue";
 
 const localVue = getLocalVue();
 
-describe("WorkflowHelpDisplay", () => {
-    beforeEach(() => {
-        vi.mocked(sanitizeHtml).mockClear();
-        vi.mocked(sanitizeHtml).mockImplementation((html) => `<span class="sanitized">${html}</span>`);
-    });
+const sanitizeSpy = vi.mocked(sanitizeHtml);
+const originalSanitizeImplementation = sanitizeSpy.getMockImplementation();
 
+beforeEach(() => {
+    sanitizeSpy.mockClear();
+    sanitizeSpy.mockImplementation((html) => `<span class="sanitized">${html}</span>`);
+});
+
+afterEach(() => {
+    sanitizeSpy.mockReset();
+    if (originalSanitizeImplementation) {
+        sanitizeSpy.mockImplementation(originalSanitizeImplementation);
+    }
+});
+// afterEach runs in reverse order: unmount before restoring the sanitizer.
+enableAutoUnmount(afterEach);
+
+describe("WorkflowHelpDisplay", () => {
     it("renders readme and help markdown through v-sanitize-html with the links profile", () => {
         const workflow: Pick<StoredWorkflowDetailed, "readme" | "help"> = {
             readme: "**Readme** with [a link](https://galaxyproject.org) and <em>raw</em>",
