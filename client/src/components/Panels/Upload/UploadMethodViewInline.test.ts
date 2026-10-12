@@ -1,6 +1,7 @@
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { computed, h, ref } from "vue";
 
 import UploadMethodViewInline from "./UploadMethodViewInline.vue";
@@ -32,13 +33,16 @@ describe("UploadMethodViewInline", () => {
     afterEach(() => {
         vi.restoreAllMocks();
     });
+    enableAutoUnmount(afterEach);
 
     it("renders the selected method component without making it reactive", () => {
         const warn = vi.spyOn(console, "warn");
+        const pinia = createPinia();
+        onTestFinished(() => disposePinia(pinia));
 
-        const wrapper = mount(UploadMethodViewInline as object, {
+        const wrapper = mount(UploadMethodViewInline, {
             props: { config: { targetHistoryId: "history_id" } },
-            global: { ...localVue, stubs: { ...localVue.stubs, GCard: true, GTip: true } },
+            global: { ...withPlugins(localVue, pinia), stubs: { ...localVue.stubs, GCard: true, GTip: true } },
         });
 
         expect(wrapper.find(".paste-links-method").exists()).toBe(true);
