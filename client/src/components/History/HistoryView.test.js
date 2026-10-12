@@ -1,13 +1,14 @@
 import { getFakeRegisteredUser } from "@tests/test-data";
-import { getLocalVue, suppressLucideVue2Deprecation } from "@tests/vitest/helpers";
+import { deferred } from "@tests/vitest/deferred";
+import { getLocalVue, suppressLucideVue2Deprecation, withPlugins } from "@tests/vitest/helpers";
 import { setupMockConfig } from "@tests/vitest/mockConfig";
-import { mount } from "@vue/test-utils";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createRouter, createWebHistory } from "vue-router";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { createMemoryHistory, createRouter } from "vue-router";
 
-import { useServerMock } from "@/api/client/__mocks__";
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { setupSelectableMock } from "@/components/ObjectStore/mockServices";
 import { useHistoryStore } from "@/stores/historyStore";
 import { getHistoryByIdFromServer, setCurrentHistoryOnServer } from "@/stores/services/history.services";
@@ -25,11 +26,11 @@ vi.mock("@/stores/services/history.services", () => ({
 
 setupSelectableMock();
 
-let localVue;
+const localVue = getLocalVue();
 
 const { server, http } = useServerMock();
 
-function create_history(historyId, userId, purged = false, archived = false) {
+function createHistory(historyId, userId, purged = false, archived = false) {
     const historyName = `${userId}'s History ${historyId}`;
     return {
         model_class: "History",
@@ -50,7 +51,7 @@ function create_history(historyId, userId, purged = false, archived = false) {
     };
 }
 
-function create_datasets(historyId, count) {
+function createDatasets(historyId, count) {
     const contents = [];
     for (let index = 1; index <= count; index++) {
         contents.push({
@@ -71,20 +72,22 @@ function create_datasets(historyId, count) {
     };
 }
 
-async function createWrapper(localVue, currentUserId, history) {
+async function createWrapper(currentUserId, history) {
     getHistoryByIdFromServer.mockResolvedValue({ data: history, error: undefined });
     setCurrentHistoryOnServer.mockResolvedValue(history);
-    const history_contents_result = create_datasets(history.id, history.count);
+    const historyContentsResult = createDatasets(history.id, history.count);
 
     setupMockConfig({});
     server.use(
         http.get("/api/histories/{history_id}/contents", ({ response }) => {
-            return response(200).json(history_contents_result);
+            return response(200).json(historyContentsResult);
         }),
     );
 
+    const pinia = createPinia();
+    onTestFinished(() => disposePinia(pinia));
     const router = createRouter({
-        history: createWebHistory(),
+        history: createMemoryHistory(),
         routes: [{ path: "/history/:id", component: { template: "<div />" } }],
     });
     await router.push(`/history/${history.id}`);
@@ -93,7 +96,7 @@ async function createWrapper(localVue, currentUserId, history) {
     const wrapper = mount(HistoryView, {
         props: { id: history.id },
         global: {
-            ...localVue,
+            ...withPlugins(localVue, pinia, router),
             provide: {
                 store: {
                     dispatch: vi.fn,
@@ -101,13 +104,8 @@ async function createWrapper(localVue, currentUserId, history) {
                 },
             },
         },
-        // Passed at the top level (rather than spliced into `global.plugins`
-        // by hand) so the VTU adapter replaces getLocalVue()'s default router
-        // with this one instead of installing both and crashing with
-        // "Cannot redefine property: $route".
-        router,
     });
-    const userStore = useUserStore();
+    const userStore = useUserStore(pinia);
     userStore.currentUser = getFakeRegisteredUser({ id: currentUserId });
     await flushPromises();
     return wrapper;
@@ -115,92 +113,105 @@ async function createWrapper(localVue, currentUserId, history) {
 
 describe("History center panel View", () => {
     beforeEach(() => {
-        localVue = getLocalVue();
         suppressLucideVue2Deprecation();
     });
 
+    afterEach(() => {
+        vi.restoreAllMocks();
+        getHistoryByIdFromServer.mockReset();
+        setCurrentHistoryOnServer.mockReset();
+    });
+    enableAutoUnmount(afterEach);
+
     it.each([false, true])("restores an item after a rate-limited deletion (recursive: %s)", async (recursive) => {
-        const history = create_history("history_1", "user_1");
-        const wrapper = await createWrapper(localVue, "user_1", history);
-        const historyStore = useHistoryStore();
+        const history = createHistory("history_1", "user_1");
+        const wrapper = await createWrapper("user_1", history);
+        const historyStore = useHistoryStore(wrapper.vm.$pinia);
         const updateStats = vi.spyOn(historyStore, "updateContentStats").mockResolvedValue();
-        const item = wrapper.findComponent(ContentItem).props("item");
+        const item = wrapper.getComponent(ContentItem).props("item");
         const errorBody = "<html><head><title>429 Too Many Requests</title></head></html>";
-        let finishDelete;
-        const deleteResponse = new Promise((resolve) => (finishDelete = resolve));
+        const deleteResponse = deferred();
         const deleteRequest = vi.fn(async ({ request, params }) => {
             expect(params.id).toBe(item.id);
             expect(new URL(request.url).searchParams.get("recursive")).toBe(String(recursive));
-            await deleteResponse;
+            await deleteResponse.promise;
             return new HttpResponse(errorBody, { status: 429, headers: { "Content-Type": "text/html" } });
         });
         server.use(http.delete("/api/histories/{history_id}/contents/{type}s/{id}", deleteRequest));
 
-        wrapper.findComponent(ContentItem).vm.$emit("delete", item, recursive);
-        await flushPromises();
-        expect(wrapper.findComponent(FilterMenu).props("loading")).toBe(true);
-        expect(wrapper.findAllComponents(ContentItem).length).toBe(9);
+        try {
+            wrapper.getComponent(ContentItem).vm.$emit("delete", item, recursive);
+            await flushPromises();
+            expect(wrapper.getComponent(FilterMenu).props("loading")).toBe(true);
+            expect(wrapper.findAllComponents(ContentItem).length).toBe(9);
 
-        finishDelete();
-        await flushPromises();
+            deleteResponse.resolve();
+            await flushPromises();
 
-        expect(deleteRequest).toHaveBeenCalledTimes(1);
-        expect(wrapper.findComponent(FilterMenu).props("loading")).toBe(false);
-        expect(updateStats).not.toHaveBeenCalled();
-        expect(wrapper.findAllComponents(ContentItem).length).toBe(10);
-        expect(item.deleted).toBe(false);
-        const dialog = wrapper.findComponent(OperationErrorDialog);
-        expect(dialog.props("operationError").errorMessage.message).toBe(
-            "Too many requests, please wait and try again (429)",
-        );
-        dialog.vm.$emit("hide");
-        await flushPromises();
-        expect(wrapper.findComponent(OperationErrorDialog).exists()).toBe(false);
+            expect(deleteRequest).toHaveBeenCalledTimes(1);
+            expect(wrapper.getComponent(FilterMenu).props("loading")).toBe(false);
+            expect(updateStats).not.toHaveBeenCalled();
+            expect(wrapper.findAllComponents(ContentItem).length).toBe(10);
+            expect(item.deleted).toBe(false);
+            const dialog = wrapper.getComponent(OperationErrorDialog);
+            expect(dialog.props("operationError").errorMessage.message).toBe(
+                "Too many requests, please wait and try again (429)",
+            );
+            dialog.vm.$emit("hide");
+            await flushPromises();
+            expect(wrapper.findComponent(OperationErrorDialog).exists()).toBe(false);
 
-        server.use(
-            http.delete(
-                "/api/histories/{history_id}/contents/{type}s/{id}",
-                () => new HttpResponse(null, { status: 204 }),
-            ),
-        );
-        wrapper.findComponent(ContentItem).vm.$emit("delete", item, recursive);
-        await flushPromises();
-        expect(updateStats).toHaveBeenCalledTimes(1);
-        expect(wrapper.findComponent(FilterMenu).props("loading")).toBe(false);
-        expect(wrapper.findAllComponents(ContentItem).length).toBe(9);
-        expect(wrapper.findComponent(OperationErrorDialog).exists()).toBe(false);
-        wrapper.unmount();
+            server.use(
+                http.delete(
+                    "/api/histories/{history_id}/contents/{type}s/{id}",
+                    () => new HttpResponse(null, { status: 204 }),
+                ),
+            );
+            wrapper.getComponent(ContentItem).vm.$emit("delete", item, recursive);
+            await flushPromises();
+            expect(updateStats).toHaveBeenCalledTimes(1);
+            expect(wrapper.getComponent(FilterMenu).props("loading")).toBe(false);
+            expect(wrapper.findAllComponents(ContentItem).length).toBe(9);
+            expect(wrapper.findComponent(OperationErrorDialog).exists()).toBe(false);
+            wrapper.unmount();
+        } finally {
+            if (wrapper.exists()) {
+                wrapper.unmount();
+            }
+            deleteResponse.resolve();
+            await flushPromises();
+        }
     });
 
     function expectCorrectLayout(wrapper) {
         // HistoryFilters should exist in HistoryView
         expect(wrapper.find("[data-description='filter text input']").exists()).toBe(true);
         // annotation
-        expect(wrapper.find("[data-description='annotation value']").text()).toBe("This is a history");
+        expect(wrapper.get("[data-description='annotation value']").text()).toBe("This is a history");
         // StatelessTags
-        const tags = wrapper.find(".stateless-tags");
+        const tags = wrapper.get(".stateless-tags");
         expect(tags.text()).toContain("tag_1");
         expect(tags.text()).toContain("tag_2");
         // HistoryCounter
-        expect(wrapper.find("[data-description='show active items button']").text()).toEqual("8");
-        expect(wrapper.find("[data-description='include deleted items button']").text()).toEqual("1");
-        expect(wrapper.find("[data-description='include hidden items button']").text()).toEqual("2");
+        expect(wrapper.get("[data-description='show active items button']").text()).toEqual("8");
+        expect(wrapper.get("[data-description='include deleted items button']").text()).toEqual("1");
+        expect(wrapper.get("[data-description='include hidden items button']").text()).toEqual("2");
     }
 
     function storageDashboardButtonDisabled(wrapper) {
-        return wrapper.find("[data-description='storage dashboard button']").classes().includes("g-disabled");
+        return wrapper.get("[data-description='storage dashboard button']").classes().includes("g-disabled");
     }
 
     it("current user's current history", async () => {
-        const history = create_history("history_1", "user_1", false);
-        const wrapper = await createWrapper(localVue, "user_1", history);
+        const history = createHistory("history_1", "user_1", false);
+        const wrapper = await createWrapper("user_1", history);
         expect(wrapper.vm.history).toEqual(history);
 
-        const historyStore = useHistoryStore();
+        const historyStore = useHistoryStore(wrapper.vm.$pinia);
         await historyStore.setCurrentHistory(history.id);
 
         // switch/import buttons: current history, should be a disabled switch
-        const switchButton = wrapper.find("[data-description='switch to history button']").classes();
+        const switchButton = wrapper.get("[data-description='switch to history button']").classes();
         const importButton = wrapper.find("[data-description='import history button']");
         expect(switchButton.includes("g-disabled")).toBeTruthy();
         expect(importButton.exists()).toBe(false);
@@ -222,8 +233,8 @@ describe("History center panel View", () => {
     });
 
     it("other user's history", async () => {
-        const history = create_history("history_2", "user_2", false);
-        const wrapper = await createWrapper(localVue, "user_1", history);
+        const history = createHistory("history_2", "user_2", false);
+        const wrapper = await createWrapper("user_1", history);
         expect(wrapper.vm.history).toEqual(history);
 
         // switch/import buttons: external history so should be importable
@@ -240,12 +251,12 @@ describe("History center panel View", () => {
     });
 
     it("same user, not current history", async () => {
-        const history = create_history("history_3", "user_1", false);
-        const wrapper = await createWrapper(localVue, "user_1", history);
+        const history = createHistory("history_3", "user_1", false);
+        const wrapper = await createWrapper("user_1", history);
         expect(wrapper.vm.history).toEqual(history);
 
         // switch/import buttons: not current history, switchable
-        const switchButton = wrapper.find("[data-description='switch to history button']").classes();
+        const switchButton = wrapper.get("[data-description='switch to history button']").classes();
         const importButton = wrapper.find("[data-description='import history button']");
         expect(switchButton.includes("g-disabled")).toBeFalsy();
         expect(importButton.exists()).toBe(false);
@@ -258,12 +269,12 @@ describe("History center panel View", () => {
     });
 
     it("same user, purged history", async () => {
-        const history = create_history("history_4", "user_1", true);
-        const wrapper = await createWrapper(localVue, "user_1", history);
+        const history = createHistory("history_4", "user_1", true);
+        const wrapper = await createWrapper("user_1", history);
         expect(wrapper.vm.history).toEqual(history);
 
         // history purged, is switchable but not importable
-        const switchButton = wrapper.find("[data-description='switch to history button']").classes();
+        const switchButton = wrapper.get("[data-description='switch to history button']").classes();
         const importButton = wrapper.find("[data-description='import history button']");
         expect(switchButton.includes("g-disabled")).toBeFalsy();
         expect(importButton.exists()).toBe(false);
@@ -272,14 +283,14 @@ describe("History center panel View", () => {
         expect(storageDashboardButtonDisabled(wrapper)).toBeFalsy();
 
         // instead we have an alert
-        expect(wrapper.find("[data-description='history messages']").text()).toBe(
+        expect(wrapper.get("[data-description='history messages']").text()).toBe(
             "History has been permanently deleted",
         );
     });
 
     it("should not display archived message and should be importable when user is not owner and history is archived", async () => {
-        const history = create_history("history_2", "user_2", false, true);
-        const wrapper = await createWrapper(localVue, "user_1", history);
+        const history = createHistory("history_2", "user_2", false, true);
+        const wrapper = await createWrapper("user_1", history);
         expect(wrapper.vm.history).toEqual(history);
 
         const switchButton = wrapper.find("[data-description='switch to history button']");
@@ -293,12 +304,12 @@ describe("History center panel View", () => {
 
         expectCorrectLayout(wrapper);
         // There is no message about the history status
-        expect(wrapper.find("[data-description='history messages']").text()).toBe("");
+        expect(wrapper.get("[data-description='history messages']").text()).toBe("");
     });
 
     it("should display archived message and should not be importable when user is owner and history is archived", async () => {
-        const history = create_history("history_2", "user_1", false, true);
-        const wrapper = await createWrapper(localVue, "user_1", history);
+        const history = createHistory("history_2", "user_1", false, true);
+        const wrapper = await createWrapper("user_1", history);
         expect(wrapper.vm.history).toEqual(history);
 
         const switchButton = wrapper.find("[data-description='switch to history button']");
@@ -310,6 +321,6 @@ describe("History center panel View", () => {
         expect(storageDashboardButtonDisabled(wrapper)).toBeFalsy();
 
         expectCorrectLayout(wrapper);
-        expect(wrapper.find("[data-description='history messages']").text()).toBe("History has been archived");
+        expect(wrapper.get("[data-description='history messages']").text()).toBe("History has been archived");
     });
 });
