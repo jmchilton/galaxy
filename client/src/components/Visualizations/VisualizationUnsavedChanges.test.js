@@ -1,9 +1,9 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { setActivePinia } from "pinia";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { disposePinia } from "pinia";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import VisualizationDisplay from "./VisualizationDisplay.vue";
 
@@ -22,29 +22,30 @@ vi.mock("@/api", async (importOriginal) => ({
 
 const localVue = getLocalVue();
 
-let wrapper;
-
 afterEach(() => {
-    wrapper?.unmount();
-    wrapper = undefined;
-    vi.useRealTimers();
+    if (vi.isFakeTimers()) {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    }
 });
+enableAutoUnmount(afterEach);
 
 const unloadIsBlocked = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 describe("a visualization reporting unsaved work", () => {
     async function openVisualization() {
         const pinia = createTestingPinia({ createSpy: vi.fn });
-        setActivePinia(pinia);
-        wrapper = mount(VisualizationDisplay, {
-            propsData: { visualization: "example", datasetId: "d1" },
-            localVue,
-            pinia,
-            stubs: { LoadingSpan: true, GAlert: true },
-            attachTo: document.body,
+        onTestFinished(() => disposePinia(pinia));
+        const target = document.createElement("div");
+        document.body.appendChild(target);
+        onTestFinished(() => target.remove());
+        const wrapper = mount(VisualizationDisplay, {
+            props: { visualization: "example", datasetId: "d1" },
+            global: withPlugins(localVue, pinia),
+            attachTo: target,
         });
         await flushPromises();
-        const frame = wrapper.find("iframe").element;
+        const frame = wrapper.get("iframe").element;
         return (data) => window.dispatchEvent(new MessageEvent("message", { data, source: frame.contentWindow }));
     }
 
