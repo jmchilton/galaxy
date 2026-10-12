@@ -1,4 +1,6 @@
 import "@/compat-config";
+// Match Galaxy startup for components using Bootstrap data-toggle controls.
+import "bootstrap";
 // The app's global styles: src/onload/index.js and App.vue's unscoped <style>.
 import "@/style/scss/base.scss";
 import "@/style/scss/custom_theme_variables.scss";
