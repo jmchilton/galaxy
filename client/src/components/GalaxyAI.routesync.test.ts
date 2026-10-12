@@ -1,7 +1,12 @@
 import { deferred } from "@tests/vitest/deferred";
+import { enableAutoUnmount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { disposePinia, getActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { ensureDefined } from "@/utils/assertions";
+
+import type GalaxyAI from "./GalaxyAI.vue";
 import {
     ChatInputStub,
     chatReply,
@@ -23,6 +28,16 @@ vi.mock("vue-router", () => ({
     useRouter: () => routerMock,
 }));
 
+enableAutoUnmount(afterEach);
+
+async function mountOwnedChat(props: InstanceType<typeof GalaxyAI>["$props"] = {}) {
+    const mounted = mountChat(props);
+    // mountChat creates this Pinia synchronously before awaiting its initial loads.
+    const pinia = ensureDefined(getActivePinia());
+    onTestFinished(() => disposePinia(pinia));
+    return await mounted;
+}
+
 describe("GalaxyAI route sync", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -32,7 +47,7 @@ describe("GalaxyAI route sync", () => {
     });
 
     async function mountFreshChat() {
-        const mounted = await mountChat();
+        const mounted = await mountOwnedChat();
         // the fresh conversation the component starts with already synced the route
         routerMock.replace.mockClear();
         return mounted;
@@ -50,9 +65,13 @@ describe("GalaxyAI route sync", () => {
     it("prefills a question seeded through the route and drops the parameter", async () => {
         routeMock.path = "/galaxyai/new";
         routeMock.query = { compact: "true", q: "trim my reads" };
-        const { wrapper } = await mountChat({ compact: true, exchangeId: "new", initialQuestion: "trim my reads" });
+        const { wrapper } = await mountOwnedChat({
+            compact: true,
+            exchangeId: "new",
+            initialQuestion: "trim my reads",
+        });
 
-        expect(wrapper.findComponent(ChatInputStub).props("value")).toBe("trim my reads");
+        expect(wrapper.getComponent(ChatInputStub).props("value")).toBe("trim my reads");
         // the seeded question is only prefilled, never sent on the user's behalf
         expect(mockPost).not.toHaveBeenCalled();
         // only `?q=` is dropped, in place, so a reload starts empty
@@ -62,7 +81,7 @@ describe("GalaxyAI route sync", () => {
         // the navigation clears the prop but leaves the prefilled question in place
         await wrapper.setProps({ initialQuestion: undefined });
         await flushPromises();
-        expect(wrapper.findComponent(ChatInputStub).props("value")).toBe("trim my reads");
+        expect(wrapper.getComponent(ChatInputStub).props("value")).toBe("trim my reads");
     });
 
     it("does not route back to the previous exchange when a new chat is started", async () => {
@@ -72,6 +91,10 @@ describe("GalaxyAI route sync", () => {
         // the history refresh triggered by the new exchange id — left in flight
         const historyLoad = deferred<{ data: never[]; error: undefined }>();
         mockGet.mockReturnValueOnce(historyLoad.promise);
+        onTestFinished(async () => {
+            historyLoad.resolve({ data: [], error: undefined });
+            await flushPromises();
+        });
 
         await sendMessage(wrapper, "find me a mapper");
         // the route can only be updated once that refresh settles
