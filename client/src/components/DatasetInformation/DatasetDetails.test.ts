@@ -3,8 +3,8 @@ import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { http as mswHttp } from "msw";
-import { setActivePinia } from "pinia";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { disposePinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { sanitizeHtml } from "@/directives/sanitizeHtml";
@@ -42,6 +42,7 @@ const JOB_ID = "job_id";
 
 const localVue = getLocalVue();
 const { server, http } = useServerMock();
+const initialSanitizeImplementation = vi.mocked(sanitizeHtml).getMockImplementation();
 
 const dataset = {
     id: DATASET_ID,
@@ -68,11 +69,16 @@ function serveDataset(served: object) {
 function mountDatasetDetailsNow() {
     const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
     setActivePinia(pinia);
-    return mount(DatasetDetails as object, {
+    const wrapper = mount(DatasetDetails as object, {
         propsData: { datasetId: DATASET_ID },
         localVue,
         pinia,
     });
+    onTestFinished(() => {
+        wrapper.unmount();
+        disposePinia(pinia);
+    });
+    return wrapper;
 }
 
 async function mountDatasetDetails() {
@@ -82,6 +88,17 @@ async function mountDatasetDetails() {
 }
 
 describe("DatasetDetails", () => {
+    beforeEach(() => {
+        // Registered before mount cleanup so the directive stays intact through unmount.
+        onTestFinished(() => {
+            const sanitizer = vi.mocked(sanitizeHtml);
+            sanitizer.mockClear();
+            if (initialSanitizeImplementation) {
+                sanitizer.mockImplementation(initialSanitizeImplementation);
+            }
+        });
+    });
+
     it("shows the dataset, its job and its peek", async () => {
         serveDataset(dataset);
         const wrapper = await mountDatasetDetails();
@@ -105,16 +122,16 @@ describe("DatasetDetails", () => {
         const wrapper = await mountDatasetDetails();
 
         expect(sanitizeHtml).toHaveBeenCalledWith(PEEK, "default");
-        expect(wrapper.find(".dataset-peek .sanitized td").text()).toBe("col1");
+        expect(wrapper.get(".dataset-peek .sanitized td").text()).toBe("col1");
     });
 
     describe("creating job polling", () => {
         beforeEach(() => {
             vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        });
-
-        afterEach(() => {
-            vi.useRealTimers();
+            onTestFinished(() => {
+                vi.clearAllTimers();
+                vi.useRealTimers();
+            });
         });
 
         it("keeps polling the creating job after a request fails to reach the server", async () => {
