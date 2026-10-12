@@ -1,14 +1,15 @@
-import { getLocalVue, injectTestRouter, nth } from "@tests/vitest/helpers";
-import { mount, type VueWrapper } from "@vue/test-utils";
+import { getLocalVue, nth, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from "vitest";
+import { createMemoryHistory, createRouter } from "vue-router";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 
-import MountTarget from "./NewUserConfirmation.vue";
+import NewUserConfirmation from "./NewUserConfirmation.vue";
 
 const localVue = getLocalVue(true);
-const router = injectTestRouter(localVue);
 const { server, http } = useServerMock();
 
 interface PostRequest {
@@ -16,20 +17,23 @@ interface PostRequest {
 }
 
 let postRequests: PostRequest[] = [];
-let originalSearch: string;
+let originalSearchDescriptor: PropertyDescriptor | undefined;
 
 describe("NewUserConfirmation", () => {
-    let wrapper: VueWrapper;
+    let wrapper: VueWrapper<InstanceType<typeof NewUserConfirmation>>;
 
     beforeEach(async () => {
         postRequests = [];
 
-        // Navigate to a different route to avoid NavigationDuplicated error
-        // when the component calls router.push("/") on successful submit
-        await router.push("/new-user-confirmation").catch(() => {});
+        originalSearchDescriptor = Object.getOwnPropertyDescriptor(window.location, "search");
+        const pinia = createPinia();
+        onTestFinished(() => disposePinia(pinia));
+        const router = createRouter({
+            history: createMemoryHistory(),
+            routes: [{ path: "/:pathMatch(.*)*", component: { template: "<div></div>" } }],
+        });
+        await router.push("/new-user-confirmation");
 
-        // Mock window.location.search
-        originalSearch = window.location.search;
         Object.defineProperty(window.location, "search", {
             configurable: true,
             writable: true,
@@ -43,23 +47,22 @@ describe("NewUserConfirmation", () => {
             }),
         );
 
-        wrapper = mount(MountTarget as object, {
-            props: {},
-            global: localVue,
+        wrapper = mount(NewUserConfirmation, {
+            global: withPlugins(localVue, pinia, router),
         });
     });
 
     afterEach(() => {
-        // Restore original search
-        Object.defineProperty(window.location, "search", {
-            configurable: true,
-            writable: true,
-            value: originalSearch,
-        });
+        if (originalSearchDescriptor) {
+            Object.defineProperty(window.location, "search", originalSearchDescriptor);
+        } else {
+            Reflect.deleteProperty(window.location, "search");
+        }
     });
+    enableAutoUnmount(afterEach);
 
-    it("basics", async () => {
-        const cardHeader = wrapper.find(".card-header");
+    it("requires accepted terms to create an account and displays registration details", async () => {
+        const cardHeader = wrapper.get(".card-header");
         expect(cardHeader.text()).toBe("Confirm new account creation");
 
         const inputs = wrapper.findAll("input");
@@ -68,7 +71,7 @@ describe("NewUserConfirmation", () => {
         const checkField = nth(inputs, 0);
         expect(checkField.attributes("type")).toBe("checkbox");
 
-        const submitButton = wrapper.find("button[name='confirm']");
+        const submitButton = wrapper.get("button[name='confirm']");
         await submitButton.trigger("click");
         await flushPromises();
 
@@ -85,16 +88,16 @@ describe("NewUserConfirmation", () => {
 
         await wrapper.setProps({ registrationWarningMessage: "registration warning message" });
 
-        const alert = wrapper.find(".alert");
+        const alert = wrapper.get(".alert");
         expect(alert.text()).toBe("registration warning message");
 
         await wrapper.setProps({ termsUrl: "terms_url" });
 
-        const termsFrame = wrapper.find("iframe");
+        const termsFrame = wrapper.get("iframe");
         expect(termsFrame.attributes("src")).toBe("terms_url");
 
         const toggle = "a[id=login-toggle]";
-        const loginToggle = wrapper.find(toggle);
+        const loginToggle = wrapper.get(toggle);
         expect(loginToggle.text()).toBe("Log in here.");
     });
 });
