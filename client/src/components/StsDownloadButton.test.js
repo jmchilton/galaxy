@@ -1,11 +1,13 @@
-import { getLocalVue } from "@tests/vitest/helpers";
+import { deferred } from "@tests/vitest/deferred";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
 import { setupMockConfig } from "@tests/vitest/mockConfig";
-import { mount } from "@vue/test-utils";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { createPinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import { Toast } from "@/composables/toast";
 
 import StsDownloadButton from "./StsDownloadButton.vue";
 
@@ -23,33 +25,39 @@ const DOWNLOAD_ENDPOINT = "http://cow.com/prepare_download";
 const STORAGE_REQUEST_ID = "moocow1235";
 const POLL_DELAY = 200;
 
-async function mountStsDownloadButtonWrapper(config) {
+async function mountDownloadButton(config) {
     setupMockConfig(config);
 
     const pinia = createPinia();
+    onTestFinished(() => disposePinia(pinia));
     const wrapper = mount(StsDownloadButton, {
         props: {
             title: "my title",
             fallbackUrl: FALLBACK_URL,
             downloadEndpoint: DOWNLOAD_ENDPOINT,
         },
-        global: localVue,
-        pinia,
+        global: withPlugins(localVue, pinia),
     });
     await flushPromises();
     return wrapper;
 }
 
 describe("StsDownloadButton", () => {
-    beforeEach(async () => {
-        // Reset handlers before each test
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     });
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+    enableAutoUnmount(afterEach);
 
     it("should fallback to a URL if tasks not enabled", async () => {
         const windowSpy = vi.spyOn(window, "open");
         windowSpy.mockImplementation(() => {});
-        const wrapper = await mountStsDownloadButtonWrapper(NO_TASKS_CONFIG);
-        await wrapper.find("button").trigger("click");
+        const wrapper = await mountDownloadButton(NO_TASKS_CONFIG);
+        await wrapper.get("button").trigger("click");
         await flushPromises();
         expect(window.open).toHaveBeenCalled();
     });
@@ -63,9 +71,9 @@ describe("StsDownloadButton", () => {
                 return HttpResponse.json(true);
             }),
         );
-        const wrapper = await mountStsDownloadButtonWrapper(TASKS_CONFIG);
+        const wrapper = await mountDownloadButton(TASKS_CONFIG);
 
-        await wrapper.find("button").trigger("click");
+        await wrapper.get("button").trigger("click");
         await flushPromises();
         expect(window.location).toBeAt(`api/short_term_storage/${STORAGE_REQUEST_ID}`);
     });
@@ -79,12 +87,41 @@ describe("StsDownloadButton", () => {
                 return HttpResponse.json(false);
             }),
         );
-        const wrapper = await mountStsDownloadButtonWrapper(TASKS_CONFIG);
+        const wrapper = await mountDownloadButton(TASKS_CONFIG);
 
         expect(wrapper.find(".fa-spinner").exists()).toBeFalsy();
-        await wrapper.find("button").trigger("click");
+        await wrapper.get("button").trigger("click");
         await flushPromises();
         expect(wrapper.find(".fa-spinner").exists()).toBeTruthy();
+    });
+
+    it("stops waiting and reports a poll failure without navigating", async () => {
+        let readyRequests = 0;
+        const errorSpy = vi.spyOn(Toast, "error").mockImplementation(() => {});
+        const assignSpy = vi.spyOn(window.location, "assign");
+        server.use(
+            http.untyped.post(DOWNLOAD_ENDPOINT, () => {
+                return HttpResponse.json({ storage_request_id: STORAGE_REQUEST_ID });
+            }),
+            http.untyped.get(`api/short_term_storage/${STORAGE_REQUEST_ID}/ready`, () => {
+                readyRequests += 1;
+                return readyRequests === 1
+                    ? HttpResponse.json(false)
+                    : HttpResponse.json({ err_msg: "Storage is unavailable", err_code: 500 }, { status: 500 });
+            }),
+        );
+        const wrapper = await mountDownloadButton(TASKS_CONFIG);
+
+        await wrapper.get("button").trigger("click");
+        await flushPromises();
+        expect(wrapper.find(".fa-spinner").exists()).toBeTruthy();
+
+        vi.advanceTimersByTime(POLL_DELAY);
+        await flushPromises();
+
+        expect(errorSpy).toHaveBeenCalledWith("Failed to generate download: Storage is unavailable");
+        expect(wrapper.find(".fa-spinner").exists()).toBeFalsy();
+        expect(assignSpy).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -93,8 +130,7 @@ describe("StsDownloadButton", () => {
     ])("should not poll or navigate when a %s response arrives after unmount", async (_label, ready) => {
         const storageRequestId = `in-flight-poll-${ready}`;
         let readyRequests = 0;
-        let releasePendingPoll;
-        const pendingPoll = new Promise((resolve) => (releasePendingPoll = resolve));
+        const pendingPoll = deferred();
         server.use(
             http.untyped.post(DOWNLOAD_ENDPOINT, () => {
                 return HttpResponse.json({ storage_request_id: storageRequestId });
@@ -102,17 +138,16 @@ describe("StsDownloadButton", () => {
             http.untyped.get(`api/short_term_storage/${storageRequestId}/ready`, async () => {
                 readyRequests += 1;
                 if (readyRequests > 1) {
-                    await pendingPoll;
+                    await pendingPoll.promise;
                     return HttpResponse.json(ready);
                 }
                 return HttpResponse.json(false);
             }),
         );
-        const wrapper = await mountStsDownloadButtonWrapper(TASKS_CONFIG);
+        const wrapper = await mountDownloadButton(TASKS_CONFIG);
         const assignSpy = vi.spyOn(window.location, "assign");
-        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         try {
-            await wrapper.find("button").trigger("click");
+            await wrapper.get("button").trigger("click");
             await flushPromises();
             expect(readyRequests).toBe(1);
 
@@ -120,25 +155,28 @@ describe("StsDownloadButton", () => {
             await vi.waitFor(() => expect(readyRequests).toBe(2));
 
             wrapper.unmount();
-            releasePendingPoll();
+            pendingPoll.resolve();
             await flushPromises();
             vi.advanceTimersByTime(POLL_DELAY * 10);
             await flushPromises();
             expect(readyRequests).toBe(2);
             expect(assignSpy).not.toHaveBeenCalled();
         } finally {
-            vi.useRealTimers();
+            if (wrapper.exists()) {
+                wrapper.unmount();
+            }
+            pendingPoll.resolve();
+            await flushPromises();
         }
     });
 
     it("should not start polling when the prepare request resolves after unmount", async () => {
         const storageRequestId = "in-flight-prepare";
         let readyRequests = 0;
-        let releasePendingPost;
-        const pendingPost = new Promise((resolve) => (releasePendingPost = resolve));
+        const pendingPost = deferred();
         server.use(
             http.untyped.post(DOWNLOAD_ENDPOINT, async () => {
-                await pendingPost;
+                await pendingPost.promise;
                 return HttpResponse.json({ storage_request_id: storageRequestId });
             }),
             http.untyped.get(`api/short_term_storage/${storageRequestId}/ready`, () => {
@@ -146,13 +184,22 @@ describe("StsDownloadButton", () => {
                 return HttpResponse.json(false);
             }),
         );
-        const wrapper = await mountStsDownloadButtonWrapper(TASKS_CONFIG);
+        const wrapper = await mountDownloadButton(TASKS_CONFIG);
 
-        await wrapper.find("button").trigger("click");
-        wrapper.unmount();
-        releasePendingPost();
-        await flushPromises();
-        await new Promise((resolve) => setTimeout(resolve, POLL_DELAY * 2));
-        expect(readyRequests).toBe(0);
+        try {
+            await wrapper.get("button").trigger("click");
+            wrapper.unmount();
+            pendingPost.resolve();
+            await flushPromises();
+            vi.advanceTimersByTime(POLL_DELAY * 2);
+            await flushPromises();
+            expect(readyRequests).toBe(0);
+        } finally {
+            if (wrapper.exists()) {
+                wrapper.unmount();
+            }
+            pendingPost.resolve();
+            await flushPromises();
+        }
     });
 });
