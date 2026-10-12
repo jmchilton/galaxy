@@ -1,13 +1,14 @@
 import { createTestingPinia } from "@pinia/testing";
-import { emittedArg, suppressErrorForCustomIcons } from "@tests/vitest/helpers";
-import { mount, shallowMount } from "@vue/test-utils";
-import { setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { emittedArg, nth, suppressErrorForCustomIcons } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount, shallowMount } from "@vue/test-utils";
+import type { UseElementBoundingReturn } from "@vueuse/core";
+import { disposePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { nextTick, reactive, ref } from "vue";
 
 import { sanitizeHtml } from "@/directives/sanitizeHtml";
 import type { LazyUndoRedoAction, UndoRedoAction } from "@/stores/undoRedoStore";
-import type { TextWorkflowComment } from "@/stores/workflowEditorCommentStore";
+import type { TextWorkflowComment, WorkflowComment as WorkflowCommentModel } from "@/stores/workflowEditorCommentStore";
 
 import MarkdownComment from "./MarkdownComment.vue";
 import TextComment from "./TextComment.vue";
@@ -19,8 +20,22 @@ const changePosition = vi.fn();
 const changeColor = vi.fn();
 const deleteComment = vi.fn();
 
-const pinia = createTestingPinia({ createSpy: vi.fn });
-setActivePinia(pinia);
+let pinia: ReturnType<typeof createTestingPinia>;
+const sanitizeMock = vi.mocked(sanitizeHtml);
+const originalSanitize = sanitizeMock.getMockImplementation();
+
+afterEach(() => {
+    sanitizeMock.mockReset();
+    if (originalSanitize) {
+        sanitizeMock.mockImplementation(originalSanitize);
+    }
+    vi.restoreAllMocks();
+});
+enableAutoUnmount(afterEach);
+afterEach(async () => {
+    // Let the mounted draggable's current resize/frame callbacks finish before unmount.
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+});
 
 vi.mock("@/composables/workflowStores", () => ({
     useWorkflowStores: () => ({
@@ -49,6 +64,11 @@ vi.mock("@/composables/workflowStores", () => ({
 
 // Mock transform injection that Draggable components expect
 const mockTransform = ref({ x: 0, y: 0, k: 1 });
+// These original fixtures omit bounding refs/update; no geometry interaction is exercised.
+
+function commentMountOptions() {
+    return { plugins: [pinia], provide: { transform: mockTransform } };
+}
 
 function getStyleProperty(element: Element, property: string) {
     const style = element.getAttribute("style") ?? "";
@@ -60,7 +80,7 @@ function getStyleProperty(element: Element, property: string) {
 }
 
 describe("WorkflowComment", () => {
-    const comment = {
+    const comment: Pick<TextWorkflowComment, "id" | "type" | "color" | "position" | "size"> & { data: object } = {
         id: 0,
         type: "text",
         color: "none",
@@ -70,19 +90,26 @@ describe("WorkflowComment", () => {
     };
 
     beforeEach(() => {
+        pinia = createTestingPinia({ createSpy: vi.fn });
+        const ownedPinia = pinia;
+        setActivePinia(pinia);
+        onTestFinished(() => {
+            disposePinia(ownedPinia);
+            setActivePinia(undefined);
+        });
+        vi.clearAllMocks();
         suppressErrorForCustomIcons();
     });
 
     it("changes position and size reactively", async () => {
-        const wrapper = shallowMount(WorkflowComment as any, {
+        const wrapper = shallowMount(WorkflowComment, {
             props: {
-                comment: { ...comment },
+                // The original position-only fixture deliberately omits text/size data.
+                comment: { ...comment } as TextWorkflowComment,
                 scale: 1,
-                rootOffset: {},
+                rootOffset: {} as UseElementBoundingReturn,
             },
-            provide: {
-                transform: mockTransform,
-            },
+            global: commentMountOptions(),
         });
 
         const position = () => ({
@@ -99,18 +126,18 @@ describe("WorkflowComment", () => {
         expect(size()).toEqual({ w: 100, h: 100 });
 
         await wrapper.setProps({
-            comment: { ...comment, position: [123, 456] },
+            comment: { ...comment, position: [123, 456] } as TextWorkflowComment,
             scale: 1,
-            rootOffset: {},
+            rootOffset: {} as UseElementBoundingReturn,
         });
 
         expect(position()).toEqual({ x: 123, y: 456 });
         expect(size()).toEqual({ w: 100, h: 100 });
 
         await wrapper.setProps({
-            comment: { ...comment, size: [2000, 3000] },
+            comment: { ...comment, size: [2000, 3000] } as TextWorkflowComment,
             scale: 1,
-            rootOffset: {},
+            rootOffset: {} as UseElementBoundingReturn,
         });
 
         expect(position()).toEqual({ x: 0, y: 0 });
@@ -118,44 +145,40 @@ describe("WorkflowComment", () => {
     });
 
     it("displays the correct comment type", async () => {
-        const wrapper = mount(WorkflowComment as any, {
+        const wrapper = mount(WorkflowComment, {
             props: {
                 comment: { ...comment, type: "text", data: { size: 1, text: "HelloWorld" } },
                 scale: 1,
-                rootOffset: {},
+                rootOffset: {} as UseElementBoundingReturn,
             },
-            provide: {
-                transform: mockTransform,
-            },
+            global: commentMountOptions(),
         });
 
-        expect(wrapper.findComponent(TextComment).isVisible()).toBe(true);
+        expect(wrapper.getComponent(TextComment).isVisible()).toBe(true);
 
         await wrapper.setProps({
             comment: { ...comment, type: "markdown", data: { text: "# Hello World" } },
             scale: 1,
-            rootOffset: {},
+            rootOffset: {} as UseElementBoundingReturn,
         });
 
         await nextTick();
-        expect(wrapper.findComponent(MarkdownComment).isVisible()).toBe(true);
+        expect(wrapper.getComponent(MarkdownComment).isVisible()).toBe(true);
     });
 
     it("forwards events to the comment store", () => {
-        const testComment = { ...comment, id: 123, data: { size: 1, text: "HelloWorld" } } as TextWorkflowComment;
+        const testComment: TextWorkflowComment = { ...comment, id: 123, data: { size: 1, text: "HelloWorld" } };
 
-        const wrapper = mount(WorkflowComment as any, {
+        const wrapper = mount(WorkflowComment, {
             props: {
                 comment: testComment,
                 scale: 1,
-                rootOffset: {},
+                rootOffset: {} as UseElementBoundingReturn,
             },
-            provide: {
-                transform: mockTransform,
-            },
+            global: commentMountOptions(),
         });
 
-        const textComment = wrapper.findComponent(TextComment);
+        const textComment = wrapper.getComponent(TextComment);
 
         textComment.vm.$emit("change", "abc");
         expect(changeData).toBeCalledWith(123, "abc");
@@ -174,49 +197,55 @@ describe("WorkflowComment", () => {
     });
 
     it("forwards pan events", () => {
-        const wrapper = mount(WorkflowComment as any, {
+        const wrapper = mount(WorkflowComment, {
             props: {
                 comment: { ...comment, id: 123, data: { size: 1, text: "HelloWorld" } },
                 scale: 1,
-                rootOffset: {},
+                rootOffset: {} as UseElementBoundingReturn,
             },
-            provide: {
-                transform: mockTransform,
-            },
+            global: commentMountOptions(),
         });
 
-        const textComment = wrapper.findComponent(TextComment);
+        const textComment = wrapper.getComponent(TextComment);
 
         textComment.vm.$emit("pan-by", { x: 50, y: 50 });
         expect(emittedArg(wrapper, "pan-by")).toEqual({ x: 50, y: 50 });
     });
 
     describe("rendering comment text", () => {
-        function mountComment(type: string, data: object) {
+        function mountComment(renderedComment: WorkflowCommentModel) {
             vi.mocked(sanitizeHtml).mockClear();
             vi.mocked(sanitizeHtml).mockImplementation((html) => `<span class="sanitized">${html}</span>`);
-            return mount(WorkflowComment as any, {
-                propsData: { comment: { ...comment, type, data }, scale: 1, rootOffset: {} },
-                provide: { transform: mockTransform },
+            return mount(WorkflowComment, {
+                props: { comment: renderedComment, scale: 1, rootOffset: {} as UseElementBoundingReturn },
+                global: commentMountOptions(),
             });
         }
 
         it("renders text comments through v-sanitize-html", () => {
-            const wrapper = mountComment("text", { size: 1, text: "line one<br>line <em>two</em>" });
+            const wrapper = mountComment({
+                ...comment,
+                type: "text",
+                data: { size: 1, text: "line one<br>line <em>two</em>" },
+            });
             // escapeAndSanitize runs DOMPurify first, whose happy-dom output isn't meaningful
             expect(sanitizeHtml).toHaveBeenCalledWith(expect.any(String), "default");
             expect(wrapper.find(".sanitized").exists()).toBe(true);
         });
 
         it("renders frame titles through v-sanitize-html", () => {
-            const wrapper = mountComment("frame", { title: "Frame <em>title</em>" });
+            const wrapper = mountComment({ ...comment, type: "frame", data: { title: "Frame <em>title</em>" } });
             expect(sanitizeHtml).toHaveBeenCalledWith(expect.any(String), "default");
             expect(wrapper.find(".sanitized").exists()).toBe(true);
         });
 
         it("renders markdown comments with the links profile", () => {
-            const wrapper = mountComment("markdown", { text: "[docs](https://galaxyproject.org) <b>raw</b>" });
-            const [html, profile] = vi.mocked(sanitizeHtml).mock.calls[0]!;
+            const wrapper = mountComment({
+                ...comment,
+                type: "markdown",
+                data: { text: "[docs](https://galaxyproject.org) <b>raw</b>" },
+            });
+            const [html, profile] = nth(sanitizeMock.mock.calls, 0);
             expect(profile).toBe("links");
             expect(html).toContain('target="_blank"');
             // markdown-it escapes raw HTML in the source before it reaches the sanitizer
