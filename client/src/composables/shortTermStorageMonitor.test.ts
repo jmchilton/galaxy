@@ -1,6 +1,7 @@
+import { deferred } from "@tests/vitest/deferred";
 import { suppressDebugConsole } from "@tests/vitest/helpers";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { effectScope } from "vue";
 
 import { useServerMock } from "@/api/client/__mocks__";
@@ -15,8 +16,27 @@ const IN_FLIGHT_TASK_ID = "in-flight-fake-task-id";
 
 const { server, http } = useServerMock();
 
+function createMonitor() {
+    const monitor = useShortTermStorageMonitor();
+    onTestFinished(() => monitor.stopWaitingForTask());
+    return monitor;
+}
+
+function createScopedMonitor() {
+    const scope = effectScope();
+    onTestFinished(() => scope.stop());
+    const monitor = scope.run(() => useShortTermStorageMonitor());
+    if (!monitor) {
+        throw new Error("The monitor must be created in an active effect scope");
+    }
+    return { scope, ...monitor };
+}
+
 describe("useShortTermStorageMonitor", () => {
     beforeEach(() => {
+        onTestFinished(() => {
+            vi.restoreAllMocks();
+        });
         server.use(
             http.get("/api/short_term_storage/{storage_request_id}/ready", ({ response, params }) => {
                 switch (params.storage_request_id) {
@@ -37,7 +57,7 @@ describe("useShortTermStorageMonitor", () => {
     });
 
     it("should indicate the task is running when it is still not ready", async () => {
-        const { waitForTask, isRunning, taskStatus } = useShortTermStorageMonitor();
+        const { waitForTask, isRunning, taskStatus } = createMonitor();
 
         expect(isRunning.value).toBe(false);
         waitForTask(PENDING_TASK_ID);
@@ -47,7 +67,7 @@ describe("useShortTermStorageMonitor", () => {
     });
 
     it("should indicate the task is successfully completed when the state is ready", async () => {
-        const { waitForTask, isRunning, isCompleted, taskStatus } = useShortTermStorageMonitor();
+        const { waitForTask, isRunning, isCompleted, taskStatus } = createMonitor();
 
         expect(isCompleted.value).toBe(false);
         waitForTask(COMPLETED_TASK_ID);
@@ -59,7 +79,7 @@ describe("useShortTermStorageMonitor", () => {
 
     it("should indicate the task status request failed when the request failed", async () => {
         suppressDebugConsole(); // expected API failure
-        const { waitForTask, requestHasFailed, isRunning, isCompleted, taskStatus } = useShortTermStorageMonitor();
+        const { waitForTask, requestHasFailed, isRunning, isCompleted, taskStatus } = createMonitor();
 
         expect(requestHasFailed.value).toBe(false);
         waitForTask(REQUEST_FAILED_TASK_ID);
@@ -71,7 +91,7 @@ describe("useShortTermStorageMonitor", () => {
     });
 
     it("should load the status from the stored monitoring data", async () => {
-        const { loadStatus, isRunning, isCompleted, hasFailed, taskStatus } = useShortTermStorageMonitor();
+        const { loadStatus, isRunning, isCompleted, hasFailed, taskStatus } = createMonitor();
         const expectedStatus = "READY";
         const storedStatus: StoredTaskStatus = {
             taskStatus: expectedStatus,
@@ -87,18 +107,22 @@ describe("useShortTermStorageMonitor", () => {
 
     describe("stopping while a status request is in flight", () => {
         let statusRequests: number;
-        let releasePendingRequest: () => void;
+        let pendingRequest: ReturnType<typeof deferred<void>>;
 
         beforeEach(() => {
             statusRequests = 0;
-            const pendingRequest = new Promise<void>((resolve) => (releasePendingRequest = resolve));
+            pendingRequest = deferred<void>();
+            onTestFinished(async () => {
+                pendingRequest.resolve();
+                await flushPromises();
+            });
             server.use(
                 http.get("/api/short_term_storage/{storage_request_id}/ready", async ({ response, params }) => {
                     if (params.storage_request_id !== IN_FLIGHT_TASK_ID) {
                         return response("4XX").json({ err_msg: "Not found", err_code: 404 }, { status: 404 });
                     }
                     statusRequests += 1;
-                    await pendingRequest;
+                    await pendingRequest.promise;
                     return response(200).json(false);
                 }),
             );
@@ -107,18 +131,19 @@ describe("useShortTermStorageMonitor", () => {
         async function expectNoFurtherPolling() {
             vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
             try {
-                releasePendingRequest();
+                pendingRequest.resolve();
                 await flushPromises();
                 vi.advanceTimersByTime(1000);
                 await flushPromises();
                 expect(statusRequests).toBe(1);
             } finally {
+                vi.clearAllTimers();
                 vi.useRealTimers();
             }
         }
 
         it("should not resume polling after stopWaitingForTask", async () => {
-            const { waitForTask, stopWaitingForTask } = useShortTermStorageMonitor();
+            const { waitForTask, stopWaitingForTask } = createMonitor();
 
             waitForTask(IN_FLIGHT_TASK_ID, 100);
             await vi.waitFor(() => expect(statusRequests).toBe(1));
@@ -128,8 +153,7 @@ describe("useShortTermStorageMonitor", () => {
         });
 
         it("should not resume polling after its effect scope is disposed", async () => {
-            const scope = effectScope();
-            const { waitForTask, taskStatus } = scope.run(() => useShortTermStorageMonitor())!;
+            const { scope, waitForTask, taskStatus } = createScopedMonitor();
 
             waitForTask(IN_FLIGHT_TASK_ID, 100);
             await vi.waitFor(() => expect(statusRequests).toBe(1));
@@ -140,8 +164,7 @@ describe("useShortTermStorageMonitor", () => {
         });
 
         it("should not start polling once its effect scope is disposed", async () => {
-            const scope = effectScope();
-            const { waitForTask } = scope.run(() => useShortTermStorageMonitor())!;
+            const { scope, waitForTask } = createScopedMonitor();
             scope.stop();
 
             waitForTask(IN_FLIGHT_TASK_ID, 100);
@@ -152,8 +175,7 @@ describe("useShortTermStorageMonitor", () => {
 
     describe("isFinalState", () => {
         it("should indicate is final state when the task is completed", async () => {
-            const { waitForTask, isFinalState, isRunning, isCompleted, hasFailed, taskStatus } =
-                useShortTermStorageMonitor();
+            const { waitForTask, isFinalState, isRunning, isCompleted, hasFailed, taskStatus } = createMonitor();
 
             expect(isFinalState(taskStatus.value)).toBe(false);
             waitForTask(COMPLETED_TASK_ID);
@@ -166,8 +188,7 @@ describe("useShortTermStorageMonitor", () => {
 
         it("should indicate is final state when the task has failed", async () => {
             suppressDebugConsole(); // expected API failure
-            const { waitForTask, isFinalState, isRunning, isCompleted, hasFailed, taskStatus } =
-                useShortTermStorageMonitor();
+            const { waitForTask, isFinalState, isRunning, isCompleted, hasFailed, taskStatus } = createMonitor();
 
             expect(isFinalState(taskStatus.value)).toBe(false);
             waitForTask(REQUEST_FAILED_TASK_ID);
