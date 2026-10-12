@@ -1,17 +1,19 @@
 import "@tests/vitest/mockHelpPopovers";
 
-import { getFakeRegisteredUser } from "@tests/test-data";
-import { getLocalVue, injectTestRouter } from "@tests/vitest/helpers";
-import { mount, type VueWrapper } from "@vue/test-utils";
+import { getFakeHistorySummary, getFakeRegisteredUser } from "@tests/test-data";
+import { deferred } from "@tests/vitest/deferred";
+import { createTestRouter, getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { createPinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
-import type { AnyHistory } from "@/api/index.js";
 import MockCurrentHistory from "@/components/providers/MockCurrentHistory";
 import { useToast } from "@/composables/toast";
 import { useHistoryStore } from "@/stores/historyStore";
+import { seedCurrentHistory } from "@/stores/testUtils";
 import { useUserStore } from "@/stores/userStore";
 
 import ToolCard from "./ToolCard.vue";
@@ -21,8 +23,6 @@ import FormDisplay from "@/components/Form/FormDisplay.vue";
 const { server, http } = useServerMock();
 
 const localVue = getLocalVue();
-const router = injectTestRouter(localVue);
-const pinia = createPinia();
 
 vi.mock("@/composables/userLocalStorageFromHashedId", async () => {
     const { ref } = await import("vue");
@@ -32,31 +32,47 @@ vi.mock("@/composables/userLocalStorageFromHashedId", async () => {
 });
 
 describe("ToolForm", () => {
-    let wrapper: VueWrapper;
-    let userStore: ReturnType<typeof useUserStore>;
-    let historyStore: ReturnType<typeof useHistoryStore>;
+    // Components must unmount before their stores are disposed.
+    let disposeStores: (() => void) | undefined;
+    afterEach(() => {
+        disposeStores?.();
+        disposeStores = undefined;
+        useToast().clearToasts();
+    });
+    enableAutoUnmount(afterEach);
 
-    function mountToolForm() {
-        wrapper = mount(ToolForm as object, {
-            propsData: {
+    async function mountToolForm(preloadHistory = false) {
+        const pinia = createPinia();
+        disposeStores = () => disposePinia(pinia);
+        const userStore = useUserStore(pinia);
+        const history = getFakeHistorySummary({ id: "fakeHistory" });
+        if (preloadHistory) {
+            userStore.currentUser = getFakeRegisteredUser({ id: "fakeUser" });
+            seedCurrentHistory(history, pinia);
+        }
+        const wrapper = mount(ToolForm, {
+            props: {
                 id: "tool_id",
                 version: "version",
             },
-            localVue,
-            router,
-            stubs: {
-                UserHistories: MockCurrentHistory({ id: "fakeHistory" }),
-                FormDisplay: true,
+            global: {
+                ...withPlugins(localVue, pinia, createTestRouter()),
+                stubs: {
+                    ...localVue.stubs,
+                    UserHistories: MockCurrentHistory(history),
+                    FormDisplay: true,
+                },
             },
-            pinia,
         });
-        userStore = useUserStore();
+        // Exercise the initial loading state before the current user and history arrive.
         userStore.currentUser = getFakeRegisteredUser({ id: "fakeUser" });
-
-        historyStore = useHistoryStore();
-        historyStore.setHistories([{ id: "fakeHistory" } as AnyHistory]);
-        historyStore.setCurrentHistoryId("fakeHistory");
-        historyStore.startWatchingHistory = () => {};
+        const historyStore = useHistoryStore(pinia);
+        historyStore.setHistories([history]);
+        seedCurrentHistory(history, pinia);
+        await nextTick();
+        vi.spyOn(historyStore, "startWatchingHistory").mockImplementation(() => {});
+        await flushPromises();
+        return { wrapper, userStore };
     }
 
     function buildResponse(overrides = {}) {
@@ -85,8 +101,7 @@ describe("ToolForm", () => {
     }
 
     beforeEach(() => {
-        // I tried using the useConfig mock and this component seems to bypass that, it would be
-        // better if it didn't. We shouldn't have to stub out an API request to get a particular config.
+        // ToolForm reads configurationStore directly, so use the configuration API seam.
         server.use(
             http.get("/api/configuration", ({ response }) => {
                 return response.untyped(
@@ -96,13 +111,6 @@ describe("ToolForm", () => {
                     }),
                 );
             }),
-            http.untyped.get("/api/tools/tool_id/build", ({ request }) => {
-                const url = new URL(request.url);
-                if (url.searchParams.get("tool_version") === "version") {
-                    return HttpResponse.json(buildResponse());
-                }
-                return HttpResponse.json({});
-            }),
             http.untyped.get("/api/webhooks", () => {
                 return HttpResponse.json([]);
             }),
@@ -111,40 +119,67 @@ describe("ToolForm", () => {
             }),
         );
 
-        mountToolForm();
+        useBuildResponse();
+        useToast().clearToasts();
     });
 
-    it("shows props", async () => {
-        await flushPromises();
-        const button = wrapper.find("[data-description='run tool button']");
+    it("shows the tool title, available actions, empty-input message, help, and creator", async () => {
+        const { wrapper } = await mountToolForm();
+        const button = wrapper.get("[data-description='run tool button']");
         expect(button.attributes("data-title")).toBe("Run tool: tool_name (version)");
         const dropdown = wrapper.findAll(".dropdown-item");
         expect(dropdown.length).toBe(2);
-        const noToolParametersAlert = wrapper.find("[data-description='no tool parameters']");
+        const noToolParametersAlert = wrapper.get("[data-description='no tool parameters']");
         expect(noToolParametersAlert.text()).toContain("This tool requires no input parameters and can be run as is.");
-        const help = wrapper.find(".form-help");
+        const help = wrapper.get(".form-help");
         expect(help.text()).toBe("help_text");
-        const creator = wrapper.find(".creative-work-creator");
+        const creator = wrapper.get(".creative-work-creator");
         expect(creator.text()).toContain("FakeName FakeSurname");
     });
 
     it("adds the executed tool to recent tools", async () => {
-        await flushPromises();
-        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        const { wrapper, userStore } = await mountToolForm();
+        wrapper.getComponent(FormDisplay).vm.$emit("onChange", {}, false);
 
-        const button = wrapper.find("[data-description='run tool button']");
+        const button = wrapper.get("[data-description='run tool button']");
         await button.trigger("click");
         await flushPromises();
 
         expect(userStore.recentTools).toEqual(["tool_id"]);
     });
 
-    it("preserves client-side validation errors on input change (does not wipe formConfig.errors when only validationInternal is set)", async () => {
-        useBuildResponse({ errors: {} });
-        mountToolForm();
+    it("moves an already recent tool to the front without duplicating it", async () => {
+        const { wrapper, userStore } = await mountToolForm();
+        userStore.recentTools = ["previous_tool", "tool_id"];
+        wrapper.getComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        await wrapper.get("[data-description='run tool button']").trigger("click");
         await flushPromises();
 
-        const formDisplay = wrapper.findComponent(FormDisplay);
+        expect(userStore.recentTools).toEqual(["tool_id", "previous_tool"]);
+    });
+
+    it("shows loading while the tool build is pending for an existing history", async () => {
+        const build = deferred<ReturnType<typeof buildResponse>>();
+        server.use(http.untyped.get("/api/tools/tool_id/build", async () => HttpResponse.json(await build.promise)));
+        try {
+            const { wrapper } = await mountToolForm(true);
+            expect(wrapper.get("[data-description='loading message']").text()).toBe("Loading Tool...");
+            build.resolve(buildResponse());
+            await flushPromises();
+            expect(wrapper.get("[data-description='run tool button']").attributes("data-title")).toBe(
+                "Run tool: tool_name (version)",
+            );
+        } finally {
+            build.resolve(buildResponse());
+            await flushPromises();
+        }
+    });
+
+    it("preserves client-side validation errors when input changes without backend errors", async () => {
+        useBuildResponse({ errors: {} });
+        const { wrapper } = await mountToolForm();
+
+        const formDisplay = wrapper.getComponent(FormDisplay);
         // Simulate steady state: no backend errors, but a client-side validation error
         // raised by FormDisplay (e.g. a required field was cleared).
         await formDisplay.vm.$emit("onValidation", ["multi_required", "Please provide a value for this option."]);
@@ -157,12 +192,11 @@ describe("ToolForm", () => {
         expect(formDisplay.props("errors")).toEqual({});
     });
 
-    it("still wipes formConfig.errors when there are actual backend errors to clear on input change", async () => {
+    it("clears backend validation errors when input changes", async () => {
         useBuildResponse({ errors: { multi_required: "Backend rejected this value." } });
-        mountToolForm();
-        await flushPromises();
+        const { wrapper } = await mountToolForm();
 
-        const formDisplay = wrapper.findComponent(FormDisplay);
+        const formDisplay = wrapper.getComponent(FormDisplay);
         // First onChange sets formConfigInitialized; second triggers the wipe.
         await formDisplay.vm.$emit("onChange", { multi_required: "alpha" }, false);
         await formDisplay.vm.$emit("onChange", { multi_required: "alpha" }, false);
@@ -177,10 +211,10 @@ describe("ToolForm", () => {
                 return HttpResponse.json({ err_msg: errorMessage }, { status: 400 });
             }),
         );
-        await flushPromises();
-        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, false);
+        const { wrapper } = await mountToolForm();
+        wrapper.getComponent(FormDisplay).vm.$emit("onChange", {}, false);
 
-        const button = wrapper.find("[data-description='run tool button']");
+        const button = wrapper.get("[data-description='run tool button']");
         await button.trigger("click");
         await flushPromises();
 
@@ -195,9 +229,9 @@ describe("ToolForm", () => {
                 return HttpResponse.json({ err_msg: "Rate limit exceeded" }, { status: 429 });
             }),
         );
-        await flushPromises();
+        const { wrapper } = await mountToolForm();
 
-        wrapper.findComponent(FormDisplay).vm.$emit("onChange", {}, true);
+        wrapper.getComponent(FormDisplay).vm.$emit("onChange", {}, true);
         await flushPromises();
 
         expect(toasts.value).toEqual([
@@ -207,7 +241,7 @@ describe("ToolForm", () => {
                 variant: "danger",
             }),
         ]);
-        expect(wrapper.findComponent(ToolCard).props("disabled")).toBe(false);
+        expect(wrapper.getComponent(ToolCard).props("disabled")).toBe(false);
         clearToasts();
     });
 });
