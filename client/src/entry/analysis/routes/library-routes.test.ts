@@ -30,6 +30,9 @@ describe("library routes", () => {
         const route = router.currentRoute.value;
         const propsFunction = route.matched.at(-1)?.props.default;
         expect(typeof propsFunction).toEqual("function");
-        expect((propsFunction as (route: unknown) => unknown)(route)).toEqual({ folder_id: "F123", page: 3 });
+        if (typeof propsFunction !== "function") {
+            throw new Error("LibraryFolder must provide a route props function");
+        }
+        expect(propsFunction(route)).toEqual({ folder_id: "F123", page: 3 });
     });
 });
