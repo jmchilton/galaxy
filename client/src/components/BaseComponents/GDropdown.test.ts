@@ -1,9 +1,11 @@
 import type * as FloatingUI from "@floating-ui/dom";
 import { autoUpdate, computePosition } from "@floating-ui/dom";
-import { createTestRouter, getLocalVue } from "@tests/vitest/helpers";
-import { type DOMWrapper, mount, type VueWrapper } from "@vue/test-utils";
+import { deferred } from "@tests/vitest/deferred";
+import { createTestRouter, getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { type DOMWrapper, enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { defineComponent } from "vue";
 
 import GDropdown from "./GDropdown.vue";
 import GDropdownForm from "./GDropdownForm.vue";
@@ -17,19 +19,28 @@ vi.mock("@floating-ui/dom", async (importOriginal) => {
 });
 
 const localVue = getLocalVue();
+const realFloatingUI = await vi.importActual<typeof FloatingUI>("@floating-ui/dom");
 
-let wrapper: VueWrapper | undefined;
+function mountOptions() {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    onTestFinished(() => target.remove());
+    return { global: withPlugins(localVue, createTestRouter()), attachTo: target };
+}
+
+function mountPlainDropdown(props: Partial<InstanceType<typeof GDropdown>["$props"]> = {}) {
+    return mount(GDropdown, { ...mountOptions(), props: { text: "Menu", ...props } });
+}
 
 function mountTemplate(template: string, methods: Record<string, () => void> = {}) {
-    wrapper = mount(
-        {
+    return mount(
+        defineComponent({
             components: { GDropdown, GDropdownForm, GDropdownGroup, GDropdownItem, GDropdownItemButton },
-            template: `<div>${template}<button id="outside">Outside</button></div>`,
             methods,
-        } as object,
-        { localVue, router: createTestRouter(), attachTo: document.body },
+            template: `<div>${template}<button id="outside">Outside</button></div>`,
+        }),
+        mountOptions(),
     );
-    return wrapper;
 }
 
 function mountDropdown(items: string, methods: Record<string, () => void> = {}) {
@@ -63,9 +74,11 @@ async function openMenu(wrapper: VueWrapper) {
 }
 
 afterEach(() => {
-    wrapper?.unmount();
-    wrapper = undefined;
+    vi.mocked(autoUpdate).mockReset().mockImplementation(realFloatingUI.autoUpdate);
+    vi.mocked(computePosition).mockReset().mockImplementation(realFloatingUI.computePosition);
+    vi.restoreAllMocks();
 });
+enableAutoUnmount(afterEach);
 
 describe("GDropdown.vue", () => {
     describe("menu button semantics", () => {
@@ -140,7 +153,11 @@ describe("GDropdown.vue", () => {
 
     describe("positioning", () => {
         function lastPositionCall() {
-            const [reference, menu, options] = vi.mocked(computePosition).mock.calls.at(-1)!;
+            const call = vi.mocked(computePosition).mock.calls.at(-1);
+            if (!call) {
+                throw new Error("The dropdown did not request a menu position");
+            }
+            const [reference, menu, options] = call;
             return {
                 reference,
                 menu,
@@ -156,11 +173,7 @@ describe("GDropdown.vue", () => {
             [{ dropright: true }, "right-start"],
             [{ dropleft: true }, "left-start"],
         ])("places the menu for %o at %s, flipping and shifting it into view", async (props, placement) => {
-            wrapper = mount(GDropdown as object, {
-                localVue,
-                propsData: { text: "Menu", ...props },
-                attachTo: document.body,
-            });
+            const wrapper = mountPlainDropdown(props);
             await openMenu(wrapper);
             await flushPromises();
 
@@ -172,11 +185,7 @@ describe("GDropdown.vue", () => {
         });
 
         it("aligns split menus and right-aligned dropups with the whole group, like BDropdown", async () => {
-            wrapper = mount(GDropdown as object, {
-                localVue,
-                propsData: { text: "Menu", split: true },
-                attachTo: document.body,
-            });
+            const wrapper = mountPlainDropdown({ split: true });
             await openMenu(wrapper);
             await flushPromises();
 
@@ -196,7 +205,7 @@ describe("GDropdown.vue", () => {
                 strategy: "absolute",
                 middlewareData: {},
             });
-            wrapper = mount(GDropdown as object, { localVue, propsData: { text: "Menu" }, attachTo: document.body });
+            const wrapper = mountPlainDropdown();
             await openMenu(wrapper);
             await flushPromises();
 
@@ -212,30 +221,38 @@ describe("GDropdown.vue", () => {
             ["ArrowDown", (toggle: Omit<DOMWrapper<Element>, "exists">) => press(toggle, "ArrowDown")],
             ["Enter or Space", (toggle: Omit<DOMWrapper<Element>, "exists">) => toggle.trigger("click")],
         ])("focuses an item opened with %s only once the menu is placed", async (_key, open) => {
-            let placeMenu = () => {};
-            vi.mocked(computePosition).mockReturnValueOnce(
-                new Promise((resolve) => {
-                    placeMenu = () =>
-                        resolve({ x: 0, y: 0, placement: "top-start", strategy: "absolute", middlewareData: {} });
-                }),
-            );
+            const position = deferred<Awaited<ReturnType<typeof computePosition>>>();
+            const placedPosition = {
+                x: 0,
+                y: 0,
+                placement: "top-start" as const,
+                strategy: "absolute" as const,
+                middlewareData: {},
+            };
+            vi.mocked(computePosition).mockReturnValueOnce(position.promise);
             const wrapper = mountDropdown(MENU);
             const toggle = wrapper.get(".dropdown-toggle");
             (toggle.element as HTMLElement).focus();
 
-            await open(toggle);
-            await flushPromises();
-            expect(isMenuOpen(wrapper)).toBe(true);
-            expect(document.activeElement).toBe(toggle.element);
+            try {
+                await open(toggle);
+                await flushPromises();
+                expect(isMenuOpen(wrapper)).toBe(true);
+                expect(document.activeElement).toBe(toggle.element);
 
-            placeMenu();
-            await flushPromises();
-            expect(focusedText()).toBe("One");
+                position.resolve(placedPosition);
+                await flushPromises();
+                expect(focusedText()).toBe("One");
+            } finally {
+                wrapper.unmount();
+                position.resolve(placedPosition);
+                await flushPromises();
+            }
         });
 
         it("tracks once when shown, hidden and shown again in one tick", async () => {
-            wrapper = mount(GDropdown as object, { localVue, propsData: { text: "Menu" }, attachTo: document.body });
-            const dropdown = wrapper.vm as unknown as { show: () => void; hide: () => void };
+            const wrapper = mountPlainDropdown();
+            const dropdown = wrapper.vm;
             const stopTracking = vi.fn();
             vi.mocked(autoUpdate)
                 .mockClear()
@@ -255,11 +272,7 @@ describe("GDropdown.vue", () => {
         it("stops tracking when unmounted while open", async () => {
             const stopTracking = vi.fn();
             vi.mocked(autoUpdate).mockImplementationOnce(() => stopTracking);
-            const mounted = mount(GDropdown as object, {
-                localVue,
-                propsData: { text: "Menu" },
-                attachTo: document.body,
-            });
+            const mounted = mountPlainDropdown();
             await openMenu(mounted);
             await flushPromises();
 
@@ -271,7 +284,7 @@ describe("GDropdown.vue", () => {
 
     describe("state", () => {
         it("closes when it becomes disabled", async () => {
-            wrapper = mount(GDropdown as object, { localVue, propsData: { text: "Menu" }, attachTo: document.body });
+            const wrapper = mountPlainDropdown();
             await openMenu(wrapper);
 
             await wrapper.setProps({ disabled: true });
@@ -282,11 +295,7 @@ describe("GDropdown.vue", () => {
 
         it("does not listen for outside clicks once unmounted while opening", async () => {
             const addListener = vi.spyOn(document, "addEventListener");
-            const mounted = mount(GDropdown as object, {
-                localVue,
-                propsData: { text: "Menu" },
-                attachTo: document.body,
-            });
+            const mounted = mountPlainDropdown();
 
             (mounted.get(".dropdown-toggle").element as HTMLElement).click();
             mounted.unmount();
