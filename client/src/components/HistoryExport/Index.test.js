@@ -1,8 +1,9 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { shallowMount } from "@vue/test-utils";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { describe, expect, it, vi } from "vitest";
+import { disposePinia } from "pinia";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { useFileSources } from "@/composables/fileSources";
 
@@ -11,21 +12,30 @@ import Index from "./Index.vue";
 vi.mock("@/composables/fileSources");
 
 const localVue = getLocalVue();
+const fileSourcesMock = vi.mocked(useFileSources);
+const originalFileSourcesImplementation = fileSourcesMock.getMockImplementation();
 
-useFileSources.mockReturnValue({ isLoading: false, hasWritable: true });
+afterEach(() => {
+    fileSourcesMock.mockReset();
+    if (originalFileSourcesImplementation) {
+        fileSourcesMock.mockImplementation(originalFileSourcesImplementation);
+    }
+});
+enableAutoUnmount(afterEach);
 
-describe("Index.vue", () => {
-    it("should render tabs", async () => {
-        // just make sure the component renders to catch obvious big errors
+describe("HistoryExport", () => {
+    it("shows export tabs when writable file sources are available", async () => {
+        fileSourcesMock.mockReturnValue({ isLoading: false, hasWritable: true });
         const pinia = createTestingPinia({ createSpy: vi.fn });
+        onTestFinished(() => disposePinia(pinia));
         const wrapper = shallowMount(Index, {
             props: {
                 historyId: "test_id",
             },
-            global: localVue,
-            pinia,
+            global: withPlugins(localVue, pinia),
         });
         await flushPromises();
+
         const tabs = wrapper.findComponent(".history-export-tabs");
         expect(tabs.exists()).toBeTruthy();
     });
