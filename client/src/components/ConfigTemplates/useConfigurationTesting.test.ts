@@ -1,9 +1,10 @@
+import { getFakeObjectStoreInstance } from "@tests/test-data/objectStores";
+import { runInTestScope } from "@tests/vitest/effectScope";
 import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 
 import { useServerMock } from "@/api/client/__mocks__";
 import type { PluginStatus } from "@/api/configTemplates";
-import type { UserConcreteObjectStore } from "@/components/ObjectStore/Instances/types";
 
 import { OK_PLUGIN_STATUS, STANDARD_OBJECT_STORE_TEMPLATE } from "./test_fixtures";
 import {
@@ -14,22 +15,14 @@ import {
 
 const { server, http } = useServerMock();
 
-const INSTANCE: UserConcreteObjectStore = {
-    type: "aws_s3",
+const INSTANCE = getFakeObjectStoreInstance({
     name: "moo",
-    description: undefined,
     template_id: "moo",
     template_version: 1,
-    badges: [],
     variables: { oldvar: "my old value" },
     secrets: ["oldsecret"],
-    quota: { enabled: false },
-    private: false,
     uuid: "112f889f-72d7-4619-a8e8-510a8c685aa7",
-    active: true,
-    hidden: false,
-    purged: false,
-};
+});
 
 const FAILED_CONNECTION_STATUS: PluginStatus = {
     ...OK_PLUGIN_STATUS,
@@ -77,37 +70,43 @@ function mockCreationTestAndTrackRequests(outcome: TestOutcome) {
 
 function useEdit(onUpdated = vi.fn()) {
     const goToIndex = vi.fn();
-    const edit = useConfigurationTemplateEdit(
-        "storage location",
-        ref(INSTANCE),
-        ref(STANDARD_OBJECT_STORE_TEMPLATE),
-        "/api/object_store_instances/{uuid}/test",
-        "/api/object_store_instances/{uuid}",
-        () => ({ goToIndex }) as never,
-        onUpdated,
+    const edit = runInTestScope(() =>
+        useConfigurationTemplateEdit(
+            "storage location",
+            ref(INSTANCE),
+            ref(STANDARD_OBJECT_STORE_TEMPLATE),
+            "/api/object_store_instances/{uuid}/test",
+            "/api/object_store_instances/{uuid}",
+            () => ({ goToIndex }) as never,
+            onUpdated,
+        ),
     );
     return { ...edit, goToIndex };
 }
 
 function useUpgrade() {
-    return useConfigurationTemplateUpgrade(
-        "storage location",
-        ref(INSTANCE),
-        ref(STANDARD_OBJECT_STORE_TEMPLATE),
-        "/api/object_store_instances/{uuid}/test",
-        "/api/object_store_instances/{uuid}",
-        () => ({ goToIndex: vi.fn() }) as never,
+    return runInTestScope(() =>
+        useConfigurationTemplateUpgrade(
+            "storage location",
+            ref(INSTANCE),
+            ref(STANDARD_OBJECT_STORE_TEMPLATE),
+            "/api/object_store_instances/{uuid}/test",
+            "/api/object_store_instances/{uuid}",
+            () => ({ goToIndex: vi.fn() }) as never,
+        ),
     );
 }
 
 function useCreation() {
-    return useConfigurationTemplateCreation(
-        "storage location",
-        ref(STANDARD_OBJECT_STORE_TEMPLATE),
-        ref(undefined),
-        "/api/object_store_instances/test",
-        "/api/object_store_instances",
-        vi.fn(),
+    return runInTestScope(() =>
+        useConfigurationTemplateCreation(
+            "storage location",
+            ref(STANDARD_OBJECT_STORE_TEMPLATE),
+            ref(undefined),
+            "/api/object_store_instances/test",
+            "/api/object_store_instances",
+            vi.fn(),
+        ),
     );
 }
 
