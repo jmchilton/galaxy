@@ -1,4 +1,6 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/vue3-vite";
+import { expectOptions, openOptions, pickOption } from "@tests/test-data/multiselect";
+import { expect } from "storybook/test";
 import { type Component, defineComponent, h, ref } from "vue";
 
 import { testDatatypesMapper, typesAndMappingHandler } from "@/components/Datatypes/test_fixtures";
@@ -153,3 +155,74 @@ export const PinnedSelectionOutsideCurrentPage: Story = {
 };
 
 export const FilteredByTag: Story = { args: { tag: "tag1" } };
+
+const DATASET_LABELS = [
+    "dceName4 (as dataset)",
+    "dceName1 (as dataset)",
+    "1: hdaName1 tag1",
+    "2: hdaName2 tag1 tag2",
+    "3: hdaName3 tag2 tag3",
+    "4: hdaName4",
+];
+const COLLECTION_LABELS = [
+    "dceName3 (as dataset collection)",
+    "dceName2 (as dataset collection)",
+    "5: hdcaName5",
+    "6: hdcaName6",
+];
+
+/** Select a dataset, then switch the input to a dataset collection. */
+export const SelectsDatasetAndCollection: Story = {
+    play: async (context) => {
+        await context.step("Select a dataset and see the parent retain it", async () => {
+            await expectOptions(context, DATASET_LABELS, ["dceName4 (as dataset)"]);
+            await pickOption(context, "4: hdaName4");
+            await expectOptions(context, DATASET_LABELS, ["4: hdaName4"]);
+        });
+        await context.step("Switch to collections and select a collection", async () => {
+            await context.userEvent.click(context.canvas.getByRole("button", { name: "Dataset collection" }));
+            await openOptions(context);
+            // The filter worker keeps dataset options until the collection result arrives.
+            await expect(
+                await context.canvas.findByRole("option", { name: "6: hdcaName6" }, { timeout: 5000 }),
+            ).toBeVisible();
+            await expectOptions(context, COLLECTION_LABELS, ["dceName3 (as dataset collection)"]);
+            await pickOption(context, "6: hdcaName6");
+            await expectOptions(context, COLLECTION_LABELS, ["6: hdcaName6"]);
+        });
+        await context.userEvent.keyboard("{Escape}");
+    },
+};
+
+/** In the workflow editor, multiple datasets can run in matched order or against every other dataset. */
+export const ChangesBatchLinking: Story = {
+    args: { ...InWorkflowEditor.args },
+    play: async (context) => {
+        await context.step("Select multiple datasets for the batch input", async () => {
+            await expectOptions(context, DATASET_LABELS, ["dceName4 (as dataset)"]);
+            await context.userEvent.click(context.canvas.getByRole("button", { name: "Multiple datasets" }));
+            await pickOption(context, "4: hdaName4");
+            await expectOptions(context, DATASET_LABELS, ["dceName4 (as dataset)", "4: hdaName4"]);
+            await context.userEvent.keyboard("{Escape}");
+        });
+        await context.step("Run datasets against all other datasets", async () => {
+            const linked = context.canvas.getByText("Datasets will be run in matched order with other datasets.");
+            await expect(linked).toBeVisible();
+            await expect(context.canvas.getByRole("checkbox")).toBeChecked();
+            await context.userEvent.click(linked);
+            await expect(context.canvas.getByRole("checkbox")).not.toBeChecked();
+            await expect(context.canvas.getByText("Dataset will be run against *all* other datasets.")).toBeVisible();
+        });
+        await context.step("Return to matched order", async () => {
+            await context.userEvent.click(
+                context.canvas.getByText("Dataset will be run against *all* other datasets."),
+            );
+            await expect(context.canvas.getByRole("checkbox")).toBeChecked();
+            await expect(
+                context.canvas.getByText("Datasets will be run in matched order with other datasets."),
+            ).toBeVisible();
+            await expectOptions(context, DATASET_LABELS, ["dceName4 (as dataset)", "4: hdaName4"]);
+            await context.userEvent.keyboard("{Escape}");
+        });
+    },
+};
