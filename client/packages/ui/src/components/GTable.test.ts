@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
+import { nth } from "@tests/vitest/helpers";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 
 import GTable from "./GTable.vue";
 
@@ -12,8 +13,17 @@ const items = [
     { id: 2, name: "second" },
 ];
 
-function mountSelectable(props: Record<string, unknown> = {}) {
-    return mount(GTable as object, {
+type TableProps = Parameters<typeof GTable>[0];
+
+function attachmentTarget() {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    onTestFinished(() => target.remove());
+    return target;
+}
+
+function mountSelectable(props: TableProps = {}) {
+    return mount(GTable, {
         props: {
             items,
             fields: [{ key: "name" }],
@@ -22,17 +32,13 @@ function mountSelectable(props: Record<string, unknown> = {}) {
             showSelectAll: true,
             ...props,
         },
-        attachTo: document.body,
+        attachTo: attachmentTarget(),
     });
-}
-
-function checkbox(element: Element | undefined) {
-    return element as HTMLInputElement;
 }
 
 describe("GTable selection", () => {
     it.each([undefined, "Select dataset"])("names the selection checkboxes (%s)", (title) => {
-        const wrapper = mount(GTable as object, {
+        const wrapper = mount(GTable, {
             props: {
                 items,
                 fields: [{ key: "name" }],
@@ -40,7 +46,7 @@ describe("GTable selection", () => {
                 showSelectAll: true,
                 selectCheckboxTitle: title,
             },
-            attachTo: document.body,
+            attachTo: attachmentTarget(),
         });
 
         expect(wrapper.get("thead input").element).toHaveAccessibleName("Select all for bulk actions");
@@ -54,7 +60,7 @@ describe("GTable selection", () => {
     it("selects a row once from its checkbox without counting a row click", async () => {
         const wrapper = mountSelectable();
 
-        await wrapper.findAll("tbody tr")[0]!.get(".g-checkbox").trigger("click");
+        await nth(wrapper.findAll("tbody tr"), 0).get(".g-checkbox").trigger("click");
 
         expect(wrapper.emitted("row-select")).toEqual([[{ item: items[0], index: 0, selected: true }]]);
         expect(wrapper.emitted("row-click")).toBeUndefined();
@@ -70,18 +76,20 @@ describe("GTable selection", () => {
 
     it("shows partial selection on the header and on indeterminate rows", () => {
         const wrapper = mountSelectable({ selectedItems: [0], indeterminateItems: [1] });
-        const [first, second] = wrapper.findAll("tbody input").map((row) => checkbox(row.element));
-        const header = checkbox(wrapper.get("thead input").element);
+        const rows = wrapper.findAll<HTMLInputElement>("tbody input");
+        const first = nth(rows, 0).element;
+        const second = nth(rows, 1).element;
+        const header = wrapper.get<HTMLInputElement>("thead input").element;
 
         expect(header.indeterminate).toBe(true);
-        expect(first!.checked).toBe(true);
-        expect(first!.indeterminate).toBe(false);
-        expect(second!.indeterminate).toBe(true);
+        expect(first.checked).toBe(true);
+        expect(first.indeterminate).toBe(false);
+        expect(second.indeterminate).toBe(true);
     });
 
     it("checks the header, not partially, once every row is selected", () => {
         const wrapper = mountSelectable({ selectedItems: [0, 1] });
-        const header = checkbox(wrapper.get("thead input").element);
+        const header = wrapper.get<HTMLInputElement>("thead input").element;
 
         expect(header.checked).toBe(true);
         expect(header.indeterminate).toBe(false);
@@ -90,7 +98,7 @@ describe("GTable selection", () => {
 
 describe("GTable sorting", () => {
     function mountSortable(slots: Record<string, string> = {}) {
-        return mount(GTable as object, {
+        return mount(GTable, {
             props: {
                 items,
                 fields: [
@@ -101,25 +109,28 @@ describe("GTable sorting", () => {
                 sortBy: "name",
             },
             slots,
-            attachTo: document.body,
+            attachTo: attachmentTarget(),
         });
     }
 
     it("exposes the sort state on sortable headers only", () => {
         const wrapper = mountSortable();
-        const [name, id, note] = wrapper.findAll("thead th");
+        const headers = wrapper.findAll("thead th");
+        const name = nth(headers, 0);
+        const id = nth(headers, 1);
+        const note = nth(headers, 2);
 
-        expect(name!.attributes("aria-sort")).toBe("ascending");
-        expect(name!.attributes("tabindex")).toBe("0");
-        expect(id!.attributes("aria-sort")).toBe("none");
-        expect(id!.attributes("tabindex")).toBe("0");
-        expect(note!.attributes("aria-sort")).toBeUndefined();
-        expect(note!.attributes("tabindex")).toBeUndefined();
+        expect(name.attributes("aria-sort")).toBe("ascending");
+        expect(name.attributes("tabindex")).toBe("0");
+        expect(id.attributes("aria-sort")).toBe("none");
+        expect(id.attributes("tabindex")).toBe("0");
+        expect(note.attributes("aria-sort")).toBeUndefined();
+        expect(note.attributes("tabindex")).toBeUndefined();
     });
 
     it("sorts from the keyboard with Enter and Space", async () => {
         const wrapper = mountSortable();
-        const name = wrapper.findAll("thead th")[0]!;
+        const name = nth(wrapper.findAll("thead th"), 0);
 
         await name.trigger("keydown", { key: "Enter" });
         expect(wrapper.emitted("sort-changed")).toEqual([["name", true]]);
@@ -138,7 +149,7 @@ describe("GTable sorting", () => {
         const wrapper = mountSortable();
         const space = new KeyboardEvent("keydown", { key: " ", cancelable: true });
 
-        wrapper.findAll("thead th")[0]!.element.dispatchEvent(space);
+        nth(wrapper.findAll("thead th"), 0).element.dispatchEvent(space);
 
         expect(space.defaultPrevented).toBe(true);
     });
