@@ -1,8 +1,11 @@
+import { nth } from "@tests/vitest/helpers";
 import axios from "axios";
-import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import flushPromises from "flush-promises";
+import { createPinia, disposePinia, type Pinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { useEntryPointStore } from "@/stores/entryPointStore";
+import type { Tool } from "@/stores/toolStore";
 
 import { makeCtx } from "../test-utils";
 import { interactiveToolsProvider } from "./interactiveTools";
@@ -19,7 +22,11 @@ vi.mock("@/components/ToolsList/utilities", () => ({
     parseHelpForSummary: vi.fn(() => ""),
 }));
 
-const JUPYTER = {
+// The toolbox response only needs the fields read by this provider and its store.
+type ProviderTool = Pick<Tool, "id" | "name" | "description" | "model_class" | "panel_section_name">;
+type EntryPoint = ReturnType<typeof useEntryPointStore>["entryPoints"][number];
+
+const JUPYTER: ProviderTool = {
     id: "interactive_tool_jupyter_notebook/1.0",
     name: "Jupyter Notebook",
     description: "Interactive notebook environment",
@@ -29,7 +36,7 @@ const JUPYTER = {
 
 const JUPYTER_OLD = { ...JUPYTER, id: "interactive_tool_jupyter_notebook/0.1" };
 
-const RSTUDIO = {
+const RSTUDIO: ProviderTool = {
     id: "interactive_tool_rstudio/1.0",
     name: "RStudio",
     description: "R development environment",
@@ -37,7 +44,7 @@ const RSTUDIO = {
     panel_section_name: "Interactive tools",
 };
 
-const PLAIN_TOOL = {
+const PLAIN_TOOL: ProviderTool = {
     id: "fastqc_id",
     name: "FastQC",
     description: "Read quality reports",
@@ -45,7 +52,7 @@ const PLAIN_TOOL = {
     panel_section_name: "FASTQ Quality Control",
 };
 
-const ENTRY_POINT = {
+const ENTRY_POINT: EntryPoint = {
     model_class: "InteractiveToolEntryPoint",
     id: "ep1",
     job_id: "job1",
@@ -56,13 +63,13 @@ const ENTRY_POINT = {
     output_datasets_ids: [],
 };
 
-const IT_SCOPE = PALETTE_SCOPES.find((scope) => scope.key === "it")!;
+const IT_SCOPE = PALETTE_SCOPES.find((scope) => scope.key === "it");
 
 // the `it:` scope only exists where interactive tools are enabled
 const itCtx = () => makeCtx({ config: { interactivetools_enable: true } });
 
 /** `/api/tools` returns the toolbox, `/api/entry_points` the running tools */
-function mockApi(entryPoints: unknown[] = []) {
+function mockApi(entryPoints: EntryPoint[] = []) {
     vi.mocked(axios.get).mockImplementation(async (url: string) => {
         if (url.includes("entry_points")) {
             return { data: entryPoints };
@@ -72,12 +79,23 @@ function mockApi(entryPoints: unknown[] = []) {
 }
 
 async function scopedSearch(query: string) {
-    return (await interactiveToolsProvider.searchScoped?.(IT_SCOPE, query, itCtx())) ?? [];
+    if (!IT_SCOPE) {
+        throw new Error("Interactive-tools palette scope is missing");
+    }
+    const searchScoped = interactiveToolsProvider.searchScoped;
+    if (!searchScoped) {
+        throw new Error("Interactive-tools provider must support scoped search");
+    }
+    return searchScoped(IT_SCOPE, query, itCtx());
 }
 
 describe("interactiveToolsProvider", () => {
+    let pinia: Pinia;
+
     beforeEach(() => {
-        setActivePinia(createPinia());
+        pinia = createPinia();
+        setActivePinia(pinia);
+        onTestFinished(() => disposePinia(pinia));
         vi.mocked(axios.get).mockReset();
         vi.mocked(axios.delete).mockReset();
     });
@@ -87,13 +105,13 @@ describe("interactiveToolsProvider", () => {
         const sections = await scopedSearch("");
 
         expect(sections.map((section) => section.id)).toEqual(["available"]);
-        const available = sections[0]!;
+        const available = nth(sections, 0);
         expect(available.title).toBe("Available");
         expect(available.items.map((item) => item.id)).toEqual([
             "interactiveTools:interactive_tool_jupyter_notebook/1.0",
             "interactiveTools:interactive_tool_rstudio/1.0",
         ]);
-        expect(available.items[0]?.to).toBe("/?tool_id=interactive_tool_jupyter_notebook%2F1.0&version=latest");
+        expect(nth(available.items, 0).to).toBe("/?tool_id=interactive_tool_jupyter_notebook%2F1.0&version=latest");
     });
 
     it("shows the running section first and links to the entry point display route", async () => {
@@ -101,7 +119,7 @@ describe("interactiveToolsProvider", () => {
         const sections = await scopedSearch("");
 
         expect(sections.map((section) => section.id)).toEqual(["running", "available"]);
-        const running = sections[0]!.items[0]!;
+        const running = nth(nth(sections, 0).items, 0);
         expect(running.title).toBe("Jupyter Notebook");
         expect(running.subtitle).toBe("Running");
         expect(running.to).toBe("/interactivetool_entry_points/ep1/display");
@@ -114,7 +132,7 @@ describe("interactiveToolsProvider", () => {
 
         const sections = await scopedSearch("rstudio");
         expect(sections.map((section) => section.id)).toEqual(["available"]);
-        expect(sections[0]?.items.map((item) => item.title)).toEqual(["RStudio"]);
+        expect(nth(sections, 0).items.map((item) => item.title)).toEqual(["RStudio"]);
         expect(axios.get).not.toHaveBeenCalled();
     });
 
@@ -134,15 +152,18 @@ describe("interactiveToolsProvider", () => {
         mockApi([ENTRY_POINT]);
         vi.mocked(axios.delete).mockResolvedValue({ data: {} });
         const sections = await scopedSearch("");
-        const running = sections[0]!.items[0]!;
+        const running = nth(nth(sections, 0).items, 0);
 
-        expect(running.secondaryAction?.label).toBe("Stop");
-        running.secondaryAction?.run?.(itCtx());
-        await Promise.resolve();
-        await Promise.resolve();
+        const stopAction = running.secondaryAction;
+        if (!stopAction?.run) {
+            throw new Error("Running interactive tool must expose a runnable secondary action");
+        }
+        expect(stopAction.label).toBe("Stop");
+        stopAction.run(itCtx());
+        await flushPromises();
 
         expect(axios.delete).toHaveBeenCalledWith(expect.stringContaining("api/entry_points/ep1"));
-        expect(useEntryPointStore().entryPoints).toEqual([]);
+        expect(useEntryPointStore(pinia).entryPoints).toEqual([]);
     });
 
     it("contributes nothing to the unscoped search", async () => {
