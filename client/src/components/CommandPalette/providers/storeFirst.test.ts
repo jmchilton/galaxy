@@ -4,7 +4,7 @@ import type { PaletteItem } from "../types";
 import { PaletteFetchError } from "./errors";
 import { PALETTE_LIMITS } from "./limits";
 import { resetListRefreshTracking } from "./refresh";
-import { rootListItems, storeFirstItems } from "./storeFirst";
+import { rootListItems, storeFirstItems, type StoreFirstList } from "./storeFirst";
 
 function row(id: string, title: string): PaletteItem {
     return { id: `fake:${id}`, mru: { type: "fake", id }, title };
@@ -27,14 +27,18 @@ function fakeList() {
         cachedItems: (): PaletteItem[] => (state.loaded ? [ALPHA, ALPINE] : []),
         isComplete: () => state.complete,
         searchItems: vi.fn<(query: string) => Promise<PaletteItem[]>>(async () => [REMOTE, ALPHA]),
-    };
+    } satisfies StoreFirstList & { state: typeof state };
 }
 
-describe("storeFirstItems", () => {
-    beforeEach(() => {
-        resetListRefreshTracking();
-    });
+beforeEach(() => {
+    resetListRefreshTracking();
+});
 
+afterEach(() => {
+    resetListRefreshTracking();
+});
+
+describe("storeFirstItems", () => {
     it("hydrates the listing once and answers later keystrokes from the cache", async () => {
         const list = fakeList();
 
@@ -84,10 +88,6 @@ describe("storeFirstItems", () => {
 });
 
 describe("rootListItems", () => {
-    beforeEach(() => {
-        resetListRefreshTracking();
-    });
-
     it("answers from the cached own rows and the searched listings, one row per entity", async () => {
         const own = fakeList();
         await own.fetchListing();
@@ -150,6 +150,7 @@ describe("rootListItems", () => {
         });
 
         afterEach(() => {
+            vi.clearAllTimers();
             vi.useRealTimers();
         });
 
@@ -158,12 +159,17 @@ describe("rootListItems", () => {
             const controller = new AbortController();
 
             const answer = rootListItems("alp", undefined, [listing], { signal: controller.signal });
-            await vi.advanceTimersByTimeAsync(PALETTE_LIMITS.backendSettle - 1);
-            expect(listing).not.toHaveBeenCalled();
-            await vi.advanceTimersByTimeAsync(1);
+            try {
+                await vi.advanceTimersByTimeAsync(PALETTE_LIMITS.backendSettle - 1);
+                expect(listing).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1);
 
-            expect((await answer).map((item) => item.title)).toEqual(["alpaca"]);
-            expect(listing).toHaveBeenCalledWith("alp");
+                expect((await answer).map((item) => item.title)).toEqual(["alpaca"]);
+                expect(listing).toHaveBeenCalledWith("alp");
+            } finally {
+                controller.abort();
+                await answer;
+            }
         });
 
         it("never searches the listings once a newer search took over", async () => {
@@ -173,11 +179,16 @@ describe("rootListItems", () => {
             const controller = new AbortController();
 
             const answer = rootListItems("alp", own, [listing], { signal: controller.signal });
-            controller.abort();
-            await vi.advanceTimersByTimeAsync(PALETTE_LIMITS.backendSettle);
+            try {
+                controller.abort();
+                await vi.advanceTimersByTimeAsync(PALETTE_LIMITS.backendSettle);
 
-            expect((await answer).map((item) => item.title).sort()).toEqual(["alpha", "alpine"]);
-            expect(listing).not.toHaveBeenCalled();
+                expect((await answer).map((item) => item.title).sort()).toEqual(["alpha", "alpine"]);
+                expect(listing).not.toHaveBeenCalled();
+            } finally {
+                controller.abort();
+                await answer;
+            }
         });
     });
 });
