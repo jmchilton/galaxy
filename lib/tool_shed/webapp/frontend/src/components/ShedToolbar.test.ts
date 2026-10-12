@@ -1,19 +1,39 @@
-import { flushPromises, mount } from "@vue/test-utils"
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import type { components } from "@/schema/schema"
 import { useAuthStore } from "@/stores"
 import { createMemoryRouter } from "@/test-utils"
 import ShedToolbar from "./ShedToolbar.vue"
 
-function mountToolbar(user: Record<string, unknown> | null) {
-    const authStore = useAuthStore()
+// The toolbar consumes these two user fields; the authentication request is stubbed.
+type ToolbarUser = Pick<components["schemas"]["UserV2"], "username" | "is_admin">
+const mountHosts = new Set<HTMLElement>()
+
+afterEach(() => {
+    for (const host of mountHosts) {
+        host.remove()
+    }
+    mountHosts.clear()
+    vi.restoreAllMocks()
+})
+// Stacked afterEach hooks unmount before removing hosts and restoring store spies.
+enableAutoUnmount(afterEach)
+
+function mountToolbar(user: ToolbarUser | null) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const authStore = useAuthStore(pinia)
     vi.spyOn(authStore, "setup").mockResolvedValue(undefined)
     const logout = vi.spyOn(authStore, "logout").mockResolvedValue(undefined)
     authStore.user = user
+    const host = document.createElement("div")
+    mountHosts.add(host)
+    document.body.append(host)
     const wrapper = mount(ShedToolbar, {
         props: { title: "Tool Shed" },
-        global: { plugins: [createMemoryRouter()] },
-        attachTo: document.body,
+        global: { plugins: [pinia, createMemoryRouter()] },
+        attachTo: host,
     })
     return { wrapper, logout }
 }
@@ -28,10 +48,6 @@ function menuLinks(wrapper: ReturnType<typeof mountToolbar>["wrapper"], toggleTe
 }
 
 describe("ShedToolbar", () => {
-    beforeEach(() => {
-        setActivePinia(createPinia())
-    })
-
     it("offers the repository browsing routes under Explore", () => {
         const { wrapper } = mountToolbar(null)
 
