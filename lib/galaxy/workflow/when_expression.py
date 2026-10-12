@@ -3,10 +3,12 @@
 The analyzer recognizes the property-access forms Galaxy documents for the
 ``inputs`` object without executing user JavaScript. Unsupported or computed
 accesses are reported as dynamic so callers can handle them conservatively.
+Unlike the editor's permissive reference matching, rejecting an import requires
+proof of a global input access. Scope-bearing syntax and undecoded literals are
+therefore deliberately outside this backend analyzer's supported subset.
 """
 
 import re
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import (
     Literal,
@@ -15,7 +17,7 @@ from typing import (
 
 InputPathSegment: TypeAlias = str | int | float
 InputPath: TypeAlias = list[InputPathSegment]
-TokenType: TypeAlias = Literal["identifier", "number", "string", "punct"]
+TokenType: TypeAlias = Literal["identifier", "number", "string", "dynamic", "punct"]
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,7 @@ class _AccessPath:
     dynamic: bool
 
 
-_PUNCTUATORS = ("===", "!==", "==", "!=", "&&", "||", "!", "(", ")", "[", "]", ".", ",", "?", ":")
+_PUNCTUATORS = ("===", "!==", "=>", "==", "!=", "&&", "||", "!", "(", ")", "[", "]", ".", ",", "?", ":")
 
 
 def analyze_input_references(expression: str) -> ReferenceAnalysis:
@@ -47,6 +49,16 @@ def analyze_input_references(expression: str) -> ReferenceAnalysis:
     tokens = _tokenize(expression)
     if tokens is None:
         return ReferenceAnalysis([], True)
+    # This scanner does not resolve JavaScript scopes. Declarations, functions,
+    # assignments, and object/block bodies can bind a different object named inputs. Only
+    # the outer CWL ${...} wrapper is safe to ignore without a scope parser.
+    for position, token in enumerate(tokens):
+        if token.type == "identifier" and token.value in ("const", "let", "var", "function", "class", "catch"):
+            return ReferenceAnalysis([], True)
+        if (token.type == "punct" and token.value in ("=>", "=")) or (
+            token.type == "punct" and token.value == "{" and not (position == 1 and tokens[0].value == "$")
+        ):
+            return ReferenceAnalysis([], True)
 
     static_paths: list[InputPath] = []
     has_dynamic_inputs_access = "`" in expression
@@ -62,18 +74,6 @@ def analyze_input_references(expression: str) -> ReferenceAnalysis:
             static_paths.append(path.segments)
 
     return ReferenceAnalysis(static_paths, has_dynamic_inputs_access)
-
-
-def expression_references_input(expression: str | None, input: str | Sequence[InputPathSegment]) -> bool:
-    """Return whether an expression could read a named workflow connection."""
-
-    if not expression:
-        return False
-    target_path: Sequence[InputPathSegment] = input.split("|") if isinstance(input, str) else input
-    references = analyze_input_references(expression)
-    if references.has_dynamic_inputs_access:
-        return True
-    return any(_input_path_is_prefix(target_path, referenced_path) for referenced_path in references.static_paths)
 
 
 def _tokenize(expression: str) -> list[_Token] | None:
@@ -111,8 +111,13 @@ def _tokenize(expression: str) -> list[_Token] | None:
             literal = _read_string_literal(expression, index)
             if literal is None:
                 return None
-            value, index = literal
-            tokens.append(_Token("string", value))
+            value, next_index = literal
+            # Templates interpolate code, and JavaScript escape sequences cannot
+            # be decoded by simply dropping the backslash. Keep either kind of
+            # segment dynamic while retaining any preceding static path.
+            token_type: TokenType = "dynamic" if char == "`" or "\\" in expression[index:next_index] else "string"
+            tokens.append(_Token(token_type, value))
+            index = next_index
             continue
 
         if char.isascii() and char.isdigit():
@@ -130,6 +135,11 @@ def _tokenize(expression: str) -> list[_Token] | None:
             tokens.append(_Token("identifier", value))
             index += len(value)
             continue
+
+        if not char.isascii() or char == "\\":
+            # Unicode and escaped identifiers may contain an ASCII inputs
+            # suffix; do not mistake that suffix for the global binding.
+            return None
 
         punctuator = next((candidate for candidate in _PUNCTUATORS if expression.startswith(candidate, index)), char)
         tokens.append(_Token("punct", punctuator))
@@ -174,9 +184,33 @@ def _read_string_literal(expression: str, start: int) -> tuple[str, int] | None:
     quote = expression[start]
     value = ""
     index = start + 1
+    interpolation_depth = 0
 
     while index < len(expression):
         char = expression[index]
+        if quote == "`":
+            if expression.startswith("${", index):
+                interpolation_depth += 1
+                value += "${"
+                index += 2
+                continue
+            if interpolation_depth:
+                if char in {"`", "/"}:
+                    # Nested templates, regexes, and comments need a JavaScript
+                    # parser. Their braces must not affect interpolation depth.
+                    return None
+                if char in {"'", '"'}:
+                    nested = _read_string_literal(expression, index)
+                    if nested is None:
+                        return None
+                    _, next_index = nested
+                    value += expression[index:next_index]
+                    index = next_index
+                    continue
+                if char == "{":
+                    interpolation_depth += 1
+                elif char == "}":
+                    interpolation_depth -= 1
         if char == "\\":
             value += expression[index + 1] if index + 1 < len(expression) else ""
             index += 2
@@ -221,9 +255,3 @@ def _read_access_path(tokens: list[_Token], start: int) -> _AccessPath:
             return _AccessPath(segments, True)
 
         return _AccessPath(segments, False)
-
-
-def _input_path_is_prefix(target_path: Sequence[InputPathSegment], referenced_path: Sequence[InputPathSegment]) -> bool:
-    if len(target_path) > len(referenced_path):
-        return False
-    return all(segment == referenced_path[position] for position, segment in enumerate(target_path))

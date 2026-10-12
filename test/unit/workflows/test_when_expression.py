@@ -1,23 +1,21 @@
 import yaml
 
 from galaxy.util.resources import resource_string
-from galaxy.workflow.when_expression import (
-    analyze_input_references,
-    expression_references_input,
-)
+from galaxy.workflow.when_expression import analyze_input_references
 
 
 def test_shared_when_expression_spec():
     cases = yaml.safe_load(resource_string("galaxy.workflow", "when_expression_spec.yml"))
 
     for case in cases:
-        expression = case["expression"]
         expected = case["expect"]
-        analysis = analyze_input_references(expression)
+        # Input-to-edge matching is client policy. This backend contract only
+        # covers the reference-analysis expectations in the shared fixture.
+        if "static_paths" not in expected and "dynamic" not in expected:
+            continue
+        analysis = analyze_input_references(case["expression"])
 
         if "static_paths" in expected:
             assert analysis.static_paths == expected["static_paths"], case["doc"]
         if "dynamic" in expected:
             assert analysis.has_dynamic_inputs_access is expected["dynamic"], case["doc"]
-        if "references_input" in expected:
-            assert expression_references_input(expression, case["input"]) is expected["references_input"], case["doc"]

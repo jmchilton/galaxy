@@ -2477,6 +2477,67 @@ steps:
 
             self.__test_upload(workflow=workflow)
 
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            '${ const inputs = {"cond|input1": true}; return inputs["cond|input1"]; }',
+            '${ let inputs = {"cond|input1": true}; return inputs["cond|input1"]; }',
+            '${ var inputs = {"cond|input1": true}; return inputs["cond|input1"]; }',
+            '$(inputs = JSON.parse(\'{"cond|input1":true}\'), inputs["cond|input1"])',
+            '$((function (inputs) { return inputs["cond|input1"]; })({"cond|input1": true}))',
+            '$(((inputs) => inputs["cond|input1"])({"cond|input1": true}))',
+            '$({check(inputs) { return inputs["cond|input1"]; }}.check({"cond|input1": true}))',
+            '$(typeof πinputs === "undefined" || πinputs["cond|input1"])',
+            '$(typeof inputsπ === "undefined" || inputsπ["cond|input1"])',
+            '$(inputs[`cond|${"input1"}`] === undefined)',
+            "$(inputs[`cond|input1`] === undefined)",
+            '$(inputs[`${`inputs["cond|input1"]`}`] === undefined)',
+            '$(inputs[`a${/}/.test("") + `inputs["cond|input1"]`}`] === undefined)',
+            '$(inputs[`a${1 /* } */ + `inputs["cond|input1"]`}`] === undefined)',
+            r'$(inputs["cond|\x69nput1"] === undefined)',
+            r'$(inputs["cond|inpu\u00741"] === undefined)',
+        ],
+    )
+    def test_import_preserves_when_expressions_outside_static_analysis(self, expression):
+        workflow = workflow_with_conditional_tool_when(expression)
+
+        response = self.__test_upload(workflow=workflow)
+
+        imported = self._download_workflow(response.json()["id"])
+        assert imported["steps"]["1"]["when"] == expression
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            '$(inputs["cond|input1"][someKey] !== null)',
+            '$(inputs["cond|input1"] !== null && "=>" === "=>")',
+            '$(inputs["cond|input1"][`suffix${"x"}`] !== null)',
+            r'$(inputs["cond|input1"]["\x65xt"] !== null)',
+            '$(inputs["cond|input1"] !== null && inputs[`a${"b"}`] !== null)',
+        ],
+    )
+    def test_import_rejects_static_flat_when_root_with_dynamic_properties(self, expression):
+        workflow = workflow_with_conditional_tool_when(expression)
+
+        response = self.__test_upload(workflow=workflow, assert_ok=False)
+
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, 'inputs["cond|input1"]')
+
+    def test_update_rejects_flat_nested_tool_when_reference(self):
+        workflow = workflow_with_conditional_tool_when("$(inputs.cond.input1 !== null)")
+        imported = self.__test_upload(workflow=workflow).json()
+        workflow_id = imported["id"]
+        editable = self._download_workflow(workflow_id, style="editor")
+        editable["steps"]["1"]["when"] = '$(inputs["cond|input1"] !== null)'
+
+        response = self._update_workflow(workflow_id, editable)
+
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, 'inputs["cond|input1"]')
+        unchanged = self._download_workflow(workflow_id)
+        assert unchanged["steps"]["1"]["when"] == "$(inputs.cond.input1 !== null)"
+
     def test_import_allows_flat_subworkflow_when_reference(self):
         self._upload_yaml_workflow("""class: GalaxyWorkflow
 inputs:

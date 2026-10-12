@@ -13,5 +13,7 @@ through Galaxy's internal pipe-prefixed connection names (for example,
 ``inputs["cond|param"]``). Use the nested tool-state form instead, such as
 ``inputs.cond.param`` or ``inputs["cond"]["param"]``. Ordinary top-level inputs
 and extra expression inputs such as ``inputs.when`` remain unchanged. Workflow
-imports now reject the removed spelling instead of allowing a condition that may
-silently produce the wrong result at run time.
+imports and updates now reject statically recognized uses of the removed spelling
+instead of allowing a condition that may silently produce the wrong result at
+run time. For inputs inside a repeat, use array indexing, such as
+``inputs.queries[0].input2`` instead of ``inputs["queries_0|input2"]``.
