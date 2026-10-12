@@ -1,6 +1,6 @@
-import { mount } from "@vue/test-utils";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ToolSourceDisplay from "./ToolSourceDisplay.vue";
 
@@ -24,6 +24,11 @@ vi.mock("@monaco-editor/loader", () => ({
     default: { init: vi.fn(() => Promise.resolve(mockMonaco)) },
 }));
 
+afterEach(() => {
+    vi.clearAllMocks();
+});
+enableAutoUnmount(afterEach);
+
 async function mountToolSourceDisplay() {
     const wrapper = mount(ToolSourceDisplay, {
         props: { code: "<tool id='cat1'/>", language: "xml" },
@@ -41,7 +46,7 @@ describe("ToolSourceDisplay", () => {
         const wrapper = await mountToolSourceDisplay();
         expect(mockMonaco.editor.create).toHaveBeenCalledTimes(1);
         expect(mockMonaco.editor.create).toHaveBeenCalledWith(
-            wrapper.find(".editor-container").element,
+            wrapper.get(".editor-container").element,
             expect.objectContaining({ value: "<tool id='cat1'/>", language: "xml", readOnly: true }),
         );
     });
