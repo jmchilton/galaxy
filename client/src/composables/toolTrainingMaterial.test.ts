@@ -1,5 +1,6 @@
+import { runInTestScope } from "@tests/vitest/effectScope";
 import flushPromises from "flush-promises";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { ref } from "vue";
 
 import { useToolTrainingMaterial } from "./toolTrainingMaterial";
@@ -21,17 +22,19 @@ vi.mock("./config", () => ({
     }),
 }));
 
-afterEach(() => {
-    isConfigLoaded.value = true;
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+beforeEach(() => {
+    onTestFinished(() => {
+        isConfigLoaded.value = true;
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
 });
 
 it("tolerates a training material request that fails to reach the server", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    useToolTrainingMaterial("cat1", "Concatenate", "1.0.0");
+    runInTestScope(() => useToolTrainingMaterial("cat1", "Concatenate", "1.0.0"));
     await flushPromises();
 
     expect(warn).toHaveBeenCalled();
@@ -42,7 +45,7 @@ it("requests training material only once the configuration has loaded", async ()
     const fetch = vi.fn().mockResolvedValue({ ok: false });
     vi.stubGlobal("fetch", fetch);
 
-    useToolTrainingMaterial("cat1", "Concatenate", "1.0.0");
+    runInTestScope(() => useToolTrainingMaterial("cat1", "Concatenate", "1.0.0"));
     await flushPromises();
     expect(fetch).not.toHaveBeenCalled();
 
