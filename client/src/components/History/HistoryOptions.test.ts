@@ -1,10 +1,10 @@
 import { getFakeAnonymousUser, getFakeHistorySummary, getFakeRegisteredUser } from "@tests/test-data";
 import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
-import { shallowMount } from "@vue/test-utils";
+import { enableAutoUnmount, shallowMount } from "@vue/test-utils";
 import { BFormCheckbox } from "bootstrap-vue";
 import flushPromises from "flush-promises";
-import { createPinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, disposePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import type { HistorySummary, RegisteredUser } from "@/api";
 import { useHistoryStore } from "@/stores/historyStore";
@@ -61,15 +61,16 @@ const unownedHistoryOptions = [
 ];
 
 async function createWrapper(
-    propsData: { history: Partial<HistorySummary> & { user_id?: string | null } },
+    props: { history: Partial<HistorySummary> & { user_id?: string | null } },
     userData?: RegisteredUser,
 ) {
     const pinia = createPinia();
+    onTestFinished(() => disposePinia(pinia));
 
-    const historyUserId = "user_id" in propsData.history ? (propsData.history.user_id ?? null) : (userData?.id ?? null);
+    const historyUserId = "user_id" in props.history ? (props.history.user_id ?? null) : (userData?.id ?? null);
 
     const history: HistorySummary & { user_id: string | null } = {
-        ...getFakeHistorySummary(propsData.history),
+        ...getFakeHistorySummary(props.history),
         user_id: historyUserId,
     };
 
@@ -78,16 +79,21 @@ async function createWrapper(
         global: withPlugins(localVue, pinia),
     });
 
-    const userStore = useUserStore();
+    const userStore = useUserStore(pinia);
     userStore.currentUser = userData ?? getFakeAnonymousUser();
 
-    const historyStore = useHistoryStore();
+    const historyStore = useHistoryStore(pinia);
     vi.spyOn(historyStore, "currentHistoryId", "get").mockReturnValue("current_history_id");
     vi.spyOn(historyStore, "deleteHistory").mockImplementation(async () => {});
 
     await flushPromises();
     return { wrapper, historyStore };
 }
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+enableAutoUnmount(afterEach);
 
 describe("History Navigation", () => {
     beforeEach(() => {
@@ -161,31 +167,31 @@ describe("History Navigation", () => {
 
     it("delete modal has correct title and ok-text for an active history", async () => {
         const { wrapper } = await createWrapper({ history: activeHistory }, getFakeRegisteredUser());
-        const modal = wrapper.findComponent(GModal);
+        const modal = wrapper.getComponent(GModal);
         expect(modal.props("title")).toBe("Delete History?");
         expect(modal.props("okText")).toBe("Delete");
     });
 
     it("delete modal has correct title and ok-text for a deleted (not purged) history", async () => {
         const { wrapper } = await createWrapper({ history: deletedHistory }, getFakeRegisteredUser());
-        const modal = wrapper.findComponent(GModal);
+        const modal = wrapper.getComponent(GModal);
         expect(modal.props("title")).toBe("Permanently Delete History?");
         expect(modal.props("okText")).toBe("Delete Permanently");
     });
 
     it("purge checkbox is not disabled for an active history", async () => {
         const { wrapper } = await createWrapper({ history: activeHistory }, getFakeRegisteredUser());
-        expect(wrapper.find('[data-description="delete history checkbox"]').attributes("disabled")).toBeUndefined();
+        expect(wrapper.get('[data-description="delete history checkbox"]').attributes("disabled")).toBeUndefined();
     });
 
     it("purge checkbox is disabled for an already-deleted history", async () => {
         const { wrapper } = await createWrapper({ history: deletedHistory }, getFakeRegisteredUser());
-        expect(wrapper.find('[data-description="delete history checkbox"]').attributes("disabled")).toBeDefined();
+        expect(wrapper.get('[data-description="delete history checkbox"]').attributes("disabled")).toBeDefined();
     });
 
     it("calls deleteHistory with purge=false when checkbox is unchecked", async () => {
         const { wrapper, historyStore } = await createWrapper({ history: activeHistory }, getFakeRegisteredUser());
-        wrapper.findComponent(GModal).vm.$emit("ok");
+        wrapper.getComponent(GModal).vm.$emit("ok");
         await flushPromises();
         expect(historyStore.deleteHistory).toHaveBeenCalledWith("history_a", false);
     });
@@ -194,9 +200,9 @@ describe("History Navigation", () => {
         const { wrapper, historyStore } = await createWrapper({ history: activeHistory }, getFakeRegisteredUser());
         // BFormCheckbox is stubbed under shallowMount, so there's no real
         // checkbox input to interact with -- drive it through its stub instead.
-        wrapper.findComponent(BFormCheckbox).vm.$emit("input", true);
+        wrapper.getComponent(BFormCheckbox).vm.$emit("input", true);
         await flushPromises();
-        wrapper.findComponent(GModal).vm.$emit("ok");
+        wrapper.getComponent(GModal).vm.$emit("ok");
         await flushPromises();
         expect(historyStore.deleteHistory).toHaveBeenCalledWith("history_a", true);
     });
@@ -206,14 +212,14 @@ describe("History Navigation", () => {
         // and the history switches to a deleted one (e.g. another tab deletes it).
         const { wrapper, historyStore } = await createWrapper({ history: activeHistory }, getFakeRegisteredUser());
 
-        expect(wrapper.findComponent(GModal).text()).toContain(activeHistory.name);
+        expect(wrapper.getComponent(GModal).text()).toContain(activeHistory.name);
 
         await wrapper.setProps({ history: deletedHistory });
 
-        expect(wrapper.findComponent(GModal).text()).toContain(deletedHistory.name);
+        expect(wrapper.getComponent(GModal).text()).toContain(deletedHistory.name);
 
         await flushPromises();
-        wrapper.findComponent(GModal).vm.$emit("ok");
+        wrapper.getComponent(GModal).vm.$emit("ok");
 
         await flushPromises();
         expect(historyStore.deleteHistory).toHaveBeenCalledWith("history_b", true);
