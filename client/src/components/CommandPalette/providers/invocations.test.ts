@@ -1,8 +1,11 @@
+import { deferred } from "@tests/vitest/deferred";
 import flushPromises from "flush-promises";
-import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, disposePinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import type { WorkflowInvocationCollectionView } from "@/api/invocations";
 import { getData as getInvocationsData } from "@/components/Grid/configs/invocations";
+import type { RecentPaletteItem } from "@/composables/useRecentPaletteItems";
 import { useInvocationStore } from "@/stores/invocationStore";
 
 import { makeCtx } from "../test-utils";
@@ -36,13 +39,13 @@ vi.mock("@/stores/historyStore", () => ({
     }),
 }));
 
-const recentItems = vi.fn(() => [] as { type: string; id: string; name: string; to?: string }[]);
+const recentItems = vi.fn<() => RecentPaletteItem[]>(() => []);
 
 vi.mock("@/composables/useRecentPaletteItems", () => ({
     useRecentPaletteItems: () => ({ recentItems, addRecentItem: vi.fn(), clearRecentItems: vi.fn() }),
 }));
 
-const INVOCATIONS = [
+const INVOCATIONS: Omit<WorkflowInvocationCollectionView, "model_class">[] = [
     {
         id: "inv1",
         workflow_id: "wf1",
@@ -71,19 +74,41 @@ const INVOCATIONS = [
 
 const SCOPE: ScopeDefinition = { key: "i", label: "Invocations", providerId: "invocations" };
 
+const searchScopedInvocations = invocationsProvider.searchScoped;
+if (!searchScopedInvocations) {
+    throw new Error("Invocations must support scoped search");
+}
+const emptyQueryItems = invocationsProvider.emptyQueryItems;
+if (!emptyQueryItems) {
+    throw new Error("Invocations must expose their cached empty-query items");
+}
+
+let pinia: ReturnType<typeof createPinia>;
+
 describe("invocationsProvider", () => {
     beforeEach(() => {
-        setActivePinia(createPinia());
+        const ownedPinia = createPinia();
+        pinia = ownedPinia;
+        setActivePinia(ownedPinia);
+        onTestFinished(async () => {
+            await flushPromises();
+            disposePinia(ownedPinia);
+            resetListRefreshTracking();
+        });
         recentItems.mockReturnValue([]);
         resetListRefreshTracking();
-        fetchWorkflowForInstanceIdCached.mockClear();
+        fetchWorkflowForInstanceIdCached.mockReset().mockResolvedValue(undefined);
         loadHistoryById.mockClear();
         vi.mocked(getInvocationsData).mockReset();
-        vi.mocked(getInvocationsData).mockResolvedValue([INVOCATIONS, INVOCATIONS.length] as never);
+        // Keep the original list rows partial: model_class is not consumed by these palette scenarios.
+        vi.mocked(getInvocationsData).mockResolvedValue([
+            INVOCATIONS as WorkflowInvocationCollectionView[],
+            INVOCATIONS.length,
+        ]);
     });
 
     it("maps invocations to items with workflow, state, date and history", async () => {
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "variant", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "variant", makeCtx());
         const items = sections[0]?.items ?? [];
         expect(items).toHaveLength(1);
         expect(items[0]?.id).toBe("invocations:inv1");
@@ -95,35 +120,36 @@ describe("invocationsProvider", () => {
     });
 
     it("resolves the workflow and history names before it settles", async () => {
-        let finishWorkflowLookup!: () => void;
-        fetchWorkflowForInstanceIdCached.mockImplementationOnce(
-            () => new Promise<void>((resolve) => (finishWorkflowLookup = resolve)),
-        );
+        const workflowLookup = deferred<void>();
+        fetchWorkflowForInstanceIdCached.mockImplementationOnce(() => workflowLookup.promise);
         let settled = false;
-        const search = Promise.resolve(invocationsProvider.searchScoped?.(SCOPE, "", makeCtx())).then(
-            () => (settled = true),
-        );
-        await flushPromises();
+        const search = Promise.resolve(searchScopedInvocations(SCOPE, "", makeCtx())).then(() => (settled = true));
+        try {
+            await flushPromises();
 
-        // `getData` only starts these lookups; the provider awaits them so fresh rows show names
-        expect(settled).toBe(false);
-        expect(fetchWorkflowForInstanceIdCached.mock.calls.map(([id]) => id)).toEqual(["wf1", "wf2", "unknown_wf"]);
-        // cached histories are not looked up again
-        expect(loadHistoryById.mock.calls.map(([id]) => id)).toEqual(["unknown_history"]);
+            // `getData` only starts these lookups; the provider awaits them so fresh rows show names
+            expect(settled).toBe(false);
+            expect(fetchWorkflowForInstanceIdCached.mock.calls.map(([id]) => id)).toEqual(["wf1", "wf2", "unknown_wf"]);
+            // cached histories are not looked up again
+            expect(loadHistoryById.mock.calls.map(([id]) => id)).toEqual(["unknown_history"]);
 
-        finishWorkflowLookup();
-        await search;
-        expect(settled).toBe(true);
+            workflowLookup.resolve();
+            await search;
+            expect(settled).toBe(true);
+        } finally {
+            workflowLookup.resolve();
+            await search;
+        }
     });
 
     it("falls back to the invocation id when the workflow name is unknown", async () => {
-        const sections = await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx());
+        const sections = await searchScopedInvocations(SCOPE, "", makeCtx());
         const latest = sections?.find((s) => s.id === "latest");
         expect(latest?.items.map((i) => i.title)).toEqual(["Variant calling", "RNA-seq", "Invocation inv3"]);
     });
 
     it("filters client-side by history name too", async () => {
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "scratch", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "scratch", makeCtx());
         expect(sections[0]?.items.map((i) => i.id)).toEqual(["invocations:inv2"]);
     });
 
@@ -132,7 +158,7 @@ describe("invocationsProvider", () => {
         expect(await invocationsProvider.search("variant", makeCtx())).toEqual([]);
         expect(getInvocationsData).not.toHaveBeenCalled();
 
-        await useInvocationStore().fetchLatestInvocations(15);
+        await useInvocationStore(pinia).fetchLatestInvocations(15);
         vi.mocked(getInvocationsData).mockClear();
 
         const items = await invocationsProvider.search("variant", makeCtx());
@@ -142,52 +168,52 @@ describe("invocationsProvider", () => {
     });
 
     it("renders the store cache without fetching again", async () => {
-        const invocationStore = useInvocationStore();
+        const invocationStore = useInvocationStore(pinia);
         await invocationStore.fetchLatestInvocations(15);
         vi.mocked(getInvocationsData).mockClear();
 
-        const items = invocationsProvider.emptyQueryItems?.(makeCtx()) ?? [];
+        const items = emptyQueryItems(makeCtx());
         expect(items.map((i) => i.id)).toEqual(["invocations:inv1", "invocations:inv2", "invocations:inv3"]);
         expect(getInvocationsData).not.toHaveBeenCalled();
     });
 
     it("shows remembered invocations above the latest ones", async () => {
         recentItems.mockReturnValue([{ type: "invocation", id: "inv2", name: "RNA-seq" }]);
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "", makeCtx());
         expect(sections.map((s) => s.id)).toEqual(["recent", "latest"]);
         expect(sections[0]?.items.map((i) => i.id)).toEqual(["invocations:inv2"]);
         expect(sections[1]?.items.map((i) => i.id)).toEqual(["invocations:inv1", "invocations:inv3"]);
     });
 
     it("fetches once and answers further keystrokes from the store", async () => {
-        await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx());
+        await searchScopedInvocations(SCOPE, "", makeCtx());
         expect(getInvocationsData).toHaveBeenCalledTimes(1);
 
         // the invocations index has no free-text search, so a query must not
         // repeat the identical unfiltered request
-        await invocationsProvider.searchScoped?.(SCOPE, "r", makeCtx());
-        await invocationsProvider.searchScoped?.(SCOPE, "rn", makeCtx());
-        await invocationsProvider.searchScoped?.(SCOPE, "rna", makeCtx());
+        await searchScopedInvocations(SCOPE, "r", makeCtx());
+        await searchScopedInvocations(SCOPE, "rn", makeCtx());
+        await searchScopedInvocations(SCOPE, "rna", makeCtx());
 
         expect(getInvocationsData).toHaveBeenCalledTimes(1);
     });
 
     it("does not refetch for a user without invocations", async () => {
-        vi.mocked(getInvocationsData).mockResolvedValue([[], 0] as never);
+        vi.mocked(getInvocationsData).mockResolvedValue([[], 0]);
 
-        await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx());
-        await invocationsProvider.searchScoped?.(SCOPE, "rna", makeCtx());
+        await searchScopedInvocations(SCOPE, "", makeCtx());
+        await searchScopedInvocations(SCOPE, "rna", makeCtx());
 
         expect(getInvocationsData).toHaveBeenCalledTimes(1);
     });
 
     it("refreshes the cached list in the background once it goes stale", async () => {
-        await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx());
+        await searchScopedInvocations(SCOPE, "", makeCtx());
         expect(getInvocationsData).toHaveBeenCalledTimes(1);
 
         resetListRefreshTracking();
         fetchWorkflowForInstanceIdCached.mockClear();
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "", makeCtx());
 
         expect(sections.at(-1)?.items.map((i) => i.id)).toEqual([
             "invocations:inv1",
@@ -201,11 +227,11 @@ describe("invocationsProvider", () => {
     });
 
     it("keeps rendering the cached invocations when a fetch fails", async () => {
-        await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx());
+        await searchScopedInvocations(SCOPE, "", makeCtx());
         vi.mocked(getInvocationsData).mockRejectedValue(new Error("boom"));
         resetListRefreshTracking();
 
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "rna", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "rna", makeCtx());
 
         expect(sections[0]?.items.map((i) => i.id)).toEqual(["invocations:inv2"]);
     });
@@ -213,16 +239,14 @@ describe("invocationsProvider", () => {
     it("reports a failed first fetch and retries it on the next search", async () => {
         vi.mocked(getInvocationsData).mockRejectedValueOnce(new Error("boom"));
 
-        await expect(invocationsProvider.searchScoped?.(SCOPE, "", makeCtx())).rejects.toBeInstanceOf(
-            PaletteFetchError,
-        );
+        await expect(searchScopedInvocations(SCOPE, "", makeCtx())).rejects.toBeInstanceOf(PaletteFetchError);
 
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "", makeCtx());
         expect(sections.at(-1)?.items.map((i) => i.id)).toEqual(INVOCATIONS.map((i) => `invocations:${i.id}`));
     });
 
     it("returns a single results section for a scoped query", async () => {
-        const sections = (await invocationsProvider.searchScoped?.(SCOPE, "rna", makeCtx())) ?? [];
+        const sections = await searchScopedInvocations(SCOPE, "rna", makeCtx());
         expect(sections).toHaveLength(1);
         expect(sections[0]?.id).toBe("results");
         expect(sections[0]?.items.map((i) => i.id)).toEqual(["invocations:inv2"]);
