@@ -1,7 +1,8 @@
 import { getFakeVisualizationSummary } from "@tests/test-data/visualizations";
-import { createPinia, setActivePinia } from "pinia";
+import flushPromises from "flush-promises";
+import { createPinia, disposePinia, setActivePinia } from "pinia";
 import MockDate from "timezone-mock";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { loadVisualizations, type VisualizationSummary } from "@/api/visualizations";
 import type { RecentPaletteItem } from "@/composables/useRecentPaletteItems";
@@ -9,6 +10,7 @@ import { useVisualizationStore } from "@/stores/visualizationStore";
 
 import { makeCtx, renderedSections } from "../test-utils";
 import { resetListRefreshTracking } from "./refresh";
+import type { ScopeDefinition } from "./scopes";
 import { visualizationsProvider } from "./visualizations";
 
 vi.mock("@/api/visualizations", () => ({
@@ -25,35 +27,49 @@ vi.mock("@/composables/useRecentPaletteItems", () => ({
     }),
 }));
 
-const VISUALIZATION_SCOPE = { key: "v", label: "Visualizations", providerId: "visualizations" };
+const VISUALIZATION_SCOPE: ScopeDefinition = { key: "v", label: "Visualizations", providerId: "visualizations" };
 
-function mockVisualization(id: string, title: string): VisualizationSummary {
-    return getFakeVisualizationSummary({ id, title });
-}
-
-function mockList(...visualizations: VisualizationSummary[]) {
+function respondWithList(...visualizations: VisualizationSummary[]) {
     vi.mocked(loadVisualizations).mockResolvedValue({ data: visualizations, totalMatches: visualizations.length });
 }
+
+const searchScopedVisualizations = visualizationsProvider.searchScoped;
+if (!searchScopedVisualizations) {
+    throw new Error("Visualizations must support scoped search");
+}
+const emptyQueryItems = visualizationsProvider.emptyQueryItems;
+if (!emptyQueryItems) {
+    throw new Error("Visualizations must expose their cached empty-query items");
+}
+
+let pinia: ReturnType<typeof createPinia>;
 
 describe("visualizationsProvider", () => {
     beforeEach(() => {
         // subtitles carry a date formatted in local time, so the zone is pinned
         // the way utils/dates.test.ts pins it
+        onTestFinished(() => {
+            MockDate.unregister();
+        });
         MockDate.register("Etc/GMT+4");
-        setActivePinia(createPinia());
+        const ownedPinia = createPinia();
+        pinia = ownedPinia;
+        setActivePinia(ownedPinia);
+        onTestFinished(async () => {
+            await flushPromises();
+            disposePinia(ownedPinia);
+            resetListRefreshTracking();
+            recentEntries.length = 0;
+        });
         vi.mocked(loadVisualizations).mockReset();
         resetListRefreshTracking();
         recentEntries.length = 0;
     });
 
-    afterEach(() => {
-        MockDate.unregister();
-    });
-
     it("maps a visualization to the display route the grid opens", async () => {
-        mockList(mockVisualization("viz-1", "ATAC peaks"));
+        respondWithList(getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }));
 
-        const sections = (await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "atac", makeCtx())) ?? [];
+        const sections = await searchScopedVisualizations(VISUALIZATION_SCOPE, "atac", makeCtx());
         const items = sections[0]?.items ?? [];
 
         expect(items).toHaveLength(1);
@@ -67,20 +83,22 @@ describe("visualizationsProvider", () => {
     it("hydrates the store once and ranks the cache before merging backend hits", async () => {
         // two of many, so the cache cannot answer every query alone
         vi.mocked(loadVisualizations).mockResolvedValue({
-            data: [mockVisualization("viz-1", "ATAC peaks"), mockVisualization("viz-2", "Coverage plot")],
+            data: [
+                getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }),
+                getFakeVisualizationSummary({ id: "viz-2", title: "Coverage plot" }),
+            ],
             totalMatches: 30,
         });
         // hydrate through the palette, the way opening the scope does
-        await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "", makeCtx());
+        await searchScopedVisualizations(VISUALIZATION_SCOPE, "", makeCtx());
         vi.mocked(loadVisualizations).mockClear();
         // the backend repeats the cached match, which must not be listed twice
         vi.mocked(loadVisualizations).mockResolvedValueOnce({
-            data: [mockVisualization("viz-2", "Coverage plot")],
+            data: [getFakeVisualizationSummary({ id: "viz-2", title: "Coverage plot" })],
             totalMatches: 1,
         });
 
-        const sections =
-            (await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "coverage", makeCtx())) ?? [];
+        const sections = await searchScopedVisualizations(VISUALIZATION_SCOPE, "coverage", makeCtx());
 
         // hydration already happened, so only the query fetch is left
         expect(loadVisualizations).toHaveBeenCalledTimes(1);
@@ -90,56 +108,55 @@ describe("visualizationsProvider", () => {
 
     it("queries the backend when the cache cannot answer and merges results into the store", async () => {
         vi.mocked(loadVisualizations).mockResolvedValueOnce({
-            data: [mockVisualization("viz-1", "ATAC peaks")],
+            data: [getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" })],
             totalMatches: 30,
         });
         vi.mocked(loadVisualizations).mockResolvedValueOnce({
-            data: [mockVisualization("viz-9", "Genome browser")],
+            data: [getFakeVisualizationSummary({ id: "viz-9", title: "Genome browser" })],
             totalMatches: 1,
         });
 
-        const sections = (await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "genome", makeCtx())) ?? [];
+        const sections = await searchScopedVisualizations(VISUALIZATION_SCOPE, "genome", makeCtx());
 
         expect(loadVisualizations).toHaveBeenCalledTimes(2);
         expect(sections[0]?.items.map((item) => item.id)).toEqual(["visualizations:viz-9"]);
-        expect(useVisualizationStore().getVisualizationSummary("viz-9")?.title).toBe("Genome browser");
+        expect(useVisualizationStore(pinia).getVisualizationSummary("viz-9")?.title).toBe("Genome browser");
     });
 
     it("answers from a cache holding every visualization without searching", async () => {
-        mockList(mockVisualization("viz-1", "ATAC peaks"));
-        await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "", makeCtx());
+        respondWithList(getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }));
+        await searchScopedVisualizations(VISUALIZATION_SCOPE, "", makeCtx());
         vi.mocked(loadVisualizations).mockClear();
 
-        const sections = renderedSections(
-            await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "genome", makeCtx()),
-        );
+        const sections = renderedSections(await searchScopedVisualizations(VISUALIZATION_SCOPE, "genome", makeCtx()));
 
         expect(sections).toEqual([]);
         expect(loadVisualizations).not.toHaveBeenCalled();
     });
 
     it("refreshes the cached visualizations in the background once they go stale", async () => {
-        mockList(mockVisualization("viz-1", "ATAC peaks"));
-        await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "", makeCtx());
+        respondWithList(getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }));
+        await searchScopedVisualizations(VISUALIZATION_SCOPE, "", makeCtx());
         vi.mocked(loadVisualizations).mockClear();
 
         // a later palette session, past the refresh interval
         resetListRefreshTracking();
-        const sections = renderedSections(
-            await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "", makeCtx()),
-        );
+        const sections = renderedSections(await searchScopedVisualizations(VISUALIZATION_SCOPE, "", makeCtx()));
 
         expect(sections[0]?.items.map((item) => item.id)).toEqual(["visualizations:viz-1"]);
         expect(loadVisualizations).toHaveBeenCalledTimes(1);
     });
 
     it("filters the cache in the unscoped fan-out and never fetches there", async () => {
-        mockList(mockVisualization("viz-1", "ATAC peaks"), mockVisualization("viz-2", "Coverage plot"));
+        respondWithList(
+            getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }),
+            getFakeVisualizationSummary({ id: "viz-2", title: "Coverage plot" }),
+        );
         // nothing cached yet: the fan-out contributes nothing rather than fetching
         expect(await visualizationsProvider.search("coverage", makeCtx())).toEqual([]);
         expect(loadVisualizations).not.toHaveBeenCalled();
 
-        await useVisualizationStore().ensureVariantLoaded("my");
+        await useVisualizationStore(pinia).ensureVariantLoaded("my");
         vi.mocked(loadVisualizations).mockClear();
 
         const items = await visualizationsProvider.search("coverage", makeCtx());
@@ -149,10 +166,13 @@ describe("visualizationsProvider", () => {
     });
 
     it("shows recent and latest sections for an empty scoped query", async () => {
-        mockList(mockVisualization("viz-1", "ATAC peaks"), mockVisualization("viz-2", "Coverage plot"));
+        respondWithList(
+            getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }),
+            getFakeVisualizationSummary({ id: "viz-2", title: "Coverage plot" }),
+        );
         recentEntries.push({ type: "visualization", id: "viz-2", name: "Coverage plot" });
 
-        const sections = await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "", makeCtx());
+        const sections = await searchScopedVisualizations(VISUALIZATION_SCOPE, "", makeCtx());
 
         expect(sections?.map((section) => section.title)).toEqual(["Recent", "Latest visualizations"]);
         expect(sections?.[0]?.items.map((item) => item.id)).toEqual(["visualizations:viz-2"]);
@@ -160,12 +180,10 @@ describe("visualizationsProvider", () => {
     });
 
     it("keeps a recent item that is no longer cached, using its stored route", async () => {
-        mockList();
+        respondWithList();
         recentEntries.push({ type: "visualization", id: "viz-7", name: "Old chart", to: "/visualizations/edit?id=7" });
 
-        const sections = renderedSections(
-            await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "", makeCtx()),
-        );
+        const sections = renderedSections(await searchScopedVisualizations(VISUALIZATION_SCOPE, "", makeCtx()));
 
         expect(sections?.map((section) => section.title)).toEqual(["Recent"]);
         expect(sections?.[0]?.items[0]).toMatchObject({
@@ -177,16 +195,19 @@ describe("visualizationsProvider", () => {
 
     it("returns a single result section for a scoped query", async () => {
         vi.mocked(loadVisualizations).mockResolvedValueOnce({
-            data: [mockVisualization("viz-1", "ATAC peaks"), mockVisualization("viz-2", "Coverage plot")],
+            data: [
+                getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" }),
+                getFakeVisualizationSummary({ id: "viz-2", title: "Coverage plot" }),
+            ],
             totalMatches: 2,
         });
         vi.mocked(loadVisualizations).mockResolvedValueOnce({
-            data: [mockVisualization("viz-1", "ATAC peaks")],
+            data: [getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" })],
             totalMatches: 1,
         });
         recentEntries.push({ type: "visualization", id: "viz-2", name: "Coverage plot" });
 
-        const sections = await visualizationsProvider.searchScoped?.(VISUALIZATION_SCOPE, "atac", makeCtx());
+        const sections = await searchScopedVisualizations(VISUALIZATION_SCOPE, "atac", makeCtx());
 
         expect(sections).toHaveLength(1);
         expect(sections?.[0]?.id).toBe("results");
@@ -194,11 +215,11 @@ describe("visualizationsProvider", () => {
     });
 
     it("lists cached visualizations for an empty query without fetching", () => {
-        const store = useVisualizationStore();
-        store.saveVisualizations([mockVisualization("viz-1", "ATAC peaks")]);
+        const store = useVisualizationStore(pinia);
+        store.saveVisualizations([getFakeVisualizationSummary({ id: "viz-1", title: "ATAC peaks" })]);
         store.visualizationIdsByVariant.my = ["viz-1"];
 
-        const items = visualizationsProvider.emptyQueryItems?.(makeCtx()) ?? [];
+        const items = emptyQueryItems(makeCtx());
 
         expect(items.map((item) => item.id)).toEqual(["visualizations:viz-1"]);
         expect(loadVisualizations).not.toHaveBeenCalled();
