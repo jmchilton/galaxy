@@ -2,39 +2,61 @@ import { describe, expect, test } from "vitest";
 
 import { stripExtension } from "./stripExtension";
 
+interface ExtensionScenario {
+    behavior: string;
+    examples: [filename: string, expected: string][];
+}
+
 describe("stripExtension", () => {
-    test("strips single extensions", () => {
-        expect(stripExtension("sample.fastq")).toBe("sample");
-        expect(stripExtension("data.bam")).toBe("data");
-        expect(stripExtension("example.fasta")).toBe("example");
-        expect(stripExtension("sample.txt")).toBe("sample");
-    });
-
-    test("strips multi-part extensions with secondary extensions", () => {
-        expect(stripExtension("sample.fastq.gz")).toBe("sample");
-        expect(stripExtension("data.fasta.tgz")).toBe("data");
-        expect(stripExtension("example.bam.bz2")).toBe("example");
-    });
-
-    test("handles filenames with multiple dots", () => {
-        expect(stripExtension("my.sample.fastq.gz")).toBe("my.sample");
-        expect(stripExtension("test.data.vcf.gz")).toBe("test.data");
-        expect(stripExtension("dataset.v1.bam.bz2")).toBe("dataset.v1");
-    });
-
-    test("preserves filenames without dots", () => {
-        expect(stripExtension("no_extension")).toBe("no_extension");
-    });
-
-    test("tries to avoid significant metadata that might look like an extension", () => {
-        expect(stripExtension("mycondition1.mysample1234")).toBe("mycondition1.mysample1234");
-        expect(stripExtension("mycondition1.mysample1234.fastq")).toBe("mycondition1.mysample1234");
-        expect(stripExtension("mycondition1.mysample1234.fastq.gz")).toBe("mycondition1.mysample1234");
-    });
-
-    test("handles edge cases", () => {
-        expect(stripExtension(".fastq.gz")).toBe("");
-        expect(stripExtension("file..fastq.gz")).toBe("file.");
-        expect(stripExtension("file.fastq.extra.gz")).toBe("file.fastq");
+    describe.each<ExtensionScenario>([
+        {
+            behavior: "strips single extensions",
+            examples: [
+                ["sample.fastq", "sample"],
+                ["data.bam", "data"],
+                ["example.fasta", "example"],
+                ["sample.txt", "sample"],
+            ],
+        },
+        {
+            behavior: "strips multi-part extensions with secondary extensions",
+            examples: [
+                ["sample.fastq.gz", "sample"],
+                ["data.fasta.tgz", "data"],
+                ["example.bam.bz2", "example"],
+            ],
+        },
+        {
+            behavior: "handles filenames with multiple dots",
+            examples: [
+                ["my.sample.fastq.gz", "my.sample"],
+                ["test.data.vcf.gz", "test.data"],
+                ["dataset.v1.bam.bz2", "dataset.v1"],
+            ],
+        },
+        {
+            behavior: "preserves filenames without dots",
+            examples: [["no_extension", "no_extension"]],
+        },
+        {
+            behavior: "preserves significant metadata that resembles an extension",
+            examples: [
+                ["mycondition1.mysample1234", "mycondition1.mysample1234"],
+                ["mycondition1.mysample1234.fastq", "mycondition1.mysample1234"],
+                ["mycondition1.mysample1234.fastq.gz", "mycondition1.mysample1234"],
+            ],
+        },
+        {
+            behavior: "handles edge cases",
+            examples: [
+                [".fastq.gz", ""],
+                ["file..fastq.gz", "file."],
+                ["file.fastq.extra.gz", "file.fastq"],
+            ],
+        },
+    ])("$behavior", ({ examples }) => {
+        test.each(examples)("'%s' becomes '%s'", (filename, expected) => {
+            expect(stripExtension(filename)).toBe(expected);
+        });
     });
 });
