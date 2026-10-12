@@ -1,21 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { copyLink } from "./utilities";
 
 const writeText = vi.fn();
 
-Object.defineProperty(navigator, "clipboard", {
-    writable: true,
-    configurable: true,
-    value: {
-        writeText,
-    },
-});
-
 describe("copyLink", () => {
+    let clipboardDescriptor: PropertyDescriptor | undefined;
+
     beforeEach(() => {
+        clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: { writeText },
+        });
         writeText.mockClear();
-        (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        writeText.mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+        if (clipboardDescriptor) {
+            Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+        } else {
+            Reflect.deleteProperty(navigator, "clipboard");
+        }
     });
 
     it("should copy the link to the clipboard", () => {
