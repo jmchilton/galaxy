@@ -1,9 +1,10 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getFakeRegisteredUser } from "@tests/test-data";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { deferred } from "@tests/vitest/deferred";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegisteredUser } from "@/api";
 import { useServerMock } from "@/api/client/__mocks__";
@@ -15,6 +16,8 @@ import JobState from "./JobState.vue";
 vi.mock("vue-router", () => ({
     useRoute: vi.fn(() => ({})),
 }));
+
+enableAutoUnmount(afterEach);
 
 const localVue = getLocalVue();
 const { server, http } = useServerMock();
@@ -37,7 +40,7 @@ const FULL_JOB = {
     output_collections: {},
     params: {},
     user_id: "user-123",
-} as ShowFullJobResponse;
+} satisfies ShowFullJobResponse;
 
 const SELECTORS = {
     STOP_BTN: ".stop-job-btn",
@@ -46,12 +49,11 @@ const SELECTORS = {
 
 function mountJobState(job: JobBaseModel | ShowFullJobResponse, user: RegisteredUser | null = FAKE_USER) {
     const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
-    const userStore = useUserStore();
+    const userStore = useUserStore(pinia);
     userStore.currentUser = user;
-    return mount(JobState as object, {
-        propsData: { job },
-        localVue,
-        pinia,
+    return mount(JobState, {
+        props: { job },
+        global: withPlugins(localVue, pinia),
     });
 }
 
@@ -67,7 +69,7 @@ describe("JobState.vue", () => {
     it("renders the job state badge with the job state text", async () => {
         const wrapper = mountJobState(BASE_JOB);
         await flushPromises();
-        expect(wrapper.find(SELECTORS.STATE_BADGE).text()).toContain("running");
+        expect(wrapper.get(SELECTORS.STATE_BADGE).text()).toContain("running");
     });
 
     it("shows the stop button for a non-terminal state when using JobBaseModel (no user_id)", async () => {
@@ -76,13 +78,14 @@ describe("JobState.vue", () => {
         expect(wrapper.find(SELECTORS.STOP_BTN).exists()).toBe(true);
     });
 
-    it("hides the stop button for terminal states", async () => {
-        for (const state of ["ok", "error", "deleted", "failed"] as JobStateType[]) {
+    it.each(["ok", "error", "deleted", "failed"] satisfies JobStateType[])(
+        "hides the stop button for the terminal state %s",
+        async (state) => {
             const wrapper = mountJobState({ ...BASE_JOB, state });
             await flushPromises();
             expect(wrapper.find(SELECTORS.STOP_BTN).exists()).toBe(false);
-        }
-    });
+        },
+    );
 
     it("shows the stop button when ShowFullJobResponse user_id matches current user", async () => {
         const wrapper = mountJobState({ ...FULL_JOB, state: "running", user_id: FAKE_USER.id });
@@ -114,34 +117,35 @@ describe("JobState.vue", () => {
         const wrapper = mountJobState({ ...BASE_JOB, state: "running" });
         await flushPromises();
 
-        await wrapper.find(SELECTORS.STOP_BTN).trigger("click");
+        await wrapper.get(SELECTORS.STOP_BTN).trigger("click");
         await flushPromises();
 
         expect(deletedJobId).toBe(BASE_JOB.id);
     });
 
     it("disables the stop button while stopping is in progress", async () => {
-        let resolveDelete!: () => void;
+        const deleteCompletion = deferred<void>();
         server.use(
-            http.delete("/api/jobs/{job_id}", ({ response }) => {
-                return new Promise((resolve) => {
-                    resolveDelete = () => resolve(response(200).json(true));
-                });
+            http.delete("/api/jobs/{job_id}", async ({ response }) => {
+                await deleteCompletion.promise;
+                return response(200).json(true);
             }),
         );
 
         const wrapper = mountJobState({ ...BASE_JOB, state: "running" });
         await flushPromises();
 
-        const stopBtn = wrapper.find(SELECTORS.STOP_BTN);
-        stopBtn.trigger("click");
+        const stopButton = wrapper.get(SELECTORS.STOP_BTN);
+        await stopButton.trigger("click");
         await flushPromises();
 
-        expect(stopBtn.classes()).toContain("g-disabled");
+        try {
+            expect(stopButton.classes()).toContain("g-disabled");
+        } finally {
+            deleteCompletion.resolve();
+            await flushPromises();
+        }
 
-        resolveDelete();
-        await flushPromises();
-
-        expect(stopBtn.classes()).not.toContain("g-disabled");
+        expect(stopButton.classes()).not.toContain("g-disabled");
     });
 });
