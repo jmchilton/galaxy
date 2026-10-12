@@ -5,7 +5,7 @@ import SPECIFICATIONS from "./rule_target_column_specification.yml";
 import type { ColumnMappingType, ParsedFetchWorkbook } from "./types";
 
 describe("forBuilder", () => {
-    it("should return the correct ForBuilderResponse for a valid ParsedFetchWorkbook", () => {
+    it("maps dataset workbook rows and column positions into the rule builder", () => {
         const parsedWorkbook: ParsedFetchWorkbook = {
             rows: [
                 { list_identifiers: "Row1", url: "http://example.com/1", dbkey: "db1" },
@@ -36,21 +36,19 @@ describe("forBuilder", () => {
 });
 
 interface SpecificationTest {
-    doc?: string;
+    doc: string;
     column_header: string;
     maps_to: ColumnMappingType | null;
 }
 
 describe("column name to rule builder mapping targets", () => {
-    it("should follow the specifications laid out in rule_target_column_specification.yml", () => {
-        SPECIFICATIONS.forEach((spec: SpecificationTest) => {
-            const { column_header, maps_to } = spec;
-            const columnType = columnTitleToTargetType(column_header);
-            if (maps_to === null) {
-                expect(columnType).toBeUndefined();
-            } else {
-                expect(columnType).toBe(maps_to);
-            }
-        });
+    it.each<SpecificationTest>(SPECIFICATIONS)("$doc", ({ column_header, maps_to }) => {
+        const columnType = columnTitleToTargetType(column_header);
+
+        if (maps_to === null) {
+            expect(columnType).toBeUndefined();
+        } else {
+            expect(columnType).toBe(maps_to);
+        }
     });
 });
