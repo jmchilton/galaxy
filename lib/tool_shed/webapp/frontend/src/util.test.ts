@@ -1,16 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const addToast = vi.fn()
+import { copyAndNotify, downloadTextFile, getCookie, notify, notifyOnCatch } from "./util"
+
+const { addToast } = vi.hoisted(() => ({ addToast: vi.fn() }))
 vi.mock("@galaxyproject/galaxy-ui", () => ({ useToast: () => ({ addToast }) }))
 
-const { copyAndNotify, downloadTextFile, getCookie, notify, notifyOnCatch } = await import("./util")
+beforeEach(() => {
+    addToast.mockClear()
+})
+
+afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+})
 
 describe("notify", () => {
-    beforeEach(() => {
-        addToast.mockClear()
-        vi.spyOn(console, "debug").mockReturnValue(undefined)
-    })
-
     it("shows an info toast for 5 seconds", () => {
         notify("Saved")
 
@@ -18,6 +23,8 @@ describe("notify", () => {
     })
 
     it("keeps an error toast up long enough to read the server message", () => {
+        vi.spyOn(console, "debug").mockReturnValue(undefined)
+
         notifyOnCatch(new Error("Repository metadata could not be reset"))
 
         expect(addToast).toHaveBeenCalledWith("Repository metadata could not be reset", {
@@ -28,6 +35,12 @@ describe("notify", () => {
 })
 
 describe("getCookie", () => {
+    afterEach(() => {
+        for (const name of ["other", "session_csrf_token", "broken"]) {
+            document.cookie = `${name}=; Max-Age=0`
+        }
+    })
+
     it("reads and decodes a cookie, and returns null for one that isn't set", () => {
         document.cookie = "other=1"
         document.cookie = `session_csrf_token=${encodeURIComponent("a b=c")}`
@@ -44,14 +57,6 @@ describe("getCookie", () => {
 })
 
 describe("copyAndNotify", () => {
-    beforeEach(() => {
-        addToast.mockClear()
-    })
-
-    afterEach(() => {
-        vi.unstubAllGlobals()
-    })
-
     it("copies through the Clipboard API and confirms", async () => {
         const writeText = vi.fn().mockResolvedValue(undefined)
         vi.stubGlobal("navigator", { clipboard: { writeText } })
@@ -80,12 +85,6 @@ describe("copyAndNotify", () => {
 })
 
 describe("downloadTextFile", () => {
-    afterEach(() => {
-        vi.useRealTimers()
-        vi.restoreAllMocks()
-        vi.unstubAllGlobals()
-    })
-
     it("downloads the contents under the given file name", () => {
         const createObjectURL = vi.fn().mockReturnValue("blob:contents")
         const revokeObjectURL = vi.fn()
