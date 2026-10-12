@@ -1,11 +1,11 @@
 import "@/composables/__mocks__/filter";
 
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount, type VueWrapper } from "@vue/test-utils";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { setActivePinia } from "pinia";
-import { describe, expect, it, vi } from "vitest";
+import { disposePinia } from "pinia";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { useServerMock } from "@/api/client/__mocks__";
 
@@ -19,18 +19,19 @@ const SUBMIT_BUTTON_SELECTOR = "#notification-submit";
 
 const localVue = getLocalVue(true);
 
+enableAutoUnmount(afterEach);
+
 async function mountNotificationForm(props?: object) {
     const pinia = createTestingPinia({ createSpy: vi.fn });
-    setActivePinia(pinia);
+    onTestFinished(() => disposePinia(pinia));
 
-    const wrapper = mount(NotificationForm as object, {
+    const wrapper = mount(NotificationForm, {
         props: {
             ...props,
         },
-        global: localVue,
-        pinia,
-        stubs: {
-            FontAwesomeIcon: true,
+        global: {
+            ...withPlugins(localVue, pinia),
+            stubs: { ...localVue.stubs, FontAwesomeIcon: true },
         },
     });
 
