@@ -1,9 +1,12 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue } from "@tests/vitest/helpers";
-import { mount, type VueWrapper } from "@vue/test-utils";
+import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { beforeEach, expect, it, vi } from "vitest";
+import { disposePinia, getActivePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { ref } from "vue";
+
+import { ensureDefined } from "@/utils/assertions";
 
 import WorkflowInvocationSteps from "./WorkflowInvocationSteps.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -49,11 +52,20 @@ function summary(states: Record<string, number>, populated_state: string) {
     return [{ id: "j1", model: "Job", states, populated_state }];
 }
 
+enableAutoUnmount(afterEach);
+
 function mountSteps(): VueWrapper {
+    const pinia = createTestingPinia({ createSpy: vi.fn });
+    onTestFinished(() => {
+        disposePinia(pinia);
+        if (getActivePinia() === pinia) {
+            setActivePinia(undefined);
+        }
+    });
     return mount(WorkflowInvocationSteps as object, {
         propsData: { invocation, stepsJobsSummary: summary({ queued: 1 }, "scheduled") },
         localVue: getLocalVue(),
-        pinia: createTestingPinia({ createSpy: vi.fn }),
+        pinia,
         stubs: { DelayedInput: true, ToolLinkPopover: true, WorkflowStepIcon: true, WorkflowStepTitle: true },
     });
 }
@@ -68,8 +80,10 @@ it("shows an error when the invocation graph fails to load", async () => {
     const wrapper = mountSteps();
     await flushPromises();
 
-    const alert = wrapper.findAllComponents(GAlert).filter((w) => w.props("variant") === "danger");
-    expect(alert.at(0)!.text()).toContain("429 Too Many Requests");
+    const errorAlert = ensureDefined(
+        wrapper.findAllComponents(GAlert).find((alert) => alert.props("variant") === "danger"),
+    );
+    expect(errorAlert.text()).toContain("429 Too Many Requests");
 });
 
 it("step header follows the polled stepsJobsSummary prop", async () => {
