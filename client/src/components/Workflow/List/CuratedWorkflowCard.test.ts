@@ -1,16 +1,18 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getFakeAnonymousUser, getFakeRegisteredUser } from "@tests/test-data";
-import { getLocalVue, nth, suppressBootstrapVueWarnings } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { deferred } from "@tests/vitest/deferred";
+import { getLocalVue, nth, suppressBootstrapVueWarnings, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { setActivePinia } from "pinia";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { disposePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 
 import type { CuratedWorkflow } from "@/api/curatedWorkflows";
 import { setMockConfig } from "@/composables/__mocks__/config";
 import { Toast } from "@/composables/toast";
 import { useUserStore } from "@/stores/userStore";
+import { ensureDefined } from "@/utils/assertions";
 import { ApiError } from "@/utils/simple-error";
 
 import CuratedWorkflowCard from "./CuratedWorkflowCard.vue";
@@ -41,7 +43,9 @@ let toastError: ReturnType<typeof vi.spyOn>;
 let routerPush: ReturnType<typeof vi.spyOn>;
 
 const localVue = getLocalVue();
-const router = createRouter({ history: createMemoryHistory(), routes: [] });
+let router: ReturnType<typeof createRouter>;
+
+enableAutoUnmount(afterEach);
 
 const VELOCYTO_TRS =
     "https://dockstore.org/api/ga4gh/trs/v2/tools/%23workflow%2Fgithub.com%2Fiwc-workflows%2Fvelocyto%2Fmain/versions";
@@ -95,39 +99,38 @@ function mountCard(
 ) {
     const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
     setActivePinia(pinia);
+    onTestFinished(() => {
+        disposePinia(pinia);
+        setActivePinia(undefined);
+    });
 
-    const userStore = useUserStore();
+    const userStore = useUserStore(pinia);
     // An anonymous user is a non-null object without an email, not a null user.
     userStore.currentUser = isAnonymous ? ANONYMOUS_USER : { ...FAKE_USER };
 
-    const wrapper = mount(CuratedWorkflowCard as object, {
-        propsData: { workflow, ...props },
-        localVue,
-        router,
-        pinia,
+    return mount(CuratedWorkflowCard, {
+        props: { workflow, ...props },
+        global: withPlugins(localVue, pinia, router),
     });
-    return wrapper;
 }
 
 function importActionOf(wrapper: ReturnType<typeof mountCard>) {
-    const action = wrapper
-        .findComponent(GCard)
-        .props("primaryActions")
-        ?.find((action: { id: string }) => action.id === "curated-import");
-    if (!action?.handler) {
-        throw new Error("No curated-import action with a handler on the card");
-    }
-    return { ...action, handler: action.handler };
+    const action = ensureDefined(
+        ensureDefined(wrapper.getComponent(GCard).props("primaryActions")).find(
+            (action) => action.id === "curated-import",
+        ),
+    );
+    return { ...action, handler: ensureDefined(action.handler) };
 }
 
 async function clickImport(wrapper: ReturnType<typeof mountCard>, workflow: CuratedWorkflow) {
-    await wrapper.find(`#g-card-action-curated-import-${workflow.id}`).trigger("click");
+    await wrapper.get(`#g-card-action-curated-import-${workflow.id}`).trigger("click");
     await flushPromises();
 }
 
 function badgeById(wrapper: ReturnType<typeof mountCard>, id: string) {
-    const badges = wrapper.findComponent(GCard).props("badges") ?? [];
-    return badges.find((badge: { id: string }) => badge.id === id);
+    const badges = wrapper.getComponent(GCard).props("badges") ?? [];
+    return badges.find((badge) => badge.id === id);
 }
 
 function missingToolsOf(wrapper: ReturnType<typeof mountCard>, workflow: CuratedWorkflow) {
@@ -154,27 +157,35 @@ function actionIds(wrapper: ReturnType<typeof mountCard>): string[] {
 
 describe("CuratedWorkflowCard", () => {
     beforeEach(() => {
+        const history = createMemoryHistory();
+        router = createRouter({ history, routes: [] });
+        const existingToastIds = new Set(Toast.toasts.value.map((toast) => toast.id));
+        onTestFinished(() => {
+            for (const toast of [...Toast.toasts.value]) {
+                if (!existingToastIds.has(toast.id)) {
+                    Toast.removeToast(toast.id);
+                }
+            }
+            vi.restoreAllMocks();
+            history.destroy();
+        });
         suppressBootstrapVueWarnings();
         importTrsToolFromUrl.mockReset();
         copyWorkflow.mockReset();
         setMockConfig({});
         // Stubbed so the assertions can see navigation; a real push would also
         // warn about redundant routes across repeated mounts.
-        routerPush = vi.spyOn(router, "push").mockResolvedValue(undefined as never);
+        routerPush = vi.spyOn(router, "push").mockResolvedValue(undefined);
         toastError = vi.spyOn(Toast, "error").mockImplementation(() => {});
         // spyOn hands back the existing spy, so calls would otherwise leak between tests.
         toastError.mockClear();
-    });
-
-    afterEach(() => {
-        routerPush.mockRestore();
     });
 
     it("renders the title as plain text with no preview link", () => {
         // A catalog row's id is an IWC slug, so a preview modal keyed on it would 404.
         const workflow = iwcWorkflow();
         const wrapper = mountCard(workflow);
-        const title = wrapper.find(`#g-card-title-${workflow.id}`);
+        const title = wrapper.get(`#g-card-title-${workflow.id}`);
 
         expect(title.text()).toContain("Velocyto on 10x filtered barcodes");
         expect(wrapper.find(`#g-card-title-link-${workflow.id}`).exists()).toBe(false);
@@ -348,7 +359,7 @@ describe("CuratedWorkflowCard", () => {
     it("asks to filter by a collection when its badge is clicked", async () => {
         const wrapper = mountCard(iwcWorkflow());
 
-        const badge = wrapper.find("[id^='g-card-badge-curated-collection-']");
+        const badge = wrapper.get("[id^='g-card-badge-curated-collection-']");
         expect(badge.text()).toContain("Single Cell");
         await badge.trigger("click");
 
@@ -511,9 +522,13 @@ describe("CuratedWorkflowCard", () => {
         ["catalog", iwcWorkflow, importTrsToolFromUrl],
         ["local", localWorkflow, copyWorkflow],
     ])("ignores repeat clicks while a %s import is in flight", async (_kind, makeWorkflow, importCall) => {
-        let finishImport: (value: unknown) => void = () => {};
-        importCall.mockReturnValue(new Promise((resolve) => (finishImport = resolve)));
+        const pending = deferred<unknown>();
+        importCall.mockReturnValue(pending.promise);
         const wrapper = mountCard(makeWorkflow());
+        onTestFinished(async () => {
+            pending.resolve({ id: "abc123", message: "Imported", status: "ok" });
+            await flushPromises();
+        });
         const importAction = () => importActionOf(wrapper);
 
         const first = importAction().handler();
@@ -522,7 +537,7 @@ describe("CuratedWorkflowCard", () => {
         await importAction().handler();
         expect(importCall).toHaveBeenCalledTimes(1);
 
-        finishImport({ id: "abc123", message: "Imported", status: "ok" });
+        pending.resolve({ id: "abc123", message: "Imported", status: "ok" });
         await first;
         await flushPromises();
         expect(importAction().disabled).toBe(false);
