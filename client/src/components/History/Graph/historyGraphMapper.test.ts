@@ -1,6 +1,8 @@
+import { nth } from "@tests/vitest/helpers";
 import { describe, expect, it } from "vitest";
 
 import type { components } from "@/api/schema";
+import { ensureDefined } from "@/utils/assertions";
 
 import { mapEdges, mapNodes, nodeKey } from "./historyGraphMapper";
 
@@ -20,27 +22,27 @@ describe("nodeKey", () => {
 
 describe("mapNodes labels", () => {
     it("prefixes hda label with hid when present", () => {
-        const [node] = mapNodes([hda({ id: "a", hid: 7, name: "reads.fastq" })], []);
-        expect(node!.label).toBe("7: reads.fastq");
+        const node = nth(mapNodes([hda({ id: "a", hid: 7, name: "reads.fastq" })], []), 0);
+        expect(node.label).toBe("7: reads.fastq");
     });
 
     it("omits hid when not set", () => {
-        const [node] = mapNodes([hda({ id: "a", name: "reads.fastq" })], []);
-        expect(node!.label).toBe("reads.fastq");
+        const node = nth(mapNodes([hda({ id: "a", name: "reads.fastq" })], []), 0);
+        expect(node.label).toBe("reads.fastq");
     });
 
     it("falls back to extension then to 'Dataset' for hda", () => {
-        const [withExt] = mapNodes([hda({ id: "a", hid: 1, extension: "txt" })], []);
-        expect(withExt!.label).toBe("1: txt");
-        const [bare] = mapNodes([hda({ id: "b", hid: 2 })], []);
-        expect(bare!.label).toBe("2: Dataset");
+        const withExt = nth(mapNodes([hda({ id: "a", hid: 1, extension: "txt" })], []), 0);
+        expect(withExt.label).toBe("1: txt");
+        const bare = nth(mapNodes([hda({ id: "b", hid: 2 })], []), 0);
+        expect(bare.label).toBe("2: Dataset");
     });
 
     it("falls back to collection_type then to 'Collection' for hdca", () => {
-        const [typed] = mapNodes([hdca({ id: "c", hid: 3, collection_type: "list" })], []);
-        expect(typed!.label).toBe("3: list");
-        const [bare] = mapNodes([hdca({ id: "d", hid: 4 })], []);
-        expect(bare!.label).toBe("4: Collection");
+        const typed = nth(mapNodes([hdca({ id: "c", hid: 3, collection_type: "list" })], []), 0);
+        expect(typed.label).toBe("3: list");
+        const bare = nth(mapNodes([hdca({ id: "d", hid: 4 })], []), 0);
+        expect(bare.label).toBe("4: Collection");
     });
 
     it("uses tool_name when present, falling back to a shortened tool_id", () => {
@@ -52,9 +54,9 @@ describe("mapNodes labels", () => {
             ],
             [],
         );
-        expect(nodes[0]!.label).toBe("1: BWA-MEM");
-        expect(nodes[1]!.label).toBe("2: bwa_mem");
-        expect(nodes[2]!.label).toBe("3: Tool");
+        expect(nth(nodes, 0).label).toBe("1: BWA-MEM");
+        expect(nth(nodes, 1).label).toBe("2: bwa_mem");
+        expect(nth(nodes, 2).label).toBe("3: Tool");
     });
 
     it("assigns execution indices to tool_requests in input order, ignoring other nodes", () => {
@@ -67,8 +69,8 @@ describe("mapNodes labels", () => {
             ],
             [],
         );
-        expect(nodes[1]!.label).toBe("1: First");
-        expect(nodes[3]!.label).toBe("2: Second");
+        expect(nth(nodes, 1).label).toBe("1: First");
+        expect(nth(nodes, 3).label).toBe("2: Second");
     });
 });
 
@@ -76,25 +78,25 @@ describe("mapNodes labels", () => {
 
 describe("mapNodes attributes", () => {
     it("emits extension as the badge for hda", () => {
-        const [node] = mapNodes([hda({ id: "a", extension: "vcf" })], []);
-        expect(node!.badge).toBe("vcf");
+        const node = nth(mapNodes([hda({ id: "a", extension: "vcf" })], []), 0);
+        expect(node.badge).toBe("vcf");
     });
 
     it("emits collection_type as the badge for hdca", () => {
-        const [node] = mapNodes([hdca({ id: "c", collection_type: "list:paired" })], []);
-        expect(node!.badge).toBe("list:paired");
+        const node = nth(mapNodes([hdca({ id: "c", collection_type: "list:paired" })], []), 0);
+        expect(node.badge).toBe("list:paired");
     });
 
     it("emits no badge for tool_request", () => {
-        const [node] = mapNodes([toolRequest({ id: "t" })], []);
-        expect(node!.badge).toBeNull();
+        const node = nth(mapNodes([toolRequest({ id: "t" })], []), 0);
+        expect(node.badge).toBeNull();
     });
 
     it("applies the per-src cssClass", () => {
-        const [a, b, c] = mapNodes([hda({ id: "a" }), hdca({ id: "c" }), toolRequest({ id: "t" })], []);
-        expect(a!.cssClass).toBe("node-dataset");
-        expect(b!.cssClass).toBe("node-collection");
-        expect(c!.cssClass).toBe("node-tool-request");
+        const nodes = mapNodes([hda({ id: "a" }), hdca({ id: "c" }), toolRequest({ id: "t" })], []);
+        expect(nth(nodes, 0).cssClass).toBe("node-dataset");
+        expect(nth(nodes, 1).cssClass).toBe("node-collection");
+        expect(nth(nodes, 2).cssClass).toBe("node-tool-request");
     });
 
     it("marks node as 'multiple' on the side that has any collection edge", () => {
@@ -107,15 +109,15 @@ describe("mapNodes attributes", () => {
                 edge({ src: "hdca", id: "c1" }, { src: "tool_request", id: "t1" }, "collection_input"),
             ],
         );
-        const tr = nodes.find((n) => n.id === "tool_request:t1")!;
-        expect(tr.inputConnector).toBe("multiple");
-        expect(tr.outputConnector).toBeNull();
+        const toolNode = ensureDefined(nodes.find((node) => node.id === "tool_request:t1"));
+        expect(toolNode.inputConnector).toBe("multiple");
+        expect(toolNode.outputConnector).toBeNull();
     });
 
     it("marks both connectors as null when no edges touch the node", () => {
-        const [node] = mapNodes([hda({ id: "lonely" })], []);
-        expect(node!.inputConnector).toBeNull();
-        expect(node!.outputConnector).toBeNull();
+        const node = nth(mapNodes([hda({ id: "lonely" })], []), 0);
+        expect(node.inputConnector).toBeNull();
+        expect(node.outputConnector).toBeNull();
     });
 
     it("summarises connection counts in body text for tool_request nodes", () => {
@@ -127,15 +129,15 @@ describe("mapNodes attributes", () => {
                 edge({ src: "tool_request", id: "t1" }, { src: "hda", id: "out" }, "dataset_output"),
             ],
         );
-        const tr = nodes.find((n) => n.id === "tool_request:t1")!;
-        expect(tr.data!.stateText).toBe("2 inputs, 1 output");
+        const toolNode = ensureDefined(nodes.find((node) => node.id === "tool_request:t1"));
+        expect(ensureDefined(toolNode.data).stateText).toBe("2 inputs, 1 output");
     });
 
-    it("stores hid, src and itemId in node.data", () => {
-        const [node] = mapNodes([hda({ id: "abc", hid: 12, name: "x" })], []);
-        expect(node!.id).toBe("hda:abc");
-        expect(node!.data!.src).toBe("hda");
-        expect(node!.data!.itemId).toBe("abc");
+    it("keeps the node key, src and itemId", () => {
+        const node = nth(mapNodes([hda({ id: "abc", hid: 12, name: "x" })], []), 0);
+        expect(node.id).toBe("hda:abc");
+        expect(ensureDefined(node.data).src).toBe("hda");
+        expect(ensureDefined(node.data).itemId).toBe("abc");
     });
 });
 
@@ -143,18 +145,18 @@ describe("mapNodes attributes", () => {
 
 describe("mapEdges", () => {
     it("encodes source/target with nodeKey and tags collection vs dataset edges", () => {
-        const out = mapEdges([
+        const mappedEdges = mapEdges([
             edge({ src: "hda", id: "h1" }, { src: "tool_request", id: "t1" }, "dataset_input"),
             edge({ src: "hdca", id: "c1" }, { src: "tool_request", id: "t1" }, "collection_input"),
         ]);
-        expect(out[0]).toMatchObject({
+        expect(nth(mappedEdges, 0)).toMatchObject({
             source: "hda:h1",
             target: "tool_request:t1",
             cssClass: "edge-dataset",
             sourceVariant: "single",
             targetVariant: "single",
         });
-        expect(out[1]).toMatchObject({
+        expect(nth(mappedEdges, 1)).toMatchObject({
             source: "hdca:c1",
             target: "tool_request:t1",
             cssClass: "edge-collection",
@@ -164,11 +166,11 @@ describe("mapEdges", () => {
     });
 
     it("assigns stable, unique edge ids", () => {
-        const out = mapEdges([
+        const mappedEdges = mapEdges([
             edge({ src: "hda", id: "h1" }, { src: "tool_request", id: "t1" }, "dataset_input"),
             edge({ src: "tool_request", id: "t1" }, { src: "hda", id: "h2" }, "dataset_output"),
         ]);
-        expect(out.map((e) => e.id)).toEqual(["e0", "e1"]);
+        expect(mappedEdges.map((mappedEdge) => mappedEdge.id)).toEqual(["e0", "e1"]);
     });
 });
 
@@ -187,8 +189,8 @@ function toolRequest(overrides: Partial<ApiGraphNode>): ApiGraphNode {
 }
 
 function edge(
-    source: { src: ApiGraphNode["src"]; id: string },
-    target: { src: ApiGraphNode["src"]; id: string },
+    source: ApiGraphEdge["source"],
+    target: ApiGraphEdge["target"],
     type: ApiGraphEdge["type"],
 ): ApiGraphEdge {
     return { source, target, type };
