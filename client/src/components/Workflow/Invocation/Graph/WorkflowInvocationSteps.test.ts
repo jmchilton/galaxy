@@ -1,9 +1,13 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { shallowMount } from "@vue/test-utils";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { expect, it, vi } from "vitest";
+import { disposePinia, getActivePinia, setActivePinia } from "pinia";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { ref } from "vue";
+
+import type { WorkflowInvocationElementView } from "@/api/invocations";
+import { ensureDefined } from "@/utils/assertions";
 
 import WorkflowInvocationSteps from "./WorkflowInvocationSteps.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -25,18 +29,33 @@ vi.mock("@/composables/useInvocationGraph", () => ({
 }));
 
 const localVue = getLocalVue();
+enableAutoUnmount(afterEach);
 
 it("shows an error when the invocation graph fails to load", async () => {
-    const wrapper = shallowMount(WorkflowInvocationSteps as object, {
-        propsData: {
-            invocation: { id: "invocation_id", workflow_id: "workflow_id", steps: [] },
+    const pinia = createTestingPinia({ createSpy: vi.fn });
+    onTestFinished(() => {
+        disposePinia(pinia);
+        if (getActivePinia() === pinia) {
+            setActivePinia(undefined);
+        }
+    });
+    const invocation: Pick<WorkflowInvocationElementView, "id" | "workflow_id" | "steps"> = {
+        id: "invocation_id",
+        workflow_id: "workflow_id",
+        steps: [],
+    };
+    const wrapper = shallowMount(WorkflowInvocationSteps, {
+        props: {
+            // This failed-load scenario supplies only identity and empty steps, omitting unused metadata.
+            invocation: invocation as WorkflowInvocationElementView,
             stepsJobsSummary: [],
         },
-        localVue,
-        pinia: createTestingPinia({ createSpy: vi.fn }),
+        global: withPlugins(localVue, pinia),
     });
     await flushPromises();
 
-    const alert = wrapper.findAllComponents(GAlert).filter((w) => w.props("variant") === "danger");
-    expect(alert.at(0)!.text()).toContain("429 Too Many Requests");
+    const errorAlert = ensureDefined(
+        wrapper.findAllComponents(GAlert).find((alert) => alert.props("variant") === "danger"),
+    );
+    expect(errorAlert.text()).toContain("429 Too Many Requests");
 });
