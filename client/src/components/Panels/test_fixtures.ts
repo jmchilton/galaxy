@@ -2,8 +2,8 @@ import type { Decorator } from "@storybook/vue3-vite";
 import { getFakeRegisteredUser } from "@tests/test-data";
 import { getFakeTool } from "@tests/test-data/tools";
 import { HttpResponse } from "msw";
-import { getActivePinia } from "pinia";
-import { h, onBeforeUnmount, onUnmounted, ref, watch } from "vue";
+import { getActivePinia, type Pinia, type StoreGeneric } from "pinia";
+import { h, nextTick, onBeforeUnmount, onUnmounted, ref, watch } from "vue";
 
 import type { AnyUser } from "@/api";
 import { http } from "@/api/client/__mocks__/http";
@@ -57,6 +57,10 @@ const SEEDED_STORAGE_PREFIXES = [
     "toggle-state-tool-panel-recent-collapsed",
 ];
 const USER_STORAGE_PREFIXES = [
+    "history-store-pinned-histories",
+    "user-flags-store-show-break-warning",
+    "user-flags-store-preferred-form-select",
+    "user-flags-store-show-storage-operations-helper-popover",
     "user-store-list-view-preferences",
     "user-store-seen-upload-help",
     "user-store-history-panel-width",
@@ -73,14 +77,59 @@ function favoriteSummary(favorites: Partial<FavoriteSummary> = {}): FavoriteSumm
     };
 }
 
-/** The enclosing tool panel has already loaded its catalog, viewer and preferences. */
+// Sequential mounts for the same viewer must finish reused-store watcher writes before
+// the next fixture snapshots storage. Concurrent fixtures sharing these stores are unsupported.
+let pendingCleanup: Promise<void> | undefined;
+
+function captureStore(pinia: Pinia | undefined, id: string, fields?: string[]) {
+    const previousStore = pinia?._s.get(id);
+    const previousState = pinia?.state.value[id];
+    const previousValues = { ...previousState };
+    return {
+        reused: !!previousStore,
+        restore(store: StoreGeneric | undefined) {
+            if (!store || !pinia) {
+                return;
+            }
+            if (previousStore) {
+                for (const field of fields ?? Object.keys(previousValues)) {
+                    store.$state[field] = previousValues[field];
+                }
+            } else {
+                store.$dispose();
+                if (previousState === undefined) {
+                    delete pinia.state.value[id];
+                } else {
+                    Object.assign(previousState, previousValues);
+                    pinia.state.value[id] = previousState;
+                }
+            }
+        },
+    };
+}
+
+/**
+ * The enclosing tool panel has loaded its catalog, viewer and preferences.
+ * Supports fresh Pinia or sequential reuse with the same viewer; reused stores retain
+ * their identities and unseeded state. Settle child requests before unmounting.
+ */
 export const withToolBoxState: Decorator = (story, { parameters }) => ({
     setup() {
         const state: ToolBoxState = parameters.toolBoxState ?? {};
         const viewer = state.user === undefined ? TOOLBOX_USER : state.user;
         const pinia = getActivePinia();
+        const previousUser = captureStore(pinia, "userStore", ["currentUser", "currentPreferences", "recentTools"]);
+        const previousTools = captureStore(pinia, "toolStore", [
+            "toolsById",
+            "toolSections",
+            "defaultPanelView",
+            "currentPanelView",
+        ]);
+        const previousFlags = captureStore(pinia, "userFlagsStore");
         const ready = ref(false);
         const savedStorage = new Map<string, string | null>();
+        let alive = true;
+        let starting = false;
         let userStore: ReturnType<typeof useUserStore> | undefined;
         let toolStore: ReturnType<typeof useToolStore> | undefined;
         // Resolve the viewer first: the app's hash is shared across mounts. Constructing
@@ -88,8 +137,15 @@ export const withToolBoxState: Decorator = (story, { parameters }) => ({
         const { hashedUserId } = useHashedUserId(ref(viewer));
         watch(
             hashedUserId,
-            (hash) => {
-                if (ready.value || (!viewer?.isAnonymous && viewer && !hash)) {
+            async (hash) => {
+                if (starting || ready.value || (!viewer?.isAnonymous && viewer && !hash)) {
+                    return;
+                }
+                starting = true;
+                if (pendingCleanup) {
+                    await pendingCleanup;
+                }
+                if (!alive) {
                     return;
                 }
                 if (hash) {
@@ -114,18 +170,36 @@ export const withToolBoxState: Decorator = (story, { parameters }) => ({
             },
             { immediate: true },
         );
+        let restoreAfterUnmount: (() => void) | undefined;
+        onUnmounted(() => restoreAfterUnmount?.());
         onBeforeUnmount(() => {
-            // Dispose only the two stores this page fixture created, before restoring keys.
-            toolStore?.$dispose();
-            userStore?.$dispose();
-        });
-        onUnmounted(() => {
-            for (const [key, value] of savedStorage) {
-                if (value === null) {
-                    localStorage.removeItem(key);
-                } else {
-                    localStorage.setItem(key, value);
+            alive = false;
+            if (!ready.value) {
+                return;
+            }
+            previousFlags.restore(pinia?._s.get("userFlagsStore"));
+            previousTools.restore(toolStore);
+            previousUser.restore(userStore);
+            const restoreStorage = () => {
+                for (const [key, value] of savedStorage) {
+                    if (value === null) {
+                        localStorage.removeItem(key);
+                    } else {
+                        localStorage.setItem(key, value);
+                    }
                 }
+            };
+            if (previousUser.reused || previousTools.reused || previousFlags.reused) {
+                // Reused refs keep watchers; flush restored values before restoring keys.
+                const cleanup = nextTick().then(restoreStorage);
+                pendingCleanup = cleanup;
+                void cleanup.then(() => {
+                    if (pendingCleanup === cleanup) {
+                        pendingCleanup = undefined;
+                    }
+                });
+            } else {
+                restoreAfterUnmount = restoreStorage;
             }
         });
         return () => (ready.value ? h(story()) : null);

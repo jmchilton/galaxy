@@ -21,7 +21,7 @@ import TextEditor from "./TextEditor.vue";
 const meta = {
     title: "Markdown/Editor/TextEditor",
     component: TextEditor,
-    decorators: [withToolBoxState, withCurrentHistory(CURRENT_HISTORY), withMarkdownDrag],
+    decorators: [withCurrentHistory(CURRENT_HISTORY), withToolBoxState, withMarkdownDrag],
     args: { markdownText: "", mode: "page", title: "RNA-seq analysis notes" },
     render: (args) => ({
         setup() {
