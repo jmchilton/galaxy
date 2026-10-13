@@ -1,10 +1,13 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { shallowMount } from "@vue/test-utils";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import type { Pinia } from "pinia";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { disposePinia, getActivePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { ref } from "vue";
+import type * as VueRouter from "vue-router";
+
+import type { urlData } from "@/utils/url";
 
 import PageView from "./PageView.vue";
 import Heading from "@/components/Common/Heading.vue";
@@ -18,7 +21,7 @@ vi.mock("@/composables/config", () => ({
 }));
 
 vi.mock("vue-router", async (importOriginal) => {
-    const actual = (await importOriginal()) as Record<string, unknown>;
+    const actual = await importOriginal<typeof VueRouter>();
     return {
         ...actual,
         useRouter: vi.fn(() => ({ push: vi.fn() })),
@@ -26,9 +29,9 @@ vi.mock("vue-router", async (importOriginal) => {
     };
 });
 
-const mockUrlData = vi.fn();
+const mockUrlData = vi.fn<typeof urlData>();
 vi.mock("@/utils/url", () => ({
-    urlData: (...args: any[]) => mockUrlData(...args),
+    urlData: (...args: Parameters<typeof urlData>) => mockUrlData(...args),
 }));
 
 const localVue = getLocalVue();
@@ -45,31 +48,40 @@ const PAGE_DATA = {
     model_class: "Page",
 };
 
-let pinia: Pinia;
+type PageViewProps = Pick<InstanceType<typeof PageView>["$props"], "pageId" | "embed" | "displayOnly" | "showHeading">;
 
-function mountComponent(propsData: { pageId: string; embed?: boolean; displayOnly?: boolean; showHeading?: boolean }) {
-    return shallowMount(PageView as object, {
-        localVue,
-        pinia,
-        propsData,
-        stubs: {
-            FontAwesomeIcon: true,
-            LoadingSpan: true,
-            Markdown: true,
-            PageHtml: true,
+function mountComponent(props: PageViewProps) {
+    const pinia = createTestingPinia({ createSpy: vi.fn });
+    onTestFinished(() => {
+        disposePinia(pinia);
+        if (getActivePinia() === pinia) {
+            setActivePinia(undefined);
+        }
+    });
+    return shallowMount(PageView, {
+        props,
+        global: {
+            ...withPlugins(localVue, pinia),
+            stubs: {
+                ...localVue.stubs,
+                FontAwesomeIcon: true,
+                LoadingSpan: true,
+                Markdown: true,
+                PageHtml: true,
+            },
         },
     });
 }
 
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+enableAutoUnmount(afterEach);
+
 describe("PageView", () => {
     beforeEach(() => {
-        pinia = createTestingPinia({ createSpy: vi.fn });
         vi.clearAllMocks();
         mockUrlData.mockResolvedValue(PAGE_DATA);
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
     });
 
     describe("default mode (published page with chrome)", () => {
@@ -138,7 +150,6 @@ describe("PageView", () => {
             const wrapper = mountComponent({ pageId: PAGE_ID, displayOnly: true, showHeading: true });
             await flushPromises();
 
-            // The Heading component should not render because displayOnly suppresses it
             expect(wrapper.findComponent(Heading).exists()).toBe(false);
         });
     });
