@@ -1,10 +1,10 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getFakeAnonymousUser, getFakeRegisteredUser } from "@tests/test-data";
-import { advanceTimersAndFlush, getLocalVue, injectTestRouter } from "@tests/vitest/helpers";
+import { advanceTimersAndFlush, createTestRouter, getLocalVue, withPlugins } from "@tests/vitest/helpers";
 import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { setActivePinia } from "pinia";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { disposePinia, getActivePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { computed } from "vue";
 
 import { useServerMock } from "@/api/client/__mocks__";
@@ -44,6 +44,17 @@ const { server, http } = useServerMock();
 enableAutoUnmount(afterEach);
 
 beforeEach(() => {
+    router = createTestRouter();
+    const ownedHistory = router.options.history;
+    const originalConfig = vi.mocked(useConfig).getMockImplementation();
+    onTestFinished(() => {
+        if (originalConfig) {
+            vi.mocked(useConfig).mockImplementation(originalConfig);
+        } else {
+            vi.mocked(useConfig).mockReset();
+        }
+        ownedHistory.destroy();
+    });
     server.use(
         http.get("/api/jobs/{job_id}", ({ response, params }) =>
             response(200).json({ ...jobInformationResponse, id: params.job_id, state: "ok" } as never),
@@ -55,7 +66,7 @@ beforeEach(() => {
 });
 
 const localVue = getLocalVue();
-const router = injectTestRouter(localVue);
+let router: ReturnType<typeof createTestRouter>;
 
 vi.mocked(useConfig).mockReturnValue({
     config: computed(() => ({ enable_tool_recommendations: false })),
@@ -94,11 +105,15 @@ async function mountToolSuccess(latestResponse: ResponseVal | null, currentUser:
         },
     });
     setActivePinia(testPinia);
+    onTestFinished(() => {
+        disposePinia(testPinia);
+        if (getActivePinia() === testPinia) {
+            setActivePinia(undefined);
+        }
+    });
 
     const wrapper = mount(ToolSuccess as object, {
-        localVue,
-        router,
-        pinia: testPinia,
+        global: withPlugins(localVue, testPinia, router),
         stubs: {
             FontAwesomeIcon: true,
         },
