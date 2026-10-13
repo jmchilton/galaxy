@@ -1,9 +1,9 @@
 import { createTestingPinia } from "@pinia/testing";
-import { getLocalVue } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { setActivePinia } from "pinia";
-import { describe, expect, it, vi } from "vitest";
+import { createPinia, disposePinia, getActivePinia, type Pinia, setActivePinia } from "pinia";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 
@@ -14,7 +14,19 @@ const DATASET_ID = "dataset_id";
 const localVue = getLocalVue();
 const { server, http } = useServerMock();
 
-async function mountDatasetAttributes(conversion_disable = false) {
+enableAutoUnmount(afterEach);
+
+function ownedMountPlugins(pinia: Pinia) {
+    onTestFinished(() => {
+        disposePinia(pinia);
+        if (getActivePinia() === pinia) {
+            setActivePinia(undefined);
+        }
+    });
+    return withPlugins(localVue, pinia);
+}
+
+async function mountDatasetAttributes(conversionDisabled = false) {
     const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
     setActivePinia(pinia);
 
@@ -28,7 +40,7 @@ async function mountDatasetAttributes(conversion_disable = false) {
                 return HttpResponse.json({
                     attribute_inputs: [{ name: "attribute_text", type: "text" }],
                     conversion_inputs: [{ name: "conversion_text", type: "text" }],
-                    conversion_disable: conversion_disable,
+                    conversion_disable: conversionDisabled,
                     datatype_inputs: [{ name: "datatype_text", type: "text" }],
                     permission_inputs: [{ name: "permission_text", type: "text" }],
                 });
@@ -37,12 +49,11 @@ async function mountDatasetAttributes(conversion_disable = false) {
         }),
     );
 
-    const wrapper = mount(DatasetAttributes as object, {
+    const wrapper = mount(DatasetAttributes, {
         props: {
             datasetId: DATASET_ID,
         },
-        global: localVue,
-        pinia,
+        global: ownedMountPlugins(pinia),
     });
 
     await flushPromises();
@@ -56,16 +67,22 @@ async function buildWrapperWithError(error: string) {
             return HttpResponse.json({}, { status: 400 });
         }),
     );
-    const wrapper = mount(DatasetAttributes as object, {
+    const wrapper = mount(DatasetAttributes, {
         props: {
             datasetId: DATASET_ID,
+        },
+        // These original values are fallthrough attributes, not declared component props.
+        attrs: {
             messageText: error,
             messageVariant: "danger",
         },
-        global: localVue,
-        stubs: {
-            FontAwesomeIcon: false,
-            FormElement: false,
+        global: {
+            ...ownedMountPlugins(createPinia()),
+            stubs: {
+                ...localVue.stubs,
+                FontAwesomeIcon: false,
+                FormElement: false,
+            },
         },
     });
     await flushPromises();
@@ -73,7 +90,7 @@ async function buildWrapperWithError(error: string) {
 }
 
 describe("DatasetAttributes", () => {
-    it("check rendering", async () => {
+    it("renders all edit sections and shows a successful save", async () => {
         const wrapper = await mountDatasetAttributes();
 
         // 6 form buttons (GTabs nav uses <a> tags, not buttons)
@@ -85,13 +102,13 @@ describe("DatasetAttributes", () => {
         expect(wrapper.findAll(".tab-pane").length).toBe(3);
         expect(wrapper.findAll(".ui-portlet-section").length).toBe(2);
 
-        const saveButton = wrapper.find("#dataset-attributes-default-save");
+        const saveButton = wrapper.get("#dataset-attributes-default-save");
 
         await saveButton.trigger("click");
 
         await flushPromises();
 
-        expect(wrapper.find(".dataset-attributes-alert").text()).toBe("success");
+        expect(wrapper.get(".dataset-attributes-alert").text()).toBe("success");
     });
 
     it("shows why saving failed", async () => {
@@ -102,13 +119,13 @@ describe("DatasetAttributes", () => {
             }),
         );
 
-        await wrapper.find("#dataset-attributes-default-save").trigger("click");
+        await wrapper.get("#dataset-attributes-default-save").trigger("click");
         await flushPromises();
 
-        expect(wrapper.find(".dataset-attributes-alert").text()).toBe("This dataset is encrypted.");
+        expect(wrapper.get(".dataset-attributes-alert").text()).toBe("This dataset is encrypted.");
     });
 
-    it("check rendering without conversion option", async () => {
+    it("omits conversion controls when conversion is disabled", async () => {
         const wrapper = await mountDatasetAttributes(true);
 
         // 5 form buttons (GTabs nav uses <a> tags, not buttons)
