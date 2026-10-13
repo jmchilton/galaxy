@@ -13,6 +13,7 @@ export const SimpleProviderMixin = {
         return {
             loading: false,
             item: null,
+            error: null,
         };
     },
     watch: {
@@ -46,6 +47,7 @@ export const SimpleProviderMixin = {
             return slotFn({
                 loading: this.loading,
                 item: this.item,
+                error: this.error,
                 save: this.save,
                 result: this.item,
             });
