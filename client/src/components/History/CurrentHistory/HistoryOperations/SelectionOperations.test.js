@@ -1,11 +1,12 @@
-import { emittedArg, getLocalVue, suppressDebugConsole } from "@tests/vitest/helpers";
+import { emittedArg, getLocalVue, nth, suppressDebugConsole, withPlugins } from "@tests/vitest/helpers";
 import { setupMockConfig } from "@tests/vitest/mockConfig";
-import { shallowMount } from "@vue/test-utils";
+import { enableAutoUnmount, shallowMount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { createPinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, disposePinia, getActivePinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { useServerMock } from "@/api/client/__mocks__";
+import { useConfig } from "@/composables/config";
 
 import SelectionOperations from "./SelectionOperations.vue";
 
@@ -48,6 +49,12 @@ async function mountSelectionOperationsWrapper(config, { stubs = {}, attachTo } 
     setupMockConfig(config);
 
     const pinia = createPinia();
+    onTestFinished(() => {
+        disposePinia(pinia);
+        if (getActivePinia() === pinia) {
+            setActivePinia(undefined);
+        }
+    });
     const wrapper = shallowMount(SelectionOperations, {
         props: {
             history: FAKE_HISTORY,
@@ -58,8 +65,7 @@ async function mountSelectionOperationsWrapper(config, { stubs = {}, attachTo } 
             totalItemsInQuery: 5,
             isMultiViewItem: false,
         },
-        global: { ...localVue, stubs: { ...localVue.stubs, ...stubs } },
-        pinia,
+        global: { ...withPlugins(localVue, pinia), stubs: { ...localVue.stubs, ...stubs } },
         attachTo,
     });
     await flushPromises();
@@ -67,6 +73,14 @@ async function mountSelectionOperationsWrapper(config, { stubs = {}, attachTo } 
 }
 
 describe("History Selection Operations", () => {
+    beforeEach(() => {
+        const originalConfig = vi.mocked(useConfig).getMockImplementation();
+        onTestFinished(() => {
+            vi.mocked(useConfig).mockImplementation(originalConfig);
+            vi.restoreAllMocks();
+        });
+    });
+    enableAutoUnmount(afterEach);
     let wrapper;
 
     describe("With Celery Enabled", () => {
@@ -85,7 +99,7 @@ describe("History Selection Operations", () => {
 
             it("should display the total number of items to apply the operation", async () => {
                 await wrapper.setProps({ selectionSize: 10 });
-                expect(wrapper.find('[data-description="selected count"]').text()).toContain("10");
+                expect(wrapper.get('[data-description="selected count"]').text()).toContain("10");
             });
 
             it("should display 'hide' option on visible items", async () => {
@@ -272,7 +286,7 @@ describe("History Selection Operations", () => {
                 const operationRunningEvents = wrapper.emitted("update:operation-running");
                 expect(operationRunningEvents).toHaveLength(1);
                 // The event sets the current History update time for waiting until the next history update
-                expect(operationRunningEvents[0]).toEqual([FAKE_HISTORY.update_time]);
+                expect(nth(operationRunningEvents, 0)).toEqual([FAKE_HISTORY.update_time]);
             });
 
             it("should update operation-running state to null when the operation fails", async () => {
@@ -292,9 +306,9 @@ describe("History Selection Operations", () => {
                 // We expect 2 events, one before running the operation and another one after completion
                 expect(operationRunningEvents).toHaveLength(2);
                 // The first event sets the current History update time for waiting until the next history update
-                expect(operationRunningEvents[0]).toEqual([FAKE_HISTORY.update_time]);
+                expect(nth(operationRunningEvents, 0)).toEqual([FAKE_HISTORY.update_time]);
                 // The second is null to signal that we shouldn't wait for a history change anymore since the operation has failed
-                expect(operationRunningEvents[1]).toEqual([null]);
+                expect(nth(operationRunningEvents, 1)).toEqual([null]);
             });
 
             it("should emit operation error event when the operation fails", async () => {
@@ -330,13 +344,13 @@ describe("History Selection Operations", () => {
 
                 const operationErrorEvents = wrapper.emitted("operation-error");
                 expect(operationErrorEvents).toHaveLength(1);
-                const errorEvent = operationErrorEvents[0][0];
+                const errorEvent = emittedArg(wrapper, "operation-error");
                 expect(errorEvent).toHaveProperty("result");
                 expect(errorEvent.result).toEqual(BULK_ERROR_RESPONSE);
             });
 
             it("should hide the selection when a storage operation completes", async () => {
-                const wizardModal = wrapper.findComponent({ name: "StorageOperationWizardModal" });
+                const wizardModal = wrapper.getComponent({ name: "StorageOperationWizardModal" });
 
                 expect(wrapper.emitted("update:show-selection")).toBeFalsy();
 
@@ -344,7 +358,7 @@ describe("History Selection Operations", () => {
                 await flushPromises();
 
                 expect(wrapper.emitted("update:show-selection")).toBeTruthy();
-                expect(wrapper.emitted("update:show-selection").at(-1)).toEqual([false]);
+                expect(nth(wrapper.emitted("update:show-selection"), -1)).toEqual([false]);
             });
         });
     });
@@ -388,7 +402,6 @@ describe("History Selection Operations", () => {
                 expect(dialog.find(".g-modal-content").element.contains(listbox)).toBe(true);
                 const confirmButtons = dialog.find("footer .g-modal-confirm-buttons").element;
                 expect(listbox.compareDocumentPosition(confirmButtons) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-                wrapper.unmount();
             },
         );
     });
