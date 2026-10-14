@@ -73,3 +73,8 @@ export const SessionExpired: Story = {
         },
     },
 };
+
+/** A command-palette question is prefilled for review, rather than sent automatically. */
+export const PrefilledCompactConversation: Story = {
+    args: { compact: true, exchangeId: "new", initialQuestion: "trim my reads" },
+};
