@@ -1,35 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/vue3-vite";
 
 import { http } from "@/api/client/__mocks__/http";
-import type { BroadcastNotification } from "@/stores/broadcastsStore";
+import { broadcast, type BroadcastScenario, DAY, HOUR } from "@/components/Notifications/Broadcasts/test_fixtures";
 
 import BroadcastsList from "./BroadcastsList.vue";
-
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
-
-interface BroadcastScenario extends Pick<BroadcastNotification, "id" | "variant"> {
-    subject: string;
-    message: string;
-    /** Offsets from now, in ms. */
-    publishedIn: number;
-    expiresIn: number;
-}
-
-/** A broadcast timed from `now`, created a day before it's published, or a day before now if that's earlier. */
-function broadcast(now: number, { subject, message, publishedIn, expiresIn, ...rest }: BroadcastScenario) {
-    const created = new Date(now + Math.min(publishedIn, 0) - DAY).toISOString();
-    return {
-        ...rest,
-        source: "admin",
-        category: "broadcast",
-        create_time: created,
-        update_time: created,
-        publication_time: new Date(now + publishedIn).toISOString(),
-        expiration_time: new Date(now + expiresIn).toISOString(),
-        content: { category: "broadcast", subject, message },
-    } satisfies BroadcastNotification;
-}
 
 const ONE_OF_EACH: BroadcastScenario[] = [
     {
