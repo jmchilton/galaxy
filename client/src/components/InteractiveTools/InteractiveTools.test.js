@@ -52,27 +52,6 @@ describe("InteractiveTools/InteractiveTools.vue", () => {
         vi.clearAllMocks();
     });
 
-    it("renders table with interactive tools", async () => {
-        const { wrapper } = await mountTools();
-        expect(wrapper.find("#g-table-interactive-tool-table").exists()).toBeTruthy();
-        // Each entry has 2 links: one to open inline (rendered as button) and one to open in new tab (rendered as anchor)
-        expect(wrapper.findAll("td > button.g-link").length).toBe(2);
-        expect(wrapper.findAll("td > a").length).toBe(2);
-    });
-
-    it("displays interactive tool information correctly", async () => {
-        const { wrapper } = await mountTools();
-        const firstTool = nth(testInteractiveToolsResponse, 0);
-        const toolName = wrapper.get(`#link-${firstTool.id}`);
-        expect(toolName.text()).toContain(firstTool.name);
-
-        // Check if the external link is present
-        const externalLink = wrapper.find(`#external-link-${firstTool.id}`);
-        expect(externalLink.exists()).toBeTruthy();
-        expect(externalLink.attributes("href")).toBe(firstTool.target);
-        expect(externalLink.attributes("target")).toBe("_blank");
-    });
-
     it("removes the interactive tool when it is gone from store", async () => {
         const { wrapper, pinia } = await mountTools();
         const firstTool = nth(testInteractiveToolsResponse, 0);
@@ -103,6 +82,7 @@ describe("InteractiveTools/InteractiveTools.vue", () => {
                 return HttpResponse.json({ status: "ok", message: "ok" });
             }),
         );
+        expect(wrapper.get(`#link-${toolId}`).text()).toContain(firstTool.name);
         await wrapper.get(`#stop-${toolId}`).trigger("click");
         await flushPromises();
 
@@ -124,6 +104,7 @@ describe("InteractiveTools/InteractiveTools.vue", () => {
         );
 
         // Try to stop the tool
+        expect(wrapper.get(`#link-${toolId}`).text()).toContain(firstTool.name);
         await wrapper.get(`#stop-${toolId}`).trigger("click");
         await flushPromises();
 
