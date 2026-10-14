@@ -368,13 +368,16 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
             elif parameter_type == param_types.RESOURCE_PARAMETERS:
                 resource_params[parameter.name] = parameter.value
             elif parameter_type == param_types.STEP_PARAMETERS:
-                # TODO: test subworkflows and ensure this works
-                step_id: int
                 try:
                     step_id = int(parameter.name)
-                except TypeError:
+                except ValueError:
                     raise InconsistentDatabase("saved workflow step parameters not in the format expected")
-                step_param_map[str(steps_by_id[step_id].order_index)] = json.loads(parameter.value)
+                step = steps_by_id.get(step_id)
+                if step is None:
+                    # Invocations imported before step parameters were re-keyed on import.
+                    log.warning(f"Invocation {invocation.id} has step parameters for unknown step id {step_id}")
+                    continue
+                step_param_map[str(step.order_index)] = step.step_parameters_by_index(json.loads(parameter.value))
 
         return WorkflowInvocationRequestModel(
             history_id=history_id,

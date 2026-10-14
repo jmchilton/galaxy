@@ -360,6 +360,9 @@ class WorkflowsAPIController(
         preserve_external_subworkflow_links = util.string_as_bool(
             kwd.get("preserve_external_subworkflow_links", "false")
         )
+        invocation = None
+        if invocation_id := kwd.get("invocation_id"):
+            invocation = self.workflow_manager.get_invocation(trans, self.decode_id(invocation_id))
         ret_dict = self.workflow_contents_manager.workflow_to_dict(
             trans,
             stored_workflow,
@@ -368,6 +371,7 @@ class WorkflowsAPIController(
             history=history,
             instance_id=instance_id,
             preserve_external_subworkflow_links=preserve_external_subworkflow_links,
+            invocation=invocation,
         )
         if download_format == "json-download":
             sname = stored_workflow.name

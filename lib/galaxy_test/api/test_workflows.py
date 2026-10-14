@@ -64,6 +64,7 @@ from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_PARAMETER_INPUT_INTEGER_REQUIRED,
     WORKFLOW_RENAME_ON_INPUT,
     WORKFLOW_RUNTIME_PARAMETER_AFTER_PAUSE,
+    WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
     WORKFLOW_SIMPLE_CAT_TWICE,
     WORKFLOW_WITH_BAD_COLUMN_PARAMETER,
     WORKFLOW_WITH_BAD_COLUMN_PARAMETER_GOOD_TEST_DATA,
@@ -86,6 +87,21 @@ from .sharable import SharingApiTests
 
 def _default_file_location(test_http_server) -> str:
     return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
+
+
+def _find_run_input(inputs: list[dict], name: str) -> dict:
+    """Find a (possibly nested) input by name in a ``style=run`` step model."""
+    for input in inputs:
+        if input["name"] == name:
+            return input
+        children = list(input.get("inputs") or [])
+        for case in input.get("cases") or []:
+            children.extend(case["inputs"])
+        try:
+            return _find_run_input(children, name)
+        except KeyError:
+            pass
+    raise KeyError(name)
 
 
 WORKFLOW_SIMPLE = """
@@ -5655,6 +5671,109 @@ some_file:
         assert request["inputs"]["WorkflowInput2"]["src"] == "hda"
         encoded_id = request["inputs"]["WorkflowInput2"]["id"]
         assert self.dataset_populator.get_history_dataset_content(history_id, dataset_id=encoded_id).strip() == "4 5 6"
+
+    @skip_without_tool("random_lines1")
+    def test_workflow_request_step_parameters_rerun(self):
+        step_parameters = {"1": {"num_lines": 2, "seed_source|seed": "moo"}}
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_runtime_parameter_simple(history_id, step_parameters)
+            request = self.workflow_populator.invocation_to_request(summary.invocation_id)
+            assert request["parameters"] == step_parameters
+            rerun_summary = self.workflow_populator.rerun(summary)
+            rerun_request = self.workflow_populator.invocation_to_request(rerun_summary.invocation_id)
+            assert rerun_request["parameters"] == step_parameters
+
+    @skip_without_tool("random_lines1")
+    def test_workflow_request_subworkflow_step_parameters_rerun(self):
+        step_parameters = {"1": {"1|num_lines": 2}}
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_NESTED_RUNTIME_PARAMETER,
+                test_data={"step_parameters": step_parameters, "outer_input": {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
+            request = self.workflow_populator.invocation_to_request(summary.invocation_id)
+            assert request["parameters"] == step_parameters
+            rerun_summary = self.workflow_populator.rerun(summary)
+            content = self.dataset_populator.get_history_dataset_content(history_id)
+            assert len([line for line in content.split("\n") if line]) == 2
+            rerun_request = self.workflow_populator.invocation_to_request(rerun_summary.invocation_id)
+            assert rerun_request["parameters"] == step_parameters
+
+    @skip_without_tool("random_lines1")
+    def test_workflow_request_step_parameters_after_invocation_import(self):
+        step_parameters = {"1": {"num_lines": 2, "seed_source|seed": "moo"}}
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_runtime_parameter_simple(history_id, step_parameters)
+            store_path = self.workflow_populator.download_invocation_to_store(
+                summary.invocation_id, include_files=False, extension="tgz"
+            )
+        with self.dataset_populator.test_history() as reimport_history_id:
+            imported = self.workflow_populator.create_invocation_from_store(
+                history_id=reimport_history_id, store_path=store_path, model_store_format="tgz"
+            )
+            request = self.workflow_populator.invocation_to_request(imported[0]["id"])
+            assert request["parameters"] == step_parameters
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_invocation(self):
+        # The run form substitutes ``${seedme}`` before submitting, so "moo" is recorded for the seed.
+        workflow = WORKFLOW_RUNTIME_PARAMETER_SIMPLE.replace("seed: asdf", "seed: ${seedme}")
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                workflow,
+                test_data={
+                    "step_parameters": {"1": {"num_lines": 2, "seed_source|seed": "moo"}},
+                    "replacement_parameters": {"seedme": "moo"},
+                    "input1": {"value": "1.bed", "type": "File"},
+                },
+                history_id=history_id,
+            )
+            request = self.workflow_populator.invocation_to_request(summary.invocation_id)
+            run_dict = self.workflow_populator.download_workflow(
+                request["workflow_id"],
+                style="run",
+                instance=True,
+                history_id=history_id,
+                invocation_id=summary.invocation_id,
+            )
+            random_lines = run_dict["steps"][1]
+            assert _find_run_input(random_lines["inputs"], "num_lines")["value"] == "2"
+            # templated inputs keep their template so the form still offers the replacement parameter
+            assert _find_run_input(random_lines["inputs"], "seed")["value"] == "${seedme}"
+
+            unseeded = self.workflow_populator.download_workflow(
+                request["workflow_id"], style="run", instance=True, history_id=history_id
+            )
+            assert _find_run_input(unseeded["steps"][1]["inputs"], "num_lines")["value"] != "2"
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_invocation_subworkflow(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_NESTED_RUNTIME_PARAMETER,
+                test_data={
+                    "step_parameters": {"1": {"1|num_lines": 2}},
+                    "outer_input": {"value": "1.bed", "type": "File"},
+                },
+                history_id=history_id,
+            )
+            request = self.workflow_populator.invocation_to_request(summary.invocation_id)
+            run_dict = self.workflow_populator.download_workflow(
+                request["workflow_id"],
+                style="run",
+                instance=True,
+                history_id=history_id,
+                invocation_id=summary.invocation_id,
+            )
+            assert _find_run_input(run_dict["steps"][1]["inputs"], "1|num_lines")["value"] == 2
+
+    def _run_runtime_parameter_simple(self, history_id: str, step_parameters: dict) -> RunJobsSummary:
+        return self.workflow_populator.run_workflow(
+            WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
+            test_data={"step_parameters": step_parameters, "input1": {"value": "1.bed", "type": "File"}},
+            history_id=history_id,
+        )
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

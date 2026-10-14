@@ -9626,6 +9626,32 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
             f"WorkflowStep[index={self.order_index},type={self.type},label={self.label},uuid={self.uuid},id={self.id}]"
         )
 
+    def step_parameters_by_index(self, param_dict: dict[str, Any]) -> dict[str, Any]:
+        """Re-key persisted subworkflow step parameters (nested by inner step id) as ``"<order_index>|name"``."""
+        if self.type != "subworkflow" or self.subworkflow is None:
+            return param_dict
+        inner_steps_by_id = self.subworkflow.steps_by_id
+        by_index: dict[str, Any] = {}
+        for inner_step_id, inner_param_dict in param_dict.items():
+            inner_step = inner_steps_by_id[int(inner_step_id)]
+            for name, value in inner_step.step_parameters_by_index(inner_param_dict).items():
+                by_index[f"{inner_step.order_index}|{name}"] = value
+        return by_index
+
+    def step_parameters_by_id(self, param_dict: dict[str, Any]) -> dict[Any, Any]:
+        """Inverse of ``step_parameters_by_index`` - nest subworkflow step parameters by inner step id."""
+        if self.type != "subworkflow" or self.subworkflow is None:
+            return param_dict
+        by_inner_index: dict[int, dict[str, Any]] = {}
+        for key, value in param_dict.items():
+            index_str, name = key.split("|", 1)
+            by_inner_index.setdefault(int(index_str), {})[name] = value
+        by_id: dict[Any, Any] = {}
+        for inner_index, inner_param_dict in by_inner_index.items():
+            inner_step = self.subworkflow.step_by_index(inner_index)
+            by_id[inner_step.id] = inner_step.step_parameters_by_id(inner_param_dict)
+        return by_id
+
     @property
     def effective_label(self) -> str | None:
         if (label := self.label) is not None:
@@ -10529,6 +10555,14 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             attach_step(request_to_content)
             self.input_step_parameters.append(request_to_content)
 
+    def recover_step_parameters(self) -> dict[int, dict[str, Any]]:
+        """Run-time step parameter overrides of this request, keyed by workflow step id."""
+        step_parameters = {}
+        for parameter in self.input_parameters:
+            if parameter.type == WorkflowRequestInputParameter.types.STEP_PARAMETERS and parameter.name:
+                step_parameters[int(parameter.name)] = json.loads(parameter.value or "{}")
+        return step_parameters
+
     def recover_inputs(self) -> tuple[dict[str, Any], str]:
         inputs: dict[str, Any] = {}
         inputs_by = "name"
@@ -11036,6 +11070,12 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         request_input_parameter_attrs["name"] = self.name
         request_input_parameter_attrs["value"] = self.value
         request_input_parameter_attrs["type"] = self.type
+        if self.type == self.types.STEP_PARAMETERS and self.workflow_invocation and self.name and self.value:
+            # ``name`` is a database step id - also record a portable form keyed by order index.
+            step = self.workflow_invocation.workflow.steps_by_id.get(int(self.name))
+            if step is not None:
+                request_input_parameter_attrs["order_index"] = step.order_index
+                request_input_parameter_attrs["step_parameters"] = step.step_parameters_by_index(json.loads(self.value))
         return request_input_parameter_attrs
 
 

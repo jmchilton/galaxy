@@ -1215,6 +1215,11 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                 input_parameter = model.WorkflowRequestInputParameter()
                 input_parameter.value = input_parameter_attrs["value"]
                 input_parameter.name = input_parameter_attrs["name"]
+                if "order_index" in input_parameter_attrs:
+                    # Step parameters are keyed by step id, re-key them against the imported workflow.
+                    step = workflow.step_by_index(input_parameter_attrs["order_index"])
+                    input_parameter.name = str(step.id)
+                    input_parameter.value = dumps(step.step_parameters_by_id(input_parameter_attrs["step_parameters"]))
                 input_parameter.type = input_parameter_attrs["type"]
                 input_parameter.workflow_invocation = imported_invocation
                 self._session_add(input_parameter)

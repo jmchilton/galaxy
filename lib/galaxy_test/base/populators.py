@@ -2917,6 +2917,7 @@ class BaseWorkflowPopulator(BasePopulator):
         instance: bool | None = None,
         version: int | None = None,
         preserve_external_subworkflow_links: bool | None = None,
+        invocation_id: str | None = None,
     ) -> dict:
         params: dict[str, Any] = {}
         if style is not None:
@@ -2929,6 +2930,8 @@ class BaseWorkflowPopulator(BasePopulator):
             params["version"] = version
         if preserve_external_subworkflow_links is not None:
             params["preserve_external_subworkflow_links"] = preserve_external_subworkflow_links
+        if invocation_id is not None:
+            params["invocation_id"] = invocation_id
         response = self._get(f"workflows/{workflow_id}/download", data=params)
         api_asserts.assert_status_code_is(response, 200)
         if style != "format2":

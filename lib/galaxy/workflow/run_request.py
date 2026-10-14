@@ -183,16 +183,7 @@ def _normalize_step_parameters(
                 raise exceptions.RequestParameterInvalidException(
                     "Specifying subworkflow step parameters requires already_normalized to be specified as true."
                 )
-            subworkflow_param_dict: dict[str, dict[str, str]] = {}
-            for key, value in param_dict.items():
-                step_index, param_name = key.split("|", 1)
-                if step_index not in subworkflow_param_dict:
-                    subworkflow_param_dict[step_index] = {}
-                subworkflow_param_dict[step_index][param_name] = value
-            assert step.subworkflow
-            param_dict = _normalize_step_parameters(
-                step.subworkflow.steps, subworkflow_param_dict, legacy=legacy, already_normalized=already_normalized
-            )
+            param_dict = step.step_parameters_by_id(param_dict)
         if param_dict:
             if step.type == "parameter_input" and "input" not in param_dict:
                 raise exceptions.RequestParameterInvalidException(
