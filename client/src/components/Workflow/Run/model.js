@@ -268,16 +268,10 @@ export function rerunInputValue(requestInputs, step, position) {
 }
 
 /**
- * Does an exported invocation request carry settings only the full run form can submit?
+ * Does an exported invocation request carry tool step parameters? Only the full run form can submit them.
  *
  * @param {Object} [request] - exported invocation request, if any
  */
-export function rerunHasStepSettings(request) {
-    const hasEntries = (value) => Boolean(value) && Object.keys(value).length > 0;
-    return Boolean(
-        request &&
-            (hasEntries(request.parameters) ||
-                hasEntries(request.replacement_params) ||
-                hasEntries(request.resource_params)),
-    );
+export function rerunHasStepParameters(request) {
+    return Boolean(request?.parameters && Object.keys(request.parameters).length > 0);
 }

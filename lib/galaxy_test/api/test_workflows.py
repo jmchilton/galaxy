@@ -5701,10 +5701,20 @@ some_file:
             assert rerun_request["parameters"] == step_parameters
 
     @skip_without_tool("random_lines1")
-    def test_workflow_request_step_parameters_after_invocation_import(self):
-        step_parameters = {"1": {"num_lines": 2, "seed_source|seed": "moo"}}
+    @pytest.mark.parametrize(
+        "workflow,step_parameters,input_label",
+        [
+            (WORKFLOW_RUNTIME_PARAMETER_SIMPLE, {"1": {"num_lines": 2, "seed_source|seed": "moo"}}, "input1"),
+            (WORKFLOW_NESTED_RUNTIME_PARAMETER, {"1": {"1|num_lines": 2}}, "outer_input"),
+        ],
+    )
+    def test_workflow_request_step_parameters_after_invocation_import(self, workflow, step_parameters, input_label):
         with self.dataset_populator.test_history() as history_id:
-            summary = self._run_runtime_parameter_simple(history_id, step_parameters)
+            summary = self.workflow_populator.run_workflow(
+                workflow,
+                test_data={"step_parameters": step_parameters, input_label: {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
             store_path = self.workflow_populator.download_invocation_to_store(
                 summary.invocation_id, include_files=False, extension="tgz"
             )
@@ -5767,6 +5777,43 @@ some_file:
                 invocation_id=summary.invocation_id,
             )
             assert _find_run_input(run_dict["steps"][1]["inputs"], "1|num_lines")["value"] == 2
+
+    @skip_without_tool("cat")
+    def test_run_form_seeded_from_invocation_with_deleted_dataset(self):
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: data
+steps:
+  the_pause:
+    type: pause
+    in:
+      input: input1
+  first_cat:
+    tool_id: cat
+    in:
+      input1: the_pause
+""")
+            valid_hda = self.dataset_populator.new_dataset(history_id, wait=True)
+            to_delete_id = self.dataset_populator.new_dataset(history_id, wait=True)["id"]
+            invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id,
+                history_id=history_id,
+                inputs={"input1": {"src": "hda", "id": valid_hda["id"]}},
+                request={
+                    "parameters": dumps({"2": {"input1": {"src": "hda", "id": to_delete_id}}}),
+                    "parameters_normalized": True,
+                },
+                inputs_by="name",
+            )
+            self.dataset_populator.delete_dataset(history_id=history_id, content_id=to_delete_id, purge=True)
+            request = self.workflow_populator.invocation_to_request(invocation_id)
+            # A recorded value that is no longer valid must not break the rerun form.
+            self.workflow_populator.download_workflow(
+                request["workflow_id"], style="run", instance=True, history_id=history_id, invocation_id=invocation_id
+            )
 
     def _run_runtime_parameter_simple(self, history_id: str, step_parameters: dict) -> RunJobsSummary:
         return self.workflow_populator.run_workflow(

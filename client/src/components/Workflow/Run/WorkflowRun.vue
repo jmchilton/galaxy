@@ -13,7 +13,7 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { rerunHasStepSettings, WorkflowRunModel } from "./model";
+import { rerunHasStepParameters, WorkflowRunModel } from "./model";
 import { getRunData, WorkflowMissingToolsError } from "./services";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -65,7 +65,7 @@ const disableSimpleFormReason = ref<
     | "hasReplacementParameters"
     | "hasDisconnectedInputs"
     | "hasWorkflowResourceParameters"
-    | "rerunHasStepSettings"
+    | "rerunHasStepParameters"
     | undefined
 >(undefined);
 const submissionError = ref("");
@@ -163,11 +163,12 @@ async function loadRun() {
                 disableSimpleForm.value = true;
                 disableSimpleFormReason.value = "hasWorkflowResourceParameters";
             }
-            // The simple form cannot submit step, replacement or resource parameters -
-            // rerunning with it would silently drop the settings the original run used.
-            if (simpleForm.value && rerunHasStepSettings(props.rerunRequest)) {
+            // The simple form cannot submit tool step parameters - rerunning with it
+            // would silently drop the values the original run used.
+            if (simpleForm.value && rerunHasStepParameters(props.rerunRequest)) {
                 simpleForm.value = false;
-                disableSimpleFormReason.value = "rerunHasStepSettings";
+                disableSimpleForm.value = true;
+                disableSimpleFormReason.value = "rerunHasStepParameters";
             }
         }
 
@@ -310,6 +311,7 @@ defineExpose({
                         :use-job-cache="simpleFormUseJobCache"
                         :can-mutate-current-history="canRunOnHistory"
                         :request-state="requestState"
+                        :rerun-request="rerunRequest"
                         :is-rerun="props.isRerun"
                         :landing-uuid="props.landingUuid"
                         @submissionSuccess="handleInvocations"

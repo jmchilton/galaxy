@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getReplacements, rerunHasStepSettings, rerunInputValue, WorkflowRunModel } from "./model";
+import { getReplacements, rerunHasStepParameters, rerunInputValue, WorkflowRunModel } from "./model";
 import sampleRunData1 from "./testdata/run1.json";
 
 describe("test basic parameter replacement", () => {
@@ -74,11 +74,10 @@ describe("rerun helpers", () => {
         expect(rerunInputValue(requestInputs, emptyOptional, 2)).toBeUndefined();
     });
 
-    it("detects requests only the full form can resubmit", () => {
-        expect(rerunHasStepSettings(undefined)).toBe(false);
-        expect(rerunHasStepSettings({ inputs: { 0: "a" }, parameters: null, replacement_params: {} })).toBe(false);
-        expect(rerunHasStepSettings({ parameters: { 1: { num_lines: 2 } } })).toBe(true);
-        expect(rerunHasStepSettings({ replacement_params: { name: "x" } })).toBe(true);
-        expect(rerunHasStepSettings({ resource_params: { cores: "2" } })).toBe(true);
+    it("detects requests carrying tool step parameters", () => {
+        expect(rerunHasStepParameters(undefined)).toBe(false);
+        expect(rerunHasStepParameters({ inputs: { 0: "a" }, parameters: null })).toBe(false);
+        expect(rerunHasStepParameters({ parameters: {}, replacement_params: { name: "x" } })).toBe(false);
+        expect(rerunHasStepParameters({ parameters: { 1: { num_lines: 2 } } })).toBe(true);
     });
 });

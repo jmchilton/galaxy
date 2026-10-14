@@ -7,7 +7,7 @@ import { storeToRefs } from "pinia";
 import { computed, onBeforeMount, ref, watch } from "vue";
 
 import type { WriteStoreToPayload } from "@/api/exports";
-import type { WorkflowInvocationRequestInputs } from "@/api/invocations";
+import type { WorkflowInvocationRequest, WorkflowInvocationRequestInputs } from "@/api/invocations";
 import type { ToolIdentifier } from "@/api/tools";
 import type { DataOption } from "@/components/Form/Elements/FormData/types";
 import { DEFAULT_OPTIONS_PAGE_SIZE } from "@/components/Form/Elements/FormData/types";
@@ -54,6 +54,7 @@ interface Props {
     useJobCache?: boolean;
     canMutateCurrentHistory: boolean;
     requestState?: WorkflowInvocationRequestInputs;
+    rerunRequest?: WorkflowInvocationRequest;
     isRerun?: boolean;
     landingUuid?: string;
 }
@@ -64,6 +65,7 @@ const props = withDefaults(defineProps<Props>(), {
     targetHistory: "current",
     useJobCache: false,
     requestState: undefined,
+    rerunRequest: undefined,
     isRerun: false,
     landingUuid: undefined,
 });
@@ -89,9 +91,18 @@ const stepValidation = ref<[string, string] | null>(null);
 const sendToNewHistory = ref(props.targetHistory === "new" || props.targetHistory === "prefer_new");
 const newHistoryName = ref(props.model.name);
 const useCachedJobs = ref(props.useJobCache);
-const splitObjectStore = ref(false);
-const preferredObjectStoreId = ref<string | null>(null);
-const preferredIntermediateObjectStoreId = ref<string | null>(null);
+const rerunSplitObjectStore = Boolean(
+    props.rerunRequest?.preferred_outputs_object_store_id || props.rerunRequest?.preferred_intermediate_object_store_id,
+);
+const splitObjectStore = ref(rerunSplitObjectStore);
+const preferredObjectStoreId = ref<string | null>(
+    (rerunSplitObjectStore
+        ? props.rerunRequest?.preferred_outputs_object_store_id
+        : props.rerunRequest?.preferred_object_store_id) ?? null,
+);
+const preferredIntermediateObjectStoreId = ref<string | null>(
+    props.rerunRequest?.preferred_intermediate_object_store_id ?? null,
+);
 const waitingForRequest = ref(false);
 const showRightPanel = ref<"help" | "graph" | null>(null);
 const checkInputMatching = ref(props.requestState !== undefined);
@@ -152,6 +163,10 @@ function buildFormInputs() {
         const inputCopy = Object.assign({}, input) as any;
         // do we want to keep the color if we're not showing steps?
         inputCopy.color = undefined;
+        const rerunValue = props.rerunRequest?.replacement_params?.[inputCopy.name];
+        if (rerunValue !== undefined) {
+            inputCopy.value = rerunValue;
+        }
         inputs.push(inputCopy);
         inputTypes.value[inputCopy.name] = "replacement_parameter";
     });

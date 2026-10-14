@@ -183,7 +183,12 @@ def _normalize_step_parameters(
                 raise exceptions.RequestParameterInvalidException(
                     "Specifying subworkflow step parameters requires already_normalized to be specified as true."
                 )
-            param_dict = step.step_parameters_by_id(param_dict)
+            try:
+                param_dict = step.step_parameters_by_id(param_dict)
+            except (ValueError, KeyError):
+                raise exceptions.RequestParameterInvalidException(
+                    f"Subworkflow step {step.order_index} parameters must be keyed as '<subworkflow step index>|<name>'."
+                )
         if param_dict:
             if step.type == "parameter_input" and "input" not in param_dict:
                 raise exceptions.RequestParameterInvalidException(

@@ -43,9 +43,9 @@
                 This workflow is configured with resource request parameters. The simplified form does not support
                 workflows with resource options.
             </span>
-            <span v-else-if="disableSimpleFormReason === 'rerunHasStepSettings'">
-                The original run set step, workflow or resource parameters. The simplified form does not support these,
-                so they would be lost.
+            <span v-else-if="disableSimpleFormReason === 'rerunHasStepParameters'">
+                The original run set tool step parameters. The simplified form does not support these, so they would be
+                lost.
             </span>
         </GAlert>
 
