@@ -175,6 +175,16 @@ export const SessionExpired: Story = {
 /** A command-palette question is prefilled for review, rather than sent automatically. */
 export const PrefilledCompactConversation: Story = {
     args: { compact: true, exchangeId: "new", initialQuestion: "trim my reads" },
+    play: async ({ canvas, step }) => {
+        await step("Review the prefilled question before sending it", async () => {
+            const notice = await canvas.findByText(exactly(NEW_CONVERSATION), {}, { timeout: 5000 });
+            await waitFor(() => expect(notice).toBeVisible());
+            const input = canvas.getByRole("textbox", { name: "Chat message" });
+            await expect(input).toBeVisible();
+            await expect(input).toHaveValue("trim my reads");
+            await expect(input).toBeEnabled();
+        });
+    },
 };
 
 /** A refused question shows Galaxy's own message. */
