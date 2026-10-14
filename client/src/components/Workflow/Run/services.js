@@ -27,11 +27,16 @@ export class WorkflowMissingToolsError extends Error {
  *
  * @param {String} workflowId - (Stored?) Workflow ID to fetch data for.
  * @param {String} version - Version of the workflow to fetch.
+ * @param {Boolean} instance - Is ``workflowId`` a workflow instance id.
+ * @param {String} invocationId - Seed step parameters with the values this invocation ran with.
  */
-export async function getRunData(workflowId, version = null, instance = false) {
+export async function getRunData(workflowId, version = null, instance = false, invocationId = null) {
     let url = `${getAppRoot()}api/workflows/${workflowId}/download?style=run&instance=${instance}`;
     if (version) {
         url += `&version=${version}`;
+    }
+    if (invocationId) {
+        url += `&invocation_id=${invocationId}`;
     }
     try {
         const response = await axios.get(url);

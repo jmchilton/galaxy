@@ -27,6 +27,7 @@ import type { Step } from "@/stores/workflowStepStore";
 import localize from "@/utils/localization";
 import { errorMessageAsString } from "@/utils/simple-error";
 
+import { rerunInputValue } from "./model";
 import { invokeWorkflow, searchHistoryContents } from "./services";
 
 import WorkflowAnnotation from "../WorkflowAnnotation.vue";
@@ -160,10 +161,6 @@ function buildFormInputs() {
             const stepName = new String(step.step_index) as any;
             const stepLabel = step.step_label || new String(step.step_index + 1);
 
-            // For the `WorkflowInvocationRequestModel`, (used in `WorkflowRerun`) if there is no step_label, it does not have
-            // `step.step_index + 1` as a label, and has `step.step_index` instead.
-            const rerunStateIndex = !step.step_label ? new String(step.step_index) : stepLabel;
-
             const stepType = step.step_type;
             const help = step.annotation;
             const longFormInput = step.inputs[0];
@@ -175,37 +172,9 @@ function buildFormInputs() {
 
             if (props.requestState) {
                 if (props.isRerun) {
-                    const requestStateKeys = Object.keys(props.requestState);
-                    const stateKey = String(rerunStateIndex);
-
-                    let value;
-                    if (stateKey in props.requestState) {
-                        // request state has the step_label as key
-                        value = props.requestState[stateKey];
-                    } else if (requestStateKeys[i] === "") {
-                        // request state has "" as key on the `i` position
-                        value = Object.values(props.requestState)[i];
-                    }
-
+                    const value = rerunInputValue(props.requestState, step, i);
                     if (value !== undefined) {
-                        if (stepType === "data_input" || stepType === "data_collection_input") {
-                            // Note: This is different from workflow landings because `WorkflowInvocationRequestModel`
-                            //       does not provide an object with `values` property.
-                            // Optional data inputs left empty on the original run come back as `null` (or
-                            // arrays containing `null`). Filter those out so we don't poison FormData with
-                            // `{values: [null]}`, which crashes its `onMounted` hook on `"src" in null` and
-                            // leaves the bad wrapper in formData to be sent to the server.
-                            const valuesArray = (Array.isArray(value) ? value : [value]).filter(
-                                (v) => v !== null && v !== undefined,
-                            );
-                            if (valuesArray.length > 0) {
-                                stepAsInput.value = {
-                                    values: valuesArray,
-                                };
-                            }
-                        } else {
-                            stepAsInput.value = value;
-                        }
+                        stepAsInput.value = value;
                     }
                 } else if (String(stepLabel) in props.requestState) {
                     stepAsInput.value = props.requestState[String(stepLabel)];

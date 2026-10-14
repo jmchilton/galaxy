@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getReplacements, WorkflowRunModel } from "./model";
+import { getReplacements, rerunHasStepSettings, rerunInputValue, WorkflowRunModel } from "./model";
 import sampleRunData1 from "./testdata/run1.json";
 
 describe("test basic parameter replacement", () => {
@@ -61,5 +61,24 @@ describe("WorkflowRunModel status", () => {
         };
         const runModel = new WorkflowRunModel(optionalDataSteps);
         expect(runModel.hasOpenToolSteps).toBe(false);
+    });
+});
+
+describe("rerun helpers", () => {
+    it("reads rerun values for labeled and unlabeled input steps", () => {
+        const requestInputs = { labeled: "a", 1: { src: "hda", id: "d1" }, 2: [null] };
+        expect(rerunInputValue(requestInputs, { step_label: "labeled", step_index: 0 }, 0)).toBe("a");
+        const dataStep = { step_label: null, step_index: 1, step_type: "data_input" };
+        expect(rerunInputValue(requestInputs, dataStep, 1)).toEqual({ values: [{ src: "hda", id: "d1" }] });
+        const emptyOptional = { step_label: null, step_index: 2, step_type: "data_input" };
+        expect(rerunInputValue(requestInputs, emptyOptional, 2)).toBeUndefined();
+    });
+
+    it("detects requests only the full form can resubmit", () => {
+        expect(rerunHasStepSettings(undefined)).toBe(false);
+        expect(rerunHasStepSettings({ inputs: { 0: "a" }, parameters: null, replacement_params: {} })).toBe(false);
+        expect(rerunHasStepSettings({ parameters: { 1: { num_lines: 2 } } })).toBe(true);
+        expect(rerunHasStepSettings({ replacement_params: { name: "x" } })).toBe(true);
+        expect(rerunHasStepSettings({ resource_params: { cores: "2" } })).toBe(true);
     });
 });

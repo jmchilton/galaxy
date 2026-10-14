@@ -43,6 +43,10 @@
                 This workflow is configured with resource request parameters. The simplified form does not support
                 workflows with resource options.
             </span>
+            <span v-else-if="disableSimpleFormReason === 'rerunHasStepSettings'">
+                The original run set step, workflow or resource parameters. The simplified form does not support these,
+                so they would be lost.
+            </span>
         </GAlert>
 
         <WorkflowCredentials v-if="credentialTools.length" :tool-identifiers="credentialTools" />
@@ -72,7 +76,7 @@
                 <FormDisplay :inputs="resourceInputs" @onChange="onResourceInputs" />
             </template>
         </FormCard>
-        <div v-for="step in model.steps" :key="step.index">
+        <div v-for="step in stepModels" :key="step.index">
             <WorkflowRunDefaultStep
                 v-if="step.step_type == 'tool' || step.step_type == 'subworkflow'"
                 :model="step"
@@ -96,15 +100,16 @@
 import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
 
-import type { WorkflowInvocation } from "@/api/invocations";
+import type { WorkflowInvocation, WorkflowInvocationRequest } from "@/api/invocations";
 import type { ServiceCredentialsDefinition } from "@/api/userCredentials";
 import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
+import { isWorkflowInput } from "@/components/Workflow/constants";
 import { useUserMultiToolCredentials } from "@/composables/userMultiToolCredentials";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useToolsServiceCredentialsDefinitionsStore } from "@/stores/toolsServiceCredentialsDefinitionsStore";
 import { useUserStore } from "@/stores/userStore";
 
-import { getReplacements } from "./model";
+import { getReplacements, rerunInputValue } from "./model";
 import { invokeWorkflow } from "./services";
 
 import WorkflowRunDefaultStep from "./WorkflowRunDefaultStep.vue";
@@ -146,11 +151,18 @@ interface Props {
      * @default undefined
      */
     disableSimpleFormReason?: string;
+    /**
+     * Exported request of the invocation being rerun, prefills workflow
+     * inputs, workflow and resource parameters and job re-use
+     * @default undefined
+     */
+    rerunRequest?: WorkflowInvocationRequest;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     disableSimpleForm: false,
     disableSimpleFormReason: undefined,
+    rerunRequest: undefined,
 });
 
 const emit = defineEmits<{
@@ -166,7 +178,7 @@ const showExecuting = ref(false);
 const stepScrollTo = ref<{ stepId?: string; stepError?: ValidationScrollTo }>({});
 const wpData = ref<FormData>({});
 const historyData = ref<FormData>({});
-const useCachedJobs = ref(false);
+const useCachedJobs = ref(props.rerunRequest?.use_cached_job ?? false);
 const onCompleteActions = ref<Record<string, unknown>[]>([]);
 // Not render state: step updates must not re-render the whole form.
 const stepData: Record<string, FormData> = {};
@@ -219,11 +231,28 @@ const credentialTools = computed(() => {
         });
 });
 
-const resourceInputs = computed(() => toArray(props.model.workflowResourceParameters));
+const resourceInputs = computed(() =>
+    withRerunValues(toArray(props.model.workflowResourceParameters), props.rerunRequest?.resource_params),
+);
 
 const resourceInputsAvailable = computed(() => resourceInputs.value.length > 0);
 
-const wpInputs = computed(() => toArray(props.model.wpInputs));
+const wpInputs = computed(() => withRerunValues(toArray(props.model.wpInputs), props.rerunRequest?.replacement_params));
+// Tool step values come prefilled from the server (``getRunData`` with the invocation id).
+const stepModels = computed(() => {
+    const requestInputs = props.rerunRequest?.inputs;
+    if (!requestInputs) {
+        return props.model.steps;
+    }
+    return props.model.steps.map((step: Record<string, any>, position: number) => {
+        const value = isWorkflowInput(step.step_type) ? rerunInputValue(requestInputs, step, position) : undefined;
+        if (value === undefined) {
+            return step;
+        }
+        const [input, ...rest] = step.inputs;
+        return { ...step, inputs: [{ ...input, value }, ...rest] };
+    });
+});
 
 const wpInputsAvailable = computed(() => wpInputs.value.length > 0);
 
@@ -364,5 +393,12 @@ function onExecute() {
 
 function toArray(obj: Record<string, FormInputNode> | undefined): FormInputNode[] {
     return obj ? Object.values(obj) : [];
+}
+
+function withRerunValues(inputs: FormInputNode[], values: Record<string, unknown> | null | undefined) {
+    if (!values) {
+        return inputs;
+    }
+    return inputs.map((input) => (input.name in values ? { ...input, value: values[input.name] } : input));
 }
 </script>

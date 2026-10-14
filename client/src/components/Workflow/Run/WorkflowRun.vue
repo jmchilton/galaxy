@@ -4,7 +4,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 
 import { canMutateHistory } from "@/api";
-import type { WorkflowInvocationRequestInputs } from "@/api/invocations";
+import type { WorkflowInvocationRequest, WorkflowInvocationRequestInputs } from "@/api/invocations";
 import { getWorkflowInfo } from "@/api/workflows";
 import { copyWorkflow } from "@/components/Workflow/workflows.services";
 import { useWorkflowInstance } from "@/composables/useWorkflowInstance";
@@ -13,7 +13,7 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { WorkflowRunModel } from "./model";
+import { rerunHasStepSettings, WorkflowRunModel } from "./model";
 import { getRunData, WorkflowMissingToolsError } from "./services";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -35,6 +35,8 @@ interface Props {
     simpleFormTargetHistory?: string;
     simpleFormUseJobCache?: boolean;
     requestState?: WorkflowInvocationRequestInputs;
+    rerunRequest?: WorkflowInvocationRequest;
+    rerunInvocationId?: string;
     instance?: boolean;
     isRerun?: boolean;
     landingUuid?: string;
@@ -46,6 +48,8 @@ const props = withDefaults(defineProps<Props>(), {
     simpleFormTargetHistory: "current",
     simpleFormUseJobCache: false,
     requestState: undefined,
+    rerunRequest: undefined,
+    rerunInvocationId: undefined,
     instance: false,
     isRerun: false,
     landingUuid: undefined,
@@ -58,7 +62,11 @@ const invocations = ref([]);
 const simpleForm = ref(false);
 const disableSimpleForm = ref(false);
 const disableSimpleFormReason = ref<
-    "hasReplacementParameters" | "hasDisconnectedInputs" | "hasWorkflowResourceParameters" | undefined
+    | "hasReplacementParameters"
+    | "hasDisconnectedInputs"
+    | "hasWorkflowResourceParameters"
+    | "rerunHasStepSettings"
+    | undefined
 >(undefined);
 const submissionError = ref("");
 const workflowError = ref("");
@@ -119,7 +127,12 @@ function handleSubmissionError(error: string) {
 
 async function loadRun() {
     try {
-        const runData = await getRunData(props.workflowId, props.version || undefined, props.instance);
+        const runData = await getRunData(
+            props.workflowId,
+            props.version || undefined,
+            props.instance,
+            props.rerunInvocationId,
+        );
         const incomingModel = new WorkflowRunModel(runData);
 
         simpleForm.value = props.preferSimpleForm;
@@ -149,6 +162,12 @@ async function loadRun() {
                 simpleForm.value = false;
                 disableSimpleForm.value = true;
                 disableSimpleFormReason.value = "hasWorkflowResourceParameters";
+            }
+            // The simple form cannot submit step, replacement or resource parameters -
+            // rerunning with it would silently drop the settings the original run used.
+            if (simpleForm.value && rerunHasStepSettings(props.rerunRequest)) {
+                simpleForm.value = false;
+                disableSimpleFormReason.value = "rerunHasStepSettings";
             }
         }
 
@@ -302,6 +321,7 @@ defineExpose({
                         :can-mutate-current-history="canRunOnHistory"
                         :disable-simple-form="disableSimpleForm"
                         :disable-simple-form-reason="disableSimpleFormReason"
+                        :rerun-request="rerunRequest"
                         @submissionSuccess="handleInvocations"
                         @submissionError="handleSubmissionError"
                         @showSimple="advancedForm = false" />

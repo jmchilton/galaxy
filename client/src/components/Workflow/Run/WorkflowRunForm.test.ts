@@ -37,7 +37,7 @@ const globalConfig = getLocalVue();
 
 const HISTORY_ID = "8f7a155755f10e73";
 
-function mountForm(canMutateCurrentHistory = true) {
+function mountForm(canMutateCurrentHistory = true, rerunRequest?: Record<string, unknown>) {
     const pinia = createTestingPinia({
         createSpy: vi.fn,
         initialState: {
@@ -52,6 +52,7 @@ function mountForm(canMutateCurrentHistory = true) {
         props: {
             model: new WorkflowRunModel(JSON.parse(JSON.stringify(sampleRunData1))),
             canMutateCurrentHistory,
+            rerunRequest,
         },
         global: {
             ...globalConfig,
@@ -138,6 +139,19 @@ describe("WorkflowRunForm", () => {
             on_complete: [{ send_notification: {} }],
         });
         expect(wrapper.emitted("submissionSuccess")).toEqual([[[{ id: "invocation_id" }]]]);
+    });
+
+    it("prefills inputs, workflow parameters and job re-use from a rerun request", async () => {
+        const wrapper = mountForm(true, {
+            inputs: { 0: { src: "hdca", id: "c1" }, 4: "text" },
+            replacement_params: { wf_param: "7" },
+            use_cached_job: true,
+        });
+        expect(findStep(wrapper, "0").props("model").inputs[0].value).toEqual({ values: [{ src: "hdca", id: "c1" }] });
+        expect(findStep(wrapper, "4").props("model").inputs[0].value).toBe("text");
+        const wpInputs = nth(wrapper.findAllComponents({ name: "FormDisplay" }), 0).props("inputs");
+        expect(wpInputs.map((input: { value: unknown }) => input.value)).toEqual(["7"]);
+        expect(wrapper.findComponent({ name: "FormElement" }).props("value")).toBe(true);
     });
 
     it("sends results to a new history when requested", async () => {
