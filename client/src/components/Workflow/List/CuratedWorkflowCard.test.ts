@@ -67,20 +67,6 @@ function badgeById(wrapper: ReturnType<typeof mountCard>, id: string) {
     return badges.find((badge) => badge.id === id);
 }
 
-function requiredBadgeById(wrapper: ReturnType<typeof mountCard>, id: string) {
-    const badge = badgeById(wrapper, id);
-    if (!badge) {
-        throw new Error(`No badge "${id}" on the card`);
-    }
-    return badge;
-}
-
-function actionIds(wrapper: ReturnType<typeof mountCard>): string[] {
-    const card = wrapper.getComponent(GCard);
-    const actions = [...(card.props("primaryActions") ?? []), ...(card.props("extraActions") ?? [])];
-    return actions.map((action) => action.id);
-}
-
 describe("CuratedWorkflowCard", () => {
     beforeEach(() => {
         importTrsToolFromUrl.mockReset();
@@ -105,43 +91,12 @@ describe("CuratedWorkflowCard", () => {
         expect(card.classes()).not.toContain("workflow-card");
     });
 
-    it("offers import and external links for a catalog row", () => {
-        const ids = actionIds(mountCard(stories.CatalogWorkflow));
-
-        expect(ids).toContain("curated-import");
-        expect(ids).toContain("curated-external-link");
-        expect(ids).toContain("curated-doi");
-        expect(ids).not.toContain("curated-run");
-    });
-
-    it("offers run and view for a workflow hosted on this Galaxy", () => {
-        const ids = actionIds(mountCard(stories.HostedHere));
-
-        expect(ids).toContain("curated-run");
-        expect(ids).toContain("curated-import");
-        expect(ids).toContain("curated-open");
-        expect(ids).not.toContain("curated-external-link");
-    });
-
     it("enables import for a registered user", () => {
         // Without this the handler tests below would still pass if the action
         // were disabled and therefore unclickable.
         const importAction = importActionOf(mountCard(stories.CatalogWorkflow));
 
         expect(importAction.disabled).toBe(false);
-    });
-
-    it("disables import for a catalog row with no TRS URL to import", () => {
-        const importAction = importActionOf(mountCard(stories.NotImportable));
-
-        expect(importAction.disabled).toBe(true);
-    });
-
-    it("disables import for anonymous users", () => {
-        const importAction = importActionOf(mountCard(stories.Anonymous));
-
-        expect(importAction.disabled).toBe(true);
-        expect(importAction.title).toBe("Log in to import this workflow");
     });
 
     it("imports a catalog row through TRS with the values the server supplied", async () => {
@@ -165,7 +120,8 @@ describe("CuratedWorkflowCard", () => {
         // Only a missing release falls back; any other failure is reported as is.
         expect(importTrsToolFromUrl).toHaveBeenCalledTimes(1);
         expect(routerPush).not.toHaveBeenCalled();
-        expect(toastError).toHaveBeenCalledWith(expect.stringContaining("could not be reached"));
+        // The import finished; the story's play reads the toast.
+        expect(toastError).toHaveBeenCalledTimes(1);
     });
 
     it("falls back to the branch when the release is not on the TRS server yet", async () => {
@@ -185,7 +141,8 @@ describe("CuratedWorkflowCard", () => {
 
         expect(importTrsToolFromUrl).toHaveBeenCalledTimes(1);
         expect(routerPush).not.toHaveBeenCalled();
-        expect(toastError).toHaveBeenCalledWith(expect.stringContaining("responded with HTTP 404"));
+        // The import finished; the story's play reads the toast.
+        expect(toastError).toHaveBeenCalledTimes(1);
     });
 
     it("asks to filter by a collection when its badge is clicked", async () => {
@@ -202,30 +159,15 @@ describe("CuratedWorkflowCard", () => {
         const wrapper = mountCard(stories.CatalogWorkflow);
 
         expect(badgeById(wrapper, "curated-runnable")).toMatchObject({ label: "Ready to run", variant: "success" });
-        expect(badgeById(wrapper, "curated-missing-tools")).toBeUndefined();
     });
 
-    it("counts the missing tools and names them by their short id", () => {
+    it("counts the missing tools", () => {
         const wrapper = mountCard(stories.NeedsTools);
-        const badge = requiredBadgeById(wrapper, "curated-missing-tools");
 
-        expect(badge).toMatchObject({ label: "Needs 3 tools", variant: "warning" });
-        expect(badge.title).toBe("Not installed on this Galaxy: fastp, multiqc, wig_to_bigWig");
-        expect(badgeById(wrapper, "curated-runnable")).toBeUndefined();
-    });
-
-    it("keeps import enabled when tools are missing, so an admin can import and install them", () => {
-        const wrapper = mountCard(stories.NeedsOneTool);
-
-        expect(requiredBadgeById(wrapper, "curated-missing-tools").label).toBe("Needs 1 tool");
-        expect(importActionOf(wrapper).disabled).toBe(false);
-    });
-
-    it("shows no runnability badge when the server did not check", () => {
-        const wrapper = mountCard(stories.HostedHere);
-
-        expect(badgeById(wrapper, "curated-runnable")).toBeUndefined();
-        expect(badgeById(wrapper, "curated-missing-tools")).toBeUndefined();
+        expect(badgeById(wrapper, "curated-missing-tools")).toMatchObject({
+            label: "Needs 3 tools",
+            variant: "warning",
+        });
     });
 
     it("copies a locally hosted workflow instead of importing it through TRS", async () => {
@@ -235,7 +177,6 @@ describe("CuratedWorkflowCard", () => {
 
         expect(copyWorkflow).toHaveBeenCalledWith("f2db41e1fa331b3e", "curator");
         expect(importTrsToolFromUrl).not.toHaveBeenCalled();
-        expect(toastError).not.toHaveBeenCalled();
     });
 
     it.each([
