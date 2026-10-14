@@ -14,6 +14,8 @@ import { type Tool, type ToolSection, useToolStore } from "@/stores/toolStore";
 import type { FavoriteSummary } from "@/stores/users/queries";
 import { useUserStore } from "@/stores/userStore";
 
+import TOOL_PANEL_VIEWS from "./testData/viewsList.json";
+
 export const TOOLBOX_TOOLS = toolsListUntyped as unknown as Tool[];
 export const TOOLBOX_PANEL = toolsListInPanelUntyped as unknown as Record<string, Tool | ToolSection>;
 export const TOOLBOX_USER = getFakeRegisteredUser({ username: "toolbox-user" });
@@ -241,4 +243,25 @@ export const toolboxHandlers = {
     panel: http.untyped.get("/api/tool_panels/:panelView", ({ params }) =>
         HttpResponse.json(useToolStore().toolSections[String(params.panelView)] ?? TOOLBOX_PANEL),
     ),
+};
+
+/**
+ * What the tool panel loads when it opens, for a page whose activity bar shows it: the panel
+ * views, every tool (a search gets the ids of tools whose name matches) and the default view's
+ * sections. The current user it reloads first isn't here.
+ */
+export const toolPanelHandlers = {
+    toolPanelViews: http.untyped.get("/api/tool_panels", () =>
+        HttpResponse.json({ default_panel_view: "default", views: TOOL_PANEL_VIEWS }),
+    ),
+    tools: http.untyped.get("/api/tools", ({ request }) => {
+        const query = new URL(request.url).searchParams.get("q")?.toLowerCase();
+        if (query === undefined) {
+            return HttpResponse.json(TOOLBOX_TOOLS);
+        }
+        return HttpResponse.json(
+            TOOLBOX_TOOLS.filter((tool) => tool.name.toLowerCase().includes(query)).map((tool) => tool.id),
+        );
+    }),
+    panel: toolboxHandlers.panel,
 };
