@@ -36,6 +36,8 @@ export type StoryOf<Stories> = Stories[keyof Stories];
 type GlobalOptions = NonNullable<MountingOptions<unknown>["global"]>;
 
 export interface StoryMountOptions {
+    /** Attach to a real DOM parent for visibility/focus checks. */
+    attachTo?: MountingOptions<unknown>["attachTo"];
     /** Props on top of the story's args. */
     props?: Record<string, unknown>;
     /** Added to the default test globals: plugins are appended, the rest is merged by name. */
@@ -73,7 +75,7 @@ export function useStoryMount() {
     afterEach(() => mounted.splice(0).forEach((wrapper) => wrapper.unmount()));
     return function mountStory(
         story: ComposedStory,
-        { props = {}, global, router, pinia, instrumentLocalization = false }: StoryMountOptions = {},
+        { props = {}, global, router, pinia, attachTo, instrumentLocalization = false }: StoryMountOptions = {},
     ) {
         // Handlers used later take precedence, so the story's override the app's.
         server.use(...Object.values(appHandlers));
@@ -81,6 +83,7 @@ export function useStoryMount() {
         const testingPinia = createTestingPinia({ createSpy: vi.fn, stubActions: false, ...pinia });
         const wrapper = mount(story, {
             props,
+            attachTo,
             global: mergeGlobal(getLocalVue(instrumentLocalization), global),
             pinia: testingPinia,
             router,
