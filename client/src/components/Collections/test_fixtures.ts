@@ -2,16 +2,12 @@ import { getFakeDatasetSummary } from "@tests/test-data/datasets";
 import { type Component, defineComponent, h, type PropType, shallowRef, watch } from "vue";
 
 import type { HDASummary } from "@/api";
-import { http } from "@/api/client/__mocks__/http";
-import { typesAndMappingHandler } from "@/components/Datatypes/test_fixtures";
+import { uploadMethodHandlers } from "@/components/Panels/Upload/test_fixtures";
 
 import GButton from "@/components/BaseComponents/GButton.vue";
 
-/** Requests every collection creator makes: its upload tab loads genomes and the datatypes mapper. */
-export const collectionCreatorHandlers = {
-    genomes: http.get("/api/genomes", ({ response }) => response(200).json([])),
-    typesAndMapping: typesAndMappingHandler,
-};
+/** Requests every collection creator makes: those of the upload methods on its upload tab. */
+export const collectionCreatorHandlers = { ...uploadMethodHandlers };
 
 /** A fastqsanger dataset of sequencing reads. */
 export function fastqReads(id: string, hid: number, name: string): HDASummary {
