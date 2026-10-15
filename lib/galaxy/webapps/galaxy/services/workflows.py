@@ -327,7 +327,17 @@ class WorkflowsService(ServiceBase):
             workflow = stored_workflow.get_internal_version_by_id(workflow_id)
         else:
             workflow = stored_workflow.get_internal_version(version)
-        run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
+        rerun_of_invocation = None
+        if payload.rerun_of_invocation_id is not None:
+            rerun_of_invocation = self._workflows_manager.get_invocation(
+                trans,
+                trans.security.decode_id(payload.rerun_of_invocation_id),
+                check_ownership=False,
+                check_accessible=True,
+            )
+        run_configs = build_workflow_run_configs(
+            trans, workflow, payload.model_dump(exclude_unset=True), rerun_of_invocation=rerun_of_invocation
+        )
         is_batch = payload.batch
         if not is_batch and len(run_configs) != 1:
             raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
