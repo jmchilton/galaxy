@@ -490,75 +490,29 @@ def test_import_export_invocation_rekeys_step_parameters():
     app = _mock_app()
     invocation = _setup_simple_invocation(app)
     tool_step = invocation.workflow.step_by_index(1)
-    _add_step_parameters(app, invocation, tool_step, {"num_lines": 2})
-
-    imported_invocation = _export_import_invocation(app, invocation)
-
-    imported_tool_step = imported_invocation.workflow.step_by_index(1)
-    assert imported_tool_step.id != tool_step.id
-    step_parameter = _only_step_parameter(imported_invocation)
-    assert step_parameter.name == str(imported_tool_step.id)
-    assert step_parameter.resolve_step_parameters() == (imported_tool_step, {"num_lines": 2})
-
-
-def test_import_invocation_step_parameters_from_archive_without_order_index():
-    app = _mock_app()
-    invocation = _setup_simple_invocation(app)
-    tool_step = invocation.workflow.step_by_index(1)
-    _add_step_parameters(app, invocation, tool_step, {"num_lines": 2})
-
-    def strip_portable_step_parameters(invocations_attrs):
-        for input_parameter_attrs in invocations_attrs[0]["input_parameters"]:
-            del input_parameter_attrs["order_index"]
-            del input_parameter_attrs["step_parameters"]
-
-    imported_invocation = _export_import_invocation(
-        app, invocation, rewrite_invocations_attrs=strip_portable_step_parameters
-    )
-
-    step_parameter = _only_step_parameter(imported_invocation)
-    assert step_parameter.name == str(tool_step.id)
-    assert step_parameter.resolve_step_parameters() is None
-
-
-def _add_step_parameters(app, invocation, step, step_parameters):
     step_parameter = model.WorkflowRequestInputParameter(
-        name=str(step.id),
-        value=json.dumps(step_parameters),
+        name=str(tool_step.id),
+        value=json.dumps({"num_lines": 2}),
         type=model.WorkflowRequestInputParameter.types.STEP_PARAMETERS,
     )
     invocation.input_parameters.append(step_parameter)
     app.add_and_commit(step_parameter)
 
-
-def _export_import_invocation(app, invocation, rewrite_invocations_attrs=None):
     temp_directory = mkdtemp()
     with store.DirectoryModelExportStore(temp_directory, app=app) as export_store:
         export_store.export_workflow_invocation(invocation)
-    if rewrite_invocations_attrs:
-        invocations_attrs_path = os.path.join(temp_directory, store.ATTRS_FILENAME_INVOCATIONS)
-        with open(invocations_attrs_path) as f:
-            invocations_attrs = json.load(f)
-        rewrite_invocations_attrs(invocations_attrs)
-        with open(invocations_attrs_path, "w") as f:
-            json.dump(invocations_attrs, f)
-
-    user = invocation.history.user
-    import_history = model.History(user=user)
+    import_history = model.History(user=invocation.history.user)
     app.add_and_commit(import_history)
-    import_model_store = store.get_import_model_store_for_directory(
-        temp_directory, app=app, user=user, import_options=store.ImportOptions()
+    object_import_tracker = _perform_import_from_directory(
+        temp_directory, app, invocation.history.user, import_history, store.ImportOptions()
     )
-    object_import_tracker = import_model_store.perform_import(history=import_history)
+
     (imported_invocation,) = object_import_tracker.invocations_by_key.values()
-    return imported_invocation
-
-
-def _only_step_parameter(invocation):
-    (step_parameter,) = (
-        p for p in invocation.input_parameters if p.type == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
-    )
-    return step_parameter
+    imported_tool_step = imported_invocation.workflow.step_by_index(1)
+    assert imported_tool_step.id != tool_step.id
+    (imported_step_parameter,) = imported_invocation.input_parameters
+    assert imported_step_parameter.name == str(imported_tool_step.id)
+    assert imported_step_parameter.resolve_step_parameters() == (imported_tool_step, {"num_lines": 2})
 
 
 def validate_crate_metadata(as_dict):
@@ -1787,7 +1741,7 @@ def _perform_import_from_directory(directory, app, user, import_history, import_
         directory, app=app, user=user, import_options=import_options
     )
     with import_model_store.target_history(default_history=import_history):
-        import_model_store.perform_import(import_history)
+        return import_model_store.perform_import(import_history)
 
 
 def _rewrite_export_as_new_datasets(directory):

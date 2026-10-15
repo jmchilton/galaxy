@@ -11072,14 +11072,12 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         RESOURCE_PARAMETERS = "resource"
 
     def resolve_step_parameters(self) -> tuple["WorkflowStep", dict[str, Any]] | None:
-        """Resolve a step parameter row against its invocation's workflow.
+        """Return this step parameter row's workflow step and its parameters keyed by order index.
 
-        Returns the step and its parameters keyed by order index (see
-        ``WorkflowStep.step_parameters_by_index``), or ``None`` if the workflow lacks a stored step
-        id - e.g. invocations imported from archives without ``order_index``. Raises ``ValueError``
-        or ``TypeError`` for a malformed row.
+        ``None`` if the invocation's workflow lacks a stored step id (e.g. imported from an archive
+        without ``order_index``). Raises ``ValueError`` or ``TypeError`` for a malformed row.
         """
-        assert self.workflow_invocation
+        assert self.type == self.types.STEP_PARAMETERS and self.workflow_invocation
         step = self.workflow_invocation.workflow.steps_by_id.get(int(cast(str, self.name)))
         if step is None:
             return None
@@ -11094,7 +11092,7 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         request_input_parameter_attrs["value"] = self.value
         request_input_parameter_attrs["type"] = self.type
         if self.type == self.types.STEP_PARAMETERS:
-            # ``name`` and nested subworkflow keys are step ids, add a form import can re-key.
+            # ``name`` and nested subworkflow keys are step ids, also export an order index form import can re-key.
             try:
                 resolved = self.resolve_step_parameters()
             except (TypeError, ValueError):
