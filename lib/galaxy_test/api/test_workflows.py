@@ -7956,6 +7956,32 @@ steps: []
         invocation = self.workflow_populator.get_invocation(response.json()["id"])
         assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == 100
 
+    def test_run_with_invalid_legacy_parameter_input_in_subworkflow(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs: {}
+steps:
+  nested:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        parameter:
+          type: integer
+          optional: true
+      steps: []
+""")
+        response = self._post(
+            f"workflows/{workflow_id}/invocations",
+            data={
+                "history_id": history_id,
+                "parameters_normalized": True,
+                "parameters": {"0": {"0|parameter_value": 100}},
+            },
+            json=True,
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "must specify an 'input' value")
+
     def test_run_with_multiple_float_parameter(self, history_id):
         workflow_id = self.workflow_populator.upload_yaml_workflow("""
 class: GalaxyWorkflow

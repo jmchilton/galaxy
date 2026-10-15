@@ -190,13 +190,23 @@ def _normalize_step_parameters(
                     f"Subworkflow step {step.order_index} parameters must be keyed as '<subworkflow step index>|<name>': {e}"
                 )
         if param_dict:
-            if step.type == "parameter_input" and "input" not in param_dict:
-                raise exceptions.RequestParameterInvalidException(
-                    f"{step.label or step.order_index + 1}: legacy workflow parameter inputs must specify an 'input' value. "
-                    "Prefer passing the parameter value directly in 'inputs'."
-                )
+            _validate_normalized_step_parameters(step, param_dict)
             normalized_param_map[step.id] = param_dict
     return normalized_param_map
+
+
+def _validate_normalized_step_parameters(step: "WorkflowStep", param_dict: dict) -> None:
+    """Validate ``param_dict`` for ``step``, recursing into subworkflow parameters nested by inner step id."""
+    if step.type == "parameter_input" and "input" not in param_dict:
+        raise exceptions.RequestParameterInvalidException(
+            f"{step.label or step.order_index + 1}: legacy workflow parameter inputs must specify an 'input' value. "
+            "Prefer passing the parameter value directly in 'inputs'."
+        )
+    if step.type == "subworkflow":
+        assert step.subworkflow
+        inner_steps_by_id = step.subworkflow.steps_by_id
+        for inner_step_id, inner_param_dict in param_dict.items():
+            _validate_normalized_step_parameters(inner_steps_by_id[inner_step_id], inner_param_dict)
 
 
 def _step_parameters(step: "WorkflowStep", param_map: dict, legacy: bool = False) -> dict:
