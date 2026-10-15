@@ -11071,11 +11071,38 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         META_PARAMETERS = "meta"
         RESOURCE_PARAMETERS = "resource"
 
+    def resolve_step_parameters(self) -> tuple["WorkflowStep", dict[str, Any]] | None:
+        """Resolve a step parameter row against its invocation's workflow.
+
+        Returns the step and its parameters keyed by order index (see
+        ``WorkflowStep.step_parameters_by_index``), or ``None`` if the workflow lacks a stored step
+        id - e.g. invocations imported from archives without ``order_index``. Raises ``ValueError``
+        or ``TypeError`` for a malformed row.
+        """
+        assert self.workflow_invocation
+        step = self.workflow_invocation.workflow.steps_by_id.get(int(cast(str, self.name)))
+        if step is None:
+            return None
+        try:
+            return step, step.step_parameters_by_index(json.loads(cast(str, self.value)))
+        except KeyError:
+            return None
+
     def _serialize(self, id_encoder, serialization_options):
         request_input_parameter_attrs = dict_for(self)
         request_input_parameter_attrs["name"] = self.name
         request_input_parameter_attrs["value"] = self.value
         request_input_parameter_attrs["type"] = self.type
+        if self.type == self.types.STEP_PARAMETERS:
+            # ``name`` and nested subworkflow keys are step ids, add a form import can re-key.
+            try:
+                resolved = self.resolve_step_parameters()
+            except (TypeError, ValueError):
+                resolved = None
+            if resolved is not None:
+                step, step_parameters = resolved
+                request_input_parameter_attrs["order_index"] = step.order_index
+                request_input_parameter_attrs["step_parameters"] = step_parameters
         return request_input_parameter_attrs
 
 

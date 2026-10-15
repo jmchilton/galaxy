@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import (
     Any,
@@ -340,7 +339,6 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
                 export_inputs[key] = value
 
         param_types = WorkflowRequestInputParameter.types
-        steps_by_id = invocation.workflow.steps_by_id
 
         replacement_dict = {}
         resource_params = {}
@@ -369,11 +367,17 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
                 resource_params[parameter.name] = parameter.value
             elif parameter_type == param_types.STEP_PARAMETERS:
                 try:
-                    step_id = int(parameter.name)
+                    resolved = parameter.resolve_step_parameters()
                 except (TypeError, ValueError):
                     raise InconsistentDatabase("saved workflow step parameters not in the format expected")
-                step = steps_by_id[step_id]
-                step_param_map[str(step.order_index)] = step.step_parameters_by_index(json.loads(parameter.value))
+                if resolved is None:
+                    log.warning(
+                        f"Skipping step parameters of invocation {invocation.id} for step id {parameter.name}, "
+                        "not in the invocation's workflow (imported from an archive without order_index?)"
+                    )
+                    continue
+                step, step_parameters = resolved
+                step_param_map[str(step.order_index)] = step_parameters
 
         return WorkflowInvocationRequestModel(
             history_id=history_id,
