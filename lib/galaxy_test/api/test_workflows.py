@@ -91,6 +91,21 @@ def _default_file_location(test_http_server) -> str:
     return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
 
 
+def _find_run_input(inputs: list[dict], name: str) -> dict:
+    """Find a (possibly nested) input by name in a ``style=run`` step model."""
+    for input in inputs:
+        if input["name"] == name:
+            return input
+        children = list(input.get("inputs") or [])
+        for case in input.get("cases") or []:
+            children.extend(case["inputs"])
+        try:
+            return _find_run_input(children, name)
+        except KeyError:
+            pass
+    raise KeyError(name)
+
+
 NESTED_WORKFLOW_AUTO_LABELS_MODERN_SYNTAX = """
 class: GalaxyWorkflow
 inputs:
@@ -5669,6 +5684,129 @@ some_file:
         response = self.workflow_populator.invoke_workflow_raw(workflow_id, request)
         self._assert_status_code_is(response, 400)
         assert "<subworkflow step index>|<name>" in response.json()["err_msg"]
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_invocation(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_runtime_parameter_simple(history_id, {"1": {"num_lines": 2, "seed_source|seed": "moo"}})
+            random_lines = self._run_form_steps(summary.invocation_id, history_id)[1]
+            assert _find_run_input(random_lines["inputs"], "num_lines")["value"] == "2"
+            assert _find_run_input(random_lines["inputs"], "seed")["value"] == "moo"
+
+            unseeded = self._run_form_steps(summary.invocation_id, history_id, seeded=False)[1]
+            assert _find_run_input(unseeded["inputs"], "seed")["value"] == "asdf"
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_invocation_conditional_case(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_runtime_parameter_simple(
+                history_id, {"1": {"num_lines": 2, "seed_source|seed_source_selector": "no_seed"}}
+            )
+            random_lines = self._run_form_steps(summary.invocation_id, history_id)[1]
+            seed_source = _find_run_input(random_lines["inputs"], "seed_source")
+            assert seed_source["test_param"]["value"] == "no_seed"
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_invocation_keeps_workflow_parameters(self):
+        # The run form substitutes ``${seedme}`` before submitting, so "moo" is recorded for the seed.
+        workflow = WORKFLOW_RUNTIME_PARAMETER_SIMPLE.replace("seed: asdf", "seed: ${seedme}")
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                workflow,
+                test_data={
+                    "step_parameters": {"1": {"num_lines": 2, "seed_source|seed": "moo"}},
+                    "replacement_parameters": {"seedme": "moo"},
+                    "input1": {"value": "1.bed", "type": "File"},
+                },
+                history_id=history_id,
+            )
+            random_lines = self._run_form_steps(summary.invocation_id, history_id)[1]
+            assert _find_run_input(random_lines["inputs"], "num_lines")["value"] == "2"
+            assert _find_run_input(random_lines["inputs"], "seed")["value"] == "${seedme}"
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_invocation_subworkflow(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_NESTED_RUNTIME_PARAMETER,
+                test_data={
+                    "step_parameters": {"1": {"1|num_lines": 2}},
+                    "outer_input": {"value": "1.bed", "type": "File"},
+                },
+                history_id=history_id,
+            )
+            nested_workflow = self._run_form_steps(summary.invocation_id, history_id)[1]
+            assert _find_run_input(nested_workflow["inputs"], "1|num_lines")["value"] == 2
+
+    @skip_without_tool("cat")
+    def test_run_form_seeded_from_invocation_with_deleted_dataset(self):
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: data
+steps:
+  the_pause:
+    type: pause
+    in:
+      input: input1
+  first_cat:
+    tool_id: cat
+    in:
+      input1: the_pause
+""")
+            to_delete_id = self.dataset_populator.new_dataset(history_id, wait=True)["id"]
+            valid_hda = self.dataset_populator.new_dataset(history_id, wait=True)
+            invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id,
+                history_id=history_id,
+                inputs={"input1": {"src": "hda", "id": valid_hda["id"]}},
+                request={
+                    "parameters": dumps({"2": {"input1": {"src": "hda", "id": to_delete_id}}}),
+                    "parameters_normalized": True,
+                },
+                inputs_by="name",
+            )
+            self.dataset_populator.delete_dataset(
+                history_id=history_id, content_id=to_delete_id, purge=True, wait_for_purge=True
+            )
+            # A recorded value that is no longer valid must not break the rerun form, and is left out.
+            seeded_input = _find_run_input(self._run_form_steps(invocation_id, history_id)[2]["inputs"], "input1")
+            unseeded_steps = self._run_form_steps(invocation_id, history_id, seeded=False)
+            assert seeded_input["value"] == _find_run_input(unseeded_steps[2]["inputs"], "input1")["value"]
+            assert to_delete_id not in json.dumps(seeded_input["value"])
+
+    @skip_without_tool("random_lines1")
+    def test_run_form_seeding_requires_invocation_access(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_runtime_parameter_simple(history_id, {"1": {"num_lines": 2}})
+        self.workflow_populator.make_public(summary.workflow_id)
+        with self._different_user():
+            other_history_id = self.dataset_populator.new_history()
+            response = self._get(
+                f"workflows/{summary.workflow_id}/download",
+                data={"style": "run", "history_id": other_history_id, "invocation_id": summary.invocation_id},
+            )
+            self._assert_status_code_is(response, 403)
+
+    def _run_runtime_parameter_simple(self, history_id: str, step_parameters: dict) -> RunJobsSummary:
+        return self.workflow_populator.run_workflow(
+            WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
+            test_data={"step_parameters": step_parameters, "input1": {"value": "1.bed", "type": "File"}},
+            history_id=history_id,
+        )
+
+    def _run_form_steps(self, invocation_id: str, history_id: str, seeded: bool = True) -> list[dict]:
+        request = self.workflow_populator.invocation_to_request(invocation_id)
+        run_dict = self.workflow_populator.download_workflow(
+            request["workflow_id"],
+            style="run",
+            instance=True,
+            history_id=history_id,
+            invocation_id=invocation_id if seeded else None,
+        )
+        return run_dict["steps"]
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

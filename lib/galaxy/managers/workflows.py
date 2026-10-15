@@ -1139,6 +1139,7 @@ class WorkflowContentsManager(UsesAnnotations):
         history: History | None = None,
         instance_id: int | None = None,
         preserve_external_subworkflow_links: bool = False,
+        invocation: WorkflowInvocation | None = None,
     ) -> dict[str, Any]:
         """Export the workflow contents to a dictionary ready for JSON-ification and to be
         sent out via API for instance. There are three styles of export allowed 'export', 'instance', and
@@ -1151,6 +1152,9 @@ class WorkflowContentsManager(UsesAnnotations):
         If preserve_external_subworkflow_links is True, subworkflow steps whose subworkflow has
         source_metadata (indicating it was fetched from a URL or TRS) will preserve the external
         reference instead of embedding the full subworkflow content.
+
+        The 'run' style seeds tool and subworkflow steps with ``invocation``'s step parameters,
+        if it is an invocation of this workflow version.
         """
 
         def to_format_2(wf_dict, **kwds):
@@ -1172,7 +1176,9 @@ class WorkflowContentsManager(UsesAnnotations):
         elif style == "instance":
             wf_dict = self._workflow_to_dict_instance(trans, stored, workflow=workflow, legacy=False)
         elif style == "run":
-            wf_dict = self._workflow_to_dict_run(trans, stored, workflow=workflow, history=history or trans.history)
+            wf_dict = self._workflow_to_dict_run(
+                trans, stored, workflow=workflow, history=history or trans.history, invocation=invocation
+            )
         elif style == "preview":
             wf_dict = self._workflow_to_dict_preview(trans, workflow=workflow)
         elif style == "format2":
@@ -1258,11 +1264,20 @@ class WorkflowContentsManager(UsesAnnotations):
                 f.write(wf_dict["yaml_content"])
 
     def _workflow_to_dict_run(
-        self, trans: ProvidesHistoryContext, stored: StoredWorkflow, workflow: Workflow, history: History | None = None
+        self,
+        trans: ProvidesHistoryContext,
+        stored: StoredWorkflow,
+        workflow: Workflow,
+        history: History | None = None,
+        invocation: WorkflowInvocation | None = None,
     ) -> dict[str, Any]:
         """
-        Builds workflow dictionary used by run workflow form
+        Builds workflow dictionary used by run workflow form, seeded with the step parameters
+        ``invocation`` ran with (for rerunning it).
         """
+        step_parameters: dict[int, dict[str, Any]] = {}
+        if invocation is not None and invocation.workflow_id == workflow.id:
+            step_parameters = invocation.recover_step_parameters()
         if len(workflow.steps) == 0:
             raise exceptions.MessageException("Workflow cannot be run because it does not have any steps.")
         if has_cycles(workflow):
@@ -1276,7 +1291,10 @@ class WorkflowContentsManager(UsesAnnotations):
         module_injector.inject_all(workflow, exact_tools=False, ignore_tool_missing_exception=True)
         for step in workflow.steps:
             try:
-                module_injector.compute_runtime_state(step)
+                if step.type == "tool" and (recorded := step_parameters.get(step.id)):
+                    self._compute_seeded_runtime_state(trans, module_injector, workflow, step, recorded)
+                else:
+                    module_injector.compute_runtime_state(step)
             except exceptions.ToolMissingException as e:
                 # FIXME: if a subworkflow lacks multiple tools we report only the first missing tool
                 if e.tool_id not in missing_tools:
@@ -1346,6 +1364,8 @@ class WorkflowContentsManager(UsesAnnotations):
                         accepted = input._acceptable_extensions()
                         input_dict["acceptable_extensions"] = sorted(accepted) if accepted else []
                     input_dicts.append(input_dict)
+                if step.type == "subworkflow" and (recorded := step_parameters.get(step.id)):
+                    self._seed_subworkflow_run_inputs(step, recorded, input_dicts)
                 step_model = {"inputs": input_dicts}
             step_model["when"] = step.when_expression
             step_model["replacement_parameters"] = step.module.get_informal_replacement_parameters(step)
@@ -1382,6 +1402,59 @@ class WorkflowContentsManager(UsesAnnotations):
             "has_upgrade_messages": has_upgrade_messages,
             "workflow_resource_parameters": self._workflow_resource_parameters(trans, stored, workflow),
         }
+
+    def _compute_seeded_runtime_state(
+        self,
+        trans: ProvidesHistoryContext,
+        module_injector: WorkflowModuleInjector,
+        workflow: Workflow,
+        step: model.WorkflowStep,
+        recorded: dict[str, Any],
+    ) -> None:
+        """Compute a tool step's runtime state from the values a previous run recorded for it.
+
+        Recorded values that no longer validate (e.g. a purged dataset) are left out.
+        """
+        module = step.module
+        if not isinstance(module, ToolModule) or module.tool is None:
+            # Let the unseeded path report the missing tool.
+            module_injector.compute_runtime_state(step)
+            return
+        step_args = self._untemplated_step_args(trans, module, recorded)
+        step_errors = module_injector.compute_runtime_state(step, step_args=step_args)
+        if step_errors:
+            # compute_runtime_state updates the module state in place - start over from the saved state.
+            module_injector.inject(step, steps=workflow.steps, exact_tools=False)
+            valid_args = {name: value for name, value in step_args.items() if name not in step_errors}
+            module_injector.compute_runtime_state(step, step_args=valid_args)
+
+    def _untemplated_step_args(
+        self, trans: ProvidesHistoryContext, module: ToolModule, step_args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Drop recorded values of inputs saved as ``${name}`` templates.
+
+        The run form substitutes these client-side, so the recorded value is the substituted
+        literal - seeding it would remove the workflow parameter from the form.
+        """
+        assert module.tool and module.state
+        saved_values: dict[str, Any] = {}
+        params_to_incoming(saved_values, module.tool.inputs, module.state.inputs, trans.app)
+        templated = {name for name, value in saved_values.items() if isinstance(value, str) and "${" in value}
+        return {name: value for name, value in step_args.items() if name not in templated}
+
+    def _seed_subworkflow_run_inputs(
+        self, step: model.WorkflowStep, recorded: dict[str, Any], input_dicts: list[dict[str, Any]]
+    ) -> None:
+        """Set a subworkflow step's run-time inputs to the values a previous run recorded for them."""
+        try:
+            values = step.step_parameters_by_index(recorded)
+        except (KeyError, ValueError):
+            # Rows naming inner steps of another workflow, e.g. those of an imported invocation.
+            log.warning(f"Skipping recorded parameters of subworkflow step {step.id} with unknown inner steps")
+            return
+        for input_dict in input_dicts:
+            if input_dict["name"] in values:
+                input_dict["value"] = values[input_dict["name"]]
 
     def _workflow_to_dict_preview(self, trans: ProvidesHistoryContext, workflow):
         """
