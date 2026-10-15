@@ -10571,6 +10571,21 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             attach_step(request_to_content)
             self.input_step_parameters.append(request_to_content)
 
+    def recover_step_parameters(self) -> dict[int, dict[str, Any]]:
+        """Run-time step parameters recorded for this request, keyed by workflow step id."""
+        step_parameters: dict[int, dict[str, Any]] = {}
+        for parameter in self.input_parameters:
+            if parameter.type != WorkflowRequestInputParameter.types.STEP_PARAMETERS:
+                continue
+            try:
+                step_id = int(parameter.name)
+            except (TypeError, ValueError):
+                raise galaxy.exceptions.InconsistentDatabase(
+                    "saved workflow step parameters not in the format expected"
+                )
+            step_parameters[step_id] = json.loads(parameter.value or "{}")
+        return step_parameters
+
     def recover_inputs(self) -> tuple[dict[str, Any], str]:
         inputs: dict[str, Any] = {}
         inputs_by = "name"

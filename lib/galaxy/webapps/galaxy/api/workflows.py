@@ -337,6 +337,10 @@ class WorkflowsAPIController(
         :param  instance:                 true if fetch by Workflow ID instead of StoredWorkflow id, false
                                           by default.
         :type   instance:                 boolean
+
+        :param  invocation_id:            with style 'run', seed tool and subworkflow steps with the
+                                          step parameters this invocation of the same workflow ran with.
+        :type   invocation_id:            str
         """
         instance = util.string_as_bool(kwd.get("instance", "false"))
         workflow_id = self.decode_id(workflow_id)
@@ -360,6 +364,9 @@ class WorkflowsAPIController(
         preserve_external_subworkflow_links = util.string_as_bool(
             kwd.get("preserve_external_subworkflow_links", "false")
         )
+        invocation = None
+        if invocation_id := kwd.get("invocation_id"):
+            invocation = self.workflow_manager.get_invocation(trans, self.decode_id(invocation_id))
         ret_dict = self.workflow_contents_manager.workflow_to_dict(
             trans,
             stored_workflow,
@@ -368,6 +375,7 @@ class WorkflowsAPIController(
             history=history,
             instance_id=instance_id,
             preserve_external_subworkflow_links=preserve_external_subworkflow_links,
+            invocation=invocation,
         )
         if download_format == "json-download":
             sname = stored_workflow.name
