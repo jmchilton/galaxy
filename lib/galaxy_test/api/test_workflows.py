@@ -5681,6 +5681,46 @@ some_file:
             # Verify workflow_step_id points to the conditional_step (step 2 in the subworkflow)
             assert message["workflow_step_id"] == 2
 
+    def test_subworkflow_parameter_validator_failure(self):
+        # The parent input has no validator, so the value is only checked when the subworkflow schedules.
+        workflow_id = self.workflow_populator.upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  outer_text: text
+steps:
+  nested:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_text: text
+      steps: {}
+    in:
+      inner_text: outer_text
+""")
+        # gxformat2 drops text parameter validators (https://github.com/galaxyproject/gxformat2/issues/264),
+        # so add one to the exported native subworkflow.
+        workflow = self.workflow_populator.download_workflow(workflow_id)
+        subworkflow = workflow["steps"]["1"]["subworkflow"]
+        inner_text_step = subworkflow["steps"]["0"]
+        assert inner_text_step["label"] == "inner_text"
+        tool_state = json.loads(inner_text_step["tool_state"])
+        tool_state["validators"] = [{"type": "regex", "expression": "^moo", "message": "must start with moo"}]
+        inner_text_step["tool_state"] = json.dumps(tool_state)
+        workflow_id = self.workflow_populator.create_workflow(workflow)
+        with self.dataset_populator.test_history() as history_id:
+            invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id, history_id=history_id, inputs={"0": "cow"}
+            )
+            self.workflow_populator.wait_for_invocation(workflow_id, invocation_id, assert_ok=False)
+            invocation_details = self.workflow_populator.get_invocation(invocation_id)
+            assert invocation_details["state"] == "failed"
+            assert len(invocation_details["messages"]) == 1
+            message = invocation_details["messages"][0]
+            assert message["reason"] == "workflow_parameter_invalid"
+            assert message["details"] == "Parameter 'input': must start with moo"
+            assert message["workflow_step_index_path"] == [1]
+            assert message["workflow_step_id"] == 0
+
     def test_workflow_request(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_queue")
         workflow_request, history_id, workflow_id = self._setup_workflow_run(workflow)
