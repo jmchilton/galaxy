@@ -4,6 +4,7 @@ import io
 import json
 import os
 import shutil
+import tarfile
 import time
 from json import dumps
 from tempfile import mkdtemp
@@ -89,6 +90,28 @@ from .sharable import SharingApiTests
 
 def _default_file_location(test_http_server) -> str:
     return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
+
+
+def _without_step_parameter_order_index(store_path: str) -> str:
+    """Rewrite an invocation archive as exported before step parameters recorded ``order_index``."""
+    legacy_store_path = os.path.join(mkdtemp(), "legacy.tgz")
+    stripped = 0
+    with tarfile.open(store_path) as source, tarfile.open(legacy_store_path, "w:gz") as dest:
+        for member in source.getmembers():
+            fileobj = source.extractfile(member) if member.isfile() else None
+            if fileobj and os.path.basename(member.name) == "invocation_attrs.txt":
+                invocations_attrs = json.load(fileobj)
+                for invocation_attrs in invocations_attrs:
+                    for input_parameter_attrs in invocation_attrs["input_parameters"]:
+                        if input_parameter_attrs.pop("order_index", None) is not None:
+                            del input_parameter_attrs["step_parameters"]
+                            stripped += 1
+                contents = json.dumps(invocations_attrs).encode()
+                member.size = len(contents)
+                fileobj = io.BytesIO(contents)
+            dest.addfile(member, fileobj)
+    assert stripped, "archive had no step parameters with an order_index"
+    return legacy_store_path
 
 
 NESTED_WORKFLOW_AUTO_LABELS_MODERN_SYNTAX = """
@@ -5678,6 +5701,53 @@ some_file:
         response = self.workflow_populator.invoke_workflow_raw(workflow_id, request)
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, err_msg)
+
+    @skip_without_tool("random_lines1")
+    @pytest.mark.parametrize(
+        "workflow,step_parameters,input_label",
+        [
+            (WORKFLOW_RUNTIME_PARAMETER_SIMPLE, {"1": {"num_lines": 2, "seed_source|seed": "moo"}}, "input1"),
+            (WORKFLOW_NESTED_RUNTIME_PARAMETER, {"1": {"1|num_lines": 2}}, "outer_input"),
+        ],
+        ids=["tool_step", "subworkflow_tool_step"],
+    )
+    def test_workflow_request_step_parameters_after_invocation_import(self, workflow, step_parameters, input_label):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                workflow,
+                test_data={"step_parameters": step_parameters, input_label: {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
+            store_path = self.workflow_populator.download_invocation_to_store(
+                summary.invocation_id, include_files=False, extension="tgz"
+            )
+        with self.dataset_populator.test_history() as reimport_history_id:
+            imported = self.workflow_populator.create_invocation_from_store(
+                history_id=reimport_history_id, store_path=store_path, model_store_format="tgz"
+            )
+            request = self.workflow_populator.invocation_to_request(imported[0]["id"])
+            assert request["parameters"] == step_parameters
+
+    @skip_without_tool("random_lines1")
+    def test_workflow_request_after_import_of_archive_without_step_parameter_order_index(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
+                test_data={"step_parameters": {"1": {"num_lines": 2}}, "input1": {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
+            store_path = self.workflow_populator.download_invocation_to_store(
+                summary.invocation_id, include_files=False, extension="tgz"
+            )
+        legacy_store_path = _without_step_parameter_order_index(store_path)
+        with self.dataset_populator.test_history() as reimport_history_id:
+            imported = self.workflow_populator.create_invocation_from_store(
+                history_id=reimport_history_id, store_path=legacy_store_path, model_store_format="tgz"
+            )
+            request = self.workflow_populator.invocation_to_request(imported[0]["id"])
+            # The stale step id can't be mapped onto the imported workflow, so its parameters are dropped.
+            assert request["parameters"] is None
+            assert request["inputs"]["input1"]["src"] == "hda"
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

@@ -377,12 +377,13 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
                     )
                     raise InconsistentDatabase("saved workflow step parameters not in the format expected") from e
                 if resolved is None:
-                    log.error(
-                        "Step parameters of invocation %s reference step id %s, not in the invocation's workflow",
+                    log.warning(
+                        "Skipping step parameters of invocation %s for step id %s, not in the invocation's workflow "
+                        "(imported from an archive without order_index?)",
                         invocation.id,
                         parameter.name,
                     )
-                    raise InconsistentDatabase("saved workflow step parameters reference an unknown workflow step")
+                    continue
                 step, step_parameters = resolved
                 step_param_map[str(step.order_index)] = step_parameters
 
