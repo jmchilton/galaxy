@@ -330,7 +330,7 @@ def build_workflow_run_configs(
         raise exceptions.RequestParameterInvalidException(
             "Cannot specify both legacy parameters and step_parameters attributes."
         )
-    if "inputs" in payload and "ds_map" in payload:
+    if payload.get("inputs") is not None and payload.get("ds_map"):
         raise exceptions.RequestParameterInvalidException("Cannot specify both legacy ds_map and input attributes.")
 
     add_to_history = not payload.get("no_add_to_history", False)
