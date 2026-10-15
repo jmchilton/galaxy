@@ -199,7 +199,7 @@ export function useInvocationGraph(
             }
 
             /** The raw invocation step */
-            const invocationStep = invocation.value.steps[i];
+            const invocationStep = invocation.value.steps.find((step) => step.order_index === i);
 
             // TODO: What if the state of something not in the stepsJobsSummary has changed? (e.g.: subworkflows...)
             /** if the steps have not been populated or the job states have changed, update the step */
