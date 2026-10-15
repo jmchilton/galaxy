@@ -10,9 +10,30 @@ from galaxy.workflow.run_request import (
     _normalize_inputs,
     _normalize_step_parameters,
 )
-from .workflow_support import MockTrans
+from .workflow_support import (
+    MockTrans,
+    yaml_to_model,
+)
 
 STEP_ID_OFFSET = 4  # Offset a little so ids and order index are different.
+
+NESTED_SUBWORKFLOW_YAML = """
+steps:
+  - type: data_input
+    tool_inputs: {name: outer_input}
+  - type: subworkflow
+    subworkflow:
+      steps:
+        - type: data_input
+          tool_inputs: {name: inner_input}
+        - type: tool
+          tool_id: random_lines1
+        - type: subworkflow
+          subworkflow:
+            steps:
+              - type: tool
+                tool_id: random_lines1
+"""
 
 
 @pytest.mark.parametrize("legacy", [False, True])
@@ -56,8 +77,7 @@ def test_step_parameters_legacy():
 
 
 def test_nested_subworkflow_step_parameters_round_trip():
-    trans = MockTrans()
-    workflow = __nested_subworkflow_fixture(trans)
+    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
     subworkflow_step = workflow.step_by_index(1)
     tool_step = subworkflow_step.subworkflow.step_by_index(1)
     nested_step = subworkflow_step.subworkflow.step_by_index(2)
@@ -79,7 +99,7 @@ def test_nested_subworkflow_step_parameters_round_trip():
 
 @pytest.mark.parametrize("key", ["9|num_lines", "x|num_lines", "num_lines"])
 def test_subworkflow_step_parameters_invalid_key(key):
-    workflow = __nested_subworkflow_fixture(MockTrans())
+    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
     with pytest.raises(RequestParameterInvalidException):
         _normalize_step_parameters(workflow.steps, {"1": {key: 2}}, already_normalized=True)
 
@@ -169,35 +189,4 @@ def __workflow_fixure(trans):
     workflow_id = workflow.id
     session.expunge_all()
 
-    return session.get(model.Workflow, workflow_id)
-
-
-def __nested_subworkflow_fixture(trans):
-    """Outer workflow whose step 1 runs a subworkflow with a tool (1) and a nested subworkflow (2)."""
-
-    def new_workflow(*steps):
-        workflow = model.Workflow()
-        for order_index, step_kwds in enumerate(steps):
-            workflow_step = model.WorkflowStep()
-            workflow_step.order_index = order_index
-            for key, value in step_kwds.items():
-                setattr(workflow_step, key, value)
-            workflow.steps.append(workflow_step)
-        return workflow
-
-    nested = new_workflow({"type": "tool", "tool_id": "random_lines1"})
-    subworkflow = new_workflow(
-        {"type": "data_input", "tool_inputs": {"name": "inner_input"}},
-        {"type": "tool", "tool_id": "random_lines1"},
-        {"type": "subworkflow", "subworkflow": nested},
-    )
-    workflow = new_workflow(
-        {"type": "data_input", "tool_inputs": {"name": "outer_input"}},
-        {"type": "subworkflow", "subworkflow": subworkflow},
-    )
-    session = trans.app.model.context
-    session.add(workflow)
-    session.commit()
-    workflow_id = workflow.id
-    session.expunge_all()
     return session.get(model.Workflow, workflow_id)

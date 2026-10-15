@@ -9629,7 +9629,8 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
     def step_parameters_by_index(self, param_dict: dict[str, Any]) -> dict[str, Any]:
         """Re-key stored subworkflow step parameters from inner step ids to ``"<inner order_index>|name"``.
 
-        Raises ``KeyError`` for an inner step id not in this subworkflow. No-op for other step types.
+        Raises ``ValueError`` for a non-numeric inner step id and ``KeyError`` for one not in this
+        subworkflow. No-op for other step types.
         """
         if self.type != "subworkflow":
             return param_dict

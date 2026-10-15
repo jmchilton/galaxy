@@ -5657,11 +5657,8 @@ some_file:
     def test_run_subworkflow_runtime_parameters_invalid_key(self):
         with self.dataset_populator.test_history() as history_id:
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_NESTED_RUNTIME_PARAMETER)
-            hda = self.dataset_populator.new_dataset(history_id, content="1\n2\n3", wait=True)
             request = {
                 "history_id": history_id,
-                "inputs": {"0": {"src": "hda", "id": hda["id"]}},
-                "inputs_by": "step_index",
                 "parameters": {"1": {"num_lines": 2}},
                 "parameters_normalized": True,
             }
