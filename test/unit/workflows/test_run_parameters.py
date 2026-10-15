@@ -3,7 +3,6 @@ import json
 import pytest
 
 from galaxy import model
-from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.workflow.run_request import (
@@ -95,13 +94,6 @@ def test_nested_subworkflow_step_parameters_round_trip():
     # Stored as JSON, so inner step ids come back as strings.
     stored = json.loads(json.dumps(normalized[subworkflow_step.id]))
     assert subworkflow_step.step_parameters_by_index(stored) == by_index
-
-
-@pytest.mark.parametrize("key", ["9|num_lines", "x|num_lines", "num_lines"])
-def test_subworkflow_step_parameters_invalid_key(key):
-    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
-    with pytest.raises(RequestParameterInvalidException):
-        _normalize_step_parameters(workflow.steps, {"1": {key: 2}}, already_normalized=True)
 
 
 def test_inputs_by_step_id():
