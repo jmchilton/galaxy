@@ -18392,7 +18392,7 @@ export interface components {
             new_history_name?: string | null;
             /**
              * No Add to History
-             * @description Indicates if the workflow invocation should not be added to the history.
+             * @description If true, inputs from other histories or data libraries are not copied into the target history.
              * @default false
              */
             no_add_to_history: boolean | null;
