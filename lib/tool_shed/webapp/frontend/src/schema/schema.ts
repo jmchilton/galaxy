@@ -1485,7 +1485,7 @@ export interface components {
              * @default unrestricted
              * @enum {string}
              */
-            type: "repository_suite_definition" | "tool_dependency_definition" | "unrestricted"
+            type?: "repository_suite_definition" | "tool_dependency_definition" | "unrestricted"
         }
         /** CreateUserRequest */
         CreateUserRequest: {
@@ -4200,7 +4200,7 @@ export interface components {
              * Logout All
              * @default false
              */
-            logout_all: boolean
+            logout_all?: boolean
             /** Session Csrf Token */
             session_csrf_token: string
         }
