@@ -5739,6 +5739,10 @@ some_file:
             # The stale step id can't be mapped onto the imported workflow, so its parameters are dropped.
             assert request["parameters"] is None
             assert request["inputs"]["input1"]["src"] == "hda"
+            # Re-exporting the imported invocation must not fail on the unresolvable row.
+            self.workflow_populator.download_invocation_to_store(
+                imported[0]["id"], include_files=False, extension="tgz"
+            )
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

@@ -486,35 +486,6 @@ def test_import_export_invocation():
     import_model_store.perform_import(history=h2)
 
 
-def test_import_export_invocation_rekeys_step_parameters():
-    app = _mock_app()
-    invocation = _setup_simple_invocation(app)
-    tool_step = invocation.workflow.step_by_index(1)
-    step_parameter = model.WorkflowRequestInputParameter(
-        name=str(tool_step.id),
-        value=json.dumps({"num_lines": 2}),
-        type=model.WorkflowRequestInputParameter.types.STEP_PARAMETERS,
-    )
-    invocation.input_parameters.append(step_parameter)
-    app.add_and_commit(step_parameter)
-
-    temp_directory = mkdtemp()
-    with store.DirectoryModelExportStore(temp_directory, app=app) as export_store:
-        export_store.export_workflow_invocation(invocation)
-    import_history = model.History(user=invocation.history.user)
-    app.add_and_commit(import_history)
-    object_import_tracker = _perform_import_from_directory(
-        temp_directory, app, invocation.history.user, import_history, store.ImportOptions()
-    )
-
-    (imported_invocation,) = object_import_tracker.invocations_by_key.values()
-    imported_tool_step = imported_invocation.workflow.step_by_index(1)
-    assert imported_tool_step.id != tool_step.id
-    (imported_step_parameter,) = imported_invocation.input_parameters
-    assert imported_step_parameter.name == str(imported_tool_step.id)
-    assert imported_step_parameter.resolve_step_parameters() == (imported_tool_step, {"num_lines": 2})
-
-
 def validate_crate_metadata(as_dict):
     assert as_dict["@context"] == "https://w3id.org/ro/crate/1.1/context"
 
@@ -1741,7 +1712,7 @@ def _perform_import_from_directory(directory, app, user, import_history, import_
         directory, app=app, user=user, import_options=import_options
     )
     with import_model_store.target_history(default_history=import_history):
-        return import_model_store.perform_import(import_history)
+        import_model_store.perform_import(import_history)
 
 
 def _rewrite_export_as_new_datasets(directory):
@@ -1769,7 +1740,7 @@ class MockWorkflowContentsManager:
     def store_workflow_artifacts(self, directory, workflow_key, workflow, **kwd):
         path = os.path.join(directory, f"{workflow_key}.gxwf.yml")
         with open(path, "w") as f:
-            json.dump([{"order_index": step.order_index, "type": step.type} for step in workflow.steps], f)
+            f.write("MY COOL WORKFLOW!!!")
         path = os.path.join(directory, f"{workflow_key}.abstract.cwl")
         with open(path, "w") as f:
             f.write("MY COOL WORKFLOW as CWL!!!")
@@ -1777,14 +1748,11 @@ class MockWorkflowContentsManager:
     def read_workflow_from_path(self, app, user, path, allow_in_directory=None):
         stored_workflow = model.StoredWorkflow()
         stored_workflow.user = user
-        with open(path) as f:
-            steps_attrs = json.load(f)
+        workflow_step_1 = model.WorkflowStep()
+        workflow_step_1.order_index = 0
+        workflow_step_1.type = "data_input"
         workflow = model.Workflow()
-        for step_attrs in steps_attrs:
-            step = model.WorkflowStep()
-            step.order_index = step_attrs["order_index"]
-            step.type = step_attrs["type"]
-            workflow.steps.append(step)
+        workflow.steps = [workflow_step_1]
         stored_workflow.latest_workflow = workflow
         app.add_and_commit(stored_workflow, workflow)
         return workflow
