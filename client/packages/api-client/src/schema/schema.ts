@@ -7925,7 +7925,7 @@ export interface components {
              * @description Preferred agent type ('auto' for routing)
              * @default auto
              */
-            agent_type: string;
+            agent_type?: string;
             /**
              * Context
              * @description Additional context for the query
@@ -8019,7 +8019,7 @@ export interface components {
              * @description Whether to purge the history after archiving it. It requires an `archive_export_id` to be set.
              * @default false
              */
-            purge_history: boolean;
+            purge_history?: boolean;
         };
         /** ArchivedHistoryDetailed */
         ArchivedHistoryDetailed: {
@@ -8469,7 +8469,7 @@ export interface components {
              * All Datasets
              * @default true
              */
-            all_datasets: unknown;
+            all_datasets?: unknown;
             /** Archive File */
             archive_file?: unknown;
             /** Archive Source */
@@ -8478,7 +8478,7 @@ export interface components {
              * Archive Type
              * @default url
              */
-            archive_type: unknown;
+            archive_type?: unknown;
             /** History Id */
             history_id?: unknown;
             /** Name */
@@ -8512,7 +8512,7 @@ export interface components {
              * Dbkey
              * @default ?
              */
-            dbkey: unknown;
+            dbkey?: unknown;
             /** Extended Metadata */
             extended_metadata?: unknown;
             /** File Type */
@@ -8523,7 +8523,7 @@ export interface components {
              * Filesystem Paths
              * @default
              */
-            filesystem_paths: unknown;
+            filesystem_paths?: unknown;
             /** Folder Id */
             folder_id: unknown;
             /** From Hda Id */
@@ -8534,39 +8534,39 @@ export interface components {
              * Ldda Message
              * @default
              */
-            ldda_message: unknown;
+            ldda_message?: unknown;
             /**
              * Link Data Only
              * @default copy_files
              */
-            link_data_only: unknown;
+            link_data_only?: unknown;
             /**
              * Roles
              * @default
              */
-            roles: unknown;
+            roles?: unknown;
             /**
              * Server Dir
              * @default
              */
-            server_dir: unknown;
+            server_dir?: unknown;
             /**
              * Tag Using Filenames
              * @default false
              */
-            tag_using_filenames: unknown;
+            tag_using_filenames?: unknown;
             /**
              * Tags
              * @default []
              */
-            tags: unknown;
+            tags?: unknown;
             /** Upload Files */
             upload_files?: unknown;
             /**
              * Upload Option
              * @default upload_file
              */
-            upload_option: unknown;
+            upload_option?: unknown;
             /** Uuid */
             uuid?: unknown;
         };
@@ -8704,7 +8704,7 @@ export interface components {
              * @default broadcast
              * @constant
              */
-            category: "broadcast";
+            category?: "broadcast";
             /**
              * Content
              * @description The content of the broadcast notification. Broadcast notifications are displayed prominently to all users and can contain action links to redirect the user to a specific page.
@@ -8960,7 +8960,7 @@ export interface components {
              * Stream
              * @default false
              */
-            stream: boolean | null;
+            stream?: boolean | null;
             stream_options?: components["schemas"]["ChatCompletionStreamOptionsParam"] | null;
             /** Tool Choice */
             tool_choice?:
@@ -9070,7 +9070,7 @@ export interface components {
              * @description The context for the chatbot.
              * @default
              */
-            context: string | null;
+            context?: string | null;
             /**
              * Entity Context
              * @description Structured entity references resolved from @mentions in the query.
@@ -9270,12 +9270,12 @@ export interface components {
              * Dbkey
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Ext */
             ext: string;
             /** Hashes */
@@ -9293,7 +9293,7 @@ export interface components {
              * Space To Tab
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /** Src */
             src?: null;
             /** Tags */
@@ -9302,7 +9302,7 @@ export interface components {
              * To Posix Lines
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
             /** Url */
             url: string;
         };
@@ -9429,7 +9429,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             composite: components["schemas"]["CompositeItems"];
@@ -9444,7 +9444,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -9452,7 +9452,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -9462,7 +9462,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -9489,7 +9489,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -9510,7 +9510,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** CompositeFileInfo */
         CompositeFileInfo: {
@@ -9566,7 +9566,7 @@ export interface components {
              * @description Hash function name to use to compute dataset hashes.
              * @default MD5
              */
-            hash_function: components["schemas"]["HashFunctionNameEnum"] | null;
+            hash_function?: components["schemas"]["HashFunctionNameEnum"] | null;
         };
         /** ConcreteObjectStoreModel */
         ConcreteObjectStoreModel: {
@@ -9818,7 +9818,7 @@ export interface components {
              * Public
              * @default false
              */
-            public: boolean;
+            public?: boolean;
             request_state: components["schemas"]["DataLandingRequestState"];
         };
         /** CreateEntryPayload */
@@ -9845,7 +9845,7 @@ export interface components {
              * Public
              * @default false
              */
-            public: boolean;
+            public?: boolean;
             /** Request State */
             request_state: (
                 | components["schemas"]["FileRequestUri"]
@@ -9859,7 +9859,7 @@ export interface components {
              * @description How to handle datasets with unavailable data. 'forbid': mark as deleted, 'allow': import as discarded but not deleted, 'force': import all datasets as discarded regardless of whether file data is available (useful for importing metadata only).
              * @default allow
              */
-            discarded_data: components["schemas"]["DiscardedDataType"];
+            discarded_data?: components["schemas"]["DiscardedDataType"];
             model_store_format?: components["schemas"]["ModelStoreFormat"] | null;
             /** Store Content Uri */
             store_content_uri?: string | null;
@@ -9894,7 +9894,7 @@ export interface components {
              * @description If the source is a collection, whether to copy child HDAs into the target history as well. Prior to the galaxy release 23.1 this defaulted to false.
              * @default true
              */
-            copy_elements: boolean | null;
+            copy_elements?: boolean | null;
             /**
              * DBKey
              * @description TODO
@@ -9910,7 +9910,7 @@ export interface components {
              * @description List of fields to create for this collection. Set to 'auto' to guess fields from identifiers.
              * @default []
              */
-            fields: string | components["schemas"]["FieldDict"][] | null;
+            fields?: string | components["schemas"]["FieldDict"][] | null;
             /**
              * Folder Id
              * @description The ID of the library folder that will contain the collection. Required if `instance_type=library`.
@@ -9921,7 +9921,7 @@ export interface components {
              * @description Whether to mark the original HDAs as hidden.
              * @default false
              */
-            hide_source_items: boolean | null;
+            hide_source_items?: boolean | null;
             /**
              * History Id
              * @description The ID of the history that will contain the collection. Required if `instance_type=history`.
@@ -9932,7 +9932,7 @@ export interface components {
              * @description The type of the instance, either `history` (default) or `library`.
              * @default history
              */
-            instance_type: ("history" | "library") | null;
+            instance_type?: ("history" | "library") | null;
             /**
              * Name
              * @description The name of the new collection.
@@ -9955,7 +9955,7 @@ export interface components {
              * @description The type of content to be created in the history.
              * @default dataset
              */
-            type: components["schemas"]["HistoryContentType"] | null;
+            type?: components["schemas"]["HistoryContentType"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -9966,7 +9966,7 @@ export interface components {
              * @description How to handle datasets with unavailable data. 'forbid': mark as deleted, 'allow': import as discarded but not deleted, 'force': import all datasets as discarded regardless of whether file data is available (useful for importing metadata only).
              * @default allow
              */
-            discarded_data: components["schemas"]["DiscardedDataType"];
+            discarded_data?: components["schemas"]["DiscardedDataType"];
             model_store_format?: components["schemas"]["ModelStoreFormat"] | null;
             /** Store Content Uri */
             store_content_uri?: string | null;
@@ -10003,7 +10003,7 @@ export interface components {
              * @description How to handle datasets with unavailable data. 'forbid': mark as deleted, 'allow': import as discarded but not deleted, 'force': import all datasets as discarded regardless of whether file data is available (useful for importing metadata only).
              * @default allow
              */
-            discarded_data: components["schemas"]["DiscardedDataType"];
+            discarded_data?: components["schemas"]["DiscardedDataType"];
             /**
              * History ID
              * @description The ID of the history associated with the invocations.
@@ -10019,14 +10019,14 @@ export interface components {
              *             are not the mapped over step outputs but the individual job outputs.
              * @default false
              */
-            legacy_job_state: boolean;
+            legacy_job_state?: boolean;
             model_store_format?: components["schemas"]["ModelStoreFormat"] | null;
             /**
              * Include step details
              * @description Include details for individual invocation steps and populate a steps attribute in the resulting dictionary
              * @default false
              */
-            step_details: boolean;
+            step_details?: boolean;
             /** Store Content Uri */
             store_content_uri?: string | null;
             /** Store Dict */
@@ -10047,7 +10047,7 @@ export interface components {
              * @description How to handle datasets with unavailable data. 'forbid': mark as deleted, 'allow': import as discarded but not deleted, 'force': import all datasets as discarded regardless of whether file data is available (useful for importing metadata only).
              * @default allow
              */
-            discarded_data: components["schemas"]["DiscardedDataType"];
+            discarded_data?: components["schemas"]["DiscardedDataType"];
             model_store_format?: components["schemas"]["ModelStoreFormat"] | null;
             /** Store Content Uri */
             store_content_uri?: string | null;
@@ -10073,7 +10073,7 @@ export interface components {
              * @description The new message attribute of the LDDA created.
              * @default
              */
-            ldda_message: string | null;
+            ldda_message?: string | null;
         };
         /** CreateLibraryFolderPayload */
         CreateLibraryFolderPayload: {
@@ -10082,7 +10082,7 @@ export interface components {
              * @description A detailed description of the library folder.
              * @default
              */
-            description: string | null;
+            description?: string | null;
             /**
              * Name
              * @description The name of the library folder.
@@ -10096,7 +10096,7 @@ export interface components {
              * @description A detailed description of the Library.
              * @default
              */
-            description: string | null;
+            description?: string | null;
             /**
              * Name
              * @description The name of the Library.
@@ -10107,7 +10107,7 @@ export interface components {
              * @description A short text describing the contents of the Library.
              * @default
              */
-            synopsis: string | null;
+            synopsis?: string | null;
         };
         /** CreateLinkFeedback */
         CreateLinkFeedback: {
@@ -10165,7 +10165,7 @@ export interface components {
              * @description Whether to create a copy of the source HDAs for the new collection.
              * @default true
              */
-            copy_elements: boolean | null;
+            copy_elements?: boolean | null;
             /**
              * Element Identifiers
              * @description List of elements that should be in the new collection.
@@ -10176,7 +10176,7 @@ export interface components {
              * @description List of fields to create for this collection. Set to 'auto' to guess fields from identifiers.
              * @default []
              */
-            fields: string | components["schemas"]["FieldDict"][] | null;
+            fields?: string | components["schemas"]["FieldDict"][] | null;
             /**
              * Folder Id
              * @description The ID of the library folder that will contain the collection. Required if `instance_type=library`.
@@ -10187,7 +10187,7 @@ export interface components {
              * @description Whether to mark the original HDAs as hidden.
              * @default false
              */
-            hide_source_items: boolean | null;
+            hide_source_items?: boolean | null;
             /**
              * History Id
              * @description The ID of the history that will contain the collection. Required if `instance_type=history`.
@@ -10198,7 +10198,7 @@ export interface components {
              * @description The type of the instance, either `history` (default) or `library`.
              * @default history
              */
-            instance_type: ("history" | "library") | null;
+            instance_type?: ("history" | "library") | null;
             /**
              * Name
              * @description The name of the new collection.
@@ -10224,13 +10224,13 @@ export interface components {
              * @description Text contents of the last page revision with embedded directives expanded (type dependent on content_format).
              * @default
              */
-            content: string | null;
+            content?: string | null;
             /**
              * Content format
              * @description Either `markdown` or `html`.
              * @default html
              */
-            content_format: components["schemas"]["PageContentFormat"];
+            content_format?: components["schemas"]["PageContentFormat"];
             /**
              * History ID
              * @description Encoded ID of the history to attach this page to.
@@ -10266,7 +10266,7 @@ export interface components {
              * @description Whether or not this is a default quota. Valid values are ``no``, ``unregistered``, ``registered``. None is equivalent to ``no``.
              * @default no
              */
-            default: components["schemas"]["DefaultQuotaValues"];
+            default?: components["schemas"]["DefaultQuotaValues"];
             /**
              * Description
              * @description Detailed text description for this Quota.
@@ -10277,13 +10277,13 @@ export interface components {
              * @description A list of group IDs or names to associate with this quota.
              * @default []
              */
-            in_groups: string[] | null;
+            in_groups?: string[] | null;
             /**
              * Users
              * @description A list of user IDs or user emails to associate with this quota.
              * @default []
              */
-            in_users: string[] | null;
+            in_users?: string[] | null;
             /**
              * Name
              * @description The name of the quota. This must be unique within a Galaxy instance.
@@ -10294,7 +10294,7 @@ export interface components {
              * @description Quotas can have one of three `operations`:- `=` : The quota is exactly the amount specified- `+` : The amount specified will be added to the amounts of the user's other associated quota definitions- `-` : The amount specified will be subtracted from the amounts of the user's other associated quota definitions
              * @default =
              */
-            operation: components["schemas"]["QuotaOperation"];
+            operation?: components["schemas"]["QuotaOperation"];
             /**
              * Quota Source Label
              * @description If set, quota source label to apply this quota operation to. Otherwise, the default quota is used.
@@ -10371,7 +10371,7 @@ export interface components {
              * Public
              * @default false
              */
-            public: boolean;
+            public?: boolean;
             /** Request State */
             request_state?: {
                 [key: string]: unknown;
@@ -10420,7 +10420,7 @@ export interface components {
              * @default URI
              * @constant
              */
-            prefix_columns_type: "URI";
+            prefix_columns_type?: "URI";
             /** Prefix Values */
             prefix_values?: (number | boolean | string | null)[][] | null;
             /**
@@ -10428,7 +10428,7 @@ export interface components {
              * @description A short title to give the workbook.
              * @default Sample Sheet for Galaxy
              */
-            title: string;
+            title?: string;
         };
         /** CreateWorkflowLandingRequestPayload */
         CreateWorkflowLandingRequestPayload: {
@@ -10444,7 +10444,7 @@ export interface components {
              * @description If workflow landing request is public anyone with the uuid can use the landing request. If not public the request must be claimed before use and additional verification might occur.
              * @default false
              */
-            public: boolean;
+            public?: boolean;
             /** Request State */
             request_state?: {
                 [key: string]: unknown;
@@ -11565,7 +11565,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Destination */
             destination:
                 | components["schemas"]["HdaDestination"]
@@ -11591,7 +11591,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Destination */
             destination:
                 | components["schemas"]["HdaDestination"]
@@ -11715,7 +11715,7 @@ export interface components {
              * Deferred
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Elements */
             elements: (
                 | components["schemas"]["CollectionElementCollectionRequestUri"]
@@ -12282,7 +12282,7 @@ export interface components {
              * @description Whether to permanently delete from disk the specified datasets. *Warning*: this is a destructive operation.
              * @default false
              */
-            purge: boolean | null;
+            purge?: boolean | null;
         };
         /** DeleteDatasetBatchResult */
         DeleteDatasetBatchResult: {
@@ -12309,7 +12309,7 @@ export interface components {
              * @description Whether to definitely remove this history from disk.
              * @default false
              */
-            purge: boolean;
+            purge?: boolean;
         };
         /** DeleteHistoryContentPayload */
         DeleteHistoryContentPayload: {
@@ -12318,19 +12318,19 @@ export interface components {
              * @description Whether to remove the dataset from storage. Datasets will only be removed from storage once all HDAs or LDDAs that refer to this datasets are deleted.
              * @default false
              */
-            purge: boolean;
+            purge?: boolean;
             /**
              * Recursive
              * @description When deleting a dataset collection, whether to also delete containing datasets.
              * @default false
              */
-            recursive: boolean;
+            recursive?: boolean;
             /**
              * Stop Job
              * @description Whether to stop the creating job if all the job's outputs are deleted.
              * @default false
              */
-            stop_job: boolean;
+            stop_job?: boolean;
         };
         /** DeleteHistoryPayload */
         DeleteHistoryPayload: {
@@ -12339,7 +12339,7 @@ export interface components {
              * @description Whether to definitely remove this history from disk.
              * @default false
              */
-            purge: boolean;
+            purge?: boolean;
         };
         /** DeleteJobPayload */
         DeleteJobPayload: {
@@ -12364,7 +12364,7 @@ export interface components {
              * @description Whether to also purge the Quota after deleting it.
              * @default false
              */
-            purge: boolean;
+            purge?: boolean;
         };
         /** DeletedCustomBuild */
         DeletedCustomBuild: {
@@ -12724,12 +12724,12 @@ export interface components {
              * Active
              * @default true
              */
-            active: boolean | null;
+            active?: boolean | null;
             /**
              * Hidden
              * @default false
              */
-            hidden: boolean | null;
+            hidden?: boolean | null;
             /** Representation */
             representation: components["schemas"]["UserToolSource-Input"] | components["schemas"]["YamlToolSource"];
             /**
@@ -12737,7 +12737,7 @@ export interface components {
              * @default representation
              * @constant
              */
-            src: "representation";
+            src?: "representation";
         };
         /** DynamicUnprivilegedToolCreatePayload */
         DynamicUnprivilegedToolCreatePayload: {
@@ -12745,19 +12745,19 @@ export interface components {
              * Active
              * @default true
              */
-            active: boolean | null;
+            active?: boolean | null;
             /**
              * Hidden
              * @default false
              */
-            hidden: boolean | null;
+            hidden?: boolean | null;
             representation: components["schemas"]["UserToolSource-Input"];
             /**
              * Src
              * @default representation
              * @constant
              */
-            src: "representation";
+            src?: "representation";
         };
         /**
          * ElementsFromType
@@ -13059,7 +13059,7 @@ export interface components {
              * @description The display name of the entity.
              * @default
              */
-            name: string;
+            name?: string;
             /** State */
             state?: string | null;
             /**
@@ -13106,19 +13106,19 @@ export interface components {
              * @description Whether to export as gzip archive.
              * @default true
              */
-            gzip: boolean | null;
+            gzip?: boolean | null;
             /**
              * Include Deleted
              * @description Whether to include deleted datasets in the exported archive.
              * @default false
              */
-            include_deleted: boolean | null;
+            include_deleted?: boolean | null;
             /**
              * Include Hidden
              * @description Whether to include hidden datasets in the exported archive.
              * @default false
              */
-            include_hidden: boolean | null;
+            include_hidden?: boolean | null;
         };
         /** ExportObjectMetadata */
         ExportObjectMetadata: {
@@ -13247,7 +13247,7 @@ export interface components {
              * @description Prevent Galaxy from checking for a single file in a directory and re-interpreting the archive
              * @default true
              */
-            fuzzy_root: boolean | null;
+            fuzzy_root?: boolean | null;
             /** Items From */
             items_from?: string | null;
             src: components["schemas"]["Src"];
@@ -13493,7 +13493,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -13507,7 +13507,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -13515,7 +13515,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -13525,7 +13525,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -13548,7 +13548,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -13569,7 +13569,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** FileDefaultsAction */
         FileDefaultsAction: {
@@ -13737,12 +13737,12 @@ export interface components {
              * Dbkey
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Ext */
             ext: string;
             /** Hashes */
@@ -13755,7 +13755,7 @@ export interface components {
              * Space To Tab
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /** Src */
             src?: null;
             /** Tags */
@@ -13764,7 +13764,7 @@ export interface components {
              * To Posix Lines
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
             /** Url */
             url: string;
         };
@@ -13955,17 +13955,17 @@ export interface components {
              * Deduplication Index From
              * @default 1
              */
-            deduplication_index_from: number;
+            deduplication_index_from?: number;
             /**
              * Deduplication Pattern
              * @default _{#}
              */
-            deduplication_pattern: string;
+            deduplication_pattern?: string;
             /**
              * Fill Inner List Identifiers
              * @default false
              */
-            fill_inner_list_identifiers: boolean;
+            fill_inner_list_identifiers?: boolean;
         };
         /** FillStepDefaultsAction */
         FillStepDefaultsAction: {
@@ -14110,7 +14110,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -14124,7 +14124,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -14132,7 +14132,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -14142,7 +14142,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Ftp Path */
             ftp_path: string;
@@ -14167,7 +14167,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -14188,7 +14188,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** FtpImportTarget */
         FtpImportTarget: {
@@ -14199,7 +14199,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Column Definitions */
@@ -14351,19 +14351,19 @@ export interface components {
              * @description If true, create a new role with the same name as the group and associate it.
              * @default false
              */
-            auto_create_role: boolean;
+            auto_create_role?: boolean;
             /** name of the group */
             name: string;
             /**
              * role IDs
              * @default []
              */
-            role_ids: string[];
+            role_ids?: string[];
             /**
              * user IDs
              * @default []
              */
-            user_ids: string[];
+            user_ids?: string[];
         };
         /**
          * GroupListResponse
@@ -15945,7 +15945,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Column Definitions */
@@ -15979,7 +15979,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Column Definitions */
@@ -17017,7 +17017,7 @@ export interface components {
              * @description Set true when `from_work_dir` names a produced directory for a composite datatype. Galaxy copies the directory contents into the output dataset's extra-files area.
              * @default false
              */
-            precreate_directory: boolean | null;
+            precreate_directory?: boolean | null;
             /**
              * @description Creates one history dataset from a file produced by the command. (enum property replaced by openapi-typescript)
              * @enum {string}
@@ -18331,20 +18331,20 @@ export interface components {
              * @description Indicates if tool state corrections are allowed for workflow invocation.
              * @default false
              */
-            allow_tool_state_corrections: boolean | null;
+            allow_tool_state_corrections?: boolean | null;
             /**
              * Batch
              * @description Indicates if the workflow is invoked as a batch.
              * @default false
              */
-            batch: boolean | null;
+            batch?: boolean | null;
             /**
              * Legacy Dataset Map
              * @deprecated
              * @description An older alternative to specifying inputs using database IDs, do not use this and use inputs instead
              * @default {}
              */
-            ds_map: {
+            ds_map?: {
                 [key: string]: {
                     [key: string]: unknown;
                 };
@@ -18381,7 +18381,7 @@ export interface components {
              * @description True when fetching by Workflow ID, False when fetching by StoredWorkflow ID
              * @default false
              */
-            instance: boolean | null;
+            instance?: boolean | null;
             /**
              * Landing UUID
              * @description The UUID of the workflow landing request associated with this invocation.
@@ -18392,7 +18392,7 @@ export interface components {
              * @description Indicating if to use legacy workflow invocation.
              * @default false
              */
-            legacy: boolean | null;
+            legacy?: boolean | null;
             /**
              * New History Name
              * @description The name of the new history into which to import.
@@ -18403,7 +18403,7 @@ export interface components {
              * @description If true, inputs from other histories or data libraries are not copied into the target history.
              * @default false
              */
-            no_add_to_history: boolean | null;
+            no_add_to_history?: boolean | null;
             /**
              * On Complete Actions
              * @description List of actions to execute when the workflow invocation completes. Each action is an object with the action name as key and configuration as value. Available actions: 'send_notification' (notify user, no config required), 'export_to_file_source' (export results, requires target_uri). Example: [{'send_notification': {}}, {'export_to_file_source': {'target_uri': 'gxfiles://my_storage/exports/', 'format': 'rocrate.zip'}}]
@@ -18418,7 +18418,7 @@ export interface components {
              * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}.
              * @default {}
              */
-            parameters: {
+            parameters?: {
                 [key: string]: {
                     [key: string]: unknown;
                 };
@@ -18428,7 +18428,7 @@ export interface components {
              * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
              * @default false
              */
-            parameters_normalized: boolean | null;
+            parameters_normalized?: boolean | null;
             /**
              * Preferred Intermediate Object Store ID
              * @description The ID of the object store that should be used to store the intermediate datasets of this workflow -  - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences
@@ -18456,7 +18456,7 @@ export interface components {
              * @description If true, exact tool versions are required for workflow invocation.
              * @default true
              */
-            require_exact_tool_versions: boolean | null;
+            require_exact_tool_versions?: boolean | null;
             /**
              * Resource Parameters
              * @description If a workflow_resource_params_file file is defined and the target workflow is configured to consumer resource parameters, they can be specified with this parameter. See https://github.com/galaxyproject/galaxy/pull/4830 for more information.
@@ -18474,7 +18474,7 @@ export interface components {
              * @description Indicated whether to use a cached job for workflow invocation.
              * @default false
              */
-            use_cached_job: boolean | null;
+            use_cached_job?: boolean | null;
             /**
              * Version
              * @description The version of the workflow to invoke.
@@ -18977,13 +18977,13 @@ export interface components {
              * @description TODO
              * @default false
              */
-            send_email_notification: boolean;
+            send_email_notification?: boolean;
             /**
              * Strict
              * @description Turn on strict validation of the inputs that drops support for some inconsistent legacy behavior.
              * @default true
              */
-            strict: boolean;
+            strict?: boolean;
             /** Tags */
             tags?: string[] | null;
             /**
@@ -19179,25 +19179,25 @@ export interface components {
              * @description A list of role encoded IDs defining roles that should have access permission on the library.
              * @default []
              */
-            LIBRARY_ACCESS_in: string[] | string | null;
+            LIBRARY_ACCESS_in?: string[] | string | null;
             /**
              * Manage IDs
              * @description A list of role encoded IDs defining roles that should have manage permission on the library.
              * @default []
              */
-            LIBRARY_ADD_in: string[] | string | null;
+            LIBRARY_ADD_in?: string[] | string | null;
             /**
              * Modify IDs
              * @description A list of role encoded IDs defining roles that should have modify permission on the library.
              * @default []
              */
-            LIBRARY_MANAGE_in: string[] | string | null;
+            LIBRARY_MANAGE_in?: string[] | string | null;
             /**
              * Add IDs
              * @description A list of role encoded IDs defining roles that should be able to add items to the library.
              * @default []
              */
-            LIBRARY_MODIFY_in: string[] | string | null;
+            LIBRARY_MODIFY_in?: string[] | string | null;
         };
         /**
          * LengthParameterValidatorModel
@@ -19421,7 +19421,7 @@ export interface components {
              * @description if True, purge the library dataset
              * @default false
              */
-            purge: boolean;
+            purge?: boolean;
         };
         /** LibraryContentsDeleteResponse */
         LibraryContentsDeleteResponse: {
@@ -19915,19 +19915,19 @@ export interface components {
              * @description A list of role encoded IDs defining roles that should be able to add items to the library.
              * @default []
              */
-            "add_ids[]": string[] | string | null;
+            "add_ids[]"?: string[] | string | null;
             /**
              * Manage IDs
              * @description A list of role encoded IDs defining roles that should have manage permission on the library.
              * @default []
              */
-            "manage_ids[]": string[] | string | null;
+            "manage_ids[]"?: string[] | string | null;
             /**
              * Modify IDs
              * @description A list of role encoded IDs defining roles that should have modify permission on the library.
              * @default []
              */
-            "modify_ids[]": string[] | string | null;
+            "modify_ids[]"?: string[] | string | null;
         };
         /** LibraryLegacySummary */
         LibraryLegacySummary: {
@@ -19994,7 +19994,7 @@ export interface components {
              * @description A list of role encoded IDs defining roles that should have access permission on the library.
              * @default []
              */
-            "access_ids[]": string[] | string | null;
+            "access_ids[]"?: string[] | string | null;
             /**
              * Action
              * @description Indicates what action should be performed on the Library.
@@ -20005,19 +20005,19 @@ export interface components {
              * @description A list of role encoded IDs defining roles that should be able to add items to the library.
              * @default []
              */
-            "add_ids[]": string[] | string | null;
+            "add_ids[]"?: string[] | string | null;
             /**
              * Manage IDs
              * @description A list of role encoded IDs defining roles that should have manage permission on the library.
              * @default []
              */
-            "manage_ids[]": string[] | string | null;
+            "manage_ids[]"?: string[] | string | null;
             /**
              * Modify IDs
              * @description A list of role encoded IDs defining roles that should have modify permission on the library.
              * @default []
              */
-            "modify_ids[]": string[] | string | null;
+            "modify_ids[]"?: string[] | string | null;
         };
         /** LibrarySummary */
         LibrarySummary: {
@@ -20383,7 +20383,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -20397,7 +20397,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -20405,7 +20405,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /** Elements */
@@ -20428,7 +20428,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -20451,7 +20451,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * Tags
              * @description Tags are a way to categorize datasets in Galaxy. They are free-form text strings that can be used to
@@ -20467,7 +20467,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** NewSharedItemNotificationContent */
         NewSharedItemNotificationContent: {
@@ -20691,19 +20691,19 @@ export interface components {
              * @description The list of encoded group IDs of the groups that should receive the notification.
              * @default []
              */
-            group_ids: string[];
+            group_ids?: string[];
             /**
              * Role IDs
              * @description The list of encoded role IDs of the roles that should receive the notification.
              * @default []
              */
-            role_ids: string[];
+            role_ids?: string[];
             /**
              * User IDs
              * @description The list of encoded user IDs of the users that should receive the notification.
              * @default []
              */
-            user_ids: string[];
+            user_ids?: string[];
         };
         /**
          * NotificationResponse
@@ -21364,7 +21364,7 @@ export interface components {
              * @default URI
              * @enum {string}
              */
-            prefix_columns_type: "URI" | "ModelObjects";
+            prefix_columns_type?: "URI" | "ModelObjects";
         };
         /** ParseWorkbookForCollectionApi */
         ParseWorkbookForCollectionApi: {
@@ -21641,7 +21641,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -21655,7 +21655,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -21663,7 +21663,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -21673,7 +21673,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -21701,7 +21701,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -21722,7 +21722,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** PathBasedDynamicToolCreatePayload */
         PathBasedDynamicToolCreatePayload: {
@@ -21773,7 +21773,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -21787,7 +21787,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -21795,7 +21795,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -21805,7 +21805,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -21832,7 +21832,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -21853,7 +21853,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** PauseStep */
         PauseStep: {
@@ -22010,7 +22010,7 @@ export interface components {
              * @description When reading tags/annotations to generate BCO object include history metadata.
              * @default false
              */
-            bco_merge_history_metadata: boolean;
+            bco_merge_history_metadata?: boolean;
             /**
              * Bco Override Algorithmic Error
              * @description Override algorithmic error for 'error domain' when generating BioCompute object.
@@ -22042,24 +22042,24 @@ export interface components {
              * @description Include file contents for deleted datasets (if include_files is True).
              * @default false
              */
-            include_deleted: boolean;
+            include_deleted?: boolean;
             /**
              * Include Files
              * @description include materialized files in export when available
              * @default true
              */
-            include_files: boolean;
+            include_files?: boolean;
             /**
              * Include hidden
              * @description Include file contents for hidden datasets (if include_files is True).
              * @default false
              */
-            include_hidden: boolean;
+            include_hidden?: boolean;
             /**
              * @description format of model store to export
              * @default tar.gz
              */
-            model_store_format: components["schemas"]["ModelStoreFormat"];
+            model_store_format?: components["schemas"]["ModelStoreFormat"];
         };
         /** QuotaDetails */
         QuotaDetails: {
@@ -22300,12 +22300,12 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
             /**
              * Style
              * @default export
              */
-            style: string;
+            style?: string;
             /** Version */
             version?: number | null;
         };
@@ -22777,7 +22777,7 @@ export interface components {
              * Group IDs
              * @default []
              */
-            group_ids: string[] | null;
+            group_ids?: string[] | null;
             /**
              * Name
              * @description Name of the role
@@ -22788,12 +22788,12 @@ export interface components {
              * @default admin
              * @enum {string}
              */
-            role_type: "admin" | "user_tool_create" | "user_tool_execute";
+            role_type?: "admin" | "user_tool_create" | "user_tool_execute";
             /**
              * User IDs
              * @default []
              */
-            user_ids: string[] | null;
+            user_ids?: string[] | null;
         };
         /** RoleListResponse */
         RoleListResponse: components["schemas"]["RoleModelResponse"][];
@@ -23348,7 +23348,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -23362,7 +23362,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -23370,7 +23370,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -23380,7 +23380,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -23407,7 +23407,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -23428,7 +23428,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
         };
         /** ServiceCredentialGroupPayload */
         ServiceCredentialGroupPayload: {
@@ -24279,7 +24279,7 @@ export interface components {
              * Skip Ineligible
              * @default true
              */
-            skip_ineligible: boolean;
+            skip_ineligible?: boolean;
         };
         /** StorageOperationExecuteRequest */
         StorageOperationExecuteRequest: {
@@ -24288,7 +24288,7 @@ export interface components {
              * Notify On Completion
              * @default true
              */
-            notify_on_completion: boolean;
+            notify_on_completion?: boolean;
             /**
              * Snapshot Id
              * @example 0123456789ABCDEF
@@ -24513,24 +24513,24 @@ export interface components {
              * @description Include file contents for deleted datasets (if include_files is True).
              * @default false
              */
-            include_deleted: boolean;
+            include_deleted?: boolean;
             /**
              * Include Files
              * @description include materialized files in export when available
              * @default true
              */
-            include_files: boolean;
+            include_files?: boolean;
             /**
              * Include hidden
              * @description Include file contents for hidden datasets (if include_files is True).
              * @default false
              */
-            include_hidden: boolean;
+            include_hidden?: boolean;
             /**
              * @description format of model store to export
              * @default tar.gz
              */
-            model_store_format: components["schemas"]["ModelStoreFormat"];
+            model_store_format?: components["schemas"]["ModelStoreFormat"];
         };
         /** StoredItem */
         StoredItem: {
@@ -25142,7 +25142,7 @@ export interface components {
              * Class
              * @default Collection
              */
-            class: "Collection" | null;
+            class?: "Collection" | null;
             /** Count */
             count?: number | null;
             /** Element Tests */
@@ -25207,7 +25207,7 @@ export interface components {
              * Class
              * @default File
              */
-            class: "File" | null;
+            class?: "File" | null;
             /**
              * Compare
              * @description Comparison mode used when matching the output against the reference file.
@@ -25362,7 +25362,7 @@ export interface components {
              * Class
              * @default Collection
              */
-            class: "Collection" | null;
+            class?: "Collection" | null;
             /** Collection Type */
             collection_type?: string | null;
             /** Element Count */
@@ -25425,7 +25425,7 @@ export interface components {
              * Class
              * @default File
              */
-            class: "File" | null;
+            class?: "File" | null;
             /**
              * Compare
              * @description Comparison mode used when matching the output against the reference file.
@@ -26497,7 +26497,7 @@ export interface components {
              * @description Indicates what action should be performed on the dataset.
              * @default set_permissions
              */
-            action: components["schemas"]["DatasetPermissionAction"] | null;
+            action?: components["schemas"]["DatasetPermissionAction"] | null;
             /** Manage Ids[] */
             "manage_ids[]"?: string[] | string | null;
             /** Modify Ids[] */
@@ -26515,7 +26515,7 @@ export interface components {
              * @description Indicates what action should be performed on the dataset.
              * @default set_permissions
              */
-            action: components["schemas"]["DatasetPermissionAction"] | null;
+            action?: components["schemas"]["DatasetPermissionAction"] | null;
             /**
              * Manage IDs
              * @description A list of role encoded IDs defining roles that should have manage permission on the dataset.
@@ -26539,7 +26539,7 @@ export interface components {
              * @description Indicates what action should be performed on the dataset.
              * @default set_permissions
              */
-            action: components["schemas"]["DatasetPermissionAction"] | null;
+            action?: components["schemas"]["DatasetPermissionAction"] | null;
             /**
              * Manage IDs
              * @description A list of role encoded IDs defining roles that should have manage permission on the dataset.
@@ -26800,7 +26800,7 @@ export interface components {
              * @description One of (``+``, ``-``, ``=``). If you wish to change this value, you must also provide the ``amount``, otherwise it will not take effect.
              * @default =
              */
-            operation: components["schemas"]["QuotaOperation"];
+            operation?: components["schemas"]["QuotaOperation"];
         };
         /** UpdateReportAction */
         UpdateReportAction: {
@@ -26977,7 +26977,7 @@ export interface components {
              *     explicitly set to a compressed datatype.
              * @default false
              */
-            auto_decompress: boolean;
+            auto_decompress?: boolean;
             /** Collection Type */
             collection_type?: string | null;
             /** Created From Basename */
@@ -26991,7 +26991,7 @@ export interface components {
              *     indicate that the dataset does not have a dbkey set.
              * @default ?
              */
-            dbkey: string;
+            dbkey?: string;
             /**
              * Deferred
              * @description This is a boolean value that indicates whether the dataset is deferred. Deferred datasets are not
@@ -26999,7 +26999,7 @@ export interface components {
              *     datasets, most datasets should not be deferred unless you are sure you want to use this feature.
              * @default false
              */
-            deferred: boolean;
+            deferred?: boolean;
             /** Description */
             description?: string | null;
             /**
@@ -27009,7 +27009,7 @@ export interface components {
              *     the contents of the file.
              * @default auto
              */
-            ext: string;
+            ext?: string;
             extra_files?: components["schemas"]["ExtraFiles"] | null;
             /** Hashes */
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
@@ -27039,7 +27039,7 @@ export interface components {
              *     correctly.
              * @default false
              */
-            space_to_tab: boolean;
+            space_to_tab?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -27060,7 +27060,7 @@ export interface components {
              *     though assuming the API user is more likely to be want to be precise about file handling details.
              * @default false
              */
-            to_posix_lines: boolean;
+            to_posix_lines?: boolean;
             /**
              * Url
              * @description URL to upload
@@ -27147,7 +27147,7 @@ export interface components {
              * @description Purge the user. Deprecated, please use the `purge` query parameter instead.
              * @default false
              */
-            purge: boolean;
+            purge?: boolean;
         };
         /** UserEmail */
         UserEmail: {
@@ -27694,7 +27694,7 @@ export interface components {
              * @description Parameters displayed on the tool form. Each item needs a unique `name` and a supported `type`. Reference scalar values as `$(inputs.input_name)` and data inputs as `$(inputs.input_name.path)` in `shell_command` or config files. Conditional, repeat, and section inputs contain nested parameters.
              * @default []
              */
-            inputs: components["schemas"]["YamlGalaxyToolParameter-Input"][];
+            inputs?: components["schemas"]["YamlGalaxyToolParameter-Input"][];
             /**
              * license
              * @description A full URI or a a short [SPDX](https://spdx.org/licenses/) identifier for a license for this tool wrapper. The tool wrapper license can be independent of the underlying tool license. This license covers the tool yaml and associated scripts shipped with the tool.
@@ -27711,7 +27711,7 @@ export interface components {
              * @description Datasets and dataset collections Galaxy collects after the command finishes. A data output identifies its produced file with `from_work_dir` or `discover_datasets`; a collection output uses `discover_datasets`.
              * @default []
              */
-            outputs: (
+            outputs?: (
                 | components["schemas"]["IncomingUserToolOutputDataset"]
                 | components["schemas"]["IncomingUserToolOutputCollection"]
             )[];
@@ -27722,7 +27722,7 @@ export interface components {
              * @description JavaScript helpers and compute resource requests needed to execute this tool. Set the container image with the top-level container field.
              * @default []
              */
-            requirements:
+            requirements?:
                 | (components["schemas"]["JavascriptRequirement"] | components["schemas"]["ResourceRequirement"])[]
                 | null;
             /**
@@ -27945,7 +27945,7 @@ export interface components {
              * @description The config of the visualization.
              * @default {}
              */
-            config: {
+            config?: {
                 [key: string]: unknown;
             } | null;
             /**
@@ -27963,7 +27963,7 @@ export interface components {
              * @description The name of the visualization.
              * @default Untitled Visualization
              */
-            title: string | null;
+            title?: string | null;
             /**
              * Type
              * @description The type of the visualization.
@@ -28281,7 +28281,7 @@ export interface components {
              * @description The config of the visualization.
              * @default {}
              */
-            config:
+            config?:
                 | {
                       [key: string]: unknown;
                   }
@@ -28297,7 +28297,7 @@ export interface components {
              * @description Whether this Visualization has been deleted.
              * @default false
              */
-            deleted: boolean | null;
+            deleted?: boolean | null;
             /**
              * Title
              * @description The name of the visualization.
@@ -29007,7 +29007,7 @@ export interface components {
              * @description When reading tags/annotations to generate BCO object include history metadata.
              * @default false
              */
-            bco_merge_history_metadata: boolean;
+            bco_merge_history_metadata?: boolean;
             /**
              * Bco Override Algorithmic Error
              * @description Override algorithmic error for 'error domain' when generating BioCompute object.
@@ -29044,24 +29044,24 @@ export interface components {
              * @description Include file contents for deleted datasets (if include_files is True).
              * @default false
              */
-            include_deleted: boolean;
+            include_deleted?: boolean;
             /**
              * Include Files
              * @description include materialized files in export when available
              * @default true
              */
-            include_files: boolean;
+            include_files?: boolean;
             /**
              * Include hidden
              * @description Include file contents for hidden datasets (if include_files is True).
              * @default false
              */
-            include_hidden: boolean;
+            include_hidden?: boolean;
             /**
              * @description format of model store to export
              * @default tar.gz
              */
-            model_store_format: components["schemas"]["ModelStoreFormat"];
+            model_store_format?: components["schemas"]["ModelStoreFormat"];
             /**
              * Target URI
              * @description Galaxy Files URI to write mode store content to.
@@ -29286,7 +29286,7 @@ export interface components {
              * @description Set true when the command can run without the user supplying this input.
              * @default false
              */
-            optional: boolean;
+            optional?: boolean;
             /**
              * Test Parameter
              * @description Boolean or select input whose submitted value chooses the active `whens` branch.
@@ -29394,7 +29394,7 @@ export interface components {
              * Parameters
              * @default []
              */
-            parameters: components["schemas"]["YamlGalaxyToolParameter-Input"][];
+            parameters?: components["schemas"]["YamlGalaxyToolParameter-Input"][];
         };
         /** YamlConditionalWhen */
         "YamlConditionalWhen-Output": {
@@ -29729,13 +29729,13 @@ export interface components {
              * @description Set true when the command can run without the user supplying this input.
              * @default false
              */
-            optional: boolean;
+            optional?: boolean;
             /**
              * Parameters
              * @description Nested inputs that make up one entry in the repeated group.
              * @default []
              */
-            parameters: components["schemas"]["YamlGalaxyToolParameter-Input"][];
+            parameters?: components["schemas"]["YamlGalaxyToolParameter-Input"][];
             /**
              * @description Lets the user add multiple entries that all contain the same nested inputs. (enum property replaced by openapi-typescript)
              * @enum {string}
@@ -29845,13 +29845,13 @@ export interface components {
              * @description Set true when the command can run without the user supplying this input.
              * @default false
              */
-            optional: boolean;
+            optional?: boolean;
             /**
              * Parameters
              * @description Nested inputs displayed together inside the section.
              * @default []
              */
-            parameters: components["schemas"]["YamlGalaxyToolParameter-Input"][];
+            parameters?: components["schemas"]["YamlGalaxyToolParameter-Input"][];
             /**
              * @description Places related inputs in a collapsible group to simplify the tool form. (enum property replaced by openapi-typescript)
              * @enum {string}
@@ -30143,7 +30143,7 @@ export interface components {
              * @description Parameters displayed on the tool form. Each item needs a unique `name` and a supported `type`. Reference scalar values as `$(inputs.input_name)` and data inputs as `$(inputs.input_name.path)` in `shell_command` or config files. Conditional, repeat, and section inputs contain nested parameters.
              * @default []
              */
-            inputs: components["schemas"]["YamlGalaxyToolParameter-Input"][];
+            inputs?: components["schemas"]["YamlGalaxyToolParameter-Input"][];
             /**
              * license
              * @description A full URI or a a short [SPDX](https://spdx.org/licenses/) identifier for a license for this tool wrapper. The tool wrapper license can be independent of the underlying tool license. This license covers the tool yaml and associated scripts shipped with the tool.
@@ -30160,7 +30160,7 @@ export interface components {
              * @description Results Galaxy collects after the command finishes. A data output identifies its produced file with `from_work_dir` or `discover_datasets`; a collection output uses `discover_datasets`. Scalar output types are `text`, `integer`, `float`, and `boolean`.
              * @default []
              */
-            outputs: (
+            outputs?: (
                 | components["schemas"]["IncomingToolOutputDataset"]
                 | components["schemas"]["IncomingToolOutputCollection"]
                 | components["schemas"]["IncomingToolOutputText"]
@@ -30175,7 +30175,7 @@ export interface components {
              * @description JavaScript helpers and compute resource requests needed to execute this tool.
              * @default []
              */
-            requirements:
+            requirements?:
                 | (
                       | components["schemas"]["JavascriptRequirement"]
                       | components["schemas"]["ResourceRequirement"]
@@ -30275,7 +30275,7 @@ export interface components {
              * @description Mapping of output names to expected values or assertions.
              * @default {}
              */
-            outputs: {
+            outputs?: {
                 [key: string]:
                     | components["schemas"]["TestCollectionOutputAssertions-Input"]
                     | components["schemas"]["TestDataOutputAssertions-Input"]
@@ -30840,7 +30840,7 @@ export interface components {
              * @description A boolean that can be set to true to negate the outcome of the assertion.
              * @default false
              */
-            negate: boolean | string;
+            negate?: boolean | string;
             /**
              * Path
              * @description The Python xpath-like expression to find the target element.
@@ -30878,7 +30878,7 @@ export interface components {
              * @description Check the sub-assertions for all paths matching the path. Default: false, i.e. only the first
              * @default false
              */
-            all: boolean | string;
+            all?: boolean | string;
             /** Asserts */
             asserts?: components["schemas"]["assertion_list-Input"] | null;
             /** Children */
@@ -30888,7 +30888,7 @@ export interface components {
              * @description Allowed difference with respect to n (default: 0), can be suffixed by ``(k|M|G|T|P|E)i?``
              * @default 0
              */
-            delta: number | string;
+            delta?: number | string;
             /**
              * Max
              * @description Maximum number (default: infinity), can be suffixed by ``(k|M|G|T|P|E)i?``
@@ -30909,7 +30909,7 @@ export interface components {
              * @description A boolean that can be set to true to negate the outcome of the assertion.
              * @default false
              */
-            negate: boolean | string;
+            negate?: boolean | string;
             /**
              * Path
              * @description The regular expression specifying the archive member.
@@ -31721,7 +31721,7 @@ export interface components {
              * @description Check the sub-assertions for all paths matching the path. Default: false, i.e. only the first
              * @default false
              */
-            all: boolean | string;
+            all?: boolean | string;
             /** Asserts */
             asserts?: components["schemas"]["assertion_list-Input"] | null;
             /**
@@ -31736,7 +31736,7 @@ export interface components {
              * @description Allowed difference with respect to n (default: 0), can be suffixed by ``(k|M|G|T|P|E)i?``
              * @default 0
              */
-            delta: number | string;
+            delta?: number | string;
             /**
              * Max
              * @description Maximum number (default: infinity), can be suffixed by ``(k|M|G|T|P|E)i?``
@@ -31757,7 +31757,7 @@ export interface components {
              * @description A boolean that can be set to true to negate the outcome of the assertion.
              * @default false
              */
-            negate: boolean | string;
+            negate?: boolean | string;
             /**
              * Path
              * @description The Python xpath-like expression to find the target element.
@@ -31936,7 +31936,7 @@ export interface components {
              * @description A boolean that can be set to true to negate the outcome of the assertion.
              * @default false
              */
-            negate: boolean | string;
+            negate?: boolean | string;
             /**
              * Path
              * @description The Python xpath-like expression to find the target element.
@@ -32056,7 +32056,7 @@ export interface components {
              * @description Check the sub-assertions for all paths matching the path. Default: false, i.e. only the first
              * @default false
              */
-            all: boolean | string;
+            all?: boolean | string;
             /** Asserts */
             asserts?: components["schemas"]["assertion_list-Input"] | null;
             /** Children */
@@ -32066,7 +32066,7 @@ export interface components {
              * @description Allowed difference with respect to n (default: 0), can be suffixed by ``(k|M|G|T|P|E)i?``
              * @default 0
              */
-            delta: number | string;
+            delta?: number | string;
             /**
              * Max
              * @description Maximum number (default: infinity), can be suffixed by ``(k|M|G|T|P|E)i?``
@@ -32087,7 +32087,7 @@ export interface components {
              * @description A boolean that can be set to true to negate the outcome of the assertion.
              * @default false
              */
-            negate: boolean | string;
+            negate?: boolean | string;
             /**
              * Path
              * @description The regular expression specifying the archive member.
@@ -33397,7 +33397,7 @@ export interface components {
              * @description Check the sub-assertions for all paths matching the path. Default: false, i.e. only the first
              * @default false
              */
-            all: boolean | string;
+            all?: boolean | string;
             /** Asserts */
             asserts?: components["schemas"]["assertion_list-Input"] | null;
             /**
@@ -33412,7 +33412,7 @@ export interface components {
              * @description Allowed difference with respect to n (default: 0), can be suffixed by ``(k|M|G|T|P|E)i?``
              * @default 0
              */
-            delta: number | string;
+            delta?: number | string;
             /**
              * Max
              * @description Maximum number (default: infinity), can be suffixed by ``(k|M|G|T|P|E)i?``
@@ -33433,7 +33433,7 @@ export interface components {
              * @description A boolean that can be set to true to negate the outcome of the assertion.
              * @default false
              */
-            negate: boolean | string;
+            negate?: boolean | string;
             /**
              * Path
              * @description The Python xpath-like expression to find the target element.

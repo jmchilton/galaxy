@@ -17,6 +17,7 @@ on:
       - 'client/pnpm-lock.yaml'
       - 'client/pnpm-workspace.yaml'
       - 'client/packages/api-client/src/schema/schema.ts'
+      - 'client/scripts/generate-api-schema.mjs'
   pull_request:
     paths:
       - '**'
@@ -34,6 +35,7 @@ on:
       - 'client/pnpm-lock.yaml'
       - 'client/pnpm-workspace.yaml'
       - 'client/packages/api-client/src/schema/schema.ts'
+      - 'client/scripts/generate-api-schema.mjs'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
