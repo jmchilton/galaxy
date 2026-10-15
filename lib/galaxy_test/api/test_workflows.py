@@ -68,6 +68,7 @@ from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_PARAMETER_INPUT_INTEGER_REQUIRED,
     WORKFLOW_RENAME_ON_INPUT,
     WORKFLOW_RUNTIME_PARAMETER_AFTER_PAUSE,
+    WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
     WORKFLOW_SIMPLE,
     WORKFLOW_SIMPLE_CAT_TWICE,
     WORKFLOW_WITH_CUSTOM_REPORT_1,
@@ -5616,6 +5617,57 @@ some_file:
         assert request["inputs"]["WorkflowInput2"]["src"] == "hda"
         encoded_id = request["inputs"]["WorkflowInput2"]["id"]
         assert self.dataset_populator.get_history_dataset_content(history_id, dataset_id=encoded_id).strip() == "4 5 6"
+
+    @skip_without_tool("random_lines1")
+    def test_workflow_request_step_parameters_rerun(self):
+        step_parameters = {"1": {"num_lines": 2, "seed_source|seed": "moo"}}
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
+                test_data={"step_parameters": step_parameters, "input1": {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
+            request = self.workflow_populator.invocation_to_request(summary.invocation_id)
+            assert request["parameters"] == step_parameters
+            rerun_summary = self.workflow_populator.rerun(summary)
+            rerun_request = self.workflow_populator.invocation_to_request(rerun_summary.invocation_id)
+            assert rerun_request["parameters"] == step_parameters
+
+    @skip_without_tool("random_lines1")
+    def test_workflow_request_subworkflow_step_parameters_rerun(self):
+        step_parameters = {"1": {"1|num_lines": 2}}
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_NESTED_RUNTIME_PARAMETER,
+                test_data={"step_parameters": step_parameters, "outer_input": {"value": "1.bed", "type": "File"}},
+                history_id=history_id,
+            )
+            request = self.workflow_populator.invocation_to_request(summary.invocation_id)
+            assert request["parameters"] == step_parameters
+            rerun_summary = self.workflow_populator.rerun(summary)
+            rerun_invocation = self.workflow_populator.get_invocation(rerun_summary.invocation_id)
+            content = self.dataset_populator.get_history_dataset_content(
+                history_id, dataset_id=rerun_invocation["outputs"]["outer_output"]["id"]
+            )
+            assert len([line for line in content.split("\n") if line]) == 2
+            rerun_request = self.workflow_populator.invocation_to_request(rerun_summary.invocation_id)
+            assert rerun_request["parameters"] == step_parameters
+
+    @skip_without_tool("random_lines1")
+    def test_run_subworkflow_runtime_parameters_invalid_key(self):
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_NESTED_RUNTIME_PARAMETER)
+            hda = self.dataset_populator.new_dataset(history_id, content="1\n2\n3", wait=True)
+            request = {
+                "history_id": history_id,
+                "inputs": {"0": {"src": "hda", "id": hda["id"]}},
+                "inputs_by": "step_index",
+                "parameters": {"1": {"num_lines": 2}},
+                "parameters_normalized": True,
+            }
+            response = self.workflow_populator.invoke_workflow_raw(workflow_id, request)
+            self._assert_status_code_is(response, 400)
+            assert "<subworkflow step index>|<name>" in response.json()["err_msg"]
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

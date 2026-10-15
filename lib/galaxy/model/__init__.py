@@ -9626,6 +9626,41 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
             f"WorkflowStep[index={self.order_index},type={self.type},label={self.label},uuid={self.uuid},id={self.id}]"
         )
 
+    def step_parameters_by_index(self, param_dict: dict[str, Any]) -> dict[str, Any]:
+        """Re-key stored subworkflow step parameters from inner step ids to ``"<inner order_index>|name"``.
+
+        Raises ``KeyError`` for an inner step id not in this subworkflow. No-op for other step types.
+        """
+        if self.type != "subworkflow":
+            return param_dict
+        assert self.subworkflow
+        inner_steps_by_id = self.subworkflow.steps_by_id
+        by_index: dict[str, Any] = {}
+        for inner_step_id, inner_param_dict in param_dict.items():
+            inner_step = inner_steps_by_id[int(inner_step_id)]
+            for name, value in inner_step.step_parameters_by_index(inner_param_dict).items():
+                by_index[f"{inner_step.order_index}|{name}"] = value
+        return by_index
+
+    def step_parameters_by_id(self, param_dict: dict[str, Any]) -> dict[Any, Any]:
+        """Inverse of ``step_parameters_by_index`` - nest subworkflow step parameters by inner step id.
+
+        Raises ``ValueError`` for a key without a numeric ``"<index>|"`` prefix and ``KeyError``
+        for an unknown inner index. No-op for other step types.
+        """
+        if self.type != "subworkflow":
+            return param_dict
+        assert self.subworkflow
+        by_inner_index: dict[int, dict[str, Any]] = {}
+        for key, value in param_dict.items():
+            index_str, name = key.split("|", 1)
+            by_inner_index.setdefault(int(index_str), {})[name] = value
+        by_id: dict[int, Any] = {}
+        for inner_index, inner_param_dict in by_inner_index.items():
+            inner_step = self.subworkflow.step_by_index(inner_index)
+            by_id[inner_step.id] = inner_step.step_parameters_by_id(inner_param_dict)
+        return by_id
+
     @property
     def effective_label(self) -> str | None:
         if (label := self.label) is not None:

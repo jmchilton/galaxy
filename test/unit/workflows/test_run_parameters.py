@@ -1,6 +1,9 @@
+import json
+
 import pytest
 
 from galaxy import model
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.workflow.run_request import (
@@ -50,6 +53,35 @@ def test_step_parameters_legacy():
     )
     assert normalized_params[STEP_ID_OFFSET + 1] == {"foo": "bar"}, normalized_params
     assert len(normalized_params.keys()) == 1
+
+
+def test_nested_subworkflow_step_parameters_round_trip():
+    trans = MockTrans()
+    workflow = __nested_subworkflow_fixture(trans)
+    subworkflow_step = workflow.step_by_index(1)
+    tool_step = subworkflow_step.subworkflow.step_by_index(1)
+    nested_step = subworkflow_step.subworkflow.step_by_index(2)
+    nested_tool_step = nested_step.subworkflow.step_by_index(0)
+    by_index = {"1|num_lines": 2, "2|0|seed_source|seed": "moo"}
+
+    normalized = _normalize_step_parameters(workflow.steps, {"1": by_index}, already_normalized=True)
+
+    assert normalized == {
+        subworkflow_step.id: {
+            tool_step.id: {"num_lines": 2},
+            nested_step.id: {nested_tool_step.id: {"seed_source|seed": "moo"}},
+        }
+    }
+    # Stored as JSON, so inner step ids come back as strings.
+    stored = json.loads(json.dumps(normalized[subworkflow_step.id]))
+    assert subworkflow_step.step_parameters_by_index(stored) == by_index
+
+
+@pytest.mark.parametrize("key", ["9|num_lines", "x|num_lines", "num_lines"])
+def test_subworkflow_step_parameters_invalid_key(key):
+    workflow = __nested_subworkflow_fixture(MockTrans())
+    with pytest.raises(RequestParameterInvalidException):
+        _normalize_step_parameters(workflow.steps, {"1": {key: 2}}, already_normalized=True)
 
 
 def test_inputs_by_step_id():
@@ -137,4 +169,35 @@ def __workflow_fixure(trans):
     workflow_id = workflow.id
     session.expunge_all()
 
+    return session.get(model.Workflow, workflow_id)
+
+
+def __nested_subworkflow_fixture(trans):
+    """Outer workflow whose step 1 runs a subworkflow with a tool (1) and a nested subworkflow (2)."""
+
+    def new_workflow(*steps):
+        workflow = model.Workflow()
+        for order_index, step_kwds in enumerate(steps):
+            workflow_step = model.WorkflowStep()
+            workflow_step.order_index = order_index
+            for key, value in step_kwds.items():
+                setattr(workflow_step, key, value)
+            workflow.steps.append(workflow_step)
+        return workflow
+
+    nested = new_workflow({"type": "tool", "tool_id": "random_lines1"})
+    subworkflow = new_workflow(
+        {"type": "data_input", "tool_inputs": {"name": "inner_input"}},
+        {"type": "tool", "tool_id": "random_lines1"},
+        {"type": "subworkflow", "subworkflow": nested},
+    )
+    workflow = new_workflow(
+        {"type": "data_input", "tool_inputs": {"name": "outer_input"}},
+        {"type": "subworkflow", "subworkflow": subworkflow},
+    )
+    session = trans.app.model.context
+    session.add(workflow)
+    session.commit()
+    workflow_id = workflow.id
+    session.expunge_all()
     return session.get(model.Workflow, workflow_id)
