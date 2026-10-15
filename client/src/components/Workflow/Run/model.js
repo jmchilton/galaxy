@@ -237,3 +237,33 @@ export function getReplacements(inputs, stepData, wpData) {
     }
     return replaceParams;
 }
+
+/**
+ * Value recorded for a workflow input step in an exported invocation request
+ * (``GET /api/invocations/{id}/request``), shaped for the run forms, or ``undefined``.
+ *
+ * @param {Object} requestInputs - ``inputs`` of the exported request
+ * @param {Object} step - run model step
+ * @param {Number} position - position of ``step`` in the run model steps
+ */
+export function rerunInputValue(requestInputs, step, position) {
+    // The request keys unlabeled steps by ``step_index``, not ``step_index + 1``.
+    const stateKey = step.step_label ? String(step.step_label) : String(step.step_index);
+    let value;
+    if (stateKey in requestInputs) {
+        value = requestInputs[stateKey];
+    } else if (Object.keys(requestInputs)[position] === "") {
+        value = Object.values(requestInputs)[position];
+    }
+    if (value === undefined) {
+        return undefined;
+    }
+    if (step.step_type === "data_input" || step.step_type === "data_collection_input") {
+        // The request has no ``values`` wrapper. Optional inputs left empty come back as
+        // ``null`` (or arrays containing ``null``) - drop those so FormData isn't handed
+        // ``{values: [null]}``, which crashes its ``onMounted`` hook.
+        const values = (Array.isArray(value) ? value : [value]).filter((v) => v !== null && v !== undefined);
+        return values.length > 0 ? { values } : undefined;
+    }
+    return value;
+}

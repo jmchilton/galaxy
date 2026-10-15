@@ -48,6 +48,8 @@ watch(
         :workflow-id="requestData.workflow_id"
         :instance="requestData.instance"
         :request-state="requestData.inputs"
+        :rerun-request="requestData"
+        :rerun-invocation-id="invocationId"
         prefer-simple-form
         is-rerun
         :simple-form-use-job-cache="requestData.use_cached_job" />

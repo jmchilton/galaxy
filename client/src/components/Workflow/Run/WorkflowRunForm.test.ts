@@ -37,7 +37,11 @@ const globalConfig = getLocalVue();
 
 const HISTORY_ID = "8f7a155755f10e73";
 
-function mountForm(canMutateCurrentHistory = true) {
+function mountForm(canMutateCurrentHistory = true, rerunRequest?: Record<string, unknown>) {
+    const model = new WorkflowRunModel(JSON.parse(JSON.stringify(sampleRunData1)));
+    if (rerunRequest) {
+        model.workflowResourceParameters = { cores: { name: "cores", type: "text", value: "1" } };
+    }
     const pinia = createTestingPinia({
         createSpy: vi.fn,
         initialState: {
@@ -50,8 +54,9 @@ function mountForm(canMutateCurrentHistory = true) {
     setActivePinia(pinia);
     return mount(WorkflowRunForm as object, {
         props: {
-            model: new WorkflowRunModel(JSON.parse(JSON.stringify(sampleRunData1))),
+            model,
             canMutateCurrentHistory,
+            rerunRequest,
         },
         global: {
             ...globalConfig,
@@ -138,6 +143,25 @@ describe("WorkflowRunForm", () => {
             on_complete: [{ send_notification: {} }],
         });
         expect(wrapper.emitted("submissionSuccess")).toEqual([[[{ id: "invocation_id" }]]]);
+    });
+
+    it("prefills inputs, workflow and resource parameters and job re-use from a rerun request", async () => {
+        const wrapper = mountForm(true, {
+            inputs: { 0: { src: "hdca", id: "c1" }, 4: "text" },
+            replacement_params: { wf_param: "7" },
+            resource_params: { cores: "4" },
+            use_cached_job: true,
+        });
+        expect(findStep(wrapper, "0").props("model").inputs[0].value).toEqual({ values: [{ src: "hdca", id: "c1" }] });
+        expect(findStep(wrapper, "4").props("model").inputs[0].value).toBe("text");
+        const [wpForm, , resourceForm] = wrapper.findAllComponents({ name: "FormDisplay" });
+        expect(wpForm!.props("inputs").map((input: { value: unknown }) => input.value)).toEqual(["7"]);
+        expect(resourceForm!.props("inputs").map((input: { value: unknown }) => input.value)).toEqual(["4"]);
+        await run(wrapper);
+        expect(invokeWorkflow).toHaveBeenCalledWith(
+            "ebab00128497f9d7",
+            expect.objectContaining({ use_cached_job: true }),
+        );
     });
 
     it("sends results to a new history when requested", async () => {

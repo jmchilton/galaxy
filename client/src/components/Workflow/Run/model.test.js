@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getReplacements, WorkflowRunModel } from "./model";
+import { getReplacements, rerunInputValue, WorkflowRunModel } from "./model";
 import sampleRunData1 from "./testdata/run1.json";
 
 describe("test basic parameter replacement", () => {
@@ -61,5 +61,22 @@ describe("WorkflowRunModel status", () => {
         };
         const runModel = new WorkflowRunModel(optionalDataSteps);
         expect(runModel.hasOpenToolSteps).toBe(false);
+    });
+});
+
+describe("rerunInputValue", () => {
+    const requestInputs = { labeled: "a", 1: { src: "hda", id: "d1" }, 2: [null], 3: 0 };
+
+    it("reads labeled steps by label and unlabeled steps by step index", () => {
+        expect(rerunInputValue(requestInputs, { step_label: "labeled", step_index: 0 }, 0)).toBe("a");
+        expect(rerunInputValue(requestInputs, { step_label: null, step_index: 3 }, 3)).toBe(0);
+        expect(rerunInputValue(requestInputs, { step_label: null, step_index: 5 }, 5)).toBeUndefined();
+    });
+
+    it("wraps data values and drops empty optional data inputs", () => {
+        const dataStep = { step_label: null, step_index: 1, step_type: "data_input" };
+        expect(rerunInputValue(requestInputs, dataStep, 1)).toEqual({ values: [{ src: "hda", id: "d1" }] });
+        const emptyOptional = { step_label: null, step_index: 2, step_type: "data_input" };
+        expect(rerunInputValue(requestInputs, emptyOptional, 2)).toBeUndefined();
     });
 });
