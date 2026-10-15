@@ -4,7 +4,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 
 import { canMutateHistory } from "@/api";
-import type { WorkflowInvocationRequestInputs } from "@/api/invocations";
+import type { WorkflowInvocationRequest, WorkflowInvocationRequestInputs } from "@/api/invocations";
 import { getWorkflowInfo } from "@/api/workflows";
 import { copyWorkflow } from "@/components/Workflow/workflows.services";
 import { useWorkflowInstance } from "@/composables/useWorkflowInstance";
@@ -35,6 +35,10 @@ interface Props {
     simpleFormTargetHistory?: string;
     simpleFormUseJobCache?: boolean;
     requestState?: WorkflowInvocationRequestInputs;
+    /** Exported request of the invocation being rerun, prefills the expanded form */
+    rerunRequest?: WorkflowInvocationRequest;
+    /** Invocation being rerun, seeds tool and subworkflow steps with the values it ran with */
+    rerunInvocationId?: string;
     instance?: boolean;
     isRerun?: boolean;
     landingUuid?: string;
@@ -46,6 +50,8 @@ const props = withDefaults(defineProps<Props>(), {
     simpleFormTargetHistory: "current",
     simpleFormUseJobCache: false,
     requestState: undefined,
+    rerunRequest: undefined,
+    rerunInvocationId: undefined,
     instance: false,
     isRerun: false,
     landingUuid: undefined,
@@ -119,7 +125,12 @@ function handleSubmissionError(error: string) {
 
 async function loadRun() {
     try {
-        const runData = await getRunData(props.workflowId, props.version || undefined, props.instance);
+        const runData = await getRunData(
+            props.workflowId,
+            props.version || undefined,
+            props.instance,
+            props.rerunInvocationId,
+        );
         const incomingModel = new WorkflowRunModel(runData);
 
         simpleForm.value = props.preferSimpleForm;
@@ -302,6 +313,7 @@ defineExpose({
                         :can-mutate-current-history="canRunOnHistory"
                         :disable-simple-form="disableSimpleForm"
                         :disable-simple-form-reason="disableSimpleFormReason"
+                        :rerun-request="rerunRequest"
                         @submissionSuccess="handleInvocations"
                         @submissionError="handleSubmissionError"
                         @showSimple="advancedForm = false" />

@@ -11,6 +11,7 @@ import sampleRunData1 from "./testdata/run1.json";
 
 import WorkflowMissingToolsRequest from "./WorkflowMissingToolsRequest.vue";
 import WorkflowRun from "./WorkflowRun.vue";
+import WorkflowRunForm from "./WorkflowRunForm.vue";
 
 // Keep the real module (WorkflowMissingToolsError is matched with instanceof
 // in the component) and only replace the API call.
@@ -116,6 +117,19 @@ describe("WorkflowRun.vue", () => {
 
         expect(wrapper.vm.submissionError).toBe("Some exception here");
         expect(wrapper.find(".alert-danger").exists()).toBe(true);
+    });
+
+    it("seeds run data from the rerun invocation and passes its request to the expanded form", async () => {
+        wrapper.unmount();
+        const rerunRequest = { inputs: { 0: { src: "hdca", id: "c1" } }, use_cached_job: true };
+        const rerunWrapper = mount(WorkflowRun, {
+            props: { workflowId: run1WorkflowId, rerunRequest, rerunInvocationId: "invocation-id" },
+            global: { plugins: [createTestingPinia({ createSpy: vi.fn })] },
+        });
+        await vi.runAllTimersAsync();
+        await flushPromises();
+        expect(getRunData).toHaveBeenLastCalledWith(run1WorkflowId, undefined, false, "invocation-id");
+        expect(rerunWrapper.findComponent(WorkflowRunForm).props("rerunRequest")).toEqual(rerunRequest);
     });
 
     describe("missing tools", () => {
