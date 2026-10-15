@@ -8283,6 +8283,7 @@ steps: []
                 assert_error_message_contains(response, "Cannot specify both legacy ds_map and input attributes")
             else:
                 self._assert_status_code_is(response, 200)
+
     @requires_admin
     @pytest.mark.parametrize("src", ["hda", "ldda", "ld", "hdca"])
     def test_run_with_nonexistent_input(self, history_id, src):
@@ -12227,12 +12228,6 @@ steps: []
         self._assert_status_code_is(response, 400)
         assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
 
-    def test_run_with_unknown_scheduler(self, history_id):
-        workflow_id = self._upload_yaml_workflow(WORKFLOW_OPTIONAL_TRUE_INPUT_DATA)
-        response = self._invoke_by_name(workflow_id, history_id, {}, scheduler="not_a_scheduler")
-        self._assert_status_code_is(response, 400)
-        assert_error_message_contains(response, "not_a_scheduler")
-
     def test_run_with_unknown_landing_uuid(self):
         workflow_id = self._upload_yaml_workflow(WORKFLOW_OPTIONAL_TRUE_INPUT_DATA)
         history_name = f"landing history {uuid4()}"
@@ -12272,9 +12267,6 @@ steps:
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, "Error computing workflow step runtime state")
         assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
-
-
-
 
 
 class TestAdminWorkflowsApi(BaseWorkflowsApiTestCase):

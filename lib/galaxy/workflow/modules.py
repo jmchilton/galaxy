@@ -1853,11 +1853,13 @@ class InputParameterModule(WorkflowModule):
         if value in ("", None) and input_param.optional:
             return value
         multiple = bool(parameter_def.get("multiple"))
+        if multiple and isinstance(input_param, TextToolParameter):
+            input_param.validate(value, trans)
+            return input_param.to_python(value, trans.app)
         values = value if multiple and isinstance(value, list) else [value]
         is_value_type, type_message = PARAMETER_VALUE_TYPE_CHECKS[parameter_type]
         for v in values:
-            # multiple integers may be submitted as delimited text, parsed by the parameter below
-            if not is_value_type(v) and not (multiple and parameter_type == "integer" and isinstance(v, str)):
+            if not is_value_type(v):
                 raise ParameterValueError(type_message, input_param.name, v)
         try:
             if isinstance(input_param, SelectToolParameter):
@@ -1865,9 +1867,6 @@ class InputParameterModule(WorkflowModule):
             input_param.validate(value, trans)
         except TypeError as e:
             raise ParameterValueError(str(e), input_param.name, value) from None
-        if isinstance(input_param, IntegerToolParameter) and input_param.multiple:
-            # The run form submits one integer per line.
-            return input_param.to_python(value, trans.app)
         return value
 
     def get_runtime_state(self):

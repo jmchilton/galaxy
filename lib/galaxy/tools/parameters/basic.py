@@ -544,10 +544,6 @@ class TextToolParameter(SimpleTextToolParameter):
             and trans.workflow_building_mode is workflow_building_modes.ENABLED
             and contains_workflow_parameter(value, search=search)
         ):
-            if self.multiple and isinstance(value, list):
-                for v in value:
-                    super().validate(v, trans)
-                return
             return super().validate(value, trans)
 
     @property
