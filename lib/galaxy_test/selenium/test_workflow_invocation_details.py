@@ -45,10 +45,8 @@ class TestWorkflowInvocationDetails(SeleniumTestCase):
         invocations.step_details(order_index="1").wait_for_and_click()
         invocations.step_job_details(order_index="1").wait_for_visible()
 
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.screenshot("invocation_step_jobs")
-
         invocations.step_job_information(order_index="1").wait_for_visible()
+        self.screenshot("invocation_step_jobs")
         assert (
             "collection_creates_pair"
             in invocations.step_job_information_tool_id(order_index="1").wait_for_visible().text
