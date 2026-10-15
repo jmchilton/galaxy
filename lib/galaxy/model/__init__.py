@@ -9654,8 +9654,12 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
         assert self.subworkflow
         by_inner_index: dict[int, dict[str, Any]] = {}
         for key, value in param_dict.items():
-            index_str, name = key.split("|", 1)
-            by_inner_index.setdefault(int(index_str), {})[name] = value
+            try:
+                index_str, name = key.split("|", 1)
+                inner_index = int(index_str)
+            except ValueError:
+                raise ValueError(f"invalid subworkflow step parameter key {key!r}") from None
+            by_inner_index.setdefault(inner_index, {})[name] = value
         by_id: dict[int, Any] = {}
         for inner_index, inner_param_dict in by_inner_index.items():
             inner_step = self.subworkflow.step_by_index(inner_index)
