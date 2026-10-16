@@ -5817,9 +5817,9 @@ steps:
             input_steps = [
                 step for step in self._run_form_steps(invocation_id, history_id) if step["step_type"] == "data_input"
             ]
-        assert [step["step_effective_label"] for step in input_steps] == [None, "WorkflowInput2"]
+        assert [step.get("step_effective_label") for step in input_steps] == [None, "WorkflowInput2"]
         # The request references input steps by ``step_effective_label``, unlabeled ones by step index.
-        request_keys = {step["step_effective_label"] or str(step["step_index"]) for step in input_steps}
+        request_keys = {step.get("step_effective_label") or str(step["step_index"]) for step in input_steps}
         assert request_keys == set(request_inputs)
 
     @skip_without_tool("random_lines1")
