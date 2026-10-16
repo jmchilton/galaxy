@@ -80,6 +80,9 @@ describe("rerunInputValue", () => {
     it("reads legacy unlabeled input steps by their effective label", () => {
         const legacyStep = { step_label: null, step_effective_label: "Input Dataset", step_index: 0 };
         expect(rerunInputValue({ "Input Dataset": "c" }, legacyStep, 0)).toBe("c");
+        // a label shared with a legacy input step's name is referenced by step index
+        const sharedLabelStep = { step_label: "Input Dataset", step_effective_label: null, step_index: 2 };
+        expect(rerunInputValue({ "Input Dataset": "c", 2: "d" }, sharedLabelStep, 2)).toBe("d");
     });
 
     it("wraps data values and drops empty optional data inputs", () => {
