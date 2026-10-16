@@ -10574,8 +10574,8 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
     def recover_step_parameters(self) -> dict[int, dict[str, Any]]:
         """Run-time step parameters recorded for this request, keyed by workflow step id.
 
-        Subworkflow step parameters are keyed by ``"<inner order_index>|name"``. Rows naming steps
-        outside this invocation's workflow (e.g. of an imported invocation) are skipped.
+        Subworkflow step parameters are keyed by ``"<inner order_index>|name"``. Malformed rows and
+        rows naming steps outside this invocation's workflow (e.g. of an imported invocation) are skipped.
         """
         steps_by_id = self.workflow.steps_by_id
         step_parameters: dict[int, dict[str, Any]] = {}
@@ -10585,12 +10585,10 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             try:
                 step = steps_by_id[int(parameter.name)]
                 step_parameters[step.id] = step.step_parameters_by_index(json.loads(parameter.value or "{}"))
-            except (TypeError, ValueError):
-                raise galaxy.exceptions.InconsistentDatabase(
-                    "saved workflow step parameters not in the format expected"
+            except (TypeError, ValueError, KeyError):
+                log.warning(
+                    "Skipping unusable step parameters of invocation %s for step id %s", self.id, parameter.name
                 )
-            except KeyError:
-                log.warning("Invocation %s has step parameters for unknown step id %s", self.id, parameter.name)
         return step_parameters
 
     def recover_inputs(self) -> tuple[dict[str, Any], str]:
