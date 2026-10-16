@@ -365,7 +365,7 @@ class WorkflowsAPIController(
             kwd.get("preserve_external_subworkflow_links", "false")
         )
         invocation = None
-        if invocation_id := kwd.get("invocation_id"):
+        if style == "run" and (invocation_id := kwd.get("invocation_id")):
             invocation = self.workflow_manager.get_invocation(trans, self.decode_id(invocation_id))
         ret_dict = self.workflow_contents_manager.workflow_to_dict(
             trans,

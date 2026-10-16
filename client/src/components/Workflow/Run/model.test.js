@@ -71,6 +71,8 @@ describe("rerunInputValue", () => {
         expect(rerunInputValue(requestInputs, { step_label: "labeled", step_index: 0 }, 0)).toBe("a");
         expect(rerunInputValue(requestInputs, { step_label: null, step_index: 3 }, 3)).toBe(0);
         expect(rerunInputValue(requestInputs, { step_label: null, step_index: 5 }, 5)).toBeUndefined();
+        // an unlabeled entry exported under "" is matched by position
+        expect(rerunInputValue({ "": "b" }, { step_label: null, step_index: 7 }, 0)).toBe("b");
     });
 
     it("wraps data values and drops empty optional data inputs", () => {

@@ -37,11 +37,11 @@ const globalConfig = getLocalVue();
 
 const HISTORY_ID = "8f7a155755f10e73";
 
-function mountForm(canMutateCurrentHistory = true, rerunRequest?: Record<string, unknown>) {
-    const model = new WorkflowRunModel(JSON.parse(JSON.stringify(sampleRunData1)));
-    if (rerunRequest) {
-        model.workflowResourceParameters = { cores: { name: "cores", type: "text", value: "1" } };
-    }
+function buildModel() {
+    return new WorkflowRunModel(JSON.parse(JSON.stringify(sampleRunData1)));
+}
+
+function mountForm(canMutateCurrentHistory = true, rerunRequest?: Record<string, unknown>, model = buildModel()) {
     const pinia = createTestingPinia({
         createSpy: vi.fn,
         initialState: {
@@ -146,12 +146,15 @@ describe("WorkflowRunForm", () => {
     });
 
     it("prefills inputs, workflow and resource parameters and job re-use from a rerun request", async () => {
-        const wrapper = mountForm(true, {
+        const model = buildModel();
+        model.workflowResourceParameters = { cores: { name: "cores", type: "text", value: "1" } };
+        const rerunRequest = {
             inputs: { 0: { src: "hdca", id: "c1" }, 4: "text" },
             replacement_params: { wf_param: "7" },
             resource_params: { cores: "4" },
             use_cached_job: true,
-        });
+        };
+        const wrapper = mountForm(true, rerunRequest, model);
         expect(findStep(wrapper, "0").props("model").inputs[0].value).toEqual({ values: [{ src: "hdca", id: "c1" }] });
         expect(findStep(wrapper, "4").props("model").inputs[0].value).toBe("text");
         const [wpForm, , resourceForm] = wrapper.findAllComponents({ name: "FormDisplay" });
