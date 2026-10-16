@@ -106,25 +106,33 @@ def _invocations_attrs(store_path: str) -> list[dict[str, Any]]:
     raise AssertionError(f"no invocation_attrs.txt in {store_path}")
 
 
+def _step_parameter_rows(invocations_attrs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        input_parameter_attrs
+        for invocation_attrs in invocations_attrs
+        for input_parameter_attrs in invocation_attrs["input_parameters"]
+        if input_parameter_attrs["type"] == "step"
+    ]
+
+
 def _without_step_parameter_order_index(store_path: str) -> str:
     """Rewrite an invocation archive as exported before step parameters recorded ``order_index``."""
     legacy_store_path = os.path.join(mkdtemp(), "legacy.tgz")
-    stripped = 0
+    step_parameter_rows = 0
     with tarfile.open(store_path) as source, tarfile.open(legacy_store_path, "w:gz") as dest:
         for member in source.getmembers():
             fileobj = source.extractfile(member) if member.isfile() else None
             if fileobj and _is_invocations_attrs(member):
                 invocations_attrs = json.load(fileobj)
-                for invocation_attrs in invocations_attrs:
-                    for input_parameter_attrs in invocation_attrs["input_parameters"]:
-                        if input_parameter_attrs.pop("order_index", None) is not None:
-                            del input_parameter_attrs["step_parameters"]
-                            stripped += 1
+                for input_parameter_attrs in _step_parameter_rows(invocations_attrs):
+                    input_parameter_attrs.pop("order_index", None)
+                    input_parameter_attrs.pop("step_parameters", None)
+                    step_parameter_rows += 1
                 contents = json.dumps(invocations_attrs).encode()
                 member.size = len(contents)
                 fileobj = io.BytesIO(contents)
             dest.addfile(member, fileobj)
-    assert stripped, "archive had no step parameters with an order_index"
+    assert step_parameter_rows, "archive had no step parameters"
     return legacy_store_path
 
 
@@ -5773,12 +5781,7 @@ some_file:
             reexport_store_path = self.workflow_populator.download_invocation_to_store(
                 imported[0]["id"], include_files=False, extension="tgz"
             )
-            assert not [
-                input_parameter_attrs
-                for invocation_attrs in _invocations_attrs(reexport_store_path)
-                for input_parameter_attrs in invocation_attrs["input_parameters"]
-                if input_parameter_attrs["type"] == "step"
-            ]
+            assert not _step_parameter_rows(_invocations_attrs(reexport_store_path))
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")
