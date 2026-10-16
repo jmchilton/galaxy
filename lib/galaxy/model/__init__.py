@@ -11096,10 +11096,10 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         request_input_parameter_attrs["value"] = self.value
         request_input_parameter_attrs["type"] = self.type
         if self.type == self.types.STEP_PARAMETERS:
-            # ``name`` and nested subworkflow keys are step ids, also export an order index form import can re-key.
+            # Step ids don't survive import, so also export the order index form for import to re-key.
             try:
                 resolved = self.resolve_step_parameters()
-            except (TypeError, ValueError):
+            except ValueError:
                 resolved = None
             if resolved is not None:
                 step, step_parameters = resolved
