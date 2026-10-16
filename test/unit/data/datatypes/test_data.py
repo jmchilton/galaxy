@@ -40,6 +40,8 @@ def test_converter_parameters_with_resource_conditional(resource_context):
             "optional": SimpleNamespace(name="optional", type="text", optional=True),
             "required": SimpleNamespace(name="required", type="text", optional=False),
             "__job_resource": Conditional("__job_resource"),
+            "__internal_optional": SimpleNamespace(name="__internal_optional", type="text", optional=True),
+            "__internal_data": SimpleNamespace(name="__internal_data", type="data"),
         }
     )
     context = None

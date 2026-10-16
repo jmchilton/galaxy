@@ -80,6 +80,7 @@ if TYPE_CHECKING:
         ProvidesAppContext,
         ProvidesUserContext,
     )
+    from galaxy.tools import Tool
     from galaxy.webapps.base.webapp import GalaxyWebTransaction
 
 XSS_VULNERABLE_MIME_TYPES = [
@@ -134,17 +135,22 @@ def validate(dataset_instance: DatasetProtocol) -> DatatypeValidation:
     return datatype_validation
 
 
-def get_params_and_input_name(converter, deps: dict | None, target_context: dict | None = None) -> tuple[dict, str]:
+def get_params_and_input_name(
+    converter: "Tool", deps: dict | None, target_context: dict | None = None
+) -> tuple[dict, str]:
     # Generate parameter dictionary
     params = {}
     # determine input parameter name and add to params
     input_name = "input1"
     for key, value in converter.inputs.items():
+        # Internal inputs are supplied by target_context below.
+        if key.startswith("__"):
+            continue
         if deps and value.name in deps:
             params[value.name] = deps[value.name]
         elif value.type == "data":
             input_name = key
-        # Input groups, including the injected job-resource conditional, have no optional attribute.
+        # Input groups do not expose optional.
         elif getattr(value, "optional", False):
             params[value.name] = None
 
