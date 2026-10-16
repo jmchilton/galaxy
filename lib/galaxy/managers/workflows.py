@@ -1376,6 +1376,9 @@ class WorkflowContentsManager(UsesAnnotations):
             step_model["replacement_parameters"] = step.module.get_informal_replacement_parameters(step)
             step_model["step_type"] = step.type
             step_model["step_label"] = step.label
+            # Invocation requests (e.g. ``/api/invocations/{id}/request``) reference input steps by this
+            # name, or by step index if it is None.
+            step_model["step_effective_label"] = step.effective_label
             step_model["step_name"] = step.module.get_name()
             step_model["step_version"] = step.module.get_version()
             step_model["step_index"] = step.order_index

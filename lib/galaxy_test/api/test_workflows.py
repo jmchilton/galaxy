@@ -5801,6 +5801,26 @@ steps:
                 invocation_id=imported_invocation["id"],
             )
 
+    def test_run_form_input_steps_carry_request_input_keys(self):
+        workflow = self.workflow_populator.load_workflow(name="test_run_form_request_input_keys")
+        # Leave the first input step unlabeled - a default input name isn't imported as its label.
+        workflow["steps"]["0"]["tool_state"] = dumps({"name": "Input Dataset"})
+        workflow_id = self.workflow_populator.create_workflow(workflow)
+        with self.dataset_populator.test_history() as history_id:
+            hdas = [self.dataset_populator.new_dataset(history_id, wait=True) for _ in range(2)]
+            invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id,
+                history_id=history_id,
+                inputs={str(index): self._ds_entry(hda) for index, hda in enumerate(hdas)},
+            )
+            request_inputs = self.workflow_populator.invocation_to_request(invocation_id)["inputs"]
+            input_steps = [
+                step for step in self._run_form_steps(invocation_id, history_id) if step["step_type"] == "data_input"
+            ]
+        # The request references input steps by ``step_effective_label``, unlabeled ones by step index.
+        assert [step["step_effective_label"] for step in input_steps] == [None, "WorkflowInput2"]
+        assert set(request_inputs) == {"0", "WorkflowInput2"}
+
     @skip_without_tool("random_lines1")
     def test_run_form_seeding_requires_invocation_access(self):
         with self.dataset_populator.test_history() as history_id:

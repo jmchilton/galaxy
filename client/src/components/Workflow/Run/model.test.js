@@ -72,7 +72,14 @@ describe("rerunInputValue", () => {
         expect(rerunInputValue(requestInputs, { step_label: null, step_index: 3 }, 3)).toBe(0);
         expect(rerunInputValue(requestInputs, { step_label: null, step_index: 5 }, 5)).toBeUndefined();
         // an unlabeled entry exported under "" is matched by position
-        expect(rerunInputValue({ "": "b" }, { step_label: null, step_index: 7 }, 0)).toBe("b");
+        expect(rerunInputValue({ "": "b" }, { step_label: null, step_effective_label: "", step_index: 7 }, 0)).toBe(
+            "b",
+        );
+    });
+
+    it("reads legacy unlabeled input steps by their effective label", () => {
+        const legacyStep = { step_label: null, step_effective_label: "Input Dataset", step_index: 0 };
+        expect(rerunInputValue({ "Input Dataset": "c" }, legacyStep, 0)).toBe("c");
     });
 
     it("wraps data values and drops empty optional data inputs", () => {

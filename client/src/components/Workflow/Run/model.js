@@ -247,8 +247,10 @@ export function getReplacements(inputs, stepData, wpData) {
  * @param {Number} position - position of ``step`` in the run model steps
  */
 export function rerunInputValue(requestInputs, step, position) {
-    // The request keys unlabeled steps by ``step_index``, not ``step_index + 1``.
-    const stateKey = step.step_label ? String(step.step_label) : String(step.step_index);
+    // The request keys steps by effective label (legacy input steps may only have a name),
+    // unlabeled ones by ``step_index``, not ``step_index + 1``.
+    const label = step.step_effective_label || step.step_label;
+    const stateKey = label ? String(label) : String(step.step_index);
     let value;
     if (stateKey in requestInputs) {
         value = requestInputs[stateKey];
