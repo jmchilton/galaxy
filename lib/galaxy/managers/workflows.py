@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import uuid
+from collections import Counter
 from typing import (
     Annotated,
     Any,
@@ -784,6 +785,15 @@ class RawWorkflowDescription:
         self.workflow_path = workflow_path
 
 
+def _request_input_labels(steps: list[model.WorkflowStep]) -> dict[int, str | None]:
+    """Effective label of each step, by step id, that invocation requests (e.g. ``/api/invocations/{id}/request``)
+    reference its input by. ``None`` if the step has none - requests use its index - or shares it with another step,
+    as legacy unlabeled input steps may (requests can't tell those apart).
+    """
+    counts = Counter(step.effective_label for step in steps)
+    return {step.id: step.effective_label if counts[step.effective_label] == 1 else None for step in steps}
+
+
 class WorkflowContentsManager(UsesAnnotations):
     def __init__(self, app: MinimalManagerApp, trs_proxy: TrsProxy):
         self.app = app
@@ -1327,6 +1337,7 @@ class WorkflowContentsManager(UsesAnnotations):
         step_order_indices = {}
         for step in workflow.steps:
             step_order_indices[step.id] = step.order_index
+        request_input_labels = _request_input_labels(workflow.steps)
         step_models = []
         for step in workflow.steps:
             assert step.module is not None
@@ -1376,9 +1387,7 @@ class WorkflowContentsManager(UsesAnnotations):
             step_model["replacement_parameters"] = step.module.get_informal_replacement_parameters(step)
             step_model["step_type"] = step.type
             step_model["step_label"] = step.label
-            # Invocation requests (e.g. ``/api/invocations/{id}/request``) reference input steps by this
-            # name, or by step index if it is None.
-            step_model["step_effective_label"] = step.effective_label
+            step_model["step_effective_label"] = request_input_labels[step.id]
             step_model["step_name"] = step.module.get_name()
             step_model["step_version"] = step.module.get_version()
             step_model["step_index"] = step.order_index

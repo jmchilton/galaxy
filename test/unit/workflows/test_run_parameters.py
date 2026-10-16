@@ -5,6 +5,7 @@ import pytest
 
 from galaxy import model
 from galaxy.managers.context import ProvidesHistoryContext
+from galaxy.managers.workflows import _request_input_labels
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.workflow.modules import populate_module_and_state
@@ -156,6 +157,7 @@ def test_recover_step_parameters_skips_unusable_rows():
         (str(subworkflow_step.id), {str(tool_step.id): {"num_lines": 2}}, param_types.STEP_PARAMETERS),
         ("9999", {"num_lines": 2}, param_types.STEP_PARAMETERS),
         ("num_lines", 2, param_types.STEP_PARAMETERS),
+        (str(subworkflow_step.id), ["num_lines"], param_types.STEP_PARAMETERS),
         ("seedme", "moo", param_types.REPLACEMENT_PARAMETERS),
     ]:
         invocation.input_parameters.append(
@@ -224,6 +226,25 @@ def test_inputs_by_name():
     normalized_inputs = __normalize_inputs_against_fixture({"input1": input1, "input2": input2}, inputs_by="name")
     assert normalized_inputs[STEP_ID_OFFSET + 1]["content"] == input1["content"]
     assert normalized_inputs[STEP_ID_OFFSET + 2]["content"] == input2["content"]
+
+
+def test_request_input_labels():
+    workflow = yaml_to_model("""
+steps:
+  - type: data_input
+    label: labeled
+  - type: data_input
+  - type: data_input
+  - type: data_input
+  - type: data_input
+""")
+    # Input steps saved by older Galaxy releases kept their name in tool_inputs, not as a label.
+    for index, name in [(1, "legacy_name"), (2, "Input Dataset"), (3, "Input Dataset")]:
+        workflow.step_by_index(index).tool_inputs = {"name": name}
+
+    labels = _request_input_labels(workflow.steps)
+
+    assert [labels[step.id] for step in workflow.steps] == ["labeled", "legacy_name", None, None, None]
 
 
 def __normalize_parameters_against_fixture(params):
