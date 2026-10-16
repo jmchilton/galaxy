@@ -10577,18 +10577,21 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
         Subworkflow step parameters are keyed by ``"<inner order_index>|name"``. Malformed rows and
         rows naming steps outside this invocation's workflow (e.g. of an imported invocation) are skipped.
         """
-        steps_by_id = self.workflow.steps_by_id
         step_parameters: dict[int, dict[str, Any]] = {}
         for parameter in self.input_parameters:
             if parameter.type != WorkflowRequestInputParameter.types.STEP_PARAMETERS:
                 continue
             try:
-                step = steps_by_id[int(parameter.name)]
-                step_parameters[step.id] = step.step_parameters_by_index(json.loads(parameter.value or "{}"))
-            except (TypeError, ValueError, KeyError):
+                resolved = parameter.resolve_step_parameters()
+            except ValueError:
+                resolved = None
+            if resolved is None:
                 log.warning(
                     "Skipping unusable step parameters of invocation %s for step id %s", self.id, parameter.name
                 )
+                continue
+            step, params = resolved
+            step_parameters[step.id] = params
         return step_parameters
 
     def recover_inputs(self) -> tuple[dict[str, Any], str]:

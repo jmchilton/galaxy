@@ -145,6 +145,26 @@ def test_resolve_step_parameters_malformed_row():
             _resolve_step_parameter_row(workflow, name, value)
 
 
+def test_recover_step_parameters_skips_unusable_rows():
+    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
+    invocation = model.WorkflowInvocation()
+    invocation.workflow = workflow
+    subworkflow_step = workflow.step_by_index(1)
+    tool_step = subworkflow_step.subworkflow.step_by_index(1)
+    param_types = model.WorkflowRequestInputParameter.types
+    for name, value, param_type in [
+        (str(subworkflow_step.id), {str(tool_step.id): {"num_lines": 2}}, param_types.STEP_PARAMETERS),
+        ("9999", {"num_lines": 2}, param_types.STEP_PARAMETERS),
+        ("num_lines", 2, param_types.STEP_PARAMETERS),
+        ("seedme", "moo", param_types.REPLACEMENT_PARAMETERS),
+    ]:
+        invocation.input_parameters.append(
+            model.WorkflowRequestInputParameter(name=name, value=json.dumps(value), type=param_type)
+        )
+
+    assert invocation.recover_step_parameters() == {subworkflow_step.id: {"1|num_lines": 2}}
+
+
 def test_subworkflow_step_parameters_do_not_leak_on_step_id_order_index_collision():
     # Outer step id 1 is also the subworkflow step's order_index, its parameters must not leak into the subworkflow.
     trans = cast(ProvidesHistoryContext, MockTrans())
