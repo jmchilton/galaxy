@@ -5644,6 +5644,10 @@ some_file:
             )
             request = self.workflow_populator.invocation_to_request(summary.invocation_id)
             assert request["parameters"] == step_parameters
+            invocation = self.workflow_populator.get_invocation(summary.invocation_id, step_details=True)
+            subworkflow_invocation_id = invocation["steps"][1]["subworkflow_invocation_id"]
+            subworkflow_request = self.workflow_populator.invocation_to_request(subworkflow_invocation_id)
+            assert subworkflow_request["parameters"] == {"1": {"num_lines": 2}}
             rerun_summary = self.workflow_populator.rerun(summary)
             rerun_invocation = self.workflow_populator.get_invocation(rerun_summary.invocation_id)
             content = self.dataset_populator.get_history_dataset_content(
@@ -5655,20 +5659,25 @@ some_file:
 
     @skip_without_tool("random_lines1")
     @pytest.mark.parametrize(
-        "key",
-        ["9|num_lines", "x|num_lines", "num_lines"],
-        ids=["unknown_index", "non_numeric_index", "no_pipe"],
+        "parameters,err_msg",
+        [
+            ({"1": {"9|num_lines": 2}}, "<subworkflow step index>|<name>"),
+            ({"1": {"x|num_lines": 2}}, "<subworkflow step index>|<name>"),
+            ({"1": {"num_lines": 2}}, "<subworkflow step index>|<name>"),
+            ({"9": {"num_lines": 2}}, "unknown workflow step index '9'"),
+        ],
+        ids=["unknown_index", "non_numeric_index", "no_pipe", "unknown_outer_index"],
     )
-    def test_run_subworkflow_runtime_parameters_invalid_key(self, history_id, key):
+    def test_run_subworkflow_runtime_parameters_invalid_key(self, history_id, parameters, err_msg):
         workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_NESTED_RUNTIME_PARAMETER)
         request = {
             "history_id": history_id,
-            "parameters": {"1": {key: 2}},
+            "parameters": parameters,
             "parameters_normalized": True,
         }
         response = self.workflow_populator.invoke_workflow_raw(workflow_id, request)
         self._assert_status_code_is(response, 400)
-        assert "<subworkflow step index>|<name>" in response.json()["err_msg"]
+        assert err_msg in response.json()["err_msg"]
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

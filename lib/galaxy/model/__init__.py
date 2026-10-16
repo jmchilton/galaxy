@@ -11071,6 +11071,21 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         META_PARAMETERS = "meta"
         RESOURCE_PARAMETERS = "resource"
 
+    def resolve_step_parameters(self) -> tuple["WorkflowStep", dict[str, Any]] | None:
+        """Return this step parameter row's workflow step and its parameters keyed by order index.
+
+        ``None`` if the row names a step (or subworkflow step) not in the invocation's workflow, e.g.
+        for an imported invocation. Raises ``ValueError`` for a malformed row.
+        """
+        assert self.type == self.types.STEP_PARAMETERS and self.workflow_invocation
+        if self.name is None or self.value is None:
+            raise ValueError("step parameter row has no step id or value")
+        try:
+            step = self.workflow_invocation.workflow.steps_by_id[int(self.name)]
+            return step, step.step_parameters_by_index(json.loads(self.value))
+        except KeyError:
+            return None
+
     def _serialize(self, id_encoder, serialization_options):
         request_input_parameter_attrs = dict_for(self)
         request_input_parameter_attrs["name"] = self.name

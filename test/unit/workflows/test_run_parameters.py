@@ -5,9 +5,12 @@ import pytest
 from galaxy import model
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.tools.parameters.meta import expand_workflow_inputs
+from galaxy.workflow.modules import module_factory
 from galaxy.workflow.run_request import (
     _normalize_inputs,
     _normalize_step_parameters,
+    workflow_run_config_to_request,
+    WorkflowRunConfig,
 )
 from .workflow_support import (
     MockTrans,
@@ -94,6 +97,67 @@ def test_nested_subworkflow_step_parameters_round_trip():
     # Stored as JSON, so inner step ids come back as strings.
     stored = json.loads(json.dumps(normalized[subworkflow_step.id]))
     assert subworkflow_step.step_parameters_by_index(stored) == by_index
+
+
+def test_resolve_step_parameters():
+    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
+    invocation = model.WorkflowInvocation()
+    invocation.workflow = workflow
+    subworkflow_step = workflow.step_by_index(1)
+    tool_step = subworkflow_step.subworkflow.step_by_index(1)
+
+    def resolve(name, value):
+        parameter = model.WorkflowRequestInputParameter(
+            name=name, value=json.dumps(value), type=model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
+        )
+        parameter.workflow_invocation = invocation
+        return parameter.resolve_step_parameters()
+
+    assert resolve(str(subworkflow_step.id), {str(tool_step.id): {"num_lines": 2}}) == (
+        subworkflow_step,
+        {"1|num_lines": 2},
+    )
+    assert resolve("9999", {"num_lines": 2}) is None
+    assert resolve(str(subworkflow_step.id), {"9999": {"num_lines": 2}}) is None
+    with pytest.raises(ValueError):
+        resolve("num_lines", 2)
+
+
+def test_subworkflow_invocation_records_its_own_step_parameters():
+    # Outer step id 1 is also the subworkflow step's order_index, its parameters must not leak into the subworkflow.
+    trans = MockTrans()
+    workflow = yaml_to_model("""
+steps:
+  - type: data_input
+    id: 1
+    tool_inputs: {name: outer_input}
+  - type: subworkflow
+    id: 2
+    subworkflow:
+      steps:
+        - type: data_input
+          id: 3
+          tool_inputs: {name: inner_input}
+""")
+    for step in [*workflow.steps, *workflow.step_by_index(1).subworkflow.steps]:
+        step.module = module_factory.from_workflow_step(trans, step)
+        step.state = step.module.state
+    run_config = WorkflowRunConfig(
+        target_history=model.History(),
+        replacement_dict={},
+        inputs={},
+        param_map={1: {"seed": "outer"}, 2: {3: {"seed": "inner"}}},
+    )
+
+    invocation = workflow_run_config_to_request(trans, run_config, workflow)
+
+    subworkflow_invocation = invocation.subworkflow_invocations[0].subworkflow_invocation
+    step_parameters = {
+        parameter.name: json.loads(parameter.value)
+        for parameter in subworkflow_invocation.input_parameters
+        if parameter.type == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
+    }
+    assert step_parameters == {"3": {"seed": "inner"}}
 
 
 def test_inputs_by_step_id():
