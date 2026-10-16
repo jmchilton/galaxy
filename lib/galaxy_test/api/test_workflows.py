@@ -92,6 +92,16 @@ def _default_file_location(test_http_server) -> str:
     return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
 
 
+def _invocations_attrs(store_path: str) -> list[dict[str, Any]]:
+    with tarfile.open(store_path) as store:
+        for member in store.getmembers():
+            if os.path.basename(member.name) == "invocation_attrs.txt":
+                fileobj = store.extractfile(member)
+                assert fileobj
+                return json.load(fileobj)
+    raise AssertionError(f"no invocation_attrs.txt in {store_path}")
+
+
 def _without_step_parameter_order_index(store_path: str) -> str:
     """Rewrite an invocation archive as exported before step parameters recorded ``order_index``."""
     legacy_store_path = os.path.join(mkdtemp(), "legacy.tgz")
@@ -5704,14 +5714,16 @@ some_file:
 
     @skip_without_tool("random_lines1")
     @pytest.mark.parametrize(
-        "workflow,step_parameters,input_label",
+        "workflow,step_parameters,input_label,subworkflow_step_parameters",
         [
-            (WORKFLOW_RUNTIME_PARAMETER_SIMPLE, {"1": {"num_lines": 2, "seed_source|seed": "moo"}}, "input1"),
-            (WORKFLOW_NESTED_RUNTIME_PARAMETER, {"1": {"1|num_lines": 2}}, "outer_input"),
+            (WORKFLOW_RUNTIME_PARAMETER_SIMPLE, {"1": {"num_lines": 2, "seed_source|seed": "moo"}}, "input1", None),
+            (WORKFLOW_NESTED_RUNTIME_PARAMETER, {"1": {"1|num_lines": 2}}, "outer_input", {"1": {"num_lines": 2}}),
         ],
         ids=["tool_step", "subworkflow_tool_step"],
     )
-    def test_workflow_request_step_parameters_after_invocation_import(self, workflow, step_parameters, input_label):
+    def test_workflow_request_step_parameters_after_invocation_import(
+        self, workflow, step_parameters, input_label, subworkflow_step_parameters
+    ):
         with self.dataset_populator.test_history() as history_id:
             summary = self.workflow_populator.run_workflow(
                 workflow,
@@ -5727,6 +5739,11 @@ some_file:
             )
             request = self.workflow_populator.invocation_to_request(imported[0]["id"])
             assert request["parameters"] == step_parameters
+            if subworkflow_step_parameters:
+                invocation = self.workflow_populator.get_invocation(imported[0]["id"], step_details=True)
+                subworkflow_invocation_id = invocation["steps"][1]["subworkflow_invocation_id"]
+                subworkflow_request = self.workflow_populator.invocation_to_request(subworkflow_invocation_id)
+                assert subworkflow_request["parameters"] == subworkflow_step_parameters
 
     @skip_without_tool("random_lines1")
     def test_workflow_request_after_import_of_archive_without_step_parameter_order_index(self):
@@ -5748,10 +5765,16 @@ some_file:
             # The stale step id can't be mapped onto the imported workflow, so its parameters are dropped.
             assert request["parameters"] is None
             assert request["inputs"]["input1"]["src"] == "hda"
-            # Re-exporting the imported invocation must not fail on the unresolvable row.
-            self.workflow_populator.download_invocation_to_store(
+            # Import drops the unmappable row, so a re-export can't carry the stale step id forward.
+            reexport_store_path = self.workflow_populator.download_invocation_to_store(
                 imported[0]["id"], include_files=False, extension="tgz"
             )
+            assert not [
+                input_parameter_attrs
+                for invocation_attrs in _invocations_attrs(reexport_store_path)
+                for input_parameter_attrs in invocation_attrs["input_parameters"]
+                if input_parameter_attrs["type"] == "step"
+            ]
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")

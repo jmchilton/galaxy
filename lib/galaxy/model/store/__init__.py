@@ -1212,6 +1212,17 @@ class ModelImportStore(metaclass=abc.ABCMeta):
 
             input_parameters = []
             for input_parameter_attrs in invocation_attrs["input_parameters"]:
+                if (
+                    input_parameter_attrs["type"] == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
+                    and "order_index" not in input_parameter_attrs
+                ):
+                    # Archives exported before order_index was recorded hold a step id from the source server.
+                    log.warning(
+                        "Dropping step parameters of imported invocation %s for unmappable step id %s",
+                        imported_invocation.id,
+                        input_parameter_attrs["name"],
+                    )
+                    continue
                 input_parameter = model.WorkflowRequestInputParameter()
                 if "order_index" in input_parameter_attrs:
                     # Step parameters are stored by step id, re-key them against the imported workflow.

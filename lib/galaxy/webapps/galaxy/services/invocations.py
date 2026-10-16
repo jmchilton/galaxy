@@ -379,7 +379,7 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
                 if resolved is None:
                     log.warning(
                         "Skipping step parameters of invocation %s for step id %s, not in the invocation's workflow "
-                        "(imported from an archive without order_index?)",
+                        "(imported by an older Galaxy?)",
                         invocation.id,
                         parameter.name,
                     )
