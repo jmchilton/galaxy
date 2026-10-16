@@ -1043,6 +1043,8 @@ workflow_run:
     expand_form_link: '.workflow-expand-form-link'
     expanded_form: '.workflow-expanded-form'
     job_reuse_checkbox: '.workflow-expanded-form [data-label="Attempt to re-use jobs with identical parameters?"] input[type="checkbox"]'
+    simple_form_link: '.workflow-simple-form-link'
+    simple_form_disabled_reason: '[data-description="workflow run simple form disabled reason"]'
     current_history_indicator: '[data-description="current history indicator"]'
     not_current_history_indicator: '[data-description="not current history indicator"]'
     history_target_link: '[data-description="switch to history link"]'

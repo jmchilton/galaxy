@@ -161,6 +161,40 @@ describe("WorkflowRun.vue", () => {
         });
     });
 
+    describe("rerun with tool step parameters", () => {
+        async function mountRerun(runData, rerunRequest) {
+            wrapper.unmount();
+            getRunData.mockResolvedValueOnce(JSON.parse(JSON.stringify(runData)));
+            const rerunWrapper = mount(WorkflowRun, {
+                props: { workflowId: run1WorkflowId, preferSimpleForm: true, isRerun: true, rerunRequest },
+                global: {
+                    plugins: [createTestingPinia({ createSpy: vi.fn })],
+                    stubs: { WorkflowRunFormSimple: true, WorkflowRunForm: true },
+                },
+            });
+            await vi.runAllTimersAsync();
+            await flushPromises();
+            return rerunWrapper;
+        }
+
+        it("explains the expanded form and offers no way back to the simple form", async () => {
+            // run1 forces the expanded form on its own - make it eligible for the simple form.
+            const runData = JSON.parse(JSON.stringify(sampleRunData1));
+            runData.steps = runData.steps.filter((step) => step.step_type !== "tool");
+            const rerunWrapper = await mountRerun(runData, { parameters: { 1: { num_lines: 2 } } });
+            const form = rerunWrapper.findComponent(WorkflowRunForm);
+            expect(form.props("disableSimpleForm")).toBe(true);
+            expect(form.props("disableSimpleFormReason")).toBe("rerunHasStepParameters");
+        });
+
+        it("keeps the workflow's own reason when it cannot use the simple form anyway", async () => {
+            const rerunWrapper = await mountRerun(sampleRunData1, { parameters: { 1: { num_lines: 2 } } });
+            const form = rerunWrapper.findComponent(WorkflowRunForm);
+            expect(form.props("disableSimpleForm")).toBe(true);
+            expect(form.props("disableSimpleFormReason")).toBe("hasDisconnectedInputs");
+        });
+    });
+
     describe("missing tools", () => {
         const MISSING_TOOL_IDS = ["toolshed.g2.bx.psu.edu/repos/devteam/bwa/bwa/0.7.17"];
         const MISSING_TOOLS_MESSAGE = "Following tools missing: toolshed.g2.bx.psu.edu/repos/devteam/bwa/bwa/0.7.17";

@@ -35,7 +35,7 @@ interface Props {
     simpleFormTargetHistory?: string;
     simpleFormUseJobCache?: boolean;
     requestState?: WorkflowInvocationRequestInputs;
-    /** Exported request of the invocation being rerun, prefills the expanded form */
+    /** Exported request of the invocation being rerun, prefills the run forms */
     rerunRequest?: WorkflowInvocationRequest;
     /** Invocation being rerun, seeds tool and subworkflow steps with the values it ran with */
     rerunInvocationId?: string;
@@ -57,15 +57,19 @@ const props = withDefaults(defineProps<Props>(), {
     landingUuid: undefined,
 });
 
+type SimpleFormDisabledReason =
+    | "hasWorkflowResourceParameters"
+    | "hasDisconnectedInputs"
+    | "hasReplacementParameters"
+    | "rerunHasStepParameters";
+
 const loading = ref(true);
 const hasUpgradeMessages = ref(false);
 const hasStepVersionChanges = ref(false);
 const invocations = ref([]);
 const simpleForm = ref(false);
-const disableSimpleForm = ref(false);
-const disableSimpleFormReason = ref<
-    "hasReplacementParameters" | "hasDisconnectedInputs" | "hasWorkflowResourceParameters" | undefined
->(undefined);
+const disableSimpleFormReason = ref<SimpleFormDisabledReason>();
+const disableSimpleForm = computed(() => disableSimpleFormReason.value !== undefined);
 const submissionError = ref("");
 const workflowError = ref("");
 const missingToolIds = ref<string[]>([]);
@@ -123,6 +127,37 @@ function handleSubmissionError(error: string) {
     submissionError.value = errorMessageAsString(error);
 }
 
+/** Why the simple form can't run this workflow, if it can't. The first reason found is the one shown. */
+function simpleFormDisabledReason(
+    model: WorkflowRunModel,
+    rerunRequest?: WorkflowInvocationRequest,
+): SimpleFormDisabledReason | undefined {
+    // Just render the whole form for resource request parameters (kind of
+    // niche - I'm not sure anyone is using these currently anyway).
+    if (model.hasWorkflowResourceParameters) {
+        return "hasWorkflowResourceParameters";
+    }
+    // If there are required parameters in a tool form (a disconnected runtime
+    // input), we have to render the tool form steps and cannot use the
+    // simplified tool form.
+    if (model.hasOpenToolSteps) {
+        return "hasDisconnectedInputs";
+    }
+    // These only work with PJA - the API doesn't evaluate them at
+    // all outside that context currently. The main workflow form renders
+    // these dynamically and takes care of all the validation and setup details
+    // on the frontend. If these are implemented on the backend at some
+    // point this restriction can be lifted.
+    if (model.hasReplacementParametersInToolForm) {
+        return "hasReplacementParameters";
+    }
+    // The simple form never submits tool step parameters, so a rerun would drop them.
+    if (rerunHasStepParameters(rerunRequest)) {
+        return "rerunHasStepParameters";
+    }
+    return undefined;
+}
+
 async function loadRun() {
     try {
         const runData = await getRunData(
@@ -136,34 +171,10 @@ async function loadRun() {
         simpleForm.value = props.preferSimpleForm;
 
         if (simpleForm.value) {
-            // These only work with PJA - the API doesn't evaluate them at
-            // all outside that context currently. The main workflow form renders
-            // these dynamically and takes care of all the validation and setup details
-            // on the frontend. If these are implemented on the backend at some
-            // point this restriction can be lifted.
-            if (incomingModel.hasReplacementParametersInToolForm) {
+            const reason = simpleFormDisabledReason(incomingModel, props.isRerun ? props.rerunRequest : undefined);
+            if (reason) {
                 simpleForm.value = false;
-                disableSimpleForm.value = true;
-                disableSimpleFormReason.value = "hasReplacementParameters";
-            }
-            // If there are required parameters in a tool form (a disconnected runtime
-            // input), we have to render the tool form steps and cannot use the
-            // simplified tool form.
-            if (incomingModel.hasOpenToolSteps) {
-                simpleForm.value = false;
-                disableSimpleForm.value = true;
-                disableSimpleFormReason.value = "hasDisconnectedInputs";
-            }
-            // Just render the whole form for resource request parameters (kind of
-            // niche - I'm not sure anyone is using these currently anyway).
-            if (incomingModel.hasWorkflowResourceParameters) {
-                simpleForm.value = false;
-                disableSimpleForm.value = true;
-                disableSimpleFormReason.value = "hasWorkflowResourceParameters";
-            }
-            // The simple form never submits tool step parameters, so a rerun would drop them.
-            if (props.isRerun && rerunHasStepParameters(props.rerunRequest)) {
-                simpleForm.value = false;
+                disableSimpleFormReason.value = reason;
             }
         }
 
@@ -306,6 +317,7 @@ defineExpose({
                         :use-job-cache="simpleFormUseJobCache"
                         :can-mutate-current-history="canRunOnHistory"
                         :request-state="requestState"
+                        :rerun-request="rerunRequest"
                         :is-rerun="props.isRerun"
                         :landing-uuid="props.landingUuid"
                         @submissionSuccess="handleInvocations"
