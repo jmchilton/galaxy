@@ -1983,6 +1983,12 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             self.move_to_and_click(expand_link)
             workflow_run.expanded_form.wait_for_visible()
 
+    def workflow_run_expand_step(self, label: str):
+        """Open a collapsed step card on the expanded run form."""
+        workflow_run = self.components.workflow_run
+        workflow_run.step_header(label=label).wait_for_and_click()
+        workflow_run.step_body(label=label).wait_for_visible()
+
     def workflow_create_new(
         self, annotation: str | None = None, clear_placeholder: bool = False, save_workflow: bool = True
     ):

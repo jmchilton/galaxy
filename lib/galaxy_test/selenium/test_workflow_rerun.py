@@ -195,8 +195,9 @@ class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows
         self.get(f"workflows/rerun?invocation_id={plain.invocation_id}")
         # Seeding fills num_lines, so only the recorded step parameters keep this out of the simplified form.
         workflow_run.expanded_form.wait_for_visible()
-        self._expand_rerun_step("random")
-        self._assert_tool_parameter_shows("num_lines", "3")
+        assert not workflow_run.job_reuse_checkbox.wait_for_present().is_selected()
+        self.workflow_run_expand_step("random")
+        self._assert_tool_parameter_preview("num_lines", "3")
         self.screenshot("workflow_rerun_expanded_form_seeded_step")
 
         workflow = WORKFLOW_RUNTIME_PARAMETER_SIMPLE.replace("seed: asdf", "seed: ${seedme}")
@@ -214,19 +215,17 @@ class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows
         workflow_run.expanded_form.wait_for_visible()
         seedme = tool_form.parameter_input(parameter="seedme").wait_for_visible()
         assert seedme.get_attribute("value") == "moo", seedme.get_attribute("value")
+        assert workflow_run.job_reuse_checkbox.wait_for_present().is_selected()
         self.screenshot("workflow_rerun_expanded_form_seeded_workflow_parameters")
-        self._expand_rerun_step("random")
-        self._assert_tool_parameter_shows("num_lines", "2")
+        self.workflow_run_expand_step("random")
+        self._assert_tool_parameter_preview("num_lines", "2")
         self.screenshot("workflow_rerun_expanded_form_seeded_workflow_parameters_step")
 
-    def _expand_rerun_step(self, label: str):
-        self.wait_for_selector_clickable(f'[step-label="{label}"] .portlet-header').click()
-
     @retry_assertion_during_transitions
-    def _assert_tool_parameter_shows(self, parameter: str, expected: str):
-        div = self.components.tool_form.parameter_div(parameter=parameter).wait_for_visible()
-        self.scroll_into_view(div)
-        assert expected in div.text, f"Expected {parameter} to show {expected!r}, got {div.text!r}"
+    def _assert_tool_parameter_preview(self, parameter: str, expected: str):
+        preview = self.components.tool_form.parameter_preview(parameter=parameter).wait_for_visible()
+        self.scroll_into_view(preview)
+        assert preview.text.strip() == expected, f"Expected {parameter} to show {expected!r}, got {preview.text!r}"
 
     @retry_assertion_during_transitions
     def _assert_input_table_has_parameter(self, label: str, value: str):
