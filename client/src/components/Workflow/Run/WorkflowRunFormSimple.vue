@@ -451,7 +451,7 @@ async function onExecute() {
     }
 
     const data: Record<string, any> = {
-        replacement_dict: replacementParams,
+        replacement_params: replacementParams,
         inputs: inputs,
         inputs_by: "step_index",
         batch: true,

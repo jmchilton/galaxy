@@ -131,5 +131,7 @@ describe("WorkflowRunFormSimple rerun prefill", () => {
         expect(request).not.toHaveProperty("preferred_outputs_object_store_id");
         expect(request).not.toHaveProperty("preferred_intermediate_object_store_id");
         expect(request).toMatchObject({ history_id: HISTORY_ID, inputs_by: "step_index", batch: true });
+        expect(request.replacement_params).toEqual({});
+        expect(request).not.toHaveProperty("replacement_dict");
     });
 });

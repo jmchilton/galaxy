@@ -1,5 +1,6 @@
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_OPTIONAL_TRUE_INPUT_DATA,
+    WORKFLOW_RENAME_ON_REPLACEMENT_PARAM,
     WORKFLOW_RUNTIME_PARAMETER_SIMPLE,
     WORKFLOW_SIMPLE_CAT_TWICE,
 )
@@ -230,6 +231,33 @@ class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows
         self.workflow_run_expand_step("random")
         self._assert_tool_parameter_preview("num_lines", "2")
         self.screenshot("workflow_rerun_expanded_form_seeded_workflow_parameters_step")
+
+    @selenium_test
+    @managed_history
+    def test_workflow_rerun_simple_form_keeps_workflow_parameters(self):
+        """A simple-form run applies its workflow parameters, and its rerun prefills and resubmits them."""
+        workflow_run = self.components.workflow_run
+        replaceme = self.components.tool_form.parameter_input(parameter="replaceme")
+        history_id = self.current_history_id()
+        self.upload_context("local-file").stage_local_file(self.get_filename("1.txt")).start()
+        self.wait_for_history()
+        self.workflow_run_open_workflow(WORKFLOW_RENAME_ON_REPLACEMENT_PARAM)
+        replaceme.wait_for_and_send_keys("moocow")
+        workflow_run.expanded_form.assert_absent()
+        self.workflow_run_submit()
+        self.workflow_run_wait_for_ok(hid=2)
+        self.assert_item_name(2, "moocow suffix")
+
+        [invocation] = self.workflow_populator.history_invocations(history_id)
+        self.get(f"workflows/rerun?invocation_id={invocation['id']}")
+        prefilled = replaceme.wait_for_value()
+        assert prefilled == "moocow", prefilled
+        workflow_run.expanded_form.assert_absent()
+        self.screenshot("workflow_rerun_simple_form_workflow_parameters")
+        self.workflow_run_submit()
+        self.workflow_run_wait_for_ok(hid=3)
+        self.assert_item_name(3, "moocow suffix")
+        self.screenshot("workflow_rerun_simple_form_workflow_parameters_renamed")
 
     @retry_assertion_during_transitions
     def _assert_tool_parameter_preview(self, parameter: str, expected: str):
