@@ -5677,7 +5677,7 @@ some_file:
         }
         response = self.workflow_populator.invoke_workflow_raw(workflow_id, request)
         self._assert_status_code_is(response, 400)
-        assert err_msg in response.json()["err_msg"]
+        assert_error_message_contains(response, err_msg)
 
     def test_workflow_new_autocreated_history(self):
         workflow = self.workflow_populator.load_workflow(name="test_for_new_autocreated_history")
@@ -7979,14 +7979,13 @@ steps:
           optional: true
       steps: []
 """)
-        response = self._post(
-            f"workflows/{workflow_id}/invocations",
-            data={
+        response = self.workflow_populator.invoke_workflow_raw(
+            workflow_id,
+            {
                 "history_id": history_id,
                 "parameters_normalized": True,
                 "parameters": {"0": {"0|parameter_value": 100}},
             },
-            json=True,
         )
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, "must specify an 'input' value")

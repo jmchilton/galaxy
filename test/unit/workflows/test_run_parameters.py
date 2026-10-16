@@ -80,6 +80,16 @@ def test_step_parameters_legacy():
     assert len(normalized_params.keys()) == 1
 
 
+def _resolve_step_parameter_row(workflow: model.Workflow, name: str | None, value: str | None):
+    invocation = model.WorkflowInvocation()
+    invocation.workflow = workflow
+    parameter = model.WorkflowRequestInputParameter(
+        name=name, value=value, type=model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
+    )
+    parameter.workflow_invocation = invocation
+    return parameter.resolve_step_parameters()
+
+
 def test_nested_subworkflow_step_parameters_round_trip():
     workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
     subworkflow_step = workflow.step_by_index(1)
@@ -96,36 +106,40 @@ def test_nested_subworkflow_step_parameters_round_trip():
             nested_step.id: {nested_tool_step.id: {"seed_source|seed": "moo"}},
         }
     }
-    # Stored as JSON, so inner step ids come back as strings.
-    stored = json.loads(json.dumps(normalized[subworkflow_step.id]))
-    assert subworkflow_step.step_parameters_by_index(stored) == by_index
-
-
-def test_resolve_step_parameters():
-    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
-    invocation = model.WorkflowInvocation()
-    invocation.workflow = workflow
-    subworkflow_step = workflow.step_by_index(1)
-    tool_step = subworkflow_step.subworkflow.step_by_index(1)
-
-    def resolve(name, value):
-        parameter = model.WorkflowRequestInputParameter(
-            name=name, value=json.dumps(value), type=model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
-        )
-        parameter.workflow_invocation = invocation
-        return parameter.resolve_step_parameters()
-
-    assert resolve(str(subworkflow_step.id), {str(tool_step.id): {"num_lines": 2}}) == (
+    # Stored as a JSON row, so inner step ids come back as strings.
+    stored_value = json.dumps(normalized[subworkflow_step.id])
+    assert _resolve_step_parameter_row(workflow, str(subworkflow_step.id), stored_value) == (
         subworkflow_step,
-        {"1|num_lines": 2},
+        by_index,
     )
-    assert resolve("9999", {"num_lines": 2}) is None
-    assert resolve(str(subworkflow_step.id), {"9999": {"num_lines": 2}}) is None
-    with pytest.raises(ValueError):
-        resolve("num_lines", 2)
 
 
-def test_subworkflow_invocation_records_its_own_step_parameters():
+def test_resolve_step_parameters_unknown_step():
+    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
+    subworkflow_step = workflow.step_by_index(1)
+
+    assert _resolve_step_parameter_row(workflow, "9999", json.dumps({"num_lines": 2})) is None
+    assert (
+        _resolve_step_parameter_row(workflow, str(subworkflow_step.id), json.dumps({"9999": {"num_lines": 2}})) is None
+    )
+
+
+def test_resolve_step_parameters_malformed_row():
+    workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
+    subworkflow_step_id = str(workflow.step_by_index(1).id)
+
+    for name, value in [
+        (None, json.dumps({"num_lines": 2})),
+        (subworkflow_step_id, None),
+        ("num_lines", json.dumps(2)),
+        (subworkflow_step_id, json.dumps({"x": {"num_lines": 2}})),
+        (subworkflow_step_id, "{not json"),
+    ]:
+        with pytest.raises(ValueError):
+            _resolve_step_parameter_row(workflow, name, value)
+
+
+def test_subworkflow_step_parameters_do_not_leak_on_step_id_order_index_collision():
     # Outer step id 1 is also the subworkflow step's order_index, its parameters must not leak into the subworkflow.
     trans = cast(ProvidesHistoryContext, MockTrans())
     workflow = yaml_to_model("""
