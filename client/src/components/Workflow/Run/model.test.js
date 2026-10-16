@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getReplacements, rerunInputValue, WorkflowRunModel } from "./model";
+import { getReplacements, rerunHasStepParameters, rerunInputValue, WorkflowRunModel } from "./model";
 import sampleRunData1 from "./testdata/run1.json";
 
 describe("test basic parameter replacement", () => {
@@ -80,5 +80,14 @@ describe("rerunInputValue", () => {
         expect(rerunInputValue(requestInputs, dataStep, 1)).toEqual({ values: [{ src: "hda", id: "d1" }] });
         const emptyOptional = { step_label: null, step_index: 2, step_type: "data_input" };
         expect(rerunInputValue(requestInputs, emptyOptional, 2)).toBeUndefined();
+    });
+});
+
+describe("rerunHasStepParameters", () => {
+    it("is true only when the exported request carries tool step parameters", () => {
+        expect(rerunHasStepParameters(undefined)).toBe(false);
+        expect(rerunHasStepParameters({ inputs: { 0: "a" }, parameters: null })).toBe(false);
+        expect(rerunHasStepParameters({ parameters: {} })).toBe(false);
+        expect(rerunHasStepParameters({ parameters: { 1: { num_lines: 2 } } })).toBe(true);
     });
 });

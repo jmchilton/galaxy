@@ -267,3 +267,12 @@ export function rerunInputValue(requestInputs, step, position) {
     }
     return value;
 }
+
+/**
+ * Does an exported invocation request carry tool step parameters? Only the expanded run form submits them.
+ *
+ * @param {Object} [request] - exported invocation request, if any
+ */
+export function rerunHasStepParameters(request) {
+    return Boolean(request?.parameters && Object.keys(request.parameters).length > 0);
+}

@@ -132,6 +132,28 @@ describe("WorkflowRun.vue", () => {
         expect(rerunWrapper.findComponent(WorkflowRunForm).props("rerunRequest")).toEqual(rerunRequest);
     });
 
+    it("opens the expanded form for a rerun whose request has tool step parameters", async () => {
+        wrapper.unmount();
+        // run1 forces the expanded form on its own - make it eligible for the simple form.
+        const runData = JSON.parse(JSON.stringify(sampleRunData1));
+        runData.steps = runData.steps.filter((step) => step.step_type !== "tool");
+        const mountRerun = async (rerunRequest) => {
+            getRunData.mockResolvedValueOnce(JSON.parse(JSON.stringify(runData)));
+            const rerunWrapper = mount(WorkflowRun, {
+                props: { workflowId: run1WorkflowId, preferSimpleForm: true, isRerun: true, rerunRequest },
+                global: {
+                    plugins: [createTestingPinia({ createSpy: vi.fn })],
+                    stubs: { WorkflowRunFormSimple: true, WorkflowRunForm: true },
+                },
+            });
+            await vi.runAllTimersAsync();
+            await flushPromises();
+            return rerunWrapper;
+        };
+        expect((await mountRerun({ parameters: null })).vm.simpleForm).toBe(true);
+        expect((await mountRerun({ parameters: { 1: { num_lines: 2 } } })).vm.simpleForm).toBe(false);
+    });
+
     describe("missing tools", () => {
         const MISSING_TOOL_IDS = ["toolshed.g2.bx.psu.edu/repos/devteam/bwa/bwa/0.7.17"];
         const MISSING_TOOLS_MESSAGE = "Following tools missing: toolshed.g2.bx.psu.edu/repos/devteam/bwa/bwa/0.7.17";
