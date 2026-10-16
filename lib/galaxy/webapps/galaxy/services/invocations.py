@@ -368,8 +368,14 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
             elif parameter_type == param_types.STEP_PARAMETERS:
                 try:
                     resolved = parameter.resolve_step_parameters()
-                except ValueError:
-                    raise InconsistentDatabase("saved workflow step parameters not in the format expected")
+                except ValueError as e:
+                    log.error(
+                        "Malformed step parameters of invocation %s for step id %s: %s",
+                        invocation.id,
+                        parameter.name,
+                        e,
+                    )
+                    raise InconsistentDatabase("saved workflow step parameters not in the format expected") from e
                 if resolved is None:
                     log.error(
                         "Step parameters of invocation %s reference step id %s, not in the invocation's workflow",

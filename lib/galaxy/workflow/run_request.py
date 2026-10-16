@@ -175,7 +175,7 @@ def _normalize_step_parameters(
     if already_normalized:
         step_indices = {str(step.order_index) for step in steps}
         for key in param_map:
-            if str(key) not in step_indices:
+            if key not in step_indices:
                 raise exceptions.RequestParameterInvalidException(
                     f"Step parameters reference unknown workflow step index '{key}'."
                 )

@@ -11072,7 +11072,9 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         RESOURCE_PARAMETERS = "resource"
 
     def resolve_step_parameters(self) -> tuple["WorkflowStep", dict[str, Any]] | None:
-        """Return this step parameter row's workflow step and its parameters keyed by order index.
+        """Return this step parameter row's workflow step and its parameters in request form.
+
+        Subworkflow step parameters are re-keyed to ``"<inner order_index>|name"``.
 
         ``None`` if the row names a step (or subworkflow step) not in the invocation's workflow, e.g.
         for an imported invocation. Raises ``ValueError`` for a malformed row.

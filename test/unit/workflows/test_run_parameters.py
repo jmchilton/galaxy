@@ -1,11 +1,13 @@
 import json
+from typing import cast
 
 import pytest
 
 from galaxy import model
+from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.tools.parameters.meta import expand_workflow_inputs
-from galaxy.workflow.modules import module_factory
+from galaxy.workflow.modules import populate_module_and_state
 from galaxy.workflow.run_request import (
     _normalize_inputs,
     _normalize_step_parameters,
@@ -125,7 +127,7 @@ def test_resolve_step_parameters():
 
 def test_subworkflow_invocation_records_its_own_step_parameters():
     # Outer step id 1 is also the subworkflow step's order_index, its parameters must not leak into the subworkflow.
-    trans = MockTrans()
+    trans = cast(ProvidesHistoryContext, MockTrans())
     workflow = yaml_to_model("""
 steps:
   - type: data_input
@@ -139,9 +141,7 @@ steps:
           id: 3
           tool_inputs: {name: inner_input}
 """)
-    for step in [*workflow.steps, *workflow.step_by_index(1).subworkflow.steps]:
-        step.module = module_factory.from_workflow_step(trans, step)
-        step.state = step.module.state
+    populate_module_and_state(trans, workflow, param_map={})
     run_config = WorkflowRunConfig(
         target_history=model.History(),
         replacement_dict={},
