@@ -92,10 +92,14 @@ def _default_file_location(test_http_server) -> str:
     return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
 
 
+def _is_invocations_attrs(member: tarfile.TarInfo) -> bool:
+    return member.isfile() and os.path.basename(member.name) == "invocation_attrs.txt"
+
+
 def _invocations_attrs(store_path: str) -> list[dict[str, Any]]:
     with tarfile.open(store_path) as store:
         for member in store.getmembers():
-            if os.path.basename(member.name) == "invocation_attrs.txt":
+            if _is_invocations_attrs(member):
                 fileobj = store.extractfile(member)
                 assert fileobj
                 return json.load(fileobj)
@@ -109,7 +113,7 @@ def _without_step_parameter_order_index(store_path: str) -> str:
     with tarfile.open(store_path) as source, tarfile.open(legacy_store_path, "w:gz") as dest:
         for member in source.getmembers():
             fileobj = source.extractfile(member) if member.isfile() else None
-            if fileobj and os.path.basename(member.name) == "invocation_attrs.txt":
+            if fileobj and _is_invocations_attrs(member):
                 invocations_attrs = json.load(fileobj)
                 for invocation_attrs in invocations_attrs:
                     for input_parameter_attrs in invocation_attrs["input_parameters"]:
@@ -5762,10 +5766,10 @@ some_file:
                 history_id=reimport_history_id, store_path=legacy_store_path, model_store_format="tgz"
             )
             request = self.workflow_populator.invocation_to_request(imported[0]["id"])
-            # The stale step id can't be mapped onto the imported workflow, so its parameters are dropped.
+            # Import drops the row: its stale step id can't be mapped onto the imported workflow.
             assert request["parameters"] is None
             assert request["inputs"]["input1"]["src"] == "hda"
-            # Import drops the unmappable row, so a re-export can't carry the stale step id forward.
+            # Nor does a re-export carry the stale step id forward.
             reexport_store_path = self.workflow_populator.download_invocation_to_store(
                 imported[0]["id"], include_files=False, extension="tgz"
             )

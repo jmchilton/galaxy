@@ -471,6 +471,12 @@ def test_import_export_library(tmp_path):
 def test_import_export_invocation():
     app = _mock_app()
     workflow_invocation = _setup_invocation(app)
+    # A step parameter row whose step id isn't in the workflow, as left by imports from older Galaxy versions.
+    stale_step_parameter = model.WorkflowRequestInputParameter(
+        name="999999", value="{}", type=model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
+    )
+    workflow_invocation.input_parameters.append(stale_step_parameter)
+    app.commit()
     temp_directory = mkdtemp()
     with store.DirectoryModelExportStore(temp_directory, app=app) as export_store:
         export_store.export_workflow_invocation(workflow_invocation)
@@ -483,7 +489,13 @@ def test_import_export_invocation():
     import_model_store = store.get_import_model_store_for_directory(
         temp_directory, app=app, user=workflow_invocation.user, import_options=store.ImportOptions()
     )
-    import_model_store.perform_import(history=h2)
+    object_import_tracker = import_model_store.perform_import(history=h2)
+    (imported_invocation,) = object_import_tracker.invocations_by_key.values()
+    assert not [
+        parameter
+        for parameter in imported_invocation.input_parameters
+        if parameter.type == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
+    ]
 
 
 def validate_crate_metadata(as_dict):

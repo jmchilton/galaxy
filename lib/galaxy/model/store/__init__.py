@@ -1212,20 +1212,19 @@ class ModelImportStore(metaclass=abc.ABCMeta):
 
             input_parameters = []
             for input_parameter_attrs in invocation_attrs["input_parameters"]:
-                if (
-                    input_parameter_attrs["type"] == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS
-                    and "order_index" not in input_parameter_attrs
-                ):
-                    # Archives exported before order_index was recorded hold a step id from the source server.
-                    log.warning(
-                        "Dropping step parameters of imported invocation %s for unmappable step id %s",
-                        imported_invocation.id,
-                        input_parameter_attrs["name"],
-                    )
-                    continue
                 input_parameter = model.WorkflowRequestInputParameter()
-                if "order_index" in input_parameter_attrs:
-                    # Step parameters are stored by step id, re-key them against the imported workflow.
+                if input_parameter_attrs["type"] == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS:
+                    # Step parameters are stored by step id, re-key them against the imported workflow. Rows
+                    # without order_index (older archives, or rows the exporter couldn't resolve) only carry a
+                    # source-server step id.
+                    if "order_index" not in input_parameter_attrs:
+                        log.warning(
+                            "Dropping step parameters of imported invocation %s: step id %s from the archive has no "
+                            "order_index to map onto the imported workflow",
+                            imported_invocation.id,
+                            input_parameter_attrs["name"],
+                        )
+                        continue
                     step = workflow.step_by_index(input_parameter_attrs["order_index"])
                     input_parameter.name = str(step.id)
                     input_parameter.value = dumps(step.step_parameters_by_id(input_parameter_attrs["step_parameters"]))
