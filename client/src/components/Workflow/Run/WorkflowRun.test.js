@@ -158,6 +158,14 @@ describe("WorkflowRun.vue", () => {
         });
     });
 
+    it("keeps the workflow's own reason when a rerun with tool step parameters cannot use the simple form anyway", async () => {
+        const rerunRequest = { parameters: { 1: { num_lines: 2 } } };
+        const rerunWrapper = await mountRerun({ preferSimpleForm: true, isRerun: true, rerunRequest });
+        const form = rerunWrapper.findComponent(WorkflowRunForm);
+        expect(form.props("disableSimpleForm")).toBe(true);
+        expect(form.props("disableSimpleFormReason")).toBe("hasDisconnectedInputs");
+    });
+
     describe("missing tools", () => {
         const MISSING_TOOL_IDS = ["toolshed.g2.bx.psu.edu/repos/devteam/bwa/bwa/0.7.17"];
         const MISSING_TOOLS_MESSAGE = "Following tools missing: toolshed.g2.bx.psu.edu/repos/devteam/bwa/bwa/0.7.17";
