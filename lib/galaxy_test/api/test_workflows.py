@@ -5767,6 +5767,32 @@ steps:
             assert seeded_input["value"] == _find_run_input(unseeded_steps[0]["inputs"], "input1")["value"]
 
     @skip_without_tool("random_lines1")
+    def test_run_form_seeded_from_imported_invocation(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                WORKFLOW_NESTED_RUNTIME_PARAMETER,
+                test_data={
+                    "step_parameters": {"1": {"1|num_lines": 2}},
+                    "outer_input": {"value": "1.bed", "type": "File"},
+                },
+                history_id=history_id,
+            )
+            store_path = self.workflow_populator.download_invocation_to_store(summary.invocation_id)
+        with self.dataset_populator.test_history() as import_history_id:
+            imported = self.workflow_populator.create_invocation_from_store(
+                history_id=import_history_id, store_path=store_path, model_store_format="tgz"
+            )
+            imported_invocation = self.workflow_populator.get_invocation(imported[0]["id"])
+            # Rows of an imported invocation may name steps of the source workflow - the form still loads.
+            self.workflow_populator.download_workflow(
+                imported_invocation["workflow_id"],
+                style="run",
+                instance=True,
+                history_id=import_history_id,
+                invocation_id=imported_invocation["id"],
+            )
+
+    @skip_without_tool("random_lines1")
     def test_run_form_seeding_requires_invocation_access(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_runtime_parameter_simple(history_id, {"1": {"num_lines": 2}})

@@ -1370,7 +1370,7 @@ class WorkflowContentsManager(UsesAnnotations):
                         input_dict["acceptable_extensions"] = sorted(accepted) if accepted else []
                     input_dicts.append(input_dict)
                 if step.type == "subworkflow" and (recorded := step_parameters.get(step.id)):
-                    self._seed_subworkflow_run_inputs(step, recorded, input_dicts)
+                    self._seed_subworkflow_run_inputs(recorded, input_dicts)
                 step_model = {"inputs": input_dicts}
             step_model["when"] = step.when_expression
             step_model["replacement_parameters"] = step.module.get_informal_replacement_parameters(step)
@@ -1449,19 +1449,11 @@ class WorkflowContentsManager(UsesAnnotations):
         skipped = templated | set(step.input_connections_by_name)
         return {name: value for name, value in step_args.items() if name not in skipped}
 
-    def _seed_subworkflow_run_inputs(
-        self, step: model.WorkflowStep, recorded: dict[str, Any], input_dicts: list[dict[str, Any]]
-    ) -> None:
+    def _seed_subworkflow_run_inputs(self, recorded: dict[str, Any], input_dicts: list[dict[str, Any]]) -> None:
         """Set a subworkflow step's run-time inputs to the values a previous run recorded for them."""
-        try:
-            values = step.step_parameters_by_index(recorded)
-        except (KeyError, ValueError):
-            # Rows naming inner steps of another workflow, e.g. those of an imported invocation.
-            log.warning("Skipping recorded parameters of subworkflow step %s with unknown inner steps", step.id)
-            return
         for input_dict in input_dicts:
-            if input_dict["name"] in values:
-                input_dict["value"] = values[input_dict["name"]]
+            if input_dict["name"] in recorded:
+                input_dict["value"] = recorded[input_dict["name"]]
 
     def _workflow_to_dict_preview(self, trans: ProvidesHistoryContext, workflow):
         """
