@@ -13,7 +13,7 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { WorkflowRunModel } from "./model";
+import { rerunHasStepParameters, WorkflowRunModel } from "./model";
 import { getRunData, WorkflowMissingToolsError } from "./services";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -160,6 +160,10 @@ async function loadRun() {
                 simpleForm.value = false;
                 disableSimpleForm.value = true;
                 disableSimpleFormReason.value = "hasWorkflowResourceParameters";
+            }
+            // The simple form never submits tool step parameters, so a rerun would drop them.
+            if (props.isRerun && rerunHasStepParameters(props.rerunRequest)) {
+                simpleForm.value = false;
             }
         }
 
