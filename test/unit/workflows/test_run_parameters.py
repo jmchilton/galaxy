@@ -126,7 +126,10 @@ def test_resolve_step_parameters_unknown_step():
 
 def test_resolve_step_parameters_malformed_row():
     workflow = yaml_to_model(NESTED_SUBWORKFLOW_YAML)
-    subworkflow_step_id = str(workflow.step_by_index(1).id)
+    input_step_id = str(workflow.step_by_index(0).id)
+    subworkflow_step = workflow.step_by_index(1)
+    subworkflow_step_id = str(subworkflow_step.id)
+    tool_step_id = str(subworkflow_step.subworkflow.step_by_index(1).id)
 
     for name, value in [
         (None, json.dumps({"num_lines": 2})),
@@ -134,6 +137,9 @@ def test_resolve_step_parameters_malformed_row():
         ("num_lines", json.dumps(2)),
         (subworkflow_step_id, json.dumps({"x": {"num_lines": 2}})),
         (subworkflow_step_id, "{not json"),
+        (input_step_id, json.dumps(42)),
+        (subworkflow_step_id, json.dumps(None)),
+        (subworkflow_step_id, json.dumps({tool_step_id: None})),
     ]:
         with pytest.raises(ValueError):
             _resolve_step_parameter_row(workflow, name, value)
