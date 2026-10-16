@@ -1276,8 +1276,11 @@ class WorkflowContentsManager(UsesAnnotations):
         ``invocation`` ran with (for rerunning it).
         """
         step_parameters: dict[int, dict[str, Any]] = {}
-        if invocation is not None and invocation.workflow_id == workflow.id:
-            step_parameters = invocation.recover_step_parameters()
+        if invocation is not None:
+            if invocation.workflow_id == workflow.id:
+                step_parameters = invocation.recover_step_parameters()
+            else:
+                log.debug("Not seeding run form: invocation %s ran another workflow version", invocation.id)
         if len(workflow.steps) == 0:
             raise exceptions.MessageException("Workflow cannot be run because it does not have any steps.")
         if has_cycles(workflow):
@@ -1413,34 +1416,40 @@ class WorkflowContentsManager(UsesAnnotations):
     ) -> None:
         """Compute a tool step's runtime state from the values a previous run recorded for it.
 
-        Recorded values that no longer validate (e.g. a purged dataset) are left out.
+        Recorded values that no longer validate (e.g. a purged dataset) are left out, and if the
+        rest still don't validate the step falls back to its saved state.
         """
         module = step.module
         if not isinstance(module, ToolModule) or module.tool is None:
             # Let the unseeded path report the missing tool.
             module_injector.compute_runtime_state(step)
             return
-        step_args = self._untemplated_step_args(trans, module, recorded)
+        step_args = self._seedable_step_args(trans, step, module, recorded)
         step_errors = module_injector.compute_runtime_state(step, step_args=step_args)
-        if step_errors:
-            # compute_runtime_state updates the module state in place - start over from the saved state.
+        if not step_errors:
+            return
+        # compute_runtime_state updates the module state in place - start over from the saved state.
+        module_injector.inject(step, steps=workflow.steps, exact_tools=False)
+        valid_args = {name: value for name, value in step_args.items() if name not in step_errors}
+        if module_injector.compute_runtime_state(step, step_args=valid_args):
             module_injector.inject(step, steps=workflow.steps, exact_tools=False)
-            valid_args = {name: value for name, value in step_args.items() if name not in step_errors}
-            module_injector.compute_runtime_state(step, step_args=valid_args)
+            module_injector.compute_runtime_state(step)
 
-    def _untemplated_step_args(
-        self, trans: ProvidesHistoryContext, module: ToolModule, step_args: dict[str, Any]
+    def _seedable_step_args(
+        self, trans: ProvidesHistoryContext, step: model.WorkflowStep, module: ToolModule, step_args: dict[str, Any]
     ) -> dict[str, Any]:
-        """Drop recorded values of inputs saved as ``${name}`` templates.
+        """Drop recorded values the run form would not have submitted.
 
-        The run form substitutes these client-side, so the recorded value is the substituted
-        literal - seeding it would remove the workflow parameter from the form.
+        Connected inputs are filled by their connection. Inputs saved as ``${name}`` templates are
+        substituted client-side, so their recorded value is the substituted literal - seeding it
+        would remove the workflow parameter from the form.
         """
         assert module.tool and module.state
         saved_values: dict[str, Any] = {}
         params_to_incoming(saved_values, module.tool.inputs, module.state.inputs, trans.app)
         templated = {name for name, value in saved_values.items() if isinstance(value, str) and "${" in value}
-        return {name: value for name, value in step_args.items() if name not in templated}
+        skipped = templated | set(step.input_connections_by_name)
+        return {name: value for name, value in step_args.items() if name not in skipped}
 
     def _seed_subworkflow_run_inputs(
         self, step: model.WorkflowStep, recorded: dict[str, Any], input_dicts: list[dict[str, Any]]
@@ -1450,7 +1459,7 @@ class WorkflowContentsManager(UsesAnnotations):
             values = step.step_parameters_by_index(recorded)
         except (KeyError, ValueError):
             # Rows naming inner steps of another workflow, e.g. those of an imported invocation.
-            log.warning(f"Skipping recorded parameters of subworkflow step {step.id} with unknown inner steps")
+            log.warning("Skipping recorded parameters of subworkflow step %s with unknown inner steps", step.id)
             return
         for input_dict in input_dicts:
             if input_dict["name"] in values:

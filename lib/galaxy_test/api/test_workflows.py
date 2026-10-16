@@ -5739,43 +5739,34 @@ some_file:
             assert _find_run_input(nested_workflow["inputs"], "1|num_lines")["value"] == 2
 
     @skip_without_tool("cat")
-    def test_run_form_seeded_from_invocation_with_deleted_dataset(self):
+    def test_run_form_seeded_from_invocation_dataset(self):
         with self.dataset_populator.test_history() as history_id:
             workflow_id = self._upload_yaml_workflow("""
 class: GalaxyWorkflow
-inputs:
-  input1:
-    type: data
 steps:
-  the_pause:
-    type: pause
-    in:
-      input: input1
   first_cat:
     tool_id: cat
-    in:
-      input1: the_pause
 """)
-            to_delete_id = self.dataset_populator.new_dataset(history_id, wait=True)["id"]
-            valid_hda = self.dataset_populator.new_dataset(history_id, wait=True)
+            recorded_id = self.dataset_populator.new_dataset(history_id, wait=True)["id"]
             invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
                 workflow_id,
                 history_id=history_id,
-                inputs={"input1": {"src": "hda", "id": valid_hda["id"]}},
                 request={
-                    "parameters": dumps({"2": {"input1": {"src": "hda", "id": to_delete_id}}}),
+                    "parameters": dumps({"0": {"input1": {"src": "hda", "id": recorded_id}}}),
                     "parameters_normalized": True,
                 },
-                inputs_by="name",
             )
+            self.workflow_populator.wait_for_invocation_and_jobs(history_id, workflow_id, invocation_id)
+            seeded_input = _find_run_input(self._run_form_steps(invocation_id, history_id)[0]["inputs"], "input1")
+            assert seeded_input["value"] == {"values": [{"src": "hda", "id": recorded_id}]}
+
             self.dataset_populator.delete_dataset(
-                history_id=history_id, content_id=to_delete_id, purge=True, wait_for_purge=True
+                history_id=history_id, content_id=recorded_id, purge=True, wait_for_purge=True
             )
             # A recorded value that is no longer valid must not break the rerun form, and is left out.
-            seeded_input = _find_run_input(self._run_form_steps(invocation_id, history_id)[2]["inputs"], "input1")
+            seeded_input = _find_run_input(self._run_form_steps(invocation_id, history_id)[0]["inputs"], "input1")
             unseeded_steps = self._run_form_steps(invocation_id, history_id, seeded=False)
-            assert seeded_input["value"] == _find_run_input(unseeded_steps[2]["inputs"], "input1")["value"]
-            assert to_delete_id not in json.dumps(seeded_input["value"])
+            assert seeded_input["value"] == _find_run_input(unseeded_steps[0]["inputs"], "input1")["value"]
 
     @skip_without_tool("random_lines1")
     def test_run_form_seeding_requires_invocation_access(self):
