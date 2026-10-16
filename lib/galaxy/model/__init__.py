@@ -11075,14 +11075,14 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         """Return this step parameter row's workflow step and its parameters keyed by order index.
 
         ``None`` if the invocation's workflow lacks a stored step id (e.g. imported from an archive
-        without ``order_index``). Raises ``ValueError`` or ``TypeError`` for a malformed row.
+        without ``order_index``). Raises ``ValueError`` for a malformed row.
         """
         assert self.type == self.types.STEP_PARAMETERS and self.workflow_invocation
-        step = self.workflow_invocation.workflow.steps_by_id.get(int(cast(str, self.name)))
-        if step is None:
-            return None
+        if self.name is None or self.value is None:
+            raise ValueError("step parameter row has no step id or value")
         try:
-            return step, step.step_parameters_by_index(json.loads(cast(str, self.value)))
+            step = self.workflow_invocation.workflow.steps_by_id[int(self.name)]
+            return step, step.step_parameters_by_index(json.loads(self.value))
         except KeyError:
             return None
 
@@ -11092,10 +11092,10 @@ class WorkflowRequestInputParameter(Base, Dictifiable, Serializable):
         request_input_parameter_attrs["value"] = self.value
         request_input_parameter_attrs["type"] = self.type
         if self.type == self.types.STEP_PARAMETERS:
-            # ``name`` and nested subworkflow keys are step ids, also export an order index form import can re-key.
+            # Step ids don't survive import, so also export the order index form for import to re-key.
             try:
                 resolved = self.resolve_step_parameters()
-            except (TypeError, ValueError):
+            except ValueError:
                 resolved = None
             if resolved is not None:
                 step, step_parameters = resolved
