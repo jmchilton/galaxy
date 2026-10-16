@@ -63,6 +63,8 @@ class Group(UsesDictVisibleKeys):
     dict_collection_visible_keys = ["name", "type"]
     type: str
     name: str
+    # Groups retain structured state rather than defaulting to None like optional scalar parameters.
+    optional: bool = False
 
     def __init__(self, name: str):
         self.name = name

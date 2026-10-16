@@ -23,15 +23,21 @@ from galaxy.datatypes.interval import (
     Bed,
     BedStrict,
 )
-from galaxy.tools.parameters.grouping import Conditional
+from galaxy.tools.parameters.grouping import (
+    Conditional,
+    Repeat,
+    Section,
+    UploadDataset,
+)
 from galaxy.util import galaxy_directory
 
 
+@pytest.mark.parametrize("group_class", [Conditional, Repeat, Section, UploadDataset])
 @pytest.mark.parametrize(
     "resource_context",
     [None, {"__job_resource__select": "no"}, {"__job_resource__select": "yes", "processors": 4}],
 )
-def test_converter_parameters_with_resource_conditional(resource_context):
+def test_converter_parameters_with_input_group(group_class, resource_context):
     dependency = object()
     converter = SimpleNamespace(
         inputs={
@@ -39,7 +45,7 @@ def test_converter_parameters_with_resource_conditional(resource_context):
             "index": SimpleNamespace(name="index", type="data"),
             "optional": SimpleNamespace(name="optional", type="text", optional=True),
             "required": SimpleNamespace(name="required", type="text", optional=False),
-            "__job_resource": Conditional("__job_resource"),
+            "__job_resource": group_class("__job_resource"),
         }
     )
     context = None
