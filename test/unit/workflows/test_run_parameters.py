@@ -5,7 +5,6 @@ import pytest
 
 from galaxy import model
 from galaxy.managers.context import ProvidesHistoryContext
-from galaxy.managers.workflows import _request_input_labels
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.workflow.modules import populate_module_and_state
@@ -228,7 +227,7 @@ def test_inputs_by_name():
     assert normalized_inputs[STEP_ID_OFFSET + 2]["content"] == input2["content"]
 
 
-def test_request_input_labels():
+def test_request_references_legacy_input_steps():
     workflow = yaml_to_model("""
 steps:
   - type: data_input
@@ -241,10 +240,22 @@ steps:
     # Input steps saved by older Galaxy releases kept their name in tool_inputs, not as a label.
     for index, name in [(1, "legacy_name"), (2, "Input Dataset"), (3, "Input Dataset")]:
         workflow.step_by_index(index).tool_inputs = {"name": name}
+    invocation = model.WorkflowInvocation()
+    invocation.workflow = workflow
+    hdas = [model.HistoryDatasetAssociation() for _ in workflow.steps]
+    for step, hda in zip(workflow.steps, hdas):
+        invocation.input_datasets.append(
+            model.WorkflowRequestToInputDatasetAssociation(workflow_step=step, dataset=hda)
+        )
 
-    labels = _request_input_labels(workflow.steps)
+    labels = workflow.request_input_labels()
 
     assert [labels[step.id] for step in workflow.steps] == ["labeled", "legacy_name", None, None, None]
+    # Input steps sharing a name are referenced by index, like unlabeled ones.
+    assert invocation.recover_inputs() == (
+        {"labeled": hdas[0], "legacy_name": hdas[1], "2": hdas[2], "3": hdas[3], "4": hdas[4]},
+        "name|step_index",
+    )
 
 
 def __normalize_parameters_against_fixture(params):

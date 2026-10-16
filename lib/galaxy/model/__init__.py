@@ -17,7 +17,10 @@ import pwd
 import random
 import secrets
 import string
-from collections import defaultdict
+from collections import (
+    Counter,
+    defaultdict,
+)
 from collections.abc import (
     Callable,
     Iterable,
@@ -9176,6 +9179,15 @@ class Workflow(Base, Dictifiable, RepresentById):
             steps[step_id] = step
         return steps
 
+    def request_input_labels(self) -> dict[int, str | None]:
+        """Name invocation requests reference each step's input by, keyed by step id.
+
+        The step's effective label, or ``None`` - reference it by order index - if it has none or
+        shares it with another step, as legacy unlabeled input steps may.
+        """
+        counts = Counter(step.effective_label for step in self.steps)
+        return {step.id: step.effective_label if counts[step.effective_label] == 1 else None for step in self.steps}
+
     def step_by_index(self, order_index: int):
         for step in self.steps:
             if order_index == step.order_index:
@@ -10599,9 +10611,10 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
         inputs_by = "name"
 
         have_referenced_steps_by_order_index = False
+        labels = self.workflow.request_input_labels()
 
         def best_step_reference(workflow_step: "WorkflowStep") -> str:
-            if (label := workflow_step.effective_label) is not None:
+            if (label := labels.get(workflow_step.id)) is not None:
                 return label
             nonlocal have_referenced_steps_by_order_index
             have_referenced_steps_by_order_index = True
