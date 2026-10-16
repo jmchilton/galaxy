@@ -278,3 +278,19 @@ export function rerunInputValue(requestInputs, step, position) {
 export function rerunHasStepParameters(request) {
     return Boolean(request?.parameters && Object.keys(request.parameters).length > 0);
 }
+
+/**
+ * ``inputs`` with the values a rerun request recorded for them (by input name), e.g. its
+ * ``replacement_params`` or ``resource_params``.
+ *
+ * @template {{ name: string }} T
+ * @param {T[]} inputs - form inputs
+ * @param {Record<string, unknown> | null} [values] - recorded values by input name, if any
+ * @returns {T[]}
+ */
+export function withRerunValues(inputs, values) {
+    if (!values) {
+        return inputs;
+    }
+    return inputs.map((input) => (input.name in values ? { ...input, value: values[input.name] } : input));
+}

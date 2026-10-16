@@ -105,7 +105,7 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { useToolsServiceCredentialsDefinitionsStore } from "@/stores/toolsServiceCredentialsDefinitionsStore";
 import { useUserStore } from "@/stores/userStore";
 
-import { getReplacements, rerunInputValue } from "./model";
+import { getReplacements, rerunInputValue, withRerunValues } from "./model";
 import { invokeWorkflow } from "./services";
 
 import WorkflowRunDefaultStep from "./WorkflowRunDefaultStep.vue";
@@ -390,12 +390,5 @@ function onExecute() {
 
 function toArray(obj: Record<string, FormInputNode> | undefined): FormInputNode[] {
     return obj ? Object.values(obj) : [];
-}
-
-function withRerunValues(inputs: FormInputNode[], values: Record<string, unknown> | null | undefined) {
-    if (!values) {
-        return inputs;
-    }
-    return inputs.map((input) => (input.name in values ? { ...input, value: values[input.name] } : input));
 }
 </script>

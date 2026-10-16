@@ -120,41 +120,38 @@ describe("WorkflowRun.vue", () => {
         expect(wrapper.find(".alert-danger").exists()).toBe(true);
     });
 
-    it("seeds run data from the rerun invocation and passes its request to the expanded form", async () => {
+    async function mountRerun(props, runData = sampleRunData1) {
         wrapper.unmount();
-        const rerunRequest = { inputs: { 0: { src: "hdca", id: "c1" } }, use_cached_job: true };
+        getRunData.mockResolvedValueOnce(JSON.parse(JSON.stringify(runData)));
         const rerunWrapper = mount(WorkflowRun, {
-            props: { workflowId: run1WorkflowId, rerunRequest, rerunInvocationId: "invocation-id" },
-            global: { plugins: [createTestingPinia({ createSpy: vi.fn })], stubs: { WorkflowRunForm: true } },
+            props: { workflowId: run1WorkflowId, ...props },
+            global: {
+                plugins: [createTestingPinia({ createSpy: vi.fn })],
+                stubs: { WorkflowRunFormSimple: true, WorkflowRunForm: true },
+            },
         });
         await vi.runAllTimersAsync();
         await flushPromises();
+        return rerunWrapper;
+    }
+
+    it("seeds run data from the rerun invocation and passes its request to the expanded form", async () => {
+        const rerunRequest = { inputs: { 0: { src: "hdca", id: "c1" } }, use_cached_job: true };
+        const rerunWrapper = await mountRerun({ rerunRequest, rerunInvocationId: "invocation-id" });
         expect(getRunData).toHaveBeenLastCalledWith(run1WorkflowId, undefined, false, "invocation-id");
         expect(rerunWrapper.findComponent(WorkflowRunForm).props("rerunRequest")).toEqual(rerunRequest);
     });
 
     it("opens the expanded form for a rerun whose request has tool step parameters", async () => {
-        wrapper.unmount();
         // run1 forces the expanded form on its own - make it eligible for the simple form.
         const runData = JSON.parse(JSON.stringify(sampleRunData1));
         runData.steps = runData.steps.filter((step) => step.step_type !== "tool");
-        const mountRerun = async (rerunRequest) => {
-            getRunData.mockResolvedValueOnce(JSON.parse(JSON.stringify(runData)));
-            const rerunWrapper = mount(WorkflowRun, {
-                props: { workflowId: run1WorkflowId, preferSimpleForm: true, isRerun: true, rerunRequest },
-                global: {
-                    plugins: [createTestingPinia({ createSpy: vi.fn })],
-                    stubs: { WorkflowRunFormSimple: true, WorkflowRunForm: true },
-                },
-            });
-            await vi.runAllTimersAsync();
-            await flushPromises();
-            return rerunWrapper;
-        };
-        const withoutParameters = await mountRerun({ parameters: null });
+        const mountSimpleRerun = (rerunRequest) =>
+            mountRerun({ preferSimpleForm: true, isRerun: true, rerunRequest }, runData);
+        const withoutParameters = await mountSimpleRerun({ parameters: null });
         expect(withoutParameters.findComponent(WorkflowRunFormSimple).exists()).toBe(true);
         expect(withoutParameters.findComponent(WorkflowRunForm).exists()).toBe(false);
-        const withParameters = await mountRerun({ parameters: { 1: { num_lines: 2 } } });
+        const withParameters = await mountSimpleRerun({ parameters: { 1: { num_lines: 2 } } });
         expect(withParameters.findComponent(WorkflowRunFormSimple).exists()).toBe(false);
         expect(withParameters.findComponent(WorkflowRunForm).props("rerunRequest")).toEqual({
             parameters: { 1: { num_lines: 2 } },
