@@ -1212,8 +1212,8 @@ class ModelImportStore(metaclass=abc.ABCMeta):
 
             input_parameters = []
             for input_parameter_attrs in invocation_attrs["input_parameters"]:
-                input_parameter = model.WorkflowRequestInputParameter()
-                if input_parameter_attrs["type"] == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS:
+                parameter_type = input_parameter_attrs["type"]
+                if parameter_type == model.WorkflowRequestInputParameter.types.STEP_PARAMETERS:
                     # Step parameters are stored by step id, re-key them against the imported workflow. Rows
                     # without order_index (older archives, or rows the exporter couldn't resolve) only carry a
                     # source-server step id.
@@ -1226,13 +1226,14 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                         )
                         continue
                     step = workflow.step_by_index(input_parameter_attrs["order_index"])
-                    input_parameter.name = str(step.id)
-                    input_parameter.value = dumps(step.step_parameters_by_id(input_parameter_attrs["step_parameters"]))
+                    name = str(step.id)
+                    value = dumps(step.step_parameters_by_id(input_parameter_attrs["step_parameters"]))
                 else:
-                    input_parameter.name = input_parameter_attrs["name"]
-                    input_parameter.value = input_parameter_attrs["value"]
-                input_parameter.type = input_parameter_attrs["type"]
-                input_parameter.workflow_invocation = imported_invocation
+                    name = input_parameter_attrs["name"]
+                    value = input_parameter_attrs["value"]
+                input_parameter = model.WorkflowRequestInputParameter(
+                    name=name, value=value, type=parameter_type, workflow_invocation=imported_invocation
+                )
                 self._session_add(input_parameter)
                 input_parameters.append(input_parameter)
 
