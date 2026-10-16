@@ -45,9 +45,9 @@ INPUTS_BY_DESCRIPTION = (
     "How the 'inputs' field maps its inputs (datasets/collections/step parameters) to workflows steps."
 )
 STEP_PARAMETERS_NORMALIZED_TITLE = "Legacy Step Parameters Normalized"
-STEP_PARAMETERS_NORMALIZED_DESCRIPTION = "Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID."
+STEP_PARAMETERS_NORMALIZED_DESCRIPTION = "Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID. If true, a key that matches no step index is rejected with a 400 error."
 STEP_PARAMETERS_TITLE = "Legacy Step Parameters"
-STEP_PARAMETERS_DESCRIPTION = "Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}."
+STEP_PARAMETERS_DESCRIPTION = "Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}. Parameters for steps inside a subworkflow step are keyed '<inner step_index>|<name>' ('<i>|<j>|<name>' for nested subworkflows), require parameters_normalized, and an unknown inner step index is rejected with a 400 error."
 ReplacementParametersField = Field(
     None,
     title="Replacement Parameters",

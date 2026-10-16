@@ -644,7 +644,7 @@ class WorkflowInvocationRequestModel(Model):
     parameters: dict[str, Any] | None = Field(
         None,
         title=STEP_PARAMETERS_TITLE,
-        description=f"{STEP_PARAMETERS_DESCRIPTION} If these are set, the workflow was not executed in a best-practice fashion and we the resulting invocation request may not fully reflect the executed workflow state.",
+        description=f"{STEP_PARAMETERS_DESCRIPTION} If these are set, the workflow was not executed in a best-practice fashion and the resulting invocation request may not fully reflect the executed workflow state.",
     )
     instance: Literal[True] = Field(
         True,

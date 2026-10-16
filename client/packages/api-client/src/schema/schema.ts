@@ -18415,7 +18415,7 @@ export interface components {
                 | null;
             /**
              * Legacy Step Parameters
-             * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}.
+             * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}. Parameters for steps inside a subworkflow step are keyed '<inner step_index>|<name>' ('<i>|<j>|<name>' for nested subworkflows), require parameters_normalized, and an unknown inner step index is rejected with a 400 error.
              * @default {}
              */
             parameters: {
@@ -18425,7 +18425,7 @@ export interface components {
             } | null;
             /**
              * Legacy Step Parameters Normalized
-             * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
+             * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID. If true, a key that matches no step index is rejected with a 400 error.
              * @default false
              */
             parameters_normalized: boolean | null;
@@ -28820,14 +28820,14 @@ export interface components {
             instance: true;
             /**
              * Legacy Step Parameters
-             * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}. If these are set, the workflow was not executed in a best-practice fashion and we the resulting invocation request may not fully reflect the executed workflow state.
+             * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. For a workflow parameter input step, the legacy format is {'<step_index>': {'input': <value>}}. Parameters for steps inside a subworkflow step are keyed '<inner step_index>|<name>' ('<i>|<j>|<name>' for nested subworkflows), require parameters_normalized, and an unknown inner step index is rejected with a 400 error. If these are set, the workflow was not executed in a best-practice fashion and the resulting invocation request may not fully reflect the executed workflow state.
              */
             parameters?: {
                 [key: string]: unknown;
             } | null;
             /**
              * Legacy Step Parameters Normalized
-             * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
+             * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID. If true, a key that matches no step index is rejected with a 400 error.
              * @default true
              * @constant
              */
