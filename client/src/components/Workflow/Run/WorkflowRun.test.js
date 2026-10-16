@@ -12,6 +12,7 @@ import sampleRunData1 from "./testdata/run1.json";
 import WorkflowMissingToolsRequest from "./WorkflowMissingToolsRequest.vue";
 import WorkflowRun from "./WorkflowRun.vue";
 import WorkflowRunForm from "./WorkflowRunForm.vue";
+import WorkflowRunFormSimple from "./WorkflowRunFormSimple.vue";
 
 // Keep the real module (WorkflowMissingToolsError is matched with instanceof
 // in the component) and only replace the API call.
@@ -124,7 +125,7 @@ describe("WorkflowRun.vue", () => {
         const rerunRequest = { inputs: { 0: { src: "hdca", id: "c1" } }, use_cached_job: true };
         const rerunWrapper = mount(WorkflowRun, {
             props: { workflowId: run1WorkflowId, rerunRequest, rerunInvocationId: "invocation-id" },
-            global: { plugins: [createTestingPinia({ createSpy: vi.fn })] },
+            global: { plugins: [createTestingPinia({ createSpy: vi.fn })], stubs: { WorkflowRunForm: true } },
         });
         await vi.runAllTimersAsync();
         await flushPromises();
@@ -150,8 +151,14 @@ describe("WorkflowRun.vue", () => {
             await flushPromises();
             return rerunWrapper;
         };
-        expect((await mountRerun({ parameters: null })).vm.simpleForm).toBe(true);
-        expect((await mountRerun({ parameters: { 1: { num_lines: 2 } } })).vm.simpleForm).toBe(false);
+        const withoutParameters = await mountRerun({ parameters: null });
+        expect(withoutParameters.findComponent(WorkflowRunFormSimple).exists()).toBe(true);
+        expect(withoutParameters.findComponent(WorkflowRunForm).exists()).toBe(false);
+        const withParameters = await mountRerun({ parameters: { 1: { num_lines: 2 } } });
+        expect(withParameters.findComponent(WorkflowRunFormSimple).exists()).toBe(false);
+        expect(withParameters.findComponent(WorkflowRunForm).props("rerunRequest")).toEqual({
+            parameters: { 1: { num_lines: 2 } },
+        });
     });
 
     describe("missing tools", () => {
