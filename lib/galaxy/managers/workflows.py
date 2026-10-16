@@ -1294,9 +1294,11 @@ class WorkflowContentsManager(UsesAnnotations):
         module_injector.inject_all(workflow, exact_tools=False, ignore_tool_missing_exception=True)
         for step in workflow.steps:
             try:
-                if step.type == "tool" and (recorded := step_parameters.get(step.id)):
-                    self._compute_seeded_runtime_state(trans, module_injector, workflow, step, recorded)
+                module = step.module
+                if isinstance(module, ToolModule) and module.tool and (recorded := step_parameters.get(step.id)):
+                    self._compute_seeded_runtime_state(trans, module_injector, workflow, step, module, recorded)
                 else:
+                    # Also reports a missing tool.
                     module_injector.compute_runtime_state(step)
             except exceptions.ToolMissingException as e:
                 # FIXME: if a subworkflow lacks multiple tools we report only the first missing tool
@@ -1412,6 +1414,7 @@ class WorkflowContentsManager(UsesAnnotations):
         module_injector: WorkflowModuleInjector,
         workflow: Workflow,
         step: model.WorkflowStep,
+        module: ToolModule,
         recorded: dict[str, Any],
     ) -> None:
         """Compute a tool step's runtime state from the values a previous run recorded for it.
@@ -1419,21 +1422,16 @@ class WorkflowContentsManager(UsesAnnotations):
         Recorded values that no longer validate (e.g. a purged dataset) are left out, and if the
         rest still don't validate the step falls back to its saved state.
         """
-        module = step.module
-        if not isinstance(module, ToolModule) or module.tool is None:
-            # Let the unseeded path report the missing tool.
-            module_injector.compute_runtime_state(step)
-            return
         step_args = self._seedable_step_args(trans, step, module, recorded)
         step_errors = module_injector.compute_runtime_state(step, step_args=step_args)
         if not step_errors:
             return
-        # compute_runtime_state updates the module state in place - start over from the saved state.
-        module_injector.inject(step, steps=workflow.steps, exact_tools=False)
         valid_args = {name: value for name, value in step_args.items() if name not in step_errors}
-        if module_injector.compute_runtime_state(step, step_args=valid_args):
+        for fallback_args in (valid_args, None):
+            # compute_runtime_state updates the module state in place - start over from the saved state.
             module_injector.inject(step, steps=workflow.steps, exact_tools=False)
-            module_injector.compute_runtime_state(step)
+            if not module_injector.compute_runtime_state(step, step_args=fallback_args):
+                return
 
     def _seedable_step_args(
         self, trans: ProvidesHistoryContext, step: model.WorkflowStep, module: ToolModule, step_args: dict[str, Any]

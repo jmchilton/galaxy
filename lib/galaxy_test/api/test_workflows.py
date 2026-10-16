@@ -93,16 +93,14 @@ def _default_file_location(test_http_server) -> str:
 
 def _find_run_input(inputs: list[dict], name: str) -> dict:
     """Find a (possibly nested) input by name in a ``style=run`` step model."""
-    for input in inputs:
+    pending = list(inputs)
+    while pending:
+        input = pending.pop(0)
         if input["name"] == name:
             return input
-        children = list(input.get("inputs") or [])
+        pending.extend(input.get("inputs") or [])
         for case in input.get("cases") or []:
-            children.extend(case["inputs"])
-        try:
-            return _find_run_input(children, name)
-        except KeyError:
-            pass
+            pending.extend(case["inputs"])
     raise KeyError(name)
 
 
