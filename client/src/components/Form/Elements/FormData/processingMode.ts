@@ -83,16 +83,26 @@ export function isBatchSelection(variantBatch: string, values: DataOption[]): bo
 }
 
 /**
- * Whether wrapping the selection in one more `list` level makes the server map over this input
- * rather than match it directly. Untyped collection inputs accept anything directly.
+ * Whether wrapping the selected list in one more `list` level makes the server map over this input
+ * rather than match it directly. Before a selection, every accepted type must agree, since a nested
+ * collection the input matches directly would still run as one job. Untyped collection inputs accept
+ * anything directly.
  */
-function canNestToMapOver(type: "data" | "data_collection", collectionTypes: CollectionType[]): boolean {
+function canNestToMapOver(
+    type: "data" | "data_collection",
+    collectionTypes: CollectionType[],
+    values: DataOption[],
+): boolean {
     if (type === "data") {
         return true;
     }
-    // inputs accepting both X and list:X would match the nested collection directly
-    const acceptsNested = collectionTypes.some((t) => collectionTypes.includes(`list:${t}`));
-    return !acceptsNested && collectionTypes.some((t) => t.startsWith("list"));
+    const nested = (t: CollectionType) => matchCollectionType(`list:${t}`, collectionTypes);
+    const nestsToMapOver = (t: CollectionType) => t.startsWith("list") && !!nested(t)?.mapOverType;
+    const selected = values.length === 1 ? values[0]?.collection_type : undefined;
+    if (selected && matchCollectionType(selected, collectionTypes)?.mapOverType === null) {
+        return nestsToMapOver(selected);
+    }
+    return collectionTypes.some(nestsToMapOver) && !collectionTypes.some((t) => nested(t)?.mapOverType === null);
 }
 
 /** Describe how a data input processes its selection, mirroring server job expansion */
@@ -127,7 +137,7 @@ export function getProcessingMode(
             source,
             hasSelection,
             plural: values.length > 1,
-            canNest: canNestToMapOver(type, collectionTypes),
+            canNest: canNestToMapOver(type, collectionTypes, values),
         };
     }
     return null;
