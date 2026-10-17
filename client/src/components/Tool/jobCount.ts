@@ -1,5 +1,5 @@
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
-import type { FormInputNode } from "@/components/Form/composables/useFormState";
+import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
 import { findInputPathByDottedName, repeatTitle } from "@/components/Form/utilities";
 import localize from "@/utils/localization";
 
@@ -131,4 +131,17 @@ export function runBlockedReason(expansion: ToolFormJobExpansion | undefined, re
         return localize("Remapping replaces a single job, but this request would run several jobs.");
     }
     return undefined;
+}
+
+/** Whether a preview built from `builtFrom` still describes `current`: some edits (e.g. conditional
+ * switches) change batched inputs without rebuilding the form. */
+export function jobExpansionIsCurrent(
+    expansion: ToolFormJobExpansion,
+    builtFrom: FormData | undefined,
+    current: FormData | undefined,
+): boolean {
+    if (!builtFrom) {
+        return true;
+    }
+    return expansion.inputs.every(({ name }) => JSON.stringify(builtFrom[name]) === JSON.stringify(current?.[name]));
 }

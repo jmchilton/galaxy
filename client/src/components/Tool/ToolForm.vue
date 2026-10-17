@@ -22,7 +22,7 @@ import localize from "@/utils/localization";
 import { parseBool } from "@/utils/parseBool";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { runBlockedReason } from "./jobCount";
+import { jobExpansionIsCurrent, runBlockedReason } from "./jobCount";
 import {
     getToolFormData,
     type OptionsPagination,
@@ -72,6 +72,8 @@ const showError = ref(false);
 const showExecuting = ref(false);
 const formConfig = ref<ToolFormConfig>({} as ToolFormConfig);
 const formData = ref<FormData | undefined>(undefined);
+// Inputs the current `job_expansion` was built from.
+const jobExpansionFormData = ref<FormData | undefined>(undefined);
 const remapAllowed = ref<boolean | "job_produced_collection_elements" | null>(false);
 const errorTitle = ref<string | null>(null);
 const errorContent = ref<any>(null);
@@ -121,6 +123,9 @@ const toolUuid = computed(() => props.uuid || formConfig.value.uuid);
 
 const jobExpansion = computed(() => {
     const expansion = formConfig.value.job_expansion;
+    if (expansion && !jobExpansionIsCurrent(expansion, jobExpansionFormData.value, formData.value)) {
+        return undefined;
+    }
     // A client-side error on a batched input already flags the mismatch at that field.
     const invalidInput = validationInternal.value?.[0];
     if (expansion?.reason === "batch_mismatch" && expansion.inputs.some((i) => i.name === invalidInput)) {
@@ -254,6 +259,7 @@ async function onUpdate() {
     const requestId = ++buildRequestId;
     disabled.value = true;
     console.debug("ToolForm - Updating input parameters.", formData.value);
+    const builtFrom = formData.value;
     try {
         const data = await updateToolFormData({
             tool_id: formConfig.value.id,
@@ -264,6 +270,7 @@ async function onUpdate() {
         });
         if (requestId === buildRequestId) {
             formConfig.value = data;
+            jobExpansionFormData.value = builtFrom;
         }
     } catch (error) {
         if (requestId === buildRequestId) {
@@ -408,6 +415,7 @@ async function requestTool(newVersion?: string) {
         }
         currentVersion.value = data.version;
         formConfig.value = data;
+        jobExpansionFormData.value = undefined;
         remapAllowed.value = (props.jobId && data.job_remap) || false;
         showForm.value = true;
         messageShow.value = false;
