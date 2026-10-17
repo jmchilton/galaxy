@@ -527,6 +527,30 @@ describe("FormData", () => {
         });
     });
 
+    it("maps a dropped collection element over the input when its child collection is nested deeper", async () => {
+        const wrapper = createTarget({
+            type: "data_collection",
+            collectionTypes: ["list"],
+            options: { hdca: [] },
+            value: null,
+        });
+        await wrapper.vm.$nextTick();
+        const before = wrapper.emitted("input")?.length ?? 0;
+        eventStore.setDragData({
+            id: "dceLL",
+            element_identifier: "inner",
+            element_type: "dataset_collection",
+            object: { id: "childLL", collection_type: "list:list" },
+        } as any);
+        dispatchEvent(wrapper, "dragenter");
+        dispatchEvent(wrapper, "drop");
+        expect(emittedArg(wrapper, "input", before)).toEqual({
+            batch: true,
+            product: false,
+            values: [{ id: "dceLL", map_over_type: "list", src: "dce" }],
+        });
+    });
+
     it("submits a collection once even when both its entries are selected", async () => {
         const wrapper = createTarget({
             multiple: true,

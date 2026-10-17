@@ -12,7 +12,6 @@ import {
     isCollectionElement,
     isDatasetElement,
     isDCE,
-    isHDCA,
     isHistoryItem,
     type SampleSheetColumnDefinition,
 } from "@/api";
@@ -636,8 +635,9 @@ function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
         keep: true,
         tags: [],
     };
-    if (isHistoryItem(v) && isHDCA(v) && props.collectionTypes?.length > 0) {
-        const match = matchCollectionType(v.collection_type, props.collectionTypes);
+    // collections and collection elements holding a collection can both be mapped over
+    if (collectionType && props.collectionTypes?.length > 0) {
+        const match = matchCollectionType(collectionType, props.collectionTypes);
         if (!match) {
             return null;
         }
