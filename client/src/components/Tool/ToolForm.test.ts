@@ -310,6 +310,35 @@ describe("ToolForm", () => {
             expect(runButtonTitle()).toBe("Run tool: tool_name (version) - 12 jobs");
         });
 
+        it("drops a blocking preview once a non-refreshing change edits a batched input", async () => {
+            const mismatch = {
+                job_count: null,
+                reason: "batch_mismatch",
+                inputs: [
+                    { name: "input1", count: 3, linked: true },
+                    { name: "cond|input2", count: 2, linked: true },
+                ],
+            };
+            respondToBuilds({ body: { job_expansion: mismatch } });
+            await flushPromises();
+            const batch = (ids: string[]) => ({
+                batch: true,
+                product: false,
+                values: ids.map((id) => ({ id, src: "hdca" })),
+            });
+            const formDisplay = wrapper.findComponent(FormDisplay);
+
+            formDisplay.vm.$emit("onChange", { input1: batch(["a"]), "cond|input2": batch(["b"]) }, true);
+            await flushPromises();
+            expect(runButton().attributes("aria-disabled")).toBe("true");
+
+            // Switching a conditional to a branch without the input doesn't rebuild the form.
+            formDisplay.vm.$emit("onChange", { input1: batch(["a"]) }, false);
+            await flushPromises();
+            expect(runButton().attributes("aria-disabled")).toBeUndefined();
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version)");
+        });
+
         it("drops a blocking preview once a later update fails", async () => {
             const mismatch = {
                 job_count: null,
