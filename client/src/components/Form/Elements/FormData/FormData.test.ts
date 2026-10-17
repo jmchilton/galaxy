@@ -1,5 +1,6 @@
 import "@tests/vitest/mockHelpPopovers";
 import "@/composables/__mocks__/filter";
+import "../FormSelectMany/worker/__mocks__/selectMany";
 
 import { createTestingPinia } from "@pinia/testing";
 import { dispatchEvent, emittedArg, getLocalVue, nth } from "@tests/vitest/helpers";
@@ -62,6 +63,19 @@ const defaultOptions = {
         { id: "hdca5", hid: 5, name: "hdcaName5", src: "hdca" },
         { id: "hdca6", hid: 6, name: "hdcaName6", src: "hdca" },
     ],
+};
+
+// inputs accepting both X and list:X list a list:list collection twice: directly and mapped over
+const nestedListProps = {
+    type: "data_collection",
+    collectionTypes: ["list", "list:list"],
+    options: {
+        hdca: [
+            { id: "hdcaLL", hid: 9, name: "nested", src: "hdca", collection_type: "list:list" },
+            { id: "hdcaLL", hid: 9, name: "nested", src: "hdca", collection_type: "list:list", map_over_type: "list" },
+            { id: "hdcaL", hid: 8, name: "flat", src: "hdca", collection_type: "list" },
+        ],
+    },
 };
 
 const SELECT_OPTIONS = ".multiselect__element";
@@ -474,6 +488,66 @@ describe("FormData", () => {
         dispatchEvent(wrapper, "dragenter");
         dispatchEvent(wrapper, "drop");
         expect(wrapper.emitted("alert")).toBeUndefined();
+    });
+
+    it("rejects paired collection on list:paired_or_unpaired collection input", async () => {
+        const wrapper = createTarget({
+            value: null,
+            options: defaultOptions,
+            type: "data_collection",
+            collectionTypes: ["list:paired_or_unpaired"],
+        });
+        eventStore.setDragData({
+            id: "whatever",
+            history_content_type: "dataset_collection",
+            collection_type: "paired",
+        });
+        dispatchEvent(wrapper, "dragenter");
+        dispatchEvent(wrapper, "drop");
+        expect(emittedArg(wrapper, "alert")).toContain("dataset pair dataset collection is not a valid input");
+    });
+
+    it("uses a dropped collection directly when the input also accepts its type", async () => {
+        const wrapper = createTarget({ ...nestedListProps, options: { hdca: [] }, value: null });
+        await wrapper.vm.$nextTick();
+        const before = wrapper.emitted("input")?.length ?? 0;
+        eventStore.setDragData({
+            id: "hdcaLL2",
+            hid: 11,
+            name: "nested2",
+            history_content_type: "dataset_collection",
+            collection_type: "list:list",
+        });
+        dispatchEvent(wrapper, "dragenter");
+        dispatchEvent(wrapper, "drop");
+        expect(emittedArg(wrapper, "input", before)).toEqual({
+            batch: false,
+            product: false,
+            values: [{ id: "hdcaLL2", map_over_type: null, src: "hdca" }],
+        });
+    });
+
+    it("submits a collection once even when both its entries are selected", async () => {
+        const wrapper = createTarget({
+            multiple: true,
+            options: nestedListProps.options,
+            value: {
+                values: [
+                    { id: "hdcaLL", src: "hdca" },
+                    { id: "hdcaLL", src: "hdca", map_over_type: "list" },
+                ],
+            },
+        });
+        await wrapper.vm.$nextTick();
+        const emitted = (wrapper.emitted("input") ?? []).map((args) => args[0]);
+        expect(emitted.length).toBeGreaterThan(0);
+        for (const value of emitted) {
+            expect(value).toEqual({
+                batch: false,
+                product: false,
+                values: [{ id: "hdcaLL", map_over_type: null, src: "hdca" }],
+            });
+        }
     });
 
     it("linked and unlinked batch mode handling", async () => {
