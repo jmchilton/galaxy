@@ -165,6 +165,18 @@ describe("FormData", () => {
         expect(wrapper.find(".form-data-no-options-alert").exists()).toBe(true);
     });
 
+    it("names nested collection types in the no-options alert", async () => {
+        const wrapper = createTarget({
+            type: "data_collection",
+            collectionTypes: ["list:list", "list:list:paired"],
+            value: null,
+            options: {},
+        });
+        expect(wrapper.find(".form-data-no-options-alert").text()).toBe(
+            "No list of lists or list of lists of pairs dataset collections available",
+        );
+    });
+
     it("multiple datasets", async () => {
         const wrapper = createTarget({
             value: {
