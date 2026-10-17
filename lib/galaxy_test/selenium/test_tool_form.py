@@ -509,6 +509,20 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         count_notice.wait_for_absent()
 
     @selenium_test
+    def test_run_disabled_for_empty_batch(self):
+        history_id = self.current_history_id()
+        self.dataset_collection_populator.create_list_in_history(history_id, name="empty list", contents=[], wait=True)
+        self.home()
+        self.tool_open("cat1")
+        self.tool_form_select_collection("input1", "empty list")
+
+        self.components.tool_form.job_count_notice(kind="empty").wait_for_visible()
+        execute = self.components.tool_form.execute.wait_for_visible()
+        assert execute.get_attribute("aria-disabled") == "true"
+        assert execute.get_attribute("data-title") == "No jobs would run because a batch input is empty."
+        self.screenshot("tool_form_job_count_empty_batch")
+
+    @selenium_test
     def test_dataset_state_filtering(self):
         # upload an ok (HID 1) and a discarded (HID 2) dataset and run a tool
         # normally HID 2 would be selected but since it is discarded - it won't
