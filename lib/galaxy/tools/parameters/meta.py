@@ -273,13 +273,13 @@ class MetaExpansionSummary(TypedDict):
     inputs: list[BatchInputCount]
 
 
-def incoming_has_batch(incoming: ToolRequestT) -> bool:
-    """Whether a flat (legacy) tool request batches over any input."""
-    return any(_is_meta_wrapper(value) and _is_legacy_batch(value) for value in incoming.values())
+def summarize_meta_expansion(trans: WorkRequestContext, tool, incoming: ToolRequestT) -> MetaExpansionSummary | None:
+    """Count the jobs ``expand_meta_parameters`` would produce for a flat (legacy) request; never raises.
 
-
-def summarize_meta_expansion(trans: WorkRequestContext, tool, incoming: ToolRequestT) -> MetaExpansionSummary:
-    """Count the jobs ``expand_meta_parameters`` would produce for a flat (legacy) request; never raises."""
+    ``None`` when no input is batched.
+    """
+    if not any(_is_meta_wrapper(value) and _is_legacy_batch(value) for value in incoming.values()):
+        return None
     collections_to_match = matching.CollectionsToMatch()
 
     def check_access(collection: DatasetCollection) -> None:
