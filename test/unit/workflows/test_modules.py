@@ -12,7 +12,10 @@ import pytest
 from galaxy import model
 from galaxy.managers.workflows import WorkflowContentsManager
 from galaxy.tool_util.parser.output_objects import ToolOutput
-from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
+from galaxy.tools.parameters.workflow_utils import (
+    NO_REPLACEMENT,
+    workflow_building_modes,
+)
 from galaxy.util import bunch
 from galaxy.workflow import modules
 from .workflow_support import (
@@ -122,6 +125,30 @@ def test_data_collection_input_connections():
     assert output["name"] == "output"
     assert output["extensions"] == ["input"]
     assert output["collection_type"] == "list:paired"
+
+
+def test_parameter_input_without_bounds_is_unbounded():
+    parameter, trans = __numeric_runtime_parameter("integer", None, None)
+    parameter.validate(-1000, trans)
+    field = parameter.to_dict(trans)
+    assert (field["min"], field["max"]) == (None, None)
+
+
+NUMERIC_RANGE_CASES = [
+    ("integer", 1, 5, 7, "Value ('7') must fulfill (1 <= value <= 5)"),
+    ("integer", 0, None, -1, "Value ('-1') must fulfill (0 <= value <= +infinity)"),
+    ("integer", None, -2, -1, "Value ('-1') must fulfill (-infinity <= value <= -2)"),
+    ("float", 0.5, 2.5, 3.0, "Value ('3.0') must fulfill (0.5 <= value <= 2.5)"),
+]
+
+
+@pytest.mark.parametrize("parameter_type,min,max,invalid_value,message", NUMERIC_RANGE_CASES)
+def test_parameter_input_range_is_validated_once(parameter_type, min, max, invalid_value, message):
+    parameter, trans = __numeric_runtime_parameter(parameter_type, min, max)
+    assert len(parameter.validators) == 1
+    with pytest.raises(ValueError) as exc_info:
+        parameter.validate(invalid_value, trans)
+    assert str(exc_info.value) == f"Parameter 'input': {message}"
 
 
 def test_cannot_create_tool_modules_for_missing_tools():
@@ -513,6 +540,22 @@ def __from_step(**kwds):
     module = step.module
     module.test_step = step
     return module
+
+
+def __numeric_runtime_parameter(parameter_type, min, max):
+    trans = MockTrans()
+    trans.workflow_building_mode = workflow_building_modes.DISABLED
+    module = __from_step(
+        trans=trans,
+        type="parameter_input",
+        label="Count",
+        tool_inputs={
+            "parameter_type": parameter_type,
+            "optional": False,
+            "validators": [{"type": "in_range", "min": min, "max": max, "negate": False}],
+        },
+    )
+    return module.get_runtime_inputs(module.test_step)["input"], trans
 
 
 def __step(**kwds):
