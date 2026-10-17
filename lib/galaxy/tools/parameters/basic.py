@@ -2064,11 +2064,16 @@ class BaseDataToolParameter(ToolParameter):
         return False
 
     def _hdca_entries(self, trans, security, dataset_collection_matcher) -> HdcaEntriesT:
-        """Classifier mapping an HDCA to the entries the HDCA page listing emits for it."""
+        """Classifier shared by the HDCA page listing and the selected-value pin."""
         raise NotImplementedError
 
-    def _page_hdca_matches(self, builder: DataOptionsBuilder, trans, history, dataset_collection_matcher) -> None:
-        """Emit one page of matching HDCAs into ``builder.options['hdca']``.
+    def _page_and_pin_hdcas(
+        self, builder: DataOptionsBuilder, trans, history, dataset_collection_matcher, selected: list
+    ) -> list:
+        """Emit one page of matching HDCAs into ``builder.options['hdca']``,
+        then pin each ``selected`` HDCA the listing could return but that fell
+        outside the page window, as the entries the listing would emit for
+        it. Returns the ``selected`` values that did not pin.
 
         Collection matching needs per-row Python inspection (subcollection
         mapping, implicit conversion), so this always uses chunked pagination.
@@ -2091,6 +2096,23 @@ class BaseDataToolParameter(ToolParameter):
         page_filter: Callable[[Any], Union[None, dict[str, Any], list[dict[str, Any]]]] = hdca_entries
         entries, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=page_filter)
         builder.options["hdca"].extend(entries)
+
+        page_ids = {entry["id"] for entry in entries}
+        unresolved: list = []
+        for value in selected:
+            if (
+                isinstance(value, HistoryDatasetCollectionAssociation)
+                and value.history_id == history.id
+                and not value.deleted
+                and (value.visible or not self._hdca_listing_visible_only)
+            ):
+                if builder.security.encode_id(value.id) in page_ids:
+                    continue
+                if pinned := hdca_entries(value):
+                    builder.pinned["hdca"].extend(pinned)
+                    continue
+            unresolved.append(value)
+        return unresolved
 
     def get_initial_value(self, trans, other_values):
         if trans.workflow_building_mode is workflow_building_modes.ENABLED or trans.app.name == "tool_shed":
@@ -2651,13 +2673,10 @@ class DataToolParameter(BaseDataToolParameter):
             trans, builder, history, dataset_matcher, dataset_matcher_factory, job_input_values
         )
         unresolved = self._pin_live_hda_inputs(builder, history, dataset_matcher, job_input_values)
-        self._carry_unresolved_inputs(builder, history, unresolved)
-        self._page_hdca_matches(
-            builder,
-            trans,
-            history,
-            dataset_matcher_factory.dataset_collection_matcher(dataset_matcher),
+        unresolved = self._page_and_pin_hdcas(
+            builder, trans, history, dataset_matcher_factory.dataset_collection_matcher(dataset_matcher), unresolved
         )
+        self._carry_unresolved_inputs(builder, history, unresolved)
 
         builder.sort_by_hid()
         return d
@@ -3004,7 +3023,9 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                 }
             )
 
-        self._page_hdca_matches(builder, trans, history, dataset_collection_matcher)
+        self._page_and_pin_hdcas(
+            builder, trans, history, dataset_collection_matcher, util.listify(other_values.get(self.name))
+        )
         builder.sort_by_hid("hdca")
         return d
 
