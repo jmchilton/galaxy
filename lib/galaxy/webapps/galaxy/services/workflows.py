@@ -410,11 +410,11 @@ class WorkflowsService(ServiceBase):
         )
         _validate_extraction_labels(
             _input_names(
-                group_hid_inputs_by_original(trans, history.id, "dataset", payload.dataset_hids, payload.dataset_names)
+                group_hid_inputs_by_original(trans, history.id, "hda", payload.dataset_hids, payload.dataset_names)
             ),
             _input_names(
                 group_hid_inputs_by_original(
-                    trans, history.id, "collection", payload.dataset_collection_hids, payload.dataset_collection_names
+                    trans, history.id, "hdca", payload.dataset_collection_hids, payload.dataset_collection_names
                 )
             ),
         )
@@ -528,10 +528,8 @@ class WorkflowsService(ServiceBase):
             payload.dataset_collection_names, "dataset_collection_names", payload.hdca_ids, "hdca_ids"
         )
         _validate_extraction_labels(
-            _input_names(group_inputs_by_original(trans, "dataset", payload.hda_ids, payload.dataset_names)),
-            _input_names(
-                group_inputs_by_original(trans, "collection", payload.hdca_ids, payload.dataset_collection_names)
-            ),
+            _input_names(group_inputs_by_original(trans, "hda", payload.hda_ids, payload.dataset_names)),
+            _input_names(group_inputs_by_original(trans, "hdca", payload.hdca_ids, payload.dataset_collection_names)),
             step_label_strings,
         )
 
