@@ -151,6 +151,17 @@ def test_parameter_input_range_is_validated_once(parameter_type, min, max, inval
     assert str(exc_info.value) == f"Parameter 'input': {message}"
 
 
+@pytest.mark.parametrize(
+    "parameter_type,min,max,expected",
+    [(parameter_type, min, max, (min, max)) for parameter_type, min, max, *_ in NUMERIC_RANGE_CASES]
+    + [("float", 1, 2, (1.0, 2.0))],
+)
+def test_parameter_input_range_reaches_run_form(parameter_type, min, max, expected):
+    parameter, trans = __numeric_runtime_parameter(parameter_type, min, max)
+    field = parameter.to_dict(trans)
+    assert (field["min"], field["max"]) == expected
+
+
 def test_cannot_create_tool_modules_for_missing_tools():
     trans = MockTrans()
     module = modules.module_factory.from_dict(trans, {"type": "tool", "tool_id": "cat1"})
