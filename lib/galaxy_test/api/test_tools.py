@@ -590,11 +590,14 @@ class TestToolsApi(ApiTestCase, TestsTools):
         tool_id: str,
         history_id: str,
         *,
+        inputs: Optional[dict[str, Any]] = None,
         options_pagination: Optional[dict[str, Any]] = None,
         param_name: str = "f1",
     ) -> dict[str, Any]:
         """POST ``tools/{tool_id}/build`` and return the named input dict."""
         payload: dict[str, Any] = {"history_id": history_id}
+        if inputs is not None:
+            payload["inputs"] = inputs
         if options_pagination is not None:
             payload["options_pagination"] = options_pagination
         response = self.dataset_populator._post(f"tools/{tool_id}/build", data=payload, json=True)
@@ -728,6 +731,84 @@ class TestToolsApi(ApiTestCase, TestsTools):
             returned_ids = {e["id"] for e in f1["options"]["hdca"]}
             assert plain_list["id"] not in returned_ids, returned_ids
             assert pair["id"] in returned_ids, returned_ids
+
+    @skip_without_tool("__FILTER_EMPTY_DATASETS__")
+    @skip_without_tool("cat1")
+    def test_build_collection_options_pinned_outside_page(self):
+        """A selected collection outside the page window is pinned, for a
+        ``data_collection`` input and for a ``data`` input batching over it,
+        and is not pinned when it is already on the page."""
+        with self.dataset_populator.test_history() as history_id:
+            older = self._create_hdca(history_id, "list")
+            newer = self._create_hdca(history_id, "list")
+            ref = {"src": "hdca", "id": older["id"]}
+            for tool_id, name, value in [
+                ("__FILTER_EMPTY_DATASETS__", "input", {"values": [ref]}),
+                ("cat1", "input1", {"batch": True, "values": [ref]}),
+            ]:
+                param = self._build_tool_param(
+                    tool_id,
+                    history_id,
+                    inputs={name: value},
+                    options_pagination={name: {"hdca": {"limit": 1}}},
+                    param_name=name,
+                )
+                assert [e["id"] for e in param["options"]["hdca"]] == [newer["id"]], param["options"]["hdca"]
+                assert [e["id"] for e in param["pinned"]["hdca"]] == [older["id"]], param["pinned"]["hdca"]
+
+                param = self._build_tool_param(tool_id, history_id, inputs={name: value}, param_name=name)
+                assert older["id"] in {e["id"] for e in param["options"]["hdca"]}
+                assert param["pinned"]["hdca"] == [], param["pinned"]["hdca"]
+
+            # A ``data`` input lists visible collections only, so a hidden one
+            # is never pinned; it stays carried with its ``(hidden)`` label.
+            hidden = self._create_hdca(history_id, "list", hidden=True)
+            param = self._build_tool_param(
+                "cat1",
+                history_id,
+                inputs={"input1": {"batch": True, "values": [{"src": "hdca", "id": hidden["id"]}]}},
+                options_pagination={"input1": {"hdca": {"limit": 1}}},
+                param_name="input1",
+            )
+            assert param["pinned"]["hdca"] == [], param["pinned"]["hdca"]
+            carried = [e for e in param["options"]["hdca"] if e["id"] == hidden["id"]]
+            assert len(carried) == 1, param["options"]["hdca"]
+            assert carried[0]["name"].startswith("(hidden) "), carried
+            assert carried[0]["keep"] is True, carried
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_pinned_matches_page_entry(self):
+        """A pinned collection carries the entry the page listing would have
+        shown for it: a mapped-over ``list:paired`` keeps its ``map_over_type``
+        and a hidden ``paired`` collection stays a direct match."""
+        with self.dataset_populator.test_history() as history_id:
+            list_of_pairs = self._create_hdca(history_id, "list_of_pairs")
+            hidden_pair = self._create_hdca(history_id, "pair", hidden=True)
+            newest = self._create_hdca(history_id, "pair")
+            full = self._build_tool_param(
+                "collection_paired_test", history_id, options_pagination={"f1": {"hdca": {"limit": 100}}}
+            )["options"]["hdca"]
+            for selected, value in [
+                (list_of_pairs, {"batch": True, "values": [{"src": "hdca", "id": list_of_pairs["id"]}]}),
+                (hidden_pair, {"values": [{"src": "hdca", "id": hidden_pair["id"]}]}),
+            ]:
+                f1 = self._build_tool_param(
+                    "collection_paired_test",
+                    history_id,
+                    inputs={"f1": value},
+                    options_pagination={"f1": {"hdca": {"limit": 1}}},
+                )
+                assert [e["id"] for e in f1["options"]["hdca"]] == [newest["id"]], f1["options"]["hdca"]
+                assert f1["pinned"]["hdca"] == [e for e in full if e["id"] == selected["id"]], f1["pinned"]["hdca"]
+
+                f1 = self._build_tool_param(
+                    "collection_paired_test",
+                    history_id,
+                    inputs={"f1": value},
+                    options_pagination={"f1": {"hdca": {"limit": 100}}},
+                )
+                assert f1["options"]["hdca"] == full, f1["options"]["hdca"]
+                assert f1["pinned"]["hdca"] == [], f1["pinned"]["hdca"]
 
     @skip_without_tool("cheetah_problem_unbound_var_input")
     def test_legacy_biotools_xref_injection(self):
