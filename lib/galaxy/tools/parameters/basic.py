@@ -3023,11 +3023,31 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                 }
             )
 
-        self._page_and_pin_hdcas(
+        unresolved = self._page_and_pin_hdcas(
             builder, trans, history, dataset_collection_matcher, util.listify(other_values.get(self.name))
         )
+        for value in unresolved:
+            self._carry_selected_hdca(builder, history, value)
         builder.sort_by_hid("hdca")
         return d
+
+    def _carry_selected_hdca(self, builder: DataOptionsBuilder, history, value) -> None:
+        """Carry a selected HDCA that the listing cannot return (deleted or
+        from another history, or hidden and unmatched) as a ``keep=True``
+        entry with a state-prefixed name, so a rerun form still pre-selects it."""
+        if isinstance(value, HistoryDatasetCollectionAssociation) and (
+            value.deleted or not value.visible or value.history != history
+        ):
+            state = _carried_state_label(value)
+            builder.options["hdca"].append(
+                make_hdca_entry(
+                    builder.security,
+                    value,
+                    f"({state}) {value.name}",
+                    keep=True,
+                    include_column_definitions=True,
+                )
+            )
 
     def _hdca_entries(self, trans, security, dataset_collection_matcher) -> HdcaEntriesT:
         history_query = self._history_query(trans)

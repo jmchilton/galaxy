@@ -777,6 +777,25 @@ class TestToolsApi(ApiTestCase, TestsTools):
             assert carried[0]["keep"] is True, carried
 
     @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_carries_other_history_selection(self):
+        """A collection selected from another history is carried as a
+        ``keep`` option so the form keeps it instead of picking a local one."""
+        with self.dataset_populator.test_history() as other_history_id:
+            foreign = self._create_hdca(other_history_id, "pair")
+            with self.dataset_populator.test_history() as history_id:
+                local = self._create_hdca(history_id, "pair")
+                f1 = self._build_tool_param(
+                    "collection_paired_test",
+                    history_id,
+                    inputs={"f1": {"values": [{"src": "hdca", "id": foreign["id"]}]}},
+                )
+                assert local["id"] in {e["id"] for e in f1["options"]["hdca"]}
+                matching = [e for e in f1["options"]["hdca"] if e["id"] == foreign["id"]]
+                assert len(matching) == 1, f1["options"]["hdca"]
+                assert matching[0]["keep"] is True
+                assert matching[0]["name"].startswith("(not in current history) ")
+
+    @skip_without_tool("collection_paired_test")
     def test_build_collection_options_pinned_matches_page_entry(self):
         """A pinned collection carries the entry the page listing would have
         shown for it: a mapped-over ``list:paired`` keeps its ``map_over_type``
