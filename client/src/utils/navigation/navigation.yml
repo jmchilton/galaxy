@@ -1411,7 +1411,7 @@ admin:
         selector: "//div[@id='admin-quota-users']//span[contains(@class, 'multiselect__tag')][span[text()='${email}']]"
       remove_selected_user:
         type: xpath
-        selector: "//div[@id='admin-quota-users']//span[contains(@class, 'multiselect__tag')][span[text()='${email}']]/i[contains(@class, 'multiselect__tag-icon')]"
+        selector: "//div[@id='admin-quota-users']//span[contains(@class, 'multiselect__tag')][span[text()='${email}']]/*[contains(@class, 'multiselect__tag-icon')]"
       submit: '#admin-quota-submit'
 
   role:
@@ -1427,7 +1427,7 @@ admin:
         selector: "//div[@id='role-users']//span[contains(@class, 'multiselect__tag')][span[text()='${email}']]"
       remove_selected_user:
         type: xpath
-        selector: "//div[@id='role-users']//span[contains(@class, 'multiselect__tag')][span[text()='${email}']]/i[contains(@class, 'multiselect__tag-icon')]"
+        selector: "//div[@id='role-users']//span[contains(@class, 'multiselect__tag')][span[text()='${email}']]/*[contains(@class, 'multiselect__tag-icon')]"
       groups: '#role-groups .multiselect'
       groups_input: '#role-groups input.multiselect__input'
       group_option:
@@ -1438,7 +1438,7 @@ admin:
         selector: "//div[@id='role-groups']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]"
       remove_selected_group:
         type: xpath
-        selector: "//div[@id='role-groups']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]/i[contains(@class, 'multiselect__tag-icon')]"
+        selector: "//div[@id='role-groups']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]/*[contains(@class, 'multiselect__tag-icon')]"
       submit: '#role-submit'
 
   user_roles_groups:
@@ -1454,7 +1454,7 @@ admin:
         selector: "//div[@id='admin-user-roles']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]"
       remove_selected_role:
         type: xpath
-        selector: "//div[@id='admin-user-roles']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]/i[contains(@class, 'multiselect__tag-icon')]"
+        selector: "//div[@id='admin-user-roles']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]/*[contains(@class, 'multiselect__tag-icon')]"
       groups: '#admin-user-groups .multiselect'
       groups_input: '#admin-user-groups input.multiselect__input'
       group_option:
@@ -1465,7 +1465,7 @@ admin:
         selector: "//div[@id='admin-user-groups']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]"
       remove_selected_group:
         type: xpath
-        selector: "//div[@id='admin-user-groups']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]/i[contains(@class, 'multiselect__tag-icon')]"
+        selector: "//div[@id='admin-user-groups']//span[contains(@class, 'multiselect__tag')][span[text()='${name}']]/*[contains(@class, 'multiselect__tag-icon')]"
       submit: '#admin-user-roles-groups-submit'
 
   index:
