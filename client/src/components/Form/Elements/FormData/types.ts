@@ -103,8 +103,43 @@ export function isDataOption(item: object): item is DataOption {
     return !!item && "src" in item;
 }
 
-export function itemUniqueKey(item: DataOption): string {
+type OptionIdentity = Pick<DataOption, "id" | "src">;
+
+/** Identifies an option */
+export function itemUniqueKey(item: OptionIdentity): string {
     return `${item.src}-${item.id}`;
+}
+
+/** Whether two options refer to the same history item */
+export function isSameItem(a: OptionIdentity, b: OptionIdentity): boolean {
+    return a.id === b.id && a.src === b.src;
+}
+
+/** Find the entry whose option refers to the same history item as a value */
+export function findDataOption<T>(
+    items: T[],
+    value: OptionIdentity,
+    toOption: (item: T) => DataOption | null | undefined,
+): T | undefined {
+    return items.find((item) => {
+        const option = toOption(item);
+        return !!option && isSameItem(option, value);
+    });
+}
+
+/** Append a fetched page of options, skipping ones already listed */
+export function mergeDataOptions(existing: DataOption[], incoming: DataOption[]): DataOption[] {
+    const seen = new Set(existing.map(itemUniqueKey));
+    return existing.concat(
+        incoming.filter((option) => {
+            const key = itemUniqueKey(option);
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        }),
+    );
 }
 
 export function containsDataOption(items: DataOption[], item: DataOption | null): boolean {
