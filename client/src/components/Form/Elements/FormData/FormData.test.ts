@@ -504,6 +504,8 @@ describe("FormData", () => {
         it.each([
             ["list", ["list"], null],
             ["list:list", ["list", "list:list"], null],
+            ["list:list", ["list"], "list"],
+            ["list", ["paired_or_unpaired"], "single_datasets"],
         ])(
             "uses a dropped element holding a %s on a %j input with map_over_type %s",
             async (collectionType, collectionTypes, mapOverType) => {
