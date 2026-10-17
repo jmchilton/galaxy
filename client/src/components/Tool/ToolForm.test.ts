@@ -17,6 +17,7 @@ import { useUserStore } from "@/stores/userStore";
 import ToolCard from "./ToolCard.vue";
 import ToolForm from "./ToolForm.vue";
 import FormDisplay from "@/components/Form/FormDisplay.vue";
+import FormElement from "@/components/Form/FormElement.vue";
 
 const { server, http } = useServerMock();
 
@@ -36,11 +37,12 @@ describe("ToolForm", () => {
     let userStore: ReturnType<typeof useUserStore>;
     let historyStore: ReturnType<typeof useHistoryStore>;
 
-    function mountToolForm() {
+    function mountToolForm(props = {}) {
         wrapper = mount(ToolForm as object, {
             propsData: {
                 id: "tool_id",
                 version: "version",
+                ...props,
             },
             localVue,
             router,
@@ -337,6 +339,54 @@ describe("ToolForm", () => {
             await flushPromises();
             expect(runButton().attributes("aria-disabled")).toBeUndefined();
             expect(runButtonTitle()).toBe("Run tool: tool_name (version)");
+        });
+
+        it("disables Run when remapping a job onto more than one job", async () => {
+            server.use(
+                http.untyped.get("/api/jobs/job_id/build_for_rerun", () =>
+                    HttpResponse.json(buildResponse({ job_remap: true, job_expansion: twelveJobs })),
+                ),
+            );
+            mountToolForm({ jobId: "job_id" });
+            await flushPromises();
+            expect(runButton().attributes("aria-disabled")).toBeUndefined();
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version) - 12 jobs");
+
+            const remap = wrapper.findAllComponents(FormElement).find((e) => e.props("id") === "rerun_remap_job_id");
+            remap!.vm.$emit("input", true);
+            await flushPromises();
+            expect(runButton().attributes("aria-disabled")).toBe("true");
+            expect(runButtonTitle()).toBe("Remapping replaces a single job, but this request would run several jobs.");
+            expect(wrapper.find("[data-job-count-notice='remap']").exists()).toBe(true);
+        });
+
+        it("drops a blocking preview from the tool load once a non-refreshing change edits a batched input", async () => {
+            const mismatch = {
+                job_count: null,
+                reason: "batch_mismatch",
+                inputs: [
+                    { name: "input1", count: 3, linked: true },
+                    { name: "cond|input2", count: 2, linked: true },
+                ],
+            };
+            useBuildResponse({ job_expansion: mismatch });
+            mountToolForm();
+            await flushPromises();
+            const batch = (ids: string[]) => ({
+                batch: true,
+                product: false,
+                values: ids.map((id) => ({ id, src: "hdca" })),
+            });
+            const formDisplay = wrapper.findComponent(FormDisplay);
+
+            // The form reports the loaded values without asking for a rebuild.
+            formDisplay.vm.$emit("onChange", { input1: batch(["a"]), "cond|input2": batch(["b"]) }, false);
+            await flushPromises();
+            expect(runButton().attributes("aria-disabled")).toBe("true");
+
+            formDisplay.vm.$emit("onChange", { input1: batch(["a"]) }, false);
+            await flushPromises();
+            expect(runButton().attributes("aria-disabled")).toBeUndefined();
         });
 
         it("drops a blocking preview once a later update fails", async () => {
