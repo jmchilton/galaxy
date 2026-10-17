@@ -1,4 +1,4 @@
-"""Batch (meta parameter) expansion of tool requests into per-job states."""
+"""Batch (meta parameter) expansion, and job-count previews (summarize_meta_expansion) that agree with it."""
 
 import copy
 from typing import Any
@@ -11,6 +11,7 @@ from galaxy import (
 )
 from galaxy.app_unittest_utils import tools_support
 from galaxy.managers.collections import DatasetCollectionManager
+from galaxy.model.dataset_collections import subcollections
 from galaxy.tool_util.parameters import (
     RequestInternalDereferencedToolState,
     RequestInternalToolState,
@@ -18,6 +19,8 @@ from galaxy.tool_util.parameters import (
 from galaxy.tools.parameters.meta import (
     expand_meta_parameters,
     expand_meta_parameters_async,
+    incoming_has_batch,
+    summarize_meta_expansion,
     validate_matched_batch_lengths,
 )
 from galaxy.util.permutations import InputMatchedException
@@ -59,6 +62,7 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
     def test_hda_batch(self):
         incoming = {"input1": self._hda_batch(3)}
         self._assert_job_count(incoming, 3)
+        assert self._summary(incoming)["inputs"] == [{"name": "input1", "count": 3, "linked": True}]
 
     def test_list_into_data_input(self):
         self._assert_job_count({"input1": self._hdca_batch("list", 4)}, 4)
@@ -93,6 +97,7 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
     def test_unlinked_batches_multiply(self):
         incoming = {"input1": self._hda_batch(3, linked=False), "input2": self._hdca_batch("list", 2, linked=False)}
         self._assert_job_count(incoming, 6)
+        assert [i["linked"] for i in self._summary(incoming)["inputs"]] == [False, False]
 
     def test_linked_and_unlinked_batches(self):
         incoming = {"input1": self._hda_batch(3), "input2": self._hda_batch(2, linked=False)}
@@ -103,28 +108,82 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
 
     def test_mismatched_batch_lengths(self):
         incoming = {"input1": self._hda_batch(3), "input2": self._hdca_batch("list", 2)}
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "batch_mismatch"
+        assert sorted((i["name"], i["count"]) for i in summary["inputs"]) == [("input1", 3), ("input2", 2)]
         with pytest.raises(InputMatchedException):
             self._expand(incoming)
 
     def test_mismatched_collection_shapes(self):
         incoming = {"input1": self._hdca_batch("list:list", [2, 2]), "input2": self._hdca_batch("list", 4)}
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "batch_mismatch"
         with pytest.raises(exceptions.MessageException):
             self._expand(incoming)
 
     def test_unpopulated_collection(self):
         incoming = {"input1": self._hdca_batch("list", 2, populated=False)}
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "inputs_not_ready"
         with pytest.raises(exceptions.ToolInputsNotReadyException):
             self._expand(incoming)
 
     def test_invalid_map_over_type(self):
         incoming = {"input1": self._hda_ref(), "pair": self._hdca_batch("list:list", [2], "paired")}
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "unknown"
         with pytest.raises(exceptions.MessageException):
             self._expand(incoming)
 
     def test_unknown_collection_id(self):
         incoming = {"input1": {"batch": True, "values": [{"src": "hdca", "id": self._encode(987654)}]}}
+        summary = self._summary(incoming)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "unknown"
         with pytest.raises(exceptions.ObjectNotFound):
             self._expand(incoming)
+
+    def test_does_not_mutate_incoming(self):
+        incoming = {"input1": self._hda_batch(2), "input1|__identifier__": "foo"}
+        before = copy.deepcopy(incoming)
+        self._summary(incoming)
+        assert incoming == before
+
+    def test_incoming_has_batch(self):
+        assert incoming_has_batch({"input1": self._hda_batch(2)})
+        assert not incoming_has_batch({"input1": {"batch": False, "values": [self._hda_ref()]}})
+        assert not incoming_has_batch({"input1": self._hda_ref(), "tool_version": "1.0"})
+
+    def test_split_count_agrees_with_split(self):
+        cases: list[tuple[str, ShapeT, str]] = [
+            ("list:paired", [2, 2, 2], "paired"),
+            ("list:paired", [2, 2], "single_datasets"),
+            ("list", 3, "single_datasets"),
+            ("list:list", [3, 0, 1], "list"),
+            ("list:list", [3, 0, 1], "single_datasets"),
+            ("list:list:paired", [[2, 2], [], [2]], "paired"),
+            ("list:list:paired", [[2, 2], [], [2]], "list:paired"),
+            ("list:paired_or_unpaired", [2, 1, 2], "paired_or_unpaired"),
+            ("list:paired_or_unpaired", [2, 1, 2], "single_datasets"),
+            ("sample_sheet", 3, "single_datasets"),
+            ("sample_sheet:paired", [2, 2], "paired"),
+            ("sample_sheet:paired", [2, 2], "single_datasets"),
+        ]
+        for collection_type, shape, split_type in cases:
+            collection = self._collection(collection_type, shape)
+            expected = len(subcollections._split_dataset_collection(collection, split_type))
+            assert subcollections.split_count(collection, split_type) == expected, (collection_type, split_type)
+        invalid_cases: list[tuple[str, ShapeT, str]] = [("list", 2, "list"), ("list:paired", [2], "list")]
+        for collection_type, shape, split_type in invalid_cases:
+            collection = self._collection(collection_type, shape)
+            with pytest.raises(exceptions.MessageException):
+                subcollections._split_dataset_collection(collection, split_type)
+            with pytest.raises(exceptions.MessageException):
+                subcollections.split_count(collection, split_type)
 
     def test_async_hda_batch(self):
         hda_ids = [self._hda().id for _ in range(3)]
@@ -214,7 +273,13 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
         assert state == before
 
     def _assert_job_count(self, incoming, expected: int):
+        summary = self._summary(incoming)
+        assert summary["reason"] is None
+        assert summary["job_count"] == expected
         assert len(self._expand(incoming)) == expected
+
+    def _summary(self, incoming):
+        return summarize_meta_expansion(self.trans, self.tool, incoming)
 
     def _expand(self, incoming):
         expanded, _ = expand_meta_parameters(self.trans, self.tool, copy.deepcopy(incoming), "legacy")
