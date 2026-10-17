@@ -745,7 +745,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
                     history_id,
                     inputs={"f1": {"values": [{"src": "hdca", "id": foreign["id"]}]}},
                 )
-                assert local["id"] in {e["id"] for e in f1["options"]["hdca"]}
+                local_entry = next(e for e in f1["options"]["hdca"] if e["id"] == local["id"])
+                assert "keep" not in local_entry, local_entry
                 matching = [e for e in f1["options"]["hdca"] if e["id"] == foreign["id"]]
                 assert len(matching) == 1, f1["options"]["hdca"]
                 assert matching[0]["keep"] is True

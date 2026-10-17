@@ -2984,8 +2984,7 @@ class DataCollectionToolParameter(BaseDataToolParameter):
             )
 
         self._page_hdca_matches(builder, trans, history, dataset_collection_matcher)
-        for value in util.listify(other_values.get(self.name)):
-            self._carry_selected_hdca(builder, history, value)
+        self._carry_selected_hdca(builder, history, other_values.get(self.name))
         builder.sort_by_hid("hdca")
         return d
 
