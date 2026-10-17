@@ -535,6 +535,29 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         self.screenshot("tool_form_job_count_empty_batch")
 
     @selenium_test
+    def test_run_disabled_for_mismatched_batches(self):
+        history_id = self.current_history_id()
+        self.dataset_collection_populator.create_list_in_history(history_id, name="long list", wait=True)
+        self.dataset_collection_populator.create_list_in_history(
+            history_id, name="short list", contents=["a\n", "b\n"], wait=True
+        )
+        self.home()
+        self.tool_open("cat1")
+        self.tool_form_select_collection("input1", "long list")
+        self.components.tool_form.repeat_insert.wait_for_and_click()
+        self.tool_form_select_collection("queries_0|input2", "short list")
+
+        mismatch = self.components.tool_form.job_count_notice(kind="mismatch")
+        assert (
+            mismatch.wait_for_text()
+            == "Batch inputs must have matching sizes: Concatenate Dataset (3), 1: Dataset › Select (2)."
+        )
+        execute = self.components.tool_form.execute.wait_for_visible()
+        assert execute.get_attribute("aria-disabled") == "true"
+        assert execute.get_attribute("data-title") == "Batch inputs must match before the tool can run."
+        self.screenshot("tool_form_job_count_mismatch")
+
+    @selenium_test
     def test_dataset_state_filtering(self):
         # upload an ok (HID 1) and a discarded (HID 2) dataset and run a tool
         # normally HID 2 would be selected but since it is discarded - it won't
