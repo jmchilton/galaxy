@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
 import type { FormInputNode } from "@/components/Form/composables/useFormState";
 
-import { jobCountNotices } from "./jobCount";
+import { jobCountNotices, runBlockedReason } from "./jobCount";
 
 const inputs = [
     { name: "reads", type: "data", label: "Input reads" },
@@ -19,6 +19,21 @@ const inputs = [
         ],
     },
     { name: "extra", type: "data_collection", label: "Extra" },
+    {
+        name: "advanced",
+        type: "section",
+        title: "Advanced",
+        inputs: [{ name: "mask", type: "data", label: "Select" }],
+    },
+    {
+        name: "queries",
+        type: "repeat",
+        title: "Query",
+        cache: [
+            [{ name: "input2", type: "data", label: "Select" }],
+            [{ name: "input2", type: "data", label: "Select" }],
+        ],
+    },
 ] as unknown as FormInputNode[];
 
 function batched(name: string, count: number, linked = true): ToolFormBatchInputCount {
@@ -101,5 +116,46 @@ describe("jobCountNotices", () => {
         expect(jobCountNotices(many, inputs, false).map((n) => n.kind)).toEqual(["count"]);
         const single = expansion({ job_count: 1, inputs: [batched("reads", 1)] });
         expect(jobCountNotices(single, inputs, true)).toEqual([]);
+    });
+
+    it("qualifies inputs in sections and repeats with their enclosing titles", () => {
+        const notices = jobCountNotices(
+            expansion({
+                reason: "batch_mismatch",
+                inputs: [batched("advanced|mask", 2), batched("queries_1|input2", 3)],
+            }),
+            inputs,
+        );
+        expect(notices[0]!.text).toBe(
+            "Batch inputs must have matching sizes: Advanced › Select (2), 2: Query › Select (3).",
+        );
+    });
+});
+
+describe("runBlockedReason", () => {
+    it("blocks when the server says no jobs would run", () => {
+        expect(runBlockedReason(expansion({ job_count: 0, inputs: [batched("extra", 0)] }))).toBe(
+            "No jobs would run because a batch input is empty.",
+        );
+    });
+
+    it("blocks on a batch mismatch", () => {
+        const mismatch = expansion({ reason: "batch_mismatch", inputs: [batched("reads", 2), batched("extra", 3)] });
+        expect(runBlockedReason(mismatch)).toBe("Batch inputs must match before the tool can run.");
+    });
+
+    it("blocks remapping onto more than one job", () => {
+        const many = expansion({ job_count: 4, inputs: [batched("reads", 4)] });
+        expect(runBlockedReason(many, true)).toBe(
+            "Remapping replaces a single job, but this request would run several jobs.",
+        );
+        expect(runBlockedReason(many, false)).toBeUndefined();
+        expect(runBlockedReason(expansion({ job_count: 1, inputs: [batched("reads", 1)] }), true)).toBeUndefined();
+    });
+
+    it("never blocks on an unknown or pending count", () => {
+        expect(runBlockedReason(undefined)).toBeUndefined();
+        expect(runBlockedReason(expansion({ reason: "unknown" }), true)).toBeUndefined();
+        expect(runBlockedReason(expansion({ reason: "inputs_not_ready" }), true)).toBeUndefined();
     });
 });

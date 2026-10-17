@@ -1,6 +1,6 @@
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
 import type { FormInputNode } from "@/components/Form/composables/useFormState";
-import { findInputByDottedName } from "@/components/Form/utilities";
+import { repeatTitle, visitInputs } from "@/components/Form/utilities";
 import localize from "@/utils/localization";
 
 export interface JobCountNotice {
@@ -11,10 +11,33 @@ export interface JobCountNotice {
     detail?: string;
 }
 
-/** Label of a batched input, falling back to its flat (`|`-separated) name. */
+interface EnclosingInput {
+    node: FormInputNode;
+    index?: number;
+}
+
+/** Title of a section or repeat block as the form shows it; conditionals show no title of their own. */
+function enclosingTitle({ node, index }: EnclosingInput): string | undefined {
+    if (node.type === "section") {
+        return node.title || node.name;
+    }
+    if (node.type === "repeat" && index !== undefined) {
+        return repeatTitle(index, node.title);
+    }
+    return undefined;
+}
+
+/** Label of a batched input qualified by its sections and repeat blocks ("Section › Input"),
+ * falling back to its flat (`|`-separated) name. */
 function batchInputLabel(inputs: FormInputNode[] | undefined, name: string): string {
-    const node = findInputByDottedName(inputs ?? [], name) as FormInputNode | null;
-    return node?.label || name;
+    let label = name;
+    visitInputs(inputs ?? [], (node: FormInputNode, nodeName: string, _context: unknown, parents: EnclosingInput[]) => {
+        if (nodeName === name && (node.type === "data" || node.type === "data_collection")) {
+            const titles = parents.map(enclosingTitle).filter((title): title is string => Boolean(title));
+            label = [...titles, node.label || name].join(" › ");
+        }
+    });
+    return label;
 }
 
 /** "A, B (12 each) × C (3)": matched inputs share a count, multiplied ones multiply it. */
@@ -94,4 +117,22 @@ export function jobCountNotices(
         });
     }
     return notices;
+}
+
+/** Why Run should stay disabled: the server preview says the request would run nothing or be rejected. */
+export function runBlockedReason(expansion: ToolFormJobExpansion | undefined, remapping = false): string | undefined {
+    if (!expansion) {
+        return undefined;
+    }
+    const { job_count: jobCount, reason } = expansion;
+    if (jobCount === 0) {
+        return localize("No jobs would run because a batch input is empty.");
+    }
+    if (reason === "batch_mismatch") {
+        return localize("Batch inputs must match before the tool can run.");
+    }
+    if (remapping && jobCount !== null && jobCount > 1) {
+        return localize("Remapping replaces a single job, but this request would run several jobs.");
+    }
+    return undefined;
 }

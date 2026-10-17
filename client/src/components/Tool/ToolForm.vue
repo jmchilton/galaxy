@@ -22,6 +22,7 @@ import localize from "@/utils/localization";
 import { parseBool } from "@/utils/parseBool";
 import { errorMessageAsString } from "@/utils/simple-error";
 
+import { runBlockedReason } from "./jobCount";
 import {
     getToolFormData,
     type OptionsPagination,
@@ -128,6 +129,10 @@ const jobExpansion = computed(() => {
     return expansion;
 });
 
+const remapping = computed(() => useJobRemapping.value && Boolean(props.jobId));
+
+const runBlocked = computed(() => runBlockedReason(jobExpansion.value, remapping.value));
+
 const tooltip = computed(() => {
     if (!canMutateHistory.value) {
         return IMMUTABLE_HISTORY_MSG;
@@ -149,6 +154,9 @@ const tooltip = computed(() => {
     }
     if (showExecuting.value) {
         return "Tool is being executed...";
+    }
+    if (runBlocked.value) {
+        return runBlocked.value;
     }
     const runTitle = `Run tool: ${toolName.value} (${formConfig.value.version})`;
     const jobCount = jobExpansion.value?.job_count;
@@ -199,7 +207,12 @@ const hasConfigOrValErrors = computed(
 );
 
 const runButtonDisabled = computed(
-    () => disabled.value || !canMutateHistory.value || hasConfigOrValErrors.value || hasCredentialsErrors.value,
+    () =>
+        disabled.value ||
+        !canMutateHistory.value ||
+        hasConfigOrValErrors.value ||
+        hasCredentialsErrors.value ||
+        Boolean(runBlocked.value),
 );
 
 watch([() => currentHistoryId.value, () => lastUpdateTime.value], () => {
@@ -645,10 +658,7 @@ requestTool();
                 <ToolFormTags v-model:tags="tags" />
             </div>
 
-            <ToolFormJobCount
-                :job-expansion="jobExpansion"
-                :inputs="formConfig.inputs"
-                :remapping="useJobRemapping && Boolean(props.jobId)" />
+            <ToolFormJobCount :job-expansion="jobExpansion" :inputs="formConfig.inputs" :remapping="remapping" />
             <template v-slot:buttons>
                 <ButtonSpinner
                     id="execute"
