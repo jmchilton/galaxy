@@ -11,6 +11,7 @@ import re
 import typing
 import urllib.parse
 from collections.abc import (
+    Callable,
     MutableMapping,
     Sequence,
 )
@@ -1950,9 +1951,15 @@ def _paginated_dataset_collections(
     )
 
 
+# Maps an HDCA to its dropdown entries, or ``None`` if it does not match.
+HdcaEntriesT = Callable[[HistoryDatasetCollectionAssociation], Optional[list[dict[str, Any]]]]
+
+
 class BaseDataToolParameter(ToolParameter):
     multiple: bool
     tag: Optional[str]
+    # Whether the HDCA option listing skips hidden collections.
+    _hdca_listing_visible_only: bool
 
     # Sentinel distinguishing "cache not yet populated" from "cache populated
     # with None" (which is a legitimate return for parameters with no formats).
@@ -2055,6 +2062,35 @@ class BaseDataToolParameter(ToolParameter):
         if self.tool is not None and getattr(self.tool, "tool_type", None) == "data_destination":
             return True
         return False
+
+    def _hdca_entries(self, trans, security, dataset_collection_matcher) -> HdcaEntriesT:
+        """Classifier mapping an HDCA to the entries the HDCA page listing emits for it."""
+        raise NotImplementedError
+
+    def _page_hdca_matches(self, builder: DataOptionsBuilder, trans, history, dataset_collection_matcher) -> None:
+        """Emit one page of matching HDCAs into ``builder.options['hdca']``.
+
+        Collection matching needs per-row Python inspection (subcollection
+        mapping, implicit conversion), so this always uses chunked pagination.
+        """
+        hdca_entries = self._hdca_entries(trans, builder.security, dataset_collection_matcher)
+        _offset, _limit, hdca_search = builder.page("hdca")
+
+        def hdca_query(*, offset, limit):
+            return _paginated_dataset_collections(
+                trans,
+                history,
+                visible_only=self._hdca_listing_visible_only,
+                tag=self.tag,
+                search=hdca_search,
+                offset=offset,
+                limit=limit,
+            )
+
+        # Pins ``paginate``'s T to dict; a list-returning filter is ambiguous against ``Union[T, list[T]]``.
+        page_filter: Callable[[Any], Union[None, dict[str, Any], list[dict[str, Any]]]] = hdca_entries
+        entries, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=page_filter)
+        builder.options["hdca"].extend(entries)
 
     def get_initial_value(self, trans, other_values):
         if trans.workflow_building_mode is workflow_building_modes.ENABLED or trans.app.name == "tool_shed":
@@ -2300,6 +2336,8 @@ class DataToolParameter(BaseDataToolParameter):
     the DataToolParameter (the last test below is broken) Nate's next pass at the dataset
     security stuff will dramatically alter this anyway.
     """
+
+    _hdca_listing_visible_only = True
 
     def __init__(self, tool: Optional["Tool"], input_source, trans=None):
         input_source = ensure_input_source(input_source)
@@ -2758,27 +2796,10 @@ class DataToolParameter(BaseDataToolParameter):
             elif isinstance(value, LibraryDatasetDatasetAssociation):
                 builder.options["ldda"].append(make_ldda_entry(builder.security, value))
 
-    def _page_hdca_matches(
-        self,
-        builder: DataOptionsBuilder,
-        trans,
-        history,
-        dataset_collection_matcher,
-    ) -> None:
-        """Emit one page of matching HDCAs into ``builder.options['hdca']``.
-
-        Collection matching needs per-row Python inspection (subcollection
-        mapping, implicit conversion), so this always uses chunked pagination.
-        """
+    def _hdca_entries(self, trans, security, dataset_collection_matcher) -> HdcaEntriesT:
         multiple = self.multiple
-        _offset, _limit, hdca_search = builder.page("hdca")
 
-        def hdca_query(*, offset, limit):
-            return _paginated_dataset_collections(
-                trans, history, visible_only=True, tag=self.tag, search=hdca_search, offset=offset, limit=limit
-            )
-
-        def hdca_filter(hdca):
+        def hdca_entries(hdca):
             match = dataset_collection_matcher.hdca_match(hdca)
             if not match:
                 return None
@@ -2789,16 +2810,12 @@ class DataToolParameter(BaseDataToolParameter):
                     subcollection_type = collection_type_description.collection_type
                 else:
                     return None
-            return (hdca, match, subcollection_type)
-
-        matches, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=hdca_filter)
-        for hdca, match, subcollection_type in matches:
             name = hdca.name
             if match.implicit_conversion:
                 name = f"{name} (with implicit datatype conversion)"
-            builder.options["hdca"].append(
-                make_hdca_entry(builder.security, hdca, name, keep=False, subcollection_type=subcollection_type)
-            )
+            return [make_hdca_entry(security, hdca, name, keep=False, subcollection_type=subcollection_type)]
+
+        return hdca_entries
 
     def _history_query(self, trans):
         assert self.multiple
@@ -2809,6 +2826,10 @@ class DataToolParameter(BaseDataToolParameter):
 
 class DataCollectionToolParameter(BaseDataToolParameter):
     """ """
+
+    # Hidden HDCAs are listed too; ``_classify_hdca`` demotes them to
+    # direct-only so they cannot appear as multirun (map-over) entries.
+    _hdca_listing_visible_only = False
 
     def __init__(self, tool: Optional["Tool"], input_source, trans=None):
         input_source = ensure_input_source(input_source)
@@ -2987,42 +3008,25 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         builder.sort_by_hid("hdca")
         return d
 
-    def _page_hdca_matches(
-        self,
-        builder: DataOptionsBuilder,
-        trans,
-        history,
-        dataset_collection_matcher,
-    ) -> None:
-        """Emit one page of matching HDCAs into ``builder.options['hdca']``.
-
-        Walks all active HDCAs (incl. hidden) in HID-desc order; the
-        classifier in :meth:`_classify_hdca` demotes hidden HDCAs to
-        direct-only so they cannot appear as multirun (map-over) entries.
-        """
-        _offset, _limit, hdca_search = builder.page("hdca")
+    def _hdca_entries(self, trans, security, dataset_collection_matcher) -> HdcaEntriesT:
         history_query = self._history_query(trans)
 
-        def hdca_query(*, offset, limit):
-            return _paginated_dataset_collections(
-                trans, history, visible_only=False, tag=self.tag, search=hdca_search, offset=offset, limit=limit
-            )
-
-        def hdca_filter(hdca):
-            return self._classify_hdca(hdca, dataset_collection_matcher, history_query)
-
-        matches, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=hdca_filter)
-        for kind, hdca, implicit_conversion, subcollection_type in matches:
-            name = f"{hdca.name} (with implicit datatype conversion)" if implicit_conversion else hdca.name
-            builder.options["hdca"].append(
+        def hdca_entries(hdca):
+            matches = self._classify_hdca(hdca, dataset_collection_matcher, history_query)
+            if not matches:
+                return None
+            return [
                 make_hdca_entry(
-                    builder.security,
+                    security,
                     hdca,
-                    name,
+                    f"{hdca.name} (with implicit datatype conversion)" if implicit_conversion else hdca.name,
                     subcollection_type=subcollection_type if kind == "multirun" else None,
                     include_column_definitions=True,
                 )
-            )
+                for kind, _, implicit_conversion, subcollection_type in matches
+            ]
+
+        return hdca_entries
 
     def _classify_hdca(self, hdca, dataset_collection_matcher, history_query):
         """Per-HDCA classifier returning 0, 1, or 2 match entries.
