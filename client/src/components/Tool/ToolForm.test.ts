@@ -277,6 +277,37 @@ describe("ToolForm", () => {
             expect(jobCountText()).toBe("");
         });
 
+        it("disables Run with the reason when the server says the request cannot run", async () => {
+            const empty = { job_count: 0, reason: null, inputs: [{ name: "input1", count: 0, linked: true }] };
+            const mismatch = {
+                job_count: null,
+                reason: "batch_mismatch",
+                inputs: [
+                    { name: "input1", count: 3, linked: true },
+                    { name: "input2", count: 3, linked: true },
+                ],
+            };
+            respondToBuilds(
+                { body: { job_expansion: empty } },
+                { body: { job_expansion: mismatch } },
+                { body: { job_expansion: twelveJobs } },
+            );
+            await flushPromises();
+            const runButton = () => wrapper.find("[data-description='run tool button']");
+
+            await requestUpdate();
+            expect(runButton().attributes("aria-disabled")).toBe("true");
+            expect(runButtonTitle()).toBe("No jobs would run because a batch input is empty.");
+
+            await requestUpdate();
+            expect(runButton().attributes("aria-disabled")).toBe("true");
+            expect(runButtonTitle()).toBe("Batch inputs must match before the tool can run.");
+
+            await requestUpdate();
+            expect(runButton().attributes("aria-disabled")).toBeUndefined();
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version) - 12 jobs");
+        });
+
         it("keeps the newest tool version when an older version request finishes last", async () => {
             let releaseStale!: () => void;
             const stale = new Promise<void>((resolve) => (releaseStale = resolve));
