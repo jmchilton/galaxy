@@ -862,6 +862,7 @@ tool_form:
     drilldown_option: '.drilldown-option'
     drilldown_expand: '.fa-caret-down'
     tool_version_button: ".tool-versions"
+    job_count_notice: '.tool-form-job-count [data-job-count-notice="${kind}"]'
 
   labels:
     generate_tour: 'Generate Tour'
