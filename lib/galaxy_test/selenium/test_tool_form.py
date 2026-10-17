@@ -554,7 +554,7 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         )
         execute = self.components.tool_form.execute.wait_for_visible()
         assert execute.get_attribute("aria-disabled") == "true"
-        assert execute.get_attribute("data-title") == "Batch inputs must match before the tool can run."
+        self.components.tool_form.execute.assert_data_value("title", "Batch inputs must match before the tool can run.")
         self.screenshot("tool_form_job_count_mismatch")
 
     @selenium_test
