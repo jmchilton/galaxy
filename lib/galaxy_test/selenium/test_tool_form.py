@@ -503,7 +503,7 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         self.home()
         self.tool_open("cat1")
         self.components.tool_form.parameter_data_input_collection(parameter="input1").wait_for_and_click()
-        self.sleep_for(self.wait_types.UX_RENDER)
+        self.components.tool_form.parameter_data_input_collection_pressed(parameter="input1").wait_for_visible()
         self.select_set_value(self.components.tool_form.parameter_data_select(parameter="input1"), "batch list")
 
         count_notice = self.components.tool_form.job_count_notice(kind="count")
