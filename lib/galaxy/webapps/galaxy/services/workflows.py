@@ -518,8 +518,7 @@ class WorkflowsService(ServiceBase):
             selected = selected_job_ids if step_label.kind == "job" else selected_icj_ids
             if step_label.id not in selected:
                 raise exceptions.RequestParameterInvalidException(
-                    f"step_labels includes {step_label.kind} id {step_label.id} "
-                    "that is not a selected extraction step"
+                    f"step_labels includes {step_label.kind} id {step_label.id} that is not a selected extraction step"
                 )
             step_label_strings.append(step_label.label)
 

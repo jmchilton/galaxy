@@ -466,6 +466,21 @@ def _synthesize_boundary_inputs(
     return synthesized
 
 
+def _input_producer_name(
+    job: SummaryJob, tool: "Tool | None", closure: ClosureResult | None
+) -> tuple[bool, str | None]:
+    """Whether ``job``'s outputs here are workflow inputs rather than step outputs, and the
+    producer name their input row shows: a FakeJob/DatasetCollectionCreationJob, a tool that is
+    not workflow-compatible (upload, data fetch), or a producer in another history."""
+    if not isinstance(job, Job):
+        return True, getattr(job, "name", None)
+    if closure is not None and closure.boundary.produced_elsewhere(job):
+        return True, tool.name if tool else None
+    if tool is not None and not tool.is_workflow_compatible:
+        return True, tool.name
+    return False, None
+
+
 def _collections_by_original(history: History) -> dict[ContentRef, SummaryDatasets]:
     """``history``'s collections keyed by their original's ref.
 
@@ -493,21 +508,13 @@ def _summary_rows(
     pending: list[tuple[WorkflowExtractionJob | None, SummaryDatasets, str | None]] = []
     inputs: dict[ContentRef, SummaryDatasets] = {}
     for job, datasets in jobs.items():
-        if not isinstance(job, Job):
-            # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
-            producer_name = getattr(job, "name", None)
-        else:
-            tool = tool_for_job(trans, job)
-            if closure is not None and closure.boundary.produced_elsewhere(job):
-                # Same boundary as the closure walk: the copies here are workflow inputs.
-                producer_name = tool.name if tool else None
-            elif tool is None or tool.is_workflow_compatible:
-                tool_row = _tool_row(trans, job, tool, datasets, icj_assoc_by_job_id, closure)
-                pending.append((tool_row, datasets, None))
-                continue
-            else:
-                # Not a workflow step (e.g. upload, data fetch) — treat as input.
-                producer_name = tool.name
+        tool = tool_for_job(trans, job) if isinstance(job, Job) else None
+        is_input, producer_name = _input_producer_name(job, tool, closure)
+        if not is_input:
+            pending.append(
+                (_tool_row(trans, cast(Job, job), tool, datasets, icj_assoc_by_job_id, closure), datasets, None)
+            )
+            continue
         for item in datasets:
             ref = original_content_ref(item[1])
             copies = inputs.get(ref)
