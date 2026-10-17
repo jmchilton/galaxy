@@ -96,6 +96,33 @@ describe("WorkflowRunFormSimple rerun prefill", () => {
         vi.mocked(invokeWorkflow).mockResolvedValue([{ id: "invocation_id" }]);
     });
 
+    it("resubmits the original run's preferred object store", async () => {
+        const request = await submit(mountForm({ inputs: INPUTS, preferred_object_store_id: "fast" }));
+        expect(request.preferred_object_store_id).toBe("fast");
+        expect(request).not.toHaveProperty("preferred_outputs_object_store_id");
+        expect(request).not.toHaveProperty("preferred_intermediate_object_store_id");
+    });
+
+    it("resubmits the original run's split output and intermediate object stores", async () => {
+        const request = await submit(
+            mountForm({
+                inputs: INPUTS,
+                preferred_outputs_object_store_id: "archive",
+                preferred_intermediate_object_store_id: "scratch",
+            }),
+        );
+        expect(request.preferred_outputs_object_store_id).toBe("archive");
+        expect(request.preferred_intermediate_object_store_id).toBe("scratch");
+        expect(request).not.toHaveProperty("preferred_object_store_id");
+    });
+
+    it("resubmits a split run that only set an intermediate object store", async () => {
+        const request = await submit(mountForm({ inputs: INPUTS, preferred_intermediate_object_store_id: "scratch" }));
+        expect(request.preferred_intermediate_object_store_id).toBe("scratch");
+        expect(request).not.toHaveProperty("preferred_outputs_object_store_id");
+        expect(request).not.toHaveProperty("preferred_object_store_id");
+    });
+
     it("leaves object stores and workflow parameters unset when the original run had none", async () => {
         const wrapper = mountForm({ inputs: INPUTS });
         expect(formInputValue(wrapper, "sample")).toBeUndefined();

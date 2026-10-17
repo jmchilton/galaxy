@@ -1,13 +1,19 @@
-import type { WorkflowRunModel } from "./model";
+import type { WorkflowInvocationRequest } from "@/api/invocations";
+
+import { rerunHasStepParameters, type WorkflowRunModel } from "./model";
 
 /** Why the simple run form can't run a workflow; ``WorkflowRunForm`` explains each one. */
 export type SimpleFormDisabledReason =
     | "hasWorkflowResourceParameters"
     | "hasDisconnectedInputs"
-    | "hasReplacementParameters";
+    | "hasReplacementParameters"
+    | "rerunHasStepParameters";
 
 /** Why the simple form can't run this workflow, if it can't. The first reason found is the one shown. */
-export function simpleFormDisabledReason(model: WorkflowRunModel): SimpleFormDisabledReason | undefined {
+export function simpleFormDisabledReason(
+    model: WorkflowRunModel,
+    rerunRequest?: WorkflowInvocationRequest,
+): SimpleFormDisabledReason | undefined {
     // Just render the whole form for resource request parameters (kind of
     // niche - I'm not sure anyone is using these currently anyway).
     if (model.hasWorkflowResourceParameters) {
@@ -26,6 +32,10 @@ export function simpleFormDisabledReason(model: WorkflowRunModel): SimpleFormDis
     // point this restriction can be lifted.
     if (model.hasReplacementParametersInToolForm) {
         return "hasReplacementParameters";
+    }
+    // The simple form never submits tool step parameters, so a rerun would drop them.
+    if (rerunHasStepParameters(rerunRequest)) {
+        return "rerunHasStepParameters";
     }
     return undefined;
 }

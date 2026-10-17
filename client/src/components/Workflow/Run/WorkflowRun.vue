@@ -13,7 +13,7 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { rerunHasStepParameters, WorkflowRunModel } from "./model";
+import { WorkflowRunModel } from "./model";
 import { getRunData, WorkflowMissingToolsError } from "./services";
 import { simpleFormDisabledReason } from "./simpleFormDisabledReason";
 
@@ -36,7 +36,7 @@ interface Props {
     simpleFormTargetHistory?: string;
     simpleFormUseJobCache?: boolean;
     requestState?: WorkflowInvocationRequestInputs;
-    /** Exported request of the invocation being rerun, prefills the expanded form */
+    /** Exported request of the invocation being rerun, prefills the run forms */
     rerunRequest?: WorkflowInvocationRequest;
     /** Invocation being rerun, seeds tool and subworkflow steps with the values it ran with */
     rerunInvocationId?: string;
@@ -68,16 +68,12 @@ const missingToolIds = ref<string[]>([]);
 const workflowName = ref("");
 const workflowModel: any = ref(null);
 const disableSimpleFormReason = computed(() =>
-    props.preferSimpleForm && workflowModel.value ? simpleFormDisabledReason(workflowModel.value) : undefined,
+    props.preferSimpleForm && workflowModel.value
+        ? simpleFormDisabledReason(workflowModel.value, props.rerunRequest)
+        : undefined,
 );
 const disableSimpleForm = computed(() => disableSimpleFormReason.value !== undefined);
-// The simple form never submits tool step parameters, so a rerun would drop them.
-const simpleForm = computed(
-    () =>
-        props.preferSimpleForm &&
-        !disableSimpleForm.value &&
-        !(props.isRerun && rerunHasStepParameters(props.rerunRequest)),
-);
+const simpleForm = computed(() => props.preferSimpleForm && !disableSimpleForm.value);
 const owner = ref<string>();
 // The StoredWorkflow this run page is for. In instance mode `props.workflowId`
 // is a Workflow (instance) id, which must not be sent with a tool installation
@@ -278,6 +274,7 @@ defineExpose({
                         :use-job-cache="simpleFormUseJobCache"
                         :can-mutate-current-history="canRunOnHistory"
                         :request-state="requestState"
+                        :rerun-request="rerunRequest"
                         :is-rerun="props.isRerun"
                         :landing-uuid="props.landingUuid"
                         @submissionSuccess="handleInvocations"

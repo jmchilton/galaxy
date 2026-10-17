@@ -153,9 +153,10 @@ describe("WorkflowRun.vue", () => {
         expect(withoutParameters.findComponent(WorkflowRunForm).exists()).toBe(false);
         const withParameters = await mountSimpleRerun({ parameters: { 1: { num_lines: 2 } } });
         expect(withParameters.findComponent(WorkflowRunFormSimple).exists()).toBe(false);
-        expect(withParameters.findComponent(WorkflowRunForm).props("rerunRequest")).toEqual({
-            parameters: { 1: { num_lines: 2 } },
-        });
+        const form = withParameters.findComponent(WorkflowRunForm);
+        expect(form.props("rerunRequest")).toEqual({ parameters: { 1: { num_lines: 2 } } });
+        expect(form.props("disableSimpleForm")).toBe(true);
+        expect(form.props("disableSimpleFormReason")).toBe("rerunHasStepParameters");
     });
 
     it("keeps the workflow's own reason when a rerun with tool step parameters cannot use the simple form anyway", async () => {

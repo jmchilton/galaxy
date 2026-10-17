@@ -14,7 +14,7 @@
                     v-g-tooltip.hover
                     transparent
                     color="blue"
-                    class="text-decoration-none"
+                    class="text-decoration-none workflow-simple-form-link"
                     title="Use simplified run form instead"
                     @click="emit('showSimple')">
                     <span class="fas fa-arrow-left" /> Simple Form
@@ -29,7 +29,11 @@
             </div>
         </div>
 
-        <GAlert v-if="disableSimpleFormReason" show variant="warning">
+        <GAlert
+            v-if="disableSimpleFormReason"
+            show
+            variant="warning"
+            data-description="workflow run simple form disabled reason">
             This is the legacy workflow run form.
             <span v-if="disableSimpleFormReason === 'hasReplacementParameters'">
                 This workflow contains parameters in tool steps that require advanced handling. The simplified form does
@@ -42,6 +46,10 @@
             <span v-else-if="disableSimpleFormReason === 'hasWorkflowResourceParameters'">
                 This workflow is configured with resource request parameters. The simplified form does not support
                 workflows with resource options.
+            </span>
+            <span v-else-if="disableSimpleFormReason === 'rerunHasStepParameters'">
+                The original run set tool step parameters. The simplified form does not support these, so they would be
+                lost.
             </span>
         </GAlert>
 

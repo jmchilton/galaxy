@@ -195,10 +195,20 @@ class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows
         self.get(f"workflows/rerun?invocation_id={plain.invocation_id}")
         # Seeding fills num_lines, so only the recorded step parameters keep this out of the simplified form.
         workflow_run.expanded_form.wait_for_visible()
+        reason = workflow_run.simple_form_disabled_reason.wait_for_visible()
+        assert "The original run set tool step parameters" in reason.text, reason.text
+        workflow_run.simple_form_link.assert_absent()
         assert not workflow_run.job_reuse_checkbox.wait_for_present().is_selected()
         self.workflow_run_expand_step("random")
         self._assert_tool_parameter_preview("num_lines", "3")
         self.screenshot("workflow_rerun_expanded_form_seeded_step")
+
+        # Resubmitting keeps the original run's tool step parameters.
+        self.workflow_run_submit()
+        self.workflow_populator.wait_for_history_workflows(history_id, expected_invocation_count=2)
+        [rerun] = [i for i in self.workflow_populator.history_invocations(history_id) if i["id"] != plain.invocation_id]
+        request = self.workflow_populator.invocation_to_request(rerun["id"])
+        assert str(request["parameters"]["1"]["num_lines"]) == "3", request["parameters"]
 
         workflow = WORKFLOW_RUNTIME_PARAMETER_SIMPLE.replace("seed: asdf", "seed: ${seedme}")
         with_params = self.workflow_populator.run_workflow(
