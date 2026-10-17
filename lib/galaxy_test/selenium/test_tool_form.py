@@ -446,7 +446,6 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self.tool_open("collection_paired_test")
         select_menu = self.components.tool_form.parameter_data_select_menu(parameter="f1")
         self.tool_set_value("f1", "pairs", expected_type="data_collection")
-        select_menu.wait_for_absent_or_hidden()
         self._assert_processing_hint("f1", "batch", "one job per dataset pair")
         self.screenshot("tool_form_data_input_map_over_hint")
 
@@ -478,16 +477,13 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self.home()
         self.tool_open("multi_data_param")
         self.components.tool_form.parameter_data_input_collection(parameter="f1").wait_for_and_click()
-        select_menu = self.components.tool_form.parameter_data_select_menu(parameter="f1")
 
         self.tool_set_value("f1", "flat", expected_type="data", multiple=True)
-        select_menu.wait_for_absent_or_hidden()
         self._assert_processing_hint("f1", "bulk", "processed as a whole in a single job", "Need one job per element?")
         self.screenshot("tool_form_data_input_reduction_hint")
 
         self.tool_form_clear_multiselect_tags("f1")
         self.tool_set_value("f1", "list:list", expected_type="data", multiple=True)
-        select_menu.wait_for_absent_or_hidden()
         self._assert_processing_hint("f1", "batch", "one job per list")
         self.screenshot("tool_form_data_input_nested_map_over_hint")
 
@@ -533,6 +529,8 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
 
     @retry_assertion_during_transitions
     def _assert_processing_hint(self, parameter: str, mode: str, *expected_texts: str):
+        # the dropdown fades out over the hint; wait so assertions and screenshots see a settled form
+        self.components.tool_form.parameter_data_select_menu(parameter=parameter).wait_for_absent_or_hidden()
         hint = self.components.tool_form.parameter_processing_hint(parameter=parameter).wait_for_visible()
         assert hint.get_attribute("data-processing-mode") == mode
         for expected_text in expected_texts:
