@@ -46,6 +46,15 @@ def build_combos(single_inputs, matched_multi_inputs, multiplied_multi_inputs, n
     return input_combos
 
 
+def count_combos(matched_lengths: dict[str, int], multiplied_lengths: dict[str, int]) -> int:
+    """Number of combinations ``build_combos`` would build for inputs of these lengths."""
+    assert_matched_lengths(matched_lengths)
+    count = next(iter(matched_lengths.values()), 1)
+    for length in multiplied_lengths.values():
+        count *= length
+    return count
+
+
 def __extend_with_matched_combos(single_inputs, multi_inputs, nested):
     """
 

@@ -8,6 +8,8 @@ from collections.abc import (
 )
 from typing import (
     Any,
+    Literal,
+    TypedDict,
 )
 
 from galaxy import (
@@ -38,7 +40,9 @@ from galaxy.tool_util.parameters import (
 from galaxy.util.permutations import (
     assert_matched_lengths,
     build_combos,
+    count_combos,
     input_classification,
+    InputMatchedException,
     is_in_state,
     state_copy,
     state_get_value,
@@ -247,6 +251,68 @@ def expand_meta_parameters(
     else:
         collection_info = None
     return expanded_incomings, collection_info
+
+
+BatchCountUnknownReason = Literal["inputs_not_ready", "batch_mismatch", "unknown"]
+
+
+class BatchInputCount(TypedDict):
+    name: str
+    count: int
+    linked: bool
+
+
+class MetaExpansionSummary(TypedDict):
+    """How many jobs a tool request expands into, without building them.
+
+    ``inputs`` lists matched (linked) inputs first, then multiplied ones.
+    """
+
+    job_count: int | None
+    reason: BatchCountUnknownReason | None
+    inputs: list[BatchInputCount]
+
+
+def incoming_has_batch(incoming: ToolRequestT) -> bool:
+    """Whether a flat (legacy) tool request batches over any input."""
+    return any(_is_meta_wrapper(value) and _is_legacy_batch(value) for value in incoming.values())
+
+
+def summarize_meta_expansion(trans: WorkRequestContext, tool, incoming: ToolRequestT) -> MetaExpansionSummary:
+    """Count the jobs ``expand_meta_parameters`` would produce for a flat (legacy) request; never raises."""
+    collections_to_match = matching.CollectionsToMatch()
+
+    def count_collection(input_key, collection_value, linked) -> Sequence[Any]:
+        item, collection, subcollection_type = _batch_collection(trans, collection_value)
+        collections_to_match.add(input_key, item, subcollection_type=subcollection_type, linked=linked)
+        # A placeholder of the right length: counting shouldn't load the elements.
+        return range(subcollections.split_count(collection, subcollection_type or "single_datasets"))
+
+    inputs: list[BatchInputCount] = []
+    try:
+        classifier = _meta_value_classifier(_is_legacy_batch, count_collection)
+        # Like expand_meta_parameters, drop identifier keys: nesting them would write into the batch values.
+        incoming = {key: value for key, value in incoming.items() if not key.endswith("|__identifier__")}
+        _, matched, multiplied = _split_meta_inputs(tool, incoming, False, classifier)
+        matched_lengths = {key: len(values) for key, values in matched.items()}
+        multiplied_lengths = {key: len(values) for key, values in multiplied.items()}
+        inputs = [BatchInputCount(name=key, count=count, linked=True) for key, count in matched_lengths.items()]
+        inputs += [BatchInputCount(name=key, count=count, linked=False) for key, count in multiplied_lengths.items()]
+        job_count = count_combos(matched_lengths, multiplied_lengths)
+        if sum(1 for _, c in collections_to_match.items() if c.linked) > 1:
+            # Equal counts can still differ in shape; walking structures is only needed here.
+            try:
+                trans.app.dataset_collection_manager.match_collections(collections_to_match)
+            except exceptions.MessageException:
+                return MetaExpansionSummary(job_count=None, reason="batch_mismatch", inputs=inputs)
+    except exceptions.ToolInputsNotReadyException:
+        return MetaExpansionSummary(job_count=None, reason="inputs_not_ready", inputs=inputs)
+    except InputMatchedException:
+        return MetaExpansionSummary(job_count=None, reason="batch_mismatch", inputs=inputs)
+    except Exception:
+        log.debug("Could not count jobs for tool %s", tool.id, exc_info=True)
+        return MetaExpansionSummary(job_count=None, reason="unknown", inputs=inputs)
+    return MetaExpansionSummary(job_count=job_count, reason=None, inputs=inputs)
 
 
 def _is_legacy_batch(value: dict[str, Any]) -> bool:
