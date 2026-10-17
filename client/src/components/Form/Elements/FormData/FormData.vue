@@ -291,8 +291,8 @@ const formattedOptions = computed(() => {
 
 /**
  * Tool form inputs, as opposed to workflow run inputs with their own linked/unlinked batch controls.
- * Only tool forms mark map-over options and show the processing hint. Collections on a dataset input's
- * collection field all map over and are listed without a map-over type, so the hint alone covers them.
+ * Only tool forms mark map-over options and show the processing hint. Collections on a single-dataset
+ * input's collection field all map over and are listed without a map-over type; the hint covers them.
  */
 const isToolForm = computed(() => !props.flavor && !props.workflowRun);
 
