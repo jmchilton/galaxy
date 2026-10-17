@@ -444,22 +444,20 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         )
         self.home()
         self.tool_open("collection_paired_test")
+        select_menu = self.components.tool_form.parameter_data_select_menu(parameter="f1")
         self.tool_set_value("f1", "pairs", expected_type="data_collection")
-
-        @retry_assertion_during_transitions
-        def assert_map_over_hint():
-            hint = self.components.tool_form.parameter_processing_hint(parameter="f1").wait_for_visible()
-            assert hint.get_attribute("data-processing-mode") == "batch"
-            assert "one job per dataset pair" in hint.text, hint.text
-
-        assert_map_over_hint()
+        select_menu.wait_for_absent_or_hidden()
+        self._assert_processing_hint("f1", "batch", "one job per dataset pair")
+        self.screenshot("tool_form_data_input_map_over_hint")
 
         # the dropdown option carries a map-over marker
-        select_field = self.components.tool_form.parameter_data_select(parameter="f1")
-        select_field.wait_for_and_click()
+        self.components.tool_form.parameter_data_select(parameter="f1").wait_for_and_click()
+        select_menu.wait_for_visible()
         marker = self.components.tool_form.parameter_map_over_marker(parameter="f1").wait_for_visible()
         assert marker.text == "one job per dataset pair"
+        self.screenshot("tool_form_data_input_map_over_marker")
         self.send_escape()
+        select_menu.wait_for_absent_or_hidden()
 
         self.tool_form_execute()
 
@@ -480,30 +478,18 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self.home()
         self.tool_open("multi_data_param")
         self.components.tool_form.parameter_data_input_collection(parameter="f1").wait_for_and_click()
-        hint = self.components.tool_form.parameter_processing_hint(parameter="f1")
+        select_menu = self.components.tool_form.parameter_data_select_menu(parameter="f1")
 
         self.tool_set_value("f1", "flat", expected_type="data", multiple=True)
-
-        @retry_assertion_during_transitions
-        def assert_reduction_hint():
-            element = hint.wait_for_visible()
-            assert element.get_attribute("data-processing-mode") == "bulk"
-            assert "processed as a whole in a single job" in element.text, element.text
-            assert "Need one job per element?" in element.text, element.text
-
-        assert_reduction_hint()
+        select_menu.wait_for_absent_or_hidden()
+        self._assert_processing_hint("f1", "bulk", "processed as a whole in a single job", "Need one job per element?")
         self.screenshot("tool_form_data_input_reduction_hint")
 
         self.tool_form_clear_multiselect_tags("f1")
         self.tool_set_value("f1", "list:list", expected_type="data", multiple=True)
-
-        @retry_assertion_during_transitions
-        def assert_nested_map_over_hint():
-            element = hint.wait_for_visible()
-            assert element.get_attribute("data-processing-mode") == "batch"
-            assert "one job per list" in element.text, element.text
-
-        assert_nested_map_over_hint()
+        select_menu.wait_for_absent_or_hidden()
+        self._assert_processing_hint("f1", "batch", "one job per list")
+        self.screenshot("tool_form_data_input_nested_map_over_hint")
 
     @selenium_test
     def test_bibtex_rendering(self):
@@ -544,6 +530,13 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         grant_text = tool_form.grant.wait_for_visible().text
         assert "EuroScienceGateway" in grant_text
         assert "101057388" in grant_text
+
+    @retry_assertion_during_transitions
+    def _assert_processing_hint(self, parameter: str, mode: str, *expected_texts: str):
+        hint = self.components.tool_form.parameter_processing_hint(parameter=parameter).wait_for_visible()
+        assert hint.get_attribute("data-processing-mode") == mode
+        for expected_text in expected_texts:
+            assert expected_text in hint.text, hint.text
 
     def _check_dataset_details_for_inttest_value(self, hid, expected_value="42"):
         tds = self._get_dataset_tool_parameters(hid)
