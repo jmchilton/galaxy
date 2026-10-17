@@ -118,7 +118,7 @@ export function jobCountNotices(
     return notices;
 }
 
-/** Why Run should stay disabled: the server preview says the request would run nothing or be rejected. */
+/** Why Run should stay disabled: the server preview says the request would be rejected. */
 export function runBlockedReason(expansion: ToolFormJobExpansion | undefined, remapping = false): string | undefined {
     if (!expansion) {
         return undefined;
