@@ -140,7 +140,7 @@ export function findDataOption<T>(
     return best?.item;
 }
 
-/** Append a fetched page of options, skipping ones already listed */
+/** Append a fetched page of options, skipping ones already listed; direct and mapped-over entries stay distinct */
 export function mergeDataOptions(existing: DataOption[], incoming: DataOption[]): DataOption[] {
     const seen = new Set(existing.map(itemUniqueKey));
     return existing.concat(
