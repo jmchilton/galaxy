@@ -1,4 +1,5 @@
 import json
+import sys
 from typing import (
     Any,
     cast,
@@ -77,13 +78,18 @@ FORM_VALIDATOR_SHAPES = {
 def validators_to_form(parameter_type: str, validators: list[dict[str, Any]]) -> dict[str, Any]:
     """Persisted validators as editor form values.
 
-    Regex rows, the first min/max pair, and the rest unchanged in the hidden ``extra_validators`` field.
+    Regex rows, the first min/max pair, and the rest unchanged in the hidden ``extra_validators`` field,
+    with their places in the declared order in ``extra_validator_positions``.
     """
+    if not isinstance(validators, list) or not all(isinstance(v, dict) for v in validators):
+        raise RequestParameterInvalidException("Workflow parameter validators must be a list of objects.")
     form: dict[str, Any] = {"validators": []}
     extra: list[dict[str, Any]] = []
-    for validator in validators:
+    positions: list[int] = []
+    for position, validator in enumerate(validators):
         if not _form_can_show(parameter_type, validator):
             extra.append(validator)
+            positions.append(position)
         elif validator["type"] == "regex":
             form["validators"].append(
                 {"regex_doc": validator.get("message"), "regex_match": validator.get("expression")}
@@ -93,23 +99,28 @@ def validators_to_form(parameter_type: str, validators: list[dict[str, Any]]) ->
             form["max"] = validator.get("max")
         else:
             extra.append(validator)
+            positions.append(position)
     if extra:
         form["extra_validators"] = json.dumps(extra)
+        form["extra_validator_positions"] = json.dumps(positions)
     return form
 
 
 def validators_from_form(parameter_definition: dict[str, Any]) -> list[dict[str, Any]]:
     """Inverse of :func:`validators_to_form`: editor form values as persisted validators."""
     validators: list[dict[str, Any]] = []
-    min = parameter_definition.get("min")
-    max = parameter_definition.get("max")
-    if min is not None or max is not None:
-        validators.append({"min": min, "max": max, "negate": False, "type": "in_range"})
+    lower = parameter_definition.get("min")
+    upper = parameter_definition.get("max")
+    if lower is not None or upper is not None:
+        validators.append({"min": lower, "max": upper, "negate": False, "type": "in_range"})
     for row in parameter_definition.get("validators") or []:
         validators.append(
             {"message": row["regex_doc"], "expression": row["regex_match"], "negate": False, "type": "regex"}
         )
-    validators.extend(_load_extra_validators(parameter_definition.get("extra_validators")))
+    extra = _load_extra_validators(parameter_definition.get("extra_validators"))
+    positions = _load_positions(parameter_definition.get("extra_validator_positions"), len(extra))
+    for position, validator in sorted(zip(positions, extra), key=lambda item: item[0]):
+        validators.insert(min(position, len(validators)), validator)
     return validators
 
 
@@ -168,6 +179,17 @@ def _non_default_keys(validator: dict[str, Any]) -> set[str] | None:
         for key, value in validator.items()
         if value is not None and (key not in model_fields or value != model_fields[key].default)
     }
+
+
+def _load_positions(value: str | None, count: int) -> list[int]:
+    """Declared positions of the hidden validators; without usable positions they go last."""
+    try:
+        positions = json.loads(value) if value else None
+    except ValueError:
+        positions = None
+    if isinstance(positions, list) and len(positions) == count and all(type(p) is int for p in positions):
+        return positions
+    return [sys.maxsize] * count
 
 
 def _load_extra_validators(value: str | None) -> list[dict[str, Any]]:
