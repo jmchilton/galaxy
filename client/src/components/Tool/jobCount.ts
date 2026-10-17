@@ -1,6 +1,8 @@
+import { computed, type Ref, ref } from "vue";
+
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
 import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
-import { findInputPathByDottedName, repeatTitle } from "@/components/Form/utilities";
+import { type EnclosingInput, findInputPathByDottedName, repeatTitle } from "@/components/Form/utilities";
 import localize from "@/utils/localization";
 
 export interface JobCountNotice {
@@ -11,10 +13,7 @@ export interface JobCountNotice {
     detail?: string;
 }
 
-interface EnclosingInput {
-    node: FormInputNode;
-    index?: number;
-}
+const REMAP_SEVERAL_JOBS = "Remapping replaces a single job, but this request would run several jobs.";
 
 /** Title of a section or repeat block as the form shows it; conditionals show no title of their own. */
 function enclosingTitle({ node, index }: EnclosingInput): string | undefined {
@@ -30,10 +29,7 @@ function enclosingTitle({ node, index }: EnclosingInput): string | undefined {
 /** Label of a batched input qualified by its sections and repeat blocks ("Section › Input"),
  * falling back to its flat (`|`-separated) name. */
 function batchInputLabel(inputs: FormInputNode[] | undefined, name: string): string {
-    const found = findInputPathByDottedName(inputs ?? [], name) as {
-        node: FormInputNode;
-        parents: EnclosingInput[];
-    } | null;
+    const found = findInputPathByDottedName(inputs ?? [], name);
     if (!found) {
         return name;
     }
@@ -91,7 +87,7 @@ export function jobCountNotices(
             notices.push({
                 variant: "warning",
                 kind: "remap",
-                text: localize("Remapping replaces a single job, but this request would run several jobs."),
+                text: localize(REMAP_SEVERAL_JOBS),
             });
         }
     } else if (reason === "inputs_not_ready") {
@@ -128,14 +124,14 @@ export function runBlockedReason(expansion: ToolFormJobExpansion | undefined, re
         return localize("Batch inputs must match before the tool can run.");
     }
     if (remapping && jobCount !== null && jobCount > 1) {
-        return localize("Remapping replaces a single job, but this request would run several jobs.");
+        return localize(REMAP_SEVERAL_JOBS);
     }
     return undefined;
 }
 
 /** Whether a preview built from `builtFrom` still describes `current`: some edits (e.g. conditional
  * switches) change batched inputs without rebuilding the form. */
-export function jobExpansionIsCurrent(
+function jobExpansionIsCurrent(
     expansion: ToolFormJobExpansion,
     builtFrom: FormData | undefined,
     current: FormData | undefined,
@@ -144,4 +140,38 @@ export function jobExpansionIsCurrent(
         return true;
     }
     return expansion.inputs.every(({ name }) => JSON.stringify(builtFrom[name]) === JSON.stringify(current?.[name]));
+}
+
+/** The server's job-count preview for a tool form, kept with the inputs it was built from so it can
+ * be dropped once those inputs change, and the Run block it implies. */
+export function useJobExpansion(
+    formData: Ref<FormData | undefined>,
+    invalidInput: Ref<string | undefined>,
+    remapping: Ref<boolean>,
+) {
+    const preview = ref<{ expansion: ToolFormJobExpansion; builtFrom?: FormData }>();
+
+    /** Record a build response's preview; `builtFrom` is the form data it was requested with. */
+    function setJobExpansion(expansion?: ToolFormJobExpansion, builtFrom?: FormData) {
+        preview.value = expansion ? { expansion, builtFrom } : undefined;
+    }
+
+    const jobExpansion = computed(() => {
+        if (!preview.value) {
+            return undefined;
+        }
+        const { expansion, builtFrom } = preview.value;
+        if (!jobExpansionIsCurrent(expansion, builtFrom, formData.value)) {
+            return undefined;
+        }
+        // A client-side error on a batched input already flags the mismatch at that field.
+        if (expansion.reason === "batch_mismatch" && expansion.inputs.some((i) => i.name === invalidInput.value)) {
+            return undefined;
+        }
+        return expansion;
+    });
+
+    const runBlocked = computed(() => runBlockedReason(jobExpansion.value, remapping.value));
+
+    return { jobExpansion, runBlocked, setJobExpansion };
 }
