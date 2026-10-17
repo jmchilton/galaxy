@@ -4423,6 +4423,63 @@ outer_text:
             element_name = output_collection["elements"][0]["object"]["name"]
             assert element_name == "moocow suffix", element_name
 
+    @skip_without_tool("__BUILD_LIST__")
+    @skip_without_tool("pick_value")
+    def test_run_subworkflow_expression_replacement_parameter_collection_rename(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_workflow(
+                """
+class: GalaxyWorkflow
+inputs:
+  outer_text: text
+outputs:
+  outer_output:
+    outputSource: nested_workflow/workflow_output
+steps:
+  pick_text:
+    tool_id: pick_value
+    in:
+      style_cond|type_cond|pick_from_0|value: outer_text
+    state:
+      style_cond:
+        pick_style: first
+        type_cond:
+          param_type: text
+          pick_from:
+          - value:
+              __class__: RuntimeValue
+  nested_workflow:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_text: text
+      outputs:
+        workflow_output:
+          outputSource: build_list/output
+      steps:
+        build_list:
+          tool_id: __BUILD_LIST__
+          state:
+            datasets: []
+          out:
+            output:
+              rename: "${inner_text} renamed"
+    in:
+      inner_text: pick_text/text_param
+""",
+                test_data="""
+outer_text:
+  value: moocow
+  type: raw
+""",
+                history_id=history_id,
+            )
+            invocation = self.workflow_populator.get_invocation(summary.invocation_id)
+            output_collection = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=invocation["output_collections"]["outer_output"]["id"]
+            )
+            assert output_collection["name"] == "moocow renamed", output_collection["name"]
+
     @skip_without_tool("random_lines1")
     def test_run_runtime_parameters_after_pause(self):
         with self.dataset_populator.test_history() as history_id:
