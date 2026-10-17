@@ -495,12 +495,16 @@ def _load_batch_collection(
 ) -> tuple[HistoryDatasetCollectionAssociation | DatasetCollectionElement, DatasetCollection]:
     """Load a batch's ``hdca``/``dce`` item and the collection it maps over."""
     if src == "dce":
-        dce = session.get_one(DatasetCollectionElement, item_id)
+        dce = session.get(DatasetCollectionElement, item_id)
+        if dce is None:
+            raise exceptions.ObjectNotFound(f"No dataset collection element found with id {item_id}")
         if not dce.child_collection:
             raise exceptions.ToolMetaParameterException(f"DCE {item_id} does not contain a child collection")
         return dce, dce.child_collection
     elif src == "hdca":
-        hdca = session.get_one(HistoryDatasetCollectionAssociation, item_id)
+        hdca = session.get(HistoryDatasetCollectionAssociation, item_id)
+        if hdca is None:
+            raise exceptions.ObjectNotFound(f"No dataset collection found with id {item_id}")
         return hdca, hdca.collection
     raise exceptions.ToolMetaParameterException(f"Invalid dataset collection source type {src}")
 
