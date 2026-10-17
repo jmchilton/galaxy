@@ -188,6 +188,7 @@ describe("ToolForm", () => {
     });
 
     describe("job count", () => {
+        const RUN_BUTTON = "[data-description='run tool button']";
         const twelveJobs = {
             job_count: 12,
             reason: null,
@@ -216,8 +217,10 @@ describe("ToolForm", () => {
             return jobCount.text();
         }
 
+        const runButton = () => wrapper.find(RUN_BUTTON);
+
         function runButtonTitle() {
-            return wrapper.find("[data-description='run tool button']").attributes("data-title");
+            return runButton().attributes("data-title");
         }
 
         it("shows the count from the build response and clears it once nothing is batched", async () => {
@@ -293,7 +296,6 @@ describe("ToolForm", () => {
                 { body: { job_expansion: twelveJobs } },
             );
             await flushPromises();
-            const runButton = () => wrapper.find("[data-description='run tool button']");
 
             await requestUpdate();
             expect(runButton().attributes("aria-disabled")).toBeUndefined();
@@ -326,7 +328,6 @@ describe("ToolForm", () => {
                 ),
             );
             await flushPromises();
-            const runButton = () => wrapper.find("[data-description='run tool button']");
 
             await requestUpdate();
             expect(runButton().attributes("aria-disabled")).toBe("true");
