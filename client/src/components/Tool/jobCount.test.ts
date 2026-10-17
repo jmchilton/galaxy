@@ -133,10 +133,8 @@ describe("jobCountNotices", () => {
 });
 
 describe("runBlockedReason", () => {
-    it("blocks when the server says no jobs would run", () => {
-        expect(runBlockedReason(expansion({ job_count: 0, inputs: [batched("extra", 0)] }))).toBe(
-            "No jobs would run because a batch input is empty.",
-        );
+    it("does not block an empty batch, which runs no jobs and yields an empty output collection", () => {
+        expect(runBlockedReason(expansion({ job_count: 0, inputs: [batched("extra", 0)] }))).toBeUndefined();
     });
 
     it("blocks on a batch mismatch", () => {

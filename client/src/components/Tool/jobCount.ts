@@ -124,9 +124,6 @@ export function runBlockedReason(expansion: ToolFormJobExpansion | undefined, re
         return undefined;
     }
     const { job_count: jobCount, reason } = expansion;
-    if (jobCount === 0) {
-        return localize("No jobs would run because a batch input is empty.");
-    }
     if (reason === "batch_mismatch") {
         return localize("Batch inputs must match before the tool can run.");
     }
