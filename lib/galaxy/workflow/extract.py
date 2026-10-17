@@ -114,14 +114,14 @@ def _unsummarized_job_message(trans: ProvidesHistoryContext, job_id: int, summar
     return message
 
 
-def _implicit_map_output_key(summary: "WorkflowSummary", job: Job, assoc_name: str) -> ContentRef:
+def _implicit_map_output_ref(summary: "WorkflowSummary", job: Job, assoc_name: str) -> ContentRef:
     """Original of the mapped output collection carrying ``job``'s ``assoc_name`` output."""
-    key: ContentRef | None = None
+    ref: ContentRef | None = None
     pairs = summary.jobs[job]
     for query_assoc_name, dataset_collection in pairs:
         if query_assoc_name == assoc_name:
-            key = original_content_ref(dataset_collection)
-    if key is None:
+            ref = original_content_ref(dataset_collection)
+    if ref is None:
         log.error(
             "Failed to find matching implicit job - job id is %s, implicit pairs are %s, assoc_name is %s.",
             job.id,
@@ -134,7 +134,7 @@ def _implicit_map_output_key(summary: "WorkflowSummary", job: Job, assoc_name: s
             f"collection, but its output '{assoc_name}' is not carried by any output collection in this history "
             f"(collections found for this job: {found})."
         )
-    return key
+    return ref
 
 
 def _connect(step: WorkflowStep, input_name: str, source: tuple[WorkflowStep, str]) -> None:
@@ -278,7 +278,7 @@ def extract_steps(
     steps = []
     step_labels = set()
     # Keyed by original, so copies of one dataset or collection are one input and a tool reading any copy connects.
-    key_to_output_pair: dict[ContentRef, tuple[WorkflowStep, str]] = {}
+    ref_to_output_pair: dict[ContentRef, tuple[WorkflowStep, str]] = {}
     # Input dataset steps
     for group in group_hid_inputs_by_original(trans, summary.history.id, "hda", dataset_ids, dataset_names):
         name = group.name if group.name is not None else "Input Dataset"
@@ -289,7 +289,7 @@ def extract_steps(
             step_labels.add(name)
         step.tool_inputs = dict(name=name)
         if group.ref is not None:
-            key_to_output_pair[group.ref] = (step, "output")
+            ref_to_output_pair[group.ref] = (step, "output")
         steps.append(step)
     for group in group_hid_inputs_by_original(
         trans, summary.history.id, "hdca", dataset_collection_ids, dataset_collection_names
@@ -303,7 +303,7 @@ def extract_steps(
             step.label = name
             step_labels.add(name)
         step.tool_inputs = dict(name=name, collection_type=hdca.collection.collection_type)
-        key_to_output_pair[group.ref] = (step, "output")
+        ref_to_output_pair[group.ref] = (step, "output")
         steps.append(step)
     # Tool steps
     job_steps = []
@@ -321,16 +321,16 @@ def extract_steps(
         # NOTE: We shouldn't need to do two passes here since only
         #       an earlier job can be used as an input to a later
         #       job.
-        for other_key, input_name in associations:
+        for other_ref, input_name in associations:
             if job in summary.implicit_map_jobs:
                 an_implicit_output_collection = cast(HistoryDatasetCollectionAssociation, jobs[job][0][1])
                 input_collection = an_implicit_output_collection.find_implicit_input_collection(input_name)
                 if input_collection:
-                    other_key = original_content_ref(input_collection)
+                    other_ref = original_content_ref(input_collection)
                 else:
                     log.info(f"Cannot find implicit input collection for {input_name}")
-            if other_key in key_to_output_pair:
-                _connect(step, input_name, key_to_output_pair[other_key])
+            if other_ref in ref_to_output_pair:
+                _connect(step, input_name, ref_to_output_pair[other_ref])
         steps.append(step)
         job_steps.append((job, step))
         # Store created datasets and collections
@@ -338,16 +338,16 @@ def extract_steps(
             assoc_name = assoc.name
             if skip_output_assoc_name(assoc_name):
                 continue
-            output_key: ContentRef
+            output_ref: ContentRef
             if job in summary.implicit_map_jobs:
-                output_key = _implicit_map_output_key(summary, job, assoc_name)
+                output_ref = _implicit_map_output_ref(summary, job, assoc_name)
             elif hasattr(assoc, "dataset"):
-                output_key = original_content_ref(assoc.dataset)
+                output_ref = original_content_ref(assoc.dataset)
             else:
-                output_key = original_content_ref(assoc.dataset_collection_instance)
-            if output_key in key_to_output_pair:
-                log.warning(f"duplicate output found in extract_steps [{output_key}]")
-            key_to_output_pair[output_key] = (step, assoc.name)
+                output_ref = original_content_ref(assoc.dataset_collection_instance)
+            if output_ref in ref_to_output_pair:
+                log.warning(f"duplicate output found in extract_steps [{output_ref}]")
+            ref_to_output_pair[output_ref] = (step, assoc.name)
     _connect_parameter_inputs(trans, job_steps)
     return steps
 
@@ -615,7 +615,7 @@ def _unconverted(hda: HistoryDatasetAssociation) -> HistoryDatasetAssociation:
 
 
 def __cleanup_param_values(inputs: ToolInputs, values: ToolInputs) -> IdAssociations:
-    """Data-leaf scrub for the hid path: emit ``(original key, key)`` associations."""
+    """Data-leaf scrub for the hid path: emit ``(original ref, key)`` associations."""
     associations: IdAssociations = []
 
     def emit(input, value, key):
