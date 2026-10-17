@@ -308,6 +308,30 @@ describe("ToolForm", () => {
             expect(runButtonTitle()).toBe("Run tool: tool_name (version) - 12 jobs");
         });
 
+        it("drops a blocking preview once a later update fails", async () => {
+            const empty = { job_count: 0, reason: null, inputs: [{ name: "input1", count: 0, linked: true }] };
+            let fail = false;
+            server.use(
+                http.untyped.post("/api/tools/tool_id/build", () =>
+                    fail
+                        ? HttpResponse.json({ err_msg: "Rate limit exceeded" }, { status: 429 })
+                        : HttpResponse.json(buildResponse({ job_expansion: empty })),
+                ),
+            );
+            await flushPromises();
+            const runButton = () => wrapper.find("[data-description='run tool button']");
+
+            await requestUpdate();
+            expect(runButton().attributes("aria-disabled")).toBe("true");
+
+            fail = true;
+            await requestUpdate();
+            expect(runButton().attributes("aria-disabled")).toBeUndefined();
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version)");
+            expect(jobCountText()).toBe("");
+            useToast().clearToasts();
+        });
+
         it("keeps the newest tool version when an older version request finishes last", async () => {
             let releaseStale!: () => void;
             const stale = new Promise<void>((resolve) => (releaseStale = resolve));

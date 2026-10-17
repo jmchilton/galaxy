@@ -267,6 +267,8 @@ async function onUpdate() {
         }
     } catch (error) {
         if (requestId === buildRequestId) {
+            // The preview describes the previous inputs; it mustn't keep blocking Run.
+            formConfig.value = { ...formConfig.value, job_expansion: undefined };
             Toast.error(errorMessageAsString(error), "Updating parameters failed");
         }
     } finally {
