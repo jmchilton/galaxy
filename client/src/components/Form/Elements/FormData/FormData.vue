@@ -126,6 +126,11 @@ const validSrcs = computed(() => {
 });
 
 /**
+ * Collection types a collection input is restricted to, or null (unset or empty) if it accepts any collection
+ */
+const restrictedCollectionTypes = computed(() => (props.collectionTypes?.length ? props.collectionTypes : null));
+
+/**
  * Provides the currently shown source type
  */
 const currentSource = computed(() => (currentVariant.value ? currentVariant.value.src : null));
@@ -464,8 +469,8 @@ function toDataOption(item: HistoryOrCollectionItem): DataOption | null {
         keep: true,
         tags: [],
     };
-    if (collectionType && props.collectionTypes?.length > 0) {
-        const match = matchCollectionType(collectionType, props.collectionTypes);
+    if (collectionType && restrictedCollectionTypes.value) {
+        const match = matchCollectionType(collectionType, restrictedCollectionTypes.value);
         if (!match) {
             return null;
         }
@@ -643,16 +648,17 @@ function canAcceptSrc(
             // Should always be set if item is dataset collection
             throw Error("Item is a dataset collection of unknown type.");
         }
-        if (!props.collectionTypes) {
+        const inputTypes = restrictedCollectionTypes.value;
+        if (!inputTypes) {
             // if no collection_type is set all collections are valid
             return true;
         }
-        const match = matchCollectionType(collectionType, props.collectionTypes);
+        const match = matchCollectionType(collectionType, inputTypes);
         if (!match) {
             $emit(
                 "alert",
                 `${collectionTypeToText(collectionType)} dataset collection is not a valid input for ${orList(
-                    props.collectionTypes,
+                    inputTypes,
                 )} type dataset collection parameter.`,
             );
             return false;
