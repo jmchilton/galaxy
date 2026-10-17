@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
 import type { FormInputNode } from "@/components/Form/composables/useFormState";
 
-import { batchInputLabel, jobCountNotices } from "./jobCount";
+import { jobCountNotices } from "./jobCount";
 
 const inputs = [
     { name: "reads", type: "data", label: "Input reads" },
@@ -28,13 +28,6 @@ function batched(name: string, count: number, linked = true): ToolFormBatchInput
 function expansion(overrides: Partial<ToolFormJobExpansion>): ToolFormJobExpansion {
     return { job_count: null, reason: null, inputs: [], ...overrides };
 }
-
-describe("batchInputLabel", () => {
-    it("resolves nested flat names to labels and falls back to the name", () => {
-        expect(batchInputLabel(inputs, "cond|reverse")).toBe("Reverse reads");
-        expect(batchInputLabel(inputs, "missing")).toBe("missing");
-    });
-});
 
 describe("jobCountNotices", () => {
     it("says nothing without an expansion, for a single job, or an unknown count", () => {
@@ -75,6 +68,11 @@ describe("jobCountNotices", () => {
         );
         expect(notices[0]!.kind).toBe("mismatch");
         expect(notices[0]!.text).toBe("Batch inputs must have matching sizes: Input reads (2), Reverse reads (3).");
+    });
+
+    it("falls back to the parameter name for an input without a label", () => {
+        const notices = jobCountNotices(expansion({ job_count: 0, inputs: [batched("cond|missing", 0)] }), inputs);
+        expect(notices[0]!.text).toBe("No jobs will run because a batch input is empty: cond|missing.");
     });
 
     it("reports a structural mismatch when sizes agree", () => {
