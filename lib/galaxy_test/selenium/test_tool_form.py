@@ -506,6 +506,21 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
     ensure_registered = True
 
     @selenium_test
+    def test_job_count_for_batched_collection(self):
+        history_id = self.current_history_id()
+        self.dataset_collection_populator.create_list_in_history(history_id, name="batch list", wait=True)
+        self.home()
+        self.tool_open("cat1")
+        self.tool_form_select_collection("input1", "batch list")
+
+        count_notice = self.components.tool_form.job_count_notice(kind="count")
+        assert count_notice.wait_for_text() == "This will run 3 jobs."
+        self.screenshot("tool_form_job_count")
+
+        self.components.tool_form.parameter_data_input_single(parameter="input1").wait_for_and_click()
+        count_notice.wait_for_absent()
+
+    @selenium_test
     def test_dataset_state_filtering(self):
         # upload an ok (HID 1) and a discarded (HID 2) dataset and run a tool
         # normally HID 2 would be selected but since it is discarded - it won't
