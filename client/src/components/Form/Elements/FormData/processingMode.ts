@@ -1,7 +1,7 @@
 import type { CollectionType } from "@/api/datasetCollections";
 import { collectionTypeLabel } from "@/components/Collections/common/buildCollectionModal";
-import { CollectionTypeDescription } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
 
+import { matchCollectionType, SINGLE_DATASETS } from "./collectionMatch";
 import type { DataOption } from "./types";
 import { BATCH, SOURCE, type VariantInterface } from "./variants";
 
@@ -12,39 +12,12 @@ export const PROCESSING_HELP_TERMS = {
     nestToMapOver: "galaxy.collections.nestToMapOver",
 } as const;
 
-/** Map-over type the server assigns when a `paired_or_unpaired` input is fed a plain list */
-const SINGLE_DATASETS = "single_datasets";
-
 /** What each job receives when a collection is mapped over, e.g. "dataset pair" or "nested list:list" */
 export function mapOverUnit(mapOverType?: string | null): string {
     if (!mapOverType || mapOverType === SINGLE_DATASETS) {
         return "dataset";
     }
     return collectionTypeLabel(mapOverType) ?? `nested ${mapOverType}`;
-}
-
-/**
- * How a collection feeds an input accepting `inputTypes`, mirroring the server's option listing: directly
- * (`mapOverType: null`), mapped over the deepest input type it nests, or not at all (`null`).
- */
-export function matchCollectionType(
-    collectionType: CollectionType,
-    inputTypes: CollectionType[],
-): { mapOverType: CollectionType | null } | null {
-    const item = new CollectionTypeDescription(collectionType);
-    const inputs = inputTypes.map((inputType) => new CollectionTypeDescription(inputType));
-    if (inputs.some((input) => input.accepts(item))) {
-        return { mapOverType: null };
-    }
-    // deepest first, so each job gets as much data as possible
-    const mapOver = [...inputs].sort((a, b) => b.rank - a.rank).find((input) => item.canMapOver(input));
-    if (!mapOver) {
-        return null;
-    }
-    if (mapOver.collectionType === "paired_or_unpaired" && !collectionType.endsWith("paired_or_unpaired")) {
-        return { mapOverType: collectionType.endsWith("paired") ? "paired" : SINGLE_DATASETS };
-    }
-    return { mapOverType: mapOver.collectionType };
 }
 
 export type ProcessingSource = "datasets" | "collection";

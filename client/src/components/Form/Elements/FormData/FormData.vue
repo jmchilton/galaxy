@@ -22,18 +22,26 @@ import { type CollectionBuilderType, collectionTypeToText } from "@/components/C
 import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { useUid } from "@/composables/utils/uid";
 import { type EventData, useEventStore } from "@/stores/eventStore";
-import localize from "@/utils/localization";
 import { orList } from "@/utils/strings";
 
-import { getProcessingMode, isBatchSelection, mapOverUnit, matchCollectionType } from "./processingMode";
+import { matchCollectionType } from "./collectionMatch";
+import { getProcessingMode, isBatchSelection } from "./processingMode";
 import type { DataOption, ExtendedCollectionType } from "./types";
-import { containsDataOption, DEFAULT_OPTIONS_PAGE_SIZE, findDataOption, isDataOption, itemUniqueKey } from "./types";
+import {
+    containsDataOption,
+    DEFAULT_OPTIONS_PAGE_SIZE,
+    findDataOption,
+    isDataOption,
+    isSameItem,
+    itemUniqueKey,
+} from "./types";
 import { BATCH, SOURCE, VARIANTS } from "./variants";
 
 import FormSelection from "../FormSelection.vue";
 import FormSelectionPreference from "../FormSelectionPreference.vue";
 import FormDataContextButtons from "./FormDataContextButtons.vue";
 import FormDataExtensions from "./FormDataExtensions.vue";
+import FormDataOptionLabel from "./FormDataOptionLabel.vue";
 import FormDataProcessingHint from "./FormDataProcessingHint.vue";
 import FormDataWorkflowRunTabs from "./FormDataWorkflowRunTabs.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -285,14 +293,11 @@ const formattedOptions = computed(() => {
 const isToolForm = computed(() => !props.flavor && !props.workflowRun);
 
 /**
- * Marks options the tool would map over, naming what each job receives. Collections on a single-dataset
- * input's collection field all map over, so they carry no marker; the field hint covers them.
+ * Map-over type to mark on a tool form option. Collections on a single-dataset input's collection field
+ * all map over, so they carry no marker; the field hint covers them.
  */
-function mapOverMarker(value: DataOption | null): string | undefined {
-    if (!isToolForm.value || !value?.map_over_type) {
-        return undefined;
-    }
-    return `${localize("one job per")} ${localize(mapOverUnit(value.map_over_type))}`;
+function mapOverMarkerType(value: DataOption | null): string | undefined {
+    return isToolForm.value ? value?.map_over_type : undefined;
 }
 
 /**
@@ -451,9 +456,7 @@ function createValue(val?: Array<DataOption> | DataOption | null) {
         let values = Array.isArray(val) ? val : [val];
 
         // Submit each item once, even if it was picked both directly and mapped over
-        values = values.filter(
-            (value, index, self) => index === self.findIndex((v) => v.id === value.id && v.src === value.src),
-        );
+        values = values.filter((value, index, self) => index === self.findIndex((v) => isSameItem(v, value)));
 
         if (variant.value && values.length > 0 && values[0]) {
             const isMultiple = values.length > 1;
@@ -562,19 +565,8 @@ function handleIncoming(incoming: SingleOrMultipleHistoryItems, partial = true) 
                 if (!newValue) {
                     return false;
                 }
-                // Verify that new value has corresponding option
-                const foundOption = findExistingOption(newValue);
-                const keepKey = itemUniqueKey(newValue);
-                if (!foundOption && !isInKeepOptions(keepKey, newValue)) {
-                    keepOptions[keepKey] = {
-                        label: `${newValue.hid || "Selected"}: ${newValue.name}`,
-                        value: newValue,
-                    };
-                    // this is used to trigger an update on formattedOptions
-                    keepOptionsUpdate.value++;
-                }
                 // Add new value to list, as listed by the server (which knows how it maps over)
-                incomingValues.push(foundOption ?? newValue);
+                incomingValues.push(normalizeOption(newValue));
             });
             let hasDuplicates = false;
             if (incomingValues.length > 0 && incomingValues[0]) {
@@ -655,8 +647,8 @@ function findExistingOption(value: DataOption): DataOption | undefined {
 }
 
 /**
- * Normalize an uploaded option by finding matching options in existing props.
- * Returns the canonical option if found, otherwise returns the uploaded option.
+ * Normalize a client-built option (dropped, dialog-selected or uploaded) by finding matching options in
+ * existing props. Returns the canonical option if found, otherwise caches and returns the given option.
  */
 function normalizeOption(option: DataOption): DataOption {
     const foundOption = findExistingOption(option);
@@ -1179,10 +1171,7 @@ const noOptionsWarningMessage = computed(() => {
                         </GAlert>
                     </template>
                     <template v-slot:label-area="{ option }">
-                        <span>{{ option.label }}</span>
-                        <span v-if="mapOverMarker(option.value)" class="form-data-map-over-marker">
-                            {{ mapOverMarker(option.value) }}
-                        </span>
+                        <FormDataOptionLabel :label="option.label" :map-over-type="mapOverMarkerType(option.value)" />
                     </template>
                     <template v-if="hasMoreInCurrentSource" v-slot:after-list>
                         <div ref="loadMoreSentinel" class="form-data-load-more-sentinel text-muted text-center py-2">
@@ -1211,10 +1200,7 @@ const noOptionsWarningMessage = computed(() => {
                         </GAlert>
                     </template>
                     <template v-slot:label-area="{ option }">
-                        <span>{{ option.label }}</span>
-                        <span v-if="mapOverMarker(option.value)" class="form-data-map-over-marker">
-                            {{ mapOverMarker(option.value) }}
-                        </span>
+                        <FormDataOptionLabel :label="option.label" :map-over-type="mapOverMarkerType(option.value)" />
                     </template>
                     <template v-if="hasMoreInCurrentSource" v-slot:after-list>
                         <div ref="loadMoreSentinel" class="form-data-load-more-sentinel text-muted text-center py-2">
@@ -1342,17 +1328,6 @@ const noOptionsWarningMessage = computed(() => {
                 padding-left: 5px;
             }
         }
-    }
-
-    // inherits the option's color so it stays readable on highlighted options
-    .form-data-map-over-marker {
-        margin-left: 0.5rem;
-        padding: 0 0.3rem;
-        border: 1px solid currentColor;
-        border-radius: 0.25rem;
-        font-size: 0.75rem;
-        white-space: nowrap;
-        opacity: 0.8;
     }
 
     .form-data-no-options-alert {
