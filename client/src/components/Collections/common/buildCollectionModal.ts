@@ -44,6 +44,16 @@ export const COLLECTION_TYPE_TO_LABEL: Record<string, string> = {
     sample_sheet: "sample sheet derived",
 };
 
+/** Lower-case human label for a collection type, if one is defined */
+export function collectionTypeLabel(collectionType: string): string | undefined {
+    return COLLECTION_TYPE_TO_LABEL[collectionType]?.toLowerCase();
+}
+
+/** Lower-case human label for a collection type, falling back to the type itself */
+export function collectionTypeToText(collectionType: string): string {
+    return collectionTypeLabel(collectionType) ?? collectionType;
+}
+
 export type DatasetPair = GenericPair<HDASummary>;
 
 export async function buildCollectionFromRules(

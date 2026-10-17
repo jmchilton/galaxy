@@ -19,10 +19,7 @@ import {
 import type { CollectionType } from "@/api/datasetCollections";
 import type { HistoryContentType } from "@/api/datasets";
 import { getGalaxyInstance } from "@/app";
-import {
-    COLLECTION_TYPE_TO_LABEL,
-    type CollectionBuilderType,
-} from "@/components/Collections/common/buildCollectionModal";
+import { type CollectionBuilderType, collectionTypeToText } from "@/components/Collections/common/buildCollectionModal";
 import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { useUid } from "@/composables/utils/uid";
 import { type EventData, useEventStore } from "@/stores/eventStore";
@@ -1098,14 +1095,6 @@ watch(
 
 const formatsVisible = ref(false);
 const formatsButtonId = useUid("form-data-formats-");
-
-function collectionTypeToText(collectionType: string): string {
-    if (COLLECTION_TYPE_TO_LABEL[collectionType]) {
-        return COLLECTION_TYPE_TO_LABEL[collectionType].toLowerCase();
-    } else {
-        return collectionType;
-    }
-}
 
 const warningListAmount = 4;
 const noOptionsWarningMessage = computed(() => {
