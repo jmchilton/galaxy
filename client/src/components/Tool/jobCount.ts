@@ -1,4 +1,4 @@
-import { computed, type Ref, ref } from "vue";
+import { computed, type Ref, ref, watch } from "vue";
 
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
 import type { FormData, FormInputNode } from "@/components/Form/composables/useFormState";
@@ -151,10 +151,17 @@ export function useJobExpansion(
 ) {
     const preview = ref<{ expansion: ToolFormJobExpansion; builtFrom?: FormData }>();
 
-    /** Record a build response's preview; `builtFrom` is the form data it was requested with. */
+    /** Record a build response's preview; `builtFrom` is the form data it was requested with. Without it
+     * (a tool load), the next form data reported is what the preview was built from. */
     function setJobExpansion(expansion?: ToolFormJobExpansion, builtFrom?: FormData) {
         preview.value = expansion ? { expansion, builtFrom } : undefined;
     }
+
+    watch(formData, (current) => {
+        if (preview.value && !preview.value.builtFrom) {
+            preview.value = { ...preview.value, builtFrom: current };
+        }
+    });
 
     const jobExpansion = computed(() => {
         if (!preview.value) {
