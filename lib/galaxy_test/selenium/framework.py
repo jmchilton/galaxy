@@ -966,7 +966,7 @@ class RunsToolTests(NavigatesGalaxyMixin):
             assert hid is not None, f"No staged file for data param {key}={value}"
             is_multiple = self._is_multi_data_param(key)
             if is_multiple:
-                self._clear_multiselect_tags(key)
+                self.tool_form_clear_multiselect_tags(key)
             self.tool_set_value(key, f"{hid}: {value}", expected_type="data", multiple=is_multiple)
 
         for key, coll_def in collection_params:
@@ -977,15 +977,6 @@ class RunsToolTests(NavigatesGalaxyMixin):
 
     def _is_multi_data_param(self, expanded_id: str) -> bool:
         return not self.components.tool_form.parameter_form_selection(parameter=expanded_id).is_absent
-
-    def _clear_multiselect_tags(self, expanded_id: str):
-        tag_close = self.components.tool_form.parameter_multiselect_tag_close(parameter=expanded_id)
-        for _ in range(20):
-            close_buttons = tag_close.all()
-            if not close_buttons:
-                break
-            close_buttons[0].click()
-            self.sleep_for(self.wait_types.UX_RENDER)
 
     @staticmethod
     def _parse_repeat_key(key: str):
