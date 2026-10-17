@@ -12,7 +12,7 @@ export interface JobCountNotice {
 }
 
 /** Label of a batched input, falling back to its flat (`|`-separated) name. */
-export function batchInputLabel(inputs: FormInputNode[] | undefined, name: string): string {
+function batchInputLabel(inputs: FormInputNode[] | undefined, name: string): string {
     const node = findInputByDottedName(inputs ?? [], name) as FormInputNode | null;
     return node?.label || name;
 }

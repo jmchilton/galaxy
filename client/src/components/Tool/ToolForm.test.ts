@@ -211,7 +211,13 @@ describe("ToolForm", () => {
         }
 
         function jobCountText() {
-            return wrapper.find(".tool-form-job-count").text();
+            const jobCount = wrapper.find(".tool-form-job-count");
+            expect(jobCount.exists()).toBe(true);
+            return jobCount.text();
+        }
+
+        function runButtonTitle() {
+            return wrapper.find("[data-description='run tool button']").attributes("data-title");
         }
 
         it("shows the count from the build response and clears it once nothing is batched", async () => {
@@ -220,18 +226,17 @@ describe("ToolForm", () => {
 
             await requestUpdate();
             expect(jobCountText()).toContain("This will run 12 jobs.");
-            const button = wrapper.find("[data-description='run tool button']");
-            expect(button.attributes("data-title")).toBe("Run tool: tool_name (version) - 12 jobs");
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version) - 12 jobs");
 
             await requestUpdate();
             expect(jobCountText()).toBe("");
-            expect(button.attributes("data-title")).toBe("Run tool: tool_name (version)");
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version)");
         });
 
         it("ignores a build response that arrives after a newer one", async () => {
             let releaseStale!: () => void;
             const stale = new Promise<void>((resolve) => (releaseStale = resolve));
-            respondToBuilds({ body: { job_expansion: twelveJobs }, gate: stale }, { body: {} });
+            respondToBuilds({ body: { version: "stale", job_expansion: twelveJobs }, gate: stale }, { body: {} });
             await flushPromises();
 
             const formDisplay = wrapper.findComponent(FormDisplay);
@@ -242,6 +247,7 @@ describe("ToolForm", () => {
 
             releaseStale();
             await flushPromises();
+            expect(runButtonTitle()).toBe("Run tool: tool_name (version)");
             expect(jobCountText()).toBe("");
         });
 
@@ -259,6 +265,7 @@ describe("ToolForm", () => {
 
             await requestUpdate();
             const warning = wrapper.find("[data-job-count-notice='mismatch']");
+            expect(warning.exists()).toBe(true);
             expect(warning.attributes("role")).toBe("alert");
             expect(warning.text()).toBe("Batch inputs must have matching sizes: input1 (2), input2 (3).");
 
