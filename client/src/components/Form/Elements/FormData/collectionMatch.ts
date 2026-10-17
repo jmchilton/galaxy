@@ -1,8 +1,17 @@
 import type { CollectionType } from "@/api/datasetCollections";
+import { collectionTypeLabel } from "@/components/Collections/common/buildCollectionModal";
 import { CollectionTypeDescription } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
 
 /** Map-over type the server assigns when a `paired_or_unpaired` input is fed a plain list */
 export const SINGLE_DATASETS = "single_datasets";
+
+/** What each job receives when a collection is mapped over, e.g. "dataset pair" or "nested list:list:list" */
+export function mapOverUnit(mapOverType?: string | null): string {
+    if (!mapOverType || mapOverType === SINGLE_DATASETS) {
+        return "dataset";
+    }
+    return collectionTypeLabel(mapOverType) ?? `nested ${mapOverType}`;
+}
 
 /**
  * How a collection feeds an input accepting `inputTypes`, mirroring the server's option listing: directly

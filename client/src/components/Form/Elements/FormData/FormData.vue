@@ -25,7 +25,7 @@ import { type EventData, useEventStore } from "@/stores/eventStore";
 import { orList } from "@/utils/strings";
 
 import { matchCollectionType } from "./collectionMatch";
-import { getProcessingMode, isBatchSelection } from "./processingMode";
+import { getProcessingMode } from "./processingMode";
 import type { DataOption, ExtendedCollectionType } from "./types";
 import {
     containsDataOption,
@@ -35,7 +35,7 @@ import {
     isSameItem,
     itemUniqueKey,
 } from "./types";
-import { BATCH, SOURCE, VARIANTS } from "./variants";
+import { BATCH, isBatchSelection, SOURCE, VARIANTS } from "./variants";
 
 import FormSelection from "../FormSelection.vue";
 import FormSelectionPreference from "../FormSelectionPreference.vue";
@@ -289,16 +289,12 @@ const formattedOptions = computed(() => {
     }
 });
 
-/** Tool form inputs, as opposed to workflow run inputs with their own linked/unlinked batch controls */
-const isToolForm = computed(() => !props.flavor && !props.workflowRun);
-
 /**
- * Map-over type to mark on a tool form option. Collections on a single-dataset input's collection field
- * all map over, so they carry no marker; the field hint covers them.
+ * Tool form inputs, as opposed to workflow run inputs with their own linked/unlinked batch controls.
+ * Only tool forms mark map-over options and show the processing hint. Collections on a dataset input's
+ * collection field all map over and are listed without a map-over type, so the hint alone covers them.
  */
-function mapOverMarkerType(value: DataOption | null): string | undefined {
-    return isToolForm.value ? value?.map_over_type : undefined;
-}
+const isToolForm = computed(() => !props.flavor && !props.workflowRun);
 
 /**
  * How the tool form will process the selection (one job per item vs. one job overall).
@@ -1170,8 +1166,8 @@ const noOptionsWarningMessage = computed(() => {
                             {{ noOptionsWarningMessage }}
                         </GAlert>
                     </template>
-                    <template v-slot:label-area="{ option }">
-                        <FormDataOptionLabel :label="option.label" :map-over-type="mapOverMarkerType(option.value)" />
+                    <template v-if="isToolForm" v-slot:label-area="{ option }">
+                        <FormDataOptionLabel :label="option.label" :map-over-type="option.value?.map_over_type" />
                     </template>
                     <template v-if="hasMoreInCurrentSource" v-slot:after-list>
                         <div ref="loadMoreSentinel" class="form-data-load-more-sentinel text-muted text-center py-2">
@@ -1199,8 +1195,8 @@ const noOptionsWarningMessage = computed(() => {
                             {{ noOptionsWarningMessage }}
                         </GAlert>
                     </template>
-                    <template v-slot:label-area="{ option }">
-                        <FormDataOptionLabel :label="option.label" :map-over-type="mapOverMarkerType(option.value)" />
+                    <template v-if="isToolForm" v-slot:label-area="{ option }">
+                        <FormDataOptionLabel :label="option.label" :map-over-type="option.value?.map_over_type" />
                     </template>
                     <template v-if="hasMoreInCurrentSource" v-slot:after-list>
                         <div ref="loadMoreSentinel" class="form-data-load-more-sentinel text-muted text-center py-2">

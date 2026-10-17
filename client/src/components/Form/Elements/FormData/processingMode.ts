@@ -1,9 +1,10 @@
 import type { CollectionType } from "@/api/datasetCollections";
 import { collectionTypeLabel } from "@/components/Collections/common/buildCollectionModal";
+import localize from "@/utils/localization";
 
-import { matchCollectionType, SINGLE_DATASETS } from "./collectionMatch";
+import { mapOverUnit, matchCollectionType, SINGLE_DATASETS } from "./collectionMatch";
 import type { DataOption } from "./types";
-import { BATCH, SOURCE, type VariantInterface } from "./variants";
+import { isBatchSelection, SOURCE, type VariantInterface } from "./variants";
 
 /** Help terms explaining how a data input is processed */
 export const PROCESSING_HELP_TERMS = {
@@ -11,14 +12,6 @@ export const PROCESSING_HELP_TERMS = {
     reduction: "galaxy.collections.reduction",
     nestToMapOver: "galaxy.collections.nestToMapOver",
 } as const;
-
-/** What each job receives when a collection is mapped over, e.g. "dataset pair" or "nested list:list:list" */
-export function mapOverUnit(mapOverType?: string | null): string {
-    if (!mapOverType || mapOverType === SINGLE_DATASETS) {
-        return "dataset";
-    }
-    return collectionTypeLabel(mapOverType) ?? `nested ${mapOverType}`;
-}
 
 export type ProcessingSource = "datasets" | "collection";
 
@@ -49,11 +42,6 @@ export interface BulkProcessingMode {
 }
 
 export type ProcessingMode = BatchProcessingMode | BulkProcessingMode;
-
-/** Whether a selection is submitted as a batch: a batch variant, or a collection flagged for map over */
-export function isBatchSelection(variantBatch: string, values: DataOption[]): boolean {
-    return variantBatch !== BATCH.DISABLED || values.some((v) => !!v.map_over_type);
-}
 
 /**
  * Whether wrapping the selected list in one more `list` level makes the server map over this input
@@ -114,4 +102,84 @@ export function getProcessingMode(
         };
     }
     return null;
+}
+
+/** A help link within a processing hint */
+export interface HintLink {
+    text: string;
+    uri: string;
+}
+
+/**
+ * A processing hint sentence: `lead`, then a raw collection type and the words after it (for types
+ * without a label), a help `link`, and `tail` right after the link; `nest` suggests nesting to map over.
+ */
+export interface ProcessingHintText {
+    lead: string;
+    code?: { type: string; after: string };
+    link: HintLink;
+    tail: string;
+    nest?: HintLink;
+}
+
+function bulkLead(mode: BulkProcessingMode): string {
+    if (mode.source === "datasets") {
+        return localize(mode.hasSelection ? "All selected datasets will be" : "Datasets selected here will be");
+    }
+    if (mode.plural) {
+        return localize("The selected collections will be");
+    }
+    return localize(mode.hasSelection ? "The selected collection will be" : "A collection selected here will be");
+}
+
+/** The hint sentence explaining a processing mode */
+export function describeProcessingMode(mode: ProcessingMode): ProcessingHintText {
+    if (mode.kind === "bulk") {
+        const whole = mode.source === "collection" && !mode.plural;
+        return {
+            lead: bulkLead(mode),
+            link: {
+                text: localize(whole ? "processed as a whole in a single job" : "processed together in a single job"),
+                uri: PROCESSING_HELP_TERMS.reduction,
+            },
+            tail: ".",
+            nest: mode.canNest
+                ? {
+                      text: localize(
+                          mode.source === "datasets" ? "Need one job per dataset?" : "Need one job per element?",
+                      ),
+                      uri: PROCESSING_HELP_TERMS.nestToMapOver,
+                  }
+                : undefined,
+        };
+    }
+    if (mode.source === "datasets" || mode.perItem) {
+        let lead = "Each selected collection will be";
+        if (mode.source === "datasets") {
+            lead = mode.hasSelection ? "Each selected dataset will be" : "Each dataset selected here will be";
+        }
+        return {
+            lead: localize(lead),
+            link: { text: localize("run as a separate job"), uri: PROCESSING_HELP_TERMS.mapOver },
+            tail: `, ${localize("matched in order with other batch inputs.")}`,
+        };
+    }
+    // a single collection split into one job per part
+    const mapOver = {
+        link: { text: localize("mapped over"), uri: PROCESSING_HELP_TERMS.mapOver },
+        tail: ` ${localize("this tool: one job per")} ${localize(mapOverUnit(mode.mapOverType))}.`,
+    };
+    const willBe = localize("will be");
+    if (!mode.hasSelection) {
+        return { lead: `${localize("A collection selected here")} ${willBe}`, ...mapOver };
+    }
+    const label = mode.collectionType && collectionTypeLabel(mode.collectionType);
+    if (label) {
+        return { lead: `${localize("The selected")} ${label} ${willBe}`, ...mapOver };
+    }
+    const after = `${localize("collection")} ${willBe}`;
+    if (mode.collectionType) {
+        return { lead: localize("The selected"), code: { type: mode.collectionType, after }, ...mapOver };
+    }
+    return { lead: `${localize("The selected")} ${after}`, ...mapOver };
 }

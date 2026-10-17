@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import localize from "@/utils/localization";
 
-import { mapOverUnit } from "./processingMode";
+import { mapOverUnit } from "./collectionMatch";
 
 const props = defineProps<{
     label: string;
