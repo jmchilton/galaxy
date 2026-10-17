@@ -607,19 +607,10 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
     @skip_without_tool("collection_paired_test")
     @skip_without_tool("cat1")
-    def test_build_job_expansion(self):
+    def test_build_job_expansion_over_collection(self):
         with self.dataset_populator.test_history() as history_id:
-            pair = [
-                {"src": "pasted", "paste_content": "f\n", "name": "forward"},
-                {"src": "pasted", "paste_content": "r\n", "name": "reverse"},
-            ]
-            list_paired = self.dataset_collection_populator.upload_collection(
-                history_id,
-                "list:paired",
-                elements=[{"name": "s0", "elements": pair}, {"name": "s1", "elements": pair}],
-                wait=True,
-            ).json()["outputs"][0]
-            hdca_ref = {"src": "hdca", "id": list_paired["id"]}
+            hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+            hdca_ref = {"src": "hdca", "id": hdca_id}
             map_over = {"batch": True, "values": [{**hdca_ref, "map_over_type": "paired"}]}
             build = self.dataset_populator.build_tool_state(
                 "collection_paired_test", history_id, inputs={"f1": map_over}
@@ -634,7 +625,12 @@ class TestToolsApi(ApiTestCase, TestsTools):
             build = self.dataset_populator.build_tool_state("cat1", history_id, inputs={"input1": leaves})
             assert build["job_expansion"]["job_count"] == 4
 
-            hdas = [self.dataset_populator.new_dataset(history_id, content=f"{i}\n", wait=True) for i in range(3)]
+    @skip_without_tool("cat1")
+    def test_build_job_expansion_over_datasets(self):
+        with self.dataset_populator.test_history() as history_id:
+            hdas = self.dataset_populator.fetch_hdas(
+                history_id, [{"src": "pasted", "paste_content": f"{i}\n"} for i in range(3)]
+            )
             refs = [{"src": "hda", "id": hda["id"]} for hda in hdas]
             inputs = {
                 "input1": {"batch": True, "values": refs[:2]},
@@ -649,6 +645,9 @@ class TestToolsApi(ApiTestCase, TestsTools):
             ]
 
             build = self.dataset_populator.build_tool_state("cat1", history_id, inputs={"input1": refs[0]})
+            assert "job_expansion" not in build
+            not_batched = {"batch": False, "values": [refs[0]]}
+            build = self.dataset_populator.build_tool_state("cat1", history_id, inputs={"input1": not_batched})
             assert "job_expansion" not in build
 
     @skip_without_tool("collection_paired_test")
