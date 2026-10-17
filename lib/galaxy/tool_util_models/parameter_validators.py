@@ -605,6 +605,65 @@ AnySafeValidatorModel = Annotated[
 DiscriminatedAnyValidatorModel = TypeAdapter(AnyValidatorModel)
 DiscriminatedAnySafeValidatorModel = TypeAdapter(AnySafeValidatorModel)
 
+# Validator types that apply to each tool parameter type; types not listed are not checked.
+PARAMETER_VALIDATOR_TYPE_COMPATIBILITY: dict[str, list[ValidatorType]] = {
+    "integer": ["in_range", "expression"],
+    "float": ["in_range", "expression"],
+    "data": [
+        "metadata",
+        "no_options",
+        "unspecified_build",
+        "dataset_ok_validator",
+        "dataset_metadata_equal",
+        "dataset_metadata_in_range",
+        "dataset_metadata_in_file",
+        "dataset_metadata_in_data_table",
+        "dataset_metadata_not_in_data_table",
+        "expression",
+    ],
+    "data_collection": [
+        "metadata",
+        "no_options",
+        "unspecified_build",
+        "dataset_ok_validator",
+        "dataset_metadata_equal",
+        "dataset_metadata_in_range",
+        "dataset_metadata_in_file",
+        "dataset_metadata_in_data_table",
+        "dataset_metadata_not_in_data_table",
+        "expression",
+    ],
+    "text": ["regex", "length", "empty_field", "value_in_data_table", "value_not_in_data_table", "expression"],
+    "select": [
+        "in_range",
+        "no_options",
+        "regex",
+        "length",
+        "empty_field",
+        "value_in_data_table",
+        "value_not_in_data_table",
+        "expression",
+    ],
+    "drill_down": [
+        "no_options",
+        "regex",
+        "length",
+        "empty_field",
+        "value_in_data_table",
+        "value_not_in_data_table",
+        "expression",
+    ],
+    "data_column": [
+        "no_options",
+        "regex",
+        "length",
+        "empty_field",
+        "value_in_data_table",
+        "value_not_in_data_table",
+        "expression",
+    ],
+}
+
 
 def raise_error_if_validation_fails(
     value: bool, validator: ValidatorDescription, message: str | None = None, value_to_show: str | None = None
@@ -628,6 +687,7 @@ def raise_error_if_validation_fails(
 __all__ = (
     "AnyValidatorModel",
     "DiscriminatedAnyValidatorModel",
+    "PARAMETER_VALIDATOR_TYPE_COMPATIBILITY",
     "ValidatorType",
     "ParameterValidatorModel",
     "SPLIT_DEFAULT",
