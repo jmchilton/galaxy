@@ -2984,8 +2984,26 @@ class DataCollectionToolParameter(BaseDataToolParameter):
             )
 
         self._page_hdca_matches(builder, trans, history, dataset_collection_matcher)
+        for value in util.listify(other_values.get(self.name)):
+            self._carry_selected_hdca(builder, history, value)
         builder.sort_by_hid("hdca")
         return d
+
+    def _carry_selected_hdca(self, builder: DataOptionsBuilder, history, value) -> None:
+        """Carry a selected HDCA from another history (the listing only walks
+        this history) as a ``keep=True`` entry with a state-prefixed name, so a
+        rerun form still pre-selects it."""
+        if isinstance(value, HistoryDatasetCollectionAssociation) and value.history != history:
+            state = _carried_state_label(value)
+            builder.options["hdca"].append(
+                make_hdca_entry(
+                    builder.security,
+                    value,
+                    f"({state}) {value.name}",
+                    keep=True,
+                    include_column_definitions=True,
+                )
+            )
 
     def _page_hdca_matches(
         self,
