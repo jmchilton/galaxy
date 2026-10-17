@@ -97,9 +97,10 @@ def accumulate_with_filter(
             result = filter_fn(row)
             if not result:
                 continue
-            # A ``list`` filter result emits multiple matches per row (kept
-            # adjacent so a multi-emitting row never straddles a page boundary
-            # in a half-emitted state). Anything else truthy is a single
+            # A ``list`` filter result emits multiple matches per row, kept
+            # adjacent; they can still straddle a page boundary, so clients
+            # must merge pages by option identity (src, id, map_over_type),
+            # not by item. Anything else truthy is a single
             # match — we deliberately do NOT unpack tuples here, because
             # existing callers return tuples as a single composite match.
             if isinstance(result, list):

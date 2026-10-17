@@ -187,6 +187,32 @@ describe("ToolForm", () => {
         expect(wrapper.text()).toContain(errorMessage);
     });
 
+    it("keeps a collection's map-over option when it arrives on a later page than its direct option", async () => {
+        const nested = { id: "hdcaLL", hid: 9, name: "nested", src: "hdca", collection_type: "list:list" };
+        const input = (options: object[]) => ({
+            name: "input1",
+            type: "data_collection",
+            collection_types: ["list", "list:list"],
+            options: { hdca: options },
+        });
+        useBuildResponse({ inputs: [input([nested])] });
+        mountToolForm();
+        await flushPromises();
+        server.use(
+            http.untyped.post("/api/tools/tool_id/build", () =>
+                HttpResponse.json(buildResponse({ inputs: [input([{ ...nested, map_over_type: "list" }])] })),
+            ),
+        );
+
+        wrapper.findComponent(FormDisplay).vm.$emit("load-more", { name: "input1", src: "hdca", offset: 1, limit: 1 });
+        await flushPromises();
+
+        const inputs = wrapper.findComponent(FormDisplay).props("inputs") as Array<{
+            options: Record<string, object[]>;
+        }>;
+        expect(inputs[0]!.options.hdca).toEqual([nested, { ...nested, map_over_type: "list" }]);
+    });
+
     it("reports a rejected form update and re-enables the form", async () => {
         const { toasts, clearToasts } = useToast();
         clearToasts();
