@@ -1,6 +1,6 @@
 import type { ToolFormBatchInputCount, ToolFormJobExpansion } from "@/api/tools";
 import type { FormInputNode } from "@/components/Form/composables/useFormState";
-import { repeatTitle, visitInputs } from "@/components/Form/utilities";
+import { findInputPathByDottedName, repeatTitle } from "@/components/Form/utilities";
 import localize from "@/utils/localization";
 
 export interface JobCountNotice {
@@ -30,14 +30,15 @@ function enclosingTitle({ node, index }: EnclosingInput): string | undefined {
 /** Label of a batched input qualified by its sections and repeat blocks ("Section › Input"),
  * falling back to its flat (`|`-separated) name. */
 function batchInputLabel(inputs: FormInputNode[] | undefined, name: string): string {
-    let label = name;
-    visitInputs(inputs ?? [], (node: FormInputNode, nodeName: string, _context: unknown, parents: EnclosingInput[]) => {
-        if (nodeName === name && (node.type === "data" || node.type === "data_collection")) {
-            const titles = parents.map(enclosingTitle).filter((title): title is string => Boolean(title));
-            label = [...titles, node.label || name].join(" › ");
-        }
-    });
-    return label;
+    const found = findInputPathByDottedName(inputs ?? [], name) as {
+        node: FormInputNode;
+        parents: EnclosingInput[];
+    } | null;
+    if (!found) {
+        return name;
+    }
+    const titles = found.parents.map(enclosingTitle).filter((title): title is string => Boolean(title));
+    return [...titles, found.node.label || name].join(" › ");
 }
 
 /** "A, B (12 each) × C (3)": matched inputs share a count, multiplied ones multiply it. */
@@ -90,9 +91,7 @@ export function jobCountNotices(
             notices.push({
                 variant: "warning",
                 kind: "remap",
-                text: localize(
-                    "Remapping replaces a single job, but this request would run several jobs and will be rejected.",
-                ),
+                text: localize("Remapping replaces a single job, but this request would run several jobs."),
             });
         }
     } else if (reason === "inputs_not_ready") {
