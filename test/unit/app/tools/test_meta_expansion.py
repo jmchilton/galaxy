@@ -63,6 +63,11 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
         self._assert_job_count(incoming, 3)
         assert self._summary(incoming)["inputs"] == [{"name": "input1", "count": 3, "linked": True}]
 
+    def test_no_summary_without_a_batch(self):
+        unbatched = {"batch": False, "values": [self._hda_ref()]}
+        assert summarize_meta_expansion(self.trans, self.tool, {"input1": unbatched}) is None
+        assert summarize_meta_expansion(self.trans, self.tool, {"input1": self._hda_ref()}) is None
+
     def test_list_into_data_input(self):
         self._assert_job_count({"input1": self._hdca_batch("list", 4)}, 4)
 
@@ -301,7 +306,9 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
         assert len(self._expand(incoming)) == expected
 
     def _summary(self, incoming):
-        return summarize_meta_expansion(self.trans, self.tool, incoming)
+        summary = summarize_meta_expansion(self.trans, self.tool, incoming)
+        assert summary is not None
+        return summary
 
     def _expand(self, incoming):
         expanded, _ = expand_meta_parameters(self.trans, self.tool, copy.deepcopy(incoming), "legacy")

@@ -223,7 +223,6 @@ from galaxy.tools.parameters.input_translation import ToolInputTranslator
 from galaxy.tools.parameters.meta import (
     expand_meta_parameters,
     expand_meta_parameters_async,
-    incoming_has_batch,
     summarize_meta_expansion,
 )
 from galaxy.tools.parameters.pagination import OptionsPaginationT
@@ -3065,9 +3064,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 raise exceptions.MessageException(unicodify(e))
 
         # Counted on the raw request, before batch wrappers are collapsed into single values.
-        job_expansion = None
-        if not workflow_building_mode and incoming_has_batch(kwd):
-            job_expansion = summarize_meta_expansion(request_context, self, kwd)
+        job_expansion = None if workflow_building_mode else summarize_meta_expansion(request_context, self, kwd)
 
         # create parameter object
         params = Params(kwd, sanitize=False)
