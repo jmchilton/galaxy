@@ -19,7 +19,6 @@ from galaxy.tool_util.parameters import (
 from galaxy.tools.parameters.meta import (
     expand_meta_parameters,
     expand_meta_parameters_async,
-    incoming_has_batch,
     summarize_meta_expansion,
     validate_matched_batch_lengths,
 )
@@ -180,11 +179,6 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
         before = copy.deepcopy(incoming)
         self._summary(incoming)
         assert incoming == before
-
-    def test_incoming_has_batch(self):
-        assert incoming_has_batch({"input1": self._hda_batch(2)})
-        assert not incoming_has_batch({"input1": {"batch": False, "values": [self._hda_ref()]}})
-        assert not incoming_has_batch({"input1": self._hda_ref(), "tool_version": "1.0"})
 
     def test_split_count_agrees_with_split(self):
         cases: list[tuple[str, ShapeT, str]] = [
