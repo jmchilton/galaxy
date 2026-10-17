@@ -302,7 +302,9 @@ function isSelected(item: SelectValue): boolean {
                     class="d-flex align-items-center justify-content-between"
                     :data-option-value="optionIdentifier(option)">
                     <div>
-                        <span>{{ option.label }}</span>
+                        <slot name="label-area" :option="option">
+                            <span>{{ option.label }}</span>
+                        </slot>
                         <StatelessTags
                             v-if="isValueWithTags(option.value)"
                             class="tags mt-2"
