@@ -282,8 +282,14 @@ def summarize_meta_expansion(trans: WorkRequestContext, tool, incoming: ToolRequ
     """Count the jobs ``expand_meta_parameters`` would produce for a flat (legacy) request; never raises."""
     collections_to_match = matching.CollectionsToMatch()
 
+    def check_access(collection: DatasetCollection) -> None:
+        if not trans.user_is_admin and not trans.app.security_agent.can_access_collection(
+            trans.get_current_user_roles(), collection
+        ):
+            raise exceptions.ItemAccessibilityException("Collection not accessible by user.")
+
     def count_collection(input_key, collection_value, linked) -> Sequence[Any]:
-        item, collection, subcollection_type = _batch_collection(trans, collection_value)
+        item, collection, subcollection_type = _batch_collection(trans, collection_value, check_access)
         collections_to_match.add(input_key, item, subcollection_type=subcollection_type, linked=linked)
         # A placeholder of the right length: counting shouldn't load the elements.
         return range(subcollections.split_count(collection, subcollection_type or "single_datasets"))
@@ -546,11 +552,18 @@ def __expand_collection_parameter(
 
 
 def _batch_collection(
-    trans: WorkRequestContext, incoming_val: dict[str, Any]
+    trans: WorkRequestContext,
+    incoming_val: dict[str, Any],
+    check_access: Callable[[DatasetCollection], None] | None = None,
 ) -> tuple[HistoryDatasetCollectionAssociation | DatasetCollectionElement, DatasetCollection, str | None]:
-    """Decode a batch value's id, load the collection it maps over (must be populated) and its ``map_over_type``."""
+    """Decode a batch value's id, load the collection it maps over (must be populated) and its ``map_over_type``.
+
+    ``check_access`` runs before the populated check.
+    """
     decoded_id = trans.app.security.decode_id(incoming_val["id"])
     item, collection = _load_batch_collection(trans.sa_session, incoming_val["src"], decoded_id)
+    if check_access:
+        check_access(collection)
     if not collection.populated_optimized:
         raise exceptions.ToolInputsNotReadyException("An input collection is not populated.")
     return item, collection, incoming_val.get("map_over_type")

@@ -40,6 +40,7 @@ export interface ToolFormJobExpansion {
     /** Number of jobs, or null when it cannot be determined (see `reason`). */
     job_count: number | null;
     reason: "inputs_not_ready" | "batch_mismatch" | "unknown" | null;
+    /** Matched (linked) inputs first, then multiplied ones. */
     inputs: ToolFormBatchInputCount[];
 }
 
