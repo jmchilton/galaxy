@@ -471,6 +471,13 @@ describe("FormData", () => {
             ["list:list", ["list"], "list"],
             ["list:list", ["list", "list:list"], null],
             ["sample_sheet:paired", ["paired"], "paired"],
+            ["paired", ["paired_or_unpaired"], null],
+            ["list", ["list:paired_or_unpaired"], null],
+            ["list:paired", ["list:paired_or_unpaired"], null],
+            ["sample_sheet", ["list"], null],
+            ["list", ["paired_or_unpaired"], "single_datasets"],
+            ["list:paired", ["paired_or_unpaired"], "paired"],
+            ["list:list:list", ["list", "list:list"], "list:list"],
         ])(
             "uses a dropped %s on a %j input with map_over_type %s",
             async (collectionType, collectionTypes, mapOverType) => {
@@ -483,15 +490,16 @@ describe("FormData", () => {
             },
         );
 
-        it.each([["paired", ["list:paired_or_unpaired"]]])(
-            "refuses a dropped %s on a %j input",
-            async (collectionType, collectionTypes) => {
-                const value = await dropOnCollectionInput(collectionTypes, droppedHdca(collectionType));
-                expect(value).toEqual({
-                    alert: expect.stringContaining("dataset collection is not a valid input for"),
-                });
-            },
-        );
+        it.each([
+            ["paired", ["list:paired_or_unpaired"]],
+            ["list:paired_or_unpaired", ["paired"]],
+            ["paired_or_unpaired", ["paired"]],
+        ])("refuses a dropped %s on a %j input", async (collectionType, collectionTypes) => {
+            const value = await dropOnCollectionInput(collectionTypes, droppedHdca(collectionType));
+            expect(value).toEqual({
+                alert: expect.stringContaining("dataset collection is not a valid input for"),
+            });
+        });
 
         it.each([
             ["list", ["list"], null],
