@@ -15,6 +15,7 @@ import { errorMessageAsString } from "@/utils/simple-error";
 
 import { rerunHasStepParameters, WorkflowRunModel } from "./model";
 import { getRunData, WorkflowMissingToolsError } from "./services";
+import { simpleFormDisabledReason } from "./simpleFormDisabledReason";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
@@ -61,16 +62,22 @@ const loading = ref(true);
 const hasUpgradeMessages = ref(false);
 const hasStepVersionChanges = ref(false);
 const invocations = ref([]);
-const simpleForm = ref(false);
-const disableSimpleForm = ref(false);
-const disableSimpleFormReason = ref<
-    "hasReplacementParameters" | "hasDisconnectedInputs" | "hasWorkflowResourceParameters" | undefined
->(undefined);
 const submissionError = ref("");
 const workflowError = ref("");
 const missingToolIds = ref<string[]>([]);
 const workflowName = ref("");
 const workflowModel: any = ref(null);
+const disableSimpleFormReason = computed(() =>
+    props.preferSimpleForm && workflowModel.value ? simpleFormDisabledReason(workflowModel.value) : undefined,
+);
+const disableSimpleForm = computed(() => disableSimpleFormReason.value !== undefined);
+// The simple form never submits tool step parameters, so a rerun would drop them.
+const simpleForm = computed(
+    () =>
+        props.preferSimpleForm &&
+        !disableSimpleForm.value &&
+        !(props.isRerun && rerunHasStepParameters(props.rerunRequest)),
+);
 const owner = ref<string>();
 // The StoredWorkflow this run page is for. In instance mode `props.workflowId`
 // is a Workflow (instance) id, which must not be sent with a tool installation
@@ -132,41 +139,6 @@ async function loadRun() {
             props.rerunInvocationId,
         );
         const incomingModel = new WorkflowRunModel(runData);
-
-        simpleForm.value = props.preferSimpleForm;
-
-        if (simpleForm.value) {
-            // These only work with PJA - the API doesn't evaluate them at
-            // all outside that context currently. The main workflow form renders
-            // these dynamically and takes care of all the validation and setup details
-            // on the frontend. If these are implemented on the backend at some
-            // point this restriction can be lifted.
-            if (incomingModel.hasReplacementParametersInToolForm) {
-                simpleForm.value = false;
-                disableSimpleForm.value = true;
-                disableSimpleFormReason.value = "hasReplacementParameters";
-            }
-            // If there are required parameters in a tool form (a disconnected runtime
-            // input), we have to render the tool form steps and cannot use the
-            // simplified tool form.
-            if (incomingModel.hasOpenToolSteps) {
-                simpleForm.value = false;
-                disableSimpleForm.value = true;
-                disableSimpleFormReason.value = "hasDisconnectedInputs";
-            }
-            // Just render the whole form for resource request parameters (kind of
-            // niche - I'm not sure anyone is using these currently anyway).
-            if (incomingModel.hasWorkflowResourceParameters) {
-                simpleForm.value = false;
-                disableSimpleForm.value = true;
-                disableSimpleFormReason.value = "hasWorkflowResourceParameters";
-            }
-            // The simple form never submits tool step parameters, so a rerun would drop them.
-            if (props.isRerun && rerunHasStepParameters(props.rerunRequest)) {
-                simpleForm.value = false;
-            }
-        }
-
         hasUpgradeMessages.value = incomingModel.hasUpgradeMessages;
         hasStepVersionChanges.value = incomingModel.hasStepVersionChanges;
         workflowName.value = incomingModel.name;

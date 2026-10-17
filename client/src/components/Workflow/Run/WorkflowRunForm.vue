@@ -107,6 +107,7 @@ import { useUserStore } from "@/stores/userStore";
 
 import { getReplacements, rerunInputValue, withRerunValues } from "./model";
 import { invokeWorkflow } from "./services";
+import type { SimpleFormDisabledReason } from "./simpleFormDisabledReason";
 
 import WorkflowRunDefaultStep from "./WorkflowRunDefaultStep.vue";
 import WorkflowRunInputStep from "./WorkflowRunInputStep.vue";
@@ -146,7 +147,7 @@ interface Props {
      * Why the simple run form is unavailable, if it is
      * @default undefined
      */
-    disableSimpleFormReason?: string;
+    disableSimpleFormReason?: SimpleFormDisabledReason;
     /**
      * Exported request of the invocation being rerun, prefills workflow
      * inputs, workflow and resource parameters and job re-use
