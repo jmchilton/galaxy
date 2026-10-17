@@ -8,6 +8,7 @@ import { h, ref } from "vue";
 
 import type { HDASummary } from "@/api";
 import { useServerMock } from "@/api/client/__mocks__";
+import type { SupportedPairedOrPairedBuilderCollectionTypes } from "@/components/Collections/common/useCollectionCreator";
 import { Toast } from "@/composables/toast";
 import { usePairingDatasetTargetsStore } from "@/stores/collectionBuilderItemsStore";
 
@@ -71,7 +72,10 @@ function buildFakeDataset(id: string, name: string, hid = 1): HDASummary {
     } as unknown as HDASummary;
 }
 
-async function mountCreator(initialElements: HDASummary[]) {
+async function mountCreator(
+    initialElements: HDASummary[],
+    collectionType: SupportedPairedOrPairedBuilderCollectionTypes = "list:paired",
+) {
     const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
     setActivePinia(pinia);
 
@@ -79,7 +83,7 @@ async function mountCreator(initialElements: HDASummary[]) {
         props: {
             historyId: "history-1",
             initialElements,
-            collectionType: "list:paired",
+            collectionType,
             mode: "modal",
         },
         global: withPlugins(localVue, pinia),
@@ -95,6 +99,14 @@ function gridRowIds(wrapper: ReturnType<typeof mount>): string[] {
 }
 
 describe("PairedOrUnpairedListCollectionCreator", () => {
+    it.each([
+        ["list:list", "Create list of lists"],
+        ["list:list:paired", "Create list of lists of pairs"],
+    ] as const)("names a %s in the create button", async (collectionType, buttonText) => {
+        const wrapper = await mountCreator([buildFakeDataset("a", "sample")], collectionType);
+        expect(wrapper.find(".create-collection").text()).toBe(buttonText);
+    });
+
     it("auto-pairs two elements whose names match a common filter (illumina _1/_2) on mount", async () => {
         const a = buildFakeDataset("a", "sample_1");
         const b = buildFakeDataset("b", "sample_2");

@@ -811,6 +811,8 @@ describe("FormData", () => {
                         { id: "hdcaLP", hid: 7, name: "reads", src: "hdca", map_over_type: "paired" },
                         { id: "hdcaL", hid: 6, name: "singles", src: "hdca", map_over_type: "single_datasets" },
                         { id: "hdcaLLL", hid: 5, name: "deep", src: "hdca", map_over_type: "list:list" },
+                        { id: "hdcaLLLP", hid: 4, name: "deeper", src: "hdca", map_over_type: "list:list:paired" },
+                        { id: "hdcaLLLL", hid: 3, name: "deepest", src: "hdca", map_over_type: "list:list:list" },
                     ],
                 },
             });
@@ -820,7 +822,9 @@ describe("FormData", () => {
             expect(markers).toEqual([
                 "one job per dataset pair",
                 "one job per dataset",
-                "one job per nested list:list",
+                "one job per list of lists",
+                "one job per list of lists of pairs",
+                "one job per nested list:list:list",
             ]);
         });
 
@@ -1026,7 +1030,31 @@ describe("FormData", () => {
             );
         });
 
-        it("falls back to raw collection types without a label", async () => {
+        it("names nested list types", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["paired"],
+                value: { values: [{ id: "hdcaLLP", src: "hdca" }] },
+                options: {
+                    hdca: [
+                        {
+                            id: "hdcaLLP",
+                            hid: 8,
+                            name: "nested reads",
+                            src: "hdca",
+                            collection_type: "list:list:paired",
+                            map_over_type: "paired",
+                        },
+                    ],
+                },
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe(
+                "The selected list of lists of pairs will be mapped over this tool: one job per dataset pair.",
+            );
+        });
+
+        it("names a nested list mapped over a list input", async () => {
             const wrapper = createTarget({
                 type: "data_collection",
                 collectionTypes: ["list:list"],
@@ -1046,7 +1074,31 @@ describe("FormData", () => {
             });
             await wrapper.vm.$nextTick();
             expect(hintText(wrapper)).toBe(
-                "The selected list:list:list collection will be mapped over this tool: one job per nested list:list.",
+                "The selected list:list:list collection will be mapped over this tool: one job per list of lists.",
+            );
+        });
+
+        it("falls back to raw collection types without a label", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["list:list:list"],
+                value: { values: [{ id: "hdcaLLLL", src: "hdca" }] },
+                options: {
+                    hdca: [
+                        {
+                            id: "hdcaLLLL",
+                            hid: 8,
+                            name: "deepest",
+                            src: "hdca",
+                            collection_type: "list:list:list:list",
+                            map_over_type: "list:list:list",
+                        },
+                    ],
+                },
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe(
+                "The selected list:list:list:list collection will be mapped over this tool: one job per nested list:list:list.",
             );
         });
 

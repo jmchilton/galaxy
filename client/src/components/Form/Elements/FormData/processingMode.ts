@@ -12,7 +12,7 @@ export const PROCESSING_HELP_TERMS = {
     nestToMapOver: "galaxy.collections.nestToMapOver",
 } as const;
 
-/** What each job receives when a collection is mapped over, e.g. "dataset pair" or "nested list:list" */
+/** What each job receives when a collection is mapped over, e.g. "dataset pair" or "nested list:list:list" */
 export function mapOverUnit(mapOverType?: string | null): string {
     if (!mapOverType || mapOverType === SINGLE_DATASETS) {
         return "dataset";

@@ -40,6 +40,8 @@ export const COLLECTION_TYPE_TO_LABEL: Record<string, string> = {
     list: "list",
     "list:paired": "list of pairs",
     "list:paired_or_unpaired": "mixed list of paired and unpaired",
+    "list:list": "list of lists",
+    "list:list:paired": "list of lists of pairs",
     paired: "dataset pair",
     sample_sheet: "sample sheet derived",
 };
