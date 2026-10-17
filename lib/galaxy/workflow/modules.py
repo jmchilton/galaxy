@@ -19,13 +19,11 @@ from typing import (
     cast,
     get_args,
     NamedTuple,
-    NoReturn,
     Protocol,
     TYPE_CHECKING,
     TypeAlias,
 )
 
-from pydantic import ValidationError
 from typing_extensions import (
     NotRequired,
     TypedDict,
@@ -96,7 +94,6 @@ from galaxy.tool_util.parser.output_objects import (
     ToolOutput,
     ToolOutputCollection,
 )
-from galaxy.tool_util.parser.parameter_validators import parse_dict_validators
 from galaxy.tool_util.toolbox.base import ToolLike
 from galaxy.tool_util_models.dynamic_tool_models import (
     DynamicToolCreatePayload,
@@ -150,7 +147,6 @@ from galaxy.tools.parameters.grouping import (
 from galaxy.tools.parameters.meta import to_decoded_json
 from galaxy.tools.parameters.options import ParameterOption
 from galaxy.tools.parameters.populate_model import populate_model
-from galaxy.tools.parameters.validation import to_validators
 from galaxy.tools.parameters.workflow_utils import (
     ConnectedValue,
     is_runtime_value,
@@ -173,6 +169,7 @@ from galaxy.workflow.map_over import (
     MapOverPlanner,
 )
 from galaxy.workflow.workflow_parameter_input_definitions import (
+    check_validators,
     get_default_parameter,
     INPUT_PARAMETER_TYPES,
     validators_from_form,
@@ -1973,25 +1970,14 @@ class InputParameterModule(WorkflowModule):
     def save_to_step(self, step, detached=False):
         step.type = self.type
         tool_inputs = self._parse_state_into_dict()
-        self._check_validators(tool_inputs.get("validators", []))
-        step.tool_inputs = tool_inputs
-
-    def _check_validators(self, validators: list[dict[str, Any]]) -> None:
-        # Stored as declared; build them as get_runtime_inputs would to reject what it could not.
         try:
-            to_validators(None, parse_dict_validators(validators, trusted=False))
-        except ValidationError as e:
-            # ctx["error"] is a model validator's own message, without pydantic's "Value error, " prefix
-            problems = [str(error.get("ctx", {}).get("error", error["msg"])) for error in e.errors()]
-            self._invalid_validator(", ".join(problems))
-        except (AssertionError, ValueError) as e:
-            self._invalid_validator(str(e))
-
-    def _invalid_validator(self, problem: str) -> NoReturn:
-        label = f"'{self.label}'" if self.label else "(unlabeled)"
-        raise exceptions.RequestParameterInvalidException(
-            f"Invalid validator on workflow parameter input {label}: {problem}"
-        )
+            check_validators(tool_inputs.get("validators", []))
+        except ValueError as e:
+            label = f"'{self.label}'" if self.label else "(unlabeled)"
+            raise exceptions.RequestParameterInvalidException(
+                f"Invalid validator on workflow parameter input {label}: {e}"
+            )
+        step.tool_inputs = tool_inputs
 
 
 class PauseModule(WorkflowModule):
