@@ -12,21 +12,14 @@ function option(id: string, src: string, extra: Partial<DataOption> = {}): DataO
 
 const flatList = option("hdca1", "hdca", { collection_type: "list" });
 
-function variant(key: string, index: number) {
-    return VARIANTS[key]![index]!;
+/** Whether the hint for a collection input accepting `collectionTypes` suggests nesting for `selected` */
+function canNest(collectionTypes: string[], selected: DataOption[] = [flatList]) {
+    const mode = getProcessingMode(VARIANTS["data_collection"]![0]!, "data_collection", selected, collectionTypes);
+    return mode?.kind === "bulk" && mode.canNest;
 }
 
 describe("getProcessingMode", () => {
     it("only suggests nesting when a nested collection would be mapped over", () => {
-        function canNest(collectionTypes: string[]) {
-            const mode = getProcessingMode(
-                variant("data_collection", 0),
-                "data_collection",
-                [flatList],
-                collectionTypes,
-            );
-            return mode?.kind === "bulk" && mode.canNest;
-        }
         expect(canNest(["list"])).toBe(true);
         expect(canNest(["list:paired"])).toBe(true);
         expect(canNest(["paired"])).toBe(false);
@@ -37,10 +30,6 @@ describe("getProcessingMode", () => {
     });
 
     it("judges nesting by the selected collection's type", () => {
-        function canNest(collectionTypes: string[], selected: DataOption[]) {
-            const mode = getProcessingMode(variant("data_collection", 0), "data_collection", selected, collectionTypes);
-            return mode?.kind === "bulk" && mode.canNest;
-        }
         const pair = option("hdcaP", "hdca", { collection_type: "paired" });
         const nestedList = option("hdcaLL", "hdca", { collection_type: "list:list" });
         // nesting cannot split a pair, even when the input also accepts lists
