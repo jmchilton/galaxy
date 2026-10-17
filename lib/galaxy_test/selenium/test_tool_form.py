@@ -521,7 +521,7 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         count_notice.wait_for_absent()
 
     @selenium_test
-    def test_run_disabled_for_empty_batch(self):
+    def test_run_enabled_for_empty_batch(self):
         history_id = self.current_history_id()
         self.dataset_collection_populator.create_list_in_history(history_id, name="empty list", contents=[], wait=True)
         self.home()
@@ -530,8 +530,8 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
 
         self.components.tool_form.job_count_notice(kind="empty").wait_for_visible()
         execute = self.components.tool_form.execute.wait_for_visible()
-        assert execute.get_attribute("aria-disabled") == "true"
-        assert execute.get_attribute("data-title") == "No jobs would run because a batch input is empty."
+        # Mapping over an empty collection runs no jobs but still creates an empty output collection.
+        assert execute.get_attribute("aria-disabled") != "true"
         self.screenshot("tool_form_job_count_empty_batch")
 
     @selenium_test

@@ -277,7 +277,7 @@ describe("ToolForm", () => {
             expect(jobCountText()).toBe("");
         });
 
-        it("disables Run with the reason when the server says the request cannot run", async () => {
+        it("disables Run with the reason only when the server says the request cannot run", async () => {
             const empty = { job_count: 0, reason: null, inputs: [{ name: "input1", count: 0, linked: true }] };
             const mismatch = {
                 job_count: null,
@@ -296,8 +296,8 @@ describe("ToolForm", () => {
             const runButton = () => wrapper.find("[data-description='run tool button']");
 
             await requestUpdate();
-            expect(runButton().attributes("aria-disabled")).toBe("true");
-            expect(runButtonTitle()).toBe("No jobs would run because a batch input is empty.");
+            expect(runButton().attributes("aria-disabled")).toBeUndefined();
+            expect(jobCountText()).toContain("No jobs will run because a batch input is empty");
 
             await requestUpdate();
             expect(runButton().attributes("aria-disabled")).toBe("true");
@@ -309,13 +309,20 @@ describe("ToolForm", () => {
         });
 
         it("drops a blocking preview once a later update fails", async () => {
-            const empty = { job_count: 0, reason: null, inputs: [{ name: "input1", count: 0, linked: true }] };
+            const mismatch = {
+                job_count: null,
+                reason: "batch_mismatch",
+                inputs: [
+                    { name: "input1", count: 2, linked: true },
+                    { name: "input2", count: 3, linked: true },
+                ],
+            };
             let fail = false;
             server.use(
                 http.untyped.post("/api/tools/tool_id/build", () =>
                     fail
                         ? HttpResponse.json({ err_msg: "Rate limit exceeded" }, { status: 429 })
-                        : HttpResponse.json(buildResponse({ job_expansion: empty })),
+                        : HttpResponse.json(buildResponse({ job_expansion: mismatch })),
                 ),
             );
             await flushPromises();
