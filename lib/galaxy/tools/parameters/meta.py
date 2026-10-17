@@ -284,6 +284,10 @@ def summarize_meta_expansion(trans: WorkRequestContext, tool, incoming: ToolRequ
 
     def count_collection(input_key, collection_value, linked) -> Sequence[Any]:
         item, collection, subcollection_type = _batch_collection(trans, collection_value)
+        if not trans.user_is_admin and not trans.app.security_agent.can_access_collection(
+            trans.get_current_user_roles(), collection
+        ):
+            raise exceptions.ItemAccessibilityException("Collection not accessible by user.")
         collections_to_match.add(input_key, item, subcollection_type=subcollection_type, linked=linked)
         # A placeholder of the right length: counting shouldn't load the elements.
         return range(subcollections.split_count(collection, subcollection_type or "single_datasets"))
