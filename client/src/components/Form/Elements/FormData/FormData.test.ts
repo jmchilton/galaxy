@@ -944,6 +944,11 @@ describe("FormData", () => {
         });
 
         it("leaves workflow run options unmarked", async () => {
+            const toolForm = createTarget({ ...nestedListProps, value: null });
+            await toolForm.vm.$nextTick();
+            await openMultiselect(toolForm);
+            expect(toolForm.find(MAP_OVER_MARKER).exists()).toBe(true);
+
             const wrapper = createTarget({ ...nestedListProps, workflowRun: true, value: null });
             await wrapper.vm.$nextTick();
             await openMultiselect(wrapper);
@@ -1125,6 +1130,52 @@ describe("FormData", () => {
             );
         });
 
+        it("runs one job per selected collection when several are batched", async () => {
+            // the server only splits a collection when it is the sole batch value
+            const wrapper = createTarget({
+                multiple: true,
+                value: {
+                    values: [
+                        { id: "hdcaLL", src: "hdca", map_over_type: "list" },
+                        { id: "hdcaL", src: "hdca" },
+                    ],
+                },
+                options: {
+                    hdca: [
+                        { id: "hdcaLL", hid: 9, name: "nested", src: "hdca", map_over_type: "list" },
+                        { id: "hdcaL", hid: 8, name: "flat", src: "hdca" },
+                    ],
+                },
+            });
+            await wrapper.vm.$nextTick();
+            expect(emittedArg(wrapper, "input", -1)).toMatchObject({ batch: true });
+            expect(hintText(wrapper)).toBe(
+                "Each selected collection will be run as a separate job, matched in order with other batch inputs.",
+            );
+        });
+
+        it("explains a plain list mapped over a paired_or_unpaired input one dataset at a time", async () => {
+            const wrapper = createTarget({
+                type: "data_collection",
+                collectionTypes: ["paired_or_unpaired"],
+                value: { values: [{ id: "hdcaL", src: "hdca" }] },
+                options: {
+                    hdca: [
+                        {
+                            id: "hdcaL",
+                            hid: 6,
+                            name: "singles",
+                            src: "hdca",
+                            collection_type: "list",
+                            map_over_type: "single_datasets",
+                        },
+                    ],
+                },
+            });
+            await wrapper.vm.$nextTick();
+            expect(hintText(wrapper)).toBe("The selected list will be mapped over this tool: one job per dataset.");
+        });
+
         it("says nothing about a single dataset in a single dataset input", async () => {
             const wrapper = createTarget({
                 value: { values: [{ id: "hda2", src: "hda" }] },
@@ -1132,6 +1183,9 @@ describe("FormData", () => {
             });
             await wrapper.vm.$nextTick();
             expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+            // the same dataset in the multiple datasets field is batched
+            await wrapper.find("[title='Multiple datasets']").trigger("click");
+            expect(wrapper.find(PROCESSING_HINT).attributes("data-processing-mode")).toBe("batch");
         });
 
         it("says nothing when there is nothing to select", async () => {
@@ -1143,10 +1197,18 @@ describe("FormData", () => {
             await wrapper.vm.$nextTick();
             expect(wrapper.find(".form-data-no-options-alert").exists()).toBe(true);
             expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+            await wrapper.setProps({ options: listPairedOptions });
+            expect(wrapper.find(".form-data-no-options-alert").exists()).toBe(false);
+            expect(wrapper.find(PROCESSING_HINT).exists()).toBe(true);
         });
 
         it("leaves workflow run inputs to their own batch controls", async () => {
-            for (const props of [{ workflowRun: true }, { flavor: "module" }]) {
+            const cases: Array<[Record<string, unknown>, boolean]> = [
+                [{}, true],
+                [{ workflowRun: true }, false],
+                [{ flavor: "module" }, false],
+            ];
+            for (const [props, showsHint] of cases) {
                 const wrapper = createTarget({
                     ...props,
                     type: "data_collection",
@@ -1155,7 +1217,7 @@ describe("FormData", () => {
                     options: listPairedOptions,
                 });
                 await wrapper.vm.$nextTick();
-                expect(wrapper.find(PROCESSING_HINT).exists()).toBe(false);
+                expect(wrapper.find(PROCESSING_HINT).exists(), JSON.stringify(props)).toBe(showsHint);
             }
         });
 
