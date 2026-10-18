@@ -10,10 +10,12 @@ import re
 import tarfile
 import tempfile
 from collections.abc import (
+    Iterator,
     Mapping,
     MutableMapping,
     Sequence,
 )
+from contextlib import contextmanager
 from datetime import datetime
 from typing import (
     Any,
@@ -716,6 +718,11 @@ class ToolBox(AbstractToolBox):
 
     def has_reloaded(self, other_toolbox):
         return self._reload_count != other_toolbox._reload_count
+
+    @contextmanager
+    def batch_index_writes(self) -> Iterator[None]:
+        """Group the tool index writes made inside the block (``CachedToolBox`` persists an index)."""
+        yield
 
     @property
     def all_requirements(self):
