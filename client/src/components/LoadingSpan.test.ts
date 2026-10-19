@@ -19,6 +19,7 @@ describe("LoadingSpan", () => {
         expect(wrapper.attributes("role")).toBe("status");
         expect(wrapper.find(".loading-message").exists()).toBe(false);
         expect(wrapper.find(".sr-only").text()).toBe("Loading...");
+        expect(wrapper.find(".loading-icon").attributes("aria-hidden")).toBe("true");
     });
 
     it("leaves the role to an enclosing GAlert", () => {
