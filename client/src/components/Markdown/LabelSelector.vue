@@ -40,11 +40,10 @@ function update(index: number) {
         <GRadioGroup
             v-if="hasLabels"
             stacked
-            class="label-selector-options"
             :aria-labelledby="headingId"
             :model-value="selectedIndex"
             @update:model-value="update">
-            <GRadio v-for="(label, index) in labels" :key="index" :value="index">
+            <GRadio v-for="(label, index) in labels" :key="index" class="my-1" :value="index">
                 {{ label.label }}
             </GRadio>
         </GRadioGroup>
@@ -55,9 +54,3 @@ function update(index: number) {
         </p>
     </div>
 </template>
-
-<style scoped lang="scss">
-.label-selector-options :deep(.g-radio-group-options) {
-    row-gap: var(--spacing-2, 0.5rem);
-}
-</style>
