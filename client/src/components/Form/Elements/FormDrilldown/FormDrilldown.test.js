@@ -92,6 +92,16 @@ describe("FormDrilldown", () => {
         expect(wrapper.find(".select-all-checkbox").exists()).toBe(false);
     });
 
+    it("groups single-select radios in a radio group named by the form label", () => {
+        const wrapper = mount(FormDrilldown, {
+            props: { id: "dd", value: "ab", options: OPTIONS, multiple: false, ariaLabelledby: "dd-title" },
+            global: localVue,
+        });
+        const group = wrapper.find("[role=radiogroup]");
+        expect(group.attributes("aria-labelledby")).toBe("dd-title");
+        expect(group.findAll("input[type=radio]").length).toBe(6);
+    });
+
     it("keeps the radios of two drilldowns with the same id in separate groups", async () => {
         const mountSingle = (value) =>
             mount(FormDrilldown, {

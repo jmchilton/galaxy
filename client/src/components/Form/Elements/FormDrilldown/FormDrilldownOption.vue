@@ -14,16 +14,13 @@ import GRadio from "@/components/BaseComponents/GRadio.vue";
 interface Props {
     currentValue: string[];
     option: Option;
-    handleClick: Function;
     multiple: boolean;
-    name?: string;
     showIcons?: boolean;
     leafIcon?: IconDefinition;
     branchIcon?: IconDefinition;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    name: undefined,
     leafIcon: () => faFile,
     branchIcon: () => faFolder,
 });
@@ -32,12 +29,6 @@ const showChildren = ref(false);
 
 const hasOptions: ComputedRef<boolean> = computed(() => {
     return props.option.options.length > 0;
-});
-
-// indicates if the value has been selected or not
-const isChecked: ComputedRef<boolean> = computed(() => {
-    const optionValue = props.option.value;
-    return props.currentValue.includes(optionValue);
 });
 
 // determine required input element type
@@ -75,16 +66,12 @@ onMounted(() => {
             <FontAwesomeIcon v-else :icon="faCaretRight" class="align-checkbox" />
         </GButton>
         <span v-if="!hasOptions" class="align-indent"></span>
-        <!-- GCheckbox emits its checked state, GRadio its value (true) once selected -->
         <component
             :is="isComponent"
             :id="`drilldown-option-${option.name}`"
             class="drilldown-option"
             :disabled="option.disabled"
-            :model-value="isChecked"
-            :name="multiple ? undefined : name"
-            :value="true"
-            @update:model-value="handleClick(option.value, $event)">
+            :value="option.value">
             <FontAwesomeIcon v-if="props.showIcons" :icon="getOptionIcon(option)" />
             {{ option.name }}
         </component>
@@ -95,9 +82,7 @@ onMounted(() => {
             :show-icons="props.showIcons"
             :current-value="currentValue"
             :multiple="multiple"
-            :name="name"
-            :options="option.options"
-            :handle-click="handleClick" />
+            :options="option.options" />
     </div>
 </template>
 

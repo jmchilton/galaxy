@@ -5,10 +5,7 @@ import FormDrilldownOption from "./FormDrilldownOption.vue";
 
 defineProps<{
     currentValue: string[];
-    handleClick: Function;
     multiple: boolean;
-    /** Name shared by single-select radios, so they form one keyboard group */
-    name?: string;
     showIcons?: boolean;
     options: Array<Option>;
 }>();
@@ -20,9 +17,7 @@ defineProps<{
             <FormDrilldownOption
                 :show-icons="showIcons"
                 :current-value="currentValue"
-                :handle-click="handleClick"
                 :multiple="multiple"
-                :name="name"
                 :option="option" />
         </div>
     </div>

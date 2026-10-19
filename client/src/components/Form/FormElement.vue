@@ -489,6 +489,7 @@ const extendedCollectionType = computed<ExtendedCollectionType>(() => {
                     v-else-if="props.type === 'drill_down'"
                     :id="props.id"
                     v-model="currentValue"
+                    :aria-labelledby="props.title ? titleId : undefined"
                     :options="attrs.options"
                     :multiple="attrs.multiple" />
                 <FormColor v-else-if="props.type === 'color'" :id="props.id" v-model="currentValue" />

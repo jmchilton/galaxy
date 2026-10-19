@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, type ComputedRef } from "vue";
+import { type Component, computed, type ComputedRef } from "vue";
 
-import { useUid } from "@/composables/utils/uid";
 import localize from "@/utils/localization";
 
 import { getAllValues, type Option, type Value } from "./utilities";
@@ -9,6 +8,8 @@ import { getAllValues, type Option, type Value } from "./utilities";
 import FormDrilldownList from "./FormDrilldownList.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GCheckbox from "@/components/BaseComponents/GCheckbox.vue";
+import GCheckboxGroup from "@/components/BaseComponents/GCheckboxGroup.vue";
+import GRadioGroup from "@/components/BaseComponents/GRadioGroup.vue";
 
 const props = withDefaults(
     defineProps<{
@@ -17,19 +18,19 @@ const props = withDefaults(
         options: Array<Option>;
         multiple: boolean;
         showIcons?: boolean;
+        /** Id of the element naming the group */
+        ariaLabelledby?: string;
     }>(),
     {
         value: null,
         showIcons: false,
+        ariaLabelledby: undefined,
     },
 );
 
 const emit = defineEmits<{
     (e: "input", value: Value): void;
 }>();
-
-// Unique per instance: the workflow run form can render the same parameter id once per step
-const radioName = useUid(`drilldown-${props.id}-`);
 
 const hasOptions = computed(() => {
     return props.options.length > 0;
@@ -51,6 +52,9 @@ const currentValue: ComputedRef<string[]> = computed(() => {
     }
 });
 
+// The group owns the selection state, name and toggling for the options at every depth
+const groupComponent: ComputedRef<Component> = computed(() => (props.multiple ? GCheckboxGroup : GRadioGroup));
+
 // Determine if select all is checked
 const selectAllChecked: ComputedRef<boolean> = computed(() => {
     return allValues.value.length === currentValue.value.length;
@@ -61,33 +65,14 @@ const selectAllIndeterminate: ComputedRef<boolean> = computed(() => {
     return ![0, allValues.value.length].includes(currentValue.value.length);
 });
 
-// Handle click on individual check/radio element
-function handleClick(clickedElement: string, value: boolean): void {
-    if (props.multiple) {
-        // Only the chosen option is submitted; the server expands a recurse hierarchy.
-        const selectedElements: string[] = setElementValues(currentValue.value, [clickedElement], value);
-        if (selectedElements.length === 0) {
-            emit("input", null);
-        } else {
-            emit("input", selectedElements);
-        }
-    } else {
-        emit("input", clickedElement);
-    }
+// Only the chosen option is submitted; the server expands a recurse hierarchy
+function onInput(value: string | string[]): void {
+    emit("input", Array.isArray(value) && value.length === 0 ? null : value);
 }
 
 // Handle click on select all checkbox to either select or unselect all values
 function onSelectAll(selected: boolean): void {
     emit("input", selected ? allValues.value : null);
-}
-
-function setElementValues(oldArray: string[], newArray: string[], value: boolean): string[] {
-    if (value) {
-        return Array.from(new Set([...oldArray, ...newArray]));
-    } else {
-        const newSet = new Set(newArray);
-        return oldArray.filter((item) => !newSet.has(item));
-    }
 }
 </script>
 
@@ -103,13 +88,18 @@ function setElementValues(oldArray: string[], newArray: string[], value: boolean
                 {{ localize("Select / Deselect All") }}
             </GCheckbox>
 
-            <FormDrilldownList
-                :show-icons="showIcons"
-                :multiple="multiple"
-                :current-value="currentValue"
-                :name="radioName"
-                :options="options"
-                :handle-click="handleClick" />
+            <component
+                :is="groupComponent"
+                stacked
+                :aria-labelledby="ariaLabelledby"
+                :model-value="multiple ? currentValue : currentValue[0]"
+                @update:model-value="onInput">
+                <FormDrilldownList
+                    :show-icons="showIcons"
+                    :multiple="multiple"
+                    :current-value="currentValue"
+                    :options="options" />
+            </component>
         </div>
         <div v-else>
             <GAlert show variant="info" class="mt-2"> No options available. </GAlert>
