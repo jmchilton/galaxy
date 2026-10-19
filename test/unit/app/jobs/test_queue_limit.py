@@ -202,3 +202,19 @@ def test_more_resubmitted_jobs_than_destination_user_limit():
     app.model.session.commit()
     last_job = job_wrappers[2].get_job()
     assert job_wrappers[2].queue_with_limit(last_job, job_destination_mock) is True
+
+
+def test_resubmitted_jobs_and_other_jobs_at_limit():
+    app = create_mock_app()
+    app.job_config.limits.destination_user_concurrent_jobs["one"] = 1
+    job_destination_mock = create_mock_destination()
+    resubmitted_job_wrapper = create_job_wrapper(app, user_id=1, state="resubmitted", destination_id="one")
+
+    # A waiting resubmitted job keeps priority over new jobs
+    new_job_wrapper = create_job_wrapper(app, user_id=1)
+    assert new_job_wrapper.queue_with_limit(new_job_wrapper.get_job(), job_destination_mock) is False
+
+    # Queued or running jobs that weren't resubmitted still block resubmitted jobs
+    create_mock_job(app, user_id=1, state="queued", destination_id="one")
+    resubmitted_job = resubmitted_job_wrapper.get_job()
+    assert resubmitted_job_wrapper.queue_with_limit(resubmitted_job, job_destination_mock) is False
