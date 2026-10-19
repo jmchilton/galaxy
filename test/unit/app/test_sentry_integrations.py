@@ -9,7 +9,8 @@ sentry_sdk = pytest.importorskip("sentry_sdk")
 
 
 class SentryApp(SentryClientMixin):
-    def __init__(self):
+    def __init__(self, is_webapp: bool = False):
+        self.is_webapp = is_webapp
         self.config = SimpleNamespace(
             sentry_dsn="https://key@sentry.invalid/1",
             sentry_event_level="ERROR",
@@ -20,8 +21,8 @@ class SentryApp(SentryClientMixin):
         )
 
 
-def _integrations() -> set[str]:
-    SentryApp().configure_sentry_client()
+def _integrations(is_webapp: bool = False) -> set[str]:
+    SentryApp(is_webapp).configure_sentry_client()
     return set(sentry_sdk.get_client().integrations)
 
 
@@ -31,3 +32,8 @@ def test_sentry_skips_integrations_for_missing_libraries(monkeypatch):
     integrations = _integrations()
     assert "fastapi" not in integrations
     assert {"logging", "starlette", "celery", "sqlalchemy"} <= integrations
+
+
+def test_sentry_traces_agents_only_in_webapp():
+    assert "pydantic_ai" in _integrations(is_webapp=True)
+    assert "pydantic_ai" not in _integrations(is_webapp=False)

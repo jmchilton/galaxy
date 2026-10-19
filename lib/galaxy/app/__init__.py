@@ -261,13 +261,17 @@ class SentryClientMixin:
                 event_level=getattr(logging, event_level),  # Send errors as events
             )
 
-            integrations = [sentry_logging]
-            for integration_path in [
+            integration_paths = [
                 "starlette.StarletteIntegration",
                 "fastapi.FastApiIntegration",
                 "celery.CeleryIntegration",
                 "sqlalchemy.SqlalchemyIntegration",
-            ]:
+            ]
+            if getattr(self, "is_webapp", False):
+                # The web app serves the agent and MCP APIs, so it loads these libraries anyway.
+                integration_paths += ["pydantic_ai.PydanticAIIntegration", "mcp.MCPIntegration"]
+            integrations = [sentry_logging]
+            for integration_path in integration_paths:
                 module_name, class_name = integration_path.split(".")
                 try:
                     module = importlib.import_module(f"sentry_sdk.integrations.{module_name}")
@@ -345,7 +349,7 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
             logging.basicConfig(level=logging.DEBUG)
         log.debug("python path is: %s", ", ".join(sys.path))
         self.name = "galaxy"
-        self.is_webapp = False
+        self.is_webapp = kwargs.get("is_webapp", False)
         # Read config file and check for errors
         self.config = self._register_singleton(GalaxyAppConfiguration, GalaxyAppConfiguration(**kwargs))
         self.config.check()
@@ -995,8 +999,6 @@ class UniverseApplication(StructuredApp, GalaxyManagerApplication, InstallationT
             ("application stack", self._shutdown_application_stack),
         ]
         self._register_singleton(StructuredApp, self)  # type: ignore[type-abstract]
-        if kwargs.get("is_webapp"):
-            self.is_webapp = kwargs["is_webapp"]
         # A lot of postfork initialization depends on the server name, ensure it is set immediately after forking before other postfork functions
         self.application_stack.register_postfork_function(self.application_stack.set_postfork_server_name, self)
         self.config.reload_sanitize_allowlist(explicit="sanitize_allowlist_file" in kwargs)
