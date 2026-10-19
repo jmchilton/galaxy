@@ -1,5 +1,6 @@
 import collections
 import errno
+import importlib
 import logging
 import os
 import signal
@@ -252,16 +253,28 @@ class SentryClientMixin:
             ], f"Invalid sentry event level '{self.config.sentry.event_level}'"
 
             import sentry_sdk
-            from sentry_sdk.integrations.celery import CeleryIntegration
-            from sentry_sdk.integrations.fastapi import FastApiIntegration
+            from sentry_sdk.integrations import DidNotEnable
             from sentry_sdk.integrations.logging import LoggingIntegration
-            from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-            from sentry_sdk.integrations.starlette import StarletteIntegration
 
             sentry_logging = LoggingIntegration(
                 level=logging.INFO,  # Capture info and above as breadcrumbs
                 event_level=getattr(logging, event_level),  # Send errors as events
             )
+
+            integrations = [sentry_logging]
+            for integration_path in [
+                "starlette.StarletteIntegration",
+                "fastapi.FastApiIntegration",
+                "celery.CeleryIntegration",
+                "sqlalchemy.SqlalchemyIntegration",
+            ]:
+                module_name, class_name = integration_path.split(".")
+                try:
+                    module = importlib.import_module(f"sentry_sdk.integrations.{module_name}")
+                except DidNotEnable as e:
+                    log.warning("Sentry %s not enabled: %s", class_name, e)
+                    continue
+                integrations.append(getattr(module, class_name)())
 
             def before_send(event, hint):
                 if "exc_info" in hint:
@@ -293,13 +306,7 @@ class SentryClientMixin:
                 # Auto-enabling integrations import every installed library Sentry
                 # supports, including the AI SDKs Galaxy only loads when an agent runs.
                 auto_enabling_integrations=False,
-                integrations=[
-                    sentry_logging,
-                    StarletteIntegration(),
-                    FastApiIntegration(),
-                    CeleryIntegration(),
-                    SqlalchemyIntegration(),
-                ],
+                integrations=integrations,
                 traces_sample_rate=self.config.sentry_traces_sample_rate,
                 ca_certs=self.config.sentry_ca_certs,
                 before_send=before_send,
