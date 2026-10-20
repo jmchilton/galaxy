@@ -1,0 +1,20 @@
+class: GalaxyUserTool
+id: gx_user_boolean_checked
+name: gx_user_boolean_checked
+version: 1.0.0
+container: busybox
+shell_command: 'printf ''%s\n'' ''$({flag: inputs.flag, precedence: inputs.precedence})''
+  > output.json'
+inputs:
+- name: flag
+  type: boolean
+  checked: true
+- name: precedence
+  type: boolean
+  value: false
+  checked: true
+outputs:
+- name: output
+  type: data
+  format: json
+  from_work_dir: output.json
