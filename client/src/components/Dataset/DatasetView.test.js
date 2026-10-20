@@ -80,6 +80,21 @@ function setupPinia(datasetStore) {
     return pinia;
 }
 
+/** A promise that settles when the returned ``release`` is called, to hold a mocked response open. */
+function hold() {
+    let release;
+    const released = new Promise((resolve) => {
+        release = resolve;
+    });
+    return { released, release };
+}
+
+/** Store a summary the way the history watcher does; it lacks ``peek``, so the store refetches the details. */
+function storeHistorySummary() {
+    const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
+    useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+}
+
 /**
  * Mount the DatasetView component with the specified tab and dataset options
  */
@@ -353,10 +368,7 @@ describe("DatasetView", () => {
 
     describe("Background refresh", () => {
         it("keeps the edit tab mounted while a history update refetches the dataset", async () => {
-            let releaseFetch;
-            const fetchReleased = new Promise((resolve) => {
-                releaseFetch = resolve;
-            });
+            const { released: fetchReleased, release: releaseFetch } = hold();
             server.use(
                 http.get("/api/datasets/:dataset_id", async ({ response }) => {
                     await fetchReleased;
@@ -367,9 +379,7 @@ describe("DatasetView", () => {
             const attributes = wrapper.findComponent(DatasetAttributes);
             expect(attributes.exists()).toBe(true);
 
-            // The history watcher stores summary items, which lack ``peek`` and trigger a detailed refetch.
-            const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
-            useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+            storeHistorySummary();
             await flushPromises();
             expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
             expect(wrapper.text()).not.toContain("Loading dataset details");
@@ -395,8 +405,7 @@ describe("DatasetView", () => {
             const attributes = wrapper.findComponent(DatasetAttributes);
             expect(attributes.exists()).toBe(true);
 
-            const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
-            useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+            storeHistorySummary();
             await flushPromises();
             expect(useDatasetStore().getDatasetError(DATASET_ID)).not.toBeNull();
             expect(wrapper.find(".dataset-view").exists()).toBe(true);
@@ -418,8 +427,7 @@ describe("DatasetView", () => {
             );
             const wrapper = await mountDatasetView("edit");
 
-            const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
-            useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+            storeHistorySummary();
             await flushPromises();
             expect(attempts).toBe(2);
             expect(useDatasetStore().getDataset(DATASET_ID).peek).toBe("Needs a peek");
@@ -439,10 +447,7 @@ describe("DatasetView", () => {
         });
 
         it("waits for datatype details on the first load", async () => {
-            let releaseDatatype;
-            const datatypeReleased = new Promise((resolve) => {
-                releaseDatatype = resolve;
-            });
+            const { released: datatypeReleased, release: releaseDatatype } = hold();
             server.use(
                 http.get("/api/datatypes/:datatype", async ({ response }) => {
                     await datatypeReleased;
