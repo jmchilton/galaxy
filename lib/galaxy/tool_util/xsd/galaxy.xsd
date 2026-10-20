@@ -87,6 +87,8 @@ List of behavior changes associated with profile versions:
 - Test output assertions that count columns (e.g. `has_n_columns`) and do not declare a `sep` split on the
   delimiter the datatype recorded for the output dataset - a comma for `csv` - instead of always splitting on
   tabs. Older profiles keep the tab default.
+- Output collections may declare `type_prefix` together with `type_source` to add outer levels to the derived
+  collection type (e.g. `type_prefix="list"` turns a `paired` input into a `list:paired` output).
 
 ### Examples
 
@@ -6764,6 +6766,29 @@ collection types (the most common types are ``list``, ``paired``,
 derive collection's type (e.g. ``collection_type``) from. If the input is nested in a
 conditional, section or repeat, this value must be qualified (e.g. ``cond|input``
 instead of ``input`` if ``input`` is in a conditional with ``name="cond"``).</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="type_prefix" type="CollectionType">
+      <xs:annotation>
+        <xs:documentation xml:lang="en"><![CDATA[
+Collection type to add as outer levels around the type derived from ``type_source``
+(requires ``type_source`` and ``profile="26.2"`` or newer). The output's type is
+``type_prefix:<type of type_source>``. For instance, a tool that nests its input
+collection into one more ``list`` level:
+
+```xml
+<inputs>
+    <param name="input" type="data_collection" collection_type="list,paired" />
+</inputs>
+<outputs>
+    <collection name="output" type_source="input" type_prefix="list" />
+</outputs>
+```
+
+produces a ``list:list`` for a ``list`` input and a ``list:paired`` for a ``paired`` input.
+A ``sample_sheet`` input is treated as a ``list`` (``sample_sheet:paired`` as ``list:paired``),
+so the output is a plain list, e.g. a ``list:list`` for a ``sample_sheet`` input.
+        ]]></xs:documentation>
       </xs:annotation>
     </xs:attribute>
   </xs:complexType>

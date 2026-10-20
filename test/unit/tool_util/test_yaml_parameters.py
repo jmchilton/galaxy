@@ -669,6 +669,20 @@ def test_internal_output_schema_retains_scalar_and_rules_outputs():
     assert collection.collection_type_from_rules == "rules"
 
 
+def test_internal_output_schema_retains_collection_type_prefix():
+    adapter: TypeAdapter[Any] = TypeAdapter(ToolOutput)
+    collection = adapter.validate_python(
+        {
+            "type": "collection",
+            "name": "nested",
+            "hidden": False,
+            "collection_type_source": "input",
+            "collection_type_prefix": "list",
+        }
+    )
+    assert collection.collection_type_prefix == "list"
+
+
 @pytest.mark.parametrize("output_type", ["data", "collection"])
 def test_general_incoming_outputs_retain_tool_provided_metadata_discovery(output_type):
     output = {
@@ -759,6 +773,7 @@ def test_collection_and_discovery_fields_publish_authoring_help():
     collection_properties = definitions["IncomingUserToolOutputCollection"]["properties"]
 
     assert "collection_type_from_rules" not in collection_properties
+    assert "collection_type_prefix" not in collection_properties
     for field_name in ("collection_type", "collection_type_source", "structured_like", "discover_datasets"):
         assert collection_properties[field_name].get("description"), field_name
 

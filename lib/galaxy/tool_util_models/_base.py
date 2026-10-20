@@ -26,4 +26,12 @@ def _check_collection_type(v: str) -> str:
     return v
 
 
+def check_collection_type_prefix(v: str) -> str:
+    _check_collection_type(v)
+    for level in v.split(":"):
+        if level in ("sample_sheet", "record"):
+            raise ValueError(f"{level} is not allowed in type_prefix [{v}]")
+    return v
+
+
 CollectionType = Annotated[str | None, AfterValidator(_check_collection_type)]

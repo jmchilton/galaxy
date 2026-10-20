@@ -210,6 +210,17 @@ def test_legacy_structure_wrapper_lifted_silently():
     assert dumped["outputs"][0]["collection_type"] == "list"
 
 
+def test_structure_wrapper_with_null_collection_type_prefix_lifted():
+    output = {
+        **LEGACY_NESTED_COLLECTION_OUTPUT,
+        "structure": {**LEGACY_NESTED_COLLECTION_OUTPUT["structure"], "collection_type_prefix": None},
+    }
+    status, parsed, errors = lift_user_tool_source(_collection_tool_value(output))
+    assert status == "ok", errors
+    assert isinstance(parsed, UserToolSource)
+    assert "collection_type_prefix" not in parsed.model_dump(by_alias=True)["outputs"][0]
+
+
 def test_legacy_structure_not_shadowed_by_explicit_top_level_none():
     # Defensive: if a future writer ever produces a hybrid dict where the
     # top-level field is explicit ``None`` but the structure carries a real

@@ -3862,6 +3862,11 @@ export interface components {
             /** Collection Type From Rules */
             collection_type_from_rules?: string | null
             /**
+             * Collection Type Prefix
+             * @description Collection type prepended to the type resolved from `collection_type_source`, e.g. `list` turns a `paired` input into a `list:paired` output.
+             */
+            collection_type_prefix?: string | null
+            /**
              * Collection Type Source
              * @description Declared data-collection input whose runtime structure determines this output's collection type.
              */

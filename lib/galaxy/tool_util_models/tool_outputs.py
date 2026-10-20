@@ -239,6 +239,9 @@ class IncomingToolOutputDataset(GenericToolOutputDataset[bool | None, str | None
     ] = None
 
 
+_PARSER_ONLY_COLLECTION_KEYS = ("collection_type_from_rules", "collection_type_prefix")
+
+
 def lift_legacy_collection_structure(output_dict: dict[str, Any]) -> dict[str, Any]:
     # Older DynamicTool.value rows nest collection fields under ``structure:``;
     # the current model expects them flat on the output. Inline them so the
@@ -251,10 +254,10 @@ def lift_legacy_collection_structure(output_dict: dict[str, Any]) -> dict[str, A
         return output_dict
     lifted = {k: v for k, v in output_dict.items() if k != "structure"}
     for key, value in structure.items():
-        # Old serialized collection structures included this XML/rules-only
-        # key even when unused. Do not reintroduce a null placeholder into the
+        # Serialized collection structures include XML-only keys even when
+        # unused. Do not reintroduce a null placeholder into the
         # narrower incoming YAML model.
-        if key == "collection_type_from_rules" and value is None:
+        if key in _PARSER_ONLY_COLLECTION_KEYS and value is None:
             continue
         if lifted.get(key) is None:
             lifted[key] = value
@@ -320,8 +323,17 @@ class GenericToolOutputCollection(
 
 class ToolOutputCollection(GenericToolOutputCollection[bool, str]):
     # XML/rules-based tools can derive the collection type from a rules input.
-    # Incoming YAML user tools deliberately do not expose this parser-only field.
+    # Incoming YAML user tools deliberately do not expose these parser-only fields.
     collection_type_from_rules: str | None = None
+    collection_type_prefix: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Collection type prepended to the type resolved from `collection_type_source`, e.g. `list` turns "
+                "a `paired` input into a `list:paired` output."
+            )
+        ),
+    ] = None
 
 
 class IncomingToolOutputCollection(GenericToolOutputCollection[bool | None, str | None]):
