@@ -49,16 +49,24 @@ const sanitizedMessage = computed(() => {
     return undefined;
 });
 
+let latestCheck = 0;
+
 async function checkPreview() {
+    const check = ++latestCheck;
     try {
         const { headers } = await fetch(withPrefix(previewUrl.value), { method: "HEAD" });
+        if (check !== latestCheck) {
+            return;
+        }
         contentChunked.value = !!headers.get("x-content-chunked");
         contentTruncated.value = headers.get("x-content-truncated") ? Number(headers.get("x-content-truncated")) : null;
         sanitizedJobImported.value = !!headers.get("x-sanitized-job-imported");
         sanitizedToolId.value = headers.get("x-sanitized-tool-id");
         errorMessage.value = "";
     } catch (e) {
-        errorMessage.value = errorMessageAsString(e);
+        if (check === latestCheck) {
+            errorMessage.value = errorMessageAsString(e);
+        }
         console.error(e);
     }
 }
@@ -70,7 +78,7 @@ watch(() => props.datasetId, checkPreview, { immediate: true });
 watch(
     () => dataset.value?.update_time,
     (updateTime, previousUpdateTime) => {
-        if (previousUpdateTime) {
+        if (updateTime && previousUpdateTime) {
             checkPreview();
         }
     },

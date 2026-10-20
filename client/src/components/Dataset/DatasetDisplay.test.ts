@@ -165,4 +165,32 @@ describe("DatasetDisplay", () => {
         expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
         expect(wrapper.find("iframe").exists()).toBe(false);
     });
+    it("ignores a preview check that finishes after a newer one", async () => {
+        let releaseFirst: () => void = () => {};
+        const firstReleased = new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+        });
+        let checks = 0;
+        server.use(
+            http.untyped.head("/datasets/:dataset_id/display/", async () => {
+                checks += 1;
+                if (checks === 1) {
+                    await firstReleased;
+                    return new HttpResponse(null);
+                }
+                return new HttpResponse(null, { headers: { "x-content-chunked": "true" } });
+            }),
+        );
+        const wrapper = await mountDatasetDisplay();
+
+        const updated = { ...okDataset, update_time: "2026-01-01T00:05:00", history_content_type: "dataset" };
+        useDatasetStore().saveDatasets([updated as unknown as HistoryContentItemBase]);
+        await flushPromises();
+        expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
+
+        releaseFirst();
+        await flushPromises();
+        expect(checks).toBe(2);
+        expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
+    });
 });
