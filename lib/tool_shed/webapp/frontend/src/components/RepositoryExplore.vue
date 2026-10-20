@@ -13,6 +13,7 @@ import { GButton, GButtonGroup, GDropdownItem, GDropdownItemButton } from "@gala
 import { computed } from "vue"
 import ActionMenu from "@/components/ActionMenu.vue"
 import { goToRepository, goToMetadataInspector } from "@/router"
+import { useAuthStore } from "@/stores"
 
 interface Repository {
     name: string
@@ -37,6 +38,12 @@ const props = withDefaults(defineProps<RepositoryExploreProps>(), {
 
 const changelog = computed(() => `/repos/${props.repository.owner}/${[props.repository.name]}/shortlog`)
 const contents = computed(() => `/repos/${props.repository.owner}/${[props.repository.name]}/file/tip`)
+
+// hgweb's HTML views sit behind login (crawlers), so anonymous users log in first and then land on the view
+const authStore = useAuthStore()
+function loginFirst(path: string) {
+    return `/login?redirect=${encodeURIComponent(path)}`
+}
 </script>
 <template>
     <ActionMenu v-if="!dense" :icon="faCompass" label="Explore repository">
@@ -44,14 +51,26 @@ const contents = computed(() => `/repos/${props.repository.owner}/${[props.repos
             <FontAwesomeIcon :icon="faCircleInfo" fixed-width />
             Details
         </GDropdownItemButton>
-        <GDropdownItem :href="changelog">
-            <FontAwesomeIcon :icon="faCodeCompare" fixed-width />
-            Changelog
-        </GDropdownItem>
-        <GDropdownItem :href="contents">
-            <FontAwesomeIcon :icon="faList" fixed-width />
-            Contents
-        </GDropdownItem>
+        <template v-if="authStore.user">
+            <GDropdownItem :href="changelog">
+                <FontAwesomeIcon :icon="faCodeCompare" fixed-width />
+                Changelog
+            </GDropdownItem>
+            <GDropdownItem :href="contents">
+                <FontAwesomeIcon :icon="faList" fixed-width />
+                Contents
+            </GDropdownItem>
+        </template>
+        <template v-else>
+            <GDropdownItem :to="loginFirst(changelog)">
+                <FontAwesomeIcon :icon="faCodeCompare" fixed-width />
+                Log in to view changelog
+            </GDropdownItem>
+            <GDropdownItem :to="loginFirst(contents)">
+                <FontAwesomeIcon :icon="faList" fixed-width />
+                Log in to browse contents
+            </GDropdownItem>
+        </template>
         <GDropdownItemButton @click="goToMetadataInspector(props.repository.id)">
             <FontAwesomeIcon :icon="faFileCode" fixed-width />
             Metadata
@@ -76,12 +95,34 @@ const contents = computed(() => `/repos/${props.repository.owner}/${[props.repos
         >
             <FontAwesomeIcon :icon="faFileCode" />
         </GButton>
-        <GButton icon-only transparent title="Changelog" aria-label="Changelog" :href="changelog">
-            <FontAwesomeIcon :icon="faCodeCompare" />
-        </GButton>
-        <GButton icon-only transparent title="Contents" aria-label="Contents" :href="contents">
-            <FontAwesomeIcon :icon="faList" />
-        </GButton>
+        <template v-if="authStore.user">
+            <GButton icon-only transparent title="Changelog" aria-label="Changelog" :href="changelog">
+                <FontAwesomeIcon :icon="faCodeCompare" />
+            </GButton>
+            <GButton icon-only transparent title="Contents" aria-label="Contents" :href="contents">
+                <FontAwesomeIcon :icon="faList" />
+            </GButton>
+        </template>
+        <template v-else>
+            <GButton
+                icon-only
+                transparent
+                title="Log in to view changelog"
+                aria-label="Log in to view changelog"
+                :to="loginFirst(changelog)"
+            >
+                <FontAwesomeIcon :icon="faCodeCompare" />
+            </GButton>
+            <GButton
+                icon-only
+                transparent
+                title="Log in to browse contents"
+                aria-label="Log in to browse contents"
+                :to="loginFirst(contents)"
+            >
+                <FontAwesomeIcon :icon="faList" />
+            </GButton>
+        </template>
         <GButton
             v-if="repository.homepage_url"
             icon-only
