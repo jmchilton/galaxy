@@ -167,6 +167,21 @@ def visit_input_values(
     No value found for 'b 1 > d 1 > e'.
     name=j, prefix=b_0|d_0|, prefixed_name=b_0|d_0|f_1|j, prefixed_label=b 1 > d 1 > j, value=None
     No value found for 'b 1 > d 1 > j'.
+
+    >>> # Conditional missing in state, selector is seeded with its default so the default case is visited
+    >>> f.name = 'f'
+    >>> f.test_param = g
+    >>> nested = dict([('a', 1), ('b', [dict([('c', 3), ('d', [dict([('e', 5)])])])])])
+    >>> visit_input_values(inputs, nested, visitor)
+    name=a, prefix=, prefixed_name=a, prefixed_label=a, value=1
+    name=c, prefix=b_0|, prefixed_name=b_0|c, prefixed_label=b 1 > c, value=3
+    name=e, prefix=b_0|d_0|, prefixed_name=b_0|d_0|e, prefixed_label=b 1 > d 1 > e, value=5
+    name=g, prefix=b_0|d_0|, prefixed_name=b_0|d_0|f|g, prefixed_label=b 1 > d 1 > g, value=None
+    No value found for 'b 1 > d 1 > g'.
+    name=i, prefix=b_0|d_0|, prefixed_name=b_0|d_0|f|i, prefixed_label=b 1 > d 1 > i, value=None
+    No value found for 'b 1 > d 1 > i'.
+    >>> params_to_strings(inputs, nested, None, nested=True)['b'][0]['d'][0]['f']
+    {'g': False, '__current_case__': 1}
     """
 
     def callback_helper(input, input_values, name_prefix, label_prefix, parent_prefix, context=None, error=None):
