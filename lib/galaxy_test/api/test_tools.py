@@ -604,6 +604,15 @@ class TestToolsApi(ApiTestCase, TestsTools):
         response.raise_for_status()
         return next(i for i in response.json()["inputs"] if i["name"] == param_name)
 
+    def _carried_hdca_option(self, param: dict[str, Any], hdca_id: str, state: str) -> dict[str, Any]:
+        """Return the single ``keep`` option carried for ``hdca_id``, labelled with ``state``."""
+        matching = [e for e in param["options"]["hdca"] if e["id"] == hdca_id]
+        assert len(matching) == 1, param["options"]["hdca"]
+        entry = matching[0]
+        assert entry["keep"] is True, entry
+        assert entry["name"].startswith(f"({state}) "), entry
+        return entry
+
     @skip_without_tool("collection_paired_test")
     def test_build_collection_options_interleaves_direct_and_multirun_by_hid(self):
         """Direct matches (``paired`` collections) and multirun matches
@@ -734,11 +743,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 )
                 local_entry = next(e for e in f1["options"]["hdca"] if e["id"] == local["id"])
                 assert "keep" not in local_entry, local_entry
-                matching = [e for e in f1["options"]["hdca"] if e["id"] == foreign["id"]]
-                assert len(matching) == 1, f1["options"]["hdca"]
-                assert matching[0]["keep"] is True
-                assert matching[0]["name"].startswith("(not in current history) ")
-                assert "map_over_type" not in matching[0], matching[0]
+                carried = self._carried_hdca_option(f1, foreign["id"], "not in current history")
+                assert "map_over_type" not in carried, carried
 
     @skip_without_tool("collection_paired_test")
     def test_build_collection_options_carries_other_history_map_over_selection(self):
@@ -757,10 +763,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
                         }
                     },
                 )
-                matching = [e for e in f1["options"]["hdca"] if e["id"] == foreign["id"]]
-                assert len(matching) == 1, f1["options"]["hdca"]
-                assert matching[0]["keep"] is True
-                assert matching[0]["map_over_type"] == "paired", matching[0]
+                carried = self._carried_hdca_option(f1, foreign["id"], "not in current history")
+                assert carried.get("map_over_type") == "paired", carried
 
     @skip_without_tool("collection_paired_test")
     def test_build_collection_options_carries_hidden_map_over_selection(self):
@@ -779,11 +783,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
                     }
                 },
             )
-            matching = [e for e in f1["options"]["hdca"] if e["id"] == hidden["id"]]
-            assert len(matching) == 1, f1["options"]["hdca"]
-            assert matching[0]["keep"] is True
-            assert matching[0]["name"].startswith("(hidden) ")
-            assert matching[0]["map_over_type"] == "paired", matching[0]
+            carried = self._carried_hdca_option(f1, hidden["id"], "hidden")
+            assert carried.get("map_over_type") == "paired", carried
 
     @skip_without_tool("cheetah_problem_unbound_var_input")
     def test_legacy_biotools_xref_injection(self):
