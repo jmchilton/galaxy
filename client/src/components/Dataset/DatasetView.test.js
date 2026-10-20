@@ -374,11 +374,33 @@ describe("DatasetView", () => {
             expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
             expect(wrapper.text()).not.toContain("Loading dataset details");
             expect(attributes.exists()).toBe(true);
+            // The summary lacks ``file_ext``; the header keeps showing the loaded dataset.
+            expect(wrapper.find(".header-details .datatype .value").text()).toBe("txt");
 
             releaseFetch();
             await flushPromises();
             expect(attributes.exists()).toBe(true);
             expect(wrapper.findComponent(DatasetAttributes).vm).toBe(attributes.vm);
+        });
+
+        it("keeps the open tab and shows an alert when a refetch fails", async () => {
+            server.use(
+                http.get("/api/datasets/:dataset_id", ({ response }) => {
+                    return response(403).json({ err_msg: "Access denied", err_code: 403002 });
+                }),
+            );
+            const wrapper = await mountDatasetView("edit");
+            const attributes = wrapper.findComponent(DatasetAttributes);
+            expect(attributes.exists()).toBe(true);
+
+            const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
+            useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+            await flushPromises();
+            expect(useDatasetStore().getDatasetError(DATASET_ID)).not.toBeNull();
+            expect(wrapper.find(".dataset-view").exists()).toBe(true);
+            expect(wrapper.findComponent(DatasetAttributes).vm).toBe(attributes.vm);
+            expect(wrapper.find(".dataset-refresh-error").text()).toContain("Access denied");
+            expect(wrapper.text()).not.toContain("Dataset Not Available");
         });
 
         it("shows a dataset that is already stored when switching to it", async () => {

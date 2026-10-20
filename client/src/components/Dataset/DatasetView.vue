@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { faBug, faChartBar, faEye, faFileAlt, faInfoCircle, faPen } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BLink, BNav, BNavItem } from "bootstrap-vue";
+import { BAlert, BLink, BNav, BNavItem } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { usePersistentToggle } from "@/composables/persistentToggle";
+import { useSettledDataset } from "@/composables/settledDataset";
 import { useDatasetStore } from "@/stores/datasetStore";
 import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { useDatatypeStore } from "@/stores/datatypeStore";
@@ -41,7 +42,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const iframeLoading = ref(true);
 
-const dataset = computed(() => datasetStore.getDataset(props.datasetId));
+const storedDataset = computed(() => datasetStore.getDataset(props.datasetId));
 const loadError = computed(() => datasetStore.getDatasetError(props.datasetId));
 const downloadUrl = computed(() => withPrefix(`/datasets/${props.datasetId}/display`));
 const headerState = computed(() => (headerCollapsed.value ? "closed" : "open"));
@@ -49,10 +50,26 @@ const headerState = computed(() => (headerCollapsed.value ? "closed" : "open"));
 // Track datatype loading state
 const isDatatypeLoading = ref(false);
 
-// Consolidated loading state
-const isLoading = computed(() => {
-    return datasetStore.isLoadingDataset(props.datasetId) || isDatatypeLoading.value || datatypesMapperStore.loading;
-});
+// Watch for changes to the dataset to fetch datatype info
+watch(
+    () => storedDataset.value?.file_ext,
+    async (fileExt) => {
+        if (fileExt) {
+            isDatatypeLoading.value = true;
+            await Promise.all([datatypeStore.fetchDatatypeDetails(fileExt), datatypesMapperStore.createMapper()]);
+            isDatatypeLoading.value = false;
+        }
+    },
+    { immediate: true },
+);
+
+// Only the first load of a dataset blocks the view. Later refetches, e.g. after the history
+// watcher replaces the stored dataset with a summary, must not unmount the open tab.
+// Called after the datatype watch so the first load sees that datatype loading already started.
+const dataset = useSettledDataset(
+    () => props.datasetId,
+    () => isDatatypeLoading.value || datatypesMapperStore.loading,
+);
 
 // Match datatype variant
 const isAutoDownloadType = computed(
@@ -85,50 +102,21 @@ const preferredVisualization = computed(
 const showError = computed(() => dataset.value && STATES.ERROR === dataset.value.state);
 const showOk = computed(() => dataset.value && STATES.OK_STATES.includes(dataset.value.state));
 
-// Watch for changes to the dataset to fetch datatype info
-watch(
-    () => dataset.value?.file_ext,
-    async () => {
-        if (dataset.value && dataset.value.file_ext) {
-            isDatatypeLoading.value = true;
-            await Promise.all([
-                datatypeStore.fetchDatatypeDetails(dataset.value.file_ext),
-                datatypesMapperStore.createMapper(),
-            ]);
-            isDatatypeLoading.value = false;
-        }
-    },
-    { immediate: true },
-);
-
-// Only the first load of a dataset blocks the view. Later refetches, e.g. after the history
-// watcher replaces the stored dataset with a summary, must not unmount the open tab.
-// Declared after the datatype watch so its immediate run sees that load already started.
-const loadedDatasetId = ref<string>();
-watch(
-    () => (dataset.value && !isLoading.value ? props.datasetId : undefined),
-    (readyDatasetId) => {
-        if (readyDatasetId) {
-            loadedDatasetId.value = readyDatasetId;
-        }
-    },
-    { immediate: true },
-);
-const showLoading = computed(() => loadedDatasetId.value !== props.datasetId);
+const defaultLoadErrorMessage =
+    "This dataset could not be loaded. It may not exist or you may not have permission to access it.";
 </script>
 
 <template>
-    <div v-if="loadError" class="alert alert-danger m-4">
+    <div v-if="loadError && !dataset" class="alert alert-danger m-4">
         <h4 class="alert-heading">Dataset Not Available</h4>
-        <p>
-            {{
-                loadError.message ||
-                "This dataset could not be loaded. It may not exist or you may not have permission to access it."
-            }}
-        </p>
+        <p>{{ loadError.message || defaultLoadErrorMessage }}</p>
     </div>
-    <LoadingSpan v-else-if="!dataset || showLoading" message="Loading dataset details" />
+    <LoadingSpan v-else-if="!dataset" message="Loading dataset details" />
     <div v-else class="dataset-view d-flex flex-column">
+        <BAlert v-if="loadError" show variant="warning" class="dataset-refresh-error m-2">
+            This dataset could not be refreshed, showing the last loaded version.
+            {{ loadError.message }}
+        </BAlert>
         <header v-if="!displayOnly" :key="`dataset-header-${dataset.id}`" class="dataset-header flex-shrink-0">
             <div class="d-flex">
                 <Heading
