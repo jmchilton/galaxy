@@ -110,9 +110,8 @@ export function useEmbeddedOutputs(
                 originalPositions.set(step.id, { ...step.position });
             }
         }
-        // let shrunk nodes render, then measure them
+        // sizes may still be pre-shrink here; `stepSizes` reruns the layout once they settle
         await nextTick();
-        await new Promise((resolve) => requestAnimationFrame(resolve));
 
         const nodes: LayoutNode[] = [];
         for (const [id, position] of originalPositions) {
@@ -145,8 +144,15 @@ export function useEmbeddedOutputs(
         maxDisplacement.value = result.maxDisplacement;
     }
 
+    /** Measured step sizes (not positions), so the layout reruns after shrinking or content loading */
+    const stepSizes = computed(() =>
+        Object.entries(stateStore.stepPosition)
+            .map(([id, rect]) => `${id}:${Math.round(rect.width)}x${Math.round(rect.height)}`)
+            .join(","),
+    );
+
     watch(
-        [enabled, requestKeys, direction],
+        [enabled, requestKeys, direction, stepSizes],
         async () => {
             if (enabled.value) {
                 await apply();

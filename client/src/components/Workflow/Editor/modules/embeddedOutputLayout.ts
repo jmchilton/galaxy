@@ -95,7 +95,7 @@ export function layoutEmbeddedOutputs(
     }));
     for (let i = 0; i < baseRects.length; i++) {
         for (let j = i + 1; j < baseRects.length; j++) {
-            if (overlaps(baseRects[i]!, baseRects[j]!, 0)) {
+            if (overlaps(baseRects[i]!, baseRects[j]!, gap)) {
                 ignoredPairs.add(pairKey(items[i]!, items[j]!));
             }
         }
@@ -157,7 +157,8 @@ export function layoutEmbeddedOutputs(
             changed = pushTo(to, from[axis] + spacing) || changed;
         }
 
-        const sorted = [...items].sort((a, b) => a[axis] - b[axis] || (a.kind === "embedded" ? -1 : 1));
+        const kindOrder = (item: Item) => (item.kind === "embedded" ? 0 : 1);
+        const sorted = [...items].sort((a, b) => a[axis] - b[axis] || kindOrder(a) - kindOrder(b));
         for (let i = 0; i < sorted.length; i++) {
             for (let j = i + 1; j < sorted.length; j++) {
                 const a = sorted[i]!;

@@ -473,7 +473,7 @@ function toggleSelected() {
 @import "@/style/scss/theme/blue.scss";
 
 .node-preferred-output {
-    max-height: 16rem;
+    height: 16rem;
     overflow: auto;
     font-size: 0.75rem;
 }

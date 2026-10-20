@@ -94,6 +94,12 @@ describe("layoutEmbeddedOutputs", () => {
         expect(result.movedNodeIds).toEqual([]);
     });
 
+    it("doesn't spread steps the author placed closer than the gap", () => {
+        const nodes = [node(0, 0, 0), node(1, 0, 110), node(2, 0, 220)];
+        const result = layoutEmbeddedOutputs(nodes, [], [], { gap: GAP });
+        expect(result.movedNodeIds).toEqual([]);
+    });
+
     it("makes room for a step that grew into its neighbours", () => {
         const nodes = [
             { ...node(0, 0, 0, 400, 300), baseWidth: 200, baseHeight: 100 },
