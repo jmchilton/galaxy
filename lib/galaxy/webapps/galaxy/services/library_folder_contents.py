@@ -163,7 +163,6 @@ class LibraryFolderContentsService(ServiceBase, UsesLibraryMixinItems):
         #  Access rights are checked on the dataset level, not on the ld or ldda level to maintain consistency
         is_unrestricted = security_agent.dataset_is_public(dataset)
         raw_size = int(ldda.get_size())
-        library_dataset_dict = library_dataset.to_dict()
         dataset_item = FileLibraryFolderItem(
             id=library_dataset.id,
             name=library_dataset.name,
@@ -172,13 +171,13 @@ class LibraryFolderContentsService(ServiceBase, UsesLibraryMixinItems):
             update_time=ldda.update_time.isoformat(),
             can_manage=is_admin or bool(trans.user and security_agent.can_manage_dataset(current_user_roles, dataset)),
             deleted=library_dataset.deleted,
-            file_ext=library_dataset_dict["file_ext"],
-            date_uploaded=library_dataset_dict["date_uploaded"],
+            file_ext=ldda.ext,
+            date_uploaded=ldda.create_time.isoformat(),
             #  Is the dataset public or private?
             #  When both are False the dataset is 'restricted'
             is_unrestricted=is_unrestricted,
             is_private=not is_unrestricted and trans.user and security_agent.dataset_is_private_to_user(trans, dataset),
-            state=library_dataset_dict["state"],
+            state=ldda.state,
             file_size=util.nice_size(raw_size),
             raw_size=raw_size,
             ldda_id=ldda.id,
