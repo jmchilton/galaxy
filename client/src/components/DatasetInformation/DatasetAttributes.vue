@@ -29,6 +29,7 @@ const messageText = ref<string>();
 const messageVariant = ref("danger");
 const formData = ref<Record<string, any>>({});
 const datasetAttributes = ref<Record<string, any>>({});
+const formRevision = ref(0);
 
 function onAttribute(data: object) {
     formData.value["attribute"] = data;
@@ -63,12 +64,16 @@ async function submit(key: string, operation: string) {
         const error = e as AxiosError<{ err_msg?: string }>;
 
         onError(error.response?.data?.err_msg || "Unable to save dataset attributes.");
+        return;
     }
+    // The forms depend on the datatype and metadata, so rebuild them in place without the loading state.
+    await fetchForms();
 }
 
 async function fetchForms() {
     try {
         datasetAttributes.value = await fetchDatasetAttributes(props.datasetId);
+        formRevision.value += 1;
         return true;
     } catch (e) {
         const error = e as AxiosError<{ err_msg?: string }>;
@@ -112,6 +117,7 @@ onMounted(async () => {
 
                     <FormDisplay
                         v-if="datasetAttributes['attribute_inputs']"
+                        :id="`attribute-${formRevision}`"
                         :inputs="datasetAttributes['attribute_inputs']"
                         @onChange="onAttribute" />
 
@@ -160,6 +166,7 @@ onMounted(async () => {
                         <div class="portlet-content">
                             <FormDisplay
                                 v-if="datasetAttributes['datatype_inputs']"
+                                :id="`datatype-${formRevision}`"
                                 :inputs="datasetAttributes['datatype_inputs']"
                                 @onChange="onDatatype" />
 
@@ -194,6 +201,7 @@ onMounted(async () => {
                         <div class="portlet-content">
                             <FormDisplay
                                 v-if="datasetAttributes['conversion_inputs']"
+                                :id="`conversion-${formRevision}`"
                                 :inputs="datasetAttributes['conversion_inputs']"
                                 @onChange="onConversion" />
 
@@ -215,6 +223,7 @@ onMounted(async () => {
 
                     <FormDisplay
                         v-if="datasetAttributes['permission_inputs']"
+                        :id="`permission-${formRevision}`"
                         :inputs="datasetAttributes['permission_inputs']"
                         @onChange="onPermission" />
 

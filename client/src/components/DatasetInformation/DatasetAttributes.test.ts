@@ -105,6 +105,30 @@ describe("DatasetAttributes", () => {
         expect(wrapper.findAll(".ui-portlet-section").length).toBe(1);
     });
 
+    it("reloads the forms after a save so new datatype metadata appears", async () => {
+        const wrapper = await mountDatasetAttributes();
+        expect(wrapper.findAll("#attribute_chromCol").length).toBe(0);
+
+        server.use(
+            http.untyped.get("/dataset/get_edit", () => {
+                return HttpResponse.json({
+                    attribute_inputs: [
+                        { name: "attribute_text", type: "text" },
+                        { name: "attribute_chromCol", type: "text" },
+                    ],
+                    conversion_inputs: [{ name: "conversion_text", type: "text" }],
+                    datatype_inputs: [{ name: "datatype_text", type: "text" }],
+                    permission_inputs: [{ name: "permission_text", type: "text" }],
+                });
+            }),
+        );
+        await wrapper.find("#dataset-attributes-default-save").trigger("click");
+        await flushPromises();
+
+        expect(wrapper.findAll("#attribute_chromCol").length).toBe(1);
+        expect(wrapper.find("[role=alert]").text()).toBe("success");
+    });
+
     it("doesn't render edit controls with error", async () => {
         const wrapper = await buildWrapperWithError("error");
         expect(wrapper.findAll("button").length).toBe(0);
