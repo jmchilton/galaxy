@@ -85,7 +85,7 @@ def visit_input_values(
 
     >>> from galaxy.util import XML
     >>> from galaxy.util.bunch import Bunch
-    >>> from galaxy.tools.parameters.basic import TextToolParameter, BooleanToolParameter
+    >>> from galaxy.tools.parameters.basic import TextToolParameter, BooleanToolParameter, GenomeBuildParameter
     >>> from galaxy.tools.parameters.grouping import Repeat
     >>> a = TextToolParameter(None, XML('<param name="a"/>'))
     >>> b = Repeat('b')
@@ -182,6 +182,17 @@ def visit_input_values(
     No value found for 'b 1 > d 1 > i'.
     >>> params_to_strings(inputs, nested, None, nested=True)['b'][0]['d'][0]['f']
     {'g': False, '__current_case__': 1}
+
+    >>> # Selector whose options need a trans cannot be seeded, no case is selected
+    >>> k = Conditional('k')
+    >>> k.test_param = GenomeBuildParameter(None, XML('<param name="dbkey" type="genomebuild"/>'))
+    >>> k.cases = [Bunch(value='hg17', inputs={})]
+    >>> state = {}
+    >>> visit_input_values({'k': k}, state, visitor)
+    name=dbkey, prefix=, prefixed_name=k|dbkey, prefixed_label=dbkey, value=None
+    No value found for 'dbkey'.
+    >>> state
+    {'k': {'__current_case__': -1}}
     """
 
     def callback_helper(input, input_values, name_prefix, label_prefix, parent_prefix, context=None, error=None):
@@ -286,7 +297,11 @@ def visit_input_values(
                 # The callback left a conditional absent from the state without a selector
                 # (e.g. the injected __job_resource group on import). Select the default case
                 # so the state stays serializable: Conditional.value_to_basic needs the selector.
-                values[input.test_param.name] = input.test_param.get_initial_value(None, context)
+                try:
+                    values[input.test_param.name] = input.test_param.get_initial_value(None, context)
+                except Exception:
+                    # Dynamic options (genome builds, from_url, data table filters) may need a trans.
+                    pass
             values["__current_case__"] = get_current_case(input, values)
             if values["__current_case__"] >= 0:
                 visit_input_values(
