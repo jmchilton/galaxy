@@ -831,6 +831,18 @@ class TestToolsApi(ApiTestCase, TestsTools):
             assert nested_hdca["collection_type"] == "list:list:paired"
             assert nested_hdca["elements"] == []
 
+    @skip_without_tool("__NEST__")
+    def test_nest_offers_paired_and_list_of_pairs_inputs(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            pair_response = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True)
+            pair_id = pair_response.json()["outputs"][0]["id"]
+            list_of_pairs_id = self.dataset_collection_populator.create_list_of_pairs_in_history(
+                history_id, wait=True
+            ).json()["outputs"][0]["id"]
+            build = self.dataset_populator.build_tool_state("__NEST__", history_id)
+            offered_ids = {option["id"] for option in build["inputs"][0]["options"]["hdca"]}
+            assert {pair_id, list_of_pairs_id} <= offered_ids
+
     @skip_without_tool("__MERGE_COLLECTION__")
     def test_merge_collection_rejects_structurally_invalid_inputs(self):
         with self.dataset_populator.test_history(require_new=False) as history_id:

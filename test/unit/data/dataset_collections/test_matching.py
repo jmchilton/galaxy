@@ -103,24 +103,24 @@ def test_query_always_direct_match_if_no_collection_type_on_input_specified():
     assert q.direct_match(list_of_lists) is True
 
 
-def test_query_list_of_paireds_to_list_or_list_of_paireds():
+def test_query_nest_collection_input_types():
     """Regression for the "Nest collection" tool (lib/galaxy/tools/nest_collection.xml).
 
-    Its input accepts ``list`` and ``list:paired`` as whole collections. A
-    ``list:paired`` collection must therefore match directly and must *not*
-    be mapped over - with the previous ``list,paired`` parameter type the
-    collection was mapped over its pairs, so each pair was processed
-    separately and the tool wrapped the pair's datasets instead of the pair,
-    producing an extra nesting level.
+    Its input accepts ``list``, ``paired`` and ``list:paired``. Each matches
+    directly, and tool forms and workflows prefer a direct match over mapping,
+    so a ``list:paired`` is nested whole rather than mapped over its pairs.
     """
-    list_of_paired_datasets = example_list_of_paired_datasets()
-    q = query.HistoryQuery.from_collection_types(["list", "list:paired"], TYPE_DESCRIPTION_FACTORY)
-    assert q.can_map_over(list_of_paired_datasets) is False
-    assert q.direct_match(list_of_paired_datasets) is True
+    q = query.HistoryQuery.from_collection_types(["list", "paired", "list:paired"], TYPE_DESCRIPTION_FACTORY)
+    assert q.direct_match(example_list_of_paired_datasets()) is True
+    assert q.direct_match(list_instance(ids=["data1", "data2"])) is True
+    assert q.direct_match(pair_instance()) is True
 
-    flat_list = list_instance(ids=["data1", "data2"])
-    assert q.can_map_over(flat_list) is False
-    assert q.direct_match(flat_list) is True
+    list_of_lists_of_pairs = list_instance(
+        elements=[collection_element("outer1", example_list_of_paired_datasets().collection)],
+        collection_type="list:list:paired",
+    )
+    assert q.direct_match(list_of_lists_of_pairs) is False
+    assert q.can_map_over(list_of_lists_of_pairs).collection_type == "list:paired"
 
 
 def assert_can_match(*items):
