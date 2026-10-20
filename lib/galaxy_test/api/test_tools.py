@@ -740,6 +740,50 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 assert matching[0]["name"].startswith("(not in current history) ")
                 assert "map_over_type" not in matching[0], matching[0]
 
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_carries_other_history_map_over_selection(self):
+        """A collection from another history that only maps over the input
+        is carried with its ``map_over_type`` so the form stays in batch mode."""
+        with self.dataset_populator.test_history() as other_history_id:
+            foreign = self._create_hdca(other_history_id, "list_of_pairs")
+            with self.dataset_populator.test_history() as history_id:
+                f1 = self._build_tool_param(
+                    "collection_paired_test",
+                    history_id,
+                    inputs={
+                        "f1": {
+                            "batch": True,
+                            "values": [{"src": "hdca", "id": foreign["id"], "map_over_type": "paired"}],
+                        }
+                    },
+                )
+                matching = [e for e in f1["options"]["hdca"] if e["id"] == foreign["id"]]
+                assert len(matching) == 1, f1["options"]["hdca"]
+                assert matching[0]["keep"] is True
+                assert matching[0]["map_over_type"] == "paired", matching[0]
+
+    @skip_without_tool("collection_paired_test")
+    def test_build_collection_options_carries_hidden_map_over_selection(self):
+        """A hidden collection selected to map over the input is carried
+        with its ``map_over_type`` though the listing skips hidden ones."""
+        with self.dataset_populator.test_history() as history_id:
+            hidden = self._create_hdca(history_id, "list_of_pairs", hidden=True)
+            f1 = self._build_tool_param(
+                "collection_paired_test",
+                history_id,
+                inputs={
+                    "f1": {
+                        "batch": True,
+                        "values": [{"src": "hdca", "id": hidden["id"], "map_over_type": "paired"}],
+                    }
+                },
+            )
+            matching = [e for e in f1["options"]["hdca"] if e["id"] == hidden["id"]]
+            assert len(matching) == 1, f1["options"]["hdca"]
+            assert matching[0]["keep"] is True
+            assert matching[0]["name"].startswith("(hidden) ")
+            assert matching[0]["map_over_type"] == "paired", matching[0]
+
     @skip_without_tool("cheetah_problem_unbound_var_input")
     def test_legacy_biotools_xref_injection(self):
         url = self._api_url("tools/cheetah_problem_unbound_var_input")

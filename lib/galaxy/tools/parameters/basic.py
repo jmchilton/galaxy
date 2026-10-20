@@ -2955,23 +2955,32 @@ class DataCollectionToolParameter(BaseDataToolParameter):
             )
 
         self._page_hdca_matches(builder, trans, history, dataset_collection_matcher)
-        self._carry_selected_hdca(builder, history, other_values.get(self.name))
+        self._carry_selected_hdca(builder, trans, history, dataset_collection_matcher, other_values.get(self.name))
         builder.sort_by_hid("hdca")
         return d
 
-    def _carry_selected_hdca(self, builder: DataOptionsBuilder, history, value) -> None:
+    def _carry_selected_hdca(
+        self, builder: DataOptionsBuilder, trans, history, dataset_collection_matcher, value
+    ) -> None:
         """Carry a selected HDCA that the visible-only listing cannot return
         (hidden, deleted or from another history) as a ``keep=True`` entry
-        with a state-prefixed name, so a rerun form still pre-selects it."""
+        with a state-prefixed name, so a rerun form still pre-selects it.
+        It is classified like a listed HDCA, so a map-over-only selection
+        keeps its ``map_over_type``."""
         if isinstance(value, HistoryDatasetCollectionAssociation) and (
             value.deleted or not value.visible or value.history != history
         ):
+            subcollection_type = None
+            if matches := self._classify_hdca(value, dataset_collection_matcher, self._history_query(trans)):
+                # A direct match comes first and has no subcollection type; else it maps over.
+                _, _, _, subcollection_type = matches[0]
             state = _carried_state_label(value)
             builder.options["hdca"].append(
                 make_hdca_entry(
                     builder.security,
                     value,
                     f"({state}) {value.name}",
+                    subcollection_type=subcollection_type,
                     keep=True,
                     include_column_definitions=True,
                 )
