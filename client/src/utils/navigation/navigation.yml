@@ -106,6 +106,20 @@ preferences:
       option_card_select: '#g-card-action-select-${object_store_id}'
       confirm_button: '#modal-select-preferred-object-store .g-modal-close-button'
 
+activity_bar:
+  selectors:
+    item: '#activity-${id}'
+    more: '#activity-settings'
+
+  settings:
+    selectors:
+      hide:
+        type: xpath
+        selector: '//button[contains(@class, "activity-settings-item")][.//span[normalize-space(.)="${title}"]]//button[@data-title="Hide in Activity Bar"]'
+      show:
+        type: xpath
+        selector: '//button[contains(@class, "activity-settings-item")][.//span[normalize-space(.)="${title}"]]//button[@data-title="Show in Activity Bar"]'
+
 object_store_instances:
   index:
     selectors:
