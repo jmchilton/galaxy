@@ -11,6 +11,7 @@ import { testDatatypesMapper } from "@/components/Datatypes/test_fixtures";
 import { useDatasetStore } from "@/stores/datasetStore";
 
 import DatasetView from "./DatasetView.vue";
+import DatasetAttributes from "@/components/DatasetInformation/DatasetAttributes.vue";
 
 const { server, http } = useServerMock();
 
@@ -339,6 +340,35 @@ describe("DatasetView", () => {
     });
 
     describe("Background refresh", () => {
+        it("keeps the edit tab mounted while a history update refetches the dataset", async () => {
+            let releaseFetch;
+            const fetchReleased = new Promise((resolve) => {
+                releaseFetch = resolve;
+            });
+            server.use(
+                http.get("/api/datasets/:dataset_id", async ({ response }) => {
+                    await fetchReleased;
+                    return response(200).json({ ...mockDataset, name: "Renamed Dataset" });
+                }),
+            );
+            const wrapper = await mountDatasetView("edit");
+            const attributes = wrapper.findComponent(DatasetAttributes);
+            expect(attributes.exists()).toBe(true);
+
+            // The history watcher stores summary items, which lack ``peek`` and trigger a detailed refetch.
+            const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
+            useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+            await flushPromises();
+            expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
+            expect(wrapper.text()).not.toContain("Loading dataset details");
+            expect(attributes.exists()).toBe(true);
+
+            releaseFetch();
+            await flushPromises();
+            expect(attributes.exists()).toBe(true);
+            expect(wrapper.findComponent(DatasetAttributes).vm).toBe(attributes.vm);
+        });
+
         it("shows a dataset that is already stored when switching to it", async () => {
             const wrapper = await mountDatasetView("preview");
             const otherDataset = { ...mockDataset, id: "other_dataset_id", name: "Other Dataset" };

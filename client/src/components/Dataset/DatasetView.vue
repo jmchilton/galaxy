@@ -100,6 +100,21 @@ watch(
     },
     { immediate: true },
 );
+
+// Only the first load of a dataset blocks the view. Later refetches, e.g. after the history
+// watcher replaces the stored dataset with a summary, must not unmount the open tab.
+// Declared after the datatype watch so its immediate run sees that load already started.
+const loadedDatasetId = ref<string>();
+watch(
+    () => (dataset.value && !isLoading.value ? props.datasetId : undefined),
+    (readyDatasetId) => {
+        if (readyDatasetId) {
+            loadedDatasetId.value = readyDatasetId;
+        }
+    },
+    { immediate: true },
+);
+const showLoading = computed(() => !dataset.value || loadedDatasetId.value !== props.datasetId);
 </script>
 
 <template>
@@ -112,7 +127,7 @@ watch(
             }}
         </p>
     </div>
-    <LoadingSpan v-else-if="isLoading || !dataset" message="Loading dataset details" />
+    <LoadingSpan v-else-if="showLoading" message="Loading dataset details" />
     <div v-else class="dataset-view d-flex flex-column">
         <header v-if="!displayOnly" :key="`dataset-header-${dataset.id}`" class="dataset-header flex-shrink-0">
             <div class="d-flex">
