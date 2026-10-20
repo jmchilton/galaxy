@@ -281,6 +281,9 @@ class YamlToolSource(ToolSource):
         # XML tools spell this ``type_source``; the pydantic UDT model spells it
         # ``collection_type_source``. Accept both so the parser is shape-agnostic.
         collection_type_source = output_dict.get("collection_type_source") or output_dict.get("type_source", None)
+        collection_type_prefix = output_dict.get("collection_type_prefix")
+        if collection_type_prefix is None:
+            collection_type_prefix = output_dict.get("type_prefix")
         structured_like = output_dict.get("structured_like", None)
         inherit_format = False
         inherit_metadata = False
@@ -295,6 +298,7 @@ class YamlToolSource(ToolSource):
         structure = ToolOutputCollectionStructure(
             collection_type=collection_type,
             collection_type_source=collection_type_source,
+            collection_type_prefix=collection_type_prefix,
             structured_like=structured_like,
             dataset_collector_descriptions=dataset_collector_descriptions,
         )

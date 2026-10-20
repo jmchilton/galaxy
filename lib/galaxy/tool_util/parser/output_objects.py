@@ -7,6 +7,7 @@ from typing import (
 
 from typing_extensions import TypedDict
 
+from galaxy.tool_util_models._base import check_collection_type_prefix
 from galaxy.tool_util_models.tool_outputs import (
     ToolOutputBoolean as ToolOutputBooleanModel,
     ToolOutputCollection as ToolOutputCollectionModel,
@@ -389,6 +390,7 @@ class ToolOutputCollection(ToolOutputBase):
             metadata_source=self.metadata_source,
             collection_type=self.structure.collection_type,
             collection_type_source=self.structure.collection_type_source,
+            collection_type_prefix=self.structure.collection_type_prefix,
             collection_type_from_rules=self.structure.collection_type_from_rules,
             structured_like=self.structure.structured_like,
             discover_datasets=discover_datasets,
@@ -423,6 +425,7 @@ def tool_output_is_collection(tool_output: ToolOutputBase) -> "TypeIs[ToolOutput
 class ToolOutputCollectionStructure:
     collection_type: str | None
     collection_type_source: str | None
+    collection_type_prefix: str | None
     collection_type_from_rules: str | None
     structured_like: str | None
     dataset_collector_descriptions: list[DatasetCollectionDescription] | None
@@ -436,15 +439,24 @@ class ToolOutputCollectionStructure:
         structured_like: str | None = None,
         dataset_collector_descriptions: list[DatasetCollectionDescription] | None = None,
         fields=None,
+        collection_type_prefix: str | None = None,
     ) -> None:
         self.collection_type = collection_type
         self.collection_type_source = collection_type_source
+        self.collection_type_prefix = collection_type_prefix
         self.collection_type_from_rules = collection_type_from_rules
         self.structured_like = structured_like
         self.dataset_collector_descriptions = dataset_collector_descriptions or []
         self.fields = fields
         if collection_type and collection_type_source:
             raise ValueError("Cannot set both type and type_source on collection output.")
+        if collection_type_prefix is not None:
+            if not collection_type_source:
+                raise ValueError("Collection output type_prefix requires type_source.")
+            try:
+                check_collection_type_prefix(collection_type_prefix)
+            except ValueError as e:
+                raise ValueError(f"Invalid collection output type_prefix '{collection_type_prefix}': {e}") from e
         if (
             collection_type is None
             and structured_like is None
@@ -483,6 +495,7 @@ class ToolOutputCollectionStructure:
         return {
             "collection_type": self.collection_type,
             "collection_type_source": self.collection_type_source,
+            "collection_type_prefix": self.collection_type_prefix,
             "collection_type_from_rules": self.collection_type_from_rules,
             "structured_like": self.structured_like,
             "discover_datasets": discover_datasets,
@@ -493,6 +506,7 @@ class ToolOutputCollectionStructure:
         structure = ToolOutputCollectionStructure(
             collection_type=as_dict["collection_type"],
             collection_type_source=as_dict["collection_type_source"],
+            collection_type_prefix=as_dict.get("collection_type_prefix"),
             collection_type_from_rules=as_dict["collection_type_from_rules"],
             structured_like=as_dict["structured_like"],
             dataset_collector_descriptions=dataset_collector_descriptions_from_output_dict(as_dict),

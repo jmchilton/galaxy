@@ -498,6 +498,7 @@ class XmlToolSource(ToolSource):
             default_format = collection_elem.get("format", "data")
             collection_type = collection_elem.get("type", None)
             collection_type_source = collection_elem.get("type_source", None)
+            collection_type_prefix = collection_elem.get("type_prefix", None)
             collection_type_from_rules = collection_elem.get("type_from_rules", None)
             structured_like = collection_elem.get("structured_like", None)
             inherit_format = False
@@ -515,6 +516,7 @@ class XmlToolSource(ToolSource):
             structure = ToolOutputCollectionStructure(
                 collection_type=collection_type,
                 collection_type_source=collection_type_source,
+                collection_type_prefix=collection_type_prefix,
                 collection_type_from_rules=collection_type_from_rules,
                 structured_like=structured_like,
                 dataset_collector_descriptions=dataset_collector_descriptions,
@@ -561,6 +563,8 @@ class XmlToolSource(ToolSource):
                 elif output_type == "collection":
                     out_child.attrib["type"] = unicodify(out_child.get("collection_type"))
                     out_child.attrib["type_source"] = unicodify(out_child.get("collection_type_source"))
+                    if (collection_type_prefix := out_child.get("collection_type_prefix")) is not None:
+                        out_child.attrib["type_prefix"] = collection_type_prefix
                     _parse_collection(out_child)
                 else:
                     _parse_expression(out_child, app)

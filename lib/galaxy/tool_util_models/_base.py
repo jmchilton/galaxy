@@ -17,7 +17,7 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _check_collection_type(v: str) -> str:
+def check_collection_type(v: str) -> str:
     if len(v) == 0:
         raise ValueError("Invalid empty collection_type specified.")
     for level in v.split(":"):
@@ -26,4 +26,12 @@ def _check_collection_type(v: str) -> str:
     return v
 
 
-CollectionType = Annotated[str | None, AfterValidator(_check_collection_type)]
+def check_collection_type_prefix(v: str) -> str:
+    check_collection_type(v)
+    for level in v.split(":"):
+        if level in ("sample_sheet", "record"):
+            raise ValueError(f"{level} is not allowed in type_prefix [{v}]")
+    return v
+
+
+CollectionType = Annotated[str | None, AfterValidator(check_collection_type)]

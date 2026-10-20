@@ -14,7 +14,10 @@ from galaxy.tool_util.parser.factory import (
     build_xml_tool_source,
     get_tool_source,
 )
-from galaxy.tool_util.parser.output_objects import from_tool_source
+from galaxy.tool_util.parser.output_objects import (
+    from_tool_source,
+    ToolOutputCollectionStructure,
+)
 from galaxy.tool_util.parser.yaml import YamlToolSource
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
 from galaxy.tool_util_models.tool_outputs import (
@@ -1079,6 +1082,123 @@ def test_yaml_parser_lifts_legacy_structure_wrapper():
     assert output.structure.collection_type == "list"
     assert output.structure.dataset_collector_descriptions
     assert output.structure.dataset_collector_descriptions[0].discover_via == "pattern"
+
+
+TOOL_XML_COLLECTION_TYPE_PREFIX = """
+<tool id="nest_like" name="Nest like" version="1.0.0" profile="26.2">
+    <inputs>
+        <param name="input" type="data_collection" collection_type="list,paired" />
+    </inputs>
+    <outputs>
+        <collection name="output" type_source="input" type_prefix="list" format="txt" />
+    </outputs>
+</tool>
+"""
+
+
+class TestXmlCollectionTypePrefixLoader(BaseLoaderTestCase):
+    source_file_name = "nest_like.xml"
+    source_contents = TOOL_XML_COLLECTION_TYPE_PREFIX
+
+    def test_outputs(self):
+        _, output_collections = self._tool_source.parse_outputs(None)
+        structure = output_collections["output"].structure
+        assert structure.collection_type is None
+        assert structure.collection_type_source == "input"
+        assert structure.collection_type_prefix == "list"
+
+    def test_output_models(self):
+        output_model = assert_output_model_of_type(self._output_models[0], ToolOutputCollection)
+        assert output_model.collection_type_source == "input"
+        assert output_model.collection_type_prefix == "list"
+
+
+def _yaml_prefixed_collection_source(**output_attributes) -> YamlToolSource:
+    return YamlToolSource(
+        {
+            "class": "GalaxyTool",
+            "id": "prefix-tool",
+            "name": "Prefix tool",
+            "version": "0.1",
+            "outputs": [{"name": "outs", "type": "collection", **output_attributes}],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "output_attributes",
+    [
+        {"type_source": "input1", "type_prefix": "list"},
+        {"collection_type_source": "input1", "collection_type_prefix": "list"},
+    ],
+)
+def test_yaml_parser_accepts_collection_type_prefix_spellings(output_attributes):
+    _, output_collections = _yaml_prefixed_collection_source(**output_attributes).parse_outputs(None)
+    structure = output_collections["outs"].structure
+    assert structure.collection_type_source == "input1"
+    assert structure.collection_type_prefix == "list"
+
+
+def test_collection_type_prefix_requires_type_source():
+    xml_source = build_xml_tool_source("""<tool profile="26.2"><outputs>
+        <collection name="output" type="paired" type_prefix="list" />
+    </outputs></tool>""")
+    for source in (xml_source, _yaml_prefixed_collection_source(collection_type="paired", type_prefix="list")):
+        with pytest.raises(ValueError, match="type_source"):
+            source.parse_outputs(None)
+
+
+@pytest.mark.parametrize("prefix", ["", "lists", "list:", "list::paired"])
+def test_collection_type_prefix_must_be_collection_type(prefix):
+    xml_source = build_xml_tool_source(f"""<tool profile="26.2"><outputs>
+        <collection name="output" type_source="input" type_prefix="{prefix}" />
+    </outputs></tool>""")
+    with pytest.raises(ValueError, match="type_prefix"):
+        xml_source.parse_outputs(None)
+
+
+@pytest.mark.parametrize(
+    "prefix, level",
+    [
+        ("sample_sheet", "sample_sheet"),
+        ("list:sample_sheet", "sample_sheet"),
+        ("sample_sheet:paired", "sample_sheet"),
+        ("record", "record"),
+        ("list:record", "record"),
+    ],
+)
+def test_collection_type_prefix_rejects_sample_sheet_and_record(prefix, level):
+    xml_source = build_xml_tool_source(f"""<tool profile="26.2"><outputs>
+        <collection name="output" type_source="input" type_prefix="{prefix}" />
+    </outputs></tool>""")
+    with pytest.raises(ValueError, match=f"{level} is not allowed in type_prefix"):
+        xml_source.parse_outputs(None)
+
+
+def test_yaml_collection_type_prefix_empty_rejected():
+    source = _yaml_prefixed_collection_source(collection_type_source="input1", collection_type_prefix="")
+    with pytest.raises(ValueError, match="type_prefix"):
+        source.parse_outputs(None)
+
+
+def test_collection_type_prefix_structure_dict_roundtrip():
+    structure = ToolOutputCollectionStructure(
+        collection_type=None, collection_type_source="input", collection_type_prefix="list"
+    )
+    as_dict = structure.to_dict()
+    assert as_dict["collection_type_prefix"] == "list"
+    restored = ToolOutputCollectionStructure.from_dict(as_dict)
+    assert restored.collection_type_source == "input"
+    assert restored.collection_type_prefix == "list"
+
+
+def test_collection_structure_from_dict_without_prefix():
+    # Job metadata serialized before collection_type_prefix existed lacks the key.
+    as_dict = ToolOutputCollectionStructure(collection_type=None, collection_type_source="input").to_dict()
+    del as_dict["collection_type_prefix"]
+    restored = ToolOutputCollectionStructure.from_dict(as_dict)
+    assert restored.collection_type_source == "input"
+    assert restored.collection_type_prefix is None
 
 
 class TestEnvironmentVariables(FunctionalTestToolTestCase):
