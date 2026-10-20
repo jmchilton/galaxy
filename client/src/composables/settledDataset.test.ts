@@ -68,6 +68,20 @@ describe("useSettledDataset", () => {
         expect(dataset.value?.name).toBe("First");
     });
 
+    it("stays null when only a summary is stored and its details fail to load", async () => {
+        server.use(
+            http.untyped.get("/api/datasets/:dataset_id", () => {
+                return HttpResponse.json({ err_msg: "Access denied", err_code: 403002 }, { status: 403 });
+            }),
+        );
+        storeSummary(DATASET_ID, "Summary");
+        const { dataset } = useSettled();
+        await flushPromises();
+        expect(useDatasetStore().getDatasetError(DATASET_ID)).not.toBeNull();
+        expect(useDatasetStore().getDataset(DATASET_ID)?.name).toBe("Summary");
+        expect(dataset.value).toBeNull();
+    });
+
     it("holds the loaded dataset while a summary replaces it and refetches", async () => {
         useDatasetStore().storedDatasets = { [DATASET_ID]: detailed(DATASET_ID, "First") };
         const { dataset } = useSettled();
