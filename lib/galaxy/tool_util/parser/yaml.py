@@ -640,7 +640,8 @@ class CanonicalYamlPageSource(YamlPageSource):
 
 
 class CanonicalYamlInputSource(YamlInputSource):
-    """A GalaxyTool/GalaxyUserTool parameter: omitted ``optional`` and Boolean ``value`` mean False.
+    """A GalaxyTool/GalaxyUserTool parameter: omitted ``optional`` and Boolean ``value`` mean False,
+    and repeats and sections nest ``parameters``.
 
     Internally built dicts (e.g. workflow module forms) stay plain :class:`YamlInputSource`.
     """
@@ -656,6 +657,18 @@ class CanonicalYamlInputSource(YamlInputSource):
             return self.input_dict["value"]
         # Only an explicit ``value: null`` yields None.
         return super().parse_boolean_default(False, allow_none=allow_none)
+
+    def parse_input_type(self):
+        if self.input_dict["type"] == "section":
+            return "section"
+        return super().parse_input_type()
+
+    def parse_nested_inputs_source(self):
+        input_type = self.parse_input_type()
+        assert input_type in ("repeat", "section")
+        # Legacy on-disk repeats spell the nested inputs ``blocks``.
+        nested_key = "blocks" if input_type == "repeat" and "parameters" not in self.input_dict else "parameters"
+        return self._page_source(self.input_dict[nested_key])
 
     def _page_source(self, inputs_list) -> CanonicalYamlPageSource:
         return CanonicalYamlPageSource(inputs_list, trusted=self.trusted)
