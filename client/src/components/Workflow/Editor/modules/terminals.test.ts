@@ -973,6 +973,20 @@ describe("canAccept", () => {
             new CollectionTypeDescription("list:paired"),
         );
     });
+    it("resolves collection type source for mapped over input", () => {
+        const filterFailedInput = terminals["filter_failed"]?.["input"] as InputCollectionTerminal;
+        const filterFailedOutput = terminals["filter_failed"]?.["output"] as OutputCollectionTerminal;
+        const listListOut = terminals["list:list input"]?.["output"] as OutputCollectionTerminal;
+        filterFailedInput.connect(listListOut);
+        expect(filterFailedInput.mapOver).toEqual(new CollectionTypeDescription("list"));
+        const rebuiltOutput = rebuildTerminal(filterFailedOutput);
+        expect(rebuiltOutput.collectionType).toStrictEqual(new CollectionTypeDescription("list"));
+        expect(rebuiltOutput.mapOver).toEqual(new CollectionTypeDescription("list"));
+        const listIn = terminals["list collection input"]?.["input1"] as InputCollectionTerminal;
+        expect(listIn.canAccept(rebuiltOutput).canAccept).toBe(true);
+        listIn.connect(rebuiltOutput);
+        expect(listIn.mapOver).toEqual(new CollectionTypeDescription("list"));
+    });
 });
 
 describe("Input terminal", () => {

@@ -1277,6 +1277,43 @@ class TestToolsApi(ApiTestCase, TestsTools):
             )
             assert zipped_hdca["collection_type"] == "list:paired"
 
+    def _nest(self, history_id, inputs, tool_version):
+        return self._run("__NEST__", history_id, inputs, assert_ok=True, tool_version=tool_version)
+
+    def _assert_nested_singletons(self, nested_hdca, inner_collection_type, identifiers):
+        assert [e["element_identifier"] for e in nested_hdca["elements"]] == identifiers
+        for outer_element in nested_hdca["elements"]:
+            inner = outer_element["object"]
+            assert inner["collection_type"] == inner_collection_type
+            assert [e["element_identifier"] for e in inner["elements"]] == [outer_element["element_identifier"]]
+
+    @skip_without_tool("__NEST__")
+    def test_nest_list_1_0_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            hdca_id = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=["a\n", "b\n"], wait=True
+            ).json()["outputs"][0]["id"]
+            response = self._nest(history_id, {"input": {"src": "hdca", "id": hdca_id}}, "1.0.0")
+            nested_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=response["output_collections"][0]["id"]
+            )
+            assert nested_hdca["collection_type"] == "list:list"
+            self._assert_nested_singletons(nested_hdca, "list", ["data0", "data1"])
+            assert all(e["object"]["elements"][0]["element_type"] == "hda" for e in nested_hdca["elements"])
+
+    @skip_without_tool("__NEST__")
+    def test_nest_paired_1_0_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            pair_response = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True)
+            hdca_id = pair_response.json()["outputs"][0]["id"]
+            response = self._nest(history_id, {"input": {"src": "hdca", "id": hdca_id}}, "1.0.0")
+            nested_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=response["output_collections"][0]["id"]
+            )
+            assert nested_hdca["collection_type"] == "list:list"
+            self._assert_nested_singletons(nested_hdca, "list", ["forward", "reverse"])
+            assert all(e["object"]["elements"][0]["element_type"] == "hda" for e in nested_hdca["elements"])
+
     @skip_without_tool("__MERGE_COLLECTION__")
     def test_merge_collection_rejects_structurally_invalid_inputs(self):
         with self.dataset_populator.test_history(require_new=False) as history_id:

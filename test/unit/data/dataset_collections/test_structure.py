@@ -1,5 +1,18 @@
-from galaxy.model.dataset_collections.structure import get_structure
+from dataclasses import dataclass
+
+import pytest
+
+from galaxy.model.dataset_collections.structure import (
+    get_structure,
+    leaf,
+    tool_output_to_structure,
+)
 from galaxy.model.dataset_collections.type_description import CollectionTypeDescriptionFactory
+from galaxy.tool_util.parser.output_objects import (
+    ToolOutput,
+    ToolOutputCollection,
+    ToolOutputCollectionStructure,
+)
 from .test_matching import (
     list_instance,
     list_of_lists_instance,
@@ -9,6 +22,14 @@ from .test_matching import (
 )
 
 factory = CollectionTypeDescriptionFactory(None)
+
+
+@dataclass
+class CollectionsManager:
+    collection_type_descriptions: CollectionTypeDescriptionFactory
+
+
+collections_manager = CollectionsManager(factory)
 
 
 def test_get_structure_simple():
@@ -101,3 +122,71 @@ def test_get_structure_list_of_lists_over_single_datasests():
     assert len(tree.children) == 2
     assert tree.children[0][0] == "outer1"
     assert not tree.children[0][1].is_leaf
+
+
+def _collection_output(**structure_kwds):
+    return ToolOutputCollection("output", structure=ToolOutputCollectionStructure(**structure_kwds))
+
+
+def _sliced_structures(**structures):
+    return structures.__getitem__
+
+
+def test_tool_output_to_structure_dataset_output():
+    tree = tool_output_to_structure(_sliced_structures(), ToolOutput("output"), collections_manager)
+    assert tree is leaf
+
+
+def test_tool_output_to_structure_fixed_collection_type():
+    tool_output = _collection_output(collection_type="list:paired")
+    tree = tool_output_to_structure(_sliced_structures(), tool_output, collections_manager)
+    assert not tree.children_known
+    assert tree.collection_type_description.collection_type == "list:paired"
+
+
+@pytest.mark.parametrize(
+    "instance, collection_type",
+    [
+        (pair_instance, "paired"),
+        (list_paired_instance, "list:paired"),
+        (lambda: list_instance("sample_sheet"), "sample_sheet"),
+    ],
+)
+def test_tool_output_to_structure_type_source(instance, collection_type):
+    sliced = get_structure(instance().collection, factory.for_collection_type(collection_type))
+    tool_output = _collection_output(collection_type=None, collection_type_source="input")
+    tree = tool_output_to_structure(_sliced_structures(input=sliced), tool_output, collections_manager)
+    assert not tree.children_known
+    assert tree.collection_type_description.collection_type == collection_type
+
+
+def test_tool_output_to_structure_type_source_multiplied_by_mapping_structure():
+    list_paired_description = factory.for_collection_type("list:paired")
+    mapping_structure = get_structure(list_paired_instance().collection, list_paired_description, "paired")
+    sliced_pair = get_structure(pair_instance().collection, factory.for_collection_type("paired"))
+    tool_output = _collection_output(collection_type=None, collection_type_source="input")
+    tree = tool_output_to_structure(_sliced_structures(input=sliced_pair), tool_output, collections_manager)
+    mapped = mapping_structure.multiply(tree)
+    assert mapped.collection_type_description.collection_type == "list:paired"
+    assert [identifier for identifier, _ in mapped.children] == ["data1", "data2", "data3"]
+
+
+def test_tool_output_to_structure_structured_like():
+    sliced_list = get_structure(list_instance().collection, factory.for_collection_type("list"))
+    tool_output = _collection_output(collection_type=None, structured_like="input")
+    tree = tool_output_to_structure(_sliced_structures(input=sliced_list), tool_output, collections_manager)
+    assert tree is sliced_list
+
+
+def test_tool_output_to_structure_type_overrides_structured_like():
+    sliced_list = get_structure(list_instance().collection, factory.for_collection_type("list"))
+    tool_output = _collection_output(collection_type="paired", structured_like="input")
+    tree = tool_output_to_structure(_sliced_structures(input=sliced_list), tool_output, collections_manager)
+    assert not tree.children_known
+    assert tree.collection_type_description.collection_type == "paired"
+
+
+def test_tool_output_to_structure_without_type_fails():
+    tool_output = _collection_output(collection_type=None, collection_type_from_rules="rules")
+    with pytest.raises(Exception, match="Failed to determine collection type"):
+        tool_output_to_structure(_sliced_structures(), tool_output, collections_manager)
