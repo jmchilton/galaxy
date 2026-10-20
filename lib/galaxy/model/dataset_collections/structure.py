@@ -189,7 +189,9 @@ class Tree(BaseTree):
         return f"Tree[collection_type={self.collection_type_description},children=({','.join(f'{identifier_and_element[0]}={identifier_and_element[1]}' for identifier_and_element in self.children)})]"
 
 
-def tool_output_to_structure(get_sliced_input_collection_structure, tool_output, collections_manager):
+def tool_output_to_structure(
+    get_sliced_input_collection_structure, tool_output, collections_manager, collection_type: Optional[str] = None
+):
     if not tool_output.collection:
         tree = leaf
     else:
@@ -197,7 +199,7 @@ def tool_output_to_structure(get_sliced_input_collection_structure, tool_output,
         # Okay this is ToolCollectionOutputStructure not a Structure - different
         # concepts of structure.
         structured_like = tool_output.structure.structured_like
-        collection_type = tool_output.structure.collection_type
+        collection_type = collection_type or tool_output.structure.collection_type
         if structured_like:
             tree = get_sliced_input_collection_structure(structured_like)
             if collection_type and tree.collection_type_description.collection_type != collection_type:

@@ -843,6 +843,37 @@ class TestToolsApi(ApiTestCase, TestsTools):
             offered_ids = {option["id"] for option in build["inputs"][0]["options"]["hdca"]}
             assert {pair_id, list_of_pairs_id} <= offered_ids
 
+    @skip_without_tool("__NEST__")
+    def test_nest_map_over_list_of_lists_of_pairs(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            list_of_pairs_ids = []
+            for _ in range(2):
+                fetch_response = self.dataset_collection_populator.create_list_of_pairs_in_history(history_id)
+                hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
+                list_of_pairs_ids.append(hdca["id"])
+            hdca_id = self.dataset_collection_populator.create_nested_collection(
+                history_id, collection_type="list:list:paired", collection=list_of_pairs_ids
+            ).json()["id"]
+            inputs = {
+                "input": {"batch": True, "values": [{"src": "hdca", "map_over_type": "list:paired", "id": hdca_id}]}
+            }
+            response = self._run("__NEST__", history_id, inputs, assert_ok=True)
+            implicit_collections = response["implicit_collections"]
+            assert len(implicit_collections) == 1
+            mapped_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=implicit_collections[0]["id"]
+            )
+            assert mapped_hdca["collection_type"] == "list:list:list:paired"
+            assert [e["element_identifier"] for e in mapped_hdca["elements"]] == ["test0", "test1"]
+            for outer_element in mapped_hdca["elements"]:
+                nested = outer_element["object"]
+                assert nested["collection_type"] == "list:list:paired"
+                assert [e["element_identifier"] for e in nested["elements"]] == ["test0"]
+                inner = nested["elements"][0]["object"]
+                assert inner["collection_type"] == "list:paired"
+                assert [e["element_identifier"] for e in inner["elements"]] == ["test0"]
+                assert inner["elements"][0]["object"]["collection_type"] == "paired"
+
     @skip_without_tool("__MERGE_COLLECTION__")
     def test_merge_collection_rejects_structurally_invalid_inputs(self):
         with self.dataset_populator.test_history(require_new=False) as history_id:

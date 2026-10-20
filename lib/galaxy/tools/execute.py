@@ -612,7 +612,15 @@ class ExecutionTracker:
     def _mapped_output_structure(self, trans, tool_output):
         collections_manager = trans.app.dataset_collection_manager
         output_structure = tool_output_to_structure(
-            self.sliced_input_collection_structure, tool_output, collections_manager
+            self.sliced_input_collection_structure,
+            tool_output,
+            collections_manager,
+            collection_type=self.tool.output_collection_type(
+                tool_output.name,
+                lambda input_name: self.sliced_input_collection_structure(
+                    input_name
+                ).collection_type_description.collection_type,
+            ),
         )
         # self.collection_info.structure - the mapping structure with default_identifier_source
         # used to determine the identifiers to use.

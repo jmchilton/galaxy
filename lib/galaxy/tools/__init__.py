@@ -11,6 +11,7 @@ import re
 import tarfile
 import tempfile
 from collections.abc import (
+    Callable,
     MutableMapping,
     Sequence,
 )
@@ -62,6 +63,7 @@ from galaxy.model import (
     ToolRequest,
 )
 from galaxy.model.dataset_collections.matching import MatchingCollections
+from galaxy.model.dataset_collections.structure import get_collection
 from galaxy.model.dataset_collections.types.paired_or_unpaired import SINGLETON_IDENTIFIER
 from galaxy.model.dataset_collections.types.sample_sheet_workbook import _sample_sheet_to_list_collection_type
 from galaxy.objectstore import ObjectStorePopulator
@@ -3239,6 +3241,12 @@ class Tool(UsesDictVisibleKeys, ToolParameterBundle):
     def get_default_history_by_trans(self, trans, create=False):
         return trans.get_history(create=create)
 
+    def output_collection_type(
+        self, output_name: str, get_input_collection_type: Callable[[str], str]
+    ) -> Optional[str]:
+        """Return an input-dependent collection type for an output, overriding its declared type."""
+        return None
+
     @classmethod
     def get_externally_referenced_paths(self, path):
         """Return relative paths to externally referenced files by the tool
@@ -4415,14 +4423,19 @@ class NestTool(DatabaseOperationTool):
     require_terminal_states = False
     require_dataset_ok = False
 
+    def output_collection_type(
+        self, output_name: str, get_input_collection_type: Callable[[str], str]
+    ) -> Optional[str]:
+        return nest_collection_type(get_input_collection_type("input"))
+
     def produce_outputs(self, trans, out_data, output_collections, incoming, history, **kwds):
-        hdca = incoming["input"]
+        collection = get_collection(incoming["input"])
         new_elements = {}
         copied_datasets = []
-        collection_type = nest_collection_type(hdca.collection.collection_type)
+        collection_type = nest_collection_type(collection.collection_type)
         inner_collection_type = collection_type.split(":", 1)[1]
 
-        for dce in hdca.collection.elements:
+        for dce in collection.elements:
             element_identifier = dce.element_identifier
             element_object = dce.element_object
 
