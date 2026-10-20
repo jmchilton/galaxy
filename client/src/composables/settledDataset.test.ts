@@ -1,0 +1,124 @@
+import { createTestingPinia } from "@pinia/testing";
+import flushPromises from "flush-promises";
+import { setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { effectScope, ref } from "vue";
+
+import type { HDADetailed, HistoryContentItemBase } from "@/api";
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import { useDatasetStore } from "@/stores/datasetStore";
+
+import { useSettledDataset } from "./settledDataset";
+
+const { server, http } = useServerMock();
+
+const DATASET_ID = "dataset_id";
+const OTHER_ID = "other_id";
+
+function detailed(id: string, name: string) {
+    return { id, name, state: "ok", file_ext: "txt", peek: "peek" } as unknown as HDADetailed;
+}
+
+function storeSummary(id: string, name: string) {
+    const summary = { id, name, state: "ok", history_content_type: "dataset" };
+    useDatasetStore().saveDatasets([summary as unknown as HistoryContentItemBase]);
+}
+
+function heldFetch(dataset: HDADetailed) {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    server.use(
+        http.untyped.get("/api/datasets/:dataset_id", async () => {
+            await released;
+            return HttpResponse.json(dataset);
+        }),
+    );
+    return release;
+}
+
+function useSettled(datasetId = ref(DATASET_ID), extraLoading = ref(false)) {
+    const scope = effectScope();
+    const dataset = scope.run(() => useSettledDataset(datasetId, extraLoading))!;
+    return { dataset, datasetId, extraLoading };
+}
+
+describe("useSettledDataset", () => {
+    beforeEach(() => {
+        setActivePinia(createTestingPinia({ createSpy: vi.fn, stubActions: false }));
+    });
+
+    it("is null until the dataset first loads", async () => {
+        const release = heldFetch(detailed(DATASET_ID, "First"));
+        const { dataset } = useSettled();
+        await flushPromises();
+        expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
+        expect(dataset.value).toBeNull();
+
+        release();
+        await flushPromises();
+        expect(dataset.value?.name).toBe("First");
+    });
+
+    it("holds the loaded dataset while a summary replaces it and refetches", async () => {
+        useDatasetStore().storedDatasets = { [DATASET_ID]: detailed(DATASET_ID, "First") };
+        const { dataset } = useSettled();
+        expect(dataset.value?.name).toBe("First");
+
+        const release = heldFetch(detailed(DATASET_ID, "Renamed"));
+        storeSummary(DATASET_ID, "Renamed");
+        await flushPromises();
+        expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
+        expect(dataset.value?.name).toBe("First");
+        expect(dataset.value?.peek).toBe("peek");
+
+        release();
+        await flushPromises();
+        expect(dataset.value?.name).toBe("Renamed");
+    });
+
+    it("keeps the loaded dataset when a refetch fails", async () => {
+        useDatasetStore().storedDatasets = { [DATASET_ID]: detailed(DATASET_ID, "First") };
+        const { dataset } = useSettled();
+        server.use(
+            http.untyped.get("/api/datasets/:dataset_id", () => {
+                return HttpResponse.json({ err_msg: "Access denied", err_code: 403002 }, { status: 403 });
+            }),
+        );
+        storeSummary(DATASET_ID, "Renamed");
+        await flushPromises();
+        expect(useDatasetStore().getDatasetError(DATASET_ID)).not.toBeNull();
+        expect(dataset.value?.name).toBe("First");
+        expect(dataset.value?.peek).toBe("peek");
+    });
+
+    it("waits for extra loading before the first load only", async () => {
+        useDatasetStore().storedDatasets = { [DATASET_ID]: detailed(DATASET_ID, "First") };
+        const { dataset, extraLoading } = useSettled(ref(DATASET_ID), ref(true));
+        expect(dataset.value).toBeNull();
+
+        extraLoading.value = false;
+        await flushPromises();
+        expect(dataset.value?.name).toBe("First");
+
+        extraLoading.value = true;
+        await flushPromises();
+        expect(dataset.value?.name).toBe("First");
+    });
+
+    it("does not show the previous dataset after switching ids", async () => {
+        useDatasetStore().storedDatasets = { [DATASET_ID]: detailed(DATASET_ID, "First") };
+        const { dataset, datasetId } = useSettled();
+        expect(dataset.value?.name).toBe("First");
+
+        const release = heldFetch(detailed(OTHER_ID, "Other"));
+        datasetId.value = OTHER_ID;
+        await flushPromises();
+        expect(dataset.value).toBeNull();
+
+        release();
+        await flushPromises();
+        expect(dataset.value?.name).toBe("Other");
+    });
+});
