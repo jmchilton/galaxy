@@ -130,6 +130,20 @@ custom_builds:
       type: xpath
       selector: '//table[contains(@class, "g-table")]//tr[td[1][normalize-space(.)="${name}"]]//button[@data-title="Delete build"]'
 
+activity_bar:
+  selectors:
+    item: '#activity-${id}'
+    more: '#activity-settings'
+
+  settings:
+    selectors:
+      hide:
+        type: xpath
+        selector: '//button[contains(@class, "activity-settings-item")][.//span[normalize-space(.)="${title}"]]//button[@data-title="Hide in Activity Bar"]'
+      show:
+        type: xpath
+        selector: '//button[contains(@class, "activity-settings-item")][.//span[normalize-space(.)="${title}"]]//button[@data-title="Show in Activity Bar"]'
+
 object_store_instances:
   index:
     selectors:
