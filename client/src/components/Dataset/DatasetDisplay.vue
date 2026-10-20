@@ -5,7 +5,7 @@ import { BAlert } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 
-import { useDatasetStore } from "@/stores/datasetStore";
+import { useSettledDataset } from "@/composables/settledDataset";
 import { useUserStore } from "@/stores/userStore";
 import STATES from "@/utils/datasetStates";
 import { withPrefix } from "@/utils/redirect";
@@ -22,8 +22,6 @@ interface Props {
     isBinary: boolean;
 }
 
-const { getDataset, isLoadingDataset } = useDatasetStore();
-
 const emit = defineEmits(["load"]);
 
 const props = defineProps<Props>();
@@ -36,10 +34,9 @@ const sanitizedToolId = ref<string | null>(null);
 
 const { isAdmin } = storeToRefs(useUserStore());
 
-const dataset = computed(() => getDataset(props.datasetId));
+const dataset = useSettledDataset(() => props.datasetId);
 const datasetUrl = computed(() => `/datasets/${props.datasetId}/display/`);
 const downloadUrl = computed(() => withPrefix(`${datasetUrl.value}?to_ext=${dataset.value?.file_ext}`));
-const isLoading = computed(() => isLoadingDataset(props.datasetId));
 const previewUrl = computed(() => `${datasetUrl.value}?preview=True`);
 
 const sanitizedMessage = computed(() => {
@@ -67,13 +64,24 @@ async function checkPreview() {
 }
 
 watch(() => props.datasetId, checkPreview, { immediate: true });
+
+// The preview stays mounted while the dataset refetches, so recheck it when the dataset changes,
+// e.g. once a pending dataset finishes. The first load is covered by the datasetId watch.
+watch(
+    () => dataset.value?.update_time,
+    (updateTime, previousUpdateTime) => {
+        if (previousUpdateTime) {
+            checkPreview();
+        }
+    },
+);
 </script>
 
 <template>
     <BAlert v-if="errorMessage" variant="danger" show>
         {{ errorMessage }}
     </BAlert>
-    <LoadingSpan v-else-if="isLoading || !dataset" message="Loading dataset content" />
+    <LoadingSpan v-else-if="!dataset" message="Loading dataset content" />
     <BAlert v-else-if="STATES.PENDING_STATES.includes(dataset.state)" show variant="warning">
         <FontAwesomeIcon :icon="faSpinner" spin />
         <span>Waiting for dataset to become available. Please check the history panel for details.</span>

@@ -5,7 +5,7 @@ import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 
-import type { HDADetailed } from "@/api";
+import type { HDADetailed, HistoryContentItemBase } from "@/api";
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { useDatasetStore } from "@/stores/datasetStore";
 
@@ -123,5 +123,46 @@ describe("DatasetDisplay", () => {
         await flushPromises();
         expect(wrapper.find(".dataset-display").exists()).toBe(true);
         expect(useDatasetStore().getDataset(DATASET_ID)?.name).toBe("Test Dataset");
+    });
+
+    it("keeps the preview frame while a history update refetches the dataset", async () => {
+        usePreviewHeaders();
+        const wrapper = await mountDatasetDisplay();
+        const frame = wrapper.find("iframe").element;
+
+        let releaseFetch: () => void = () => {};
+        const fetchReleased = new Promise<void>((resolve) => {
+            releaseFetch = resolve;
+        });
+        server.use(
+            http.untyped.get("/api/datasets/:dataset_id", async () => {
+                await fetchReleased;
+                return HttpResponse.json({ ...okDataset, name: "Renamed Dataset" });
+            }),
+        );
+        // The history watcher stores summary items, which lack ``peek`` and trigger a detailed refetch.
+        const summary = { id: DATASET_ID, name: "Renamed Dataset", state: "ok", history_content_type: "dataset" };
+        useDatasetStore().saveDatasets([summary as unknown as HistoryContentItemBase]);
+        await flushPromises();
+        expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
+        expect(wrapper.text()).not.toContain("Loading dataset content");
+        expect(wrapper.find("iframe").element).toBe(frame);
+
+        releaseFetch();
+        await flushPromises();
+        expect(wrapper.find("iframe").element).toBe(frame);
+    });
+
+    it("rechecks the preview once a pending dataset finishes", async () => {
+        usePreviewHeaders();
+        const wrapper = await mountDatasetDisplay({ ...okDataset, state: "running" });
+        expect(wrapper.text()).toContain("Waiting for dataset to become available.");
+
+        usePreviewHeaders({ "x-content-chunked": "true" });
+        const finished = { ...okDataset, update_time: "2026-01-01T00:05:00", history_content_type: "dataset" };
+        useDatasetStore().saveDatasets([finished as unknown as HistoryContentItemBase]);
+        await flushPromises();
+        expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
+        expect(wrapper.find("iframe").exists()).toBe(false);
     });
 });
