@@ -206,7 +206,8 @@ class YamlToolSource(ToolSource):
 
     def parse_input_pages(self) -> PagesSource:
         # All YAML tools have only one page (feature is deprecated)
-        page_source = YamlPageSource(self.root_dict.get("inputs", {}), trusted=self._trusted)
+        page_source_class = CanonicalYamlPageSource if self.is_yaml_origin() else YamlPageSource
+        page_source = page_source_class(self.root_dict.get("inputs", {}), trusted=self._trusted)
         return PagesSource([page_source], "cwl")
 
     def parse_strict_shell(self):
@@ -636,6 +637,34 @@ class YamlInputSource(InputSource):
         input_dict = self.input_dict
         default_def = input_dict.get("default", None)
         return default_def
+
+
+class CanonicalYamlPageSource(YamlPageSource):
+    def _input_source(self, input_dict) -> "CanonicalYamlInputSource":
+        return CanonicalYamlInputSource(input_dict, trusted=self.trusted)
+
+
+class CanonicalYamlInputSource(YamlInputSource):
+    """A GalaxyTool/GalaxyUserTool parameter: omitted ``optional`` and Boolean ``value`` mean False.
+
+    Internally built dicts (e.g. workflow module forms) stay plain :class:`YamlInputSource`.
+    """
+
+    def parse_optional(self, default=None):
+        return self.get_bool("optional", False)
+
+    def parse_text_optional(self) -> Tuple[bool, bool]:
+        return self.parse_optional(), False
+
+    def parse_boolean_default(self, default: Optional[bool], *, allow_none: bool = True) -> Optional[bool]:
+        # Only an explicit ``value: null`` yields None.
+        return super().parse_boolean_default(False, allow_none=allow_none)
+
+    def _page_source(self, inputs_list) -> CanonicalYamlPageSource:
+        return CanonicalYamlPageSource(inputs_list, trusted=self.trusted)
+
+    def _input_source(self, input_dict) -> "CanonicalYamlInputSource":
+        return CanonicalYamlInputSource(input_dict, trusted=self.trusted)
 
 
 def _ensure_has(dict, defaults):
