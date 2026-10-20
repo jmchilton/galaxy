@@ -147,18 +147,24 @@ onDatasetUpdated(() => props.datasetId, fetchForms);
                     </div>
                 </BTab>
 
+                <!-- Keep the tab while metadata is set, so the open tab does not move when the forms reload. -->
                 <BTab
-                    v-if="
-                        (!datasetAttributes['conversion_disable'] || !datasetAttributes['datatype_disable']) &&
-                        !datasetAttributes['metadata_disable']
-                    "
+                    v-if="!datasetAttributes['conversion_disable'] || !datasetAttributes['datatype_disable']"
                     title-link-class="dataset-edit-datatype-tab">
                     <template v-slot:title>
                         <FontAwesomeIcon :icon="faDatabase" class="mr-1" />
                         {{ localize("Datatypes") }}
                     </template>
 
-                    <div v-if="!datasetAttributes['datatype_disable']" class="ui-portlet-section">
+                    <BAlert
+                        v-if="datasetAttributes['metadata_disable']"
+                        class="dataset-attributes-metadata-running"
+                        variant="info"
+                        show>
+                        {{ localize("Datatypes cannot be changed while the dataset's metadata is being set.") }}
+                    </BAlert>
+
+                    <div v-else-if="!datasetAttributes['datatype_disable']" class="ui-portlet-section">
                         <div class="portlet-header">
                             <div class="portlet-title">
                                 <FontAwesomeIcon :icon="faDatabase" class="portlet-title-icon fa-fw mr-1" />
@@ -193,7 +199,9 @@ onDatasetUpdated(() => props.datasetId, fetchForms);
                         </div>
                     </div>
 
-                    <div v-if="!datasetAttributes['conversion_disable']" class="ui-portlet-section">
+                    <div
+                        v-if="!datasetAttributes['conversion_disable'] && !datasetAttributes['metadata_disable']"
+                        class="ui-portlet-section">
                         <div class="portlet-header">
                             <div class="portlet-title">
                                 <FontAwesomeIcon :icon="faCog" class="portlet-title-icon fa-fw mr-1" />

@@ -162,6 +162,32 @@ describe("DatasetAttributes", () => {
         expect(submitted).toHaveProperty("attribute_chromCol", "1");
     });
 
+    it("stays on the Datatypes tab while a datatype change sets metadata", async () => {
+        const wrapper = await mountDatasetAttributes();
+        await wrapper.find(".dataset-edit-datatype-tab").trigger("click");
+        await flushPromises();
+
+        server.use(
+            http.untyped.get("/dataset/get_edit", () => {
+                return HttpResponse.json({
+                    attribute_inputs: [{ name: "attribute_text", type: "text" }],
+                    conversion_inputs: [{ name: "conversion_text", type: "text" }],
+                    datatype_inputs: [{ name: "datatype_text", type: "text" }],
+                    permission_inputs: [{ name: "permission_text", type: "text" }],
+                    metadata_disable: true,
+                });
+            }),
+        );
+        await wrapper.find("#dataset-attributes-autodetect-datatype").trigger("click");
+        await flushPromises();
+
+        expect(wrapper.find(".nav-link.active").text()).toContain("Datatypes");
+        expect(wrapper.find(".dataset-attributes-metadata-running").exists()).toBe(true);
+        expect(wrapper.findAll("#datatype_text").length).toBe(0);
+        expect(wrapper.findAll("#conversion_text").length).toBe(0);
+        expect(wrapper.find(".dataset-attributes-alert").text()).toBe("success");
+    });
+
     it("reloads the forms when the stored dataset is updated", async () => {
         const wrapper = await mountDatasetAttributes();
         storeDataset("2026-01-01T00:00:00");
