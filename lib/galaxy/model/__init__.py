@@ -9409,6 +9409,20 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
         return self.dynamic_tool and self.dynamic_tool.uuid
 
     @property
+    def preferred_output(self) -> str | None:
+        config = self.config
+        return config.get("preferred_output") if isinstance(config, dict) else None
+
+    @preferred_output.setter
+    def preferred_output(self, value: str | None):
+        config = dict(self.config) if isinstance(self.config, dict) else {}
+        if value:
+            config["preferred_output"] = value
+        else:
+            config.pop("preferred_output", None)
+        self.config = config or None
+
+    @property
     def user_defined_tool(self) -> Optional["DynamicTool"]:
         dynamic_tool = self.dynamic_tool
         return dynamic_tool if dynamic_tool is not None and not dynamic_tool.public else None

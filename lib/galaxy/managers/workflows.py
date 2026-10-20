@@ -1616,6 +1616,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 "post_job_actions": module.get_post_job_actions({}),
                 "uuid": str(step.uuid) if step.uuid else None,
                 "when": step.when_expression,
+                "preferred_output": step.preferred_output,
                 "workflow_outputs": [],
             }
             if tooltip:
@@ -1885,6 +1886,8 @@ class WorkflowContentsManager(UsesAnnotations):
                 "annotation": annotation_str,
                 "when": step.when_expression,
             }
+            if step.preferred_output:
+                step_dict["preferred_output"] = step.preferred_output
             if step.type == "tool":
                 step_dict["tool_id"] = content_id if allow_upgrade else step.effective_tool_id
                 step_dict["tool_uuid"] = str(step.tool_uuid) if step.tool_uuid else None
@@ -2293,6 +2296,8 @@ class WorkflowContentsManager(UsesAnnotations):
 
         if "when" in step_dict:
             step.when_expression = step_dict["when"]
+        if "preferred_output" in step_dict:
+            step.preferred_output = step_dict["preferred_output"]
         if dry_run:
             # expunging doesn't cascade to the step's children, which may have followed it
             # into the session (e.g. a subworkflow step's workflow outputs)

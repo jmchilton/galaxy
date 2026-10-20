@@ -12,7 +12,7 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { until } from "@vueuse/core";
 import { BCard, BCardBody, BCardHeader } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
 
 import type { StepJobSummary, WorkflowInvocationElementView } from "@/api/invocations";
 import type { StoredWorkflowDetailed } from "@/api/workflows";
@@ -111,6 +111,8 @@ const stateStore = useWorkflowStateStore(storeId.value);
 
 const embedOutputs = ref(false);
 const nudgeDirection = ref<NudgeDirection>("right");
+// steps with a preferred output render as that output while outputs are embedded
+provide("embedInvocationOutputs", embedOutputs);
 const { embedded, maxDisplacement } = useEmbeddedOutputs(storeId.value, steps, embedOutputs, nudgeDirection);
 const { activeNodeId } = storeToRefs(stateStore);
 
@@ -385,6 +387,10 @@ function toggleDetailedView() {
     &.embed-outputs:deep(.workflow-node) {
         width: 9rem;
         font-size: 0.75rem;
+    }
+
+    &.embed-outputs:deep(.workflow-node.node-preferred-output-host) {
+        width: 22.5rem;
     }
 
     &:deep(.workflow-overview),

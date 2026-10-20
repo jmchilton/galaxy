@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faSquare } from "@fortawesome/free-regular-svg-icons";
+import { faSquare, faStar as faStarRegular } from "@fortawesome/free-regular-svg-icons";
 import {
     faCheckSquare,
     faChevronCircleRight,
@@ -7,6 +7,7 @@ import {
     faEyeSlash,
     faMinus,
     faPlus,
+    faStar,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import type { UseElementBoundingReturn, UseScrollReturn } from "@vueuse/core";
@@ -187,6 +188,24 @@ function onToggleActive() {
         step.id,
         { workflow_outputs: step.workflow_outputs },
         { workflow_outputs: stepWorkflowOutputs },
+    );
+    undoRedoStore.applyAction(action);
+}
+
+const isPreferred = computed(() => stepStore.getStep(stepId.value)?.preferred_output === output.value.name);
+
+function onTogglePreferred() {
+    if (props.readonly) {
+        return;
+    }
+    const step = stepStore.getStep(stepId.value);
+    assertDefined(step);
+    const action = new UpdateStepAction(
+        stepStore,
+        stateStore,
+        step.id,
+        { preferred_output: step.preferred_output ?? null },
+        { preferred_output: isPreferred.value ? null : output.value.name },
     );
     undoRedoStore.applyAction(action);
 }
@@ -376,6 +395,16 @@ const removeTagsAction = computed(() => {
                     @click="onToggleActive">
                     <FontAwesomeIcon v-if="workflowOutput" fixed-width :icon="faCheckSquare" />
                     <FontAwesomeIcon v-else fixed-width :icon="faSquare" />
+                </button>
+                <button
+                    v-if="showCalloutVisible"
+                    v-g-tooltip
+                    class="callout-terminal inline-icon-button mark-terminal"
+                    :class="{ 'mark-terminal-active': isPreferred, 'readonly-button': readonly }"
+                    title="Preferred output: in invocation graphs this step is displayed as this output."
+                    data-description="toggle preferred output"
+                    @click="onTogglePreferred">
+                    <FontAwesomeIcon fixed-width :icon="isPreferred ? faStar : faStarRegular" />
                 </button>
                 <button
                     v-if="showCalloutVisible"

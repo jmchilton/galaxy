@@ -15,6 +15,10 @@ export interface LayoutRect {
 
 export interface LayoutNode extends LayoutRect {
     id: number;
+    /** Size before the node grew (e.g. a step rendered as its preferred output); used to tell
+     * overlaps the author made from overlaps the growth caused */
+    baseWidth?: number;
+    baseHeight?: number;
 }
 
 export interface EmbeddedNodeRequest {
@@ -84,9 +88,14 @@ export function layoutEmbeddedOutputs(
 
     // Pre-existing overlaps are the author's choice; don't "fix" them.
     const ignoredPairs = new Set<string>();
-    for (let i = 0; i < items.length; i++) {
-        for (let j = i + 1; j < items.length; j++) {
-            if (overlaps(items[i]!, items[j]!, 0)) {
+    const baseRects = nodes.map((node) => ({
+        ...node,
+        width: node.baseWidth ?? node.width,
+        height: node.baseHeight ?? node.height,
+    }));
+    for (let i = 0; i < baseRects.length; i++) {
+        for (let j = i + 1; j < baseRects.length; j++) {
+            if (overlaps(baseRects[i]!, baseRects[j]!, 0)) {
                 ignoredPairs.add(pairKey(items[i]!, items[j]!));
             }
         }

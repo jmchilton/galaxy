@@ -418,6 +418,11 @@ export function useInvocationGraph(
     };
 }
 
+/** The output a step is displayed as, if the step has one and it has been produced */
+export function preferredOutputItem(step: GraphStep): InvocationOutputItem | undefined {
+    return step.preferred_output ? step.outputItems?.[step.preferred_output] : undefined;
+}
+
 export function getHeaderClass(state: GraphStepState | undefined) {
     return {
         "node-header-invocation": true,

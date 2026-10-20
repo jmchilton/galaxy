@@ -94,6 +94,17 @@ describe("layoutEmbeddedOutputs", () => {
         expect(result.movedNodeIds).toEqual([]);
     });
 
+    it("makes room for a step that grew into its neighbours", () => {
+        const nodes = [
+            { ...node(0, 0, 0, 400, 300), baseWidth: 200, baseHeight: 100 },
+            node(1, 250, 0),
+            node(2, 250, 400),
+        ];
+        const result = layoutEmbeddedOutputs(nodes, [], [], { gap: GAP });
+        expect(result.nodes[1]!.x).toBe(420);
+        expect(result.nodes[2]).toMatchObject({ x: 250, y: 400 });
+    });
+
     it("nudges a real editor layout locally", () => {
         const nodes = Object.values(
             parameterSteps as Record<string, { id: number; position: { left: number; top: number } }>,

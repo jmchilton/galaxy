@@ -8,11 +8,13 @@ import {
     type LayoutRect,
     type NudgeDirection,
 } from "@/components/Workflow/Editor/modules/embeddedOutputLayout";
-import type { GraphStep, InvocationOutputItem } from "@/composables/useInvocationGraph";
+import { type GraphStep, type InvocationOutputItem, preferredOutputItem } from "@/composables/useInvocationGraph";
 import { useWorkflowStores } from "@/composables/workflowStores";
 
 export const EMBEDDED_OUTPUT_WIDTH = 360;
 export const EMBEDDED_OUTPUT_HEIGHT = 260;
+/** Rough size of a shrunk step; a step shown as its preferred output grew from this */
+const SHRUNK_STEP_SIZE = { width: 144, height: 60 };
 
 export interface EmbeddedOutput {
     key: string;
@@ -30,7 +32,8 @@ function collectRequests(steps: Record<string, GraphStep>) {
     for (const step of Object.values(steps)) {
         for (const workflowOutput of step.workflow_outputs ?? []) {
             const item = step.outputItems?.[workflowOutput.output_name];
-            if (!workflowOutput.label || !item) {
+            // the step itself already stands in for its preferred output
+            if (!workflowOutput.label || !item || workflowOutput.output_name === step.preferred_output) {
                 continue;
             }
             requests.push({
@@ -75,9 +78,12 @@ export function useEmbeddedOutputs(
     const maxDisplacement = ref(0);
 
     const requestKeys = computed(() =>
-        collectRequests(steps.value)
-            .map((request) => request.key)
-            .join(","),
+        [
+            ...collectRequests(steps.value).map((request) => request.key),
+            ...Object.values(steps.value)
+                .filter((step) => preferredOutputItem(step))
+                .map((step) => `preferred-${step.id}`),
+        ].join(","),
     );
 
     function setPosition(id: number, position: StepPosition) {
@@ -111,12 +117,15 @@ export function useEmbeddedOutputs(
         const nodes: LayoutNode[] = [];
         for (const [id, position] of originalPositions) {
             const measured = stateStore.stepPosition[id];
+            const step = steps.value[id];
+            const grown = step && preferredOutputItem(step);
             nodes.push({
                 id,
                 x: position.left,
                 y: position.top,
-                width: measured?.width ?? 150,
-                height: measured?.height ?? 60,
+                width: measured?.width ?? SHRUNK_STEP_SIZE.width,
+                height: measured?.height ?? SHRUNK_STEP_SIZE.height,
+                ...(grown ? { baseWidth: SHRUNK_STEP_SIZE.width, baseHeight: SHRUNK_STEP_SIZE.height } : {}),
             });
         }
         const requests = collectRequests(steps.value);
