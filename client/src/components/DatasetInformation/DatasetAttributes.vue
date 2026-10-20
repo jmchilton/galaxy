@@ -3,7 +3,7 @@ import { faBars, faCog, faDatabase, faExchangeAlt, faRedo, faSave, faUser } from
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import type { AxiosError } from "axios";
 import { BAlert, BTab, BTabs } from "bootstrap-vue";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { fetchDatasetAttributes } from "@/api/datasets";
 import { setAttributes } from "@/components/DatasetInformation/services";
@@ -26,13 +26,13 @@ const props = defineProps<Props>();
 
 const historyStore = useHistoryStore();
 
-const loading = ref(false);
 const loadingFailed = ref(false);
 const messageText = ref<string>();
 const messageVariant = ref("danger");
 const formData = ref<Record<string, any>>({});
 const datasetAttributes = ref<Record<string, any>>({});
 const formRevision = ref(0);
+const loading = computed(() => formRevision.value === 0 && !loadingFailed.value);
 const startFormsRequest = createLatestRequestTracker();
 
 function onAttribute(data: object) {
@@ -93,13 +93,9 @@ async function fetchForms() {
         // Keep forms that already loaded, e.g. when reloading them after a save fails.
         loadingFailed.value = formRevision.value === 0;
     }
-    loading.value = false;
 }
 
-onMounted(async () => {
-    loading.value = true;
-    await fetchForms();
-});
+onMounted(fetchForms);
 
 // Datatype changes queue a set-metadata job, so the forms change again once the dataset is updated.
 onDatasetUpdated(() => props.datasetId, fetchForms);
