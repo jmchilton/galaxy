@@ -6089,7 +6089,7 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
                 # only when explicitly set: fetching filepaths can be expensive
                 if not expose_dataset_path:
                     continue
-                val = val.get_file_name()
+                val = val.get_file_name_if_locatable()
             # If no value for metadata, look in datatype for metadata.
             elif not hda.metadata.element_is_set(name) and hasattr(hda.datatype, name):
                 val = getattr(hda.datatype, name)
@@ -6544,7 +6544,7 @@ class LibraryDataset(Base, Serializable):
         for name in ldda.metadata.spec.keys():
             val = ldda.metadata.get(name)
             if isinstance(val, MetadataFile):
-                val = val.get_file_name()
+                val = val.get_file_name_if_locatable()
             elif isinstance(val, list):
                 val = ", ".join(str(v) for v in val)
             rval[f"metadata_{name}"] = val
@@ -6696,7 +6696,7 @@ class LibraryDatasetDatasetAssociation(DatasetInstance, HasName, Serializable):
         for name in ldda.metadata.spec.keys():
             val = ldda.metadata.get(name)
             if isinstance(val, MetadataFile):
-                val = val.get_file_name()
+                val = val.get_file_name_if_locatable()
             # If no value for metadata, look in datatype for metadata.
             elif val is None and hasattr(ldda.datatype, name):
                 val = getattr(ldda.datatype, name)
@@ -10579,6 +10579,13 @@ class MetadataFile(Base, StorableObject, Serializable):
                 alt_name=os.path.basename(self.get_file_name()),
             )
 
+    def get_file_name_if_locatable(self) -> Optional[str]:
+        try:
+            return self.get_file_name()
+        except galaxy.exceptions.ObjectNotFound as e:
+            log.warning(str(e))
+            return None
+
     def get_file_name(self, sync_cache: bool = True) -> str:
         # Ensure the directory structure and the metadata file object exist
         try:
@@ -10588,6 +10595,10 @@ class MetadataFile(Base, StorableObject, Serializable):
                 self.object_store_id = da.dataset.object_store_id
             object_store = da.dataset.object_store
             store_by = object_store.get_store_by(da.dataset)
+            if store_by is None:
+                raise galaxy.exceptions.ObjectNotFound(
+                    f"Cannot locate dataset {da.dataset.id} in object store to resolve metadata file {self.id}"
+                )
             if store_by == "id" and self.id is None:
                 self.flush()  # type:ignore[unreachable]
             identifier = getattr(self, store_by)

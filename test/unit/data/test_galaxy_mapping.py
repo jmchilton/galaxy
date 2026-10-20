@@ -19,8 +19,13 @@ from galaxy.model.orm.util import (
     get_object_session,
 )
 from galaxy.model.security import GalaxyRBACAgent
-from galaxy.model.unittest_utils.utils import random_email
+from galaxy.model.unittest_utils.utils import (
+    global_object_store_for_models,
+    random_email,
+)
 from galaxy.objectstore import QuotaSourceMap
+from galaxy.objectstore.examples import get_example
+from galaxy.objectstore.unittest_utils import Config as TestConfig
 from galaxy.util.unittest import TestCase
 
 datatypes_registry = galaxy.datatypes.registry.Registry()
@@ -217,6 +222,32 @@ class TestMappings(BaseModelTestCase):
             ("outer_list", "inner_list", "reverse"),
         ]
         assert c4.dataset_elements == [dce1, dce2]
+
+    def test_library_dataset_to_dict_dataset_in_unknown_backend(self):
+        with TestConfig(get_example("distributed_disk.xml")) as (_, object_store):
+            with global_object_store_for_models(object_store):
+                library = model.Library(name="Library 1")
+                folder = model.LibraryFolder(name="Root")
+                library.root_folder = folder
+                ldda = model.LibraryDatasetDatasetAssociation(
+                    extension="bam", create_dataset=True, sa_session=self.model.session
+                )
+                ld = model.LibraryDataset(folder=folder, library_dataset_dataset_association=ldda)
+                ldda.library_dataset = ld
+                self.persist(library, folder, ldda, ld)
+                object_store.create(ldda.dataset)
+                index = NamedTemporaryFile("w")
+                index.write("cool bam index")
+                ldda.metadata.from_JSON_dict(
+                    json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": index.name})}
+                )
+                self.persist(ldda)
+                # backend removed from the object store configuration since the dataset was created
+                ldda.dataset.object_store_id = "removed_backend"
+
+                as_dict = ld.to_dict()
+                assert as_dict["file_name"] == ""
+                assert as_dict["metadata_bam_index"] is None
 
     def test_history_audit(self):
         u = model.User(email=random_email(), password="password")

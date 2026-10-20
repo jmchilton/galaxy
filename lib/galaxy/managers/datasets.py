@@ -725,7 +725,7 @@ class _UnflattenedMetadataDatasetAssociationSerializer(base.ModelSerializer[T], 
                 # only when explicitly set: fetching filepaths can be expensive
                 if not self.app.config.expose_dataset_path:
                     continue
-                val = val.get_file_name()
+                val = val.get_file_name_if_locatable()
             # TODO:? possibly split this off?
             # If no value for metadata, look in datatype for metadata.
             elif val is None and hasattr(dataset_assoc.datatype, name):
