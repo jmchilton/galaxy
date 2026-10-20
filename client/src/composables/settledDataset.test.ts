@@ -1,4 +1,5 @@
 import { createTestingPinia } from "@pinia/testing";
+import { hold } from "@tests/vitest/hold";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,10 +26,7 @@ function storeSummary(id: string, name: string) {
 }
 
 function heldFetch(dataset: HDADetailed) {
-    let release: () => void = () => {};
-    const released = new Promise<void>((resolve) => {
-        release = resolve;
-    });
+    const { released, release } = hold();
     server.use(
         http.untyped.get("/api/datasets/:dataset_id", async () => {
             await released;

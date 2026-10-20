@@ -1,5 +1,6 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue } from "@tests/vitest/helpers";
+import { hold } from "@tests/vitest/hold";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
@@ -35,15 +36,6 @@ const okDataset = {
     peek: "Needs a peek",
     update_time: "2026-01-01T00:00:00",
 } as unknown as HDADetailed;
-
-/** A promise that settles when the returned ``release`` is called, to hold a mocked response open. */
-function hold() {
-    let release: () => void = () => {};
-    const released = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    return { released, release };
-}
 
 function usePreviewHeaders(headers: Record<string, string> = {}) {
     server.use(

@@ -1,5 +1,6 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue } from "@tests/vitest/helpers";
+import { hold } from "@tests/vitest/hold";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
@@ -78,15 +79,6 @@ function setupPinia(datasetStore) {
     });
     setActivePinia(pinia);
     return pinia;
-}
-
-/** A promise that settles when the returned ``release`` is called, to hold a mocked response open. */
-function hold() {
-    let release;
-    const released = new Promise((resolve) => {
-        release = resolve;
-    });
-    return { released, release };
 }
 
 /** Store a summary the way the history watcher does; it lacks ``peek``, so the store refetches the details. */
