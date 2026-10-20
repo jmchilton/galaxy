@@ -23,3 +23,15 @@ const props = defineProps<{
     overflow: auto;
 }
 </style>
+
+<style lang="scss">
+.invocation-output-popover {
+    max-width: 40rem;
+    width: 40rem;
+
+    .popover-body {
+        max-height: 25rem;
+        overflow: auto;
+    }
+}
+</style>

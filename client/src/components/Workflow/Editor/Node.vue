@@ -154,7 +154,6 @@
                 :workflow-outputs="workflowOutputs"
                 :post-job-actions="postJobActions"
                 :blank="isInvocation || isPopulatedInput"
-                :output-item="isInvocation ? invocationStep.outputItems?.[output.name] : undefined"
                 :step-id="id"
                 :step-type="step.type"
                 :step-position="step.position ?? { top: 0, left: 0 }"
@@ -168,6 +167,22 @@
                 @stopDragging="onStopDragging"
                 @onChange="onChange" />
         </div>
+        <!-- invocation-mode output terminals are stacked, so one popover previews all of the step's outputs -->
+        <GPopover
+            v-if="previewOutputs.length"
+            v-model:show="outputPreviewShow"
+            interactive
+            :target="outputPreviewTarget"
+            triggers="hover"
+            placement="right"
+            custom-class="invocation-output-popover">
+            <div v-if="outputPreviewShow">
+                <div v-for="output in previewOutputs" :key="output.name" class="mb-2">
+                    <div class="font-weight-bold mb-1">{{ output.label }}</div>
+                    <InvocationOutputPreview :item="output.item" />
+                </div>
+            </div>
+        </GPopover>
     </DraggableWrapper>
 </template>
 
@@ -285,6 +300,23 @@ const isPopulatedInput = computed(
         "nodeText" in props.step &&
         props.step.nodeText !== undefined,
 );
+
+const outputPreviewShow = ref(false);
+const previewOutputs = computed(() => {
+    const outputItems = props.isInvocation ? (props.step as GraphStep).outputItems : undefined;
+    if (!outputItems) {
+        return [];
+    }
+    return props.step.outputs.flatMap((output) => {
+        const item = outputItems[output.name];
+        const label = props.step.workflow_outputs?.find((wo) => wo.output_name === output.name)?.label;
+        return item ? [{ name: output.name, label: label ?? output.name, item }] : [];
+    });
+});
+function outputPreviewTarget() {
+    const terminals = elHtml.value?.querySelectorAll(".invocation-node-output .output-terminal");
+    return terminals?.length ? (terminals[terminals.length - 1] as HTMLElement) : undefined;
+}
 
 const embedInvocationOutputs = inject<Ref<boolean>>("embedInvocationOutputs", ref(false));
 const preferredItem = computed(() =>
