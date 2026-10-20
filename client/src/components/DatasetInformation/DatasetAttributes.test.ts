@@ -5,7 +5,9 @@ import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 
+import type { HDADetailed } from "@/api";
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import { useDatasetStore } from "@/stores/datasetStore";
 
 import DatasetAttributes from "./DatasetAttributes.vue";
 
@@ -48,6 +50,10 @@ async function mountDatasetAttributes(conversion_disable = false) {
     await flushPromises();
 
     return wrapper;
+}
+
+function storeDataset(updateTime: string) {
+    useDatasetStore().storedDatasets = { [DATASET_ID]: { id: DATASET_ID, update_time: updateTime } as HDADetailed };
 }
 
 async function buildWrapperWithError(error: string) {
@@ -139,6 +145,25 @@ describe("DatasetAttributes", () => {
         await flushPromises();
 
         expect(submitted).toHaveProperty("attribute_chromCol", "1");
+    });
+
+    it("reloads the forms when the stored dataset is updated", async () => {
+        const wrapper = await mountDatasetAttributes();
+        storeDataset("2026-01-01T00:00:00");
+        await flushPromises();
+
+        server.use(
+            http.untyped.get("/dataset/get_edit", () => {
+                return HttpResponse.json({
+                    attribute_inputs: [{ name: "attribute_chromCol", type: "text" }],
+                });
+            }),
+        );
+        // A set-metadata job finishing in the background shows up as a newer update_time.
+        storeDataset("2026-01-01T00:00:05");
+        await flushPromises();
+
+        expect(wrapper.findAll("#attribute_chromCol").length).toBe(1);
     });
 
     it("keeps the forms when reloading them after a save fails", async () => {

@@ -3,10 +3,11 @@ import { faBars, faCog, faDatabase, faExchangeAlt, faRedo, faSave, faUser } from
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import type { AxiosError } from "axios";
 import { BAlert, BTab, BTabs } from "bootstrap-vue";
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 
 import { fetchDatasetAttributes } from "@/api/datasets";
 import { setAttributes } from "@/components/DatasetInformation/services";
+import { useDatasetStore } from "@/stores/datasetStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import localize from "@/utils/localization";
 
@@ -21,6 +22,7 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const datasetStore = useDatasetStore();
 const historyStore = useHistoryStore();
 
 const loading = ref(false);
@@ -92,6 +94,16 @@ async function loadDatasetAttributes() {
 onMounted(async () => {
     await loadDatasetAttributes();
 });
+
+// Datatype changes queue a set-metadata job, so the forms change again once the dataset is updated.
+watch(
+    () => datasetStore.storedDatasets[props.datasetId]?.update_time,
+    (updateTime, previousUpdateTime) => {
+        if (previousUpdateTime) {
+            fetchForms();
+        }
+    },
+);
 </script>
 
 <template>
