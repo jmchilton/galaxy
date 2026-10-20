@@ -44,3 +44,32 @@ export function useSettledDataset(
 
     return computed(() => (settled.value?.id === toValue(datasetId) ? settled.value.dataset : null));
 }
+
+/**
+ * Calls `callback` when the stored dataset's `update_time` changes, e.g. once a running dataset finishes.
+ *
+ * The first time a dataset is seen, and a switch to another `datasetId`, do not count as updates.
+ * Watches the store without fetching, so a view can refresh the data it loaded itself.
+ */
+export function onDatasetUpdated(datasetId: MaybeRefOrGetter<string>, callback: () => void) {
+    const datasetStore = useDatasetStore();
+    let seen: { id: string; updateTime: string } | undefined;
+
+    watch(
+        () => {
+            const id = toValue(datasetId);
+            return { id, updateTime: datasetStore.storedDatasets[id]?.update_time };
+        },
+        ({ id, updateTime }) => {
+            if (!updateTime) {
+                return;
+            }
+            const updated = seen?.id === id && seen.updateTime !== updateTime;
+            seen = { id, updateTime };
+            if (updated) {
+                callback();
+            }
+        },
+        { immediate: true },
+    );
+}

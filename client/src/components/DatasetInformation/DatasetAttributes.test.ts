@@ -1,5 +1,6 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue } from "@tests/vitest/helpers";
+import { hold } from "@tests/vitest/hold";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
@@ -178,6 +179,36 @@ describe("DatasetAttributes", () => {
         await flushPromises();
 
         expect(wrapper.findAll("#attribute_chromCol").length).toBe(1);
+    });
+
+    it("ignores reloaded forms that arrive after newer ones", async () => {
+        const wrapper = await mountDatasetAttributes();
+        storeDataset("2026-01-01T00:00:00");
+        await flushPromises();
+
+        const { released, release } = hold();
+        let reloads = 0;
+        server.use(
+            http.untyped.get("/dataset/get_edit", async () => {
+                reloads += 1;
+                if (reloads === 1) {
+                    await released;
+                    return HttpResponse.json({ attribute_inputs: [{ name: "attribute_older", type: "text" }] });
+                }
+                return HttpResponse.json({ attribute_inputs: [{ name: "attribute_newer", type: "text" }] });
+            }),
+        );
+        storeDataset("2026-01-01T00:00:05");
+        await flushPromises();
+        await wrapper.find("#dataset-attributes-default-save").trigger("click");
+        await flushPromises();
+        expect(wrapper.findAll("#attribute_newer").length).toBe(1);
+
+        release();
+        await flushPromises();
+        expect(reloads).toBe(2);
+        expect(wrapper.findAll("#attribute_newer").length).toBe(1);
+        expect(wrapper.findAll("#attribute_older").length).toBe(0);
     });
 
     it("keeps the forms when reloading them after a save fails", async () => {

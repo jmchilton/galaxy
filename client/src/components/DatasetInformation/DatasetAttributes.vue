@@ -3,12 +3,13 @@ import { faBars, faCog, faDatabase, faExchangeAlt, faRedo, faSave, faUser } from
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import type { AxiosError } from "axios";
 import { BAlert, BTab, BTabs } from "bootstrap-vue";
-import { onMounted, ref, watch } from "vue";
+import { onMounted, ref } from "vue";
 
 import { fetchDatasetAttributes } from "@/api/datasets";
 import { setAttributes } from "@/components/DatasetInformation/services";
-import { useDatasetStore } from "@/stores/datasetStore";
+import { onDatasetUpdated } from "@/composables/settledDataset";
 import { useHistoryStore } from "@/stores/historyStore";
+import { createLatestRequestTracker } from "@/utils/latestRequest";
 import localize from "@/utils/localization";
 import { errorMessageAsString } from "@/utils/simple-error";
 
@@ -23,7 +24,6 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const datasetStore = useDatasetStore();
 const historyStore = useHistoryStore();
 
 const loading = ref(false);
@@ -33,6 +33,7 @@ const messageVariant = ref("danger");
 const formData = ref<Record<string, any>>({});
 const datasetAttributes = ref<Record<string, any>>({});
 const formRevision = ref(0);
+const startFormsRequest = createLatestRequestTracker();
 
 function onAttribute(data: object) {
     formData.value["attribute"] = data;
@@ -71,38 +72,37 @@ async function submit(key: string, operation: string) {
     await fetchForms();
 }
 
+/** Loads the forms; only the latest request applies, so a delayed older response can't revert them. */
 async function fetchForms() {
+    const isLatest = startFormsRequest();
     try {
-        datasetAttributes.value = await fetchDatasetAttributes(props.datasetId);
+        const attributes = await fetchDatasetAttributes(props.datasetId);
+        if (!isLatest()) {
+            return;
+        }
+        datasetAttributes.value = attributes;
         formRevision.value += 1;
-        return true;
+        loadingFailed.value = false;
     } catch (e) {
+        if (!isLatest()) {
+            return;
+        }
         const error = e as AxiosError<{ err_msg?: string }>;
 
         onError(error.response?.data?.err_msg || "Unable to fetch available dataset attributes.");
-        return false;
+        // Keep forms that already loaded, e.g. when reloading them after a save fails.
+        loadingFailed.value = formRevision.value === 0;
     }
-}
-
-async function loadDatasetAttributes() {
-    loading.value = true;
-    loadingFailed.value = !(await fetchForms());
     loading.value = false;
 }
 
 onMounted(async () => {
-    await loadDatasetAttributes();
+    loading.value = true;
+    await fetchForms();
 });
 
 // Datatype changes queue a set-metadata job, so the forms change again once the dataset is updated.
-watch(
-    () => datasetStore.storedDatasets[props.datasetId]?.update_time,
-    (updateTime, previousUpdateTime) => {
-        if (previousUpdateTime) {
-            fetchForms();
-        }
-    },
-);
+onDatasetUpdated(() => props.datasetId, fetchForms);
 </script>
 
 <template>

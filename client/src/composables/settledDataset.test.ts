@@ -8,7 +8,7 @@ import type { HDADetailed, HistoryContentItemBase } from "@/api";
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { useDatasetStore } from "@/stores/datasetStore";
 
-import { useSettledDataset } from "./settledDataset";
+import { onDatasetUpdated, useSettledDataset } from "./settledDataset";
 
 const { server, http } = useServerMock();
 
@@ -141,5 +141,84 @@ describe("useSettledDataset", () => {
         release();
         await flushPromises();
         expect(dataset.value?.name).toBe("Other");
+    });
+});
+
+describe("onDatasetUpdated", () => {
+    function storeDataset(id: string, updateTime: string, details = true) {
+        const dataset = {
+            id,
+            name: "Dataset",
+            state: "ok",
+            update_time: updateTime,
+            ...(details ? { peek: "peek" } : {}),
+        };
+        useDatasetStore().storedDatasets = {
+            ...useDatasetStore().storedDatasets,
+            [id]: dataset as unknown as HDADetailed,
+        };
+    }
+
+    function watchUpdates(datasetId = ref(DATASET_ID)) {
+        const callback = vi.fn();
+        scope = effectScope();
+        scope.run(() => onDatasetUpdated(datasetId, callback));
+        return { callback, datasetId };
+    }
+
+    beforeEach(() => {
+        setActivePinia(createTestingPinia({ createSpy: vi.fn, stubActions: false }));
+    });
+
+    afterEach(() => {
+        scope?.stop();
+        scope = undefined;
+    });
+
+    it("fires when the stored dataset gets a newer update time", async () => {
+        storeDataset(DATASET_ID, "2026-01-01T00:00:00");
+        const { callback } = watchUpdates();
+        await flushPromises();
+        expect(callback).not.toHaveBeenCalled();
+
+        storeDataset(DATASET_ID, "2026-01-01T00:00:05");
+        await flushPromises();
+        expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires for a dataset first stored after it started watching", async () => {
+        const { callback } = watchUpdates();
+        storeDataset(DATASET_ID, "2026-01-01T00:00:00");
+        await flushPromises();
+        expect(callback).not.toHaveBeenCalled();
+
+        storeDataset(DATASET_ID, "2026-01-01T00:00:05");
+        await flushPromises();
+        expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a summary that replaces the dataset with the same update time", async () => {
+        storeDataset(DATASET_ID, "2026-01-01T00:00:00");
+        const { callback } = watchUpdates();
+
+        storeDataset(DATASET_ID, "2026-01-01T00:00:00", false);
+        await flushPromises();
+        storeDataset(DATASET_ID, "2026-01-01T00:00:00");
+        await flushPromises();
+        expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("ignores switching to another dataset", async () => {
+        storeDataset(DATASET_ID, "2026-01-01T00:00:00");
+        storeDataset(OTHER_ID, "2026-01-01T00:00:05");
+        const { callback, datasetId } = watchUpdates();
+
+        datasetId.value = OTHER_ID;
+        await flushPromises();
+        expect(callback).not.toHaveBeenCalled();
+
+        storeDataset(OTHER_ID, "2026-01-01T00:00:10");
+        await flushPromises();
+        expect(callback).toHaveBeenCalledTimes(1);
     });
 });
