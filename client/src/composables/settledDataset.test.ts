@@ -1,8 +1,8 @@
 import { createTestingPinia } from "@pinia/testing";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { effectScope, ref } from "vue";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type EffectScope, effectScope, ref } from "vue";
 
 import type { HDADetailed, HistoryContentItemBase } from "@/api";
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
@@ -38,8 +38,10 @@ function heldFetch(dataset: HDADetailed) {
     return release;
 }
 
+let scope: EffectScope | undefined;
+
 function useSettled(datasetId = ref(DATASET_ID), extraLoading = ref(false)) {
-    const scope = effectScope();
+    scope = effectScope();
     const dataset = scope.run(() => useSettledDataset(datasetId, extraLoading))!;
     return { dataset, datasetId, extraLoading };
 }
@@ -47,6 +49,11 @@ function useSettled(datasetId = ref(DATASET_ID), extraLoading = ref(false)) {
 describe("useSettledDataset", () => {
     beforeEach(() => {
         setActivePinia(createTestingPinia({ createSpy: vi.fn, stubActions: false }));
+    });
+
+    afterEach(() => {
+        scope?.stop();
+        scope = undefined;
     });
 
     it("is null until the dataset first loads", async () => {
