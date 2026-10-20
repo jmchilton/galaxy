@@ -114,7 +114,7 @@ describe("DatasetAttributes", () => {
                 return HttpResponse.json({
                     attribute_inputs: [
                         { name: "attribute_text", type: "text" },
-                        { name: "attribute_chromCol", type: "text" },
+                        { name: "attribute_chromCol", type: "text", value: "1" },
                     ],
                     conversion_inputs: [{ name: "conversion_text", type: "text" }],
                     datatype_inputs: [{ name: "datatype_text", type: "text" }],
@@ -127,6 +127,34 @@ describe("DatasetAttributes", () => {
 
         expect(wrapper.findAll("#attribute_chromCol").length).toBe(1);
         expect(wrapper.find("[role=alert]").text()).toBe("success");
+
+        let submitted: Record<string, unknown> | undefined;
+        server.use(
+            http.untyped.put("/dataset/set_edit", async ({ request }) => {
+                submitted = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({ message: "success", status: "success" });
+            }),
+        );
+        await wrapper.find("#dataset-attributes-default-save").trigger("click");
+        await flushPromises();
+
+        expect(submitted).toHaveProperty("attribute_chromCol", "1");
+    });
+
+    it("keeps the forms when reloading them after a save fails", async () => {
+        const wrapper = await mountDatasetAttributes();
+
+        server.use(
+            http.untyped.get("/dataset/get_edit", () => {
+                return HttpResponse.json({ err_msg: "reload failed" }, { status: 500 });
+            }),
+        );
+        await wrapper.find("#dataset-attributes-default-save").trigger("click");
+        await flushPromises();
+
+        expect(wrapper.find("[role=alert]").text()).toBe("reload failed");
+        expect(wrapper.findAll("#attribute_text").length).toBe(1);
+        expect(wrapper.findAll("button").length).toBe(6);
     });
 
     it("doesn't render edit controls with error", async () => {
