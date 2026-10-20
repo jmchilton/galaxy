@@ -148,6 +148,7 @@
                 :workflow-outputs="workflowOutputs"
                 :post-job-actions="postJobActions"
                 :blank="isInvocation || isPopulatedInput"
+                :output-item="isInvocation ? invocationStep.outputItems?.[output.name] : undefined"
                 :step-id="id"
                 :step-type="step.type"
                 :step-position="step.position ?? { top: 0, left: 0 }"

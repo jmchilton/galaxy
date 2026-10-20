@@ -23,6 +23,7 @@ import {
 } from "vue";
 
 import type { DatatypesMapperModel } from "@/components/Datatypes/model";
+import type { InvocationOutputItem } from "@/composables/useInvocationGraph";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import type { XYPosition } from "@/stores/workflowEditorStateStore";
 import type { OutputTerminalSource, PostJobAction, PostJobActions, Step } from "@/stores/workflowStepStore";
@@ -36,8 +37,10 @@ import { type CollectionTypeDescriptor, NULL_COLLECTION_TYPE_DESCRIPTION } from 
 import type { OutputTerminals } from "./modules/terminals";
 
 import DraggableWrapper from "./DraggablePan.vue";
+import GPopover from "@/components/BaseComponents/GPopover.vue";
 import StatelessTags from "@/components/TagsMultiselect/StatelessTags.vue";
 import ConnectionMenu from "@/components/Workflow/Editor/ConnectionMenu.vue";
+import InvocationOutputPreview from "@/components/Workflow/Invocation/Graph/InvocationOutputPreview.vue";
 
 type ElementBounding = UnwrapRef<UseElementBoundingReturn>;
 
@@ -55,7 +58,11 @@ const props = defineProps<{
     parentNode: HTMLElement | null;
     readonly: boolean;
     blank: boolean;
+    /** The invocation's dataset or collection for this output, previewed on hover */
+    outputItem?: InvocationOutputItem;
 }>();
+
+const previewShow = ref(false);
 
 const emit = defineEmits(["pan-by", "stopDragging", "onDragConnector"]);
 const { stateStore, stepStore, undoRedoStore } = useWorkflowStores();
@@ -447,6 +454,17 @@ const removeTagsAction = computed(() => {
                 :terminal="terminal"
                 @closeMenu="closeMenu"></ConnectionMenu>
         </DraggableWrapper>
+        <GPopover
+            v-if="props.outputItem"
+            v-model:show="previewShow"
+            interactive
+            :target="() => terminalElement"
+            triggers="hover"
+            placement="right"
+            custom-class="invocation-output-popover"
+            :title="label">
+            <InvocationOutputPreview v-if="previewShow" :item="props.outputItem" />
+        </GPopover>
     </div>
 </template>
 
@@ -495,6 +513,16 @@ const removeTagsAction = computed(() => {
         button:focus + .terminal-icon {
             color: $brand-success;
         }
+    }
+}
+
+.invocation-output-popover {
+    max-width: 40rem;
+    width: 40rem;
+
+    .popover-body {
+        max-height: 25rem;
+        overflow: auto;
     }
 }
 

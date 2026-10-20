@@ -45,6 +45,12 @@ export interface GraphStep extends Step {
     headerIcon?: IconDefinition;
     headerIconSpin?: boolean;
     nodeText?: string | boolean;
+    /** The dataset or collection produced for each step output, keyed by output name */
+    outputItems?: Record<string, InvocationOutputItem>;
+}
+export interface InvocationOutputItem {
+    src: "hda" | "hdca";
+    id: string;
 }
 interface InvocationGraph extends Omit<StoredWorkflowDetailed, "steps"> {
     steps: { [index: number]: GraphStep };
@@ -223,6 +229,10 @@ export function useInvocationGraph(
                 await initializeGraphInput(graphStepFromWfStep, invocationStep);
             }
 
+            if (invocationStep) {
+                updateOutputItems(graphStepFromWfStep, invocationStep);
+            }
+
             // add the graph step to the steps object if it doesn't exist yet
             if (!steps.value[i]) {
                 steps.value[i] = graphStepFromWfStep;
@@ -334,6 +344,19 @@ export function useInvocationGraph(
             }
         }
         return undefined;
+    }
+
+    function updateOutputItems(graphStep: GraphStep, invocationStep: InvocationStep) {
+        const outputItems: Record<string, InvocationOutputItem> = {};
+        for (const [name, output] of Object.entries(invocationStep.outputs ?? {})) {
+            outputItems[name] = { src: "hda", id: output.id };
+        }
+        for (const [name, output] of Object.entries(invocationStep.output_collections ?? {})) {
+            outputItems[name] = { src: "hdca", id: output.id };
+        }
+        if (JSON.stringify(graphStep.outputItems) !== JSON.stringify(outputItems)) {
+            graphStep.outputItems = outputItems;
+        }
     }
 
     function setHeaderClass(graphStep: GraphStep) {
