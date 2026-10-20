@@ -52,10 +52,15 @@ class TestFolderContentsApi(ApiTestCase):
         folder_id = self._create_folder_in_library("Test Folder Contents Index")
 
         self._create_subfolder_in(folder_id)
-        self._create_dataset_in_folder(history_id, folder_id)
+        self._create_dataset_in_folder(history_id, folder_id, wait=True)
 
         response = self._get(f"folders/{folder_id}/contents")
-        self._assert_index_count_is_correct(response, expected_contents_count=2)
+        index_response = self._assert_index_count_is_correct(response, expected_contents_count=2)
+        dataset_item = next(c for c in index_response["folder_contents"] if c["type"] == "file")
+        library_dataset = self._get(f"libraries/datasets/{dataset_item['id']}").json()
+        assert dataset_item["file_ext"] == library_dataset["file_ext"] == "txt"
+        assert dataset_item["state"] == library_dataset["state"] == "ok"
+        assert dataset_item["date_uploaded"] == library_dataset["date_uploaded"]
 
     @requires_new_library
     def test_index_include_deleted(self, history_id):
