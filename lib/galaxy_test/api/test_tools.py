@@ -765,7 +765,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
     @skip_without_tool("collection_paired_test")
     def test_build_collection_options_carries_hidden_map_over_selection(self):
         """A hidden collection selected to map over the input is carried
-        with its ``map_over_type`` though the listing skips hidden ones."""
+        with a server-derived ``map_over_type`` though the listing skips
+        hidden ones."""
         with self.dataset_populator.test_history() as history_id:
             hidden = self._create_hdca(history_id, "list_of_pairs", hidden=True)
             f1 = self._build_tool_param(
@@ -774,7 +775,7 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 inputs={
                     "f1": {
                         "batch": True,
-                        "values": [{"src": "hdca", "id": hidden["id"], "map_over_type": "paired"}],
+                        "values": [{"src": "hdca", "id": hidden["id"]}],
                     }
                 },
             )
