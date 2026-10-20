@@ -4,6 +4,11 @@ import { computed, shallowRef, watch } from "vue";
 import { hasDetails, type HDADetailed, isInaccessible } from "@/api";
 import { useDatasetStore } from "@/stores/datasetStore";
 
+/** Whether a stored dataset is fully loaded, i.e. not a summary from the history watcher. */
+export function isSettledDataset(dataset?: HDADetailed | null): dataset is HDADetailed {
+    return Boolean(dataset && (hasDetails(dataset) || isInaccessible(dataset)));
+}
+
 /**
  * The last fully loaded version of a dataset, held while the dataset store refetches it.
  *
@@ -12,8 +17,8 @@ import { useDatasetStore } from "@/stores/datasetStore";
  * only blocks until the dataset first loads, and again after `datasetId` changes.
  *
  * @param datasetId The id of the dataset.
- * @param extraLoading Other loading the first load should also wait for, e.g. datatype details.
- * It is read when this is called, so start that loading before calling.
+ * @param extraLoading Other loading to wait for before taking a new version, e.g. datatype details.
+ * It never clears a held dataset. The first check runs when this is called, so start that loading first.
  */
 export function useSettledDataset(
     datasetId: MaybeRefOrGetter<string>,
@@ -26,9 +31,8 @@ export function useSettledDataset(
         () => {
             const id = toValue(datasetId);
             const dataset = datasetStore.getDataset(id);
-            const isComplete = dataset && (hasDetails(dataset) || isInaccessible(dataset));
             const isLoading = datasetStore.isLoadingDataset(id) || toValue(extraLoading);
-            return isComplete && !isLoading ? { id, dataset } : undefined;
+            return isSettledDataset(dataset) && !isLoading ? { id, dataset } : undefined;
         },
         (ready) => {
             if (ready) {

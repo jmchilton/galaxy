@@ -93,7 +93,7 @@ describe("useSettledDataset", () => {
         expect(dataset.value?.peek).toBe("peek");
     });
 
-    it("waits for extra loading before the first load only", async () => {
+    it("waits for extra loading without dropping a held dataset", async () => {
         useDatasetStore().storedDatasets = { [DATASET_ID]: detailed(DATASET_ID, "First") };
         const { dataset, extraLoading } = useSettled(ref(DATASET_ID), ref(true));
         expect(dataset.value).toBeNull();

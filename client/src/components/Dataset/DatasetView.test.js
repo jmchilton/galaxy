@@ -376,6 +376,8 @@ describe("DatasetView", () => {
             expect(attributes.exists()).toBe(true);
             // The summary lacks ``file_ext``; the header keeps showing the loaded dataset.
             expect(wrapper.find(".header-details .datatype .value").text()).toBe("txt");
+            // But the name, which summaries carry, is current.
+            expect(wrapper.find(".dataset-name").text()).toBe("Renamed Dataset");
 
             releaseFetch();
             await flushPromises();
@@ -401,6 +403,28 @@ describe("DatasetView", () => {
             expect(wrapper.findComponent(DatasetAttributes).vm).toBe(attributes.vm);
             expect(wrapper.find(".dataset-refresh-error").text()).toContain("Access denied");
             expect(wrapper.text()).not.toContain("Dataset Not Available");
+        });
+
+        it("drops the refresh alert once a retried refetch succeeds", async () => {
+            let attempts = 0;
+            server.use(
+                http.get("/api/datasets/:dataset_id", ({ response }) => {
+                    attempts += 1;
+                    if (attempts === 1) {
+                        return response("5XX").json({ err_msg: "Server busy", err_code: 500001 }, { status: 502 });
+                    }
+                    return response(200).json({ ...mockDataset, name: "Renamed Dataset" });
+                }),
+            );
+            const wrapper = await mountDatasetView("edit");
+
+            const summary = { id: DATASET_ID, hid: 1, name: "Renamed Dataset", state: "ok", extension: "txt" };
+            useDatasetStore().saveDatasets([{ ...summary, history_content_type: "dataset" }]);
+            await flushPromises();
+            expect(attempts).toBe(2);
+            expect(useDatasetStore().getDataset(DATASET_ID).peek).toBe("Needs a peek");
+            expect(wrapper.find(".dataset-view").exists()).toBe(true);
+            expect(wrapper.find(".dataset-refresh-error").exists()).toBe(false);
         });
 
         it("shows a dataset that is already stored when switching to it", async () => {

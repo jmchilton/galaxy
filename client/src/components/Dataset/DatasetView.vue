@@ -5,7 +5,7 @@ import { BAlert, BLink, BNav, BNavItem } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { usePersistentToggle } from "@/composables/persistentToggle";
-import { useSettledDataset } from "@/composables/settledDataset";
+import { isSettledDataset, useSettledDataset } from "@/composables/settledDataset";
 import { useDatasetStore } from "@/stores/datasetStore";
 import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { useDatatypeStore } from "@/stores/datatypeStore";
@@ -71,6 +71,11 @@ const dataset = useSettledDataset(
     () => isDatatypeLoading.value || datatypesMapperStore.loading,
 );
 
+// Summaries carry the name, so show a rename without waiting for the refetch.
+const datasetName = computed(() => storedDataset.value?.name ?? dataset.value?.name);
+// The store keeps a load error after a later success, so only report it while the stored dataset is not settled.
+const showRefreshError = computed(() => loadError.value && !isSettledDataset(storedDataset.value));
+
 // Match datatype variant
 const isAutoDownloadType = computed(
     () => dataset.value && datatypeStore.isDatatypeAutoDownload(dataset.value.file_ext),
@@ -113,9 +118,9 @@ const defaultLoadErrorMessage =
     </div>
     <LoadingSpan v-else-if="!dataset" message="Loading dataset details" />
     <div v-else class="dataset-view d-flex flex-column">
-        <BAlert v-if="loadError" show variant="warning" class="dataset-refresh-error m-2">
+        <BAlert v-if="showRefreshError" show variant="warning" class="dataset-refresh-error m-2">
             This dataset could not be refreshed, showing the last loaded version.
-            {{ loadError.message }}
+            {{ loadError?.message }}
         </BAlert>
         <header v-if="!displayOnly" :key="`dataset-header-${dataset.id}`" class="dataset-header flex-shrink-0">
             <div class="d-flex">
@@ -130,7 +135,7 @@ const defaultLoadErrorMessage =
                     <div class="dataset-header-content">
                         <div class="dataset-title-row">
                             <span class="dataset-hid">{{ dataset?.hid }}:</span>
-                            <span class="dataset-name font-weight-bold">{{ dataset?.name }}</span>
+                            <span class="dataset-name font-weight-bold">{{ datasetName }}</span>
                         </div>
                         <span class="dataset-state-header">
                             <DatasetState :dataset-id="datasetId" />
