@@ -43,7 +43,9 @@ BATCH_TOOL_CONTENTS = """<tool id="batch_tool" name="Batch Tool" version="1.0">
 ShapeT = int | list[Any]
 
 
-class TestMetaExpansion(TestCase, tools_support.UsesTools):
+class MetaExpansionTestCase(TestCase, tools_support.UsesTools):
+    tool_contents = BATCH_TOOL_CONTENTS
+
     def setUp(self):
         self.setup_app()
         self.app.dataset_collection_manager = self.app[DatasetCollectionManager]
@@ -53,11 +55,104 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
         self.session.add(self.history)
         self.session.commit()
         self.trans = WorkRequestContext(app=self.app, user=self.user, history=self.history)
-        self._init_tool(BATCH_TOOL_CONTENTS)
+        self._init_tool(self.tool_contents)
 
     def tearDown(self):
         self.tear_down_app()
 
+    def _assert_job_count(self, incoming, expected: int):
+        summary = self._summary(incoming)
+        assert summary["reason"] is None
+        assert summary["job_count"] == expected
+        assert len(self._expand(incoming)) == expected
+
+    def _summary(self, incoming):
+        summary = summarize_meta_expansion(self.trans, self.tool, incoming)
+        assert summary is not None
+        return summary
+
+    def _expand(self, incoming):
+        expanded, _ = expand_meta_parameters(self.trans, self.tool, copy.deepcopy(incoming), "legacy")
+        return expanded
+
+    def _expand_async(self, state: dict[str, Any]):
+        return expand_meta_parameters_async(self.app, self.tool, RequestInternalDereferencedToolState(state))
+
+    def _encode(self, id: int) -> str:
+        return self.app.security.encode_id(id)
+
+    def _decode(self, batch: dict[str, Any]) -> int:
+        return self.app.security.decode_id(batch["values"][0]["id"])
+
+    def _user(self, name: str) -> model.User:
+        return self.app.user_manager.create(email=f"{name}@example.org", username=name, password="password123")
+
+    def _hda(self) -> model.HistoryDatasetAssociation:
+        hda = model.HistoryDatasetAssociation(
+            history=self.history, extension="txt", create_dataset=True, sa_session=self.session
+        )
+        assert hda.dataset
+        hda.dataset.state = model.Dataset.states.OK
+        self.session.add(hda)
+        self.session.commit()
+        return hda
+
+    def _hda_ref(self) -> dict[str, Any]:
+        return {"src": "hda", "id": self._encode(self._hda().id)}
+
+    def _hda_batch(self, count: int, linked: bool = True) -> dict[str, Any]:
+        return {"batch": True, "linked": linked, "values": [self._hda_ref() for _ in range(count)]}
+
+    def _internal_hdas(self, count: int) -> list[dict[str, Any]]:
+        return [{"src": "hda", "id": self._hda().id} for _ in range(count)]
+
+    def _collection(self, collection_type: str, shape: ShapeT, populated: bool = True) -> model.DatasetCollection:
+        collection = model.DatasetCollection(collection_type=collection_type, populated=populated)
+        if isinstance(shape, int):
+            children: list[Any] = [self._hda() for _ in range(shape)]
+        else:
+            child_type = collection_type.split(":", 1)[1]
+            children = [self._collection(child_type, child_shape) for child_shape in shape]
+        for index, child in enumerate(children):
+            model.DatasetCollectionElement(
+                collection=collection, element=child, element_identifier=f"e{index}", element_index=index
+            )
+        self.session.add(collection)
+        self.session.commit()
+        return collection
+
+    def _hdca(
+        self, collection_type: str, shape: ShapeT, populated: bool = True
+    ) -> model.HistoryDatasetCollectionAssociation:
+        hdca = model.HistoryDatasetCollectionAssociation(
+            collection=self._collection(collection_type, shape, populated=populated), history=self.history
+        )
+        self.session.add(hdca)
+        self.session.commit()
+        return hdca
+
+    def _internal_hdca(self, collection_type: str, shape: ShapeT, map_over_type: str | None = None) -> dict[str, Any]:
+        value: dict[str, Any] = {"src": "hdca", "id": self._hdca(collection_type, shape).id}
+        if map_over_type:
+            value["map_over_type"] = map_over_type
+        return value
+
+    def _hdca_batch(
+        self,
+        collection_type: str,
+        shape: ShapeT,
+        map_over_type: str | None = None,
+        linked: bool = True,
+        populated: bool = True,
+    ) -> dict[str, Any]:
+        hdca = self._hdca(collection_type, shape, populated=populated)
+        value: dict[str, Any] = {"src": "hdca", "id": self._encode(hdca.id)}
+        if map_over_type:
+            value["map_over_type"] = map_over_type
+        return {"batch": True, "linked": linked, "values": [value]}
+
+
+class TestMetaExpansion(MetaExpansionTestCase):
     def test_hda_batch(self):
         incoming = {"input1": self._hda_batch(3)}
         self._assert_job_count(incoming, 3)
@@ -299,93 +394,139 @@ class TestMetaExpansion(TestCase, tools_support.UsesTools):
         validate_matched_batch_lengths(self.tool, RequestInternalToolState(state))
         assert state == before
 
-    def _assert_job_count(self, incoming, expected: int):
-        summary = self._summary(incoming)
-        assert summary["reason"] is None
-        assert summary["job_count"] == expected
-        assert len(self._expand(incoming)) == expected
 
-    def _summary(self, incoming):
-        summary = summarize_meta_expansion(self.trans, self.tool, incoming)
-        assert summary is not None
-        return summary
+NESTED_BATCH_TOOL_CONTENTS = """<tool id="nested_batch_tool" name="Nested Batch Tool" version="1.0">
+    <command>cat "$input1" > "$out1"</command>
+    <inputs>
+        <param type="data" name="input1" format="txt" />
+        <repeat name="queries" title="Query">
+            <param type="data" name="input2" format="txt" />
+        </repeat>
+        <conditional name="cond">
+            <param name="mode" type="select">
+                <option value="a">A</option>
+                <option value="b">B</option>
+            </param>
+            <when value="a">
+                <param type="data" name="input3" format="txt" />
+            </when>
+            <when value="b" />
+        </conditional>
+        <section name="sec" title="Section">
+            <param type="data" name="input4" format="txt" optional="true" />
+        </section>
+    </inputs>
+    <outputs>
+        <data name="out1" format="txt" />
+    </outputs>
+</tool>
+"""
 
-    def _expand(self, incoming):
-        expanded, _ = expand_meta_parameters(self.trans, self.tool, copy.deepcopy(incoming), "legacy")
-        return expanded
 
-    def _expand_async(self, state: dict[str, Any]):
-        return expand_meta_parameters_async(self.app, self.tool, RequestInternalDereferencedToolState(state))
+class TestNestedMetaExpansionParity(MetaExpansionTestCase):
+    """The tool form previews flat (legacy) state but usually submits nested tool requests; counts must agree."""
 
-    def _encode(self, id: int) -> str:
-        return self.app.security.encode_id(id)
+    tool_contents = NESTED_BATCH_TOOL_CONTENTS
 
-    def _decode(self, batch: dict[str, Any]) -> int:
-        return self.app.security.decode_id(batch["values"][0]["id"])
+    def test_batch_in_repeat(self):
+        input1, single, batch = self._hdas(1), self._hdas(1), self._hdas(3)
+        flat = {
+            "input1": self._legacy_ref(input1[0]),
+            "queries_0|input2": self._legacy_ref(single[0]),
+            "queries_1|input2": self._legacy_batch(batch),
+            "cond|mode": "b",
+        }
+        nested = {
+            "input1": self._internal_ref(input1[0]),
+            "queries": [{"input2": self._internal_ref(single[0])}, {"input2": self._internal_batch(batch)}],
+            "cond": {"mode": "b"},
+            "sec": {"input4": None},
+        }
+        self._assert_parity(flat, nested, 3)
 
-    def _user(self, name: str) -> model.User:
-        return self.app.user_manager.create(email=f"{name}@example.org", username=name, password="password123")
+    def test_batch_in_conditional(self):
+        input1, batch = self._hdas(1), self._hdas(4)
+        flat = {"input1": self._legacy_ref(input1[0]), "cond|mode": "a", "cond|input3": self._legacy_batch(batch)}
+        nested = {
+            "input1": self._internal_ref(input1[0]),
+            "queries": [],
+            "cond": {"mode": "a", "input3": self._internal_batch(batch)},
+            "sec": {"input4": None},
+        }
+        self._assert_parity(flat, nested, 4)
 
-    def _hda(self) -> model.HistoryDatasetAssociation:
-        hda = model.HistoryDatasetAssociation(
-            history=self.history, extension="txt", create_dataset=True, sa_session=self.session
-        )
-        assert hda.dataset
-        hda.dataset.state = model.Dataset.states.OK
-        self.session.add(hda)
-        self.session.commit()
-        return hda
+    def test_collection_in_section_linked_with_top_level_batch(self):
+        batch = self._hdas(4)
+        hdca = self._hdca("list:list", [2, 2])
+        flat = {"input1": self._legacy_batch(batch), "cond|mode": "b", "sec|input4": self._legacy_batch([hdca])}
+        nested = {
+            "input1": self._internal_batch(batch),
+            "queries": [],
+            "cond": {"mode": "b"},
+            "sec": {"input4": self._internal_batch([hdca])},
+        }
+        self._assert_parity(flat, nested, 4)
 
-    def _hda_ref(self) -> dict[str, Any]:
-        return {"src": "hda", "id": self._encode(self._hda().id)}
+    def test_unlinked_batches_across_containers(self):
+        input1, repeat_batch, cond_batch = self._hdas(1), self._hdas(2), self._hdas(3)
+        flat = {
+            "input1": self._legacy_ref(input1[0]),
+            "queries_0|input2": self._legacy_batch(repeat_batch, linked=False),
+            "cond|mode": "a",
+            "cond|input3": self._legacy_batch(cond_batch, linked=False),
+        }
+        nested = {
+            "input1": self._internal_ref(input1[0]),
+            "queries": [{"input2": self._internal_batch(repeat_batch, linked=False)}],
+            "cond": {"mode": "a", "input3": self._internal_batch(cond_batch, linked=False)},
+            "sec": {"input4": None},
+        }
+        self._assert_parity(flat, nested, 6)
 
-    def _hda_batch(self, count: int, linked: bool = True) -> dict[str, Any]:
-        return {"batch": True, "linked": linked, "values": [self._hda_ref() for _ in range(count)]}
+    def test_mismatch_across_containers(self):
+        input1, repeat_batch, section_batch = self._hdas(1), self._hdas(3), self._hdas(2)
+        flat = {
+            "input1": self._legacy_ref(input1[0]),
+            "queries_0|input2": self._legacy_batch(repeat_batch),
+            "cond|mode": "b",
+            "sec|input4": self._legacy_batch(section_batch),
+        }
+        nested = {
+            "input1": self._internal_ref(input1[0]),
+            "queries": [{"input2": self._internal_batch(repeat_batch)}],
+            "cond": {"mode": "b"},
+            "sec": {"input4": self._internal_batch(section_batch)},
+        }
+        summary = self._summary(flat)
+        assert summary["job_count"] is None
+        assert summary["reason"] == "batch_mismatch"
+        with pytest.raises(InputMatchedException):
+            self._expand(flat)
+        with pytest.raises(InputMatchedException):
+            validate_matched_batch_lengths(self.tool, RequestInternalToolState(copy.deepcopy(nested)))
+        with pytest.raises(InputMatchedException):
+            self._expand_async(nested)
 
-    def _internal_hdas(self, count: int) -> list[dict[str, Any]]:
-        return [{"src": "hda", "id": self._hda().id} for _ in range(count)]
+    def _assert_parity(self, flat: dict[str, Any], nested: dict[str, Any], expected: int):
+        self._assert_job_count(flat, expected)
+        validate_matched_batch_lengths(self.tool, RequestInternalToolState(copy.deepcopy(nested)))
+        expanded, _, _ = self._expand_async(copy.deepcopy(nested))
+        assert len(expanded) == expected
 
-    def _collection(self, collection_type: str, shape: ShapeT, populated: bool = True) -> model.DatasetCollection:
-        collection = model.DatasetCollection(collection_type=collection_type, populated=populated)
-        if isinstance(shape, int):
-            children: list[Any] = [self._hda() for _ in range(shape)]
-        else:
-            child_type = collection_type.split(":", 1)[1]
-            children = [self._collection(child_type, child_shape) for child_shape in shape]
-        for index, child in enumerate(children):
-            model.DatasetCollectionElement(
-                collection=collection, element=child, element_identifier=f"e{index}", element_index=index
-            )
-        self.session.add(collection)
-        self.session.commit()
-        return collection
+    def _hdas(self, count: int) -> list[model.HistoryDatasetAssociation]:
+        return [self._hda() for _ in range(count)]
 
-    def _hdca(
-        self, collection_type: str, shape: ShapeT, populated: bool = True
-    ) -> model.HistoryDatasetCollectionAssociation:
-        hdca = model.HistoryDatasetCollectionAssociation(
-            collection=self._collection(collection_type, shape, populated=populated), history=self.history
-        )
-        self.session.add(hdca)
-        self.session.commit()
-        return hdca
+    def _legacy_ref(self, item) -> dict[str, Any]:
+        return {"src": self._src(item), "id": self._encode(item.id)}
 
-    def _internal_hdca(self, collection_type: str, shape: ShapeT, map_over_type: str | None = None) -> dict[str, Any]:
-        value: dict[str, Any] = {"src": "hdca", "id": self._hdca(collection_type, shape).id}
-        if map_over_type:
-            value["map_over_type"] = map_over_type
-        return value
+    def _internal_ref(self, item) -> dict[str, Any]:
+        return {"src": self._src(item), "id": item.id}
 
-    def _hdca_batch(
-        self,
-        collection_type: str,
-        shape: ShapeT,
-        map_over_type: str | None = None,
-        linked: bool = True,
-        populated: bool = True,
-    ) -> dict[str, Any]:
-        hdca = self._hdca(collection_type, shape, populated=populated)
-        value: dict[str, Any] = {"src": "hdca", "id": self._encode(hdca.id)}
-        if map_over_type:
-            value["map_over_type"] = map_over_type
-        return {"batch": True, "linked": linked, "values": [value]}
+    def _legacy_batch(self, items, linked: bool = True) -> dict[str, Any]:
+        return {"batch": True, "linked": linked, "values": [self._legacy_ref(i) for i in items]}
+
+    def _internal_batch(self, items, linked: bool = True) -> dict[str, Any]:
+        return {"__class__": "Batch", "linked": linked, "values": [self._internal_ref(i) for i in items]}
+
+    def _src(self, item) -> str:
+        return "hdca" if isinstance(item, model.HistoryDatasetCollectionAssociation) else "hda"
