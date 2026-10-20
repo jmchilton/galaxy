@@ -4580,6 +4580,12 @@ class Dataset(Base, StorableObject, Serializable):
         else:
             return os.path.abspath(self.external_extra_files_path)
 
+    def get_extra_files_path_if_locatable(self) -> Optional[str]:
+        if not getattr(self, "external_extra_files_path", None) and self.store_by is None:
+            log.warning("Cannot locate dataset %s in object store to resolve extra files path", self.id)
+            return None
+        return self.get_extra_files_path()
+
     def create_extra_files_path(self):
         if not self.extra_files_path_exists():
             self.object_store.create(self, dir_only=True, extra_dir=self._extra_files_rel_path)

@@ -223,7 +223,7 @@ class TestMappings(BaseModelTestCase):
         ]
         assert c4.dataset_elements == [dce1, dce2]
 
-    def test_library_dataset_to_dict_dataset_in_unknown_backend(self):
+    def test_dataset_in_unknown_backend_serialization(self):
         with TestConfig(get_example("distributed_disk.xml")) as (_, object_store):
             with global_object_store_for_models(object_store):
                 library = model.Library(name="Library 1")
@@ -242,12 +242,14 @@ class TestMappings(BaseModelTestCase):
                     json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": index.name})}
                 )
                 self.persist(ldda)
+                assert ldda.dataset.get_extra_files_path_if_locatable() == ldda.dataset.extra_files_path
                 # backend removed from the object store configuration since the dataset was created
                 ldda.dataset.object_store_id = "removed_backend"
 
                 as_dict = ld.to_dict()
                 assert as_dict["file_name"] == ""
                 assert as_dict["metadata_bam_index"] is None
+                assert ldda.dataset.get_extra_files_path_if_locatable() is None
 
     def test_history_audit(self):
         u = model.User(email=random_email(), password="password")

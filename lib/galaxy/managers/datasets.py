@@ -300,7 +300,7 @@ class DatasetSerializer(base.ModelSerializer[DatasetManager], deletable.Purgable
         # expensive: allow config option due to cost of operation
         if is_admin or self.app.config.expose_dataset_path:
             if not dataset.purged:
-                return dataset.extra_files_path
+                return dataset.get_extra_files_path_if_locatable()
         self.skip()
 
     def serialize_permissions(self, item, key, user=None, **context):

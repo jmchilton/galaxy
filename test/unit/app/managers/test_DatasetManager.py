@@ -16,6 +16,9 @@ from galaxy.managers.datasets import (
     DatasetSerializer,
 )
 from galaxy.managers.roles import RoleManager
+from galaxy.model.unittest_utils.utils import global_object_store_for_models
+from galaxy.objectstore.examples import get_example
+from galaxy.objectstore.unittest_utils import Config as TestConfig
 from .base import BaseTestCase
 
 # =============================================================================
@@ -237,6 +240,23 @@ class TestDatasetSerializer(BaseTestCase):
         self.log("should be able to use keys on their own")
         serialized = self.dataset_serializer.serialize_to_view(dataset, keys=["purgable", "file_size"])
         self.assertKeys(serialized, ["purgable", "file_size"])
+
+    def test_serialize_extra_files_path_dataset_in_unknown_backend(self):
+        with TestConfig(get_example("distributed_disk.xml")) as (_, object_store):
+            with global_object_store_for_models(object_store):
+                dataset = self.dataset_manager.create()
+                object_store.create(dataset)
+                serialized = self.dataset_serializer.serialize_to_view(
+                    dataset, keys=["extra_files_path"], user=self.admin_user, trans=self.trans
+                )
+                assert serialized["extra_files_path"] == dataset.extra_files_path
+
+                # backend removed from the object store configuration since the dataset was created
+                dataset.object_store_id = "removed_backend"
+                serialized = self.dataset_serializer.serialize_to_view(
+                    dataset, keys=["extra_files_path"], user=self.admin_user, trans=self.trans
+                )
+                assert serialized["extra_files_path"] is None
 
     def test_serialize_permissions(self):
         dataset = self.dataset_manager.create()
