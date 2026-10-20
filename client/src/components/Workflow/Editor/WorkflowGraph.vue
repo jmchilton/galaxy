@@ -330,6 +330,8 @@ defineExpose({
                     :root-offset="elementBounding"
                     @pan-by="panBy" />
                 <AreaHighlight ref="areaHighlight" />
+                <!-- extra content positioned in workflow coordinates, panned and zoomed with the nodes -->
+                <slot name="node-area"></slot>
             </div>
         </div>
         <WorkflowMinimap

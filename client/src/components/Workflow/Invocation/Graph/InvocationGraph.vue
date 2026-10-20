@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { faArrowCircleLeft, faArrowCircleRight, faArrowDown, faEye, faTimes } from "@fortawesome/free-solid-svg-icons";
+import {
+    faArrowCircleLeft,
+    faArrowCircleRight,
+    faArrowDown,
+    faArrowRight,
+    faEye,
+    faTable,
+    faTimes,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { until } from "@vueuse/core";
 import { BCard, BCardBody, BCardHeader } from "bootstrap-vue";
@@ -8,15 +16,19 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 import type { StepJobSummary, WorkflowInvocationElementView } from "@/api/invocations";
 import type { StoredWorkflowDetailed } from "@/api/workflows";
+import type { NudgeDirection } from "@/components/Workflow/Editor/modules/embeddedOutputLayout";
 import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { useInvocationGraph } from "@/composables/useInvocationGraph";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
+
+import { useEmbeddedOutputs } from "./useEmbeddedOutputs";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
 import GButtonGroup from "@/components/BaseComponents/GButtonGroup.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import WorkflowGraph from "@/components/Workflow/Editor/WorkflowGraph.vue";
+import InvocationEmbeddedOutputs from "@/components/Workflow/Invocation/Graph/InvocationEmbeddedOutputs.vue";
 import WorkflowInvocationStep from "@/components/WorkflowInvocationState/WorkflowInvocationStep.vue";
 import WorkflowInvocationStepHeader from "@/components/WorkflowInvocationState/WorkflowInvocationStepHeader.vue";
 
@@ -96,6 +108,10 @@ watch(
 );
 
 const stateStore = useWorkflowStateStore(storeId.value);
+
+const embedOutputs = ref(false);
+const nudgeDirection = ref<NudgeDirection>("right");
+const { embedded, maxDisplacement } = useEmbeddedOutputs(storeId.value, steps, embedOutputs, nudgeDirection);
 const { activeNodeId } = storeToRefs(stateStore);
 
 watch(
@@ -204,6 +220,7 @@ function toggleDetailedView() {
                         <WorkflowGraph
                             ref="workflowGraph"
                             class="invocation-graph"
+                            :class="{ 'embed-outputs': embedOutputs }"
                             :steps="steps"
                             :datatypes-mapper="datatypesMapper"
                             :initial-position="initialPosition"
@@ -214,12 +231,46 @@ function toggleDetailedView() {
                             :fixed-height="60"
                             is-invocation
                             readonly
-                            @stepClicked="stepClicked" />
+                            @stepClicked="stepClicked">
+                            <template v-slot:node-area>
+                                <InvocationEmbeddedOutputs
+                                    v-if="embedOutputs"
+                                    :store-id="storeId"
+                                    :embedded="embedded"
+                                    :steps="steps" />
+                            </template>
+                        </WorkflowGraph>
                         <div
                             v-if="activeNodeId !== null && showSideOverlay"
                             class="graph-scroll-overlay overlay-right" />
                     </BCard>
 
+                    <div class="embed-outputs-controls">
+                        <GButton
+                            tooltip
+                            title="Show workflow outputs inside the graph"
+                            data-description="toggle embedded outputs button"
+                            size="small"
+                            color="blue"
+                            outline
+                            :pressed="embedOutputs"
+                            @click="embedOutputs = !embedOutputs">
+                            <FontAwesomeIcon :icon="faTable" fixed-width />
+                            Embed Outputs
+                        </GButton>
+                        <GButton
+                            v-if="embedOutputs"
+                            tooltip
+                            :title="`Nudging steps ${nudgeDirection}; largest move ${Math.round(maxDisplacement)}px. Click to switch.`"
+                            size="small"
+                            color="blue"
+                            outline
+                            @click="nudgeDirection = nudgeDirection === 'right' ? 'down' : 'right'">
+                            <FontAwesomeIcon
+                                :icon="nudgeDirection === 'right' ? faArrowRight : faArrowDown"
+                                fixed-width />
+                        </GButton>
+                    </div>
                     <GButton
                         v-if="activeNodeId !== null"
                         class="detailed-view-button"
@@ -331,6 +382,11 @@ function toggleDetailedView() {
 }
 
 .invocation-graph {
+    &.embed-outputs:deep(.workflow-node) {
+        width: 9rem;
+        font-size: 0.75rem;
+    }
+
     &:deep(.workflow-overview),
     &:deep(.zoom-control) {
         z-index: 100;
@@ -339,6 +395,15 @@ function toggleDetailedView() {
 
 .invocation-step-card {
     min-height: 500px;
+}
+
+.embed-outputs-controls {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    z-index: 150;
+    display: flex;
+    gap: 0.25rem;
 }
 
 .detailed-view-button {
