@@ -161,6 +161,7 @@ object_store_details:
 dataset_view:
   selectors:
     _: .dataset-view
+    name: .dataset-view .dataset-name
     edit_tab: ".nav-item[title='Edit dataset attributes and metadata'] > a.nav-link"
     details_tab: ".nav-item[title='View detailed information about this dataset'] > a.nav-link"
     visualize_tab: ".nav-item[title='Explore available visualizations for this dataset'] > a.nav-link"

@@ -58,6 +58,14 @@ class TestDataset(SeleniumTestCase):
         assert edit_dataset_attributes.alert.has_class("alert-success")
         assert name_component.wait_for_value() == new_name
         assert self.history_panel_item_component(hid=hid).name.wait_for_text() == new_name
+        # the header picks up the rename once the history watcher refreshes the dataset
+        dataset_name = self.components.dataset_view.name
+        self._wait_on(lambda *_: dataset_name.wait_for_text() == new_name or None, "dataset header to show new name")
+        # the alert survives that refresh
+        alert_element = edit_dataset_attributes.alert.wait_for_visible()
+        assert edit_dataset_attributes.alert.has_class("alert-success")
+        self.scroll_into_view(alert_element)
+        self.screenshot("dataset_edit_attributes_rename_success")
 
     @selenium_test
     @managed_history
@@ -109,6 +117,7 @@ class TestDataset(SeleniumTestCase):
         edit_dataset_attributes.alert.wait_for_visible()
 
         assert edit_dataset_attributes.alert.has_class("alert-success")
+        self.screenshot("dataset_edit_datatype_auto_detect_success")
 
         # reopen and check that datatype is updated
         self.home()
