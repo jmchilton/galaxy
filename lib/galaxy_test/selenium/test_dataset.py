@@ -117,6 +117,8 @@ class TestDataset(SeleniumTestCase):
         edit_dataset_attributes.alert.wait_for_visible()
 
         assert edit_dataset_attributes.alert.has_class("alert-success")
+        # the Datatypes tab stays open and its form updates once metadata is set
+        assert datatype_component.wait_for_text() == expected_datatype
         self.screenshot("dataset_edit_datatype_auto_detect_success")
 
         # reopen and check that datatype is updated
