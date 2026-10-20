@@ -25,6 +25,7 @@ from typing import (
     Any,
     Callable,
     cast,
+    Literal,
     Optional,
     TYPE_CHECKING,
 )
@@ -79,6 +80,7 @@ from galaxy.model import (
     Job,
     store,
     Task,
+    User,
 )
 from galaxy.model.store import copy_dataset_instance_metadata_attributes
 from galaxy.model.store.discover import MaxDiscoveredFilesExceededError
@@ -1854,7 +1856,11 @@ class MinimalJobWrapper(HasResourceParameters):
         self._setup_working_directory(job=job)
 
     def _validated_stored_preferred_object_store_id(
-        self, user, object_store_id: Optional[str], owner_type: str, owner_id: int
+        self,
+        user: Optional[User],
+        object_store_id: Optional[str],
+        owner_type: Literal["history", "user"],
+        owner_id: int,
     ) -> Optional[str]:
         # Preferences stored on users and histories are validated when they are set,
         # but the object store configuration may have changed since (e.g. a backend
