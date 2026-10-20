@@ -198,4 +198,44 @@ describe("DatasetDisplay", () => {
         expect(checks).toBe(2);
         expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
     });
+
+    it("reports a failed preview check before the preview loads", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        server.use(
+            http.untyped.head("/datasets/:dataset_id/display/", () => {
+                return HttpResponse.error();
+            }),
+        );
+        const wrapper = await mountDatasetDisplay();
+        expect(wrapper.find(".alert-danger").exists()).toBe(true);
+        expect(wrapper.find(".dataset-display").exists()).toBe(false);
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it("keeps the preview when a later preview check fails", async () => {
+        usePreviewHeaders({ "x-content-truncated": "1024" });
+        const wrapper = await mountDatasetDisplay();
+        const frame = wrapper.find("iframe").element;
+
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        server.use(
+            http.untyped.head("/datasets/:dataset_id/display/", () => {
+                return HttpResponse.error();
+            }),
+        );
+        storeHistoryItem({ ...okDataset, update_time: "2026-01-01T00:05:00" });
+        await flushPromises();
+        expect(wrapper.find("iframe").element).toBe(frame);
+        expect(wrapper.find(".warningmessagelarge").text()).toContain("only the first");
+        expect(wrapper.find(".dataset-preview-refresh-error").exists()).toBe(true);
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+
+        usePreviewHeaders();
+        storeHistoryItem({ ...okDataset, update_time: "2026-01-01T00:10:00" });
+        await flushPromises();
+        expect(wrapper.find(".dataset-preview-refresh-error").exists()).toBe(false);
+        expect(wrapper.find(".warningmessagelarge").exists()).toBe(false);
+    });
 });

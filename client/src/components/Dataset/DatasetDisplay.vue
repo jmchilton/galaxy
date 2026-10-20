@@ -5,9 +5,10 @@ import { BAlert } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 
-import { useSettledDataset } from "@/composables/settledDataset";
+import { onDatasetUpdated, useSettledDataset } from "@/composables/settledDataset";
 import { useUserStore } from "@/stores/userStore";
 import STATES from "@/utils/datasetStates";
+import { createLatestRequestTracker } from "@/utils/latestRequest";
 import { withPrefix } from "@/utils/redirect";
 import { errorMessageAsString } from "@/utils/simple-error";
 import { bytesToString } from "@/utils/utils";
@@ -29,6 +30,9 @@ const props = defineProps<Props>();
 const contentTruncated = ref<number | null>(null);
 const contentChunked = ref<boolean>(false);
 const errorMessage = ref<string>("");
+const refreshErrorMessage = ref<string>("");
+// The dataset whose preview was last checked successfully; a later failed check keeps that preview.
+const checkedDatasetId = ref<string | null>(null);
 const sanitizedJobImported = ref<boolean>(false);
 const sanitizedToolId = ref<string | null>(null);
 
@@ -49,23 +53,30 @@ const sanitizedMessage = computed(() => {
     return undefined;
 });
 
-let latestCheck = 0;
+const startCheck = createLatestRequestTracker();
 
 async function checkPreview() {
-    const check = ++latestCheck;
+    const isLatest = startCheck();
+    const datasetId = props.datasetId;
     try {
         const { headers } = await fetch(withPrefix(previewUrl.value), { method: "HEAD" });
-        if (check !== latestCheck) {
+        if (!isLatest()) {
             return;
         }
         contentChunked.value = !!headers.get("x-content-chunked");
         contentTruncated.value = headers.get("x-content-truncated") ? Number(headers.get("x-content-truncated")) : null;
         sanitizedJobImported.value = !!headers.get("x-sanitized-job-imported");
         sanitizedToolId.value = headers.get("x-sanitized-tool-id");
+        checkedDatasetId.value = datasetId;
         errorMessage.value = "";
+        refreshErrorMessage.value = "";
     } catch (e) {
-        if (check === latestCheck) {
-            errorMessage.value = errorMessageAsString(e);
+        if (isLatest()) {
+            if (checkedDatasetId.value === datasetId) {
+                refreshErrorMessage.value = errorMessageAsString(e);
+            } else {
+                errorMessage.value = errorMessageAsString(e);
+            }
         }
         console.error(e);
     }
@@ -75,14 +86,7 @@ watch(() => props.datasetId, checkPreview, { immediate: true });
 
 // The preview stays mounted while the dataset refetches, so recheck it when the dataset changes,
 // e.g. once a pending dataset finishes. The first load is covered by the datasetId watch.
-watch(
-    () => dataset.value?.update_time,
-    (updateTime, previousUpdateTime) => {
-        if (updateTime && previousUpdateTime) {
-            checkPreview();
-        }
-    },
-);
+onDatasetUpdated(() => props.datasetId, checkPreview);
 </script>
 
 <template>
@@ -99,6 +103,9 @@ watch(
         <span>Dataset is unavailable. Please check the history panel for details.</span>
     </BAlert>
     <div v-else class="dataset-display h-100">
+        <BAlert v-if="refreshErrorMessage" show variant="warning" class="dataset-preview-refresh-error">
+            Unable to recheck the preview, showing the last loaded version. {{ refreshErrorMessage }}
+        </BAlert>
         <Alert v-if="sanitizedMessage" :dismissible="true" variant="warning" data-description="sanitization warning">
             {{ sanitizedMessage }}
             <span v-if="isAdmin && sanitizedToolId">
