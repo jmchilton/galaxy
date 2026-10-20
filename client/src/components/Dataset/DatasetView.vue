@@ -114,7 +114,7 @@ watch(
     },
     { immediate: true },
 );
-const showLoading = computed(() => !dataset.value || loadedDatasetId.value !== props.datasetId);
+const showLoading = computed(() => loadedDatasetId.value !== props.datasetId);
 </script>
 
 <template>
@@ -127,7 +127,7 @@ const showLoading = computed(() => !dataset.value || loadedDatasetId.value !== p
             }}
         </p>
     </div>
-    <LoadingSpan v-else-if="showLoading" message="Loading dataset details" />
+    <LoadingSpan v-else-if="!dataset || showLoading" message="Loading dataset details" />
     <div v-else class="dataset-view d-flex flex-column">
         <header v-if="!displayOnly" :key="`dataset-header-${dataset.id}`" class="dataset-header flex-shrink-0">
             <div class="d-flex">
