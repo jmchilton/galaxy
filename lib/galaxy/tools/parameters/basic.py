@@ -2741,13 +2741,14 @@ class DataToolParameter(BaseDataToolParameter):
             if isinstance(value, HistoryDatasetCollectionAssociation):
                 if value.deleted or not value.visible or value.history != history:
                     state = _carried_state_label(value)
+                    _, subcollection_type = self._hdca_fit(trans, value)
                     builder.options["hdca"].append(
                         make_hdca_entry(
                             builder.security,
                             value,
                             f"({state}) {value.name}",
                             keep=True,
-                            subcollection_type=self._map_over_type(trans, value),
+                            subcollection_type=subcollection_type,
                         )
                     )
             elif isinstance(value, HistoryDatasetAssociation):
@@ -2772,7 +2773,6 @@ class DataToolParameter(BaseDataToolParameter):
         Collection matching needs per-row Python inspection (subcollection
         mapping, implicit conversion), so this always uses chunked pagination.
         """
-        multiple = self.multiple
         _offset, _limit, hdca_search = builder.page("hdca")
 
         def hdca_query(*, offset, limit):
@@ -2784,8 +2784,8 @@ class DataToolParameter(BaseDataToolParameter):
             match = dataset_collection_matcher.hdca_match(hdca)
             if not match:
                 return None
-            subcollection_type = self._map_over_type(trans, hdca)
-            if subcollection_type is None and multiple and hdca.collection.collection_type != "list":
+            fits, subcollection_type = self._hdca_fit(trans, hdca)
+            if not fits:
                 return None
             return (hdca, match, subcollection_type)
 
@@ -2798,13 +2798,14 @@ class DataToolParameter(BaseDataToolParameter):
                 make_hdca_entry(builder.security, hdca, name, keep=False, subcollection_type=subcollection_type)
             )
 
-    def _map_over_type(self, trans, hdca) -> Optional[str]:
-        """Subcollection type a ``multiple`` param maps over ``hdca`` by, if
-        it is not a plain list the param takes directly."""
-        if self.multiple and hdca.collection.collection_type != "list":
-            if collection_type_description := self._history_query(trans).can_map_over(hdca):
-                return collection_type_description.collection_type
-        return None
+    def _hdca_fit(self, trans, hdca) -> tuple[bool, Optional[str]]:
+        """Whether this param can take ``hdca``, and the subcollection type a
+        ``multiple`` param maps over it by (``None`` when taken directly)."""
+        if not self.multiple or hdca.collection.collection_type == "list":
+            return True, None
+        if collection_type_description := self._history_query(trans).can_map_over(hdca):
+            return True, collection_type_description.collection_type
+        return False, None
 
     def _history_query(self, trans):
         assert self.multiple
