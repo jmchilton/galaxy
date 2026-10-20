@@ -786,6 +786,21 @@ class TestToolsApi(ApiTestCase, TestsTools):
             carried = self._carried_hdca_option(f1, hidden["id"], "hidden")
             assert carried.get("map_over_type") == "paired", carried
 
+    @skip_without_tool("multi_data_param")
+    def test_build_data_options_carries_hidden_map_over_selection(self):
+        """A hidden nested collection selected to map over a ``multiple`` data
+        input is carried with a server-derived ``map_over_type``."""
+        with self.dataset_populator.test_history() as history_id:
+            hidden = self._create_hdca(history_id, "list_of_list", hidden=True)
+            f2 = self._build_tool_param(
+                "multi_data_param",
+                history_id,
+                inputs={"f2": {"batch": True, "values": [{"src": "hdca", "id": hidden["id"]}]}},
+                param_name="f2",
+            )
+            carried = self._carried_hdca_option(f2, hidden["id"], "hidden")
+            assert carried.get("map_over_type") == "list", carried
+
     @skip_without_tool("cheetah_problem_unbound_var_input")
     def test_legacy_biotools_xref_injection(self):
         url = self._api_url("tools/cheetah_problem_unbound_var_input")

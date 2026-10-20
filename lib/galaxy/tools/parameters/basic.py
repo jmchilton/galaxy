@@ -2609,7 +2609,7 @@ class DataToolParameter(BaseDataToolParameter):
             trans, builder, history, dataset_matcher, dataset_matcher_factory, job_input_values
         )
         unresolved = self._pin_live_hda_inputs(builder, history, dataset_matcher, job_input_values)
-        self._carry_unresolved_inputs(builder, history, unresolved)
+        self._carry_unresolved_inputs(builder, trans, history, unresolved)
         self._page_hdca_matches(
             builder,
             trans,
@@ -2729,7 +2729,7 @@ class DataToolParameter(BaseDataToolParameter):
             unresolved.append(value)
         return unresolved
 
-    def _carry_unresolved_inputs(self, builder: DataOptionsBuilder, history, unresolved: list) -> None:
+    def _carry_unresolved_inputs(self, builder: DataOptionsBuilder, trans, history, unresolved: list) -> None:
         """Anything left over from the rerun input list has no live HDA match
         (deleted/hidden/wrong-history, or HDCA/DCE/LDDA from the original
         job). Carry each forward as an ``options.X`` entry with
@@ -2742,7 +2742,13 @@ class DataToolParameter(BaseDataToolParameter):
                 if value.deleted or not value.visible or value.history != history:
                     state = _carried_state_label(value)
                     builder.options["hdca"].append(
-                        make_hdca_entry(builder.security, value, f"({state}) {value.name}", keep=True)
+                        make_hdca_entry(
+                            builder.security,
+                            value,
+                            f"({state}) {value.name}",
+                            keep=True,
+                            subcollection_type=self._map_over_type(trans, value),
+                        )
                     )
             elif isinstance(value, HistoryDatasetAssociation):
                 state = _carried_state_label(value)
@@ -2778,13 +2784,9 @@ class DataToolParameter(BaseDataToolParameter):
             match = dataset_collection_matcher.hdca_match(hdca)
             if not match:
                 return None
-            subcollection_type = None
-            if multiple and hdca.collection.collection_type != "list":
-                collection_type_description = self._history_query(trans).can_map_over(hdca)
-                if collection_type_description:
-                    subcollection_type = collection_type_description.collection_type
-                else:
-                    return None
+            subcollection_type = self._map_over_type(trans, hdca)
+            if subcollection_type is None and multiple and hdca.collection.collection_type != "list":
+                return None
             return (hdca, match, subcollection_type)
 
         matches, _total, _has_more = builder.paginate("hdca", query=hdca_query, filter=hdca_filter)
@@ -2795,6 +2797,14 @@ class DataToolParameter(BaseDataToolParameter):
             builder.options["hdca"].append(
                 make_hdca_entry(builder.security, hdca, name, keep=False, subcollection_type=subcollection_type)
             )
+
+    def _map_over_type(self, trans, hdca) -> Optional[str]:
+        """Subcollection type a ``multiple`` param maps over ``hdca`` by, if
+        it is not a plain list the param takes directly."""
+        if self.multiple and hdca.collection.collection_type != "list":
+            if collection_type_description := self._history_query(trans).can_map_over(hdca):
+                return collection_type_description.collection_type
+        return None
 
     def _history_query(self, trans):
         assert self.multiple
