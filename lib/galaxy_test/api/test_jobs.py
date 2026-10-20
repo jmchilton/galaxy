@@ -1093,6 +1093,28 @@ steps:
         assert matching[0]["keep"] is True
         assert matching[0]["name"].startswith("(hidden) ")
 
+    @skip_without_tool("collection_paired_test")
+    def test_job_build_for_rerun_other_history_hdca_carried(self, history_id):
+        """Rerunning a job whose collection input lives in another history
+        carries that collection into ``options.hdca`` so it stays selected."""
+        with self.dataset_populator.test_history() as other_history_id:
+            hdca_id = self.__history_with_ok_collection(collection_type="pair", history_id=other_history_id)
+            run_response = self._run(
+                "collection_paired_test",
+                history_id,
+                {"f1": {"src": "hdca", "id": hdca_id}},
+                wait_for_job=True,
+                assert_ok=True,
+            )
+            rerun_params = self.dataset_populator.build_for_rerun(run_response["jobs"][0]["id"])
+
+        f1_input = next(i for i in rerun_params["inputs"] if i["name"] == "f1")
+        assert f1_input["value"]["values"][0]["id"] == hdca_id
+        matching = [e for e in f1_input["options"]["hdca"] if e["id"] == hdca_id]
+        assert len(matching) == 1, f1_input["options"]["hdca"]
+        assert matching[0]["keep"] is True
+        assert matching[0]["name"].startswith("(not in current history) ")
+
     @skip_without_tool("multiple_versions")
     def test_job_build_for_rerun_switch_version(self, history_id):
         run_response = self._run("multiple_versions", history_id, {}, tool_version="0.1").json()
