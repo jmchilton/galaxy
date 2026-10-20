@@ -10,6 +10,7 @@ from typing import (
 from packaging.version import Version
 
 from galaxy.tool_util.lint import Linter
+from galaxy.tool_util_models._base import check_collection_type_prefix
 from ._util import is_valid_cheetah_placeholder
 from ..parser.output_collection_def import NAMED_PATTERNS
 
@@ -140,6 +141,46 @@ class OutputsCollectionType(Linter):
         for output in tool_xml.findall("./outputs/collection"):
             if "type" not in output.attrib:
                 lint_ctx.warn("Collection output with undefined 'type' found.", linter=cls.name(), node=output)
+
+
+class OutputsCollectionTypePrefix(Linter):
+    @classmethod
+    def lint(cls, tool_source: "ToolSource", lint_ctx: "LintContext") -> None:
+        tool_xml = getattr(tool_source, "xml_tree", None)
+        if not tool_xml:
+            return
+        profile = tool_source.parse_profile()
+        profile_version = Version(profile)
+        outputs = [(output, "type_prefix", "type_source") for output in tool_xml.findall("./outputs/collection")]
+        outputs += [
+            (output, "collection_type_prefix", "collection_type_source")
+            for output in tool_xml.findall("./outputs/output[@type='collection']")
+        ]
+        for output, prefix_attribute, source_attribute in outputs:
+            prefix = output.attrib.get(prefix_attribute)
+            if prefix is None:
+                continue
+            name = _output_name(output)
+            if profile_version < Version("26.2"):
+                lint_ctx.error(
+                    f"Output '{name}' uses {prefix_attribute}, which requires tool profile 26.2 or newer (found {profile}).",
+                    linter=cls.name(),
+                    node=output,
+                )
+            if source_attribute not in output.attrib:
+                lint_ctx.error(
+                    f"Output '{name}' uses {prefix_attribute} without {source_attribute}.",
+                    linter=cls.name(),
+                    node=output,
+                )
+            try:
+                check_collection_type_prefix(prefix)
+            except ValueError as e:
+                lint_ctx.error(
+                    f"Output '{name}' has invalid {prefix_attribute} '{prefix}': {e}",
+                    linter=cls.name(),
+                    node=output,
+                )
 
 
 class OutputsNumber(Linter):
