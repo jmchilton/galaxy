@@ -1037,6 +1037,36 @@ OUTPUTS_STRUCTURED_LIKE_NOT_DATA = """
 </tool>
 """
 
+OUTPUTS_COLLECTION_TYPE_PREFIX = """
+<tool id="id" name="name" profile="{profile}">
+    <inputs>
+        <param name="input1" type="data_collection" collection_type="list,paired" format="data" />
+    </inputs>
+    <outputs>
+        <collection name="nested" type_source="input1" type_prefix="{prefix}" format="txt" />
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_COLLECTION_TYPE_PREFIX_NO_PROFILE = """
+<tool id="id" name="name">
+    <inputs>
+        <param name="input1" type="data_collection" collection_type="list,paired" format="data" />
+    </inputs>
+    <outputs>
+        <collection name="nested" type_source="input1" type_prefix="list" format="txt" />
+    </outputs>
+</tool>
+"""
+
+OUTPUTS_COLLECTION_TYPE_PREFIX_WITHOUT_SOURCE = """
+<tool id="id" name="name" profile="26.2">
+    <outputs>
+        <collection name="nested" type="paired" type_prefix="list" format="txt" />
+    </outputs>
+</tool>
+"""
+
 OUTPUTS_FORMAT_SOURCE_UNQUALIFIED_ELEMENT = """
 <tool id="id" name="name">
     <inputs>
@@ -2732,6 +2762,63 @@ def test_outputs_structured_like_not_data(lint_ctx):
     )
 
 
+def test_outputs_collection_type_prefix(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_COLLECTION_TYPE_PREFIX.format(profile="26.2", prefix="list"))
+    run_lint_module(lint_ctx, output, tool_source)
+    assert not lint_ctx.error_messages
+    assert not any("type_prefix" in m.message for m in lint_ctx.warn_messages)
+
+
+@pytest.mark.parametrize("profile", ["26.1", "16.04"])
+def test_outputs_collection_type_prefix_old_profile(lint_ctx, profile):
+    tool_source = get_xml_tool_source(OUTPUTS_COLLECTION_TYPE_PREFIX.format(profile=profile, prefix="list"))
+    run_lint_module(lint_ctx, output, tool_source)
+    assert lint_ctx.error_messages == [
+        f"Output 'nested' uses type_prefix, which requires tool profile 26.2 or newer (found {profile})."
+    ]
+
+
+def test_outputs_collection_type_prefix_no_profile(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_COLLECTION_TYPE_PREFIX_NO_PROFILE)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert lint_ctx.error_messages == [
+        "Output 'nested' uses type_prefix, which requires tool profile 26.2 or newer (found 16.01)."
+    ]
+
+
+def test_outputs_collection_type_prefix_without_source(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_COLLECTION_TYPE_PREFIX_WITHOUT_SOURCE)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert lint_ctx.error_messages == ["Output 'nested' uses type_prefix without type_source."]
+
+
+def test_outputs_collection_type_prefix_invalid(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_COLLECTION_TYPE_PREFIX.format(profile="26.2", prefix="lists"))
+    run_lint_module(lint_ctx, output, tool_source)
+    assert (
+        "Output 'nested' has invalid type_prefix 'lists': Invalid collection_type specified [lists]"
+        in lint_ctx.error_messages
+    )
+
+
+@pytest.mark.parametrize(
+    "prefix, level",
+    [
+        ("sample_sheet", "sample_sheet"),
+        ("list:sample_sheet", "sample_sheet"),
+        ("record", "record"),
+        ("list:record", "record"),
+    ],
+)
+def test_outputs_collection_type_prefix_sample_sheet_or_record(lint_ctx, prefix, level):
+    tool_source = get_xml_tool_source(OUTPUTS_COLLECTION_TYPE_PREFIX.format(profile="26.2", prefix=prefix))
+    run_lint_module(lint_ctx, output, tool_source)
+    prefix_errors = [m.message for m in lint_ctx.error_messages if m.linter == "OutputsCollectionTypePrefix"]
+    assert prefix_errors == [
+        f"Output 'nested' has invalid type_prefix '{prefix}': {level} is not allowed in type_prefix [{prefix}]"
+    ]
+
+
 def test_outputs_format_source_unqualified_element(lint_ctx):
     tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_UNQUALIFIED_ELEMENT)
     run_lint_module(lint_ctx, output, tool_source)
@@ -3515,6 +3602,7 @@ def test_list_linters():
         "MissingLocFixture",
         "OutputRefValid",
         "OutputsCollectionType",
+        "OutputsCollectionTypePrefix",
         "OutputsFilterExpression",
         "OutputsFormat",
         "OutputsFormatInput",
