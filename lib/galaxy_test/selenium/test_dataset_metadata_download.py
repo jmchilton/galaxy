@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
@@ -9,7 +8,7 @@ from .framework import (
 FIRST_HID = 1
 
 
-class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
+class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions):
     ensure_registered = True
 
     @selenium_test

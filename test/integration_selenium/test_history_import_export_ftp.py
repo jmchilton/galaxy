@@ -1,13 +1,12 @@
 import os
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumIntegrationTestCase,
 )
 
 
-class TestHistoryImportExportFtpSeleniumIntegrationBase(SeleniumIntegrationTestCase, UsesUploadActivity):
+class TestHistoryImportExportFtpSeleniumIntegrationBase(SeleniumIntegrationTestCase):
     ensure_registered = True
 
     @classmethod

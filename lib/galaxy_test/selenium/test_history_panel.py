@@ -1,5 +1,4 @@
 from galaxy.selenium.navigates_galaxy import edit_details
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     retry_assertion_during_transitions,
     selenium_test,
@@ -13,7 +12,7 @@ HISTORY_PANEL_AXE_IMPACT_LEVEL = "moderate"
 HISTORY_PANEL_VIOLATION_EXCEPTIONS = ["heading-order", "label"]
 
 
-class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
+class TestHistoryPanel(SeleniumTestCase):
     ensure_registered = True
 
     @selenium_test

@@ -1,11 +1,10 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumIntegrationTestCase,
 )
 
 
-class TestLegacyHistoryExport(SeleniumIntegrationTestCase, UsesUploadActivity):
+class TestLegacyHistoryExport(SeleniumIntegrationTestCase):
     """Test legacy history export for when celery is disabled.
 
     If Celery is enabled, a wizard will be setup and STS will serve downloads,

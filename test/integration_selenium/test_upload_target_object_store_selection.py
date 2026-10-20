@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_util import ConfiguresObjectStores
 from .framework import (
     managed_history,
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 class TestUploadTargetObjectStoreSelectionSeleniumIntegration(
     SeleniumIntegrationTestCase,
     ConfiguresObjectStores,
-    UsesUploadActivity,
 ):
     ensure_registered = True
     dataset_populator: "SeleniumSessionDatasetPopulator"

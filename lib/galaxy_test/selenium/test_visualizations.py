@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.populators import (
     skip_without_datatype,
     skip_without_visualization_plugin,
@@ -14,7 +13,7 @@ HG18_TITLE = "Human (hg18)"
 HG38_TITLE = "Human (GRCh38/hg38)"
 
 
-class TestVisualizationsAnonymous(SeleniumTestCase, UsesUploadActivity):
+class TestVisualizationsAnonymous(SeleniumTestCase):
     @skip_without_datatype("png")
     @skip_without_visualization_plugin("annotate_image")
     @selenium_test
@@ -59,7 +58,7 @@ class TestVisualizationsAnonymous(SeleniumTestCase, UsesUploadActivity):
             self.screenshot("visualization_plugin_charts_h5web_landing")
 
 
-class TestVisualizations(SeleniumTestCase, UsesUploadActivity):
+class TestVisualizations(SeleniumTestCase):
     ensure_registered = True
 
     @selenium_test

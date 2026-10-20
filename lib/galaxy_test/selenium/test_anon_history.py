@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.decorators import requires_new_user
 from .framework import (
     selenium_test,
@@ -6,7 +5,7 @@ from .framework import (
 )
 
 
-class TestAnonymousHistories(SeleniumTestCase, UsesUploadActivity):
+class TestAnonymousHistories(SeleniumTestCase):
     @selenium_test
     def test_anon_history_landing(self):
         self.home()

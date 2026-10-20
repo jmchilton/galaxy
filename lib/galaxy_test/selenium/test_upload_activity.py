@@ -1,6 +1,6 @@
 """Integration coverage for the new Upload Activity."""
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
+from galaxy.selenium.context import GalaxySeleniumContextImpl
 from galaxy_test.base.decorators import (
     requires_admin,
     requires_new_history,
@@ -13,7 +13,7 @@ from .framework import (
 )
 
 
-class TestUploadActivity(SeleniumTestCase, UsesUploadActivity, UsesHistoryItemAssertions):
+class TestUploadActivity(SeleniumTestCase, UsesHistoryItemAssertions):
     ensure_registered = True
 
     @selenium_test
@@ -47,6 +47,19 @@ class TestUploadActivity(SeleniumTestCase, UsesUploadActivity, UsesHistoryItemAs
         self.assert_item_name(1, "pasted_data")
         self.assert_item_extension(1, "txt")
         self.assert_item_dbkey_displayed_as(1, "apiMel3")
+
+    @selenium_test
+    @managed_history
+    def test_paste_content_from_standalone_context(self):
+        # A standalone context driving this test's logged-in browser.
+        context = object.__new__(GalaxySeleniumContextImpl)
+        context.configured_driver = self.configured_driver
+        context.url = self.url
+        context.target_url_from_selenium = self.target_url_from_selenium
+        context.upload_context("paste-content").stage_paste_content("pasted by a standalone context").start()
+        self.history_panel_wait_for_hid_ok(1)
+        content = self.dataset_populator.get_history_dataset_content(self.current_history_id(), hid=1)
+        assert content.strip() == "pasted by a standalone context"
 
     @selenium_test
     @managed_history
@@ -123,7 +136,7 @@ class TestUploadActivity(SeleniumTestCase, UsesUploadActivity, UsesHistoryItemAs
                 assert len(source_contents) == 0
 
 
-class TestUploadActivityDataLibrary(SeleniumTestCase, UsesUploadActivity, UsesHistoryItemAssertions):
+class TestUploadActivityDataLibrary(SeleniumTestCase, UsesHistoryItemAssertions):
     ensure_registered = True
     run_as_admin = True
 

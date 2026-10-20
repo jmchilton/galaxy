@@ -10,14 +10,13 @@ from urllib.parse import (
     urlparse,
 )
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
 
 
-class TestWorkbookMapping(SeleniumTestCase, UsesUploadActivity):
+class TestWorkbookMapping(SeleniumTestCase):
     ensure_registered = True
 
     def _workbook(self, index: int) -> str:

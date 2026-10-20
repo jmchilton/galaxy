@@ -7,7 +7,6 @@ import yaml
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.tools.parameters.pagination import DEFAULT_OPTIONS_PAGE_SIZE
 from galaxy_test.base import rules_test_data
 from galaxy_test.base.workflow_fixtures import (
@@ -51,7 +50,7 @@ steps:
 """
 
 
-class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows, UsesUploadActivity):
+class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows):
     ensure_registered = True
 
     @selenium_test

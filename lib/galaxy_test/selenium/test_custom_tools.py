@@ -3,14 +3,13 @@
 import platform
 
 from galaxy.selenium.keys import Key
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumTestCase,
 )
 
 
-class TestCustomTools(SeleniumTestCase, UsesUploadActivity):
+class TestCustomTools(SeleniumTestCase):
     ensure_registered = True
 
     def assert_baseline_accessibility(self):

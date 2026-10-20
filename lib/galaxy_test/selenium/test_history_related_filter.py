@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumTestCase,
@@ -10,7 +9,7 @@ RELATED_HID = 2
 UNRELATED_HID = 3
 
 
-class TestHistoryRelatedFilter(SeleniumTestCase, UsesUploadActivity):
+class TestHistoryRelatedFilter(SeleniumTestCase):
     @selenium_test
     def test_history_related_filter(self):
         self.register()

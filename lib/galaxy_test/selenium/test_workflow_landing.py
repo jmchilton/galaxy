@@ -1,7 +1,6 @@
 from typing import Literal
 
 from galaxy.schema.schema import CreateWorkflowLandingRequestPayload
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     RunsWorkflows,
@@ -10,7 +9,7 @@ from .framework import (
 )
 
 
-class TestWorkflowLanding(SeleniumTestCase, RunsWorkflows, UsesUploadActivity):
+class TestWorkflowLanding(SeleniumTestCase, RunsWorkflows):
     ensure_registered = True
 
     @selenium_test

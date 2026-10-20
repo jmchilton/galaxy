@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_OPTIONAL_TRUE_INPUT_DATA,
     WORKFLOW_SIMPLE_CAT_TWICE,
@@ -26,7 +25,7 @@ steps:
 """
 
 
-class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows, UsesUploadActivity):
+class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows):
     ensure_registered = True
 
     @selenium_test

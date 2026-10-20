@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.util.unittest_utils import transient_failure
 from .framework import (
     selenium_test,
@@ -9,7 +8,7 @@ from .framework import (
 VALID_LOGIN_RETRIES = 3
 
 
-class TestHistorySharing(SeleniumTestCase, UsesUploadActivity):
+class TestHistorySharing(SeleniumTestCase):
     @selenium_test
     def test_sharing_valid(self):
         user1_email, user2_email, history_id = self.setup_two_users_with_one_shared_history()
@@ -155,7 +154,7 @@ class TestHistoryRequiresLoginSelenium(SeleniumTestCase):
         self.wait_for_selector(".make-accessible")
 
 
-class TestPrivateHistorySharingRequiresPermissionChanges(SeleniumTestCase, UsesUploadActivity):
+class TestPrivateHistorySharingRequiresPermissionChanges(SeleniumTestCase):
     """Test that sharing private histories requires permission changes.
 
     Includes regression test for PR #20886: When sharing a history containing private datasets

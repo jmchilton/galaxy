@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_setup import PosixFileSourceSetup
 from .framework import (
     managed_history,
@@ -7,7 +6,7 @@ from .framework import (
 )
 
 
-class TestUploadActivityRemoteFiles(PosixFileSourceSetup, SeleniumIntegrationTestCase, UsesUploadActivity):
+class TestUploadActivityRemoteFiles(PosixFileSourceSetup, SeleniumIntegrationTestCase):
     run_as_admin = True
     ensure_registered = True
 

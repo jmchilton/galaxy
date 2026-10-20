@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
@@ -27,7 +26,7 @@ UPLOAD_DATA_3 = {
 }
 
 
-class TestHistoryStorage(SeleniumTestCase, UsesUploadActivity):
+class TestHistoryStorage(SeleniumTestCase):
     ensure_registered = True
 
     def _upload_named_paste_content(self, data: dict[str, str]) -> None:

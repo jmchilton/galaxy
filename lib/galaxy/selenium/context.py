@@ -9,9 +9,10 @@ from .navigates_galaxy import (
     galaxy_url,
     NavigatesGalaxy,
 )
+from .upload_activity_helpers import UsesUploadActivity
 
 
-class GalaxySeleniumContext(NavigatesGalaxy):
+class GalaxySeleniumContext(UsesUploadActivity, NavigatesGalaxy):
     url: str
     target_url_from_selenium: str
     configured_driver: ConfiguredDriver

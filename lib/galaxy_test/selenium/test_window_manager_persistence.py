@@ -1,6 +1,5 @@
 """E2E tests for scratchbook window persistence across page reloads."""
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
@@ -9,7 +8,7 @@ from .framework import (
 )
 
 
-class TestWindowManagerPersistence(SeleniumTestCase, UsesUploadActivity):
+class TestWindowManagerPersistence(SeleniumTestCase):
     ensure_registered = True
 
     def setUp(self):

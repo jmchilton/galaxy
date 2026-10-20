@@ -1,5 +1,4 @@
 from galaxy.selenium.axe_results import FORMS_VIOLATIONS
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
@@ -11,7 +10,7 @@ TEST_ANNOTATION = "my cool annotation"
 TEST_INFO = "my cool info"
 
 
-class TestDataset(UsesUploadActivity, SeleniumTestCase):
+class TestDataset(SeleniumTestCase):
     ensure_registered = True
 
     def _upload_single_file(self, test_path, ext=None):

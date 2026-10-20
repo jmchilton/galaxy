@@ -1,6 +1,5 @@
 """E2E tests for Galaxy's window manager (floating windows)."""
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     retry_assertion_during_transitions,
@@ -9,7 +8,7 @@ from .framework import (
 )
 
 
-class TestWindowManager(SeleniumTestCase, UsesUploadActivity):
+class TestWindowManager(SeleniumTestCase):
     ensure_registered = True
 
     @selenium_test

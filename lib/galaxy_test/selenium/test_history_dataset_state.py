@@ -3,7 +3,6 @@ from galaxy.model.unittest_utils.store_fixtures import (
     one_hda_model_store_dict,
     TEST_SOURCE_URI,
 )
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
@@ -24,7 +23,7 @@ TEST_DBKEY_TEXT = "Honeybee (Apis mellifera): apiMel3 (apiMel3)"
 FIRST_HID = 1
 
 
-class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
+class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions):
     ensure_registered = True
 
     @selenium_test

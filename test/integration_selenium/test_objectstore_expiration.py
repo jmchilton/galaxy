@@ -4,7 +4,6 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_util import ConfiguresObjectStores
 from galaxy_test.selenium.framework import managed_history
 from .framework import (
@@ -63,9 +62,7 @@ backends:
 AvailableObjectStoreIDs = Literal["default", "short_term", "mid_term"]
 
 
-class TestObjectStoreContentsExpirationIntegration(
-    SeleniumIntegrationTestCase, ConfiguresObjectStores, UsesUploadActivity
-):
+class TestObjectStoreContentsExpirationIntegration(SeleniumIntegrationTestCase, ConfiguresObjectStores):
     ensure_registered = True
     dataset_populator: "SeleniumSessionDatasetPopulator"
     dataset_collection_populator: "SeleniumSessionDatasetCollectionPopulator"

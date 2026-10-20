@@ -1320,7 +1320,6 @@ Selenium tests inherit from ``SeleniumTestCase`` which combines browser automati
 with Galaxy API access:
 
 ```python
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
@@ -1328,7 +1327,7 @@ from .framework import (
     UsesHistoryItemAssertions,
 )
 
-class TestMyFeature(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
+class TestMyFeature(SeleniumTestCase, UsesHistoryItemAssertions):
     ensure_registered = True  # Auto-login before each test
 
     @selenium_test
@@ -1413,8 +1412,8 @@ The test framework provides specialized methods for common Galaxy operations:
 
 **File Uploads:**
 
-Uploads use the ``upload_context()`` fluent API from the ``UsesUploadActivity`` mixin.
-Add ``UsesUploadActivity`` to your test class inheritance to enable it.
+Uploads use the ``upload_context()`` fluent API from ``UsesUploadActivity``, which every
+``GalaxySeleniumContext`` (and so every ``SeleniumTestCase``) already includes.
 
 ```python
 # Single local file upload
@@ -1487,7 +1486,7 @@ self.wait_for_history()                            # Wait for all jobs
 **Workflow Execution (via ``RunsWorkflows`` mixin):**
 
 ```python
-class TestWorkflows(SeleniumTestCase, RunsWorkflows, UsesUploadActivity):
+class TestWorkflows(SeleniumTestCase, RunsWorkflows):
     @managed_history
     def test_workflow(self):
         self.upload_context("local-file").stage_local_file(self.get_filename("input.fasta")).start()

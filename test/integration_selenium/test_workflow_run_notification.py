@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.base.workflow_fixtures import WORKFLOW_SIMPLE_CAT_TWICE
 from galaxy_test.selenium.framework import (
     managed_history,
@@ -16,9 +15,7 @@ if TYPE_CHECKING:
     from galaxy_test.selenium.framework import SeleniumSessionDatasetPopulator
 
 
-class BaseWorkflowRunTargetTestCase(
-    SeleniumIntegrationTestCase, RunsWorkflows, UsesHistoryItemAssertions, UsesUploadActivity
-):
+class BaseWorkflowRunTargetTestCase(SeleniumIntegrationTestCase, RunsWorkflows, UsesHistoryItemAssertions):
     dataset_populator: "SeleniumSessionDatasetPopulator"
     ensure_registered = True
 

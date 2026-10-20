@@ -1,4 +1,3 @@
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     managed_history,
     selenium_test,
@@ -6,7 +5,7 @@ from .framework import (
 )
 
 
-class TestHistoryExport(SeleniumTestCase, UsesUploadActivity):
+class TestHistoryExport(SeleniumTestCase):
     """Test history export wizard (requires Celery + STS enabled, the default)."""
 
     ensure_registered = True

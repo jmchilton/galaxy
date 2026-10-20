@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_setup import PosixFileSourceSetup
 from .framework import (
     selenium_test,
@@ -11,7 +10,7 @@ if TYPE_CHECKING:
     from galaxy_test.selenium.framework import SeleniumSessionDatasetPopulator
 
 
-class TestPosixFileSourceSeleniumIntegration(PosixFileSourceSetup, SeleniumIntegrationTestCase, UsesUploadActivity):
+class TestPosixFileSourceSeleniumIntegration(PosixFileSourceSetup, SeleniumIntegrationTestCase):
     dataset_populator: "SeleniumSessionDatasetPopulator"
 
     # For simplicity, otherwise need to setup a different file_sources_config_file

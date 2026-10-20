@@ -4,7 +4,6 @@ import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumTestCase,
@@ -12,7 +11,7 @@ from .framework import (
 )
 
 
-class TestUploads(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
+class TestUploads(SeleniumTestCase, UsesHistoryItemAssertions):
     @selenium_test
     def test_upload_file(self):
         self.upload_context("local-file").stage_local_file(self.get_filename("1.sam")).start()

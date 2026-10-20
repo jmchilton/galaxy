@@ -4,7 +4,6 @@ from galaxy.selenium.navigates_galaxy import (
     ConfigTemplateParameter,
     FileSourceInstance,
 )
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.util.unittest_utils import skip_unless_environ
 from ._base_user_file_sources import BaseUserObjectStoreSeleniumIntegration
 from .framework import (
@@ -13,7 +12,7 @@ from .framework import (
 )
 
 
-class TestObjectStoreSelectionSeleniumIntegration(BaseUserObjectStoreSeleniumIntegration, UsesUploadActivity):
+class TestObjectStoreSelectionSeleniumIntegration(BaseUserObjectStoreSeleniumIntegration):
     @skip_unless_environ("GALAXY_TEST_AZURE_CONTAINER_NAME")
     @skip_unless_environ("GALAXY_TEST_AZURE_ACCOUNT_KEY")
     @skip_unless_environ("GALAXY_TEST_AZURE_ACCOUNT_NAME")

@@ -8,7 +8,6 @@ from selenium.webdriver.common.by import By
 
 from galaxy.model.unittest_utils.store_fixtures import one_hda_model_store_dict
 from galaxy.selenium.navigates_galaxy import retry_call_during_transitions
-from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy.util.unittest_utils import skip_if_github_down
 from galaxy_test.base import rules_test_data
 from galaxy_test.base.populators import (
@@ -28,7 +27,7 @@ APPLY_RULES_TUTORIAL_DATA_BASE_URL = (
 )
 
 
-class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivity):
+class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions):
     @selenium_test
     def test_run_tool_verify_contents_by_peek(self):
         self._run_environment_test_tool()
@@ -505,7 +504,7 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self.tool_form_execute()
 
 
-class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
+class TestLoggedInToolForm(SeleniumTestCase):
     ensure_registered = True
 
     @selenium_test
