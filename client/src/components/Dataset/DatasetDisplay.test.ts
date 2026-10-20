@@ -11,6 +11,7 @@ import { useDatasetStore } from "@/stores/datasetStore";
 
 import DatasetDisplay from "./DatasetDisplay.vue";
 
+// Stubbed by module: as a <script setup> import it can't be stubbed by name, and the real view fetches content.
 vi.mock("@/components/Dataset/Tabular/TabularChunkedView.vue", () => ({
     default: {
         name: "TabularChunkedView",
@@ -35,6 +36,15 @@ const okDataset = {
     update_time: "2026-01-01T00:00:00",
 } as unknown as HDADetailed;
 
+/** A promise that settles when the returned ``release`` is called, to hold a mocked response open. */
+function hold() {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    return { released, release };
+}
+
 function usePreviewHeaders(headers: Record<string, string> = {}) {
     server.use(
         http.untyped.head("/datasets/:dataset_id/display/", () => {
@@ -43,11 +53,29 @@ function usePreviewHeaders(headers: Record<string, string> = {}) {
     );
 }
 
-async function mountDatasetDisplay(dataset: HDADetailed = okDataset) {
+/** Serve ``dataset`` from the dataset details API once ``release`` is called. */
+function holdDatasetFetch(dataset: HDADetailed) {
+    const { released, release } = hold();
+    server.use(
+        http.untyped.get("/api/datasets/:dataset_id", async () => {
+            await released;
+            return HttpResponse.json(dataset);
+        }),
+    );
+    return release;
+}
+
+/** Store an item the way the history watcher does; summaries lack ``peek`` and trigger a detailed refetch. */
+function storeHistoryItem(item: object) {
+    useDatasetStore().saveDatasets([{ ...item, history_content_type: "dataset" } as unknown as HistoryContentItemBase]);
+}
+
+async function mountDatasetDisplay(dataset: HDADetailed | null = okDataset) {
+    const storedDatasets = dataset ? { [DATASET_ID]: dataset } : {};
     const pinia = createTestingPinia({
         createSpy: vi.fn,
         stubActions: false,
-        initialState: { datasetStore: { storedDatasets: { [DATASET_ID]: dataset } } },
+        initialState: { datasetStore: { storedDatasets } },
     });
     setActivePinia(pinia);
 
@@ -99,24 +127,8 @@ describe("DatasetDisplay", () => {
 
     it("shows a loading message until the dataset is stored", async () => {
         usePreviewHeaders();
-        let releaseFetch: () => void = () => {};
-        const fetchReleased = new Promise<void>((resolve) => {
-            releaseFetch = resolve;
-        });
-        server.use(
-            http.untyped.get("/api/datasets/:dataset_id", async () => {
-                await fetchReleased;
-                return HttpResponse.json(okDataset);
-            }),
-        );
-        const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
-        setActivePinia(pinia);
-        const wrapper = mount(DatasetDisplay as object, {
-            propsData: { datasetId: DATASET_ID, isBinary: false },
-            localVue,
-            pinia,
-        });
-        await flushPromises();
+        const releaseFetch = holdDatasetFetch(okDataset);
+        const wrapper = await mountDatasetDisplay(null);
         expect(wrapper.text()).toContain("Loading dataset content");
 
         releaseFetch();
@@ -130,19 +142,8 @@ describe("DatasetDisplay", () => {
         const wrapper = await mountDatasetDisplay();
         const frame = wrapper.find("iframe").element;
 
-        let releaseFetch: () => void = () => {};
-        const fetchReleased = new Promise<void>((resolve) => {
-            releaseFetch = resolve;
-        });
-        server.use(
-            http.untyped.get("/api/datasets/:dataset_id", async () => {
-                await fetchReleased;
-                return HttpResponse.json({ ...okDataset, name: "Renamed Dataset" });
-            }),
-        );
-        // The history watcher stores summary items, which lack ``peek`` and trigger a detailed refetch.
-        const summary = { id: DATASET_ID, name: "Renamed Dataset", state: "ok", history_content_type: "dataset" };
-        useDatasetStore().saveDatasets([summary as unknown as HistoryContentItemBase]);
+        const releaseFetch = holdDatasetFetch({ ...okDataset, name: "Renamed Dataset" });
+        storeHistoryItem({ id: DATASET_ID, name: "Renamed Dataset", state: "ok" });
         await flushPromises();
         expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
         expect(wrapper.text()).not.toContain("Loading dataset content");
@@ -158,18 +159,23 @@ describe("DatasetDisplay", () => {
         const wrapper = await mountDatasetDisplay({ ...okDataset, state: "running" });
         expect(wrapper.text()).toContain("Waiting for dataset to become available.");
 
+        // The history watcher reports the finished dataset as a summary, then the store refetches its details.
         usePreviewHeaders({ "x-content-chunked": "true" });
-        const finished = { ...okDataset, update_time: "2026-01-01T00:05:00", history_content_type: "dataset" };
-        useDatasetStore().saveDatasets([finished as unknown as HistoryContentItemBase]);
+        const finished = { ...okDataset, update_time: "2026-01-01T00:05:00" };
+        const releaseFetch = holdDatasetFetch(finished);
+        storeHistoryItem({ id: DATASET_ID, name: okDataset.name, state: "ok", update_time: finished.update_time });
+        await flushPromises();
+        expect(useDatasetStore().isLoadingDataset(DATASET_ID)).toBe(true);
+        expect(wrapper.text()).toContain("Waiting for dataset to become available.");
+
+        releaseFetch();
         await flushPromises();
         expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
         expect(wrapper.find("iframe").exists()).toBe(false);
     });
+
     it("ignores a preview check that finishes after a newer one", async () => {
-        let releaseFirst: () => void = () => {};
-        const firstReleased = new Promise<void>((resolve) => {
-            releaseFirst = resolve;
-        });
+        const { released: firstReleased, release: releaseFirst } = hold();
         let checks = 0;
         server.use(
             http.untyped.head("/datasets/:dataset_id/display/", async () => {
@@ -183,8 +189,7 @@ describe("DatasetDisplay", () => {
         );
         const wrapper = await mountDatasetDisplay();
 
-        const updated = { ...okDataset, update_time: "2026-01-01T00:05:00", history_content_type: "dataset" };
-        useDatasetStore().saveDatasets([updated as unknown as HistoryContentItemBase]);
+        storeHistoryItem({ ...okDataset, update_time: "2026-01-01T00:05:00" });
         await flushPromises();
         expect(wrapper.find(".tabular-chunked-view").exists()).toBe(true);
 
