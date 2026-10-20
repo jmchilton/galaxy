@@ -250,6 +250,18 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self._check_dataset_details_for_inttest_value(2)
 
     @selenium_test
+    def test_tool_form_parameters_for_rerun(self):
+        self._run_environment_test_tool()
+        self.history_panel_wait_for_hid_ok(1)
+        job_id = self.dataset_populator.get_history_dataset_details(self.current_history_id(), hid=1)["creating_job"]
+        self.hda_click_primary_action_button(1, "rerun")
+        inttest = next(p for p in self.tool_form_parameters(job_id=job_id) if p.path == "inttest")
+        # The job's value, not the tool's default of 1.
+        assert str(inttest.value) == "42"
+        input_element = self.components.tool_form.parameter_input(parameter="inttest").wait_for_visible()
+        assert input_element.get_attribute("value") == "42"
+
+    @selenium_test
     def test_rerun_with_non_latest_version(self):
         version = "0.1+galaxy6"
         self._run_multiple_version_test_tool(version)
