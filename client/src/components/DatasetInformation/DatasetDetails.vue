@@ -7,7 +7,9 @@ import { GalaxyApi, type HDADetailed, isAdminUser } from "@/api";
 import { fetchDatasetDetails } from "@/api/datasets";
 import type { JobDetails } from "@/api/jobs";
 import { useConfig } from "@/composables/config";
+import { onDatasetUpdated } from "@/composables/settledDataset";
 import { useUserStore } from "@/stores/userStore";
+import { createLatestRequestTracker } from "@/utils/latestRequest";
 import { errorMessageAsString } from "@/utils/simple-error";
 import { stateIsTerminal } from "@/utils/utils";
 
@@ -38,14 +40,29 @@ const jobDetails = ref<JobDetails>();
 const dataset = ref<HDADetailed | null>(null);
 const jobLoadingError = ref<string | null>(null);
 const datasetLoadingError = ref<string | null>(null);
+const datasetRefreshError = ref<string | null>(null);
 const loading = computed(() => !dataset.value && !datasetLoadingError.value);
+const startDatasetRequest = createLatestRequestTracker();
 
+/** Loads the details; once loaded, a failed refresh keeps them and only reports the error. */
 async function getDatasetDetails() {
+    const isLatest = startDatasetRequest();
     try {
         const data = await fetchDatasetDetails({ id: props.datasetId });
-        dataset.value = data;
+        if (isLatest()) {
+            dataset.value = data;
+            datasetLoadingError.value = null;
+            datasetRefreshError.value = null;
+        }
     } catch (e) {
-        datasetLoadingError.value = errorMessageAsString(e) || "Unable to fetch available dataset details.";
+        if (isLatest()) {
+            const message = errorMessageAsString(e) || "Unable to fetch available dataset details.";
+            if (dataset.value) {
+                datasetRefreshError.value = message;
+            } else {
+                datasetLoadingError.value = message;
+            }
+        }
     }
 }
 
@@ -80,6 +97,9 @@ onMounted(async () => {
     }
 });
 
+// The tab stays mounted while the dataset refetches, so refresh the details once it changes, e.g. finishes running.
+onDatasetUpdated(() => props.datasetId, getDatasetDetails);
+
 onUnmounted(() => {
     clearTimeout(jobTimeOut.value);
 });
@@ -96,6 +116,9 @@ onUnmounted(() => {
             {{ datasetLoadingError }}
         </BAlert>
         <div v-else-if="dataset">
+            <BAlert v-if="datasetRefreshError" variant="warning" class="dataset-details-refresh-error" show>
+                Unable to refresh the dataset details, showing the last loaded version. {{ datasetRefreshError }}
+            </BAlert>
             <div v-if="dataset.creating_job" class="details">
                 <DatasetInformation :dataset="dataset" />
 
