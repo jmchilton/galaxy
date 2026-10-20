@@ -4405,6 +4405,11 @@ class FlattenTool(DatabaseOperationTool):
         )
 
 
+def nest_collection_type(input_collection_type: str) -> str:
+    """Return the collection type produced by wrapping each top-level element in a list."""
+    return ":".join(["list", "list", *input_collection_type.split(":")[1:]])
+
+
 class NestTool(DatabaseOperationTool):
     tool_type = "nest_collection"
     require_terminal_states = False
@@ -4414,7 +4419,8 @@ class NestTool(DatabaseOperationTool):
         hdca = incoming["input"]
         new_elements = {}
         copied_datasets = []
-        inner_collection_type = None
+        collection_type = nest_collection_type(hdca.collection.collection_type)
+        inner_collection_type = collection_type.split(":", 1)[1]
 
         for dce in hdca.collection.elements:
             element_identifier = dce.element_identifier
@@ -4422,13 +4428,8 @@ class NestTool(DatabaseOperationTool):
 
             if getattr(element_object, "history_content_type", None) == "dataset":
                 copied_element = element_object.copy(copy_tags=element_object.tags, flush=False)
-                inner_collection_type = "list"
             else:
                 copied_element = element_object.copy(flush=False)
-                # The inner list wraps a collection (e.g. a paired collection),
-                # so it must be typed accordingly (e.g. "list:paired") to match
-                # its actual structure.
-                inner_collection_type = f"list:{element_object.collection_type}"
             copied_datasets.append(copied_element)
 
             sub_collection: dict[str, Any] = {}
@@ -4439,13 +4440,10 @@ class NestTool(DatabaseOperationTool):
             new_elements[element_identifier] = sub_collection
 
         self._add_datasets_to_history(history, copied_datasets)
-        # The output is a list of the inner collections, so its type is
-        # "list" + the inner collection type (e.g. "list:list" for a list of
-        # datasets, "list:list:paired" for a list of pairs).
         output_collections.create_collection(
             self.outputs["output"],
             "output",
-            collection_type=(f"list:{inner_collection_type}" if inner_collection_type else None),
+            collection_type=collection_type,
             elements=new_elements,
             propagate_hda_tags=False,
         )
