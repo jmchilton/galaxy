@@ -64,7 +64,12 @@ async function submitEmail() {
         </GAlert>
 
         <div v-else>
-            <GAlert v-for="(resultMessage, index) in resultMessages" :key="index" :variant="resultMessage[1]" show>
+            <GAlert
+                v-for="(resultMessage, index) in resultMessages"
+                :key="index"
+                class="email-report-result"
+                :variant="resultMessage[1]"
+                show>
                 <span v-sanitize-html:links="renderMarkdown(resultMessage[0] ?? '')" />
             </GAlert>
 
