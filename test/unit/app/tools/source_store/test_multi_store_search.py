@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import (
     Any,
@@ -133,3 +134,21 @@ def test_rebuild_keeps_the_panel_searches_of_unchanged_views(tmp_path, search_co
 
     search.build_index(tool_cache=cast(Any, None), toolbox=cast(Any, toolbox))
     assert search.cached_panel_searches["default"] is panel_search
+
+
+def test_rebuild_replaces_the_panel_search_when_tuning_changes(tmp_path, search_config):
+    config = search_config(_TUNING, str(tmp_path))
+    toolbox = _FakeToolbox(
+        [ToolIndexEntry(id="local_mapper", name="Sequence mapper", version="1.0")],
+        {"default": {"local_mapper"}},
+    )
+    search = CachedToolboxSearch(config, toolbox)
+    search.build_index(tool_cache=cast(Any, None), toolbox=cast(Any, toolbox))
+    panel_search = search.cached_panel_searches["default"]
+
+    # Weighting-only tuning leaves the corpus unchanged, so no commit would
+    # mark pooled searchers stale.
+    search.config = search_config(replace(_TUNING, help_bm25f_k1=_TUNING.help_bm25f_k1 + 1.0), str(tmp_path))
+    search.build_index(tool_cache=cast(Any, None), toolbox=cast(Any, toolbox))
+    assert search.cached_panel_searches["default"] is not panel_search
+    assert search.cached_panel_searches["default"].tuning.help_bm25f_k1 == _TUNING.help_bm25f_k1 + 1.0
