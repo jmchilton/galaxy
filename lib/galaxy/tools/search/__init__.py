@@ -234,7 +234,7 @@ class CachedToolboxSearch(ToolBoxSearch):
         panel_view_ids = {panel_view.id for panel_view in toolbox.panel_views()}
         self._panel_view_ids = panel_view_ids
         if not self.config.tool_search_index_dir:
-            self.cached_panel_searches = {}
+            self._replace_panel_searches({})
             return
         tuning = ToolSearchTuning.from_config(self.config)
         # Every build syncs, and each ``ToolWhooshIndex`` holds a pool of open
@@ -246,7 +246,14 @@ class CachedToolboxSearch(ToolBoxSearch):
             if panel_search is None or panel_search.index_dir != index_dir or panel_search.tuning != tuning:
                 panel_search = ToolWhooshIndex(index_dir=index_dir, tuning=tuning)
             panel_searches[panel_view_id] = panel_search
+        self._replace_panel_searches(panel_searches)
+
+    def _replace_panel_searches(self, panel_searches: dict[str, ToolWhooshIndex]) -> None:
+        kept = {id(panel_search) for panel_search in panel_searches.values()}
+        dropped = [panel_search for panel_search in self.cached_panel_searches.values() if id(panel_search) not in kept]
         self.cached_panel_searches = panel_searches
+        for panel_search in dropped:
+            panel_search.close()
 
     @staticmethod
     def _require_search_toolbox(toolbox: "ToolBox") -> SupportsCachedSearch:

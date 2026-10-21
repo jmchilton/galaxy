@@ -356,6 +356,7 @@ class ToolWhooshIndex:
         # serves one thread at a time.
         self._idle_searchers: list[Searcher] = []
         self._idle_searchers_lock = threading.Lock()
+        self._closed = False
 
     def _open(self) -> index.FileIndex:
         os.makedirs(self.index_dir, exist_ok=True)
@@ -469,7 +470,16 @@ class ToolWhooshIndex:
             searcher.close()
             raise
         with self._idle_searchers_lock:
-            self._idle_searchers.append(searcher)
+            if not self._closed:
+                self._idle_searchers.append(searcher)
+                return
+        searcher.close()
+
+    def close(self) -> None:
+        """Close idle searchers, and searchers in use once they are returned."""
+        with self._idle_searchers_lock:
+            self._closed = True
+        self._discard_idle_searchers(lambda idle: False)
 
     def _discard_idle_searchers(self, keep: Callable[[Searcher], bool]) -> None:
         with self._idle_searchers_lock:

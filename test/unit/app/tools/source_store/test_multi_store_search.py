@@ -145,6 +145,8 @@ def test_rebuild_replaces_the_panel_search_when_tuning_changes(tmp_path, search_
     search = CachedToolboxSearch(config, toolbox)
     search.build_index(tool_cache=cast(Any, None), toolbox=cast(Any, toolbox))
     panel_search = search.cached_panel_searches["default"]
+    with panel_search._searcher() as pooled:
+        assert pooled is not None
 
     # Weighting-only tuning leaves the corpus unchanged, so no commit would
     # mark pooled searchers stale.
@@ -152,3 +154,4 @@ def test_rebuild_replaces_the_panel_search_when_tuning_changes(tmp_path, search_
     search.build_index(tool_cache=cast(Any, None), toolbox=cast(Any, toolbox))
     assert search.cached_panel_searches["default"] is not panel_search
     assert search.cached_panel_searches["default"].tuning.help_bm25f_k1 == _TUNING.help_bm25f_k1 + 1.0
+    assert pooled.is_closed

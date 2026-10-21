@@ -281,3 +281,15 @@ def test_a_newer_commit_closes_every_stale_idle_searcher(tmp_path):
     ToolWhooshIndex(index_dir=index_dir, tuning=replace(_TUNING, index_tool_help=False)).build(_index("trimmer"))
     assert searching.search("trimmer") == ["trimmer"]
     assert all(searcher.is_closed for searcher in pooled)
+
+
+def test_close_closes_idle_and_later_returned_searchers(tmp_path):
+    searching = ToolWhooshIndex(index_dir=str(tmp_path / "ix"), tuning=_TUNING)
+    searching.build(_index("mapper"))
+    with searching._searcher() as in_use:
+        with searching._searcher() as idle:
+            pass
+        searching.close()
+        assert idle is not None and idle.is_closed
+        assert in_use is not None and not in_use.is_closed
+    assert in_use.is_closed
