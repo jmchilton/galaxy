@@ -571,10 +571,10 @@ class UploadContext(_UploadStaging):
                 return
 
         if (
-            not self.driver_wrapper.components.preferences.activity.is_absent
-            and self.driver_wrapper.components.preferences.activity.is_displayed
+            not self.driver_wrapper.components.activity_bar.more.is_absent
+            and self.driver_wrapper.components.activity_bar.more.is_displayed
         ):
-            self.driver_wrapper.components.preferences.activity.wait_for_and_click()
+            self.driver_wrapper.components.activity_bar.more.wait_for_and_click()
             self.components.upload_activity.activity.wait_for_and_click()
 
         method_card.wait_for_visible()

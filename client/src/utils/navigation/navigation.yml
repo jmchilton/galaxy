@@ -75,7 +75,6 @@ command_palette:
 
 preferences:
   selectors:
-    activity: "#activity-settings"
     activity_expand: ".activity-panel-footer"
     sign_out: "#g-card-edit-preferences-sign-out"
     change_password: "#g-card-edit-preferences-password"
