@@ -111,3 +111,79 @@ def test_section_and_repeat_instances_use_form_prefixes():
         ("the_repeat_0|texttest", "one"),
         ("the_repeat_1|texttest", "two"),
     ]
+
+
+def test_drill_down_options_flatten_nested_options():
+    inputs = [
+        {
+            "name": "parameter",
+            "type": "drill_down",
+            "label": "",
+            "value": "ab",
+            "options": [
+                {
+                    "name": "A",
+                    "value": "a",
+                    "options": [{"name": "AB", "value": "ab", "options": []}],
+                },
+                {"name": "B", "value": "b", "options": []},
+            ],
+        }
+    ]
+    assert tool_form_parameters_from_build(inputs) == [
+        ToolFormParameter("parameter", "parameter", "drill_down", "ab", [("A", "a"), ("AB", "ab"), ("B", "b")]),
+    ]
+
+
+def test_data_lists_pinned_selection_before_page_options():
+    pinned = {"id": "f2db41e1fa331b3e", "hid": 7, "name": "Rerun Input", "src": "hda", "keep": True}
+    inputs = [
+        {
+            "name": "input1",
+            "type": "data",
+            "label": "Input",
+            "value": {"values": [{"id": pinned["id"], "src": "hda"}]},
+            "options": DATA_OPTIONS,
+            "pinned": {"dce": [], "ldda": [], "hda": [pinned], "hdca": []},
+        }
+    ]
+    assert tool_form_parameters_from_build(inputs) == [
+        ToolFormParameter(
+            "input1",
+            "Input",
+            "data",
+            "7: Rerun Input",
+            [("7: Rerun Input", "7"), ("1: Pasted Dataset 1", "1")],
+        ),
+    ]
+
+
+def test_data_value_label_matches_source_not_just_id():
+    hdca = {"id": HDA["id"], "hid": 2, "name": "A Collection", "src": "hdca"}
+    inputs = [
+        {
+            "name": "input1",
+            "type": "data",
+            "label": "Input",
+            "value": {"values": [{"id": HDA["id"], "src": "hda"}]},
+            "options": {"dce": [], "ldda": [], "hda": [HDA], "hdca": [hdca]},
+        }
+    ]
+    assert tool_form_parameters_from_build(inputs)[0].value == "1: Pasted Dataset 1"
+
+
+def test_data_value_from_pinned_collection_element_uses_its_name():
+    dce = {"id": "a799d38679e985db", "hid": -1, "name": "forward", "src": "dce", "tags": []}
+    inputs = [
+        {
+            "name": "input1",
+            "type": "data",
+            "label": "Input",
+            "value": {"values": [{"id": dce["id"], "src": "dce"}]},
+            "options": DATA_OPTIONS,
+            "pinned": {"dce": [dce], "ldda": [], "hda": [], "hdca": []},
+        }
+    ]
+    assert tool_form_parameters_from_build(inputs) == [
+        ToolFormParameter("input1", "Input", "data", "forward", [("1: Pasted Dataset 1", "1")]),
+    ]

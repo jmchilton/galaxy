@@ -346,14 +346,34 @@ def _tool_form_options_and_value(input: dict[str, Any]) -> tuple[list[tuple[str,
     options = input.get("options")
     value = input.get("value")
     if input["type"] in ("data", "data_collection") and isinstance(options, dict):
-        items = [item for source in ("hda", "hdca") for item in options.get(source, [])]
-        labels = {item["id"]: f"{item['hid']}: {item['name']}" for item in items}
-        selected = [labels.get(v["id"], v["id"]) for v in (value or {}).get("values", [])]
+        # Rerun selections outside the options page are in ``pinned``; list them first like the client.
+        pinned = input.get("pinned") or {}
+
+        def entries(*sources: str) -> list[dict[str, Any]]:
+            return [item for source in sources for item in [*pinned.get(source, []), *options.get(source, [])]]
+
+        items = entries("hda", "hdca")
+        # Collection elements and library datasets have no usable hid, so only label a selected one by name.
+        labels = {(item["src"], item["id"]): item["name"] for item in entries("dce", "ldda")}
+        labels.update({(item["src"], item["id"]): f"{item['hid']}: {item['name']}" for item in items})
+        selected = [labels.get((v["src"], v["id"]), v["id"]) for v in (value or {}).get("values", [])]
         value = selected[0] if len(selected) == 1 else selected
         return [(f"{item['hid']}: {item['name']}", str(item["hid"])) for item in items], value
     if isinstance(options, list):
-        return [(str(option[0]), str(option[1])) for option in options], value
+        return _flatten_options(options), value
     return [], value
+
+
+def _flatten_options(options: list) -> list[tuple[str, str]]:
+    # Select options are [label, value, selected]; drill-down options nest as {name, value, options}.
+    flat: list[tuple[str, str]] = []
+    for option in options:
+        if isinstance(option, dict):
+            flat.append((str(option["name"]), str(option["value"])))
+            flat.extend(_flatten_options(option.get("options") or []))
+        else:
+            flat.append((str(option[0]), str(option[1])))
+    return flat
 
 
 class NavigatesGalaxy(HasDriverProxy[WaitType]):
