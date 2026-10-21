@@ -11,7 +11,7 @@ import { useWorkflowStores } from "@/composables/workflowStores";
 import type { TerminalPosition, XYPosition } from "@/stores/workflowEditorStateStore";
 import type { Step } from "@/stores/workflowStepStore";
 import { assertDefined } from "@/utils/assertions";
-import type { Vector } from "@/utils/geometry";
+import type { Rectangle, Vector } from "@/utils/geometry";
 
 import { useWorkflowBoundingBox } from "./composables/workflowBoundingBox";
 import type { OutputTerminals } from "./modules/terminals";
@@ -107,12 +107,13 @@ const { viewportBoundingBox, updateViewportBaseBoundingBox } = useViewportBoundi
 );
 const { getWorkflowBoundingBox } = useWorkflowBoundingBox();
 
-function fitWorkflow(minimumFitZoom = 0.5, maximumFitZoom = 1.0, padding = 50.0) {
+function fitWorkflow(minimumFitZoom = 0.5, maximumFitZoom = 1.0, padding = 50.0, extraRectangles: Rectangle[] = []) {
     if (!Object.keys(props.steps).length) {
         // If there are no steps, we cannot fit the workflow.
         return;
     }
     const aabb = getWorkflowBoundingBox();
+    extraRectangles.forEach((rectangle) => aabb.fitRectangle(rectangle));
     aabb.expand(padding);
 
     const transform = updateViewportBaseBoundingBox().transformTo(aabb);

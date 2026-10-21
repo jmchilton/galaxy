@@ -9,7 +9,7 @@ import {
     faTimes,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { until } from "@vueuse/core";
+import { until, watchDebounced } from "@vueuse/core";
 import { BCard, BCardBody, BCardHeader } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
@@ -114,6 +114,26 @@ const nudgeDirection = ref<NudgeDirection>("right");
 // steps with a preferred output render as that output while outputs are embedded
 provide("embedInvocationOutputs", embedOutputs);
 const { embedded, maxDisplacement } = useEmbeddedOutputs(storeId.value, steps, embedOutputs, nudgeDirection);
+
+// refit once the layout has settled after toggling, so the embedded outputs are in view
+const fitPending = ref(false);
+watch([embedOutputs, nudgeDirection], () => (fitPending.value = true));
+watchDebounced(
+    embedded,
+    () => {
+        if (fitPending.value) {
+            fitPending.value = false;
+            // @ts-ignore: TS2339 component method not exposed in template ref type
+            workflowGraph.value?.fitWorkflow(
+                0.25,
+                1.0,
+                20.0,
+                embedded.value.map((output) => output.rect),
+            );
+        }
+    },
+    { debounce: 300 },
+);
 const { activeNodeId } = storeToRefs(stateStore);
 
 watch(
@@ -404,9 +424,10 @@ function toggleDetailedView() {
 }
 
 .embed-outputs-controls {
+    // beside the zoom controls, clear of the top-left of the workflow
     position: absolute;
-    top: 1rem;
-    left: 1rem;
+    bottom: 1rem;
+    left: 11rem;
     z-index: 150;
     display: flex;
     gap: 0.25rem;

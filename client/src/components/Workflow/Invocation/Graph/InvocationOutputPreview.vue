@@ -21,6 +21,25 @@ const props = defineProps<{
     width: 100%;
     max-height: 100%;
     overflow: auto;
+
+    // previews are small: drop the Markdown card's padding and fixed text height
+    :deep(.card-body) {
+        padding: 0.5rem;
+    }
+
+    :deep(.embedded-dataset) {
+        height: auto;
+        max-height: 10rem;
+        margin-bottom: 0;
+    }
+
+    :deep(img) {
+        display: block;
+        max-width: 100%;
+        max-height: var(--invocation-output-image-height, 20rem);
+        margin: 0 auto;
+        object-fit: contain;
+    }
 }
 </style>
 
