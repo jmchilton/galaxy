@@ -110,6 +110,6 @@ const connectors = computed(() =>
     flex: 1;
     overflow: auto;
     font-size: 0.75rem;
-    --invocation-output-image-height: 12rem;
+    --invocation-output-image-height: 9rem;
 }
 </style>

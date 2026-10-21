@@ -511,9 +511,10 @@ function toggleSelected() {
 @import "@/style/scss/theme/blue.scss";
 
 .node-preferred-output {
-    height: 16rem;
+    height: 10rem;
     overflow: auto;
     font-size: 0.75rem;
+    --invocation-output-image-height: 9rem;
 }
 
 .workflow-node {

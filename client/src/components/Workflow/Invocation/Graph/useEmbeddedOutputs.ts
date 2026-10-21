@@ -11,10 +11,10 @@ import {
 import type { GraphStep, InvocationOutputItem } from "@/composables/useInvocationGraph";
 import { useWorkflowStores } from "@/composables/workflowStores";
 
-export const EMBEDDED_OUTPUT_WIDTH = 360;
-export const EMBEDDED_OUTPUT_HEIGHT = 260;
+export const EMBEDDED_OUTPUT_WIDTH = 300;
+export const EMBEDDED_OUTPUT_HEIGHT = 200;
 /** Collections render as a short element list */
-const EMBEDDED_COLLECTION_HEIGHT = 170;
+const EMBEDDED_COLLECTION_HEIGHT = 140;
 /** Rough size of a shrunk step; a step shown as its preferred output grew from this */
 const SHRUNK_STEP_SIZE = { width: 144, height: 60 };
 

@@ -410,7 +410,7 @@ function toggleDetailedView() {
     }
 
     &.embed-outputs:deep(.workflow-node.node-preferred-output-host) {
-        width: 22.5rem;
+        width: 18.75rem;
     }
 
     &:deep(.workflow-overview),
