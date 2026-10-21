@@ -3239,6 +3239,19 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         item_component.wait_for_visible()
         return [e.text for e in item_component.alltags.all()]
 
+    def history_panel_item_add_tags(self, hid, tags):
+        """Expand history item ``hid`` and add each tag in ``tags`` from its Add Tags button."""
+        item_component = self.history_panel_ensure_showing_item_details(hid)
+        item_component.tag_area_button.wait_for_and_click()
+        input_element = item_component.tag_area_input.wait_for_visible()
+
+        for tag in tags:
+            input_element.send_keys(tag)
+            self.send_enter(input_element)
+            self.sleep_for(self.wait_types.UX_RENDER)
+
+        self.send_escape(input_element)
+
     def history_panel_item_available_visualizations(self, hid):
         # Precondition: viz menu has been opened with history_panel_item_click_visualization_menu
         return [e.text for e in self.history_panel_item_available_visualizations_elements(hid)]
