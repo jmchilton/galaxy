@@ -293,3 +293,15 @@ def test_close_closes_idle_and_later_returned_searchers(tmp_path):
         assert idle is not None and idle.is_closed
         assert in_use is not None and not in_use.is_closed
     assert in_use.is_closed
+
+
+def test_a_searcher_that_raised_is_closed_not_pooled(tmp_path):
+    searching = ToolWhooshIndex(index_dir=str(tmp_path / "ix"), tuning=_TUNING)
+    searching.build(_index("mapper"))
+    with pytest.raises(RuntimeError):
+        with searching._searcher() as failed:
+            raise RuntimeError("search failed")
+    assert failed is not None and failed.is_closed
+    with searching._searcher() as next_searcher:
+        assert next_searcher is not failed
+    assert searching.search("mapper") == ["mapper"]
