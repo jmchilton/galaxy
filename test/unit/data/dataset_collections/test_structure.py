@@ -190,3 +190,35 @@ def test_tool_output_to_structure_without_type_fails():
     tool_output = _collection_output(collection_type=None, collection_type_from_rules="rules")
     with pytest.raises(Exception, match="Failed to determine collection type"):
         tool_output_to_structure(_sliced_structures(), tool_output, collections_manager)
+
+
+def test_tool_output_to_structure_type_source_prefix():
+    sliced = get_structure(pair_instance().collection, factory.for_collection_type("paired"))
+    tool_output = _collection_output(
+        collection_type=None, collection_type_source="input", collection_type_prefix="list"
+    )
+    tree = tool_output_to_structure(_sliced_structures(input=sliced), tool_output, collections_manager)
+    assert not tree.children_known
+    assert tree.collection_type_description.collection_type == "list:paired"
+
+
+def test_tool_output_to_structure_type_source_prefix_multiplied_by_mapping_structure():
+    list_paired_description = factory.for_collection_type("list:paired")
+    mapping_structure = get_structure(list_paired_instance().collection, list_paired_description, "paired")
+    sliced_pair = get_structure(pair_instance().collection, factory.for_collection_type("paired"))
+    tool_output = _collection_output(
+        collection_type=None, collection_type_source="input", collection_type_prefix="list"
+    )
+    tree = tool_output_to_structure(_sliced_structures(input=sliced_pair), tool_output, collections_manager)
+    mapped = mapping_structure.multiply(tree)
+    assert mapped.collection_type_description.collection_type == "list:list:paired"
+    assert [identifier for identifier, _ in mapped.children] == ["data1", "data2", "data3"]
+
+
+def test_tool_output_to_structure_type_source_prefix_normalizes_sample_sheet():
+    sliced = get_structure(list_instance("sample_sheet").collection, factory.for_collection_type("sample_sheet"))
+    tool_output = _collection_output(
+        collection_type=None, collection_type_source="input", collection_type_prefix="list"
+    )
+    tree = tool_output_to_structure(_sliced_structures(input=sliced), tool_output, collections_manager)
+    assert tree.collection_type_description.collection_type == "list:list"

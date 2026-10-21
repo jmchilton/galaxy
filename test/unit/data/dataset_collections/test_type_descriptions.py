@@ -232,3 +232,26 @@ def test_validate():
 
     with pytest.raises(RequestParameterInvalidException):
         c_t("list:list:paired_or").validate()
+
+
+@pytest.mark.parametrize(
+    "collection_type_prefix, collection_type, expected",
+    [
+        ("list", "paired", "list:paired"),
+        ("list", "list:paired", "list:list:paired"),
+        ("list:list", "paired", "list:list:paired"),
+        ("paired", "list", "paired:list"),
+        ("list", "sample_sheet", "list:list"),
+        ("list", "sample_sheet:paired", "list:list:paired"),
+        (None, "sample_sheet", "sample_sheet"),
+        (None, "sample_sheet:paired", "sample_sheet:paired"),
+    ],
+)
+def test_for_prefixed_collection_type(collection_type_prefix, collection_type, expected):
+    description = factory.for_prefixed_collection_type(collection_type_prefix, collection_type, output_name="output")
+    assert description.collection_type == expected
+
+
+def test_for_prefixed_collection_type_invalid():
+    with pytest.raises(RequestParameterInvalidException, match=r"'my_output'.*'list:foo'"):
+        factory.for_prefixed_collection_type("list", "foo", output_name="my_output")

@@ -46,9 +46,31 @@ class CollectionTypeDescriptionFactory:
         # I think.
         self.type_registry = type_registry
 
-    def for_collection_type(self, collection_type, fields: str | list["FieldDict"] | None = None):
+    def for_collection_type(
+        self, collection_type, fields: str | list["FieldDict"] | None = None
+    ) -> "CollectionTypeDescription":
         assert collection_type is not None
         return CollectionTypeDescription(collection_type, self, fields=fields)
+
+    def for_prefixed_collection_type(
+        self, collection_type_prefix: str | None, collection_type: str, *, output_name: str
+    ) -> "CollectionTypeDescription":
+        """Apply a tool output's ``type_prefix`` to the type its ``type_source`` resolved to.
+
+        A ``sample_sheet*`` source type is prefixed as the matching ``list*`` type.
+        """
+        if not collection_type_prefix:
+            return self.for_collection_type(collection_type)
+        description = self.for_collection_type(_normalize_collection_type(collection_type))
+        prefixed = self.for_collection_type(collection_type_prefix).multiply(description)
+        try:
+            prefixed.validate()
+        except RequestParameterInvalidException as e:
+            raise RequestParameterInvalidException(
+                f"Output collection '{output_name}' with type_prefix '{collection_type_prefix}' cannot be created "
+                f"from type_source collection type '{collection_type}': '{prefixed.collection_type}' is not a valid collection type."
+            ) from e
+        return prefixed
 
 
 class CollectionTypeDescription:
@@ -249,7 +271,7 @@ class CollectionTypeDescription:
     def dimension(self):
         return len(self.collection_type.split(":")) + 1
 
-    def multiply(self, other_collection_type):
+    def multiply(self, other_collection_type) -> "CollectionTypeDescription":
         collection_type = map_over_collection_type(self, other_collection_type)
         return self.collection_type_description_factory.for_collection_type(collection_type)
 

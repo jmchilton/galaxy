@@ -1233,9 +1233,12 @@ class OutputCollections:
                 input_collections[collection_type_source]
             )
             if collection_type_description:
-                collection_type = collection_type_description.collection_type
+                source_collection_type = collection_type_description.collection_type
             else:
-                collection_type = input_collections[collection_type_source].collection.collection_type
+                source_collection_type = input_collections[collection_type_source].collection.collection_type
+            collection_type = collections_manager.collection_type_descriptions.for_prefixed_collection_type(
+                output.structure.collection_type_prefix, source_collection_type, output_name=output.name
+            ).collection_type
 
         if "elements" in element_kwds:
 
