@@ -2225,26 +2225,20 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             input_element.clear()
             input_element.send_keys(value)
 
-    def tool_form_fill(
-        self,
-        values: dict[str, Any] | None = None,
-        data: dict[str, str] | None = None,
-        collections: dict[str, str] | None = None,
-    ) -> None:
+    def tool_form_fill(self, values: dict[str, Any] | None = None, data: dict[str, str] | None = None) -> None:
         """Fill the open tool form by parameter path, such as ``cond|param`` or ``repeat_0|param``.
 
-        ``values`` sets non-data parameters, detecting each one's widget. ``data`` and ``collections``
-        select a dataset or collection per parameter by option label, such as ``"3: reads.fq"``. Adds the
-        repeat instances the paths need, expands sections, and retries parameters a conditional reveals late.
+        ``values`` sets non-data parameters, detecting each one's widget. ``data`` selects a dataset or
+        collection per parameter by option label, such as ``"3: reads.fq"``. Adds the repeat
+        instances the paths need, expands sections, and retries parameters a conditional reveals late.
         """
         values = values or {}
         data = data or {}
-        collections = collections or {}
-        if not values and not data and not collections:
+        if not values and not data:
             return
 
         repeat_counts: dict[str, int] = {}
-        for key in [*values, *data, *collections]:
+        for key in [*values, *data]:
             if repeat_match := self._parse_repeat_key(key):
                 repeat_name, repeat_index, _child_key = repeat_match
                 repeat_counts[repeat_name] = max(repeat_counts.get(repeat_name, 0), repeat_index + 1)
@@ -2275,9 +2269,6 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             if is_multiple:
                 self._clear_multiselect_tags(key)
             self.tool_set_value(key, label, expected_type="data", multiple=is_multiple)
-
-        for key, label in collections.items():
-            self.tool_set_value(key, label, expected_type="data")
 
     def _is_multi_data_param(self, expanded_id: str) -> bool:
         return not self.components.tool_form.parameter_form_selection(parameter=expanded_id).is_absent

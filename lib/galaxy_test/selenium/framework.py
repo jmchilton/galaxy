@@ -917,7 +917,7 @@ class RunsToolTests(NavigatesGalaxyMixin):
                 data[key] = f"{hid}: {raw_value}"
             else:
                 values[key] = value
-        self.tool_form_fill(values, data, collections)
+        self.tool_form_fill(values, {**data, **collections})
 
     # -- Output verification --
 
