@@ -6154,8 +6154,17 @@ input_collection:
     def test_conditional_skip_on_database_operation_nested_collection_output(self):
         # Nested collection outputs share the input's datasets, skipping must not overwrite them.
         with self.dataset_populator.test_history() as history_id:
-            hdca = self.dataset_collection_populator.create_list_of_pairs_in_history(history_id).json()["outputs"][0]
+            fetch_response = self.dataset_collection_populator.create_list_of_pairs_in_history(history_id).json()
+            hdca = fetch_response["outputs"][0]
+            self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
             self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            input_hdca_before = self.dataset_populator.get_history_collection_details(history_id, content_id=hdca["id"])
+            input_hdas_before = {
+                element["object"]["id"]: self.dataset_populator.get_history_dataset_details(
+                    history_id, content_id=element["object"]["id"]
+                )
+                for element in input_hdca_before["elements"][0]["object"]["elements"]
+            }
             workflow_id = self.workflow_populator.upload_yaml_workflow(
                 """
 class: GalaxyWorkflow
@@ -6193,6 +6202,9 @@ steps:
                     history_id, content_id=input_element["object"]["id"]
                 )
                 assert input_hda["file_ext"] != "expression.json", input_hda
+                assert input_hda["state"] == "ok", input_hda
+                assert input_hda["misc_blurb"] != "skipped", input_hda
+                assert input_hda["visible"] == input_hdas_before[input_hda["id"]]["visible"], input_hda
                 input_content = self.dataset_populator.get_history_dataset_content(
                     history_id=history_id, content_id=input_element["object"]["id"]
                 )
