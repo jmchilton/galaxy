@@ -1828,6 +1828,63 @@ steps:
         self.assert_node_output_is("filter#output_filtered", "list")
 
     @selenium_test
+    def test_type_prefix_output_indicator(self):
+        self.open_in_workflow_editor("""
+class: GalaxyWorkflow
+inputs:
+  list_paired:
+    type: collection
+    collection_type: "list:paired"
+  nested_list_paired:
+    type: collection
+    collection_type: "list:list:paired"
+steps:
+  nest:
+    tool_id: __NEST__
+    tool_version: "1.1.0"
+  nest_mapped:
+    tool_id: __NEST__
+    tool_version: "1.1.0"
+  paired:
+    tool_id: collection_paired_test
+  paired_mapped:
+    tool_id: collection_paired_test
+""")
+        self.workflow_editor_maximize_center_pane()
+        # type_source list:paired + type_prefix list -> list:list:paired
+        self.workflow_editor_connect("list_paired#output", "nest#input")
+        self.assert_node_output_is("nest#output", "dataset collection with 3 levels of nesting")
+        # list:list:paired output can feed a paired input, mapping over list:list
+        self.workflow_editor_connect("nest#output", "paired#f1")
+        # list:list:paired maps over the outer list; each job yields list:list:paired
+        self.workflow_editor_connect("nested_list_paired#output", "nest_mapped#input")
+        self.workflow_editor_connect("nest_mapped#output", "paired_mapped#f1")
+
+        self.components.workflow_editor.tool_bar.auto_layout.wait_for_and_click()
+        # auto layout animates node positions; there is no DOM state to wait on
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.assert_node_output_is(
+            "nest#output",
+            "dataset collection with 3 levels of nesting",
+            screenshot_name="workflow_editor_type_prefix_output",
+        )
+        self.assert_node_output_is(
+            "paired#out1", "dataset", "list:list", screenshot_name="workflow_editor_type_prefix_downstream"
+        )
+        self.assert_node_output_is(
+            "nest_mapped#output",
+            "dataset collection with 3 levels of nesting",
+            "list:list:list:paired",
+            screenshot_name="workflow_editor_type_prefix_output_mapped",
+        )
+        self.assert_node_output_is(
+            "paired_mapped#out1",
+            "dataset",
+            "list:list:list",
+            screenshot_name="workflow_editor_type_prefix_downstream_mapped",
+        )
+
+    @selenium_test
     def test_editor_place_comments(self):
         editor = self.components.workflow_editor
 
@@ -2108,7 +2165,13 @@ steps:
         return (int(width_stripped), int(height_stripped))
 
     @retry_assertion_during_transitions
-    def assert_node_output_is(self, label: str, output_type: str, subcollection_type: str | None = None):
+    def assert_node_output_is(
+        self,
+        label: str,
+        output_type: str,
+        subcollection_type: str | None = None,
+        screenshot_name: str | None = None,
+    ):
         editor = self.components.workflow_editor
         node_label, output_name = label.split("#")
         node = editor.node._(label=node_label)
@@ -2132,6 +2195,7 @@ steps:
             else:
                 fragment += f"{subcollection_type}"
             assert fragment in element.text
+        self.screenshot_if(screenshot_name)
         self.click_center()
 
     def workflow_editor_maximize_center_pane(self, collapse_left=True, collapse_right=True):
