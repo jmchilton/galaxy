@@ -894,7 +894,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             self.history_panel_wait_for_hid_ok(hid)
         self.history_panel_multi_operations_show()
         for hid in hids:
-            self.history_panel_muli_operation_select_hid(hid)
+            self.history_panel_multi_operation_select_hid(hid)
 
     @retry_during_transitions
     def get_grid_entry_names(self, selector):
@@ -3137,7 +3137,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def history_panel_multi_operations_show(self):
         return self.wait_for_and_click(self.navigation.history_panel.multi_operations.selectors.show_button)
 
-    def history_panel_muli_operation_select_hid(self, hid):
+    def history_panel_multi_operation_select_hid(self, hid):
         item_selector = self.history_panel_item_selector(hid, wait=True)
         operation_radio_selector = f"{item_selector} .selector"
         self.wait_for_and_click_selector(operation_radio_selector)
