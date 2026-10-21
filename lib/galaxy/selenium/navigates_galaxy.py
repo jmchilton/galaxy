@@ -169,6 +169,13 @@ def _exception_indicates_playwright_timeout(e):
         return False
 
 
+def _exception_indicates_parameter_not_shown(e: Exception) -> bool:
+    """True if setting a tool form parameter failed because the form doesn't show it (yet), on either backend."""
+    return isinstance(e, (NoSuchElementException, SeleniumTimeoutException, AssertionError)) or (
+        _exception_indicates_playwright_timeout(e)
+    )
+
+
 def exception_seems_to_indicate_transition(e: Exception) -> bool:
     """True if exception seems to indicate the page state is transitioning.
 
@@ -2333,7 +2340,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             try:
                 self.tool_form_set_parameter(key, value)
                 self.sleep_for(self.wait_types.UX_RENDER)
-            except (NoSuchElementException, SeleniumTimeoutException, AssertionError):
+            except Exception as e:
+                if not _exception_indicates_parameter_not_shown(e):
+                    raise
                 deferred.append((key, value))
 
         if deferred:

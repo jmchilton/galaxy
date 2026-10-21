@@ -143,7 +143,8 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
             self.components.tool_form.parameter_div(parameter=path).wait_for_visible()
 
         boolean = next(p for p in parameters if p.condition == f"{test_path}=b")
-        self.tool_form_fill(values={test_path: "b", boolean.path: True})
+        # Same depth, so the boolean is tried first, before case b shows it, and must be retried.
+        self.tool_form_fill(values={boolean.path: True, test_path: "b"})
         checkbox = self.components.tool_form.parameter_checkbox_input(parameter=boolean.path).wait_for_present()
         assert checkbox.is_selected()
 
