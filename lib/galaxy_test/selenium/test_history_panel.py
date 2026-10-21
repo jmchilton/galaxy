@@ -160,7 +160,7 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
         self.history_panel_wait_for_hid_ok(2)
         self.history_panel_multi_operations_show()
         for hid in (1, 2):
-            self.history_panel_muli_operation_select_hid(hid)
+            self.history_panel_multi_operation_select_hid(hid)
         self.history_panel_change_datatype_of_selected("tabular")
         self.screenshot("history_panel_change_datatype_of_selected")
 
