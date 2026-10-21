@@ -38,15 +38,18 @@ class DataManagerIntegrationTestCase(integration_util.IntegrationTestCase):
         config["tool_data_path"] = cls.temp_tool_data_dir
         config["tool_data_table_config_path"] = cls.temp_tool_data_tables_file
 
-    def _testbase_fields(self):
-        show_response = self._get("tool_data/testbeta")
+    def _show_tool_data(self, table_name: str) -> dict:
+        show_response = self._get(f"tool_data/{table_name}")
         show_response.raise_for_status()
-        return show_response.json()["fields"]
+        return show_response.json()
+
+    def _testbeta_fields(self):
+        return self._show_tool_data("testbeta")["fields"]
 
     def _testbeta_field_count(self) -> int:
         # We need to wait for the reload message to reach the control message consumer
         time.sleep(1)
-        return len(self._testbase_fields())
+        return len(self._testbeta_fields())
 
 
 class TestAdminToolDataIntegration(DataManagerIntegrationTestCase):
@@ -62,7 +65,7 @@ class TestAdminToolDataIntegration(DataManagerIntegrationTestCase):
         create_response.raise_for_status()
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         time.sleep(2)
-        updated_fields = self._testbase_fields()
+        updated_fields = self._testbeta_fields()
         assert len(updated_fields) == original_count + 1
         new_field = updated_fields[-1]
         url = self._api_url(f"tool_data/testbeta?key={self.galaxy_interactor.api_key}")
@@ -71,7 +74,5 @@ class TestAdminToolDataIntegration(DataManagerIntegrationTestCase):
         delete_response = self._delete(url, data=delete_payload, json=True)
         delete_response.raise_for_status()
         time.sleep(2)
-        show_response = self._get("tool_data/testbeta")
-        show_response.raise_for_status()
-        updated_fields = show_response.json()["fields"]
+        updated_fields = self._testbeta_fields()
         assert len(updated_fields) == original_count
