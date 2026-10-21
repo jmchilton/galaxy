@@ -1649,10 +1649,22 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def navigate_to_dataset_error(self, hid):
         """Display a dataset and click the error tab."""
         self.display_dataset(hid)
-        error_tab = self.wait_for_selector_clickable(
-            ".nav-item[title='View error information for this dataset'] > a.nav-link"
-        )
-        error_tab.click()
+        self.components.dataset_error.tab.wait_for_and_click()
+
+    def history_panel_item_show_error(self, hid):
+        """Open dataset ``hid``'s error page from its bug icon, expanding the history item if needed."""
+        item = self.history_panel_item_component(hid=hid)
+        if item.error_button.is_absent:
+            self.history_panel_click_item_title(hid=hid, wait=True)
+        item.error_button.wait_for_and_click()
+        self.components.dataset_error.tool_id.wait_for_visible()
+
+    def submit_email_report(self, message):
+        """Fill the open Issue Report form with ``message``, submit it and return the result's text."""
+        report = self.components.email_report
+        report.message.wait_for_and_send_keys(message)
+        report.submit.wait_for_and_click()
+        return report.result.wait_for_text()
 
     def galaxy_wizard_analyze(self):
         """Click the wizard analyze button and wait for the response."""
