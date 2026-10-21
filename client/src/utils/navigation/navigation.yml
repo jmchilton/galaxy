@@ -188,6 +188,22 @@ dataset_details:
     transform_action: '[data-transform-action="${action}"]'
     deferred_source_uri: '.deferred-dataset-source-uri'
 
+dataset_error:
+  selectors:
+    tab: ".nav-item[title='View error information for this dataset'] > a.nav-link"
+    tool_id: '#dataset-error-tool-id'
+    job_messages: '#dataset-error-job-messages'
+    tool_stderr: '#dataset-error-tool-stderr'
+    job_stderr: '#dataset-error-job-stderr'
+
+# Issue Report form on the dataset error page and invocation feedback
+email_report:
+  selectors:
+    _: '#email-report-form'
+    message: '#email-report-message'
+    submit: '#email-report-submit'
+    result: '.email-report-result'
+
 object_store_details:
   selectors:
     _: '[aria-labelledby="dataset-details-heading"]'
@@ -293,6 +309,8 @@ history_panel:
       # Action buttons...
       download_button: '${_} .download-btn'
       info_button: '${_} .params-btn'
+      # The bug icon on an error dataset
+      error_button: '${_} .dataset-actions a[href*="/error"]'
       highlight_button: '${_} .highlight-btn'
       alltags: '${_} .stateless-tags .tag'
       metadata_file_download: '${_} [data-description="download ${metadata_name}"]'
