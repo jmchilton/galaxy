@@ -316,9 +316,8 @@ class BaseJobRunner:
         destination that sets ``<param>`` always wins, including when it sets a
         falsy value.
 
-        Seeded values live on the in-memory :class:`JobDestination` only; they are
-        not persisted to ``job.destination_params``, so this is not a suitable
-        mechanism for params that must survive job recovery.
+        Seeding runs only on the prepare path; recovered jobs see seeded values
+        only if the runner persisted them via ``set_job_destination``.
 
         Returns ``True`` if any destination param was populated.
         """
