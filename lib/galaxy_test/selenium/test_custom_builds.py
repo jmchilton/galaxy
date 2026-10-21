@@ -13,6 +13,8 @@ class TestCustomBuilds(SharedStateSeleniumTestCase):
     build_name2: str
     build_key1: str
     build_key2: str
+    build_name3: str
+    build_key3: str
 
     @selenium_test
     def test_build_add(self):
@@ -29,6 +31,25 @@ class TestCustomBuilds(SharedStateSeleniumTestCase):
         self.assert_custom_builds_in_grid([self.build_name2])
         self.delete_custom_build(self.build_name2)
         self.assert_custom_builds_in_grid([self.build_name2], False)
+
+    @selenium_test
+    def test_build_add_from_fasta(self):
+        self._login()
+        self.dataset_populator.new_dataset(
+            self.current_history_id(), content=">chr1\nACGT\n>chr2\nAC\n", file_type="fasta", wait=True
+        )
+        self.navigate_to_custom_builds_page()
+        custom_builds = self.components.custom_builds
+        custom_builds.name.wait_for_and_send_keys(self.build_name3)
+        custom_builds.key.wait_for_and_send_keys(self.build_key3)
+        assert custom_builds.definition.wait_for_value() == "fasta"
+        custom_builds.fasta_file.wait_for_visible()
+        custom_builds.save.wait_for_and_click()
+        # A FASTA build is listed once Galaxy's jobs have counted its chromosomes.
+        self.wait_for_history()
+        self.navigate_to_custom_builds_page()
+        assert custom_builds.row_count(name=self.build_name3).wait_for_text() == "2"
+        self.screenshot("custom_builds_from_fasta")
 
     @retry_assertion_during_transitions
     def assert_custom_builds_in_grid(self, expected_builds, present=True):
@@ -94,3 +115,5 @@ class TestCustomBuilds(SharedStateSeleniumTestCase):
         TestCustomBuilds.build_name2 = self._get_random_name()
         TestCustomBuilds.build_key1 = self._get_random_name(len=5)
         TestCustomBuilds.build_key2 = self._get_random_name(len=5)
+        TestCustomBuilds.build_name3 = self._get_random_name()
+        TestCustomBuilds.build_key3 = self._get_random_name(len=5)
