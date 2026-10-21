@@ -3,13 +3,14 @@ import os
 import re
 from typing import ClassVar
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from .framework import (
     selenium_test,
     SeleniumIntegrationTestCase,
 )
 
 
-class TestUserActivationSeleniumIntegration(SeleniumIntegrationTestCase):
+class TestUserActivationSeleniumIntegration(SeleniumIntegrationTestCase, UsesUploadActivity):
     email_directory: ClassVar[str]
 
     @classmethod
@@ -40,6 +41,17 @@ class TestUserActivationSeleniumIntegration(SeleniumIntegrationTestCase):
         self.home()
         inactivity_box._.assert_absent_or_hidden()
         self.components.masthead.logged_in_only.wait_for_visible()
+
+    @selenium_test
+    def test_inactive_user_cannot_upload(self):
+        self.register(self._get_random_email(domain="example.org"))
+        self.components.inactivity_box._.wait_for_visible()
+        upload = self.upload_context("paste-content")
+        upload.stage_paste_content("hello")
+        upload.start()
+        error = self.components.upload_activity.progress_row_error(row=1).wait_for_visible()
+        assert "Action requires account activation" in error.text, error.text
+        self.screenshot("user_activation_inactive_upload")
 
     @property
     def _email_path(self) -> str:
