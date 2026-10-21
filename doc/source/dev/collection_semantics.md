@@ -1118,6 +1118,195 @@ $$tool(i=C) \rightarrow \left\{o: \text{dataset}\right\}$$
 
 
 
+## Output Collection Types
+
+The examples above describe the implicit collections created by mapping. A tool
+may also declare collection outputs itself and the type of such an output
+collection is determined in one of the following ways.
+
+- A fixed ``type`` (e.g. ``type="list:paired"``).
+- ``structured_like`` - the output has the structure (and element identifiers)
+  of the named input collection.
+- ``type_source`` - the output has the type of the collection connected to the
+  named input.
+- ``type_prefix`` together with ``type_source`` - the output has the type
+  ``prefix:resolved``, where ``resolved`` is the type ``type_source`` resolves
+  to. This requires tool profile 26.2 or newer.
+
+In the examples below, ``collection<type_source(i)>`` denotes an output declared
+with ``type_source="i"`` and ``collection<list:type_source(i)>`` one that
+additionally declares ``type_prefix="list"``.
+
+
+(TYPE_SOURCE_LIST)=
+<details><summary>Examples</summary>
+
+:::{admonition} Example: `TYPE_SOURCE_LIST` 
+:class: note
+
+Assuming,
+
+* $ d_1,...,d_n $ are datasets
+* $ tool \text{ is } (i: \text{ collection }) \Rightarrow \{ o: \text{ collection<type\_source(i)> } \} $
+* $ C $ is $ \text{CollectionInstance<}\text{list},\left\{ \text{ i1 }=d_1, ..., \text{ in }=d_n \right\}\text{>} $
+
+
+then
+
+$$tool(i=C) \rightarrow \left\{o: \text{collection}<\text{list},\left\{\text{i1}=\text{dataset},...,\text{in}=\text{dataset}\right\}>\right\}$$
+
+:::
+
+
+
+</details><br>
+
+
+
+With ``type_prefix``, the prefix adds outer levels around the resolved type.
+
+
+(TYPE_PREFIX_PAIRED)=
+<details><summary>Examples</summary>
+
+:::{admonition} Example: `TYPE_PREFIX_PAIRED` 
+:class: note
+
+Assuming,
+
+* $ d_f $, $ d_r $ are datasets
+* $ tool \text{ is } (i: \text{ collection<list,paired> }) \Rightarrow \{ o: \text{ collection<list:type\_source(i)> } \} $
+* $ C $ is $ \text{CollectionInstance<}\text{paired},\left\{ \text{ forward }=d_f, \text{ reverse }=d_r \right\}\text{>} $
+
+
+then
+
+$$tool(i=C) \rightarrow \left\{o: \text{collection}<\text{list}:\text{paired},\left\{\text{first}=\left\{\text{forward}=\text{dataset}, \text{reverse}=\text{dataset}\right\}, \text{second}=\left\{\text{forward}=\text{dataset}, \text{reverse}=\text{dataset}\right\}\right\}>\right\}$$
+
+:::
+
+
+
+</details><br>
+
+
+
+If the connected collection has more levels than the input declares, the extra
+outer levels are mapped over as usual. ``type_source`` then resolves to the type
+each job consumes and the prefix applies to that per-job type - so the implicit
+collection has the mapped over levels followed by the prefixed per-job type.
+
+
+(TYPE_PREFIX_MAPPED)=
+<details><summary>Examples</summary>
+
+:::{admonition} Example: `TYPE_PREFIX_MAPPED` 
+:class: note
+
+Assuming,
+
+* $ d_f $, $ d_r $ are datasets
+* $ tool \text{ is } (i: \text{ collection<list,paired> }) \Rightarrow \{ o: \text{ collection<list:type\_source(i)> } \} $
+* $ C $ is $ \text{CollectionInstance<}\text{list}:\text{paired},\left\{ \text{ el1 }=\left\{ \text{ forward }=d_f, \text{ reverse }=d_r \right\} \right\}\text{>} $
+* $ C\_PAIRED $ is $ \text{CollectionInstance<}\text{paired},\left\{ \text{ forward }=d_f, \text{ reverse }=d_r \right\}\text{>} $
+
+
+then
+
+$$tool(i=\text{mapOver}(C, '\text{paired}')) \mapsto \left\{o: \text{collection}<\text{list}:\text{list}:\text{paired},\left\{\text{el1}=tool(i=C\_PAIRED)[o]\right\}>\right\}$$
+
+:::
+
+
+
+</details><br>
+
+
+
+The prefix itself may not contain ``sample_sheet`` or ``record`` levels and is
+only allowed together with ``type_source`` - the tool linter and parser reject
+such declarations. ``sample_sheet`` may only be the outermost level, so a
+``sample_sheet`` type resolved from ``type_source`` is treated as the matching
+``list`` type before the prefix is applied (``sample_sheet:paired`` becomes
+``list:paired``). The output is a plain list without sample sheet columns.
+Without a prefix the resolved type is used as is.
+
+
+(TYPE_PREFIX_SAMPLE_SHEET)=
+<details><summary>Examples</summary>
+
+:::{admonition} Example: `TYPE_PREFIX_SAMPLE_SHEET` 
+:class: note
+
+Assuming,
+
+* $ d_1 $, $ d_2 $ are datasets
+* $ tool \text{ is } (i: \text{ collection<list,paired> }) \Rightarrow \{ o: \text{ collection<list:type\_source(i)> } \} $
+* $ C $ is $ \text{CollectionInstance<}\text{sample\_sheet},\left\{ \text{ s1 }=d_1, \text{ s2 }=d_2 \right\}\text{>} $
+
+
+then
+
+$$tool(i=C) \rightarrow \left\{o: \text{collection}<\text{list}:\text{list},\left\{\text{first}=\left\{\text{s1}=\text{dataset}, \text{s2}=\text{dataset}\right\}, \text{second}=\left\{\text{s1}=\text{dataset}, \text{s2}=\text{dataset}\right\}\right\}>\right\}$$
+
+:::
+
+
+
+</details><br>
+
+
+
+The "Nest collection" tool (``__NEST__``) version 1.1.0 is declared this way -
+it accepts ``list`` and ``list:paired`` inputs (sample sheets included, nested as
+lists) and its output uses ``type_source`` with ``type_prefix="list"``. Unlike
+the test tool above, it runs no job and produces no new data - each element of
+the input is copied into a single element list with the same identifier.
+
+
+(NEST_LIST_PAIRED)=
+(NEST_MAPPED_LIST_LIST_PAIRED)=
+<details><summary>Examples</summary>
+
+:::{admonition} Example: `NEST_LIST_PAIRED` 
+:class: note
+
+Assuming,
+
+* $ d_f $, $ d_r $ are datasets
+* $ tool \text{ is } (i: \text{ collection<list,list:paired> }) \Rightarrow \{ o: \text{ collection<list:type\_source(i)> } \} $
+* $ C $ is $ \text{CollectionInstance<}\text{list}:\text{paired},\left\{ \text{ el1 }=\left\{ \text{ forward }=d_f, \text{ reverse }=d_r \right\} \right\}\text{>} $
+
+
+then
+
+$$tool(i=C) \rightarrow \left\{o: \text{collection}<\text{list}:\text{list}:\text{paired},\left\{\text{el1}=\left\{\text{el1}=\left\{\text{forward}=\text{dataset}, \text{reverse}=\text{dataset}\right\}\right\}\right\}>\right\}$$
+
+:::
+
+
+
+:::{admonition} Example: `NEST_MAPPED_LIST_LIST_PAIRED` 
+:class: note
+
+Assuming,
+
+* $ tool \text{ is } (i: \text{ collection<list,list:paired> }) \Rightarrow \{ o: \text{ collection<list:type\_source(i)> } \} $
+* $ C $ is $ \text{CollectionInstance<}\text{list}:\text{list}:\text{paired},\left\{ \text{ el1 }=C_1, ..., \text{ eln }=C_n \right\}\text{>} $
+
+
+then
+
+$$tool(i=\text{mapOver}(C, '\text{list}:\text{paired}')) \mapsto \left\{o: \text{collection}<\text{list}:\text{list}:\text{list}:\text{paired},\left\{\text{el1}=tool(i=C_1)[o],...,\text{eln}=tool(i=C_n)[o]\right\}>\right\}$$
+
+:::
+
+
+
+</details><br>
+
+
+
 ## Type Compatibility Algebra
 
 This section is for implementers. It describes the three operations that
