@@ -21,6 +21,7 @@ import {
     CollectionTypeDescription,
     type CollectionTypeDescriptor,
     NULL_COLLECTION_TYPE_DESCRIPTION,
+    prefixedCollectionType,
 } from "./collectionTypeDescription";
 import { applyCompaction, computePickValueCompaction, reverseCompaction } from "./pickValueCompact";
 
@@ -806,6 +807,7 @@ export class OutputTerminal extends BaseOutputTerminal {}
 interface OutputCollectionTerminalArgs extends BaseOutputTerminalArgs {
     collection_type: string;
     collection_type_source: string | null;
+    collection_type_prefix?: string | null;
 }
 
 export class OutputCollectionTerminal extends BaseOutputTerminal {
@@ -821,7 +823,10 @@ export class OutputCollectionTerminal extends BaseOutputTerminal {
             if (!this.collectionTypeSource) {
                 console.debug(NO_COLLECTION_TYPE_INFORMATION_MESSAGE);
             }
-            this.collectionType = this.getCollectionTypeFromInput() || ANY_COLLECTION_TYPE_DESCRIPTION;
+            this.collectionType = prefixedCollectionType(
+                attr.collection_type_prefix,
+                this.getCollectionTypeFromInput() || ANY_COLLECTION_TYPE_DESCRIPTION,
+            );
         }
         this.isCollection = true;
     }
@@ -1073,6 +1078,7 @@ export function terminalFactory<T extends TerminalSourceAndInvalid>(
                 datatypes: terminalSource.extensions,
                 collection_type: terminalSource.collection_type,
                 collection_type_source: terminalSource.collection_type_source,
+                collection_type_prefix: terminalSource.collection_type_prefix,
             }) as TerminalOf<T>;
         } else if (isOutputArg(terminalSource)) {
             return new OutputTerminal({

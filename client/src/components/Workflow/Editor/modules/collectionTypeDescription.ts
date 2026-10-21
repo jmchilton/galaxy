@@ -288,3 +288,24 @@ export function isValidCollectionTypeStr(collectionType: string | undefined) {
         return true;
     }
 }
+
+/**
+ * Apply a tool output's ``type_prefix`` to the type its ``type_source`` resolved to,
+ * mirroring ``CollectionTypeDescriptionFactory.for_prefixed_collection_type``.
+ * A ``sample_sheet*`` source type is prefixed as the matching ``list*`` type;
+ * an invalid result is treated as any collection type.
+ */
+export function prefixedCollectionType(
+    prefix: string | null | undefined,
+    source: CollectionTypeDescriptor,
+): CollectionTypeDescriptor {
+    if (!prefix) {
+        return source;
+    }
+    const normalizedSource =
+        source instanceof CollectionTypeDescription
+            ? new CollectionTypeDescription(normalizeCollectionType(source.collectionType))
+            : source;
+    const prefixed = new CollectionTypeDescription(prefix).append(normalizedSource);
+    return isValidCollectionTypeStr(prefixed.collectionType ?? undefined) ? prefixed : ANY_COLLECTION_TYPE_DESCRIPTION;
+}
