@@ -62,7 +62,7 @@ const connectors = computed(() =>
                 <span class="font-weight-bold">{{ output.label }}</span>
             </div>
             <div class="embedded-output-body">
-                <InvocationOutputPreview :item="output.item" />
+                <InvocationOutputPreview :item="output.item" :step-state="props.steps[output.sourceId]?.state" />
             </div>
         </div>
     </div>

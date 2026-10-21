@@ -1,12 +1,32 @@
 <script setup lang="ts">
+import { watch } from "vue";
+
 import type { InvocationOutputItem } from "@/composables/useInvocationGraph";
+import { useDatasetStore } from "@/stores/datasetStore";
+import { useDatasetTextContentStore } from "@/stores/datasetTextContentStore";
 
 import CollectionDisplay from "@/components/Markdown/Sections/Elements/HistoryDatasetCollection/CollectionDisplay.vue";
 import HistoryDatasetDisplay from "@/components/Markdown/Sections/Elements/HistoryDatasetDisplay.vue";
 
 const props = defineProps<{
     item: InvocationOutputItem;
+    /** State of the step that produces the item; the preview reloads when it changes */
+    stepState?: string;
 }>();
+
+const datasetStore = useDatasetStore();
+const datasetTextContentStore = useDatasetTextContentStore();
+
+// the dataset stores cache by id, so a preview loaded while the job ran would stay empty
+watch(
+    () => props.stepState,
+    () => {
+        if (props.item.src === "hda") {
+            datasetStore.fetchDataset({ id: props.item.id });
+            datasetTextContentStore.fetchItemById({ id: props.item.id });
+        }
+    },
+);
 </script>
 
 <template>

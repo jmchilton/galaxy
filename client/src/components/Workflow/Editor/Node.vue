@@ -144,7 +144,7 @@
                 :invocation-step="invocationStep" />
             <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
             <div v-if="preferredItem" class="node-preferred-output" @wheel.stop @pointerdown.stop>
-                <InvocationOutputPreview :item="preferredItem" />
+                <InvocationOutputPreview :item="preferredItem" :step-state="graphStep?.state" />
             </div>
             <NodeOutput
                 v-for="(output, index) in outputs"
