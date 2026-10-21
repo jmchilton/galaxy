@@ -71,10 +71,18 @@ def test_no_runner_default_leaves_destination_untouched():
 
 
 def test_only_listed_params_are_seeded():
-    param_specs = {"default_custom_vm_image": IMAGE_SPEC, "default_other_param": IMAGE_SPEC}
-    updated, params = _apply({"default_other_param": "value"}, {}, param_specs=param_specs)
+    param_specs = {"default_custom_vm_image": IMAGE_SPEC, "default_other_param": dict(IMAGE_SPEC, default="value")}
+    updated, params = _apply({}, {}, param_specs=param_specs)
     assert updated is False
     assert "other_param" not in params
+
+
+def test_configured_default_for_unlisted_param_is_a_configuration_error():
+    with pytest.raises(ConfigurationError, match="default_other_param"):
+        _make_runner(
+            {"default_other_param": "value"},
+            param_specs={"default_custom_vm_image": IMAGE_SPEC, "default_other_param": IMAGE_SPEC},
+        )
 
 
 def test_unset_default_falls_back_to_spec_default():

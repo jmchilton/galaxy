@@ -147,6 +147,9 @@ class BaseJobRunner:
                     f"{self.runner_name} lists destination param '{name}' in runner_default_destination_params "
                     f"but does not register a 'default_{name}' runner param spec"
                 )
+        for key in kwargs:
+            if key.startswith("default_") and key[len("default_") :] not in self.runner_default_destination_params:
+                raise ConfigurationError(f"{self.runner_name} does not support runner parameter '{key}'")
         self.runner_state_handlers = build_state_handlers()
         self._should_stop = False
 
