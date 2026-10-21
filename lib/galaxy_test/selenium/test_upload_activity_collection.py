@@ -44,7 +44,7 @@ class TestUploadActivityCollection(SeleniumTestCase, UsesHistoryItemAssertions):
         # can race with sync() which resets toggledSideBar.
         self.components.tools.activity.wait_for_visible()
         # Open activity settings panel
-        self.components.preferences.activity.wait_for_and_click()
+        self.components.activity_bar.more.wait_for_and_click()
         # Click the Upload activity in settings to open its sidebar panel
         self.components.upload_activity.activity.wait_for_and_click()
         # Wait for and click the specific upload method card in the sidebar
