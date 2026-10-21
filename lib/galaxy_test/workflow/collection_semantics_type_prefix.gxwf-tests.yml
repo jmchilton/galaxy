@@ -1,0 +1,41 @@
+- doc: |
+    TYPE_PREFIX_PAIRED: A paired input to a type_source output with type_prefix
+    list yields a list:paired output.
+  job:
+    input1:
+      class: Collection
+      collection_type: paired
+      elements:
+        - identifier: forward
+          class: File
+          contents: "forward content"
+        - identifier: reverse
+          class: File
+          contents: "reverse content"
+  outputs:
+    wf_output:
+      class: Collection
+      collection_type: list:paired
+      elements:
+        first:
+          class: Collection
+          elements:
+            forward:
+              asserts:
+                - that: has_text
+                  text: "forward content"
+            reverse:
+              asserts:
+                - that: has_text
+                  text: "reverse content"
+        second:
+          class: Collection
+          elements:
+            forward:
+              asserts:
+                - that: has_text
+                  text: "forward content"
+            reverse:
+              asserts:
+                - that: has_text
+                  text: "reverse content"
