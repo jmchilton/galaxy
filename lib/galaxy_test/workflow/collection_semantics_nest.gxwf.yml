@@ -1,0 +1,14 @@
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: collection
+    collection_type: list:paired
+outputs:
+  wf_output:
+    outputSource: nest/output
+steps:
+  nest:
+    tool_id: __NEST__
+    tool_version: 1.1.0
+    in:
+      input: input1
