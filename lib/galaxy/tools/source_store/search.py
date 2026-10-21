@@ -25,6 +25,7 @@ from whoosh.fields import (
     Schema,
     TEXT,
 )
+from whoosh.index import TOC
 from whoosh.qparser import (
     MultifieldParser,
     OrGroup,
@@ -309,9 +310,11 @@ def search_whoosh_searcher(searcher: Searcher, query: str, limit: int | None = N
     return scored if limit is None else scored[:limit]
 
 
-# Whoosh writes ``_MAIN_<generation>.toc`` on each commit of an index opened
-# with the default name, and names a segment's files ``<segment id>.<ext>``.
-_TOC_FILENAME = re.compile(r"_MAIN_([0-9]+)\.toc")
+# Whoosh writes ``_<indexname>_<generation>.toc`` on each commit and names a
+# segment's files ``<segment id>.<ext>``; reuse its patterns for the default
+# index name that ``open_dir`` and ``create_in`` use.
+_TOC_FILENAME = TOC._pattern(index._DEF_INDEX_NAME)
+_SEGMENT_FILENAME = TOC._segment_pattern(index._DEF_INDEX_NAME)
 
 
 def _latest_generation(filenames: list[str]) -> int:
@@ -328,7 +331,7 @@ def _reads_latest_commit(searcher: Searcher, filenames: list[str]) -> bool:
     reader = searcher.reader()
     if reader.generation() != _latest_generation(filenames):
         return False
-    stems = {name.split(".", 1)[0] for name in filenames}
+    stems = {match.group(1) for name in filenames if (match := _SEGMENT_FILENAME.match(name))}
     segments = (leaf.segment() for leaf, _docbase in reader.leaf_readers())
     return all(segment.segment_id() in stems for segment in segments if segment is not None)
 
