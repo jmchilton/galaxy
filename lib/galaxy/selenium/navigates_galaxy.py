@@ -684,6 +684,19 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         # stops on anything but None, so a condition returning False would not wait at all.
         return wait_on(lambda: f() or None, on_str or "custom wait", timeout)
 
+    def history_wait_for_new_collection(self, after_hid: int) -> dict[str, Any]:
+        """Wait for a collection with a hid above ``after_hid`` in the current history; return the newest."""
+
+        def new_collection():
+            collections = [
+                item
+                for item in self.history_contents()
+                if item["history_content_type"] == "dataset_collection" and item["hid"] > after_hid
+            ]
+            return collections[-1] if collections else None
+
+        return self._wait_on(new_collection, f"a collection after hid {after_hid}")
+
     def wait_for_history_to_have_hid(self, history_id, hid):
         def get_hids():
             contents = self.api_get(f"histories/{history_id}/contents")
@@ -1157,6 +1170,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             filter_input.clear()
             filter_input.send_keys(value)
 
+            self.screenshot_if(screenshot_name)
+
+    def rule_builder_add_column_basename(self, column_label, screenshot_name=None):
+        rule_builder = self.components.rule_builder
+        rule_builder.menu_button_column.wait_for_and_click()
+        with self.rule_builder_rule_editor("add-column-basename"):
+            self.select_set_value(
+                rule_builder.rule_editor_column_selector(rule_type="add-column-basename"), column_label
+            )
             self.screenshot_if(screenshot_name)
 
     def rule_builder_remove_columns(self, column_labels, screenshot_name=None):
