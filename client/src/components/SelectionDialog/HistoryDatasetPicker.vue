@@ -2,7 +2,7 @@
 import { faHdd } from "@fortawesome/free-solid-svg-icons";
 import { computed, ref } from "vue";
 
-import { GalaxyApi, type HDASummary, type HistorySortByLiteral, type HistorySummary } from "@/api";
+import { GalaxyApi, type HDASummary, type HistorySummary } from "@/api";
 import { getMyHistories } from "@/api/histories";
 import type { TableField } from "@/components/Common/GTable.types";
 import { HistoriesFilters } from "@/components/History/HistoriesFilters";
@@ -142,8 +142,6 @@ async function historiesProvider(ctx: ItemsProviderContext, url?: string): Promi
 
         const limit = ctx.perPage;
         const offset = (ctx.currentPage ? ctx.currentPage - 1 : 0) * ctx.perPage;
-        const sortBy: HistorySortByLiteral =
-            ctx.sortBy === "label" ? "name" : (ctx.sortBy as HistorySortByLiteral) || "update_time";
 
         // Always pass a search string: without one the index endpoint falls back to a
         // legacy listing that ignores sorting and doesn't report the total for paging.
@@ -151,8 +149,9 @@ async function historiesProvider(ctx: ItemsProviderContext, url?: string): Promi
             limit,
             offset,
             search: filter ?? "",
-            sortBy,
-            sortDesc: ctx.sortDesc ?? true,
+            // History columns aren't sortable; ignore any sort carried over from the datasets view.
+            sortBy: "update_time",
+            sortDesc: true,
         });
 
         totalItems.value = total;

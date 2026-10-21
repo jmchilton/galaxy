@@ -25,6 +25,14 @@ const HISTORY = {
     username: "test-user",
 };
 
+const DATASET = {
+    id: "d1",
+    name: "1.txt",
+    history_content_type: "dataset",
+    update_time: "2026-01-02T00:00:00",
+    url: "/api/datasets/d1",
+};
+
 function interceptHistories() {
     const queries: Record<string, string>[] = [];
     server.use(
@@ -35,6 +43,15 @@ function interceptHistories() {
         }),
     );
     return queries;
+}
+
+function interceptDatasets() {
+    server.use(
+        http.get("/api/datasets", ({ response }) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return response(200).json([DATASET] as any, { headers: { total_matches: "1" } });
+        }),
+    );
 }
 
 async function mountPicker() {
@@ -63,5 +80,21 @@ describe("HistoryDatasetPicker", () => {
             show_archived: "false",
         });
         expect(wrapper.text()).toContain("Recent History");
+    });
+
+    it("keeps the history list newest first after sorting a history's datasets", async () => {
+        const queries = interceptHistories();
+        interceptDatasets();
+        const wrapper = await mountPicker();
+
+        await wrapper.find(".selection-dialog-folder").trigger("click");
+        await flushPromises();
+        await wrapper.find("th.g-table-sortable").trigger("click");
+        await flushPromises();
+        await wrapper.find("[data-description='selection dialog undo']").trigger("click");
+        await flushPromises();
+
+        expect(queries.length).toBeGreaterThan(1);
+        expect(queries[queries.length - 1]).toMatchObject({ sort_by: "update_time", sort_desc: "true" });
     });
 });
