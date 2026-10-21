@@ -21,6 +21,12 @@ from galaxy.util.unittest import TestCase
 if TYPE_CHECKING:
     from sqlalchemy.orm import scoped_session
 
+DEFAULT_SLOTS_SPECS = {"default_local_slots": dict(map=int, default=None)}
+
+
+class _DefaultSlotsLocalJobRunner(local.LocalJobRunner):
+    runner_default_destination_params = ["local_slots"]
+
 
 class TestLocalJobRunner(TestCase, UsesTools):
     def setUp(self):
@@ -107,6 +113,19 @@ class TestLocalJobRunner(TestCase, UsesTools):
         self.job_wrapper.job_destination.params["local_slots"] = 3
         self.job_wrapper.command_line = """echo $GALAXY_SLOTS"""
         runner = local.LocalJobRunner(self.app, 1)
+        runner.queue_job(cast(MinimalJobWrapper, self.job_wrapper))
+        assert self.job_wrapper.stdout.strip() == "3"
+
+    def test_runner_default_destination_param_seeded_by_prepare_job(self):
+        self.job_wrapper.command_line = """echo $GALAXY_SLOTS"""
+        runner = _DefaultSlotsLocalJobRunner(self.app, 1, runner_param_specs=DEFAULT_SLOTS_SPECS, default_local_slots=7)
+        runner.queue_job(cast(MinimalJobWrapper, self.job_wrapper))
+        assert self.job_wrapper.stdout.strip() == "7"
+
+    def test_destination_param_overrides_runner_default(self):
+        self.job_wrapper.job_destination.params["local_slots"] = 3
+        self.job_wrapper.command_line = """echo $GALAXY_SLOTS"""
+        runner = _DefaultSlotsLocalJobRunner(self.app, 1, runner_param_specs=DEFAULT_SLOTS_SPECS, default_local_slots=7)
         runner.queue_job(cast(MinimalJobWrapper, self.job_wrapper))
         assert self.job_wrapper.stdout.strip() == "3"
 
