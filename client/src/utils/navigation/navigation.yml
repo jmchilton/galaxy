@@ -300,6 +300,14 @@ history_panel:
       action_button: '.history-contents-list-action-menu-btn'
       action_menu: '.list-action-menu .dropdown-menu'
 
+    # Selection menu's "Change data type" (only offered when Celery is enabled)
+    change_datatype_modal:
+      selectors:
+        _: '[data-description="change data type modal"]'
+        # Only rendered once the datatypes have loaded
+        item_selector: '${_} .single-item-selector'
+        ok: '${_} .g-modal-confirm-buttons button:last-child'
+
     labels:
       build_pair: "Build Dataset Pair"
       build_list: "Build Dataset List"
