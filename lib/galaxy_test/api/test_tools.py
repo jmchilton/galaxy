@@ -1314,6 +1314,132 @@ class TestToolsApi(ApiTestCase, TestsTools):
             self._assert_nested_singletons(nested_hdca, "list", ["forward", "reverse"])
             assert all(e["object"]["elements"][0]["element_type"] == "hda" for e in nested_hdca["elements"])
 
+    @skip_without_tool("__NEST__")
+    def test_nest_map_over_list_of_pairs_1_0_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+            inputs = {"input": {"batch": True, "values": [{"src": "hdca", "map_over_type": "paired", "id": hdca_id}]}}
+            response = self._nest(history_id, inputs, "1.0.0")
+            implicit_collections = response["implicit_collections"]
+            assert len(implicit_collections) == 1
+            mapped_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=implicit_collections[0]["id"]
+            )
+            assert mapped_hdca["collection_type"] == "list:list:list"
+            assert [e["element_identifier"] for e in mapped_hdca["elements"]] == ["test0", "test1"]
+            for outer_element in mapped_hdca["elements"]:
+                nested = outer_element["object"]
+                assert nested["collection_type"] == "list:list"
+                self._assert_nested_singletons(nested, "list", ["forward", "reverse"])
+
+    @skip_without_tool("__NEST__")
+    def test_nest_list_of_pairs_1_1_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+            response = self._nest(history_id, {"input": {"src": "hdca", "id": hdca_id}}, "1.1.0")
+            assert not response["implicit_collections"]
+            nested_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=response["output_collections"][0]["id"]
+            )
+            assert nested_hdca["collection_type"] == "list:list:paired"
+            self._assert_nested_singletons(nested_hdca, "list:paired", ["test0", "test1"])
+            for outer_element in nested_hdca["elements"]:
+                pair = outer_element["object"]["elements"][0]["object"]
+                assert pair["collection_type"] == "paired"
+                assert [e["element_identifier"] for e in pair["elements"]] == ["forward", "reverse"]
+
+    @skip_without_tool("__NEST__")
+    def test_nest_offers_list_of_pairs_input_1_1_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            list_of_pairs_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+            build = self.dataset_populator.build_tool_state("__NEST__", history_id)
+            offered = {option["id"]: option for option in build["inputs"][0]["options"]["hdca"]}
+            assert list_of_pairs_id in offered
+            # offered as a whole collection, not as a map over its pairs
+            assert "map_over_type" not in offered[list_of_pairs_id], offered[list_of_pairs_id]
+            assert build["version"] == "1.1.0"
+
+    @skip_without_tool("__NEST__")
+    def test_nest_does_not_offer_paired_input_1_1_0(self):
+        with self.dataset_populator.test_history() as history_id:
+            pair_response = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True)
+            pair_id = pair_response.json()["outputs"][0]["id"]
+            build = self.dataset_populator.build_tool_state("__NEST__", history_id)
+            options = build["inputs"][0]["options"]
+            offered_ids = {option["id"] for bucket in options.values() for option in bucket}
+            assert pair_id not in offered_ids
+            assert build["version"] == "1.1.0"
+            response = self._run(
+                "__NEST__", history_id, {"input": {"src": "hdca", "id": pair_id}}, tool_version="1.1.0"
+            )
+            # The tool API doesn't yet check a directly passed hdca's collection_type,
+            # so only pin that the run is rejected and leaves nothing behind.
+            self._assert_status_code_is(response, 400)
+            contents = self.dataset_populator.get_history_contents(history_id)
+            assert len([c for c in contents if c["history_content_type"] == "dataset_collection"]) == 1, contents
+            assert len([c for c in contents if c["history_content_type"] == "dataset"]) == 2, contents
+
+    @skip_without_tool("__NEST__")
+    def test_nest_sample_sheet_paired_1_1_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            element_identifiers = [
+                {
+                    "name": name,
+                    "collection_type": "paired",
+                    "src": "new_collection",
+                    "element_identifiers": self.dataset_collection_populator.pair_identifiers(
+                        history_id, ["forward", "reverse"]
+                    ),
+                }
+                for name in ["sample1", "sample2"]
+            ]
+            create_response = self.dataset_collection_populator.create_sample_sheet(
+                history_id,
+                contents=element_identifiers,
+                column_definitions=[{"type": "int", "name": "replicate", "default_value": 0, "optional": False}],
+                rows={"sample1": [1], "sample2": [2]},
+                collection_type="sample_sheet:paired",
+            )
+            self._assert_status_code_is(create_response, 200)
+            sample_sheet_hdca = create_response.json()
+            assert sample_sheet_hdca["collection_type"] == "sample_sheet:paired"
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            response = self._nest(history_id, {"input": {"src": "hdca", "id": sample_sheet_hdca["id"]}}, "1.1.0")
+            nested_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=response["output_collections"][0]["id"]
+            )
+            assert nested_hdca["collection_type"] == "list:list:paired"
+            assert nested_hdca.get("column_definitions") is None
+            self._assert_nested_singletons(nested_hdca, "list:paired", ["sample1", "sample2"])
+            for outer_element in nested_hdca["elements"]:
+                pair = outer_element["object"]["elements"][0]["object"]
+                assert pair["collection_type"] == "paired"
+                assert [e["element_identifier"] for e in pair["elements"]] == ["forward", "reverse"]
+
+    @skip_without_tool("__NEST__")
+    def test_nest_map_over_list_of_lists_of_pairs_1_1_0(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            list_of_pairs_ids = [self.dataset_collection_populator.example_list_of_pairs(history_id) for _ in range(2)]
+            hdca_id = self.dataset_collection_populator.create_nested_collection(
+                history_id, collection_type="list:list:paired", collection=list_of_pairs_ids
+            ).json()["id"]
+            inputs = {
+                "input": {"batch": True, "values": [{"src": "hdca", "map_over_type": "list:paired", "id": hdca_id}]}
+            }
+            response = self._nest(history_id, inputs, "1.1.0")
+            implicit_collections = response["implicit_collections"]
+            assert len(implicit_collections) == 1
+            assert implicit_collections[0]["collection_type"] == "list:list:list:paired"
+            mapped_hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=implicit_collections[0]["id"]
+            )
+            assert mapped_hdca["collection_type"] == "list:list:list:paired"
+            assert [e["element_identifier"] for e in mapped_hdca["elements"]] == ["test0", "test1"]
+            for outer_element in mapped_hdca["elements"]:
+                nested = outer_element["object"]
+                assert nested["collection_type"] == "list:list:paired"
+                self._assert_nested_singletons(nested, "list:paired", ["test0", "test1"])
+
     @skip_without_tool("__MERGE_COLLECTION__")
     def test_merge_collection_rejects_structurally_invalid_inputs(self):
         with self.dataset_populator.test_history(require_new=False) as history_id:
