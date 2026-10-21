@@ -2408,6 +2408,56 @@ steps:
         assert steps["1"]["type"] == "subworkflow"
         assert steps["1"]["outputs"][0]["collection_type"] == "list:paired"
 
+    @skip_without_tool("collection_type_source_prefix")
+    def test_export_editor_collection_type_prefix(self):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input_paired:
+    type: collection
+    collection_type: paired
+steps:
+  prefix_step:
+    tool_id: collection_type_source_prefix
+    in:
+      input_collect: input_paired
+""")
+        downloaded_workflow = self._download_workflow(workflow_id, style="editor")
+        output = downloaded_workflow["steps"]["1"]["outputs"][0]
+        assert output["collection_type"] is None
+        assert output["collection_type_source"] == "input_collect"
+        assert output["collection_type_prefix"] == "list"
+
+    @skip_without_tool("collection_type_source_prefix")
+    def test_export_editor_subworkflow_collection_type_prefix(self):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  outer_input: data
+steps:
+  inner_workflow:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_input:
+          type: collection
+          collection_type: paired
+      outputs:
+        workflow_output:
+          outputSource: prefix_step/list_output
+      steps:
+        prefix_step:
+          tool_id: collection_type_source_prefix
+          in:
+            input_collect: inner_input
+    in:
+      inner_input: outer_input
+""")
+        downloaded_workflow = self._download_workflow(workflow_id, style="editor")
+        steps = downloaded_workflow["steps"]
+        assert steps["1"]["type"] == "subworkflow"
+        assert steps["1"]["outputs"][0]["collection_type"] == "list:paired"
+
     def test_import_missing_tool(self):
         workflow = self.workflow_populator.load_workflow_from_resource(name="test_workflow_missing_tool")
         workflow_id = self.workflow_populator.create_workflow(workflow)

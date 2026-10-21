@@ -86,6 +86,7 @@ from galaxy.model import (
     WorkflowInvocationToSubworkflowInvocationAssociation,
 )
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.index_filter_util import (
     owner_annotation_exists_filter,
     raw_text_column_filter,
@@ -1789,8 +1790,9 @@ class WorkflowContentsManager(UsesAnnotations):
                     if step_data_output.get("collection_type_source") and step_data_output["collection_type"] is None:
                         collection_type_source = step_data_output["collection_type_source"]
                         for input_connection in step["input_connections"].get(collection_type_source, []):
-                            step_data_output["collection_type"] = WorkflowContentsManager._connected_collection_type(
-                                steps, input_connection
+                            step_data_output["collection_type"] = WorkflowContentsManager._prefixed_collection_type(
+                                step_data_output,
+                                WorkflowContentsManager._connected_collection_type(steps, input_connection),
                             )
                     if map_over:
                         collection_type = map_over
@@ -1799,6 +1801,19 @@ class WorkflowContentsManager(UsesAnnotations):
                             collection_type = f"{map_over}:{step_data_output['collection_type']}"
                         step_data_output["collection_type"] = collection_type
         return steps
+
+    @staticmethod
+    def _prefixed_collection_type(step_data_output: dict[str, Any], collection_type: str | None) -> str | None:
+        collection_type_prefix = step_data_output.get("collection_type_prefix")
+        if not collection_type or not collection_type_prefix:
+            return collection_type
+        try:
+            return COLLECTION_TYPE_DESCRIPTION_FACTORY.for_prefixed_collection_type(
+                collection_type_prefix, collection_type, output_name=step_data_output["name"]
+            ).collection_type
+        except exceptions.RequestParameterInvalidException as e:
+            log.warning(f"Failed to resolve collection type of subworkflow step output: {e}")
+            return None
 
     def _workflow_to_dict_export(
         self,
