@@ -129,5 +129,13 @@ def test_tool_version_cmp(lower_ver: str, greater_ver: str) -> None:
     assert parse_tool_version(lower_ver) < parse_tool_version(greater_ver)
 
 
-def test_tool_version_galaxy_suffix_dot_variants_equal() -> None:
-    assert parse_tool_version("1.0+galaxy1") == parse_tool_version("1.0+galaxy.1")
+@pytest.mark.parametrize(
+    "version,equivalent",
+    [
+        ("1.0+galaxy1", "1.0+galaxy.1"),
+        ("1.0+galaxy10", "1.0+galaxy_10"),
+        ("1.0+galaxy10", "1.0+galaxy-10"),
+    ],
+)
+def test_tool_version_galaxy_suffix_separator_variants_equal(version: str, equivalent: str) -> None:
+    assert parse_tool_version(version) == parse_tool_version(equivalent)

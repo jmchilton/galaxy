@@ -68,7 +68,7 @@ def parse_tool_version(version: str) -> Union["LegacyVersion", Version]:
         if suffix:
             # PEP 440 compares a local version segment that contains letters as a string,
             # separating the number into its own segment makes it compare as an integer.
-            version = f"{base_version}{GALAXY_VERSION_SUFFIX}.{suffix.lstrip('.')}"
+            version = f"{base_version}{GALAXY_VERSION_SUFFIX}.{suffix.lstrip('._-')}"
     return parse_version(version)
 
 
