@@ -2225,11 +2225,11 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             input_element.clear()
             input_element.send_keys(value)
 
-    def tool_form_fill(self, values: dict[str, Any] | None = None, data: dict[str, str] | None = None) -> None:
+    def tool_form_fill(self, values: dict[str, Any] | None = None, data: dict[str, int | str] | None = None) -> None:
         """Fill the open tool form by parameter path, such as ``cond|param`` or ``repeat_0|param``.
 
         ``values`` sets non-data parameters, detecting each one's widget. ``data`` selects a dataset or
-        collection per parameter by option label, such as ``"3: reads.fq"``. Adds the repeat
+        collection per parameter, by hid or by option label such as ``"3: reads.fq"``. Adds the repeat
         instances the paths need, expands sections, and retries parameters a conditional reveals late.
         """
         values = values or {}
@@ -2264,7 +2264,8 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                     continue
                 self.tool_form_set_parameter(key, value)
 
-        for key, label in data.items():
+        for key, value in data.items():
+            label = f"{value}: " if isinstance(value, int) else value
             is_multiple = self._is_multi_data_param(key)
             if is_multiple:
                 self._clear_multiselect_tags(key)
