@@ -64,10 +64,6 @@ function overlaps(a: LayoutRect, b: LayoutRect, gap: number) {
     );
 }
 
-function pairKey(a: Item, b: Item) {
-    return a.key < b.key ? `${a.key}|${b.key}` : `${b.key}|${a.key}`;
-}
-
 export function layoutEmbeddedOutputs(
     nodes: LayoutNode[],
     requests: EmbeddedNodeRequest[],
@@ -86,17 +82,31 @@ export function layoutEmbeddedOutputs(
     }
     const items: Item[] = [...nodeItems.values()];
 
-    // Pre-existing overlaps are the author's choice; don't "fix" them.
-    const ignoredPairs = new Set<string>();
-    const baseRects = nodes.map((node) => ({
-        ...node,
-        width: node.baseWidth ?? node.width,
-        height: node.baseHeight ?? node.height,
-    }));
-    for (let i = 0; i < baseRects.length; i++) {
-        for (let j = i + 1; j < baseRects.length; j++) {
-            if (overlaps(baseRects[i]!, baseRects[j]!, gap)) {
-                ignoredPairs.add(pairKey(items[i]!, items[j]!));
+    // Steps sharing a row (or column, when pushing down) keep their order and the author's
+    // spacing: a pushed step shoves the next one along instead of jumping past it. Spacing
+    // the author left tighter than the gap (or overlaps they made) is kept as is. A step that
+    // grew into a row it wasn't in shoves that row's steps along by the full gap.
+    const cross: "x" | "y" = axis === "x" ? "y" : "x";
+    const crossExtent: "width" | "height" = extent === "width" ? "height" : "width";
+    const base = (node: LayoutNode, size: "width" | "height") =>
+        (size === "width" ? node.baseWidth : node.baseHeight) ?? node[size];
+    const bandsOverlap = (a: LayoutNode, b: LayoutNode, sized: (n: LayoutNode) => number) =>
+        a[cross] < b[cross] + sized(b) && b[cross] < a[cross] + sized(a);
+    const orderedPairs: { first: Item; second: Item; spacing: number }[] = [];
+    for (const a of nodes) {
+        for (const b of nodes) {
+            if (a === b || !bandsOverlap(a, b, (n) => n[crossExtent])) {
+                continue;
+            }
+            const sharedBefore = bandsOverlap(a, b, (n) => base(n, crossExtent));
+            const before = a[axis] < b[axis] || (!sharedBefore && a[axis] === b[axis] && a[cross] < b[cross]);
+            if (before) {
+                const authorSpacing = b[axis] - a[axis] - base(a, extent);
+                orderedPairs.push({
+                    first: nodeItems.get(a.id)!,
+                    second: nodeItems.get(b.id)!,
+                    spacing: sharedBefore ? Math.min(authorSpacing, gap) : gap,
+                });
             }
         }
     }
@@ -148,7 +158,6 @@ export function layoutEmbeddedOutputs(
                         : { x: source.x, y: source.y + source.height + gap };
                 // follow the source if it was pushed
                 changed = pushTo(item, anchored[axis]) || changed;
-                const cross = axis === "x" ? "y" : "x";
                 item[cross] = anchored[cross];
             }
         }
@@ -157,13 +166,18 @@ export function layoutEmbeddedOutputs(
             changed = pushTo(to, from[axis] + spacing) || changed;
         }
 
+        for (const { first, second, spacing } of orderedPairs) {
+            changed = pushTo(second, first[axis] + first[extent] + spacing) || changed;
+        }
+
         const kindOrder = (item: Item) => (item.kind === "embedded" ? 0 : 1);
         const sorted = [...items].sort((a, b) => a[axis] - b[axis] || kindOrder(a) - kindOrder(b));
         for (let i = 0; i < sorted.length; i++) {
             for (let j = i + 1; j < sorted.length; j++) {
                 const a = sorted[i]!;
                 const b = sorted[j]!;
-                if (ignoredPairs.has(pairKey(a, b)) || !overlaps(a, b, gap)) {
+                // steps among themselves are handled by the ordering above
+                if ((a.kind === "node" && b.kind === "node") || !overlaps(a, b, gap)) {
                     continue;
                 }
                 // an embedded node is never pushed off its source by its own source

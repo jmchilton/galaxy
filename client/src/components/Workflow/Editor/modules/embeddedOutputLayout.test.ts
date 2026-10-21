@@ -111,6 +111,12 @@ describe("layoutEmbeddedOutputs", () => {
         expect(result.nodes[2]).toMatchObject({ x: 250, y: 400 });
     });
 
+    it("makes room for a step that grew down into the step below it", () => {
+        const nodes = [{ ...node(0, 0, 0, 300, 250), baseWidth: 200, baseHeight: 100 }, node(1, 0, 200)];
+        const result = layoutEmbeddedOutputs(nodes, [], [], { gap: GAP });
+        expect(result.nodes[1]).toMatchObject({ x: 320, y: 200 });
+    });
+
     it("nudges a real editor layout locally", () => {
         const nodes = Object.values(
             parameterSteps as Record<string, { id: number; position: { left: number; top: number } }>,
@@ -130,5 +136,53 @@ describe("layoutEmbeddedOutputs", () => {
         }
         // local: most of the workflow doesn't move at all
         expect(result.movedNodeIds.length).toBeLessThan(nodes.length / 2);
+    });
+
+    describe.each(["right", "down"] as const)("on a branching workflow, nudging %s", (direction) => {
+        // three input rows feeding table, image and text branches; every tool step is a workflow output
+        const nodes = [
+            node(0, 0, 0, 144, 60),
+            node(1, 0, 220, 144, 60),
+            node(2, 0, 420, 144, 60),
+            node(3, 520, 420, 144, 60),
+            node(4, 260, 0, 144, 60),
+            node(5, 260, 110, 144, 60),
+            node(6, 260, 230, 144, 60),
+            node(7, 260, 420, 144, 60),
+            node(8, 520, 110, 144, 60),
+            node(9, 780, 50, 144, 60),
+        ];
+        const edges = [
+            { from: 0, to: 4 },
+            { from: 0, to: 5 },
+            { from: 1, to: 6 },
+            { from: 2, to: 7 },
+            { from: 5, to: 8 },
+            { from: 8, to: 9 },
+            { from: 4, to: 9 },
+        ];
+        const requests = [4, 8, 6, 3, 9].map((id) => ({ key: `${id}`, sourceId: id, width: 360, height: 260 }));
+        requests.push({ key: "7", sourceId: 7, width: 360, height: 170 });
+        const result = layoutEmbeddedOutputs(nodes, requests, edges, { direction, gap: GAP });
+
+        it("adds no overlaps", () => {
+            expectNoNewOverlaps(nodes, result);
+        });
+
+        it("keeps the order of steps that share a row or column", () => {
+            const axis = direction === "right" ? "x" : "y";
+            const cross = direction === "right" ? "y" : "x";
+            const crossExtent = direction === "right" ? "height" : "width";
+            for (const a of nodes) {
+                for (const b of nodes) {
+                    const shareBand = a[cross] < b[cross] + b[crossExtent] && b[cross] < a[cross] + a[crossExtent];
+                    if (shareBand && a[axis] < b[axis]) {
+                        expect(result.nodes[a.id]![axis], `step ${a.id} stays before step ${b.id}`).toBeLessThan(
+                            result.nodes[b.id]![axis],
+                        );
+                    }
+                }
+            }
+        });
     });
 });
