@@ -3137,6 +3137,16 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         operation_radio_selector = f"{item_selector} .selector"
         self.wait_for_and_click_selector(operation_radio_selector)
 
+    def history_panel_change_datatype_of_selected(self, datatype: str):
+        """Set ``datatype`` on the selected history items from the Selection menu (needs Celery)."""
+        self.use_bootstrap_dropdown(option="change data type", menu="selected content menu")
+        modal = self.components.history_panel.multi_operations.change_datatype_modal._
+        modal.dropdown.wait_for_and_click()
+        modal.input.wait_for_and_send_keys(datatype)
+        modal.option(datatype=datatype).wait_for_and_click()
+        modal.ok.wait_for_and_click()
+        modal.wait_for_absent_or_hidden()
+
     def history_panel_multi_operation_action_click(self, action):
         # Maybe isn't needed?
         # self.sleep_for(WAIT_TYPES.UX_RENDER)
