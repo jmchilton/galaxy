@@ -39,6 +39,7 @@
     <label id="collection_restructure" text="Restructure" />
     <tool file="${model_tools_path}/flatten_collection.xml" />
     <tool file="${model_tools_path}/nest_collection.xml" />
+    <tool file="${model_tools_path}/nest_collection_1.1.0.xml" />
     <tool file="${model_tools_path}/merge_collection.xml" />
     <tool file="${model_tools_path}/split_paired_and_unpaired.xml" />
 

@@ -60,6 +60,7 @@ from galaxy.job_execution.setup import JobWorkingDirectory
 from galaxy.managers.credentials import build_credentials_context_response
 from galaxy.metadata import get_metadata_compute_strategy
 from galaxy.model import (
+    DatasetCollection,
     History,
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
@@ -71,6 +72,7 @@ from galaxy.model import (
     ToolRequest,
 )
 from galaxy.model.dataset_collections.matching import MatchingCollections
+from galaxy.model.dataset_collections.structure import get_collection
 from galaxy.model.dataset_collections.types.paired_or_unpaired import SINGLETON_IDENTIFIER
 from galaxy.model.dataset_collections.types.sample_sheet_workbook import _sample_sheet_to_list_collection_type
 from galaxy.model.store.discover import safe_path_from_directory
@@ -4459,24 +4461,26 @@ class NestTool(DatabaseOperationTool):
     require_dataset_ok = False
 
     def produce_outputs(self, trans: "ProvidesUserContext", out_data, output_collections, incoming, history, **kwds):
-        hdca = incoming["input"]
+        output = self.output_collections["output"]
+        collection = get_collection(incoming["input"])
+        # 1.0.0 declares a fixed output type (list:list); 1.1.0 uses type_source with
+        # type_prefix="list", so the inner type follows the input (sample_sheet* -> list*).
+        if output.structure.collection_type:
+            inner_collection_type = output.structure.collection_type.split(":", 1)[1]
+        else:
+            inner_collection_type = ":".join(["list", *collection.collection_type.split(":")[1:]])
         new_elements = {}
         copied_datasets = []
-        inner_collection_type = None
 
-        for dce in hdca.collection.elements:
+        for dce in collection.elements:
             element_identifier = dce.element_identifier
-            element_object = dce.element_object
 
-            if getattr(element_object, "history_content_type", None) == "dataset":
-                copied_element = element_object.copy(copy_tags=element_object.tags, flush=False)
-                inner_collection_type = "list"
+            copied_element: HistoryDatasetAssociation | DatasetCollection
+            if dce.hda is not None:
+                copied_element = dce.hda.copy(copy_tags=dce.hda.tags, flush=False)
             else:
-                copied_element = element_object.copy(flush=False)
-                # The inner list wraps a collection (e.g. a paired collection),
-                # so it must be typed accordingly (e.g. "list:paired") to match
-                # its actual structure.
-                inner_collection_type = f"list:{element_object.collection_type}"
+                assert dce.child_collection is not None
+                copied_element = dce.child_collection.copy(flush=False)
             copied_datasets.append(copied_element)
 
             sub_collection: dict[str, Any] = {}
@@ -4487,16 +4491,7 @@ class NestTool(DatabaseOperationTool):
             new_elements[element_identifier] = sub_collection
 
         self._add_datasets_to_history(history, copied_datasets)
-        # The output is a list of the inner collections, so its type is
-        # "list" + the inner collection type (e.g. "list:list" for a list of
-        # datasets, "list:list:paired" for a list of pairs).
-        output_collections.create_collection(
-            self.outputs["output"],
-            "output",
-            collection_type=(f"list:{inner_collection_type}" if inner_collection_type else None),
-            elements=new_elements,
-            propagate_hda_tags=False,
-        )
+        output_collections.create_collection(output, "output", elements=new_elements, propagate_hda_tags=False)
 
 
 class SortTool(DatabaseOperationTool):
