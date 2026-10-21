@@ -97,7 +97,7 @@ class TestCollectionEdit(SeleniumTestCase, UsesUploadActivity):
             self.history_panel_wait_for_hid_ok(hid)
         self.history_panel_multi_operations_show()
         for hid in hids:
-            self.history_panel_muli_operation_select_hid(hid)
+            self.history_panel_multi_operation_select_hid(hid)
 
     def _collection_dropdown(self, option_description):
         return self.use_bootstrap_dropdown(option=option_description, menu="selected content menu")
