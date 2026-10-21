@@ -154,6 +154,16 @@ def test_assert_data_table_consistency_raises_column_mismatch(tdt_manager):
     assert exc_info.value.table_name == "testalpha"
 
 
+def test_load_from_config_file_raises_column_mismatch(tdt_manager, tmp_path):
+    loc_path = tmp_path / "divergent.loc"
+    loc_path.write_text("data9\tdata9name\t/data9\textra9\n")
+    conf = tmp_path / "divergent_tool_data_table_conf.xml"
+    conf.write_text(COLUMN_DIVERGENT_TABLE_CONF_XML.format(loc_path=loc_path))
+    with pytest.raises(DataTableColumnMismatch) as exc_info:
+        tdt_manager.load_from_config_file(conf, tmp_path)
+    assert exc_info.value.table_name == "testalpha"
+
+
 def test_get_filename_for_source_falls_back_to_shared_filename(tdt_manager):
     table = tdt_manager["testalpha"]
     [shared_filename] = list(table.filenames)

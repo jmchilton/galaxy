@@ -471,6 +471,8 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
                 config_filename=self.config.shed_tool_data_table_config,
                 tool_data_path=tool_data_tables.tool_data_path,
                 from_shed_config=from_shed_config,
+                # A conflicting table written by a repository install must not keep Galaxy from starting.
+                skip_column_mismatches=True,
             )
         except OSError as exc:
             # Missing shed_tool_data_table_config is okay if it's the default
