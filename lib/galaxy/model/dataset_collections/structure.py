@@ -212,14 +212,18 @@ def tool_output_to_structure(get_sliced_input_collection_structure, tool_output,
         else:
             # Can't pre-compute the structure in this case, see if we can find a collection type.
             if collection_type is None and tool_output.structure.collection_type_source:
-                collection_type = get_sliced_input_collection_structure(
+                source_collection_type = get_sliced_input_collection_structure(
                     tool_output.structure.collection_type_source
                 ).collection_type_description.collection_type
-
-            if not collection_type:
+                collection_type_description = collection_type_descriptions.for_prefixed_collection_type(
+                    tool_output.structure.collection_type_prefix, source_collection_type, output_name=tool_output.name
+                )
+            elif collection_type:
+                collection_type_description = collection_type_descriptions.for_collection_type(collection_type)
+            else:
                 raise Exception(f"Failed to determine collection type for mapping over output {tool_output.name}")
 
-            tree = UninitializedTree(collection_type_descriptions.for_collection_type(collection_type))
+            tree = UninitializedTree(collection_type_description)
 
     if not tree.children_known and tree.collection_type_description.collection_type == "paired":
         # TODO: We don't need to return UninitializedTree for pairs I think, we should build
