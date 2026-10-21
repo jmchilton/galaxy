@@ -693,6 +693,19 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         else:
             return None
 
+    def history_wait_for_new_collection(self, after_hid: int) -> dict[str, Any]:
+        """Wait for a collection with a hid above ``after_hid`` in the current history; return the newest."""
+
+        def new_collection():
+            collections = [
+                item
+                for item in self.history_contents()
+                if item["history_content_type"] == "dataset_collection" and item["hid"] > after_hid
+            ]
+            return collections[-1] if collections else None
+
+        return self._wait_on(new_collection, f"a collection after hid {after_hid}")
+
     def wait_for_history(self, assert_ok=True):
         def history_becomes_terminal(driver=None):
             current_history_id = self.current_history_id()
@@ -3061,6 +3074,29 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
         _click_edit_tab()
         self.components.edit_dataset_attributes._.wait_for_visible()
+
+    def history_panel_collection_edit(self, hid):
+        """Open collection ``hid``'s Edit Collection Attributes view (its pencil)."""
+        self.history_panel_item_component(hid=hid).edit_button.wait_for_and_click()
+        return self.components.edit_collection_attributes
+
+    def collection_edit_change_datatype(self, current, new):
+        """On the collection edit view's Datatypes tab, change every element from ``current`` to ``new``."""
+        edit = self.components.edit_collection_attributes
+        edit.datatypes_tab.wait_for_and_click()
+        edit.data_value(data_change=current).wait_for_and_click()
+        edit.datatype_select_search.wait_for_and_send_keys(new)
+        edit.datatype_select_search.wait_for_and_send_enter()
+        edit.save_datatype_btn.wait_for_and_click()
+
+    def collection_edit_convert(self, converter):
+        """On the collection edit view's Convert tab, run the converter named ``converter`` on every element."""
+        edit = self.components.edit_collection_attributes
+        edit.convert_tab.wait_for_and_click()
+        edit.converter_select.wait_for_and_click()
+        edit.converter_select_search.wait_for_and_send_keys(converter)
+        edit.converter_select_search.wait_for_and_send_enter()
+        edit.convert_btn.wait_for_and_click()
 
     def display_dataset(self, hid):
         """Show dataset ``hid`` in the center panel (the history item's eye icon)."""
