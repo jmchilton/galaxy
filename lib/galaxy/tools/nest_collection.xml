@@ -13,7 +13,7 @@
         <import>model_operation_macros.xml</import>
     </macros>
     <inputs>
-        <param type="data_collection" collection_type="list,list:paired" name="input" label="Input Collection" />
+        <param type="data_collection" collection_type="list,paired" name="input" label="Input Collection" />
     </inputs>
     <outputs>
         <collection name="output" format_source="input" type="list:list" label="${on_string} (nested)" >
@@ -57,7 +57,7 @@
                     </element>
                 </collection>
             </param>
-            <output_collection name="output" type="list:list:paired" count="2">
+            <output_collection name="output" type="list:list" count="2">
               <element name="sample1" count="1">
                 <element name="sample1">
                   <element name="forward">
@@ -93,11 +93,11 @@ Wraps each element of a collection inside its own inner list, adding one nesting
 Description
 ===========
 
-This tool takes a collection and produces a nested collection (``list:list``) where each top-level element becomes a single-element inner list. The inner list and its sole element share the same identifier.
+This tool takes a ``list`` or ``paired`` collection and produces a nested collection (``list:list``) where each top-level element becomes a single-element inner list. The inner list and its sole element share the same identifier.
 
 For example, a ``list`` with elements ``[A, B, C]`` becomes a ``list:list`` where the outer list has three elements, each containing a one-element inner list: ``[A→[A], B→[B], C→[C]]``.
 
-If the input is already nested (e.g. ``list:paired``), the output gains one more level of nesting (``list:list:paired``), where each inner ``list`` contains a single paired collection.
+A ``list:paired`` input is mapped over its pairs: each pair's forward and reverse datasets are wrapped separately, giving a ``list:list:list``. Use version 1.1.0 of this tool to nest a ``list:paired`` into a ``list:list:paired`` with pairs kept intact.
 
 ========
 Examples

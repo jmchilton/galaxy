@@ -271,6 +271,7 @@ include src/galaxy/tools/build_list.xml
 include src/galaxy/tools/filter_from_file_1.1.0.xml
 include src/galaxy/tools/unzip_collection.xml
 include src/galaxy/tools/nest_collection.xml
+include src/galaxy/tools/nest_collection_1.1.0.xml
 include src/galaxy/tools/convert_sample_sheet.xml
 include src/galaxy/tools/filter_empty_collection.xml
 include src/galaxy/tools/sample_sheet_to_tabular.xml
