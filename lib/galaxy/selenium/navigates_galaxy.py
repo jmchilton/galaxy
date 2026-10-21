@@ -2455,12 +2455,32 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                     continue
                 self.tool_form_set_parameter(key, value)
 
+        collection_hids = None
         for key, value in data.items():
             label = f"{value}: " if isinstance(value, int) else value
+            if isinstance(value, int):
+                if collection_hids is None:
+                    collection_hids = {
+                        item["hid"]
+                        for item in self.history_contents()
+                        if item["history_content_type"] == "dataset_collection"
+                    }
+                # A dataset field lists collections only in its collection (map over) mode.
+                collection_mode = self.components.tool_form.parameter_data_input_collection(parameter=key)
+                if value in collection_hids and not collection_mode.is_absent:
+                    collection_mode.wait_for_and_click()
+                    self.sleep_for(self.wait_types.UX_RENDER)
             is_multiple = self._is_multi_data_param(key)
             if is_multiple:
                 self._clear_multiselect_tags(key)
             self.tool_set_value(key, label, expected_type="data", multiple=is_multiple)
+            if isinstance(value, int):
+                self._assert_data_selected(key, label)
+
+    def _assert_data_selected(self, expanded_id: str, label: str) -> None:
+        select = self.components.tool_form.parameter_data_select(parameter=expanded_id).wait_for_visible()
+        selected = [e.text for e in select.find_elements(By.CSS_SELECTOR, ".multiselect__single, .multiselect__tag")]
+        assert any(text.startswith(label) for text in selected), f"{expanded_id} shows {selected}, not hid {label}"
 
     def _is_multi_data_param(self, expanded_id: str) -> bool:
         return not self.components.tool_form.parameter_form_selection(parameter=expanded_id).is_absent
