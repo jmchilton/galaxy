@@ -1706,60 +1706,73 @@ class WorkflowContentsManager(UsesAnnotations):
             if isinstance(input_connections, dict):
                 # if input does not accept multiple inputs
                 input_connections = [input_connections]
+            current_data_input = WorkflowContentsManager._step_data_input(current_step, input_name)
+            if current_data_input is None:
+                log.info(f"failed to find input {input_name} for get_step_map_over")
+                continue
             for input_value in input_connections:
-                current_data_input = None
-                for current_input in current_step["inputs"]:
-                    if current_input["name"] == input_name:
-                        current_data_input = current_input
-                        # we've got one of the tools' input data definitions
-                        break
-                if current_data_input is None:
-                    log.info(f"failed to find input {input_name} for get_step_map_over")
-                    continue
-                input_step = steps[input_value["id"]]
-                for input_step_data_output in input_step["outputs"]:
-                    if input_step_data_output["name"] == input_value["output_name"]:
-                        collection_type = input_step_data_output.get("collection_type")
-                        # This is the defined incoming collection type, in reality there may be additional
-                        # mapping over of the workflows' data input, but this should be taken care of by the workflow editor /
-                        # outer workflow.
-                        if collection_type:
-                            if current_data_input.get("input_type") == "dataset" and current_data_input.get("multiple"):
-                                # We reduce the innermost collection
-                                if ":" in collection_type:
-                                    # more than one layer of nesting and multiple="true" input,
-                                    # we consume the innermost collection
-                                    collection_type = ":".join(collection_type.rsplit(":")[:-1])
-                                else:
-                                    # We've reduced a list or a pair
-                                    collection_type = None
-                            elif current_data_input.get("input_type") == "dataset_collection":
-                                current_collection_types = current_data_input["collection_types"]
-                                if not current_collection_types:
-                                    # Accepts any input dataset collection, no mapping
-                                    collection_type = None
-                                elif collection_type in current_collection_types:
-                                    # incoming collection type is an exact match, no mapping over
-                                    collection_type = None
-                                else:
-                                    outer_map_over = collection_type
-                                    for accepted_collection_type in current_data_input["collection_types"]:
-                                        # need to find the lowest level of mapping over,
-                                        # for collection_type = 'list:list:list' and accepted_collection_type = ['list:list', 'list']
-                                        # it'd be outer_map_over == 'list'
-                                        if collection_type.endswith(accepted_collection_type):
-                                            _outer_map_over = collection_type[: -(len(accepted_collection_type) + 1)]
-                                            if len(_outer_map_over.split(":")) < len(outer_map_over.split(":")):
-                                                outer_map_over = _outer_map_over
-                                    collection_type = outer_map_over
-                            # If there is mapping over, we're going to assume it is linked, everything else is (probably)
-                            # too hard to display in the workflow editor. With this assumption we should be able to
-                            # set the maximum mapping over level to the most deeply nested map_over
-                            if collection_type and len(collection_type.split(":")) >= len(max_map_over.split(":")):
-                                max_map_over = collection_type
+                collection_type = WorkflowContentsManager._connected_collection_type(steps, input_value)
+                # This is the defined incoming collection type, in reality there may be additional
+                # mapping over of the workflows' data input, but this should be taken care of by the workflow editor /
+                # outer workflow.
+                map_over = WorkflowContentsManager._input_map_over(current_data_input, collection_type)
+                # If there is mapping over, we're going to assume it is linked, everything else is (probably)
+                # too hard to display in the workflow editor. With this assumption we should be able to
+                # set the maximum mapping over level to the most deeply nested map_over
+                if map_over and len(map_over.split(":")) >= len(max_map_over.split(":")):
+                    max_map_over = map_over
         if max_map_over:
             return max_map_over
         return None
+
+    @staticmethod
+    def _step_data_input(step: dict[str, Any], input_name: str) -> dict[str, Any] | None:
+        for current_input in step["inputs"]:
+            if current_input["name"] == input_name:
+                # we've got one of the tools' input data definitions
+                return current_input
+        return None
+
+    @staticmethod
+    def _connected_collection_type(steps: dict[int, dict[str, Any]], input_connection: dict[str, Any]) -> str | None:
+        input_step = steps[input_connection["id"]]
+        for input_step_data_output in input_step["outputs"]:
+            if input_step_data_output["name"] == input_connection["output_name"]:
+                return input_step_data_output.get("collection_type")
+        return None
+
+    @staticmethod
+    def _input_map_over(current_data_input: dict[str, Any], collection_type: str | None) -> str | None:
+        """Levels of ``collection_type`` mapped over when connected to tool input ``current_data_input``."""
+        if not collection_type:
+            return None
+        if current_data_input.get("input_type") == "dataset" and current_data_input.get("multiple"):
+            # We reduce the innermost collection
+            if ":" in collection_type:
+                # more than one layer of nesting and multiple="true" input,
+                # we consume the innermost collection
+                return collection_type.rsplit(":", 1)[0]
+            # We've reduced a list or a pair
+            return None
+        elif current_data_input.get("input_type") == "dataset_collection":
+            current_collection_types = current_data_input["collection_types"]
+            if not current_collection_types:
+                # Accepts any input dataset collection, no mapping
+                return None
+            if collection_type in current_collection_types:
+                # incoming collection type is an exact match, no mapping over
+                return None
+            outer_map_over = collection_type
+            for accepted_collection_type in current_collection_types:
+                # need to find the lowest level of mapping over,
+                # for collection_type = 'list:list:list' and accepted_collection_type = ['list:list', 'list']
+                # it'd be outer_map_over == 'list'
+                if collection_type.endswith(accepted_collection_type):
+                    _outer_map_over = collection_type[: -(len(accepted_collection_type) + 1)]
+                    if len(_outer_map_over.split(":")) < len(outer_map_over.split(":")):
+                        outer_map_over = _outer_map_over
+            return outer_map_over
+        return collection_type
 
     def _resolve_collection_type(self, steps):
         """
@@ -1776,10 +1789,9 @@ class WorkflowContentsManager(UsesAnnotations):
                     if step_data_output.get("collection_type_source") and step_data_output["collection_type"] is None:
                         collection_type_source = step_data_output["collection_type_source"]
                         for input_connection in step["input_connections"].get(collection_type_source, []):
-                            input_step = steps[input_connection["id"]]
-                            for input_step_data_output in input_step["outputs"]:
-                                if input_step_data_output["name"] == input_connection["output_name"]:
-                                    step_data_output["collection_type"] = input_step_data_output.get("collection_type")
+                            step_data_output["collection_type"] = WorkflowContentsManager._connected_collection_type(
+                                steps, input_connection
+                            )
                     if map_over:
                         collection_type = map_over
                         step_data_output["collection"] = True
