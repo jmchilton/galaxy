@@ -169,7 +169,7 @@
         </div>
         <!-- invocation-mode output terminals are stacked, so one popover previews all of the step's outputs -->
         <GPopover
-            v-if="previewOutputs.length"
+            v-if="canPreviewOutputs"
             v-model:show="outputPreviewShow"
             interactive
             :target="outputPreviewTarget"
@@ -177,6 +177,7 @@
             placement="right"
             custom-class="invocation-output-popover">
             <div v-if="outputPreviewShow">
+                <div v-if="!previewOutputs.length" class="text-muted">No outputs produced yet.</div>
                 <div v-for="output in previewOutputs" :key="output.name" class="mb-2">
                     <div class="font-weight-bold mb-1">{{ output.label }}</div>
                     <InvocationOutputPreview :item="output.item" />
@@ -191,13 +192,14 @@ import { faCodeBranch, faKey } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import type { UseElementBoundingReturn, UseScrollReturn, VueInstance } from "@vueuse/core";
 import type { PropType, Ref } from "vue";
-import { computed, inject, reactive, ref } from "vue";
+import { computed, inject, reactive, ref, watch } from "vue";
 
 import { getGalaxyInstance } from "@/app";
 import { DatatypesMapperModel } from "@/components/Datatypes/model";
 import { useNodePosition } from "@/components/Workflow/Editor/composables/useNodePosition";
 import WorkflowIcons from "@/components/Workflow/icons";
-import { type GraphStep, preferredOutputItem } from "@/composables/useInvocationGraph";
+import { useStepOutputItems } from "@/components/Workflow/Invocation/Graph/useStepOutputItems";
+import type { GraphStep } from "@/composables/useInvocationGraph";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import type { TerminalPosition, XYPosition } from "@/stores/workflowEditorStateStore";
 import { useWorkflowNodeInspectorStore } from "@/stores/workflowNodeInspectorStore";
@@ -301,14 +303,14 @@ const isPopulatedInput = computed(
         props.step.nodeText !== undefined,
 );
 
+const graphStep = computed(() => (props.isInvocation ? (props.step as GraphStep) : undefined));
+const { items: outputItems, load: loadOutputItems } = useStepOutputItems(graphStep);
+const canPreviewOutputs = computed(() => !!graphStep.value?.invocationStepId && props.step.outputs.length > 0);
 const outputPreviewShow = ref(false);
+watch(outputPreviewShow, (show) => show && loadOutputItems());
 const previewOutputs = computed(() => {
-    const outputItems = props.isInvocation ? (props.step as GraphStep).outputItems : undefined;
-    if (!outputItems) {
-        return [];
-    }
     return props.step.outputs.flatMap((output) => {
-        const item = outputItems[output.name];
+        const item = outputItems.value[output.name];
         const label = props.step.workflow_outputs?.find((wo) => wo.output_name === output.name)?.label;
         return item ? [{ name: output.name, label: label ?? output.name, item }] : [];
     });
@@ -319,8 +321,12 @@ function outputPreviewTarget() {
 }
 
 const embedInvocationOutputs = inject<Ref<boolean>>("embedInvocationOutputs", ref(false));
+const showPreferredOutput = computed(
+    () => props.isInvocation && embedInvocationOutputs.value && !!props.step.preferred_output,
+);
+watch([showPreferredOutput, () => graphStep.value?.state], ([show]) => show && loadOutputItems(), { immediate: true });
 const preferredItem = computed(() =>
-    props.isInvocation && embedInvocationOutputs.value ? preferredOutputItem(props.step as GraphStep) : undefined,
+    showPreferredOutput.value ? outputItems.value[props.step.preferred_output!] : undefined,
 );
 
 const classes = computed(() => {

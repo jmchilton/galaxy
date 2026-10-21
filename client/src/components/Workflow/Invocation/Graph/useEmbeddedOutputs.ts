@@ -8,11 +8,13 @@ import {
     type LayoutRect,
     type NudgeDirection,
 } from "@/components/Workflow/Editor/modules/embeddedOutputLayout";
-import { type GraphStep, type InvocationOutputItem, preferredOutputItem } from "@/composables/useInvocationGraph";
+import type { GraphStep, InvocationOutputItem } from "@/composables/useInvocationGraph";
 import { useWorkflowStores } from "@/composables/workflowStores";
 
 export const EMBEDDED_OUTPUT_WIDTH = 360;
 export const EMBEDDED_OUTPUT_HEIGHT = 260;
+/** Collections render as a short element list */
+const EMBEDDED_COLLECTION_HEIGHT = 170;
 /** Rough size of a shrunk step; a step shown as its preferred output grew from this */
 const SHRUNK_STEP_SIZE = { width: 144, height: 60 };
 
@@ -42,7 +44,7 @@ function collectRequests(steps: Record<string, GraphStep>) {
                 sourceId: step.id,
                 item,
                 width: EMBEDDED_OUTPUT_WIDTH,
-                height: EMBEDDED_OUTPUT_HEIGHT,
+                height: item.src === "hdca" ? EMBEDDED_COLLECTION_HEIGHT : EMBEDDED_OUTPUT_HEIGHT,
             });
         }
     }
@@ -81,7 +83,7 @@ export function useEmbeddedOutputs(
         [
             ...collectRequests(steps.value).map((request) => request.key),
             ...Object.values(steps.value)
-                .filter((step) => preferredOutputItem(step))
+                .filter((step) => step.preferred_output)
                 .map((step) => `preferred-${step.id}`),
         ].join(","),
     );
@@ -117,7 +119,7 @@ export function useEmbeddedOutputs(
         for (const [id, position] of originalPositions) {
             const measured = stateStore.stepPosition[id];
             const step = steps.value[id];
-            const grown = step && preferredOutputItem(step);
+            const grown = step?.preferred_output;
             nodes.push({
                 id,
                 x: position.left,

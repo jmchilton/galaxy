@@ -47,6 +47,7 @@ export interface GraphStep extends Step {
     nodeText?: string | boolean;
     /** The dataset or collection produced for each step output, keyed by output name */
     outputItems?: Record<string, InvocationOutputItem>;
+    invocationStepId?: string;
 }
 export interface InvocationOutputItem {
     src: "hda" | "hdca";
@@ -346,8 +347,28 @@ export function useInvocationGraph(
         return undefined;
     }
 
+    /** Items the invocation itself already lists: workflow inputs and workflow outputs.
+     * Other step outputs need the step's details, which `useStepOutputItems` loads on demand.
+     */
     function updateOutputItems(graphStep: GraphStep, invocationStep: InvocationStep) {
         const outputItems: Record<string, InvocationOutputItem> = {};
+        const inputItem = invocation.value.inputs[graphStep.id];
+        const inputOutputName = graphStep.outputs[0]?.name;
+        if (isWorkflowInput(graphStep.type) && inputItem?.id && inputOutputName) {
+            outputItems[inputOutputName] = { src: inputItem.src === "hdca" ? "hdca" : "hda", id: inputItem.id };
+        }
+        const workflowOutputs = [
+            ...Object.entries(invocation.value.outputs ?? {}).map(([label, o]) => [label, o, "hda"] as const),
+            ...Object.entries(invocation.value.output_collections ?? {}).map(
+                ([label, o]) => [label, o, "hdca"] as const,
+            ),
+        ];
+        for (const [label, output, src] of workflowOutputs) {
+            const name = graphStep.workflow_outputs?.find((wo) => wo.label === label)?.output_name;
+            if (name && output.id && output.workflow_step_id === invocationStep.workflow_step_id) {
+                outputItems[name] = { src, id: output.id };
+            }
+        }
         for (const [name, output] of Object.entries(invocationStep.outputs ?? {})) {
             outputItems[name] = { src: "hda", id: output.id };
         }
@@ -357,6 +378,7 @@ export function useInvocationGraph(
         if (JSON.stringify(graphStep.outputItems) !== JSON.stringify(outputItems)) {
             graphStep.outputItems = outputItems;
         }
+        graphStep.invocationStepId = invocationStep.id;
     }
 
     function setHeaderClass(graphStep: GraphStep) {
@@ -416,11 +438,6 @@ export function useInvocationGraph(
         loadInvocationGraph,
         loading,
     };
-}
-
-/** The output a step is displayed as, if the step has one and it has been produced */
-export function preferredOutputItem(step: GraphStep): InvocationOutputItem | undefined {
-    return step.preferred_output ? step.outputItems?.[step.preferred_output] : undefined;
 }
 
 export function getHeaderClass(state: GraphStepState | undefined) {
