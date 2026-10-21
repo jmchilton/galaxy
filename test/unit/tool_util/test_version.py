@@ -103,6 +103,7 @@ def test_version_cmp(lower_ver: str, greater_ver: str) -> None:
 
 # This list must be in the correct sorting order
 TOOL_VERSIONS = [
+    # Not valid PEP 440, so this falls back to LegacyVersion, which sorts before every Version.
     "1.8.1+2+galaxy0",
     "1.0",
     "1.0+galaxy",
