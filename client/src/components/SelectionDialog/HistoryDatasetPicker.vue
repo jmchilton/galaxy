@@ -143,12 +143,10 @@ async function historiesProvider(ctx: ItemsProviderContext, url?: string): Promi
         const limit = ctx.perPage;
         const offset = (ctx.currentPage ? ctx.currentPage - 1 : 0) * ctx.perPage;
 
-        // Always pass a search string: without one the index endpoint falls back to a
-        // legacy listing that ignores sorting and doesn't report the total for paging.
         const { data, total } = await getMyHistories({
             limit,
             offset,
-            search: filter ?? "",
+            search: filter,
             // History columns aren't sortable; ignore any sort carried over from the datasets view.
             sortBy: "update_time",
             sortDesc: true,
