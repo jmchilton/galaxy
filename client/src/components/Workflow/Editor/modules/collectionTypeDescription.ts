@@ -93,7 +93,7 @@ export const ANY_COLLECTION_TYPE_DESCRIPTION: CollectionTypeDescriptor = {
  * Normalize collection type for comparison purposes.
  * sample_sheet behaves like list for mapping/matching.
  */
-function normalizeCollectionType(collectionType: string): string {
+export function normalizeCollectionType(collectionType: string): string {
     if (collectionType.startsWith("sample_sheet")) {
         return "list" + collectionType.slice("sample_sheet".length);
     }

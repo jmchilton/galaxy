@@ -140,6 +140,8 @@ describe("terminalFactory", () => {
         expect(terminals["list:paired_or_unpaired collection input"]?.["f1"]).toBeInstanceOf(InputCollectionTerminal);
         expect(terminals["filter_failed"]?.["input"]).toBeInstanceOf(InputCollectionTerminal);
         expect(terminals["filter_failed"]?.["output"]).toBeInstanceOf(OutputCollectionTerminal);
+        expect(terminals["type_prefix"]?.["input_collect"]).toBeInstanceOf(InputCollectionTerminal);
+        expect(terminals["type_prefix"]?.["list_output"]).toBeInstanceOf(OutputCollectionTerminal);
     });
     it("throws error on invalid terminalSource", () => {
         const stores = useStores();
@@ -986,6 +988,69 @@ describe("canAccept", () => {
         expect(listIn.canAccept(rebuiltOutput).canAccept).toBe(true);
         listIn.connect(rebuiltOutput);
         expect(listIn.mapOver).toEqual(new CollectionTypeDescription("list"));
+    });
+    it("applies type_prefix to type source collection type", () => {
+        const typePrefixInput = terminals["type_prefix"]?.["input_collect"] as InputCollectionTerminal;
+        const typePrefixOutput = terminals["type_prefix"]?.["list_output"] as OutputCollectionTerminal;
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toBe(ANY_COLLECTION_TYPE_DESCRIPTION);
+        const pairedOut = terminals["paired input"]?.["output"] as OutputCollectionTerminal;
+        typePrefixInput.connect(pairedOut);
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toStrictEqual(
+            new CollectionTypeDescription("list:paired"),
+        );
+        typePrefixInput.disconnect(pairedOut);
+        const listOut = terminals["list input"]?.["output"] as OutputCollectionTerminal;
+        typePrefixInput.connect(listOut);
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toStrictEqual(
+            new CollectionTypeDescription("list:list"),
+        );
+    });
+    it("applies type_prefix to mapped over type source", () => {
+        const typePrefixInput = terminals["type_prefix"]?.["input_collect"] as InputCollectionTerminal;
+        const typePrefixOutput = terminals["type_prefix"]?.["list_output"] as OutputCollectionTerminal;
+        const listPairedOut = terminals["list:paired input"]?.["output"] as OutputCollectionTerminal;
+        typePrefixInput.connect(listPairedOut);
+        expect(typePrefixInput.mapOver).toEqual(new CollectionTypeDescription("list"));
+        const rebuiltOutput = rebuildTerminal(typePrefixOutput);
+        expect(rebuiltOutput.collectionType).toStrictEqual(new CollectionTypeDescription("list:paired"));
+        expect(rebuiltOutput.mapOver).toEqual(new CollectionTypeDescription("list"));
+        const pairedIn = terminals["paired collection input"]?.["f1"] as InputCollectionTerminal;
+        expect(pairedIn.canAccept(rebuiltOutput).canAccept).toBe(true);
+        pairedIn.connect(rebuiltOutput);
+        expect(pairedIn.mapOver).toEqual(new CollectionTypeDescription("list:list"));
+    });
+    it("normalizes sample_sheet type source before applying type_prefix", () => {
+        const typePrefixInput = terminals["any type_prefix"]?.["input_collect"] as InputCollectionTerminal;
+        const typePrefixOutput = terminals["any type_prefix"]?.["list_output"] as OutputCollectionTerminal;
+        const listPairedOut = terminals["list:paired input"]?.["output"] as OutputCollectionTerminal;
+        typePrefixInput.connect(listPairedOut);
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toStrictEqual(
+            new CollectionTypeDescription("list:list:paired"),
+        );
+        typePrefixInput.disconnect(listPairedOut);
+        const sampleSheetOut = terminals["sample_sheet input"]?.["output"] as OutputCollectionTerminal;
+        typePrefixInput.connect(sampleSheetOut);
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toStrictEqual(
+            new CollectionTypeDescription("list:list"),
+        );
+        typePrefixInput.disconnect(sampleSheetOut);
+        const sampleSheetPairedOut = terminals["sample_sheet:paired input"]?.["output"] as OutputCollectionTerminal;
+        typePrefixInput.connect(sampleSheetPairedOut);
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toStrictEqual(
+            new CollectionTypeDescription("list:list:paired"),
+        );
+    });
+    it("treats an invalid type_prefix collection type as any", () => {
+        const typePrefixInput = terminals["any type_prefix"]?.["input_collect"] as InputCollectionTerminal;
+        const typePrefixOutput = terminals["any type_prefix"]?.["list_output"] as OutputCollectionTerminal;
+        const listOut = terminals["list input"]?.["output"] as OutputCollectionTerminal;
+        // e.g. an imported workflow whose input step declares an unknown collection type
+        const listStepOutput = listOut.stores.stepStore.getStep(listOut.stepId)!.outputs[0] as {
+            collection_type: string;
+        };
+        listStepOutput.collection_type = "list:foo";
+        typePrefixInput.connect(listOut);
+        expect(rebuildTerminal(typePrefixOutput).collectionType).toBe(ANY_COLLECTION_TYPE_DESCRIPTION);
     });
 });
 

@@ -1293,7 +1293,7 @@
     "position": {
       "left": 867.0313110351562,
       "top": 390.6929626464844
-    }    
+    }
   },
   "28": {
     "id": 28,
@@ -1660,6 +1660,107 @@
     "position": {
       "left": 12.8729248046875,
       "top": 1201.7839660644531
+    }
+  },
+  "37": {
+    "id": 37,
+    "type": "tool",
+    "label": "type_prefix",
+    "content_id": "collection_type_source_prefix",
+    "name": "collection_type_source_prefix",
+    "tool_state": {
+      "input_collect": "{\"__class__\": \"RuntimeValue\"}",
+      "__page__": null,
+      "__rerun_remap_job_id__": null
+    },
+    "errors": null,
+    "inputs": [
+      {
+        "name": "input_collect",
+        "label": "Input collection",
+        "multiple": false,
+        "input_type": "dataset_collection",
+        "collection_types": [
+          "list",
+          "paired"
+        ],
+        "optional": false,
+        "extensions": [
+          "data"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "list_output",
+        "extensions": [
+          "input"
+        ],
+        "type": "collection",
+        "optional": false,
+        "collection": true,
+        "collection_type": null,
+        "collection_type_source": "input_collect",
+        "collection_type_prefix": "list",
+        "label": "Copies of input"
+      }
+    ],
+    "annotation": "",
+    "post_job_actions": {},
+    "workflow_outputs": [],
+    "input_connections": {},
+    "position": {
+      "left": 0,
+      "top": 0
+    }
+  },
+  "38": {
+    "id": 38,
+    "type": "tool",
+    "label": "any type_prefix",
+    "content_id": "collection_type_source_prefix",
+    "name": "collection_type_source_prefix",
+    "tool_state": {
+      "input_collect": "{\"__class__\": \"RuntimeValue\"}",
+      "__page__": null,
+      "__rerun_remap_job_id__": null
+    },
+    "errors": null,
+    "inputs": [
+      {
+        "name": "input_collect",
+        "label": "Input collection",
+        "multiple": false,
+        "input_type": "dataset_collection",
+        "collection_types": null,
+        "optional": false,
+        "extensions": [
+          "data"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "list_output",
+        "extensions": [
+          "input"
+        ],
+        "type": "collection",
+        "optional": false,
+        "collection": true,
+        "collection_type": null,
+        "collection_type_source": "input_collect",
+        "collection_type_prefix": "list",
+        "label": "Copies of input"
+      }
+    ],
+    "annotation": "",
+    "post_job_actions": {},
+    "workflow_outputs": [],
+    "input_connections": {},
+    "position": {
+      "left": 0,
+      "top": 0
     }
   }
 }

@@ -20,6 +20,8 @@ import {
     ANY_COLLECTION_TYPE_DESCRIPTION,
     CollectionTypeDescription,
     type CollectionTypeDescriptor,
+    isValidCollectionTypeStr,
+    normalizeCollectionType,
     NULL_COLLECTION_TYPE_DESCRIPTION,
 } from "./collectionTypeDescription";
 import { applyCompaction, computePickValueCompaction, reverseCompaction } from "./pickValueCompact";
@@ -806,14 +808,24 @@ export class OutputTerminal extends BaseOutputTerminal {}
 interface OutputCollectionTerminalArgs extends BaseOutputTerminalArgs {
     collection_type: string;
     collection_type_source: string | null;
+    collection_type_prefix?: string | null;
+}
+
+/** A ``sample_sheet*`` type_source type is prefixed as the matching ``list*`` type. */
+function sampleSheetAsList(collectionType: CollectionTypeDescriptor): CollectionTypeDescriptor {
+    return collectionType instanceof CollectionTypeDescription
+        ? new CollectionTypeDescription(normalizeCollectionType(collectionType.collectionType))
+        : collectionType;
 }
 
 export class OutputCollectionTerminal extends BaseOutputTerminal {
     collectionTypeSource: string | null;
+    collectionTypePrefix: string | null;
 
     constructor(attr: OutputCollectionTerminalArgs) {
         super(attr);
         this.collectionTypeSource = null;
+        this.collectionTypePrefix = null;
         if (attr.collection_type) {
             this.collectionType = new CollectionTypeDescription(attr.collection_type);
         } else {
@@ -821,7 +833,16 @@ export class OutputCollectionTerminal extends BaseOutputTerminal {
             if (!this.collectionTypeSource) {
                 console.debug(NO_COLLECTION_TYPE_INFORMATION_MESSAGE);
             }
-            this.collectionType = this.getCollectionTypeFromInput() || ANY_COLLECTION_TYPE_DESCRIPTION;
+            this.collectionTypePrefix = attr.collection_type_prefix ?? null;
+            const sourceCollectionType = this.getCollectionTypeFromInput() || ANY_COLLECTION_TYPE_DESCRIPTION;
+            const collectionType = this.collectionTypePrefix
+                ? new CollectionTypeDescription(this.collectionTypePrefix).append(
+                      sampleSheetAsList(sourceCollectionType),
+                  )
+                : sourceCollectionType;
+            this.collectionType = isValidCollectionTypeStr(collectionType.collectionType ?? undefined)
+                ? collectionType
+                : ANY_COLLECTION_TYPE_DESCRIPTION;
         }
         this.isCollection = true;
     }
@@ -1073,6 +1094,7 @@ export function terminalFactory<T extends TerminalSourceAndInvalid>(
                 datatypes: terminalSource.extensions,
                 collection_type: terminalSource.collection_type,
                 collection_type_source: terminalSource.collection_type_source,
+                collection_type_prefix: terminalSource.collection_type_prefix,
             }) as TerminalOf<T>;
         } else if (isOutputArg(terminalSource)) {
             return new OutputTerminal({

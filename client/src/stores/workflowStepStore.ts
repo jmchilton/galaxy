@@ -51,6 +51,7 @@ export interface CollectionOutput extends Omit<DataOutput, "type"> {
     collection: boolean;
     collection_type: string;
     collection_type_source: string | null;
+    collection_type_prefix?: string | null;
 }
 
 export declare const ParameterTypes: "text" | "integer" | "float" | "boolean" | "color" | "data";
