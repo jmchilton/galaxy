@@ -566,6 +566,9 @@ def _construct_steps_for_map_over() -> list[MapOverTestCase]:
         ("list:list", ["list", "pair"], "dataset", "list"),
         ("list:list", ["list", "pair"], "list", "list:list"),
         ("list:list", ["list", "pair"], "list:list", "list:list:list"),
+        # paired_or_unpaired consumes the paired level; a sample_sheet connects to a list input directly.
+        ("list:paired", "paired_or_unpaired", "dataset", "list"),
+        ("sample_sheet", "list", "dataset", None),
     ]
     test_cases = []
     for data_input, step_input_def, step_output_def, expected_collection_type in test_case_args:
@@ -652,6 +655,70 @@ def test_subworkflow_map_over_type(test_case):
         test_case.step_output_def,
         new_steps[1]["outputs"][0].get("collection_type"),
     )
+
+
+def _type_source_steps(
+    source_input_type, other_input_type=None, type_prefix=None, source_collection_types=None
+) -> dict[int, dict[str, Any]]:
+    # Step 2 has a ``source`` input accepting ``source_collection_types`` (list or paired by
+    # default) and an optional ``other`` input accepting list, and a type_source output on ``source``.
+    output: dict[str, Any] = {
+        "name": "output",
+        "extensions": ["data"],
+        "collection": True,
+        "collection_type": None,
+        "collection_type_source": "source",
+    }
+    if type_prefix:
+        output["collection_type_prefix"] = type_prefix
+    inputs = [
+        {
+            "name": "source",
+            "multiple": False,
+            "input_type": "dataset_collection",
+            "collection_types": source_collection_types or ["list", "paired"],
+        },
+        {"name": "other", "multiple": False, "input_type": "dataset_collection", "collection_types": ["list"]},
+    ]
+    input_connections: dict[str, Any] = {"source": [{"id": 0, "output_name": "output"}]}
+    other_step = _input_step(collection_type=other_input_type or "list")
+    other_step["id"] = 1
+    if other_input_type:
+        input_connections["other"] = [{"id": 1, "output_name": "output"}]
+    return {
+        0: _input_step(collection_type=source_input_type),
+        1: other_step,
+        2: {
+            "id": 2,
+            "type": "tool",
+            "inputs": inputs,
+            "input_connections": input_connections,
+            "outputs": [output],
+            "workflow_outputs": [{"output_name": "output"}],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "source_input_type,other_input_type,type_prefix,source_collection_types,expected_collection_type",
+    [
+        # Only ``other`` maps over: the unmapped source keeps its full type.
+        ("paired", "list:list", "list", None, "list:list:paired"),
+        # ``other`` maps deeper than ``source``; source is sliced by its own map-over.
+        ("list:paired", "list:list:list", None, None, "list:list:paired"),
+        # paired_or_unpaired consumes the ``paired`` level.
+        ("list:paired", None, "list", ["paired_or_unpaired"], "list:list:paired"),
+        # A sample_sheet connects to a list input directly.
+        ("sample_sheet", None, "list", ["list"], "list:list"),
+    ],
+)
+def test_subworkflow_type_source_map_over_type(
+    source_input_type, other_input_type, type_prefix, source_collection_types, expected_collection_type
+):
+    trans = MockTrans()
+    steps = _type_source_steps(source_input_type, other_input_type, type_prefix, source_collection_types)
+    new_steps = WorkflowContentsManager(app=trans.app, trs_proxy=trans.app.trs_proxy)._resolve_collection_type(steps)
+    assert new_steps[2]["outputs"][0]["collection_type"] == expected_collection_type
 
 
 def __populate_parameter_from_tool_form(multiple, default, parameter_type="integer"):

@@ -2458,6 +2458,70 @@ steps:
         assert steps["1"]["type"] == "subworkflow"
         assert steps["1"]["outputs"][0]["collection_type"] == "list:paired"
 
+    @skip_without_tool("collection_type_source_prefix")
+    def test_export_editor_subworkflow_collection_type_prefix_mapped(self):
+        # list:paired maps over list into an input accepting paired; the
+        # prefix applies to the paired slice, then the map-over is prepended.
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  outer_input: data
+steps:
+  inner_workflow:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_input:
+          type: collection
+          collection_type: "list:paired"
+      outputs:
+        workflow_output:
+          outputSource: prefix_step/list_output
+      steps:
+        prefix_step:
+          tool_id: collection_type_source_prefix
+          in:
+            input_collect: inner_input
+    in:
+      inner_input: outer_input
+""")
+        downloaded_workflow = self._download_workflow(workflow_id, style="editor")
+        steps = downloaded_workflow["steps"]
+        assert steps["1"]["type"] == "subworkflow"
+        assert steps["1"]["outputs"][0]["collection_type"] == "list:list:paired"
+
+    @skip_without_tool("collection_type_source_map_over")
+    def test_export_editor_subworkflow_collection_type_source_mapped(self):
+        # list:paired maps over list into an input accepting paired; type_source
+        # resolves to the paired slice, then the map-over is prepended.
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  outer_input: data
+steps:
+  inner_workflow:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_input:
+          type: collection
+          collection_type: "list:paired"
+      outputs:
+        workflow_output:
+          outputSource: type_source_step/list_output
+      steps:
+        type_source_step:
+          tool_id: collection_type_source_map_over
+          in:
+            input_collect: inner_input
+    in:
+      inner_input: outer_input
+""")
+        downloaded_workflow = self._download_workflow(workflow_id, style="editor")
+        steps = downloaded_workflow["steps"]
+        assert steps["1"]["type"] == "subworkflow"
+        assert steps["1"]["outputs"][0]["collection_type"] == "list:paired"
+
     def test_import_missing_tool(self):
         workflow = self.workflow_populator.load_workflow_from_resource(name="test_workflow_missing_tool")
         workflow_id = self.workflow_populator.create_workflow(workflow)
