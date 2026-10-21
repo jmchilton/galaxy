@@ -1,0 +1,89 @@
+<tool id="collection_type_source_prefix" name="collection_type_source_prefix" version="0.1.0" profile="26.2">
+  <command>
+    mkdir output;
+    #for $key in $input_collect.keys()#
+    cat "$input_collect[$key]" > output/"first__$key";
+    cat "$input_collect[$key]" > output/"second__$key";
+    #end for#
+  </command>
+  <inputs>
+    <param name="input_collect" type="data_collection" collection_type="list,paired" label="Input collection" help="Each output element is a copy of this collection." />
+  </inputs>
+  <outputs>
+    <collection name="list_output" type_source="input_collect" type_prefix="list" label="Copies of input">
+      <!-- first__<input identifier>, second__<input identifier>: the outer list
+           holds two copies of the input, each with the input's own type. -->
+      <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)__(?P&lt;identifier_1&gt;.+)" directory="output" format="txt" visible="true" />
+    </collection>
+  </outputs>
+  <tests>
+    <test>
+      <param name="input_collect">
+        <collection type="list">
+          <element name="e1" value="simple_line.txt" />
+          <element name="e2" value="simple_line_alternative.txt" />
+        </collection>
+      </param>
+      <output_collection name="list_output" type="list:list" count="2">
+        <element name="first">
+          <element name="e1">
+            <assert_contents>
+              <has_line line="This is a line of text." />
+            </assert_contents>
+          </element>
+          <element name="e2">
+            <assert_contents>
+              <has_line line="This is a different line of text." />
+            </assert_contents>
+          </element>
+        </element>
+        <element name="second">
+          <element name="e1">
+            <assert_contents>
+              <has_line line="This is a line of text." />
+            </assert_contents>
+          </element>
+          <element name="e2">
+            <assert_contents>
+              <has_line line="This is a different line of text." />
+            </assert_contents>
+          </element>
+        </element>
+      </output_collection>
+    </test>
+    <test>
+      <param name="input_collect">
+        <collection type="paired">
+          <element name="forward" value="simple_line.txt" />
+          <element name="reverse" value="simple_line_alternative.txt" />
+        </collection>
+      </param>
+      <output_collection name="list_output" type="list:paired" count="2">
+        <element name="first">
+          <element name="forward">
+            <assert_contents>
+              <has_line line="This is a line of text." />
+            </assert_contents>
+          </element>
+          <element name="reverse">
+            <assert_contents>
+              <has_line line="This is a different line of text." />
+            </assert_contents>
+          </element>
+        </element>
+        <element name="second">
+          <element name="forward">
+            <assert_contents>
+              <has_line line="This is a line of text." />
+            </assert_contents>
+          </element>
+          <element name="reverse">
+            <assert_contents>
+              <has_line line="This is a different line of text." />
+            </assert_contents>
+          </element>
+        </element>
+      </output_collection>
+    </test>
+  </tests>
+</tool>

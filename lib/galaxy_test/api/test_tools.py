@@ -3530,6 +3530,62 @@ class TestToolsApi(ApiTestCase, TestsTools):
             collection_details = self.dataset_populator.get_history_collection_details(history_id, hid=4)
             assert collection_details["elements"][0]["object"]["elements"][0]["element_type"] == "hda"
 
+    def _assert_type_prefix_copies(self, outer, inner_collection_type, inner_identifiers):
+        assert [e["element_identifier"] for e in outer["elements"]] == ["first", "second"]
+        for copy in outer["elements"]:
+            inner = copy["object"]
+            assert inner["collection_type"] == inner_collection_type
+            assert [e["element_identifier"] for e in inner["elements"]] == inner_identifiers
+            assert all(e["element_type"] == "hda" for e in inner["elements"])
+
+    @skip_without_tool("collection_type_source_prefix")
+    def test_collection_type_source_prefix_map_over_list_of_pairs(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+            inputs = {
+                "input_collect": {"batch": True, "values": [{"src": "hdca", "map_over_type": "paired", "id": hdca_id}]}
+            }
+            response = self._run("collection_type_source_prefix", history_id, inputs, assert_ok=True)
+            implicit_collections = response["implicit_collections"]
+            assert len(implicit_collections) == 1
+            assert implicit_collections[0]["collection_type"] == "list:list:paired"
+            for job in response["jobs"]:
+                self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
+            hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=implicit_collections[0]["id"]
+            )
+            assert hdca["collection_type"] == "list:list:paired"
+            assert [e["element_identifier"] for e in hdca["elements"]] == ["test0", "test1"]
+            for element in hdca["elements"]:
+                per_pair = element["object"]
+                assert per_pair["collection_type"] == "list:paired"
+                self._assert_type_prefix_copies(per_pair, "paired", ["forward", "reverse"])
+
+    @skip_without_tool("collection_type_source_prefix")
+    def test_collection_type_source_prefix_normalizes_sample_sheet(self):
+        with self.dataset_populator.test_history(require_new=False) as history_id:
+            create_response = self.dataset_collection_populator.create_sample_sheet(
+                history_id,
+                contents=[("sample1", "content1"), ("sample2", "content2")],
+                column_definitions=[{"type": "string", "name": "treatment", "optional": False}],
+                rows={"sample1": ["control"], "sample2": ["treatment"]},
+            )
+            self._assert_status_code_is(create_response, 200)
+            sample_sheet_hdca = create_response.json()
+            assert sample_sheet_hdca["collection_type"] == "sample_sheet"
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            inputs = {"input_collect": {"src": "hdca", "id": sample_sheet_hdca["id"]}}
+            response = self._run("collection_type_source_prefix", history_id, inputs, assert_ok=True)
+            output_collections = response["output_collections"]
+            assert len(output_collections) == 1
+            self.dataset_populator.wait_for_job(response["jobs"][0]["id"], assert_ok=True)
+            hdca = self.dataset_populator.get_history_collection_details(
+                history_id, content_id=output_collections[0]["id"]
+            )
+            assert hdca["collection_type"] == "list:list"
+            assert hdca.get("column_definitions") is None
+            self._assert_type_prefix_copies(hdca, "list", ["sample1", "sample2"])
+
     @skip_without_tool("multi_data_param")
     def test_reduce_collections_legacy(self):
         with self.dataset_populator.test_history() as history_id:
