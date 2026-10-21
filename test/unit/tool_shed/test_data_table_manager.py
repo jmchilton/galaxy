@@ -1,6 +1,7 @@
 """Unit tests for shed-side data table install behavior."""
 
 import os
+from dataclasses import dataclass
 from unittest import mock
 
 import pytest
@@ -29,6 +30,16 @@ class _FakeTableRegistry(ToolDataTableManager):
         self.to_xml_calls.append((shed_tool_data_table_config, new_elems))
         with open(shed_tool_data_table_config, "wb") as fh:
             fh.write(b"<tables/>")
+
+    def add_new_entries_from_config_file(
+        self, config_filename, tool_data_path, shed_tool_data_table_config, persist=False
+    ):
+        return [], ""
+
+
+@dataclass
+class _RepositoryTool:
+    params_with_missing_data_table_entry: list[str]
 
 
 SAMPLE_TABLE_CONF = """\
@@ -268,6 +279,17 @@ def test_merge_skipped_for_non_tabular_table_types(tmp_path):
     assert kept_elems == []
     existing.parse_file_fields.assert_not_called()
     existing.append_entries_with_attribution.assert_not_called()
+
+
+def test_handle_missing_data_table_entry_keeps_registered_tables(tmp_path):
+    stdtm, repo, _, _, _, _, _ = _make_stdtm(tmp_path)
+    registered = {"all_fasta": _registered_table({"value": 0, "dbkey": 1, "name": 2, "path": 3})}
+    stdtm.app.tool_data_tables.data_tables = dict(registered)
+    tool = _RepositoryTool(params_with_missing_data_table_entry=["dbkey"])
+
+    stdtm.handle_missing_data_table_entry(str(tmp_path / "repo"), None, [("tool.xml", "guid", tool)])
+
+    assert stdtm.app.tool_data_tables.data_tables == registered
 
 
 def test_parse_table_columns_matches_parse_column_spec():
