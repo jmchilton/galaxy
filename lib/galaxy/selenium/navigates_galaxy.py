@@ -7,7 +7,6 @@ import collections
 import contextlib
 import json
 import random
-import re
 import string
 import time
 from abc import abstractmethod
@@ -82,6 +81,11 @@ from .has_driver_proxy import HasDriverProxy
 from .smart_components import (
     SmartComponent,
     SmartTarget,
+)
+from .tool_form import (
+    repeat_instance_counts,
+    tool_form_parameters_from_build,
+    ToolFormParameter,
 )
 from .web_element_protocol import WebElementProtocol
 
@@ -297,83 +301,6 @@ class ColumnDefinition:
     type: Literal["Text", "Integer", "Element Identifier"] = "Text"
     optional: bool = False
     default_value: str | None = None
-
-
-class ToolFormParameter(NamedTuple):
-    """One tool form field, addressed by the path ``tool_form_fill`` takes."""
-
-    path: str
-    label: str
-    type: str
-    value: Any
-    # (label, value) pairs; data options are ("<hid>: <name>", "<hid>").
-    options: list[tuple[str, str]]
-    # ``<test parameter path>=<case value>`` for fields inside one conditional case.
-    condition: str | None = None
-
-
-def tool_form_parameters_from_build(
-    inputs: list[dict[str, Any]], prefix: str = "", condition: str | None = None
-) -> list[ToolFormParameter]:
-    """Flatten a tool build model's inputs into form fields, listing every conditional case."""
-    parameters: list[ToolFormParameter] = []
-    for input in inputs:
-        input_type = input["type"]
-        path = f"{prefix}{input['name']}"
-        if input_type == "conditional":
-            test_param = input["test_param"]
-            test_path = f"{path}|{test_param['name']}"
-            parameters.extend(tool_form_parameters_from_build([test_param], f"{path}|", condition))
-            for case in input["cases"]:
-                case_condition = f"{test_path}={case['value']}"
-                parameters.extend(tool_form_parameters_from_build(case["inputs"], f"{path}|", case_condition))
-        elif input_type == "section":
-            parameters.extend(tool_form_parameters_from_build(input["inputs"], f"{path}|", condition))
-        elif input_type == "repeat":
-            instances = input.get("cache") or [input["inputs"]]
-            label = input.get("title") or input["name"]
-            parameters.append(ToolFormParameter(path, label, "repeat", len(input.get("cache") or []), [], condition))
-            for index, instance in enumerate(instances):
-                parameters.extend(tool_form_parameters_from_build(instance, f"{path}_{index}|", condition))
-        else:
-            label = input.get("label") or input["name"]
-            options, value = _tool_form_options_and_value(input)
-            parameters.append(ToolFormParameter(path, label, input_type, value, options, condition))
-    return parameters
-
-
-def _tool_form_options_and_value(input: dict[str, Any]) -> tuple[list[tuple[str, str]], Any]:
-    options = input.get("options")
-    value = input.get("value")
-    if input["type"] in ("data", "data_collection") and isinstance(options, dict):
-        # Rerun selections outside the options page are in ``pinned``; list them first like the client.
-        pinned = input.get("pinned") or {}
-
-        def entries(*sources: str) -> list[dict[str, Any]]:
-            return [item for source in sources for item in [*pinned.get(source, []), *options.get(source, [])]]
-
-        items = entries("hda", "hdca")
-        # Collection elements and library datasets have no usable hid, so only label a selected one by name.
-        labels = {(item["src"], item["id"]): item["name"] for item in entries("dce", "ldda")}
-        labels.update({(item["src"], item["id"]): f"{item['hid']}: {item['name']}" for item in items})
-        selected = [labels.get((v["src"], v["id"]), v["id"]) for v in (value or {}).get("values", [])]
-        value = selected[0] if len(selected) == 1 else selected
-        return [(f"{item['hid']}: {item['name']}", str(item["hid"])) for item in items], value
-    if isinstance(options, list):
-        return _flatten_options(options), value
-    return [], value
-
-
-def _flatten_options(options: list) -> list[tuple[str, str]]:
-    # Select options are [label, value, selected]; drill-down options nest as {name, value, options}.
-    flat: list[tuple[str, str]] = []
-    for option in options:
-        if isinstance(option, dict):
-            flat.append((str(option["name"]), str(option["value"])))
-            flat.extend(_flatten_options(option.get("options") or []))
-        else:
-            flat.append((str(option[0]), str(option[1])))
-    return flat
 
 
 class NavigatesGalaxy(HasDriverProxy[WaitType]):
@@ -2344,12 +2271,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         if not values and not data:
             return
 
-        repeat_counts: dict[str, int] = {}
-        for key in [*values, *data]:
-            if repeat_match := self._parse_repeat_key(key):
-                repeat_name, repeat_index, _child_key = repeat_match
-                repeat_counts[repeat_name] = max(repeat_counts.get(repeat_name, 0), repeat_index + 1)
-        for repeat_name, count in repeat_counts.items():
+        for repeat_name, count in repeat_instance_counts([*values, *data]).items():
             self._add_repeat_instances(repeat_name, count)
 
         self._expand_collapsed_sections()
@@ -2397,12 +2319,6 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                 f"tag removed from {expanded_id}",
                 wait_type=WAIT_TYPES.UX_RENDER,
             )
-
-    @staticmethod
-    def _parse_repeat_key(key: str):
-        if match := re.match(r"^(.+?)_(\d+)\|(.+)$", key):
-            return match.group(1), int(match.group(2)), match.group(3)
-        return None
 
     def _add_repeat_instances(self, repeat_name: str, count: int):
         """Make sure ``count`` instances exist; a repeat with a minimum already renders some."""

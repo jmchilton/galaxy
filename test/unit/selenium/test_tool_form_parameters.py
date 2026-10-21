@@ -1,6 +1,7 @@
 """Flattening a tool's build model into the parameter paths tool_form_fill takes."""
 
-from galaxy.selenium.navigates_galaxy import (
+from galaxy.selenium.tool_form import (
+    repeat_instance_counts,
     tool_form_parameters_from_build,
     ToolFormParameter,
 )
@@ -187,3 +188,8 @@ def test_data_value_from_pinned_collection_element_uses_its_name():
     assert tool_form_parameters_from_build(inputs) == [
         ToolFormParameter("input1", "Input", "data", "forward", [("1: Pasted Dataset 1", "1")]),
     ]
+
+
+def test_repeat_instance_counts_take_the_highest_index_per_repeat():
+    paths = ["queries_1|input2", "queries_0|input2", "input1", "cond|outer_0|x", "a_b_3|c"]
+    assert repeat_instance_counts(paths) == {"queries": 2, "cond|outer": 1, "a_b": 4}
