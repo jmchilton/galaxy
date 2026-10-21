@@ -263,6 +263,23 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
             assert details["extension"] == "tabular"
 
     @selenium_test
+    def test_item_name_tag_propagates_to_tool_output(self):
+        history_id = self.current_history_id()
+        hda = self.dataset_populator.new_dataset(history_id, content="chr1\t10\t20\n", file_type="bed", wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_item_add_tags(1, ["#plus"])
+        self._wait_on(
+            lambda: self.dataset_populator.get_history_dataset_details(history_id, hid=1)["tags"] == ["name:plus"],
+            "hid 1 to be tagged name:plus",
+        )
+
+        self.dataset_populator.run_tool("cat1", {"input1": {"src": "hda", "id": hda["id"]}}, history_id)
+        self.history_panel_wait_for_hid_ok(2)
+        assert self.history_panel_item_get_tags(2) == ["#plus"]
+        self.screenshot("history_panel_item_name_tag_propagated")
+
+    @selenium_test
     def test_refresh_preserves_state(self):
         self.upload_context("local-file").stage_local_file(self.get_filename("1.txt")).start()
         self.wait_for_history()
