@@ -202,6 +202,7 @@ class DataTableColumnMismatch(Exception):
 
 class ToolDataTable(Dictifiable):
     type_key: str
+    columns: Dict[str, int]
     data: List[List[str]]
     empty_field_value: str
     empty_field_values: Dict[Optional[str], str]
@@ -1152,10 +1153,8 @@ class ToolDataTableManager(Dictifiable):
     ) -> None:
         """Raise if ``candidate_name`` is already registered with different columns."""
         existing = self.data_tables.get(candidate_name)
-        if existing is not None:
-            existing_columns = getattr(existing, "columns", None)
-            if existing_columns is not None and existing_columns != candidate_columns:
-                raise DataTableColumnMismatch(candidate_name, existing_columns, candidate_columns)
+        if existing is not None and existing.columns != candidate_columns:
+            raise DataTableColumnMismatch(candidate_name, existing.columns, candidate_columns)
 
     def to_dict(
         self, view: str = "collection", value_mapper: Optional[Dict[str, Callable]] = None
@@ -1170,9 +1169,17 @@ class ToolDataTableManager(Dictifiable):
             out.write(json.dumps(self.to_dict()))
 
     def load_from_config_file(
-        self, config_filename: StrPath, tool_data_path: Optional[StrPath], from_shed_config: bool = False
+        self,
+        config_filename: StrPath,
+        tool_data_path: Optional[StrPath],
+        from_shed_config: bool = False,
+        skip_column_mismatches: bool = False,
     ) -> List[Element]:
         """
+        A table whose columns conflict with an already registered table of the same name raises
+        ``DataTableColumnMismatch``. With ``skip_column_mismatches`` it is instead logged, not registered
+        or merged, and left out of the result.
+
         This method is called under 3 conditions:
 
         1. When the ToolDataTableManager is initialized (see __init__ above).
@@ -1196,6 +1203,18 @@ class ToolDataTableManager(Dictifiable):
                     tool_data_path_files=self.tool_data_path_files,
                     other_config_dict=self.other_config_dict,
                 )
+                try:
+                    self.assert_data_table_consistency(table.name, table.columns)
+                except DataTableColumnMismatch as e:
+                    if not skip_column_mismatches:
+                        raise
+                    log.error(
+                        "Skipping data table '%s' from file '%s': %s Remove this <table> from the file to silence this error.",
+                        table.name,
+                        config_filename,
+                        e,
+                    )
+                    continue
                 table_elems.append(table_elem)
                 if table.name not in self.data_tables:
                     self.data_tables[table.name] = table
