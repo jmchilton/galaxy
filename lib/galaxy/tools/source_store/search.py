@@ -7,6 +7,7 @@ import re
 import shutil
 import threading
 from collections.abc import (
+    Callable,
     Collection,
     Iterator,
 )
@@ -454,6 +455,9 @@ class ToolWhooshIndex:
         if searcher is not None and not _reads_latest_commit(searcher, filenames):
             searcher.close()
             searcher = None
+            # Idle searchers keep a replaced commit's files open until popped,
+            # and the LIFO pool may not reach them again.
+            self._discard_idle_searchers(lambda idle: _reads_latest_commit(idle, filenames))
         if searcher is None:
             if _latest_generation(filenames) < 0:
                 yield None
@@ -466,3 +470,13 @@ class ToolWhooshIndex:
             raise
         with self._idle_searchers_lock:
             self._idle_searchers.append(searcher)
+
+    def _discard_idle_searchers(self, keep: Callable[[Searcher], bool]) -> None:
+        with self._idle_searchers_lock:
+            kept: list[Searcher] = []
+            discarded: list[Searcher] = []
+            for searcher in self._idle_searchers:
+                (kept if keep(searcher) else discarded).append(searcher)
+            self._idle_searchers = kept
+        for searcher in discarded:
+            searcher.close()
