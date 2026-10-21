@@ -2927,6 +2927,7 @@ class ToolModule(WorkflowModule):
                                 collection_type = rule_set.collection_type
                     extra_kwds["collection_type"] = collection_type
                     extra_kwds["collection_type_source"] = tool_output.structure.collection_type_source
+                    extra_kwds["collection_type_prefix"] = tool_output.structure.collection_type_prefix
                     formats: list[str | None] = ["input"]  # TODO: fix
                 elif (
                     isinstance(tool_output, (ToolOutput, ToolExpressionOutput, ToolOutputCollection))
