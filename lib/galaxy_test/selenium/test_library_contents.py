@@ -7,6 +7,7 @@ from galaxy_test.base.decorators import (
     requires_new_library,
 )
 from .framework import (
+    retry_assertion_during_transitions,
     retry_during_transitions,
     selenium_test,
     SeleniumTestCase,
@@ -87,6 +88,39 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
         self.screenshot("libraries_dataset_import")
         self.libraries_dataset_import_from_history_click_ok()
         self.assert_num_displayed_items_is(1)
+
+    @selenium_test
+    @requires_admin
+    @requires_new_library
+    def test_import_from_history_lists_only_own_histories(self):
+        published_name = self._get_random_name(prefix="published")
+        own_name = self._get_random_name(prefix="own")
+
+        self.register(self._get_random_email("publisher"))
+        self.home()
+        self.history_panel_create_new_with_name(published_name)
+        self.current_history_publish()
+        self.logout_if_needed()
+
+        self.admin_login()
+        self.home()
+        self.history_panel_create_new_with_name(own_name)
+        self.navigate_to_new_library()
+        self.libraries_dataset_import(self.navigation.libraries.folder.labels.from_history)
+        self.wait_for_visible(self.navigation.libraries.folder.selectors.import_datasets_from_history_modal)
+
+        self._assert_import_history_search_lists(own_name, True)
+        self._assert_import_history_search_lists(published_name, False)
+
+    @retry_assertion_during_transitions
+    def _assert_import_history_search_lists(self, history_name, expected):
+        self.libraries_dataset_import_from_history_search_for(history_name)
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.wait_for_absent(
+            self.navigation.libraries.folder.selectors.import_datasets_from_history_modal_list_is_ready
+        )
+        rows = self.components.libraries.folder.import_datasets_from_history_modal_select_list_items.all()
+        assert any(history_name in row.text for row in rows) == expected
 
     @selenium_test
     @requires_admin
