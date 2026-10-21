@@ -100,6 +100,8 @@ preferences:
     preferred_storage: '#g-card-manage-preferred-object-store'
     manage_object_stores: '#g-card-manage-object-stores'
     manage_file_sources: '#g-card-manage-file-sources'
+    cards: '.user-preferences-cards > .g-card'
+    card: '#g-card-${id}'
 
   object_store_selection:
     selectors:
@@ -361,6 +363,8 @@ history_panel:
       tag_area_button: '.details .stateless-tags .toggle-button'
       tag_area_input: '.details .stateless-tags .headless-multiselect input'
       list_items: '.dataset-collection-panel .listing-layout .content-item'
+      element_title: '.dataset-collection-panel .content-item[data-hid="${index}"] .content-title'
+      element_peek: '.dataset-collection-panel .content-item[data-hid="${index}"] .not-loading .dataset-peek'
       back_to_history: svg[data-description="back to history"]
 
   object_store_selection:
@@ -1807,6 +1811,8 @@ upload_activity:
       type: xpath
       selector: '//span[contains(@data-test-id, "data-library-browser-item-label") and normalize-space()="${label}"]/ancestor::*[contains(@class, "media") or contains(@class, "row") or contains(@role, "row")]//input[@type="checkbox"]'
     data_library_add_selected: '[data-test-id="data-library-add-selected"]'
+    # Upload progress view; row 1 is the newest upload
+    progress_row_error: '.upload-progress-view .file-details-list > div:nth-child(${row}) .error-message'
 
 upload_method_inline:
   selectors:

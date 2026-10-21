@@ -1,5 +1,6 @@
 import os
 
+from galaxy.selenium.upload_activity_helpers import UsesUploadActivity
 from galaxy_test.driver.integration_util import ConfiguresMockEmails
 from .framework import (
     selenium_test,
@@ -7,7 +8,7 @@ from .framework import (
 )
 
 
-class TestUserActivationSeleniumIntegration(SeleniumIntegrationTestCase, ConfiguresMockEmails):
+class TestUserActivationSeleniumIntegration(SeleniumIntegrationTestCase, ConfiguresMockEmails, UsesUploadActivity):
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
@@ -37,3 +38,14 @@ class TestUserActivationSeleniumIntegration(SeleniumIntegrationTestCase, Configu
         # The banner only renders once the user has loaded, so wait for that first.
         self.wait_for_logged_in()
         inactivity_box._.assert_absent_or_hidden()
+
+    @selenium_test
+    def test_inactive_user_cannot_upload(self):
+        self.register(self._get_random_email(domain="example.org"))
+        self.components.inactivity_box._.wait_for_visible()
+        upload = self.upload_context("paste-content")
+        upload.stage_paste_content("hello")
+        upload.start()
+        error = self.components.upload_activity.progress_row_error(row=1).wait_for_visible()
+        assert "Action requires account activation" in error.text, error.text
+        self.screenshot("user_activation_inactive_upload")
