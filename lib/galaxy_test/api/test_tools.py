@@ -1334,6 +1334,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
     @skip_without_tool("__NEST__")
     def test_nest_list_of_pairs_1_1_0(self):
+        """NEST_LIST_PAIRED:
+        Nest 1.1.0 wraps each pair of a list:paired in a singleton list (list:list:paired)."""
         with self.dataset_populator.test_history(require_new=False) as history_id:
             hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
             response = self._nest(history_id, {"input": {"src": "hdca", "id": hdca_id}}, "1.1.0")
@@ -1418,6 +1420,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
     @skip_without_tool("__NEST__")
     def test_nest_map_over_list_of_lists_of_pairs_1_1_0(self):
+        """NEST_MAPPED_LIST_LIST_PAIRED:
+        Nest 1.1.0 mapped over a list:list:paired yields list:list:list:paired."""
         with self.dataset_populator.test_history(require_new=False) as history_id:
             list_of_pairs_ids = [self.dataset_collection_populator.example_list_of_pairs(history_id) for _ in range(2)]
             hdca_id = self.dataset_collection_populator.create_nested_collection(
@@ -3666,6 +3670,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
     @skip_without_tool("collection_type_source_prefix")
     def test_collection_type_source_prefix_map_over_list_of_pairs(self):
+        """TYPE_PREFIX_MAPPED:
+        type_prefix applies to the per-job (paired) type; the implicit collection is list:list:paired."""
         with self.dataset_populator.test_history(require_new=False) as history_id:
             hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
             inputs = {
@@ -3689,6 +3695,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
     @skip_without_tool("collection_type_source_prefix")
     def test_collection_type_source_prefix_normalizes_sample_sheet(self):
+        """TYPE_PREFIX_SAMPLE_SHEET:
+        a sample_sheet type_source is prefixed as a list, so the output is a list:list without sample sheet metadata."""
         with self.dataset_populator.test_history(require_new=False) as history_id:
             create_response = self.dataset_collection_populator.create_sample_sheet(
                 history_id,

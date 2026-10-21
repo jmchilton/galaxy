@@ -1249,6 +1249,244 @@
             framework_test: "collection_semantics_cat_sample_sheet_0"
         workflow_editor: "accepts sample_sheet -> sample_sheet connection"
 
+- doc: "## Output Collection Types"
+- doc: |
+    The examples above describe the implicit collections created by mapping. A tool
+    may also declare collection outputs itself and the type of such an output
+    collection is determined in one of the following ways.
+
+    - A fixed ``type`` (e.g. ``type="list:paired"``).
+    - ``structured_like`` - the output has the structure (and element identifiers)
+      of the named input collection.
+    - ``type_source`` - the output has the type of the collection connected to the
+      named input.
+    - ``type_prefix`` together with ``type_source`` - the output has the type
+      ``prefix:resolved``, where ``resolved`` is the type ``type_source`` resolves
+      to. This is ``type_prefix`` on ``<collection>`` outputs and
+      ``collection_type_prefix`` on legacy ``<output type="collection">`` outputs,
+      and requires tool profile 26.2 or newer.
+
+    In the examples below, ``collection<type_source(i)>`` denotes an output declared
+    with ``type_source="i"`` and ``collection<list:type_source(i)>`` one that
+    additionally declares ``type_prefix="list"``.
+
+- example:
+    label: TYPE_SOURCE_LIST
+    assumptions:
+    - datasets: ["d_1,...,d_n"]
+    - tool:
+        in: {i: collection}
+        out: {o: "collection<type_source(i)>"}
+    - collections:
+        C: [list, {i1: d_1, ..., in: d_n}]
+    then:
+        type: reduction
+        invocation:
+            inputs:
+                i: {type: collection, ref: C}
+        produces:
+            o:
+                type: collection
+                collection_type: list
+                elements:
+                    i1: {type: dataset}
+                    "...": {type: ellipsis}
+                    in: {type: dataset}
+    tests:
+        tool_runtime:
+            tool: collection_type_source
+        workflow_editor: "resolves collection type source"
+
+- doc: |
+    With ``type_prefix``, the prefix adds outer levels around the resolved type.
+
+- example:
+    label: TYPE_PREFIX_PAIRED
+    assumptions:
+    - datasets: [d_f, d_r]
+    - tool:
+        in: {i: "collection<list,paired>"}
+        out: {o: "collection<list:type_source(i)>"}
+    - collections:
+        C: [paired, {forward: d_f, reverse: d_r}]
+    then:
+        type: reduction
+        invocation:
+            inputs:
+                i: {type: collection, ref: C}
+        produces:
+            o:
+                type: collection
+                collection_type: "list:paired"
+                elements:
+                    first:
+                        type: nested_elements
+                        elements:
+                            forward: {type: dataset}
+                            reverse: {type: dataset}
+                    second:
+                        type: nested_elements
+                        elements:
+                            forward: {type: dataset}
+                            reverse: {type: dataset}
+    tests:
+        tool_runtime:
+            tool: collection_type_source_prefix
+        workflow_runtime:
+            framework_test: "collection_semantics_type_prefix_0"
+        workflow_editor: "applies type_prefix to type source collection type"
+
+- doc: |
+    If the connected collection has more levels than the input declares, the extra
+    outer levels are mapped over as usual. ``type_source`` then resolves to the type
+    each job consumes and the prefix applies to that per-job type - so the implicit
+    collection has the mapped over levels followed by the prefixed per-job type.
+
+- example:
+    label: TYPE_PREFIX_MAPPED
+    assumptions:
+    - datasets: [d_f, d_r]
+    - tool:
+        in: {i: "collection<list,paired>"}
+        out: {o: "collection<list:type_source(i)>"}
+    - collections:
+        C: ["list:paired", {el1: {forward: d_f, reverse: d_r}}]
+        "C\\_PAIRED": [paired, {forward: d_f, reverse: d_r}]
+    then:
+        type: map_over
+        invocation:
+            inputs:
+                i: {type: map_over, collection: C, sub_collection_type: paired}
+        produces:
+            o:
+                type: collection
+                collection_type: "list:list:paired"
+                elements:
+                    el1:
+                        type: tool_output_ref
+                        invocation: {inputs: {i: {type: collection, ref: "C\\_PAIRED"}}}
+                        output: o
+    tests:
+        tool_runtime:
+            api_test: "test_tools.py::TestToolsApi::test_collection_type_source_prefix_map_over_list_of_pairs"
+        workflow_runtime:
+            framework_test: "collection_semantics_type_prefix_mapped_0"
+        workflow_editor: "applies type_prefix to mapped over type source"
+
+- doc: |
+    The prefix itself may not contain ``sample_sheet`` or ``record`` levels and is
+    only allowed together with ``type_source`` - the tool linter and parser reject
+    such declarations. ``sample_sheet`` may only be the outermost level, so a
+    ``sample_sheet`` type resolved from ``type_source`` is treated as the matching
+    ``list`` type before the prefix is applied (``sample_sheet:paired`` becomes
+    ``list:paired``). The output is a plain list without sample sheet columns.
+    Without a prefix the resolved type is used as is.
+
+- example:
+    label: TYPE_PREFIX_SAMPLE_SHEET
+    assumptions:
+    - datasets: [d_1, d_2]
+    - tool:
+        in: {i: "collection<list,paired>"}
+        out: {o: "collection<list:type_source(i)>"}
+    - collections:
+        C: [sample_sheet, {s1: d_1, s2: d_2}]
+    then:
+        type: reduction
+        invocation:
+            inputs:
+                i: {type: collection, ref: C}
+        produces:
+            o:
+                type: collection
+                collection_type: "list:list"
+                elements:
+                    first:
+                        type: nested_elements
+                        elements:
+                            s1: {type: dataset}
+                            s2: {type: dataset}
+                    second:
+                        type: nested_elements
+                        elements:
+                            s1: {type: dataset}
+                            s2: {type: dataset}
+    tests:
+        tool_runtime:
+            api_test: "test_tools.py::TestToolsApi::test_collection_type_source_prefix_normalizes_sample_sheet"
+        workflow_editor: "normalizes sample_sheet type source before applying type_prefix"
+
+- doc: |
+    The "Nest collection" tool (``__NEST__``) version 1.1.0 is declared this way -
+    it accepts ``list`` and ``list:paired`` inputs (sample sheets included, nested as
+    lists) and its output uses ``type_source`` with ``type_prefix="list"``. Unlike
+    the test tool above, it runs no job and produces no new data - each element of
+    the input is copied into a single element list with the same identifier.
+
+- example:
+    label: NEST_LIST_PAIRED
+    assumptions:
+    - datasets: [d_f, d_r]
+    - tool:
+        in: {i: "collection<list,list:paired>"}
+        out: {o: "collection<list:type_source(i)>"}
+    - collections:
+        C: ["list:paired", {el1: {forward: d_f, reverse: d_r}}]
+    then:
+        type: reduction
+        invocation:
+            inputs:
+                i: {type: collection, ref: C}
+        produces:
+            o:
+                type: collection
+                collection_type: "list:list:paired"
+                elements:
+                    el1:
+                        type: nested_elements
+                        elements:
+                            el1:
+                                type: nested_elements
+                                elements:
+                                    forward: {type: dataset}
+                                    reverse: {type: dataset}
+    tests:
+        tool_runtime:
+            api_test: "test_tools.py::TestToolsApi::test_nest_list_of_pairs_1_1_0"
+        workflow_runtime:
+            framework_test: "collection_semantics_nest_0"
+
+- example:
+    label: NEST_MAPPED_LIST_LIST_PAIRED
+    assumptions:
+    - tool:
+        in: {i: "collection<list,list:paired>"}
+        out: {o: "collection<list:type_source(i)>"}
+    - collections:
+        C: ["list:list:paired", {el1: "C_1", ..., eln: "C_n"}]
+    then:
+        type: map_over
+        invocation:
+            inputs:
+                i: {type: map_over, collection: C, sub_collection_type: "list:paired"}
+        produces:
+            o:
+                type: collection
+                collection_type: "list:list:list:paired"
+                elements:
+                    el1:
+                        type: tool_output_ref
+                        invocation: {inputs: {i: {type: collection, ref: "C_1"}}}
+                        output: o
+                    "...": {type: ellipsis}
+                    eln:
+                        type: tool_output_ref
+                        invocation: {inputs: {i: {type: collection, ref: "C_n"}}}
+                        output: o
+    tests:
+        tool_runtime:
+            api_test: "test_tools.py::TestToolsApi::test_nest_map_over_list_of_lists_of_pairs_1_1_0"
+
 - doc: "## Type Compatibility Algebra"
 - doc: |
     This section is for implementers. It describes the three operations that
