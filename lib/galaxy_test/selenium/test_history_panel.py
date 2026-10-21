@@ -152,6 +152,25 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
             self.sleep_for(self.wait_types.UX_RENDER)
 
     @selenium_test
+    def test_change_datatype_of_selected_items(self):
+        history_id = self.current_history_id()
+        for content in ("1\t2\n", "3\t4\n"):
+            self.dataset_populator.new_dataset(history_id, content=content, file_type="txt", wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(2)
+        self.history_panel_multi_operations_show()
+        for hid in (1, 2):
+            self.history_panel_muli_operation_select_hid(hid)
+        self.history_panel_change_datatype_of_selected("tabular")
+        self.screenshot("history_panel_change_datatype_of_selected")
+
+        for hid in (1, 2):
+            self.history_panel_ensure_showing_item_details(hid)
+            self._wait_for_item_datatype(hid, "tabular")
+            details = self.dataset_populator.get_history_dataset_details(history_id, hid=hid)
+            assert details["extension"] == "tabular"
+
+    @selenium_test
     def test_refresh_preserves_state(self):
         self.upload_context("local-file").stage_local_file(self.get_filename("1.txt")).start()
         self.wait_for_history()
@@ -181,6 +200,11 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
     def assert_name_changed(self):
         name = self.history_panel_name()
         assert name == NEW_HISTORY_NAME
+
+    def _wait_for_item_datatype(self, hid, datatype):
+        # The change runs as a Celery task, so the panel catches up on a later poll.
+        component = self.history_panel_item_component(hid=hid).datatype
+        self._wait_on(lambda: component.wait_for_text() == datatype, f"hid {hid} datatype to be {datatype}")
 
     def _refresh(self):
         self.home()
