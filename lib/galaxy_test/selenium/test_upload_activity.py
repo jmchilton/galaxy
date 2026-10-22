@@ -50,6 +50,20 @@ class TestUploadActivity(SeleniumTestCase, UsesUploadActivity, UsesHistoryItemAs
 
     @selenium_test
     @managed_history
+    def test_paste_content_spaces_to_tabs(self):
+        (
+            self.upload_context("paste-content")
+            .stage_paste_content("gene start end\nORF1ab 266 21555", {"extension": "tabular", "space_to_tab": True})
+            .start()
+        )
+        self.history_panel_wait_for_hid_ok(1)
+        history_id = self.current_history_id()
+        content = self.dataset_populator.get_history_dataset_content(history_id, hid=1)
+        assert content.splitlines() == ["gene\tstart\tend", "ORF1ab\t266\t21555"]
+        assert self.dataset_populator.get_history_dataset_details(history_id, hid=1)["metadata_columns"] == 3
+
+    @selenium_test
+    @managed_history
     def test_deferred_upload(self):
         """Upload with deferred status"""
         uploader = self.upload_context("paste-links")
