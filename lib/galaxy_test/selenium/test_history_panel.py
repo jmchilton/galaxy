@@ -203,6 +203,34 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
         self.screenshot("history_panel_deleted_items_shown")
 
     @selenium_test
+    def test_hide_and_unhide_items(self):
+        history_id = self.current_history_id()
+        for content in ("1\n", "2\n", "3\n"):
+            self.dataset_populator.new_dataset(history_id, content=content, wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(3)
+
+        def visible(hid):
+            return self.dataset_populator.get_history_dataset_details(history_id, hid=hid)["visible"]
+
+        self.history_panel_multi_operations_show()
+        self.history_panel_multi_operation_select_hid(1)
+        self.history_panel_multi_operation_select_hid(2)
+        self.history_panel_hide_selected()
+        self.history_panel_wait_for_hid_hidden(1)
+        self.history_panel_wait_for_hid_hidden(2)
+        self._wait_on(lambda: not visible(1) and not visible(2), "hids 1 and 2 to be hidden")
+        assert visible(3)
+
+        self.history_panel_include_hidden()
+        self.history_panel_multi_operations_show()
+        self.history_panel_multi_operation_select_hid(1)
+        self.history_panel_hide_selected(unhide=True)
+        self._wait_on(lambda: visible(1), "hid 1 to be unhidden")
+        assert not visible(2)
+        self.screenshot("history_panel_hidden_items_shown")
+
+    @selenium_test
     def test_item_name_tag_propagates_to_tool_output(self):
         history_id = self.current_history_id()
         hda = self.dataset_populator.new_dataset(history_id, content="chr1\t10\t20\n", file_type="bed", wait=True)
