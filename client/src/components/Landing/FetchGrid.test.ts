@@ -25,7 +25,8 @@ vi.mock("ag-grid-vue3", () => ({
 
 /** Rows the grid was given, whether bound by `v-model` or `:row-data`. */
 function gridRows(grid: VueWrapper): Record<string, unknown>[] {
-    return (grid.props("modelValue") ?? grid.props("rowData")) as Record<string, unknown>[];
+    const props = grid.props() as { modelValue?: unknown; rowData?: unknown };
+    return (props.modelValue ?? props.rowData) as Record<string, unknown>[];
 }
 
 const localVue = getLocalVue(true);
