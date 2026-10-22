@@ -67,6 +67,18 @@ class TestDataset(UsesUploadActivity, SeleniumTestCase):
 
     @selenium_test
     @managed_history
+    def test_history_dataset_copy_link(self):
+        hda = self.dataset_populator.new_dataset(self.current_history_id(), content="a\n", wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_click_item_title(hid=1, wait=True)
+        download_path = f"api/datasets/{hda['id']}/download?to_ext=txt"
+        download_button = self.history_panel_item_component(hid=1).download_button
+        assert download_button.wait_for_visible().get_attribute("href").endswith(f"/{download_path}")
+        assert self.history_panel_item_copy_link(1) == self.build_url(download_path)
+
+    @selenium_test
+    @managed_history
     def test_history_dataset_rename(self):
         original_name = "1.txt"
         new_name = "newname.txt"

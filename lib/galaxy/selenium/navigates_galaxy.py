@@ -3203,6 +3203,12 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Delete history item ``hid`` with its trash button."""
         self.history_panel_item_component(hid=hid).delete_button.wait_for_and_click()
 
+    def history_panel_item_copy_link(self, hid) -> str:
+        """Click expanded item ``hid``'s Copy Link button; returns the copied download URL."""
+        with self.capture_clipboard() as clipboard:
+            self.history_panel_item_component(hid=hid).copy_link_button.wait_for_and_click()
+            return clipboard.wait_for_text()
+
     def history_panel_item_undelete(self, hid):
         """Undelete history item ``hid`` with its Undelete button; deleted items must be shown."""
         self.history_panel_item_component(hid=hid).undelete_button.wait_for_and_click()
