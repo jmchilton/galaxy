@@ -40,8 +40,36 @@ describe("getUntypedWorkflowParameters", () => {
         expect(parameterNames(steps)).toEqual(["sample"]);
     });
 
+    it("skips a rename parameter filled by a parameter input with that label", () => {
+        const steps = asSteps(parameterInput(0, "sample"), toolStep(1, { postJobActions: rename("${sample} reads") }));
+        expect(parameterNames(steps)).toEqual([]);
+    });
+
+    it("flags only undeclared names in a mixed rename", () => {
+        const steps = asSteps(
+            parameterInput(0, "sample"),
+            toolStep(1, { postJobActions: rename("${sample} ${replicate} reads") }),
+        );
+        expect(parameterNames(steps)).toEqual(["replicate"]);
+    });
+
     it("flags tool state parameters even when a parameter input has that label", () => {
         const steps = asSteps(parameterInput(0, "sample"), toolStep(1, { value: "${sample}" }));
         expect(parameterNames(steps)).toEqual(["sample"]);
+    });
+
+    it("ignores non-rename post job action arguments", () => {
+        const steps = asSteps(
+            toolStep(0, {
+                postJobActions: {
+                    TagDatasetActionout_file1: {
+                        action_type: "TagDatasetAction",
+                        output_name: "out_file1",
+                        action_arguments: { tags: "name:${sample}" },
+                    },
+                },
+            }),
+        );
+        expect(parameterNames(steps)).toEqual([]);
     });
 });
