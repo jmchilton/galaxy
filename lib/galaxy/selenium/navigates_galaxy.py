@@ -3232,6 +3232,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             self.history_panel_item_component(hid=hid).copy_link_button.wait_for_and_click()
             return clipboard.wait_for_text()
 
+    def history_panel_item_show_related(self, hid):
+        """Click expanded item ``hid``'s Show Related Items button; clicking it again clears the filter."""
+        self.history_panel_item_component(hid=hid).highlight_button.wait_for_and_click()
+
+    def history_panel_filter_text(self) -> str:
+        """The history panel's filter text, e.g. ``related:1``."""
+        filter_input = self.history_element(attribute_value="filter text input", scope=".content-operations-filters")
+        return filter_input.wait_for_present().get_attribute("value") or ""
+
     def history_panel_item_undelete(self, hid):
         """Undelete history item ``hid`` with its Undelete button; deleted items must be shown."""
         self.history_panel_item_component(hid=hid).undelete_button.wait_for_and_click()
