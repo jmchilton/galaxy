@@ -1280,9 +1280,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def workflow_editor_connect(self, source, sink, screenshot_partial=None):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        source_element = self.find_element_by_selector(f"#{source_id}")
-        sink_element = self.find_element_by_selector(f"#{sink_id}")
+        source_element, sink_element = self.workflow_editor_source_sink_terminal_elements(source, sink)
 
         if screenshot_partial:
             if self._driver_impl.backend_type == "playwright":
@@ -1334,6 +1332,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         sink_id = input_element.get_attribute("id").replace("|", r"\|")
 
         return source_id, sink_id
+
+    def workflow_editor_source_sink_terminal_elements(self, source, sink):
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        return self.find_element_by_selector(f"#{source_id}"), self.find_element_by_selector(f"#{sink_id}")
 
     def workflow_editor_destroy_connection(self, sink):
         sink_node, sink_input_name = self.workflow_editor_node_and_terminal(sink)
