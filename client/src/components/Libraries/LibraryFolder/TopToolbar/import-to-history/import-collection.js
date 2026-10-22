@@ -104,7 +104,14 @@ class ImportCollectionModal {
         } else {
             this.select_collection_history = modal.el.querySelector("#library-collection-history-select");
             const selected_history_id = this.select_collection_history.value;
-            this.collectionImport(collection_elements, selected_history_id);
+            // as for a new history (and Add to History > as Datasets), show the picked history
+            const { setCurrentHistory } = useHistoryStore();
+            setCurrentHistory(selected_history_id)
+                .then(() => this.collectionImport(collection_elements, selected_history_id))
+                .catch((error) => {
+                    console.error(error);
+                    Toast.error("An error occurred.");
+                });
         }
     }
 

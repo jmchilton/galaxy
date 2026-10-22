@@ -39,6 +39,40 @@ class TestLibraryToCollections(SeleniumTestCase, UsesLibraryAssertions):
     def test_export_pairs_list(self):
         self.list_of_pairs_export()
 
+    @selenium_test
+    @requires_admin
+    def test_library_collection_export_to_selected_history(self):
+        self.admin_login()
+        self.create_new_library()
+        self.home()
+        target_name = self._get_random_name()
+        self.history_panel_create_new_with_name(target_name)
+        target_history_id = self.current_history_id()
+        self.history_panel_create_new()
+        current_history_id = self.current_history_id()
+        self.populate_library_folder_from_import_dir(self.name, ["1.bam", "1.bed"])
+        for i in range(2):
+            self.components.libraries.folder.select_dataset(row_index=i).wait_for_and_click()
+        self.components.libraries.folder.add_to_history.wait_for_and_click()
+        self.components.libraries.folder.add_to_history_collection.wait_for_and_click()
+        self.select_by_visible_text(
+            self.navigation.libraries.folder.selectors.export_to_history_history_select, target_name
+        )
+        self.components.libraries.folder.add_to_history_as_collection.wait_for_and_click()
+        collection_name = self._get_random_name()
+        self.collection_builder_set_name(collection_name)
+        self.collection_builder_create()
+
+        def collection_names(history_id):
+            contents = self.dataset_populator.get_history_contents(history_id)
+            return [item["name"] for item in contents if item["history_content_type"] == "dataset_collection"]
+
+        self._wait_on(
+            lambda: collection_name in collection_names(target_history_id), "the list in the selected history"
+        )
+        assert collection_names(current_history_id) == []
+        assert self.current_history_id() == target_history_id
+
     def prepare_library_for_data_export(self, files_to_import, history_name=None):
         self.admin_login()
         self.create_new_library()
