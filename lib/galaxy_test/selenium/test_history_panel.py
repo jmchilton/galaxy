@@ -171,6 +171,38 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
             assert details["extension"] == "tabular"
 
     @selenium_test
+    def test_delete_undelete_and_purge_items(self):
+        history_id = self.current_history_id()
+        for content in ("1\n", "2\n", "3\n"):
+            self.dataset_populator.new_dataset(history_id, content=content, wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(3)
+
+        def deleted_purged(hid):
+            details = self.dataset_populator.get_history_dataset_details(history_id, hid=hid)
+            return details["deleted"], details["purged"]
+
+        self.history_panel_item_delete(1)
+        self.history_panel_wait_for_hid_hidden(1)
+        self.history_panel_multi_operations_show()
+        self.history_panel_multi_operation_select_hid(2)
+        self.history_panel_delete_selected()
+        self.history_panel_wait_for_hid_hidden(2)
+        # A bulk delete ends selection mode.
+        self.history_panel_multi_operations_show()
+        self.history_panel_multi_operation_select_hid(3)
+        self.history_panel_delete_selected(purge=True)
+        self.history_panel_wait_for_hid_hidden(3)
+        self._wait_on(lambda: deleted_purged(3) == (True, True), "hid 3 to be purged")
+        assert deleted_purged(1) == (True, False)
+        assert deleted_purged(2) == (True, False)
+
+        self.history_panel_include_deleted()
+        self.history_panel_item_undelete(1)
+        self._wait_on(lambda: deleted_purged(1) == (False, False), "hid 1 to be undeleted")
+        self.screenshot("history_panel_deleted_items_shown")
+
+    @selenium_test
     def test_item_name_tag_propagates_to_tool_output(self):
         history_id = self.current_history_id()
         hda = self.dataset_populator.new_dataset(history_id, content="chr1\t10\t20\n", file_type="bed", wait=True)

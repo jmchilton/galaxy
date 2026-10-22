@@ -3156,6 +3156,24 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         modal.ok.wait_for_and_click()
         modal.wait_for_absent_or_hidden()
 
+    def history_panel_delete_selected(self, purge: bool = False):
+        """Delete the selected history items from the Selection menu, permanently with ``purge``, and confirm."""
+        self.use_bootstrap_dropdown(option="purge option" if purge else "delete option", menu="selected content menu")
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
+        self.components.confirm_dialog.ok_button.wait_for_absent_or_hidden()
+
+    def history_panel_item_delete(self, hid):
+        """Delete history item ``hid`` with its trash button."""
+        self.history_panel_item_component(hid=hid).delete_button.wait_for_and_click()
+
+    def history_panel_item_undelete(self, hid):
+        """Undelete history item ``hid`` with its Undelete button; deleted items must be shown."""
+        self.history_panel_item_component(hid=hid).undelete_button.wait_for_and_click()
+
+    def history_panel_include_deleted(self):
+        """Toggle the history panel's Include deleted filter (the deleted-items counter)."""
+        self.components.history_panel.include_deleted_button.wait_for_and_click()
+
     def history_panel_multi_operation_action_click(self, action):
         # Maybe isn't needed?
         # self.sleep_for(WAIT_TYPES.UX_RENDER)
