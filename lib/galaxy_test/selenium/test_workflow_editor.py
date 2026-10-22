@@ -2164,25 +2164,6 @@ steps:
 
         self.sleep_for(self.wait_types.UX_RENDER)
 
-    def assert_connected(self, source, sink):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        # SVG <g> elements are considered "hidden" by Playwright even when
-        # rendered, so use wait_for_present instead of wait_for_visible
-        # with the Playwright backend.
-        connector = self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id)
-        if self._driver_impl.backend_type == "playwright":
-            connector.wait_for_present()
-        else:
-            connector.wait_for_visible()
-
-    def assert_connection_invalid(self, source, sink):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_present()
-
-    def assert_not_connected(self, source, sink):
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id).wait_for_absent()
-
     def open_in_workflow_editor(self, yaml_content, auto_layout=True):
         name = self.workflow_upload_yaml_with_random_name(yaml_content)
         self.workflow_index_open()
@@ -2205,29 +2186,6 @@ steps:
         if editor.state_upgrade_modal.is_displayed:
             editor.state_upgrade_modal_close.wait_for_and_click()
             editor.state_upgrade_modal.wait_for_absent_or_hidden()
-
-    def workflow_editor_destroy_connection(self, sink):
-        editor = self.components.workflow_editor
-
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
-        sink_input = sink_node.input_terminal(name=sink_input_name).wait_for_visible()
-        self.hover_over(sink_input)
-        sink_node.connector_destroy_callout(name=sink_input_name).wait_for_and_click()
-
-    def assert_input_mapped(self, sink):
-        editor = self.components.workflow_editor
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
-        sink_mapping_icon = sink_node.input_mapping_icon(name=sink_input_name)
-        sink_mapping_icon.wait_for_visible()
-
-    def assert_input_not_mapped(self, sink):
-        editor = self.components.workflow_editor
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
-        sink_mapping_icon = sink_node.input_mapping_icon(name=sink_input_name)
-        sink_mapping_icon.wait_for_absent_or_hidden()
 
     @retry_assertion_during_transitions
     def assert_wf_name_is(self, expected_name):
