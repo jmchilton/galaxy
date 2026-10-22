@@ -1,6 +1,6 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
-import { mount } from "@vue/test-utils";
+import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,13 +15,18 @@ import DataFetchRequestParameter from "@/components/JobParameters/DataFetchReque
 vi.mock("ag-grid-vue3", () => ({
     AgGridVue: defineComponent({
         name: "AgGridVue",
-        props: { modelValue: { type: Array, default: () => [] }, columnDefs: { type: Array, default: () => [] } },
+        props: { modelValue: Array, rowData: Array, columnDefs: { type: Array, default: () => [] } },
         emits: ["update:modelValue", "cellValueChanged"],
         render() {
-            return h("div", JSON.stringify(this.modelValue));
+            return h("div", JSON.stringify(this.modelValue ?? this.rowData));
         },
     }),
 }));
+
+/** Rows the grid was given, whether bound by `v-model` or `:row-data`. */
+function gridRows(grid: VueWrapper): Record<string, unknown>[] {
+    return (grid.props("modelValue") ?? grid.props("rowData")) as Record<string, unknown>[];
+}
 
 const localVue = getLocalVue(true);
 
@@ -54,7 +59,7 @@ describe("FetchGrid", () => {
         await vi.waitFor(() => expect(wrapper.findComponent({ name: "AgGridVue" }).exists()).toBe(true));
         const oldGrid = wrapper.findComponent({ name: "AgGridVue" });
         expect(oldGrid.exists()).toBe(true);
-        const rows = oldGrid.props("modelValue");
+        const rows = gridRows(oldGrid);
         oldGrid.vm.$emit("cellValueChanged", {});
         await flushPromises();
         const unsupported = {
@@ -73,7 +78,7 @@ describe("FetchGrid", () => {
         await flushPromises();
         await vi.waitFor(() => expect(wrapper.text()).toContain("http://example.com/new.txt"));
         expect(wrapper.text()).not.toContain("http://example.com/a.txt");
-        expect(wrapper.findComponent({ name: "AgGridVue" }).props("modelValue")).not.toBe(rows);
+        expect(gridRows(wrapper.findComponent({ name: "AgGridVue" }))).not.toBe(rows);
         wrapper.unmount();
     });
     it("gives the grid a fresh row array for each new target", async () => {
@@ -88,12 +93,12 @@ describe("FetchGrid", () => {
         await vi.waitFor(() => expect(wrapper.text()).toContain("http://example.com/a.txt"));
 
         const grid = wrapper.findComponent({ name: "AgGridVue" });
-        let previousRows = grid.props("modelValue");
+        let previousRows = gridRows(grid);
         for (const url of ["http://example.com/b.txt", "http://example.com/c.txt"]) {
             await wrapper.setProps({ target: urlTarget(url) });
             await flushPromises();
             await vi.waitFor(() => expect(wrapper.text()).toContain(url));
-            const rows = grid.props("modelValue");
+            const rows = gridRows(grid);
             expect(rows).not.toBe(previousRows);
             previousRows = rows;
         }
@@ -111,7 +116,7 @@ describe("FetchGrid", () => {
 
         // AG Grid edits its own copies of the rows, then reports them through v-model.
         const grid = wrapper.findComponent({ name: "AgGridVue" });
-        const rows = JSON.parse(JSON.stringify(grid.props("modelValue"))) as Record<string, unknown>[];
+        const rows = JSON.parse(JSON.stringify(gridRows(grid))) as Record<string, unknown>[];
         const urlKey = Object.keys(rows[0]!).find((key) => rows[0]![key] === "http://example.com/file1.txt")!;
         rows[0]![urlKey] = "http://example.com/renamed.txt";
         grid.vm.$emit("update:modelValue", Object.freeze(rows));
