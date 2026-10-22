@@ -2660,6 +2660,24 @@ class TestToolsApi(ApiTestCase, TestsTools):
             response = self._get("tools/cat1/raw_tool_source")
             assert response.status_code == 403
 
+    def test_run_inaccessible_tool_refused(self):
+        # Data managers (sample_data_manager_conf.xml) are admin-only.
+        with self._different_user(f"tool_access_{uuid4()}@bx.psu.edu"):
+            with self.dataset_populator.test_history() as history_id:
+                response = self._run("data_manager", history_id, {"ignored_value": "test"})
+                self._assert_status_code_is(response, 403)
+                error = response.json()
+                assert error["err_code"] == 403009
+                assert error["unmet"] == [
+                    {
+                        "kind": "access",
+                        "message": "Tool 'data_manager' is not accessible.",
+                        "details": {"tool_id": "data_manager"},
+                        "remedy_route": None,
+                    }
+                ]
+                assert self.dataset_populator.history_jobs(history_id) == []
+
     def test_tool_deactivate(self):
         # Create tool.
         tool_response = self.dataset_populator.create_tool(MINIMAL_TOOL_NO_ID)
