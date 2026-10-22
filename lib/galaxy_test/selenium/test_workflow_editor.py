@@ -753,6 +753,50 @@ steps:
         self.assert_connected("input1#output", "first_cat#input1")
 
     @selenium_test
+    def test_refused_connection_and_removed_step(self):
+        self.open_in_workflow_editor("""
+class: GalaxyWorkflow
+inputs:
+  input1: data
+  int_input: integer
+steps:
+  first_cat:
+    tool_id: cat
+    in:
+      input1: input1
+  second_cat:
+    tool_id: cat
+""")
+        refusal = self.workflow_editor_try_connect(
+            "int_input#output", "second_cat#input1", screenshot_partial="workflow_editor_connection_refused"
+        )
+        assert refusal == "Cannot connect workflow parameter to data input."
+        self.assert_not_connected("int_input#output", "second_cat#input1")
+        assert self.workflow_editor_try_connect("first_cat#out_file1", "second_cat#input1") is None
+        self.assert_connected("first_cat#out_file1", "second_cat#input1")
+        self.workflow_editor_destroy_connection("second_cat#input1")
+        self.assert_not_connected("first_cat#out_file1", "second_cat#input1")
+        assert self.workflow_editor_try_connect("input1#output", "second_cat#input1") is None
+        self.assert_connected("input1#output", "second_cat#input1")
+        self.workflow_editor_remove_node("first_cat")
+        self.assert_workflow_has_changes_and_save()
+
+        steps = self._download_current_workflow()["steps"].values()
+        labels = {str(step["id"]): step["label"] for step in steps}
+        connections = {
+            step["label"]: {
+                name: (labels[str(connection["id"])], connection["output_name"])
+                for name, connection in step["input_connections"].items()
+            }
+            for step in steps
+        }
+        assert connections == {
+            "input1": {},
+            "int_input": {},
+            "second_cat": {"input1": ("input1", "output")},
+        }
+
+    @selenium_test
     def test_rendering_output_collection_connections(self):
         self.open_in_workflow_editor(WORKFLOW_WITH_OUTPUT_COLLECTION)
         self.workflow_editor_maximize_center_pane()
