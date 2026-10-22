@@ -566,8 +566,6 @@ class CachedToolBox(ToolBox):
     but only loads full Tool objects when needed for execution or form building.
     """
 
-    _reindex_edited_sources = False
-
     def __init__(
         self,
         config_filenames: list[str],
