@@ -708,7 +708,9 @@ class BaseUploadContext:
 
         initial_hid = self._current_latest_hid() + 1
         self._context.start()
-        return list(range(initial_hid, initial_hid + staged_item_count))
+        # a collection upload adds only the collection to the history
+        new_item_count = 1 if self._context._collection_config else staged_item_count
+        return list(range(initial_hid, initial_hid + new_item_count))
 
     def start_and_wait_for_uploaded_hids(self) -> list[int]:
         """Start the staged uploads, wait until each is ok in the history panel, and return their hids."""
