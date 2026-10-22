@@ -1648,9 +1648,7 @@ steps:
         conditional_node.input_terminal(name="when").wait_for_present()
         # Output connection should be invalid, as output from conditional step is potentially null
         self.assert_connection_invalid("conditional_step#out_file1", "downstream_step#input1")
-        downstream_step = editor.node._(label="downstream_step")
-        downstream_step.destroy.wait_for_and_click()
-        downstream_step.wait_for_absent()
+        self.workflow_editor_remove_node("downstream_step")
         # Connect boolean input to when
         self.workflow_editor_connect("param_input#output", "conditional_step#when")
         self.assert_connected("param_input#output", "conditional_step#when")
