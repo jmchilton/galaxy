@@ -1715,6 +1715,29 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.histories.activity.wait_for_and_click()
         self.components.histories.history_cards.wait_for_present()
 
+    def navigate_to_datasets_list(self):
+        """Open the Datasets list (Activity Bar > Datasets): every dataset of the user."""
+        self.home()
+        self.components.datasets.activity.wait_for_and_click()
+        self.components.datasets.table.wait_for_visible()
+
+    def datasets_list_rows(self) -> list[dict[str, str]]:
+        """The Datasets list's rows as ``name``, ``history`` and ``extension`` texts."""
+        datasets = self.components.datasets
+        fields = {"name": "name", "history": "history_id", "extension": "extension"}
+        # first line only: the history link's screen-reader tooltip text follows its name
+        return [
+            {
+                key: datasets.cell(field=field, index=index).wait_for_text().strip().split("\n")[0]
+                for key, field in fields.items()
+            }
+            for index in range(len(datasets.rows.all()))
+        ]
+
+    def datasets_list_search(self, text: str):
+        """Filter the Datasets list by name."""
+        self.components.datasets.search_input.wait_for_and_clear_and_send_keys(text)
+
     def navigate_to_saved_visualizations(self):
         self.home()
         visualizations = self.components.visualization
