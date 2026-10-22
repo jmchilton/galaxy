@@ -257,6 +257,7 @@ history_panel:
       # Title buttons...
       display_button: '${_} .display-btn'
       delete_button: '${_} .delete-btn'
+      undelete_button: '${_} .undelete-btn'
       rerun_button: '${_} .rerun-btn'
       collection_job_details_button: '${_} .collection-job-details-btn'
 
@@ -333,6 +334,7 @@ history_panel:
     _: '#current-history-panel'
     search: '#current-history-panel input.search-query'
     refresh_button: '.history-refresh-button'
+    include_deleted_button: '[data-description="include deleted items button"]'
     name: '.history-title span:last-child'
     name_edit_input:
       selector: 'name input'

@@ -1,5 +1,6 @@
 from galaxy.selenium.navigates_galaxy import edit_details
 from .framework import (
+    managed_history,
     retry_assertion_during_transitions,
     selenium_test,
     SeleniumTestCase,
@@ -48,6 +49,55 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
         history_editor = self.components.history_panel.editor.selector(scope=".history-index")
         history_editor.annotation_input.wait_for_clickable()
         history_editor.tags_input.wait_for_clickable()
+
+    @selenium_test
+    @managed_history
+    def test_delete_undelete_and_purge_items(self):
+        history_id = self.current_history_id()
+        for content in ("1\n", "2\n", "3\n"):
+            self.dataset_populator.new_dataset(history_id, content=content, wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(3)
+
+        def deleted_purged():
+            contents = self.dataset_populator.get_history_contents(
+                history_id, data={"v": "dev", "keys": "hid,deleted,purged"}
+            )
+            return {item["hid"]: (item["deleted"], item["purged"]) for item in contents}
+
+        self.history_panel_item_delete(1)
+        self.history_panel_wait_for_hid_hidden(1)
+        self.history_panel_multi_operations_show()
+        self.history_panel_muli_operation_select_hid(2)
+        self.history_panel_delete_selected()
+        self.history_panel_wait_for_hid_hidden(2)
+        # A bulk delete ends selection mode.
+        self.history_panel_multi_operations_show()
+        self.history_panel_muli_operation_select_hid(3)
+        self.history_panel_delete_selected(purge=True)
+        self.history_panel_wait_for_hid_hidden(3)
+        self._wait_on(
+            lambda: deleted_purged() == {1: (True, False), 2: (True, False), 3: (True, True)},
+            "hids 1 and 2 to be deleted and hid 3 purged",
+        )
+
+        self.history_panel_include_deleted()
+        self.history_panel_item_component(hid=2).undelete_button.wait_for_visible()
+        # a purged item can't be undeleted
+        self.history_panel_wait_for_hid_visible(3)
+        self.history_panel_item_component(hid=3).undelete_button.assert_absent()
+        self.screenshot("history_panel_deleted_items_shown")
+        self.history_panel_item_undelete(1)
+        self._wait_on(
+            lambda: deleted_purged() == {1: (False, False), 2: (True, False), 3: (True, True)},
+            "hid 1 to be undeleted",
+        )
+
+        self.history_panel_include_deleted()
+        self.history_panel_wait_for_hid_visible(1)
+        self.history_panel_item_component(hid=1).delete_button.wait_for_visible()
+        self.history_panel_wait_for_hid_hidden(2)
+        self.history_panel_wait_for_hid_hidden(3)
 
     @selenium_test
     def test_history_panel_annotations_change(self):
