@@ -75,6 +75,7 @@ class UploadMetadata(TypedDict, total=False):
     extension: str
     dbkey: str
     deferred: bool
+    space_to_tab: bool
 
 
 class UploadItem:
@@ -96,6 +97,12 @@ class UploadItem:
     def set_dbkey(self, dbkey: str) -> "UploadItem":
         component = self.context._row_dbkey_select(self.index).wait_for_visible()
         self.context.driver_wrapper.select_set_value(component, dbkey)
+        return self
+
+    def set_space_to_tab(self, space_to_tab: bool) -> "UploadItem":
+        checkbox = self.context._row_space_to_tab_checkbox(self.index).wait_for_present()
+        if space_to_tab != checkbox.is_selected():
+            self.context._row_space_to_tab_label(self.index).wait_for_and_click()
         return self
 
     def set_deferred(self, deferred: bool) -> "UploadItem":
@@ -252,6 +259,8 @@ class _UploadStaging:
             item.set_dbkey(metadata["dbkey"])
         if "deferred" in metadata:
             item.set_deferred(metadata["deferred"])
+        if "space_to_tab" in metadata:
+            item.set_space_to_tab(metadata["space_to_tab"])
 
         return item
 
@@ -274,6 +283,14 @@ class _UploadStaging:
     def _row_dbkey_select(self, index: int):
         row = self._row_number(index)
         return self.components.upload_activity.row_dbkey_select(row=row)
+
+    def _row_space_to_tab_checkbox(self, index: int):
+        row = self._row_number(index)
+        return self.components.upload_activity.row_space_to_tab_checkbox(row=row)
+
+    def _row_space_to_tab_label(self, index: int):
+        row = self._row_number(index)
+        return self.components.upload_activity.row_space_to_tab_label(row=row)
 
     def _select_method(self, method_id: UploadMethodId) -> None:
         if self._current_method_id == method_id:
