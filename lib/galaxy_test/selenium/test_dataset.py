@@ -183,6 +183,23 @@ class TestDataset(UsesUploadActivity, SeleniumTestCase):
 
     @selenium_test
     @managed_history
+    def test_history_dataset_convert_datatype(self):
+        history_id = self.current_history_id()
+        self.dataset_populator.new_dataset(history_id, content="a\tb\n1\t2\n", file_type="tsv", wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_item_edit(hid=1)
+        edit_dataset_attributes = self.components.edit_dataset_attributes
+        self.edit_dataset_convert("csv")
+        edit_dataset_attributes.alert.wait_for_visible()
+        assert edit_dataset_attributes.alert.has_class("alert-success")
+        self.history_panel_wait_for_hid_ok(2)
+        assert self.dataset_populator.get_history_dataset_details(history_id, hid=2)["extension"] == "csv"
+        assert self.dataset_populator.get_history_dataset_content(history_id, hid=2).splitlines() == ["a,b", "1,2"]
+        self.screenshot("dataset_edit_convert_datatype")
+
+    @selenium_test
+    @managed_history
     def test_history_dataset_auto_detect_metadata(self):
         history_id = self.current_history_id()
         self.dataset_populator.new_dataset(history_id, content="chr1\t100\t200\tr1\t0\t+\n", file_type="bed", wait=True)
