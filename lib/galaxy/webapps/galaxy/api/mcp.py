@@ -227,7 +227,7 @@ def get_mcp_app(gx_app):
 
     def get_operations_manager(api_key: str | None, ctx: MCPContext) -> AgentOperationsManager:
         """Look up user from API key and return an AgentOperationsManager."""
-        api_key = _resolve_api_key(api_key, get_http_headers())
+        api_key = _resolve_api_key(api_key, get_http_headers(include_all=True))
         if not api_key:
             raise ValueError(
                 f"API key required. Configure your MCP client to send it in an {API_KEY_HEADER} header, "
