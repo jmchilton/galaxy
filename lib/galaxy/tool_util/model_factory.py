@@ -47,6 +47,7 @@ def parse_tool_custom(tool_source: ToolSource, model_type: type[P]) -> P:
     )
     requirements = _parsed_requirements(tool_requirements, resource_requirements, javascript_requirements)
     containers = [Container(type=c.type, container_id=c.identifier) for c in container_descriptions]
+    license_agreements = tool_source.parse_license_agreements()
     stdio = _parsed_stdio(tool_source)
 
     return model_type(
@@ -56,6 +57,7 @@ def parse_tool_custom(tool_source: ToolSource, model_type: type[P]) -> P:
         description=description,
         requirements=requirements,
         containers=containers,
+        license_agreements=license_agreements,
         stdio=stdio,
         profile=profile,
         inputs=inputs,

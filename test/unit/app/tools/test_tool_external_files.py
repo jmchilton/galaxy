@@ -21,6 +21,14 @@ def test_finds_external_macro_file():
     assert __external_files("""<tool><macros><import>cool_macros.xml</import></macros></tool>""") == ["cool_macros.xml"]
 
 
+def test_finds_license_agreement_terms_file():
+    contents = """<tool><requirements>
+        <license_agreement id="a" version="1" label="A" affirmation="I agree." path="terms/license.txt" />
+        <license_agreement id="b" version="1" label="B" affirmation="I agree."><text>Inline.</text></license_agreement>
+    </requirements></tool>"""
+    assert __external_files(contents) == ["terms/license.txt"]
+
+
 def __external_files(contents):
     base_path = tempfile.mkdtemp()
     try:
