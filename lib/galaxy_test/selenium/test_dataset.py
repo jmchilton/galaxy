@@ -157,6 +157,32 @@ class TestDataset(UsesUploadActivity, SeleniumTestCase):
 
     @selenium_test
     @managed_history
+    def test_history_dataset_change_datatype(self):
+        history_id = self.current_history_id()
+        self.dataset_populator.new_dataset(history_id, content="chr1\t100\t200\tr1\t0\t+\n", file_type="txt", wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_item_edit(hid=1)
+        edit_dataset_attributes = self.components.edit_dataset_attributes
+        # bed must be picked exactly; typing it also lists bedgraph, bigbed, ...
+        self.edit_dataset_datatype("bed")
+        self._wait_on(
+            lambda: edit_dataset_attributes.alert.wait_for_text() == "Changed the type to bed.",
+            "datatype change to be saved",
+        )
+        assert edit_dataset_attributes.alert.has_class("alert-success")
+        self.history_panel_wait_for_hid_ok(1)
+        assert self.dataset_populator.get_history_dataset_details(history_id, hid=1)["extension"] == "bed"
+        self.screenshot("dataset_edit_change_datatype")
+
+        # reopen and check the Datatypes tab shows the new type
+        self.home()
+        self.history_panel_item_edit(hid=1)
+        edit_dataset_attributes.datatypes_tab.wait_for_and_click()
+        assert edit_dataset_attributes.datatype_dropdown.wait_for_text() == "bed"
+
+    @selenium_test
+    @managed_history
     def test_history_dataset_auto_detect_metadata(self):
         history_id = self.current_history_id()
         self.dataset_populator.new_dataset(history_id, content="chr1\t100\t200\tr1\t0\t+\n", file_type="bed", wait=True)

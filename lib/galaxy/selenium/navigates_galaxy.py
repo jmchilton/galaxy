@@ -979,6 +979,13 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             key: [tag.text for tag in edit.permission_roles(permission=field).all()] for key, field in fields.items()
         }
 
+    def edit_dataset_datatype(self, datatype: str):
+        """On the dataset edit view, pick ``datatype`` as New Type on the Datatypes tab and Save."""
+        edit = self.components.edit_dataset_attributes
+        edit.datatypes_tab.wait_for_and_click()
+        self.select_set_value(edit.datatype_dropdown, datatype)
+        edit.datatype_save_button.wait_for_and_click()
+
     def get_history_card(self, card_name):
         card_list = self.components.histories.history_cards.all()
         for card in card_list:
