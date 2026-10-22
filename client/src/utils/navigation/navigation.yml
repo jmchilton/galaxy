@@ -1797,6 +1797,8 @@ upload_activity:
     row_name_input: '[data-test-id="upload-row-${row}-name"]'
     row_extension_select: '[data-test-id="upload-row-${row}-extension"] .single-item-selector'
     row_dbkey_select: '[data-test-id="upload-row-${row}-dbkey"] .single-item-selector'
+    row_space_to_tab_checkbox: 'tr:has([data-test-id="upload-row-${row}-name"]) input[title="Convert spaces to tab characters"]'
+    row_space_to_tab_label: 'tr:has([data-test-id="upload-row-${row}-name"]) input[title="Convert spaces to tab characters"] + label'
     paste_content_row_toggle_button: '[data-test-id="paste-content-toggle-${row}"]'
     paste_content_row_textarea: '[data-test-id="paste-content-textarea-${row}"]'
     row_remove_button: '[data-test-id="upload-row-${row}-remove"]'
