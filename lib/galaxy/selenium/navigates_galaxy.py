@@ -1312,6 +1312,23 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                 self.screenshot(screenshot_partial)
         self.drag_and_drop(source_element, sink_element)
 
+    def workflow_editor_try_connect(self, source: str, sink: str) -> str | None:
+        """Drag ``source`` onto ``sink``; return the editor's reason for refusing the drop, or None if it accepted."""
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        source_element = self.find_element_by_selector(f"#{source_id}")
+        sink_element = self.find_element_by_selector(f"#{sink_id}")
+        with self.drag_over(source_element, sink_element):
+            # Idle terminals also carry can-not-accept; only judge once the drag has registered.
+            dragged_over = self.wait_for_selector(f"#{sink_id}.is-dragging")
+            if "can-accept" in (dragged_over.get_attribute("class") or "").split():
+                return None
+            return self.wait_for_selector_visible(f"#{dragged_over.get_attribute('aria-describedby')}").text
+
+    def workflow_editor_remove_node(self, label: str):
+        node = self.components.workflow_editor.node._(label=label)
+        node.destroy.wait_for_and_click()
+        node.wait_for_absent()
+
     def workflow_editor_source_sink_terminal_ids(self, source, sink):
         editor = self.components.workflow_editor
 
