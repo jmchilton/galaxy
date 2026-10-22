@@ -986,6 +986,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.select_set_value(edit.datatype_dropdown, datatype)
         edit.datatype_save_button.wait_for_and_click()
 
+    def edit_dataset_convert(self, datatype: str):
+        """On the dataset edit view, pick ``datatype`` as Target datatype on the Datatypes tab and Create Dataset."""
+        edit = self.components.edit_dataset_attributes
+        edit.datatypes_tab.wait_for_and_click()
+        edit.conversion_dropdown.wait_for_and_click()
+        edit.conversion_option(datatype=datatype).wait_for_and_click()
+        edit.convert_button.wait_for_and_click()
+
     def get_history_card(self, card_name):
         card_list = self.components.histories.history_cards.all()
         for card in card_list:

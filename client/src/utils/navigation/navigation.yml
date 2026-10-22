@@ -504,6 +504,9 @@ edit_dataset_attributes:
     auto_detect_metadata_button: '#dataset-attributes-default-save + button'
     auto_detect_datatype_button: '#dataset-attributes-autodetect-datatype'
     datatype_save_button: 'button:has(+ #dataset-attributes-autodetect-datatype)'
+    conversion_dropdown: '#target_type-container .multiselect'
+    conversion_option: '#target_type-container .multiselect__option [data-option-value="${datatype}"]'
+    convert_button: '.ui-portlet-section:has(#target_type-container) button'
     alert: '.dataset-attributes-alert'
 
   dbkey_dropdown_results:
