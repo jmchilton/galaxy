@@ -141,9 +141,8 @@ class TestUploads(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivit
         uploader = self.upload_context("local-file")
         uploader.stage_local_file(self.get_filename("1.tabular"))
         uploader.stage_local_file(self.get_filename("2.tabular"))
-        uploader.to_paired_list("Test Pair").start()
-
-        self.history_panel_wait_for_hid_ok(1)
+        # the collection is the only new history item
+        assert uploader.to_paired_list("Test Pair").start_and_wait_for_uploaded_hids() == [1]
         self.assert_item_name(1, "Test Pair")
 
     @selenium_test
