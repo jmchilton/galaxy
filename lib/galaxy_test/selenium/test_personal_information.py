@@ -137,6 +137,31 @@ class TestManageInformation(SeleniumTestCase):
             input_field = self.get_address_input_field(input_field_label)
             assert input_field.get_attribute("value") == address_fields[input_field_label]
 
+    @selenium_test
+    def test_new_datasets_private_switch(self):
+        # A fresh user, so the shared test user's dataset permissions stay as they are.
+        email = self._get_random_email()
+        self.register(email)
+        self.user_preferences_set_new_datasets_private(False)
+        access, access_roles = self._new_history_dataset_access()
+        assert access == []
+        assert access_roles == []
+        self.user_preferences_set_new_datasets_private(True)
+        access, access_roles = self._new_history_dataset_access()
+        assert len(access) == 1
+        # the dataset's Permissions tab names the user's private role
+        assert access_roles == [email]
+
+    def _new_history_dataset_access(self) -> tuple[list, list[str]]:
+        self.home()
+        self.history_panel_create_new()
+        hda = self.dataset_populator.new_dataset(self.current_history_id(), content="a\n", wait=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_item_edit(hid=1)
+        access_roles = self.edit_dataset_permission_roles()["access"]
+        return self.api_get(f"datasets/{hda['id']}")["permissions"]["access"], access_roles
+
     def navigate_to_manage_information(self):
         self.navigate_to_user_preferences()
         self.components.preferences.manage_information.wait_for_and_click()
