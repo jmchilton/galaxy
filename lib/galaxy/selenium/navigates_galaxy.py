@@ -2351,12 +2351,15 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.swap_to_tool_panel("ontology:edam_operations")
 
     def tool_open(self, tool_id, outer=False):
+        """Search the tool panel for ``tool_id`` and click its link to open the tool form."""
         self.open_toolbox()
 
         self.components.tools.clear_search.wait_for_and_click()
         self.sleep_for(self.wait_types.UX_RENDER)
 
-        self.components.tools.search.wait_for_and_send_keys(f"id:{tool_id}")
+        # Older panel searches miss `.` and `+`, so search a Tool Shed GUID by its tool id part.
+        search_id = tool_id.split("/")[-2] if "/" in tool_id else tool_id
+        self.components.tools.search.wait_for_and_send_keys(f"id:{search_id}")
 
         if outer:
             tool_link = self.components.tool_panel.outer_tool_link(tool_id=tool_id)
