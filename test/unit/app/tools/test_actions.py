@@ -72,6 +72,17 @@ MULTIPLE_DATA_TOOL = """<tool id="test_tool" name="Test Tool" version="1.0" prof
 </tool>
 """
 
+REQUIRE_LOGIN_TOOL = """<tool id="test_tool" name="Test Tool" version="1.0" require_login="true">
+    <command>echo "$param1" &lt; $out1</command>
+    <inputs>
+        <param type="text" name="param1" value="" />
+    </inputs>
+    <outputs>
+        <data name="out1" format="data" />
+    </outputs>
+</tool>
+"""
+
 
 def test_load_tool_action_class_validates_configured_class():
     action_class = load_tool_action_class("galaxy.tools.actions", "DefaultToolAction")
@@ -321,6 +332,19 @@ class TestDefaultToolAction(TestCase, tools_support.UsesTools):
         except UserActivationRequiredException:
             return
         raise AssertionError("Tool execution succeeded for inactive user!")
+
+    def test_anonymous_user_require_login_tool_job_create_failure(self):
+        with pytest.raises(AssertionError, match="is not allowed to access this tool"):
+            self._simple_execute(contents=REQUIRE_LOGIN_TOOL)
+
+    def test_logged_in_user_require_login_tool_job_created(self):
+        user = model.User(email="precondition@example.org", password="password")
+        self.app.model.context.add(user)
+        self.app.model.context.commit()
+        self.trans.user = user
+        job, output = self._simple_execute(contents=REQUIRE_LOGIN_TOOL)
+        assert job.user == user
+        assert "out1" in output
 
     def __add_dataset(self, state="ok", extension="data"):
         hda = model.HistoryDatasetAssociation(extension=extension)
