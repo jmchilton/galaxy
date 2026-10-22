@@ -1008,6 +1008,7 @@ class UsesUploadActivity(NavigatesGalaxyMixin):
         | ExploreZipContext
         | RuleImportContext
     ):
+        """A helper for staging and starting uploads with the Upload activity's ``method_id`` method."""
         if method_id == "rule":
             return RuleImportContext(self)
 

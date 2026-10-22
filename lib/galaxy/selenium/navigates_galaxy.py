@@ -529,6 +529,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.collection_sheet._.wait_for_present()
 
     def make_history_private(self):
+        """History options > Share & Manage Access > Make Private tab > Make History Private."""
         self.click_history_option_sharing()
         sharing = self.components.histories.sharing
         sharing.tab_make_private.wait_for_and_click()
@@ -630,9 +631,11 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return self.history_panel_name_element().text
 
     def history_panel_collection_rename(self, hid: int, new_name: str, assert_old_name: str | None = None):
+        """Rename the open collection to ``new_name`` from its panel view."""
         self.history_panel_rename(new_name)
 
     def history_panel_expand_collection(self, collection_hid: int) -> SmartComponent:
+        """Open collection ``collection_hid`` in the history panel; return its collection view."""
         self.history_panel_click_item_title(collection_hid)
         collection_view = self.components.history_panel.collection_view
         collection_view._.wait_for_present()
@@ -647,6 +650,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.histories.sharing.make_publishable.wait_for_and_click()
 
     def history_contents(self, history_id=None, view="summary", datasets_only=True):
+        """API contents of the current or given history; the history itself without ``datasets_only``."""
         if history_id is None:
             history_id = self.current_history_id()
         histories = self.api_get("histories?keys=id")
@@ -753,6 +757,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(WAIT_TYPES.UX_RENDER)
 
     def history_panel_wait_for_hid_ok(self, hid, allowed_force_refreshes=0):
+        """Wait until history item ``hid`` is in the ok state."""
         return self.history_panel_wait_for_hid_state(hid, "ok", allowed_force_refreshes=allowed_force_refreshes)
 
     def history_panel_wait_for_hid_deferred(self, hid, allowed_force_refreshes=0):
@@ -953,7 +958,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.move_to_and_click(action_element)
 
     def edit_dataset_dbkey(self, dbkey_text):
-        # precondition: need to be on the dataset edit component
+        """On the dataset edit view, pick the Database/Build option labelled ``dbkey_text`` and Save."""
         self.components.edit_dataset_attributes.dbkey_dropdown.wait_for_and_click()
         # choose database option from 'Database/Build' dropdown, that equals to dbkey_text
         self.components.edit_dataset_attributes.dbkey_dropdown_results.dbkey_dropdown_option(
@@ -1115,6 +1120,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return "".join(random.SystemRandom().choice(string.ascii_letters + string.digits) for _ in range(len))
 
     def submit_login(self, email, password=None, assert_valid=True, retries=0):
+        """Log in as ``email`` from the masthead login form."""
         self.components.masthead.login_masthead_button.wait_for_and_click()
         self.sleep_for(WAIT_TYPES.UX_RENDER)
         self.fill_login_and_submit(email, password=password)
@@ -1389,6 +1395,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         text_area_elem.send_keys(json)
 
     def workflow_editor_add_input(self, item_name="data_input"):
+        """Add an input step of kind ``item_name`` from the editor's Inputs panel."""
         editor = self.components.workflow_editor
 
         # Make sure we're on the workflow editor and not clicking the main tool panel.
@@ -1453,6 +1460,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             return reason
 
     def workflow_editor_remove_node(self, node_ref: EditorNodeReference):
+        """Delete the editor step ``node_ref`` and its connections."""
         node = self.workflow_editor_node(node_ref)
         node.destroy.wait_for_and_click()
         node.wait_for_absent()
@@ -1488,6 +1496,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         )
 
     def workflow_editor_destroy_connection(self, sink: EditorTerminalReference):
+        """Remove the connection into input terminal ``sink`` with its delete button."""
         sink_node, sink_input_name = self.workflow_editor_node_and_terminal(sink)
         sink_input = sink_node.input_terminal(name=sink_input_name).wait_for_visible()
         self.hover_over(sink_input)
@@ -1563,6 +1572,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return editor.license_current_value.wait_for_text()
 
     def workflow_editor_add_tool_step(self, tool_id: str):
+        """Add a step for ``tool_id`` from the editor's tool panel."""
         self.tool_open(tool_id)
 
     def workflow_editor_set_tool_version(self, version: str, node: EditorNodeReference | None = None) -> None:
@@ -1582,7 +1592,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         editor.annotation_input.wait_for_and_clear_and_send_keys(annotation)
 
     def workflow_editor_ensure_tool_form_open(self, node: EditorNodeReference | None = None):
-        # if node is_empty just assume current tool step is open
+        """Open step ``node`` in the editor's inspector, or check one is open."""
         editor = self.components.workflow_editor
         if node is not None:
             self.workflow_editor_node(node).wait_for_and_click()
@@ -1615,6 +1625,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return self.components.workflow_editor.tool_bar.run.wait_for_and_click()
 
     def workflow_editor_click_save(self):
+        """Click the editor's Save button."""
         self.wait_for_and_click_selector("#workflow-save-button")
         self.sleep_for(self.wait_types.DATABASE_OPERATION)
 
@@ -1640,6 +1651,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def workflow_editor_add_subworkflow(self, name: str):
+        """Insert workflow ``name`` as a subworkflow step from the editor's Workflows panel."""
         self.workflow_editor_search_for_workflow(name)
 
         self.components.workflows.workflow_insert_sub_workflow.wait_for_and_click()
@@ -1699,6 +1711,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.shared_histories.shared_tab.wait_for_and_click()
 
     def navigate_to_user_preferences(self):
+        """Open User > Preferences from the masthead."""
         self.home()
         self.components.masthead.user.wait_for_and_click()
         self.components.masthead.preferences.wait_for_and_click()
@@ -1884,6 +1897,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             return element.find_elements(By.CSS_SELECTOR, "tr:not(.g-table-empty-row)")
 
     def libraries_index_create(self, name):
+        """Create library ``name`` from the open Libraries list (New Library > Save); admins only."""
         self.components.libraries.create_new_library_btn.wait_for_and_click()
         name_input_field = self.components.libraries.new_library_name_input.wait_for_visible()
         input_field = self.components.libraries.new_library_description_input.wait_for_visible()
@@ -1965,6 +1979,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return tbody_element.find_elements(By.CSS_SELECTOR, "tr:not(.g-table-empty-row)")
 
     def populate_library_folder_from_import_dir(self, library_name, filenames):
+        """Add ``filenames`` from the server's library_import_dir to library ``library_name``; admins only."""
         self.libraries_open_with_name(library_name)
         self.libraries_dataset_import(self.navigation.libraries.folder.labels.from_import_dir)
         self.select_dataset_from_lib_import_modal(filenames)
@@ -2609,6 +2624,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.tool_form.generate_tour.wait_for_and_click()
 
     def tool_form_execute(self):
+        """Click Run on the open tool form."""
         self.components.tool_form.execute.wait_for_and_click()
 
     def tool_form_select_data(self, parameter: str, value: str, multiple: bool = False):
@@ -2633,6 +2649,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.workflows.activity.wait_for_and_click()
 
     def click_button_new_workflow(self):
+        """Click Create on the workflow list to open a new workflow in the editor."""
         self.wait_for_and_click(self.navigation.workflows.selectors.new_button)
 
     # --- Page Editor helpers ---
@@ -2750,6 +2767,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.use_bootstrap_dropdown(option="export to file", menu="history options")
 
     def click_history_option_sharing(self):
+        """Open History options > Share & Manage Access."""
         self.use_bootstrap_dropdown(option="share and manage access", menu="history options")
 
     def click_history_option_tool_references(self):
@@ -3306,6 +3324,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return details_component
 
     def hda_click_primary_action_button(self, hid: int, button_key: str):
+        """Expand dataset ``hid`` and click its ``{button_key}_button`` action, e.g. ``rerun``."""
         self.history_panel_ensure_showing_item_details(hid)
         item_component = self.history_panel_item_component(hid=hid)
         button_component = item_component[f"{button_key}_button"]
@@ -3342,6 +3361,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return item_component.details.is_displayed
 
     def history_panel_build_list_auto(self):
+        """From the selected content menu, open the list builder for the selected items."""
         return self.use_bootstrap_dropdown(option="auto build list", menu="selected content menu")
 
     def history_panel_build_list_advanced(self):
