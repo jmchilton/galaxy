@@ -483,6 +483,7 @@ edit_dataset_attributes:
     save_button: '#dataset-attributes-default-save'
     auto_detect_metadata_button: '#dataset-attributes-default-save + button'
     auto_detect_datatype_button: '#dataset-attributes-autodetect-datatype'
+    datatype_save_button: 'button:has(+ #dataset-attributes-autodetect-datatype)'
     alert: '.dataset-attributes-alert'
 
   dbkey_dropdown_results:
