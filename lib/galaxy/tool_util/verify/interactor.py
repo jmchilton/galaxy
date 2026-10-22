@@ -300,6 +300,9 @@ def split_declared_job_outputs(job_outputs: list[dict[str, Any]]) -> tuple[Outpu
     outputs = OutputsDict()
     output_collections: dict[str, Any] = {}
     for job_output in job_outputs:
+        # Discovered datasets appear once the job finishes; legacy submit responses never list them.
+        if job_output["name"].startswith("__new_primary_file_"):
+            continue
         if "dataset" in job_output:
             outputs[job_output["name"]] = job_output["dataset"]
         else:
