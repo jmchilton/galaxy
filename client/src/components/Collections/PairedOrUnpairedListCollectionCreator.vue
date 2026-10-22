@@ -33,6 +33,9 @@ import {
 } from "./pairing";
 
 import AutoPairing from "./common/AutoPairing.vue";
+import CellDiscardComponent from "./common/CellDiscardComponent.vue";
+import CellStatusComponent from "./common/CellStatusComponent.vue";
+import PairedDatasetCellComponent from "./common/PairedDatasetCellComponent.vue";
 import PairedOrUnpairedListCreatorHelp from "./PairedOrUnpairedListCreatorHelp.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
@@ -139,7 +142,7 @@ const columnDefs = computed(() => {
             headerName: "Dataset(s)",
             field: "datasets",
             editable: false,
-            cellRenderer: "PairedDatasetCellComponent",
+            cellRenderer: PairedDatasetCellComponent,
             rowDrag: true,
         };
     } else {
@@ -183,14 +186,14 @@ const columnDefs = computed(() => {
         headerName: "Discard",
         field: "discard",
         editable: false,
-        cellRenderer: "CellDiscardComponent",
+        cellRenderer: CellDiscardComponent,
         width: 65,
     };
     const status: ColDef = {
         headerName: "Status",
         field: "status",
         editable: false,
-        cellRenderer: "CellStatusComponent",
+        cellRenderer: CellStatusComponent,
         width: 65,
     };
     return [datasets, ...identifierColumns, discard, status];
@@ -757,7 +760,7 @@ function onPair(firstId: string, secondId: string, pairBy: PairBy) {
 }
 
 function _refresh() {
-    gridApi.value?.setRowData(rowData.value);
+    gridApi.value?.setGridOption("rowData", rowData.value);
 }
 
 function onUnpair(pair: GenericPair<HistoryItemSummary>) {
@@ -881,17 +884,6 @@ const context = {
     onUnpairedClick,
     onRemove,
     onSwap,
-};
-</script>
-
-<script lang="ts">
-// eslint-disable-next-line import-x/first
-import { components as VueComponents } from "./PairedOrUnpairedComponents";
-
-// defineExpose should work for exposing PairedDatasetCellComponent to AG Grid
-// but doesn't seem to and it has been reported as an issue with Vue 2.7.
-export default {
-    components: VueComponents,
 };
 </script>
 
