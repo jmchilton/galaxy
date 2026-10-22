@@ -160,6 +160,11 @@
         "message": "Action requires user authentication."
     },
     {
+        "name": "TOOL_EXECUTION_PRECONDITION_UNMET",
+        "code": 403009,
+        "message": "Conditions required to run this tool are not met."
+    },
+    {
         "name": "USER_OBJECT_NOT_FOUND",
         "code": 404001,
         "message": "No such object found."

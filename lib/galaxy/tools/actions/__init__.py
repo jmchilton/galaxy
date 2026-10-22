@@ -79,6 +79,7 @@ from galaxy.tools.parameters.wrapped import (
     LegacyUnprefixedDict,
     WrappedParameters,
 )
+from galaxy.tools.preconditions import check_preconditions
 from galaxy.util import ExecutionTimer
 from galaxy.util.template import fill_template
 
@@ -439,8 +440,8 @@ class DefaultToolAction(ToolAction):
         tool.visit_inputs(param_values, visitor)
         return input_dataset_collections, input_collection_parameters
 
-    def _check_access(self, tool, trans: ProvidesUserContext):
-        assert tool.allow_user_access(trans.user), f"User ({trans.user}) is not allowed to access this tool."
+    def _check_preconditions(self, tool, trans: ProvidesUserContext):
+        check_preconditions(trans, tool, tool.execution_preconditions)
 
     def _collect_inputs(
         self, tool, trans: ProvidesHistoryContext, incoming, history, current_user_roles, collection_info
@@ -516,7 +517,7 @@ class DefaultToolAction(ToolAction):
         """
         trans.check_user_activation()
         incoming = incoming or {}
-        self._check_access(tool, trans)
+        self._check_preconditions(tool, trans)
         app = trans.app
         if execution_cache is None:
             execution_cache = ToolExecutionCache(trans)

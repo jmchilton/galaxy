@@ -27,6 +27,7 @@ from galaxy.tools.execution_helpers import (
     on_text_for_dataset_and_collections,
     on_text_for_numeric_ids,
 )
+from galaxy.tools.preconditions import ToolExecutionPreconditionUnmet
 from galaxy.util import XML
 from galaxy.util.unittest import TestCase
 
@@ -334,8 +335,12 @@ class TestDefaultToolAction(TestCase, tools_support.UsesTools):
         raise AssertionError("Tool execution succeeded for inactive user!")
 
     def test_anonymous_user_require_login_tool_job_create_failure(self):
-        with pytest.raises(AssertionError, match="is not allowed to access this tool"):
+        with pytest.raises(ToolExecutionPreconditionUnmet) as exc_info:
             self._simple_execute(contents=REQUIRE_LOGIN_TOOL)
+        assert [unmet.kind for unmet in exc_info.value.unmet] == ["access"]
+        assert exc_info.value.unmet[0].remedy_route == "/login/start"
+        assert exc_info.value.err_msg == "Tool 'test_tool' requires login."
+        assert exc_info.value.status_code == 403
 
     def test_logged_in_user_require_login_tool_job_created(self):
         user = model.User(email="precondition@example.org", password="password")
