@@ -12,13 +12,14 @@ from .framework import (
 from .upload_activity_helpers import UsesUploadActivity
 
 BUTTON_TOOLTIPS = {
-    "display": "View data",
+    "display": "View",
     "edit": "Edit attributes",
     "delete": "Delete",
-    "download": "Download",
-    "info": "View details",
-    "rerun": "Run this job again",
+    "download": "Download (",
+    "info": "Dataset Details",
 }
+# Download tooltip ends with the file size.
+PARTIAL_TOOLTIP_BUTTONS = {"download"}
 EXPECTED_TOOLHELP_TITLE_TEXT = "Tool help for Data Fetch"
 TEST_DBKEY_TEXT = "Honeybee (Apis mellifera): apiMel3 (apiMel3)"
 FIRST_HID = 1
@@ -117,6 +118,8 @@ class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions, UsesU
     def _assert_action_buttons(self, hid, expected_buttons=None):
         if expected_buttons is None:
             expected_buttons = ["info", "download"]
+        # action buttons are clipped until the body finishes expanding
+        self.history_panel_item_component(hid=hid).details_expanded.wait_for_present()
         self._assert_buttons(hid, expected_buttons)
 
     def _assert_downloadable(self, hid, is_downloadable=True):
@@ -131,9 +134,10 @@ class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions, UsesU
         self.sleep_for(self.wait_types.UX_RENDER)
 
     def _assert_buttons(self, hid, expected_buttons):
-        # TODO: Useful but unmigrated test from legacy history
-        # item = self.history_panel_item_component(hid=hid)
-        # for expected_button in expected_buttons:
-        #    button = item[f"{expected_button}_button"]
-        #    self.assert_tooltip_text(button.wait_for_visible(), BUTTON_TOOLTIPS[expected_button])'''
-        return
+        item = self.history_panel_item_component(hid=hid)
+        for expected_button in expected_buttons:
+            button = item[f"{expected_button}_button"].wait_for_visible()
+            if expected_button in PARTIAL_TOOLTIP_BUTTONS:
+                self.assert_tooltip_text_contains(button, BUTTON_TOOLTIPS[expected_button])
+            else:
+                self.assert_tooltip_text(button, BUTTON_TOOLTIPS[expected_button])
