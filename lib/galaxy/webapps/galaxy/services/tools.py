@@ -68,6 +68,10 @@ from galaxy.tool_util_models.parameters import (
 from galaxy.tools import Tool
 from galaxy.tools._types import InputFormatT
 from galaxy.tools.cached_toolbox import CachedToolBox
+from galaxy.tools.preconditions import (
+    check_preconditions,
+    TOOL_ACCESS_PRECONDITION,
+)
 from galaxy.tools.search import ToolBoxSearch
 from galaxy.util.path import safe_contains
 from galaxy.webapps.galaxy.services._fetch_util import validate_and_normalize_targets
@@ -112,8 +116,7 @@ def validate_tool_for_running(trans: ProvidesHistoryContext, tool_ref: ToolRunRe
         raise exceptions.RequestParameterMissingException("Must specify a valid tool_id to use this endpoint.")
 
     tool = get_tool_from_trans(trans, tool_ref)
-    if not tool.allow_user_access(trans.user):
-        raise exceptions.ItemAccessibilityException("Tool not accessible.")
+    check_preconditions(trans, tool, [TOOL_ACCESS_PRECONDITION])
     return tool
 
 

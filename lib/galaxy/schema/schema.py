@@ -4527,6 +4527,27 @@ CustomArchivedHistoryView.model_rebuild()
 ToolRequestIdField = Field(title="ID", description="Encoded ID of the role")
 
 
+class UnmetPreconditionBase(Model):
+    """A condition that must hold before a tool may create a job, and what the user can do about it."""
+
+    message: str
+    remedy_route: str | None = None
+
+
+class UnmetAccessPreconditionDetails(Model):
+    tool_id: str
+
+
+class UnmetAccessPrecondition(UnmetPreconditionBase):
+    """The user may not access the tool, e.g. it requires login."""
+
+    kind: Literal["access"]
+    details: UnmetAccessPreconditionDetails
+
+
+UnmetPrecondition: TypeAlias = UnmetAccessPrecondition
+
+
 class ToolRequestStateMessage(Model):
     err_msg: str
     err_data: dict[str, Any] | None = None
