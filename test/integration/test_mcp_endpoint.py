@@ -133,3 +133,8 @@ class TestMCPApiKey(IntegrationTestCase):
     def test_invalid_header_key(self) -> None:
         result = self._call_tool("get_user", {}, headers={"x-api-key": "not-a-real-key"})
         assert "API key is not valid" in self._error_text(result)
+
+    def test_invalid_header_not_overridden_by_argument(self) -> None:
+        _, argument_key = self._setup_user_get_key("mcp-argument-not-fallback@bx.psu.edu")
+        result = self._call_tool("get_user", {"api_key": argument_key}, headers={"x-api-key": "not-a-real-key"})
+        assert "API key is not valid" in self._error_text(result)
