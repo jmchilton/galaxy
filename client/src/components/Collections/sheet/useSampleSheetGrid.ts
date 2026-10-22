@@ -4,7 +4,8 @@ import { ref, watch } from "vue";
 import type { DCESummary, SampleSheetColumnDefinition } from "@/api";
 import type { SampleSheetColumnValueT } from "@/api/datasetCollections";
 
-export const MODEL_OBJECT = Symbol("sample sheet model object");
+// String key: ag-grid-vue3 copies rows by own string keys. `@` can't appear in a column name.
+export const MODEL_OBJECT = "@model_object";
 
 export type UriRow = Record<string, unknown> & {
     url: string;
