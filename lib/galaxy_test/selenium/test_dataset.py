@@ -141,8 +141,7 @@ class TestDataset(UsesUploadActivity, SeleniumTestCase):
         datatypes_tab.wait_for_and_click()
         assert datatype_component.wait_for_text() == provided_datatype
 
-        # click auto detect datatype button
-        edit_dataset_attributes.auto_detect_datatype_button.wait_for_and_click()
+        self.edit_dataset_auto_detect_datatype()
         edit_dataset_attributes.alert.wait_for_visible()
 
         assert edit_dataset_attributes.alert.has_class("alert-success")
