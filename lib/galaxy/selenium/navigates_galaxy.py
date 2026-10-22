@@ -2032,6 +2032,44 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.libraries_dataset_import(self.navigation.libraries.folder.labels.from_import_dir)
         self.select_dataset_from_lib_import_modal(filenames)
 
+    def libraries_folder_wait_for_datasets(self, names) -> list[str]:
+        """Wait until the open library folder lists ``names``; returns every row's name in display order."""
+        row_names: list[str] = []
+
+        def rows_loaded():
+            rows = self.libraries_table_elements()
+            row_names[:] = [row.find_element(By.CSS_SELECTOR, "td a").text.strip() for row in rows]
+            return set(names) <= set(row_names)
+
+        self._wait_on(rows_loaded, f"datasets {sorted(names)} in the library folder")
+        return row_names
+
+    def libraries_folder_select_datasets(self, names):
+        """Tick the open library folder's datasets named ``names``."""
+        folder = self.components.libraries.folder
+        row_names = self.libraries_folder_wait_for_datasets(names)
+        for index, row_name in enumerate(row_names):
+            if row_name in names:
+                folder.select_dataset(row_index=index).wait_for_and_click()
+                folder.selected_dataset_row(row_index=index).wait_for_present()
+
+    def libraries_folder_add_to_history(self, names, history_name=None):
+        """Add the open folder's datasets ``names`` to a history: Add to History > as Datasets > Import.
+
+        ``history_name`` picks the history; without it the dialog's default (the current one) is used.
+        """
+        folder = self.components.libraries.folder
+        self.libraries_folder_select_datasets(names)
+        folder.add_to_history.wait_for_and_click()
+        folder.add_to_history_datasets.wait_for_and_click()
+        if history_name:
+            self.select_by_visible_text(
+                self.navigation.libraries.folder.selectors.import_to_history_select, history_name
+            )
+        folder.import_datasets_ok_button.wait_for_and_click()
+        # the dialog closes once every dataset is added; its progress bar starts at zero width, so reads as hidden
+        folder.import_datasets_ok_button.wait_for_absent_or_hidden(wait_type=WAIT_TYPES.DATABASE_OPERATION)
+
     def navigate_to_new_library(self):
         self.create_new_library()
         self.libraries_open_with_name(self.name)
