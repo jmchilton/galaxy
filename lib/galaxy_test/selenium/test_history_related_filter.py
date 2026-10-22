@@ -27,9 +27,16 @@ class TestHistoryRelatedFilter(SeleniumTestCase, UsesUploadActivity):
 
         # test related filter on current item using button: only current and related items show
         current_hda = self.history_panel_click_item_title(CURRENT_HID, wait=True)
-        current_hda.highlight_button.wait_for_and_click()
+        self.history_panel_item_show_related(CURRENT_HID)
         unrelated_hda = self.history_panel_item_component(hid=UNRELATED_HID)
         unrelated_hda.assert_absent_or_hidden()
+
+        # clicking the button again clears the filter
+        self.history_panel_item_show_related(CURRENT_HID)
+        unrelated_hda.wait_for_visible()
+        assert self.history_panel_filter_text() == ""
+        self.history_panel_item_show_related(CURRENT_HID)
+        unrelated_hda.wait_for_absent_or_hidden()
 
         # test related filter on unrelated item using filterText: only unrelated item shows
         filter_element = self.history_element(
