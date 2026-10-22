@@ -331,6 +331,7 @@ history_panel:
       # Action buttons...
       download_button: '${_} .download-btn'
       info_button: '${_} .info-btn'
+      copy_link_button: '${_} [aria-label="Copy Link"]'
       # The bug icon on an error dataset
       error_button: '${_} .dataset-actions a[href*="/error"]'
       highlight_button: '${_} .highlight-btn'
