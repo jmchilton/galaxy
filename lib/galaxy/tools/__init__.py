@@ -88,6 +88,11 @@ from galaxy.tool_util.deps import (
 from galaxy.tool_util.deps.requirements import CredentialsRequirement
 from galaxy.tool_util.fetcher import ToolLocationFetcher
 from galaxy.tool_util.identifiers import uri_safe_tool_id
+from galaxy.tool_util.license_agreements import (
+    check_license_agreement_profile,
+    resolve_license_agreement,
+    ResolvedLicenseAgreement,
+)
 from galaxy.tool_util.loader import template_macro_params
 from galaxy.tool_util.loader_directory import looks_like_a_tool
 from galaxy.tool_util.ontologies.ontology_data import expand_ontology_data
@@ -1307,6 +1312,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.shell_command: str | None = None
         self.javascript_requirements: list[JavascriptRequirement] | None = None
         self.credentials: list[CredentialsRequirement] | None = None
+        self.license_agreements: list[ResolvedLicenseAgreement] = []
         self._tests: str | None = None
         self._tests_parsed: bool = False
         # tests are parsed later, in the same trust context as the tool itself
@@ -1674,6 +1680,8 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.javascript_requirements = javasscript_requirements
         self.credentials = credentials
 
+        self.parse_license_agreements(tool_source)
+
         # Add credential inject_as_env names to docker_env_pass_through
         # so they are passed into containerized environments (Docker -e, Singularity SINGULARITYENV_)
         if self.credentials:
@@ -1773,6 +1781,14 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         return parse_tool_provided_metadata(
             meta_file, provided_metadata_style=self.provided_metadata_style, job_wrapper=job_wrapper
         )
+
+    def parse_license_agreements(self, tool_source: ToolSource) -> None:
+        license_agreements = tool_source.parse_license_agreements()
+        check_license_agreement_profile(tool_source.parse_profile(), license_agreements)
+        # Remote tool evaluation rebuilds the tool where its directory (and so a license
+        # file) may be absent; agreements only matter before a job is created.
+        if self.app.name != "tool_app":
+            self.license_agreements = [resolve_license_agreement(a, self.tool_dir) for a in license_agreements]
 
     def parse_inputs(self, tool_source: ToolSource):
         """

@@ -477,6 +477,10 @@ class AbstractTool:
             external_path = code_elem.get("file")
             if external_path:
                 external_paths.append(external_path)
+        for agreement_elem in root.findall("requirements/license_agreement"):
+            terms_path = agreement_elem.get("path")
+            if terms_path:
+                external_paths.append(terms_path)
         external_paths.extend(imported_macro_paths(root))
         # May also need to load external citation files as well at some point.
         return external_paths
