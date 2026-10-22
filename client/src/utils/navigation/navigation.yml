@@ -650,6 +650,15 @@ collection_builders:
         link_button: '${_} .paired-action-icon.fa-link'
         unlink_button: '${_} .paired-action-icon.fa-unlink'
 
+datasets:
+  selectors:
+    activity: '#activity-datasets'
+    table: '#g-table-dataset-table'
+    search_input: '.dataset-list-header input[placeholder="Search Datasets"]'
+    rows: '#g-table-dataset-table tbody tr'
+    cell: '#g-table-cell-${field}-${index}-dataset-table'
+    no_match: '#no-dataset-found'
+
 histories:
   selectors:
     activity: '#activity-histories'
