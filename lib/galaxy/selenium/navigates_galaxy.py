@@ -952,7 +952,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.move_to_and_click(action_element)
 
     def edit_dataset_dbkey(self, dbkey_text):
-        # precondition: need to be on the dataset edit component
+        """On the dataset edit view, pick the Database/Build option labelled ``dbkey_text`` and Save."""
         self.components.edit_dataset_attributes.dbkey_dropdown.wait_for_and_click()
         # choose database option from 'Database/Build' dropdown, that equals to dbkey_text
         self.components.edit_dataset_attributes.dbkey_dropdown_results.dbkey_dropdown_option(
