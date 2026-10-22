@@ -15,8 +15,8 @@ const AgGridVue = Object.assign(
         if (process.env.NODE_ENV === "development") {
             enableDevValidations();
         }
-        // Keep the CSS file themes imported above (and the `ag-theme-alpine` wrapper class), not the Theming API,
-        // and 30's unanimated rows (removed rows linger in the DOM while animating out).
+        // Keep the CSS themes imported above (`ag-theme-alpine` wrapper class), not the Theming API.
+        // No row animation: a removed row lingers at its old index while animating out.
         provideGlobalGridOptions({ theme: "legacy", animateRows: false });
         return { ...AgGridVue, ...VUE3_MODE } as unknown as typeof AgGridVue;
     }),
