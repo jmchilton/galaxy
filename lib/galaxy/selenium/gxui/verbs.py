@@ -1404,14 +1404,8 @@ def _input_kinds(ctx) -> list[str]:
 def workflow_add_tool(ctx, tool_id: str, label: str = ""):
     """Add a tool step from the editor's tool panel by tool id (`tool-search` prints ids)."""
     before = _step_numbers(ctx)
-    ctx.open_toolbox()
-    ctx.components.tools.clear_search.wait_for_and_click()
-    # Older Galaxy panel search misses `.` and `+` in an id; a Tool Shed GUID's tool id has neither.
-    ctx.components.tools.search.wait_for_and_send_keys(f"id:{tool_id.split('/')[-2] if '/' in tool_id else tool_id}")
-    ctx.sleep_for(ctx.wait_types.UX_RENDER)  # results re-render as the search settles
-    link = ctx.components.tool_panel.tool_link(tool_id=tool_id)
     try:
-        link.wait_for_and_click()
+        ctx.workflow_editor_add_tool_step(tool_id)
     except Exception:
         raise UsageError(
             f"no tool {tool_id!r} in the editor's tool panel; `gxui tool-search TEXT` prints ids"
@@ -1540,31 +1534,29 @@ def _resolve_step(ctx, step: str) -> str:
 def _select_step(ctx, step: str) -> None:
     node = _node(ctx, step)
     if "is-active" not in (node.get_attribute("class") or ""):
-        title = node.locator(".node-title")
-        _bring_into_view(ctx, title)
+        _bring_into_view(ctx, node.locator(".node-title"))
         try:
-            title.click(timeout=5000)
+            ctx.workflow_editor_ensure_tool_form_open(int(step))
         except Exception:
             _untangle(ctx, step)
-            title.click(timeout=5000)
+            ctx.workflow_editor_ensure_tool_form_open(int(step))
     ctx._wait_on(
         lambda driver=None: "is-active" in (node.get_attribute("class") or "") or None,
         f"step {step} to open in the inspector",
     )
-    ctx.components.workflow_editor.node_inspector.wait_for_visible()
     ctx.sleep_for(ctx.wait_types.UX_RENDER)
 
 
 def _set_step_label(ctx, step: str, label: str) -> None:
     _select_step(ctx, step)
-    ctx.components.workflow_editor.label_input.wait_for_and_clear_and_send_keys(label)
+    ctx.workflow_editor_set_node_label(label)
     ctx._wait_on(
         lambda driver=None: _node(ctx, step).get_attribute("node-label") == label or None,
         f"step {step} to show label {label!r}",
     )
 
 
-@verb("workflow-step", "workflow")
+@verb("workflow-step", "workflow", "workflow_editor_ensure_tool_form_open")
 def workflow_step(ctx, step: str, label: str = "", annotation: str = ""):
     """Open STEP in the inspector, optionally setting its label and annotation.
 
@@ -1576,7 +1568,7 @@ def workflow_step(ctx, step: str, label: str = "", annotation: str = ""):
     else:
         _select_step(ctx, number)
     if annotation:
-        ctx.components.workflow_editor.annotation_input.wait_for_and_clear_and_send_keys(annotation)
+        ctx.workflow_editor_set_node_annotation(annotation)
     return f"step {number} {_node(ctx, number).get_attribute('node-label')!r} open in the inspector"
 
 
@@ -1591,14 +1583,6 @@ def _terminal(ctx, spec: str, kind: str) -> tuple[str, str]:
     return number, name
 
 
-def _unique_label(ctx, step: str) -> str | None:
-    """STEP's node label if no other step shares it, so NavigatesGalaxy's label-based editor helpers find it."""
-    label = _node(ctx, step).get_attribute("node-label")
-    if label and "'" not in label and ctx.page.locator(f".workflow-node[node-label={json.dumps(label)}]").count() == 1:
-        return label
-    return None
-
-
 @verb("workflow-connect", "workflow", "workflow_editor_try_connect")
 def workflow_connect(ctx, source: str, sink: str):
     """Drag a connection from SOURCE (STEP#OUTPUT) to SINK (STEP#INPUT); STEP is a number or label.
@@ -1607,21 +1591,15 @@ def workflow_connect(ctx, source: str, sink: str):
     """
     source_step, output = _terminal(ctx, source, "output")
     sink_step, input_name = _terminal(ctx, sink, "input")
-    source_terminal = _by_id(ctx, f"node-{source_step}-output-{output}")
-    sink_terminal = _by_id(ctx, f"node-{sink_step}-input-{input_name}")
-    _bring_into_view(ctx, source_terminal, sink_terminal)
-    source_label, sink_label = _unique_label(ctx, source_step), _unique_label(ctx, sink_step)
-
-    def attempt() -> str | None:
-        if source_label and sink_label:
-            return ctx.workflow_editor_try_connect(f"{source_label}#{output}", f"{sink_label}#{input_name}")
-        return _drag_connection(ctx, source_terminal, sink_terminal)
-
-    reason = attempt()
+    _bring_into_view(
+        ctx, _by_id(ctx, f"node-{source_step}-output-{output}"), _by_id(ctx, f"node-{sink_step}-input-{input_name}")
+    )
+    terminals = (int(source_step), output), (int(sink_step), input_name)
+    reason = ctx.workflow_editor_try_connect(*terminals)
     if reason is not None:
         # Terminal types follow edits (a parameter's type, a new upstream connection) a moment later.
         ctx.sleep_for(ctx.wait_types.UX_RENDER)
-        reason = attempt()
+        reason = ctx.workflow_editor_try_connect(*terminals)
     if reason is not None:
         raise RuntimeError(f"the editor refuses {source} -> {sink}: {reason or 'no reason given'}")
     edge = _by_id(ctx, f"connection-node-{sink_step}-input-{input_name}-node-{source_step}-output-{output}")
@@ -1630,29 +1608,6 @@ def workflow_connect(ctx, source: str, sink: str):
     except Exception:
         raise RuntimeError(f"no connection appeared for {source} -> {sink}; `gxui screenshot`") from None
     return f"connected {source_step}#{output} -> {sink_step}#{input_name}"
-
-
-def _drag_connection(ctx, source_terminal, sink_terminal) -> str | None:
-    """workflow_editor_try_connect for steps that share a label: a real pointer drag by terminal id.
-
-    Returns None when it accepted, else its reason ('' if it gave none).
-    """
-    start, end = source_terminal.bounding_box(), sink_terminal.bounding_box()
-    if not start or not end:
-        raise RuntimeError("a terminal is not on screen; `gxui screenshot`")
-    ctx.page.mouse.move(start["x"] + start["width"] / 2, start["y"] + start["height"] / 2)
-    ctx.page.mouse.down()
-    ctx.page.mouse.move(end["x"] + end["width"] / 2, end["y"] + end["height"] / 2, steps=15)
-    refused = "can-not-accept" in (sink_terminal.get_attribute("class") or "")
-    reason = _tooltip(ctx, sink_terminal) if refused else None
-    ctx.page.mouse.up()
-    return reason
-
-
-def _tooltip(ctx, element) -> str:
-    tooltip_id = element.get_attribute("aria-describedby")
-    tooltip = ctx.page.locator(f"[id='{tooltip_id}']") if tooltip_id else None
-    return tooltip.inner_text().strip() if tooltip is not None and tooltip.count() else ""
 
 
 def _by_id(ctx, element_id: str):
@@ -1689,11 +1644,7 @@ def workflow_disconnect(ctx, sink: str):
     delete_button = terminal.locator("xpath=following-sibling::button[contains(@class, 'delete-terminal-button')]")
     if not delete_button.count():
         raise UsageError(f"nothing is connected to {sink}")
-    if label := _unique_label(ctx, step):
-        ctx.workflow_editor_destroy_connection(f"{label}#{input_name}")
-    else:
-        terminal.locator("xpath=..").hover()
-        delete_button.click()
+    ctx.workflow_editor_destroy_connection((int(step), input_name))
     ctx.page.locator(f"[id^={json.dumps(f'connection-node-{step}-input-{input_name}-node-')}]").wait_for(
         state="detached"
     )
@@ -1704,12 +1655,7 @@ def workflow_disconnect(ctx, sink: str):
 def workflow_remove_step(ctx, step: str):
     """Delete STEP and its connections."""
     number = _resolve_step(ctx, step)
-    if label := _unique_label(ctx, number):
-        ctx.workflow_editor_remove_node(label)
-    else:
-        node = _node(ctx, number)
-        node.locator(".node-destroy").click()
-        node.wait_for(state="detached")
+    ctx.workflow_editor_remove_node(int(number))
     return f"removed step {number}"
 
 

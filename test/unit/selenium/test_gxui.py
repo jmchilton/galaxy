@@ -1,10 +1,13 @@
 """gxui tests: verb parsing without a browser, plus a real daemon and client driving the fixture pages."""
 
+import ast
 import http.server
+import inspect
 import json
 import os
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 from datetime import (
@@ -411,6 +414,45 @@ def test_workflow_terminals_are_step_hash_name():
 def test_connection_ids_name_both_ends():
     match = _CONNECTION.match("connection-node-2-input-input-node-1-output-out_file1")
     assert match and match.groups() == ("2", "input", "1", "out_file1")
+
+
+# The daemon calls submit_login itself; the login verb is its help text.
+CALLED_OUTSIDE_THE_VERB = {"login"}
+
+
+def _names_reached(func) -> set[str]:
+    """Attribute names and strings in FUNC and in the verbs.py helpers and dict constants it uses."""
+    module = sys.modules[func.__module__]
+    names: set[str] = set()
+    todo, seen = [func], set()
+    while todo:
+        for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(todo.pop())))):
+            if isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names.add(node.value)
+            elif isinstance(node, ast.Name) and node.id not in seen:
+                seen.add(node.id)
+                target = getattr(module, node.id, None)
+                if inspect.isfunction(target) and target.__module__ == module.__name__:
+                    todo.append(target)
+                elif isinstance(target, dict):
+                    names.update(value for value in target.values() if isinstance(value, str))
+    return names
+
+
+@pytest.mark.parametrize("name", sorted(name for name, v in REGISTRY.items() if v.method and v.layer == "verb"))
+def test_verb_backs_onto_a_documented_method_it_calls(name):
+    verb = REGISTRY[name]
+    method = verb.method.split("(")[0]
+    if method.startswith("components."):
+        path = method.removeprefix("components.")
+        load_root_component().resolve_component(path)
+        assert path.rsplit(".", 1)[-1] in _names_reached(verb.func)
+        return
+    assert inspect.getdoc(getattr(GxuiContext, method)), f"{method} has no docstring"
+    if name not in CALLED_OUTSIDE_THE_VERB and not verb.func.__qualname__.startswith("method_verb."):
+        assert method in _names_reached(verb.func), f"{name} does not call {method}"
 
 
 class _EditorPage:
