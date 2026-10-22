@@ -774,9 +774,10 @@ steps:
         self.assert_connected("first_cat#out_file1", "second_cat#input1")
         self.workflow_editor_destroy_connection("second_cat#input1")
         self.assert_not_connected("first_cat#out_file1", "second_cat#input1")
-        assert self.workflow_editor_try_connect("input1#output", "second_cat#input1") is None
-        self.assert_connected("input1#output", "second_cat#input1")
-        self.workflow_editor_remove_node("first_cat")
+        # steps by order_index: input1 0, second_cat 2, first_cat 3
+        assert self.workflow_editor_try_connect((0, "output"), (2, "input1")) is None
+        self.assert_connected((0, "output"), (2, "input1"))
+        self.workflow_editor_remove_node(3)
         self.assert_workflow_has_changes_and_save()
 
         steps = self._download_current_workflow()["steps"].values()

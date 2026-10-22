@@ -91,6 +91,7 @@ GALAXY_VISUALIZATION_FRAME_ID = "galaxy_visualization"
 
 WaitType = collections.namedtuple("WaitType", ["name", "default_length"])
 EditorNodeReference = int | str  # can reference nodes by order_index (starting at 0 as int or label)
+EditorTerminalReference = str | tuple[EditorNodeReference, str]  # "label#name" or (node, name)
 
 
 class HistoryEntry(NamedTuple):
@@ -1312,31 +1313,40 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                 self.screenshot(screenshot_partial)
         self.drag_and_drop(source_element, sink_element)
 
-    def workflow_editor_try_connect(self, source: str, sink: str) -> str | None:
+    def workflow_editor_try_connect(self, source: EditorTerminalReference, sink: EditorTerminalReference) -> str | None:
         """Drag ``source`` onto ``sink``; return the editor's reason for refusing the drop, or None if it accepted."""
-        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
-        source_element = self.find_element_by_selector(f"#{source_id}")
-        sink_element = self.find_element_by_selector(f"#{sink_id}")
-        with self.drag_over(source_element, sink_element):
+        source_node, source_output = self.workflow_editor_terminal(source)
+        sink_node, sink_input = self.workflow_editor_terminal(sink)
+        sink_terminal = sink_node.input_terminal(name=sink_input)
+        with self.drag_over(
+            source_node.output_terminal(name=source_output).wait_for_present(), sink_terminal.wait_for_present()
+        ):
             # Idle terminals also carry can-not-accept; only judge once the drag has registered.
-            dragged_over = self.wait_for_selector(f"#{sink_id}.is-dragging")
+            dragged_over = self.wait_for_selector(f"{sink_terminal.selector}.is-dragging")
             if "can-accept" in (dragged_over.get_attribute("class") or "").split():
                 return None
             return self.wait_for_selector_visible(f"#{dragged_over.get_attribute('aria-describedby')}").text
 
-    def workflow_editor_remove_node(self, label: str):
-        node = self.components.workflow_editor.node._(label=label)
-        node.destroy.wait_for_and_click()
-        node.wait_for_absent()
+    def workflow_editor_remove_node(self, node: EditorNodeReference):
+        """Delete the editor step ``node`` and its connections."""
+        node_component = self.workflow_editor_node(node)
+        node_component.destroy.wait_for_and_click()
+        node_component.wait_for_absent()
 
-    def workflow_editor_source_sink_terminal_ids(self, source, sink):
-        editor = self.components.workflow_editor
+    def workflow_editor_node(self, node: EditorNodeReference):
+        """The editor's node component for ``node``, by order_index or label."""
+        if isinstance(node, int):
+            return self.components.workflow_editor.node._(id=node)
+        return self.components.workflow_editor.node._(label=node)
 
-        source_node_label, source_output = source.split("#", 1)
-        sink_node_label, sink_input = sink.split("#", 1)
+    def workflow_editor_terminal(self, terminal: EditorTerminalReference):
+        """The node component and terminal name for ``terminal``."""
+        node, name = terminal.split("#", 1) if isinstance(terminal, str) else terminal
+        return self.workflow_editor_node(node), name
 
-        source_node = editor.node._(label=source_node_label)
-        sink_node = editor.node._(label=sink_node_label)
+    def workflow_editor_source_sink_terminal_ids(self, source: EditorTerminalReference, sink: EditorTerminalReference):
+        source_node, source_output = self.workflow_editor_terminal(source)
+        sink_node, sink_input = self.workflow_editor_terminal(sink)
 
         source_node.wait_for_present()
         sink_node.wait_for_present()
@@ -1352,16 +1362,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
         return source_id, sink_id
 
-    def workflow_editor_destroy_connection(self, sink):
-        editor = self.components.workflow_editor
-
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
+    def workflow_editor_destroy_connection(self, sink: EditorTerminalReference):
+        """Remove the connection into input terminal ``sink`` with its delete button."""
+        sink_node, sink_input_name = self.workflow_editor_terminal(sink)
         sink_input = sink_node.input_terminal(name=sink_input_name).wait_for_visible()
         self.hover_over(sink_input)
         sink_node.connector_destroy_callout(name=sink_input_name).wait_for_and_click()
 
-    def assert_connected(self, source, sink):
+    def assert_connected(self, source: EditorTerminalReference, sink: EditorTerminalReference):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
         # SVG <g> elements are considered "hidden" by Playwright even when
         # rendered, so use wait_for_present instead of wait_for_visible
@@ -1372,25 +1380,21 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         else:
             connector.wait_for_visible()
 
-    def assert_connection_invalid(self, source, sink):
+    def assert_connection_invalid(self, source: EditorTerminalReference, sink: EditorTerminalReference):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
         self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_present()
 
-    def assert_not_connected(self, source, sink):
+    def assert_not_connected(self, source: EditorTerminalReference, sink: EditorTerminalReference):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
         self.components.workflow_editor.connector_for(source_id=source_id, sink_id=sink_id).wait_for_absent()
 
-    def assert_input_mapped(self, sink):
-        editor = self.components.workflow_editor
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
+    def assert_input_mapped(self, sink: EditorTerminalReference):
+        sink_node, sink_input_name = self.workflow_editor_terminal(sink)
         sink_mapping_icon = sink_node.input_mapping_icon(name=sink_input_name)
         sink_mapping_icon.wait_for_visible()
 
-    def assert_input_not_mapped(self, sink):
-        editor = self.components.workflow_editor
-        sink_node_label, sink_input_name = sink.split("#", 1)
-        sink_node = editor.node._(label=sink_node_label)
+    def assert_input_not_mapped(self, sink: EditorTerminalReference):
+        sink_node, sink_input_name = self.workflow_editor_terminal(sink)
         sink_mapping_icon = sink_node.input_mapping_icon(name=sink_input_name)
         sink_mapping_icon.wait_for_absent_or_hidden()
 
@@ -1459,11 +1463,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         # if node is_empty just assume current tool step is open
         editor = self.components.workflow_editor
         if node is not None:
-            if isinstance(node, int):
-                node_component = editor.node.by_id(id=node)
-            else:
-                node_component = editor.node._(label=node)
-            node_component.wait_for_and_click()
+            self.workflow_editor_node(node).wait_for_and_click()
         editor.node_inspector.wait_for_visible()
 
     def workflow_editor_click_option(self, option_label):
