@@ -65,27 +65,8 @@ class CustomHeader {
     }
 }
 
-// this doesn't work but the idea is to increase the column widths to fill
-// the horizontal space if they are too small after auto-sizing.
-/*
-function cleanUpColumnsIfNeeded() {
-    if(gridApi.value) {
-        const gridWidth = document.querySelector("#rules-ag-grid")?.clientWidth || 0;
-        const totalColumnWidth = (gridApi.value.getColumns() || []).reduce(
-            (sum: number, col: Column) => sum + (col.getActualWidth() || 0),
-            0
-        );
-        if (totalColumnWidth < gridWidth) {
-            gridApi.value.sizeColumnsToFit();
-        }
-    }
-}
-*/
-
 function resize() {
-    if (gridApi.value) {
-        gridApi.value.autoSizeAllColumns();
-    }
+    gridApi.value?.autoSizeAllColumns();
 }
 
 const { gridApi, AgGridVue, onGridReady, resizeOnNextTick, theme } = useAgGrid(resize);
@@ -105,7 +86,6 @@ watch(() => props.colHeaders, resizeOnNextTick);
             :style="style"
             :row-height="20"
             :header-height="30"
-            :cell-selection="true"
             @gridReady="onGridReady" />
     </div>
 </template>
