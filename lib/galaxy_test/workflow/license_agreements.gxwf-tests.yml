@@ -1,0 +1,20 @@
+- doc: |
+    Test that the test affirms every agreement the workflow's tools declare, including in subworkflows
+  accept_license_agreements: true
+  job: {}
+  outputs:
+    out:
+      class: File
+      asserts:
+      - that: has_line
+        line: licensed
+- doc: |
+    Test that the invocation is refused without accepting the agreements
+  expect_failure: true
+  job: {}
+  outputs:
+    out:
+      class: File
+      asserts:
+      - that: has_line
+        line: licensed

@@ -72,6 +72,7 @@ class TestWorkflow(ApiTestCase):
                     history_id=history_id,
                     job_dir=str(workflow_path.parent),
                     test_data_format="cwl_style",
+                    accept_license_agreements=bool(test_job.get("accept_license_agreements")),
                 )
                 if TEST_WORKFLOW_AFTER_RERUN:
                     run_summary = self.workflow_populator.rerun(run_summary)
