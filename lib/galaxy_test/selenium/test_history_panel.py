@@ -231,6 +231,40 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
         self.screenshot("history_panel_hidden_items_shown")
 
     @selenium_test
+    def test_resume_paused_job(self):
+        history_id = self.current_history_id()
+        hda1 = self.dataset_populator.new_dataset(history_id, content="1\n", wait=True)
+        hda2 = self.dataset_populator.new_dataset(history_id, content="2\n", wait=True)
+        sleep_run = self.dataset_populator.run_tool(
+            "cat_data_and_sleep",
+            {"sleep_time": 15, "input1": {"src": "hda", "id": hda2["id"]}},
+            history_id,
+        )
+        cat_inputs = {
+            "input1": {"src": "hda", "id": hda1["id"]},
+            "queries_0|input2": {"src": "hda", "id": sleep_run["outputs"][0]["id"]},
+        }
+        cat_hid = self.dataset_populator.run_tool("cat1", cat_inputs, history_id)["outputs"][0]["hid"]
+        # deleting an input while the job waits pauses it
+        self.dataset_populator.delete_dataset(history_id, hda1["id"])
+        self.home()
+        self.history_panel_wait_for_hid_state(cat_hid, "paused", allowed_force_refreshes=1)
+        self.screenshot("history_panel_paused_job")
+
+        self.history_panel_include_deleted()
+        self.history_panel_item_undelete(hda1["hid"])
+
+        def details(**kwds):
+            # wait=False: the paused job keeps the history from settling
+            return self.dataset_populator.get_history_dataset_details(history_id, wait=False, **kwds)
+
+        self._wait_on(lambda: not details(dataset_id=hda1["id"])["deleted"], "the input to be undeleted")
+        # undeleting alone doesn't resume it
+        assert details(hid=cat_hid)["state"] == "paused"
+        self.click_history_option_resume_paused_jobs()
+        self.history_panel_wait_for_hid_ok(cat_hid)
+
+    @selenium_test
     def test_item_name_tag_propagates_to_tool_output(self):
         history_id = self.current_history_id()
         hda = self.dataset_populator.new_dataset(history_id, content="chr1\t10\t20\n", file_type="bed", wait=True)
