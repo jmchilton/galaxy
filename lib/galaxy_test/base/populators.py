@@ -175,6 +175,10 @@ TOOL_WITH_SHELL_COMMAND = {
         }
     ],
 }
+TOOL_WITH_ELEMENT_IDENTIFIER = {
+    **TOOL_WITH_SHELL_COMMAND,
+    "shell_command": "echo '$(inputs.input.element_identifier)' > output.fastq",
+}
 
 DEFAULT_TIMEOUT = 60  # Secs to wait for state to turn ok
 
@@ -1388,6 +1392,16 @@ class BaseDatasetPopulator(BasePopulator):
         details_response = self._get_contents_request(history_id, f"/dataset_collections/{hdca_id}")
         assert details_response.status_code == 200, details_response.content
         return details_response.json()
+
+    def get_collection_element_contents(self, history_id: str, hdca_id: str) -> dict[str, str]:
+        """Map each element identifier of a flat dataset collection to its dataset's content."""
+        elements = self.get_history_collection_details(history_id, content_id=hdca_id)["elements"]
+        return {
+            element["element_identifier"]: self.get_history_dataset_content(
+                history_id, dataset_id=element["object"]["id"]
+            )
+            for element in elements
+        }
 
     def get_hdca_implicit_collection_jobs_id(self, history_id: str, hdca_id: str, **kwds) -> str:
         """Encoded ImplicitCollectionJobs id of a map-over output HDCA."""
