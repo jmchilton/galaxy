@@ -37,6 +37,13 @@ class TestUploadFtpSeleniumIntegration(SeleniumIntegrationTestCase, UsesUploadAc
         return user_ftp_dir
 
     @selenium_test
+    def test_ftp_directory_shows_upload_site(self):
+        self._create_ftp_dir()
+        self.home()
+        self.upload_context("remote-files").open_remote_folder("FTP Directory")
+        assert "ftp://ftp.galaxyproject.com" in self.components.upload_activity.remote_files_ftp_help.wait_for_text()
+
+    @selenium_test
     def test_upload_simplest(self):
         user_ftp_dir = self._create_ftp_dir()
         file_path = os.path.join(user_ftp_dir, "0.txt")
