@@ -1,6 +1,6 @@
 <tool id="collection_creates_dynamic_list_failbool" name="collection_creates_dynamic_list_failbool" version="0.1.0">
   <command detect_errors="exit_code"><![CDATA[
-    #if str($failbool) == "true"
+    #if str($failbool) == "true" and (not $input1 or 'fail' in $input1.element_identifier)
       exit 1
     #else
       echo "A" > a.txt &&
@@ -8,6 +8,7 @@
     #end if
   ]]></command>
   <inputs>
+    <param name="input1" type="data" optional="true" label="Fail only if this input's identifier contains 'fail'" />
     <param name="failbool" type="boolean" label="Fail before writing any output" truevalue="true" falsevalue="false" />
   </inputs>
   <outputs>

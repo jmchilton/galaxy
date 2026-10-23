@@ -2033,10 +2033,10 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 "list:list",
                 elements=[{"name": "sample", "elements": [{"src": "pasted", "paste_content": "1\n", "name": "read"}]}],
                 wait=True,
-            ).json()["output_collections"][0]
+            ).json()["outputs"][0]
             empty_hdca = self.dataset_collection_populator.upload_collection(
                 history_id, "list:list", elements=[{"name": "sample", "elements": []}], wait=True
-            ).json()["output_collections"][0]
+            ).json()["outputs"][0]
             empty_hdca_copy = self.dataset_collection_populator.copy_collection(history_id, empty_hdca["id"]).json()
 
             run(populated_hdca["id"])
@@ -2057,10 +2057,10 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
             populated_hdca = self.dataset_collection_populator.create_list_in_history(
                 history_id, contents=["1\n"], wait=True
-            ).json()["output_collections"][0]
+            ).json()["outputs"][0]
             empty_hdca = self.dataset_collection_populator.create_list_in_history(
                 history_id, contents=[], wait=True
-            ).json()["output_collections"][0]
+            ).json()["outputs"][0]
             empty_hdca_copy = self.dataset_collection_populator.copy_collection(history_id, empty_hdca["id"]).json()
 
             run(populated_hdca["id"])
@@ -2079,7 +2079,7 @@ class TestToolsApi(ApiTestCase, TestsTools):
             def run(outer_identifier, use_cached_job=False):
                 hdca = self.dataset_collection_populator.upload_collection(
                     history_id, "list:list", elements=[{"name": outer_identifier, "elements": []}], wait=True
-                ).json()["output_collections"][0]
+                ).json()["outputs"][0]
                 inputs = {"input1": {"src": "hdca", "id": hdca["id"]}}
                 return self._run_and_get_job("identifier_all_collection_types", history_id, inputs, use_cached_job)
 
@@ -2514,6 +2514,30 @@ class TestToolsApi(ApiTestCase, TestsTools):
             assert nested_collection["element_count"] == 2
             for element in nested_collection["elements"]:
                 assert element["object"]["state"] == "error"
+
+    @skip_without_tool("collection_creates_dynamic_list_failbool")
+    def test_map_over_dynamic_list_output_element_failed_empty(self, history_id):
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=[("ok_a", "a"), ("fail_b", "b")], wait=True
+        ).json()["outputs"][0]
+        inputs = {
+            "input1": {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]},
+            "failbool": True,
+        }
+        create = self._run("collection_creates_dynamic_list_failbool", history_id, inputs, assert_ok=True)
+        self.dataset_populator.wait_for_history_jobs(history_id, assert_ok=False)
+        job_states = sorted(self.dataset_populator.get_job_details(job["id"]).json()["state"] for job in create["jobs"])
+        assert job_states == ["error", "ok"], job_states
+        collection = self.dataset_populator.get_history_collection_details(
+            history_id, content_id=create["implicit_collections"][0]["id"], assert_ok=False
+        )
+        assert collection["collection_type"] == "list:list", collection
+        assert not collection["populated"], collection
+        children = {element["element_identifier"]: element["object"] for element in collection["elements"]}
+        assert children["ok_a"]["populated"], children
+        assert len(children["ok_a"]["elements"]) == 2, children
+        assert not children["fail_b"]["populated"], children
+        assert not children["fail_b"]["elements"], children
 
     def test_nonadmin_users_cannot_create_tools(self):
         payload = dict(
