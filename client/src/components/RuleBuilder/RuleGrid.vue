@@ -91,6 +91,12 @@ watch(() => props.colHeaders, resizeOnNextTick);
 </template>
 
 <style>
+/* Legacy CSS sizes cells from the theme's 42px `--ag-row-height`, not the `row-height` prop; fit the padded row. */
+#rules-ag-grid .ag-cell {
+    line-height: 16px;
+    height: 16px;
+}
+
 /* Reduce padding and font size for compact rows */
 .ag-theme-alpine .ag-row {
     font-size: 12px;

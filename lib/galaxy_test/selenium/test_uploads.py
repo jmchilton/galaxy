@@ -169,6 +169,7 @@ PRJDA60709  SAMD00016382    DRX000480   ftp.sra.ebi.ac.uk/vol1/fastq/DRR000/DRR0
         self.screenshot("rules_example_1_2_paste")
         rule_builder = self.components.rule_builder
         rule_builder._.wait_for_visible()
+        rule_builder.table_row.wait_for_visible()
         self.screenshot("rules_example_1_3_initial_rules")
         rule_builder.menu_button_filter.wait_for_and_click()
         self.screenshot("rule_builder_filters")

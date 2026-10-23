@@ -33,9 +33,9 @@ export default defineComponent({
         },
         statusClass() {
             if (this.isDuplicate || this.requiresPairing) {
-                return "status-warn";
+                return "cell-status-warn";
             } else {
-                return "status-ok";
+                return "cell-status-ok";
             }
         },
         popoverContent() {
@@ -65,14 +65,15 @@ export default defineComponent({
     </div>
 </template>
 
-<style lang="scss" scoped>
+<!-- Unscoped: ag-grid-vue3 mounts renderers through an `extends` wrapper that drops the scope id. -->
+<style lang="scss">
 @import "@/style/scss/theme/blue.scss";
 
-.status-ok {
+.cell-status-ok {
     color: $brand-success;
 }
 
-.status-warn {
+.cell-status-warn {
     color: $brand-warning;
 }
 </style>

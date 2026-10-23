@@ -58,6 +58,7 @@ const modulesToTransform = [
     "@vue/test-utils",
     "vue-router",
     "pinia",
+    "ag-grid-vue3",
     "@pinia/testing",
     // @vueuse reaches Vue through vue-demi's `export * from "vue"`.
     "vue-demi",
