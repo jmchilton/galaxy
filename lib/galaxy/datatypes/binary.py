@@ -2887,6 +2887,13 @@ class TwoBit(Binary):
     file_ext = "twobit"
 
     def sniff_prefix(self, file_prefix: FilePrefix) -> bool:
+        """
+        >>> from galaxy.datatypes.sniff import get_test_fname
+        >>> TwoBit().sniff(get_test_fname('1.twobit'))
+        True
+        >>> TwoBit().sniff(get_test_fname('1.fasta'))
+        False
+        """
         magic = file_prefix.magic_header(">L")
         return magic == TWOBIT_MAGIC_NUMBER or magic == TWOBIT_MAGIC_NUMBER_SWAP
 
