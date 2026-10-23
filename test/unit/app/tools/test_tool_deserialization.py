@@ -58,6 +58,16 @@ INTERACTIVE_TOOL = """
     <outputs />
 </tool>
 """
+XML_TOOL_WITH_REGEX_VALIDATOR = r"""
+<tool id="tool_id" name="xml tool" version="1" profile="26.1">
+    <inputs>
+        <param name="p" type="text" value="1">
+            <validator type="regex"> *(\d+, *)*\d+ *$</validator>
+        </param>
+    </inputs>
+    <outputs />
+</tool>
+"""
 CWL_TOOL = """
 cwlVersion: v1.0
 class: CommandLineTool
@@ -374,6 +384,18 @@ def test_deserialize_cwl_tool(tool_app):
     assert isinstance(tool_source, CwlToolSource)
     assert tool_source.allows_tool_provided_metadata()
     assert tool_source.parse_provided_metadata_is_explicit()
+
+
+def test_parsed_tool_after_mem_optimize_preserves_regex_whitespace(tool_app):
+    tool = _deserialize(tool_app, tool_source_class="XmlToolSource", raw_tool_source=XML_TOOL_WITH_REGEX_VALIDATOR)
+    tool.tool_source.mem_optimize()
+    (validator,) = tool.parsed_tool().inputs[0].validators
+    assert validator.expression == r" *(\d+, *)*\d+ *$"
+
+
+def test_parsed_tool_yaml_tool(tool_app):
+    tool = _deserialize(tool_app, tool_source_class="YamlToolSource", raw_tool_source=YAML_TOOL)
+    assert tool.parsed_tool().id == "simple_constructs_y"
 
 
 TYPE_SOURCE_TOOL = """
