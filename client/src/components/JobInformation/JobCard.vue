@@ -69,17 +69,15 @@ function cardClicked(job: JobBaseModel) {
         button
         :current="props.current"
         :secondary-actions="actions"
+        :title="cardTitle"
+        :title-icon="{ icon: faWrench }"
+        :title-n-lines="2"
+        title-size="text"
         :update-time="props.job.update_time"
         :update-time-icon="faClock"
         @click="() => cardClicked(props.job)">
-        <template v-slot:title>
-            <div class="d-flex align-items-start justify-content-between flex-gapx-1">
-                <Heading class="job-card-title m-0" bold size="text">
-                    <FontAwesomeIcon class="mr-1" :icon="faWrench" fixed-width />
-                    <span v-g-tooltip.onoverflow class="job-card-title-text" :title="cardTitle">{{ cardTitle }}</span>
-                </Heading>
-                <JobState class="flex-shrink-0" :job-id="props.job.id" :job="jobStateJob" />
-            </div>
+        <template v-slot:titleBadges>
+            <JobState class="mt-1" :job-id="props.job.id" :job="jobStateJob" />
         </template>
         <template v-slot:description>
             <Heading v-if="props.job.history_id" class="m-0" size="text">
@@ -94,21 +92,6 @@ function cardClicked(job: JobBaseModel) {
 </template>
 
 <style scoped lang="scss">
-.job-card-title {
-    display: flex;
-    align-items: baseline;
-    min-width: 0;
-
-    .job-card-title-text {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        overflow: hidden;
-        line-height: 1.2;
-    }
-}
-
 .truncate-n-lines {
     display: -webkit-box;
     -webkit-box-orient: vertical;

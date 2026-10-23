@@ -181,8 +181,8 @@ describe("JobPanel", () => {
         await scrollOnce();
 
         expect(requests.at(-1)?.getAll("tool_id")).toEqual(["cat1"]);
-        expect(wrapper.find("#g-card-job-catJob .job-card-title-text").text()).toBe("Concatenate datasets");
-        expect(wrapper.find("#g-card-job-goneJob .job-card-title-text").text()).toBe("uninstalled_tool");
+        expect(wrapper.find("#g-card-title-text-job-catJob").text()).toBe("Concatenate datasets");
+        expect(wrapper.find("#g-card-title-text-job-goneJob").text()).toBe("uninstalled_tool");
     });
 
     it("shows an invalid filter error with a clear-search hint", async () => {
