@@ -39,7 +39,32 @@ class TestLibraryToCollections(SeleniumTestCase, UsesLibraryAssertions):
     def test_export_pairs_list(self):
         self.list_of_pairs_export()
 
-    def prepare_library_for_data_export(self, files_to_import, history_name=None):
+    @selenium_test
+    @requires_admin
+    def test_library_collection_export_to_selected_history(self):
+        self.admin_login()
+        self.history_panel_create_new_with_name(self._get_random_name())
+        target_history_id = self.current_history_id()
+        self.prepare_library_for_data_export(["1.bam", "1.bed"], history_id=target_history_id)
+        self.wait_for_fade_in(self.components.libraries.folder.add_to_history_modal)
+        self.screenshot("libraries_to_collection_selected_history")
+        other_history_id = self.current_history_id()
+        self.components.libraries.folder.add_to_history_as_collection.wait_for_and_click()
+        collection_name = self._get_random_name()
+        self.collection_builder_set_name(collection_name)
+        self.collection_builder_create()
+
+        def collection_names(history_id):
+            contents = self.dataset_populator.get_history_contents(history_id)
+            return [item["name"] for item in contents if item["history_content_type"] == "dataset_collection"]
+
+        self._wait_on(
+            lambda: collection_name in collection_names(target_history_id), "the list in the selected history"
+        )
+        assert collection_names(other_history_id) == []
+        self.wait_for_current_history_id(target_history_id)
+
+    def prepare_library_for_data_export(self, files_to_import, history_name=None, history_id=None):
         self.create_new_library()
         self.home()
         self.history_panel_create_new()
@@ -49,6 +74,8 @@ class TestLibraryToCollections(SeleniumTestCase, UsesLibraryAssertions):
         self.libraries_folder_select_datasets(files_to_import)
         self.components.libraries.folder.add_to_history.wait_for_and_click()
         self.components.libraries.folder.add_to_history_collection.wait_for_and_click()
+        if history_id is not None:
+            self.components.libraries.folder.export_to_history_history_select.select_by_value(history_id)
         if history_name is not None:
             self.components.libraries.folder.export_to_history_new_history.wait_for_and_send_keys(history_name)
 
