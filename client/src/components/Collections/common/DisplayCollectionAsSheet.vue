@@ -68,10 +68,3 @@ const defaultColDef: ColDef = {
         </div>
     </div>
 </template>
-
-<style scoped>
-:deep(.ag-grid-column-has-custom-header-description) {
-    text-decoration-line: underline;
-    text-decoration-style: dashed;
-}
-</style>

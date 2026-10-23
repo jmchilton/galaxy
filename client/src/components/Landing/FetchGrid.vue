@@ -220,7 +220,7 @@ function handleDataUpdated(event: any) {
                     the final data import.
                 </GAlert>
                 <AgGridVue
-                    :row-data="gridRowData"
+                    v-model="gridRowData"
                     :column-defs="gridColumns"
                     :default-col-def="defaultColDef"
                     :style="style"

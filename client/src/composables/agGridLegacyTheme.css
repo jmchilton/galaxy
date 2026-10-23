@@ -1,0 +1,4 @@
+/* Legacy theme CSS omits this variable; ag-grid's dev validations warn on `domLayout="autoHeight"` without it. */
+.ag-theme-alpine {
+    --ag-auto-height-max-body-height: none;
+}
