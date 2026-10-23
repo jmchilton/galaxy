@@ -3294,8 +3294,11 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
     def history_panel_filter_text(self) -> str:
         """The history panel's filter text, e.g. ``related:1``."""
-        filter_input = self.history_element(attribute_value="filter text input", scope=".content-operations-filters")
-        return filter_input.wait_for_present().get_attribute("value") or ""
+        return self.components.history_panel.search.wait_for_present().get_attribute("value") or ""
+
+    def history_panel_filter(self, text: str):
+        """Replace the history panel's filter text with ``text``, e.g. ``deleted:true``."""
+        self.components.history_panel.search.wait_for_and_clear_and_send_keys(text)
 
     def history_panel_item_undelete(self, hid):
         """Undelete history item ``hid`` with its Undelete button; deleted items must be shown."""
