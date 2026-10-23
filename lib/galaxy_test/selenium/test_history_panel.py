@@ -302,6 +302,11 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
         assert not visible(2)
         self.screenshot("history_panel_hidden_items_shown")
 
+        self.history_panel_filter("visible:hidden")
+        self.history_panel_wait_for_hid_hidden(1)
+        self.history_panel_item_unhide(2)
+        self._wait_on(lambda: visible(2), "hid 2 to be unhidden")
+
     @selenium_test
     def test_resume_paused_job(self):
         history_id = self.current_history_id()
