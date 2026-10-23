@@ -442,6 +442,19 @@ class TestToolBox(BaseToolBoxTestCase):
         # Assert tools merged in tool panel.
         assert len(self.toolbox._tool_panel) == 2  # 1 tool (w 2 versions) + built-in converters
 
+    def test_get_tool_versionless_guid(self):
+        self._init_tool()
+        self._setup_two_versions_in_config(section=False)
+        self._setup_two_versions()
+        versionless_id = "github.com/galaxyproject/example/test_tool"
+        for version in ["0.1", "0.2"]:
+            tool = self.toolbox.get_tool(versionless_id, tool_version=version)
+            assert tool.guid == f"{versionless_id}/{version}"
+            exact_tool = self.toolbox.get_tool(f"{versionless_id}/{version}", tool_version=version, exact=True)
+            assert exact_tool.guid == f"{versionless_id}/{version}"
+            # exact skips lineage, so a versionless id never resolves
+            assert self.toolbox.get_tool(versionless_id, tool_version=version, exact=True) is None
+
     def test_curated_tool_tags_merge_all_ids_in_order(self, monkeypatch):
         self._init_tool()
         self._setup_two_versions_in_config(section=False)
