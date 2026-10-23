@@ -1534,6 +1534,23 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.masthead.storage_dashboard_link.wait_for_and_click()
         self.components.storage_dashboard.free_space_link.wait_for_visible()
 
+    def storage_dashboard_purge_deleted_datasets(self, screenshot_prefix: str | None = None):
+        """Storage Dashboard > Free up disk space > Deleted datasets: review, select all, permanently delete."""
+        self.navigate_to_storage_dashboard()
+        self.components.storage_dashboard.free_space_link.wait_for_and_click()
+        cleanup = self.components.storage_dashboard.cleanup
+        cleanup.review_link(operation="deleted_datasets").wait_for_and_click()
+        # bootstrap-vue hides the checkbox inputs behind their labels
+        self.execute_script_click(cleanup.select_all.wait_for_present())
+        cleanup.delete_button_enabled.wait_for_visible()
+        self.screenshot_if(screenshot_prefix and f"{screenshot_prefix}_review")
+        cleanup.delete_button_enabled.wait_for_and_click()
+        agreement = cleanup.agreement.wait_for_present()
+        self.screenshot_if(screenshot_prefix and f"{screenshot_prefix}_confirm")
+        self.execute_script_click(agreement)
+        cleanup.confirm_enabled.wait_for_and_click()
+        cleanup.success.wait_for_visible()
+
     def navigate_to_saved_visualizations(self):
         self.home()
         visualizations = self.components.visualization
