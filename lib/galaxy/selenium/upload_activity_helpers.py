@@ -42,6 +42,7 @@ from typing import (
     TypeVar,
 )
 
+from .has_driver import exception_indicates_stale_element
 from .navigates_galaxy import NavigatesGalaxy
 
 # Runtime mixins stay independent to support multiple inheritance with Galaxy contexts.
@@ -160,9 +161,9 @@ class PasteContentUploadItem(UploadItem):
 
 class RemoteFileUploadItem(UploadItem):
     def stage_remote_file(
-        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None
+        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None, path: str = ""
     ) -> "RemoteFileUploadItem":
-        return self.context.stage_remote_file(source_label, file_label, metadata)
+        return self.context.stage_remote_file(source_label, file_label, metadata, path)
 
 
 class DataLibraryUploadItem(UploadItem):
@@ -206,7 +207,7 @@ class _UploadStaging:
         return self._create_item(PasteContentUploadItem, metadata)
 
     def stage_remote_file(
-        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None
+        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None, path: str = ""
     ) -> RemoteFileUploadItem:
         raise NotImplementedError("stage_remote_file must be implemented by subclasses")
 
@@ -339,15 +340,40 @@ class UploadContext(_UploadStaging):
         self._apply_collection_config()
 
     def stage_remote_file(
-        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None
+        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None, path: str = ""
     ) -> RemoteFileUploadItem:
         if self._current_method_id != "remote-files":
             raise AssertionError("stage_remote_file is only available for the remote-files method")
 
-        self.components.upload_activity.remote_files_browser_label(label=source_label).wait_for_and_click()
+        self.open_remote_folder(source_label, path)
         self._select_remote_file(file_label)
         self.components.upload_activity.remote_files_add_selected.wait_for_and_click()
         return self._create_item(RemoteFileUploadItem, metadata)
+
+    def open_remote_folder(self, source_label: str, path: str = "") -> None:
+        """Open file source ``source_label``, then each folder of ``path`` (e.g. ``species/Homo_sapiens``)."""
+        upload = self.components.upload_activity
+        upload.remote_files_browser_label(label=source_label).wait_for_and_click()
+        for folder in filter(None, path.split("/")):
+            upload.remote_files_search.wait_for_and_clear_and_send_keys(folder)
+            # a click on a row the search is about to replace is lost
+            self.driver_wrapper._wait_on(
+                lambda folder=folder: self._remote_labels_match(folder), f"remote files matching {folder}"
+            )
+            upload.remote_files_browser_label(label=folder).wait_for_and_click()
+            upload.remote_files_current_folder(folder=folder).wait_for_visible()
+
+    def _remote_labels_match(self, text: str) -> bool:
+        labels = self.driver_wrapper.find_elements(self.components.upload_activity.remote_files_browser_labels)
+        try:
+            return bool(labels) and all(
+                text.lower() in (label.get_attribute("data-label") or "").lower() for label in labels
+            )
+        except Exception as e:
+            # the search re-rendered the list under us
+            if exception_indicates_stale_element(e):
+                return False
+            raise
 
     def _select_remote_file(self, file_label: str) -> None:
         # search first: a large source pages its files
@@ -359,6 +385,7 @@ class UploadContext(_UploadStaging):
         source_label: str,
         file_labels: list[str],
         metadata_list: list[UploadMetadata | None] | None = None,
+        path: str = "",
     ) -> list[RemoteFileUploadItem]:
         if self._current_method_id != "remote-files":
             raise AssertionError("stage_remote_files is only available for the remote-files method")
@@ -368,7 +395,7 @@ class UploadContext(_UploadStaging):
                 f"metadata_list length ({len(metadata_list)}) must match file_labels length ({len(file_labels)})"
             )
 
-        self.components.upload_activity.remote_files_browser_label(label=source_label).wait_for_and_click()
+        self.open_remote_folder(source_label, path)
 
         for file_label in file_labels:
             self._select_remote_file(file_label)
@@ -766,17 +793,22 @@ class PasteLinksContext(BaseUploadContext):
 
 class RemoteFilesContext(BaseUploadContext):
     def stage_remote_file(
-        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None
+        self, source_label: str, file_label: str, metadata: UploadMetadata | None = None, path: str = ""
     ) -> RemoteFileUploadItem:
-        return self._context.stage_remote_file(source_label, file_label, metadata)
+        return self._context.stage_remote_file(source_label, file_label, metadata, path)
 
     def stage_remote_files(
         self,
         source_label: str,
         file_labels: list[str],
         metadata_list: list[UploadMetadata | None] | None = None,
+        path: str = "",
     ) -> "RemoteFilesContext":
-        self._context.stage_remote_files(source_label, file_labels, metadata_list)
+        self._context.stage_remote_files(source_label, file_labels, metadata_list, path)
+        return self
+
+    def open_remote_folder(self, source_label: str, path: str = "") -> "RemoteFilesContext":
+        self._context.open_remote_folder(source_label, path)
         return self
 
 
