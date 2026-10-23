@@ -21,5 +21,8 @@
       <param name="failbool" value="false" />
       <output_collection name="list_output" type="list" count="2" />
     </test>
+    <test expect_exit_code="1" expect_failure="true">
+      <param name="failbool" value="true" />
+    </test>
   </tests>
 </tool>
