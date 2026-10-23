@@ -415,7 +415,7 @@ history_panel:
 
   selectors:
     _: '#current-history-panel'
-    search: '#current-history-panel input.search-query'
+    search: '#current-history-panel .content-operations-filters [data-description="filter text input"]'
     refresh_button: '.history-refresh-button'
     include_deleted_button: '[data-description="include deleted items button"]'
     include_hidden_button: '[data-description="include hidden items button"]'
