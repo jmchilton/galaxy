@@ -3875,6 +3875,16 @@ class LibraryPopulator:
         )
         api_asserts.assert_status_code_is(response, 200)
 
+    def remove_library_dataset_restrictions(self, library_dataset_id: str) -> None:
+        using_requirement("admin")
+        response = self.galaxy_interactor.post(
+            f"libraries/datasets/{library_dataset_id}/permissions",
+            {"action": "remove_restrictions"},
+            admin=True,
+            json=True,
+        )
+        api_asserts.assert_status_code_is_ok(response)
+
     def user_email(self):
         # deprecated - use DatasetPopulator
         return self.dataset_populator.user_email()
