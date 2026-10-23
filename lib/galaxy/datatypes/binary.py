@@ -2891,11 +2891,7 @@ class TwoBit(Binary):
         return magic == TWOBIT_MAGIC_NUMBER or magic == TWOBIT_MAGIC_NUMBER_SWAP
 
     def validate(self, dataset: DatasetProtocol, **kwd) -> DatatypeValidation:
-        """Check the header, the sequence index, and that the last sequence record is complete.
-
-        A 2bit truncated or written empty by a failed job still sniffs (or is simply 0 bytes);
-        reading the records the index points at is what tells a whole file from a partial one.
-        """
+        """Check the header, the sequence index, and that the last sequence record is complete."""
         path = dataset.get_file_name()
         size = os.path.getsize(path)
         if size < 16:
