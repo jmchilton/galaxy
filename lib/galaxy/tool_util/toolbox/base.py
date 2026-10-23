@@ -848,9 +848,13 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         exact: bool = False,
         user: Optional["User"] = None,
     ):
-        return (
-            self.get_tool(tool_id, tool_version=tool_version, tool_uuid=tool_uuid, exact=exact, user=user) is not None
-        )
+        if self.get_tool(tool_id, tool_version=tool_version, tool_uuid=tool_uuid, exact=exact, user=user) is not None:
+            return True
+        if exact and tool_version and not tool_uuid:
+            # versionless id (e.g. shed guid without version) resolves only if it pins this exact version
+            tool = self.get_tool(tool_id, tool_version=tool_version, user=user)
+            return tool is not None and tool.version == str(tool_version)
+        return False
 
     def get_unprivileged_tool(self, user: "User", tool_uuid: Union[UUID, str]) -> Optional["Tool"]:
         return None

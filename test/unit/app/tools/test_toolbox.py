@@ -455,6 +455,17 @@ class TestToolBox(BaseToolBoxTestCase):
             # exact skips lineage, so a versionless id never resolves
             assert self.toolbox.get_tool(versionless_id, tool_version=version, exact=True) is None
 
+    def test_has_tool_exact_versionless_guid(self):
+        self._init_tool()
+        self._setup_two_versions_in_config(section=False)
+        self._setup_two_versions()
+        versionless_id = "github.com/galaxyproject/example/test_tool"
+        assert self.toolbox.has_tool(versionless_id, tool_version="0.1", exact=True)
+        assert self.toolbox.has_tool(versionless_id, tool_version="0.2", exact=True)
+        assert not self.toolbox.has_tool(versionless_id, tool_version="0.3", exact=True)
+        assert not self.toolbox.has_tool(versionless_id, exact=True)
+        assert self.toolbox.has_tool(versionless_id, tool_version="0.3")
+
     def test_curated_tool_tags_merge_all_ids_in_order(self, monkeypatch):
         self._init_tool()
         self._setup_two_versions_in_config(section=False)
