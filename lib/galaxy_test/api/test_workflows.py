@@ -1100,6 +1100,8 @@ steps:
         assert len(subworkflow_steps) == 1, updated
         inner_steps = subworkflow_steps[0]["subworkflow"]["steps"].values()
         assert [s.get("tool_id") for s in inner_steps if s["type"] == "tool"] == ["cat1"], updated
+        listed = self._get("workflows", data={"show_hidden": True}).json()
+        assert not any(w["published"] for w in listed), listed
 
     def test_update_name_empty(self):
         # Update doesn't allow empty names.
