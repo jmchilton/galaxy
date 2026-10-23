@@ -1073,6 +1073,32 @@ def test_capture_propagates_failure_flushing_unrelated_pending_objects():
         modules._capture_workflow_tool_request_state(trans, _PersistableFakeTool(), None, None, history, resolve, [])
 
 
+def test_capture_savepoint_isolates_tool_request_flush_failure():
+    trans = MockTrans()
+    existing = model.History(name="existing")
+    trans.sa_session.add(existing)
+    trans.sa_session.commit()
+    existing_id = existing.id
+    trans.sa_session.expunge(existing)
+    pending = model.History(name="pending")
+    trans.sa_session.add(pending)
+    # Duplicate-PK history only enters the session via the ToolRequest, inside the savepoint.
+    duplicate = model.History(id=existing_id, name="duplicate")
+
+    def resolve(iteration_elements):
+        return bunch.Bunch(inputs={}), None, None
+
+    with mock.patch.object(modules, "log") as log:
+        result = modules._capture_workflow_tool_request_state(
+            trans, _PersistableFakeTool(), None, None, duplicate, resolve, []
+        )
+
+    assert result == (None, None, None)
+    log.warning.assert_called_once()
+    trans.sa_session.commit()
+    assert trans.sa_session.get(model.History, pending.id).name == "pending"
+
+
 def test_to_decoded_json_lowers_connected_value_in_repeat():
     """ConnectedValue inside a repeat lowers to its JSON marker.
 
