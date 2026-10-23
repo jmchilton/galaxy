@@ -1,4 +1,6 @@
+import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from galaxy import model
@@ -31,6 +33,7 @@ class TestCollectionUpdateTimeLockingIntegration(IntegrationTestCase):
         hda_id = self._app.security.decode_id(hdca["elements"][0]["object"]["id"])
 
         engine = self._app.model.engine
+        lock_hdca = "SELECT 1 FROM history_dataset_collection_association WHERE id = :id FOR {} NOWAIT"
         with Session(engine) as session:
             hda = session.get(model.HistoryDatasetAssociation, hda_id)
             assert hda and hda.dataset
@@ -39,8 +42,11 @@ class TestCollectionUpdateTimeLockingIntegration(IntegrationTestCase):
             # handler that fails a job. Inserting a row that references the HDCA (e.g. a
             # workflow step output association) takes FOR KEY SHARE on it.
             with engine.connect() as conn:
-                conn.execute(
-                    text("SELECT 1 FROM history_dataset_collection_association WHERE id = :id FOR KEY SHARE NOWAIT"),
-                    {"id": hdca_id},
-                )
+                conn.execute(text(lock_hdca.format("KEY SHARE")), {"id": hdca_id})
+            # Guards against the touch silently locking nothing.
+            with (
+                engine.connect() as conn,
+                pytest.raises(OperationalError, match="could not obtain lock"),
+            ):
+                conn.execute(text(lock_hdca.format("UPDATE")), {"id": hdca_id})
             session.rollback()
