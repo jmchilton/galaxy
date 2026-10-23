@@ -3076,6 +3076,9 @@ steps: []
         else:
             return ordered_load(response.text)
 
+    def workflow_license_agreement_hashes(self, workflow_id: str) -> list[str]:
+        return [agreement["agreement_hash"] for agreement in self.workflow_license_agreements(workflow_id)]
+
     def invocation_to_request(self, invocation_id: str):
         request_response = self._get(f"invocations/{invocation_id}/request")
         api_asserts.assert_status_code_is_ok(request_response)
@@ -3139,6 +3142,7 @@ steps: []
         job_dir: str | None = None,
         test_data_format: Literal["cwl_style"] | None = None,
         timeout: timeout_type = DEFAULT_TIMEOUT,
+        accept_license_agreements: bool = False,
     ):
         """High-level wrapper around workflow API, etc. to invoke format 2 workflows.
 
@@ -3149,6 +3153,9 @@ steps: []
         ``Directory`` dict forms are rejected at this layer so callers migrate
         fixtures to ``class: File`` + ``path``/``location``/``contents``.
         Default ``None`` preserves today's behavior for all existing callers.
+
+        ``accept_license_agreements`` affirms the workflow's declared license agreements for this
+        invocation only, as tool tests do for a tool's agreements.
         """
         workflow_populator = self
         if client_convert is None:
@@ -3241,6 +3248,8 @@ steps: []
             workflow_request["parameters_normalized"] = True
         if replacement_parameters:
             workflow_request["replacement_params"] = json.dumps(replacement_parameters)
+        if accept_license_agreements:
+            workflow_request["one_time_license_acceptances"] = self.workflow_license_agreement_hashes(workflow_id)
         if extra_invocation_kwds is not None:
             workflow_request.update(extra_invocation_kwds)
         if has_uploads:
@@ -3274,6 +3283,9 @@ steps: []
         assert workflow_request["instance"] is True
         if use_cached_job:
             workflow_request["use_cached_job"] = True
+        # Invocation requests don't record one-time acceptances - a rerun affirms them again.
+        if one_time_license_acceptances := run_jobs_summary.workflow_request.get("one_time_license_acceptances"):
+            workflow_request["one_time_license_acceptances"] = one_time_license_acceptances
         return self._request_to_summary(
             history_id,
             workflow_id,

@@ -1,0 +1,24 @@
+class: GalaxyWorkflow
+outputs:
+  out:
+    outputSource: nested/out
+steps:
+  licensed:
+    tool_id: license_agreement_path_tool
+    state:
+      input: x
+  nested:
+    in:
+      nested_input: licensed/output
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        nested_input: data
+      outputs:
+        out:
+          outputSource: licensed_nested/output
+      steps:
+        licensed_nested:
+          tool_id: license_agreement_data_tool
+          in:
+            input1: nested_input

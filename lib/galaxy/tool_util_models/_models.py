@@ -1111,6 +1111,16 @@ class TestJob(StrictModel):
             description="If true, the workflow is expected to produce an error.",
         ),
     ] = False
+    accept_license_agreements: Annotated[
+        bool | None,
+        Field(
+            title="Accept License Agreements",
+            description=(
+                "If true, the test affirms every license agreement the workflow's tools declare, "
+                "for this invocation only."
+            ),
+        ),
+    ] = False
 
 
 class Tests(RootModel[list[TestJob]]):
@@ -1136,6 +1146,7 @@ class JobTestDict(TypedDict):
     doc: NotRequired[str]
     job: NotRequired[JobDict]
     expect_failure: NotRequired[bool]
+    accept_license_agreements: NotRequired[bool]
     outputs: OutputsDict
 
 
