@@ -4769,7 +4769,7 @@ class Dataset(Base, StorableObject, Serializable):
 
         Args:
             supports_skip_locked: Boolean to indicate if database supports
-                FOR UPDATE SKIP LOCKED. Defaults to False.
+                FOR NO KEY UPDATE SKIP LOCKED. Defaults to False.
         """
         session = object_session(self)
         if not session:
@@ -4847,10 +4847,7 @@ class Dataset(Base, StorableObject, Serializable):
         )
 
         if supports_skip_locked:
-            # First select the HDCAs we want to update with FOR NO KEY UPDATE SKIP LOCKED.
-            # Only update_time changes, and this lock mode is compatible with the FOR KEY SHARE
-            # lock that foreign key checks take, so concurrent inserts of rows referencing these
-            # HDCAs (job inputs, workflow step outputs) proceed while this transaction is open.
+            # NO KEY UPDATE doesn't block FK checks' FOR KEY SHARE from inserts referencing these HDCAs.
             hdca_ids_to_update = (
                 session.execute(
                     select(HistoryDatasetCollectionAssociation.id)

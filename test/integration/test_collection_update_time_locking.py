@@ -38,9 +38,7 @@ class TestCollectionUpdateTimeLockingIntegration(IntegrationTestCase):
                 hda = session.get(model.HistoryDatasetAssociation, hda_id)
                 assert hda and hda.dataset
                 hda.dataset.touch_collection_update_time(supports_skip_locked=True)
-                # The HDCA row lock is now held until this transaction ends, as it is in a job
-                # handler that fails a job. Inserting a row that references the HDCA (e.g. a
-                # workflow step output association) takes FOR KEY SHARE on it.
+                # HDCA stays locked until rollback; FK checks on referencing inserts take FOR KEY SHARE.
                 with engine.connect() as conn:
                     conn.execute(text(lock_hdca.format("KEY SHARE")), {"id": hdca_id})
                 # Guards against the touch silently locking nothing.
