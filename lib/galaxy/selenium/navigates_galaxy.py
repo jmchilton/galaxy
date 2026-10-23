@@ -3308,6 +3308,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Undelete history item ``hid`` with its Undelete button; deleted items must be shown."""
         self.history_panel_item_component(hid=hid).undelete_button.wait_for_and_click()
 
+    def history_panel_item_unhide(self, hid):
+        """Unhide history item ``hid`` with its Unhide button; hidden items must be shown."""
+        self.history_panel_item_component(hid=hid).unhide_button.wait_for_and_click()
+
     def history_panel_include_deleted(self):
         """Toggle the history panel's Include deleted filter (the deleted-items counter)."""
         self.components.history_panel.include_deleted_button.wait_for_and_click()

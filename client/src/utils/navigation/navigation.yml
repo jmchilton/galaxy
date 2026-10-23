@@ -317,6 +317,7 @@ history_panel:
       edit_button: '${_} .edit-btn'
       delete_button: '${_} .delete-btn'
       undelete_button: '${_} .undelete-btn'
+      unhide_button: '${_} .unhide-btn'
       rerun_button: '${_} .rerun-btn'
       collection_job_details_button: '${_} .collection-job-details-btn'
 
