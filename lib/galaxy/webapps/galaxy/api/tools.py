@@ -639,9 +639,9 @@ class ToolsController(BaseGalaxyAPIController, UsesVisualizationMixin):
                 io_details   - if true, parameters and inputs are returned
                 link_details - if true, hyperlink to the tool is returned
                 tool_version - if provided return this tool version
-                exact        - if true, 404 unless the tool found is the requested id and
-                               tool_version (by default another version of the tool is returned);
-                               ignored with tool_uuid
+                exact        - if true, 404 unless the tool found has the requested id (guid,
+                               versionless guid or short id) and tool_version (by default another
+                               version of the tool is returned); ignored with tool_uuid
         """
         io_details = util.string_as_bool(kwd.get("io_details", False))
         link_details = util.string_as_bool(kwd.get("link_details", False))

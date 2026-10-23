@@ -45,7 +45,10 @@ from galaxy.util import (
 )
 from galaxy.util.bunch import Bunch
 from galaxy.util.path import StrPath
-from galaxy.util.tool_version import is_shed_guid
+from galaxy.util.tool_version import (
+    is_shed_guid,
+    remove_version_from_guid,
+)
 from .filters import FilterFactory
 from .integrated_panel import ManagesIntegratedToolPanelMixin
 from .lineages import LineageMap
@@ -1004,8 +1007,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         )
 
     def is_exact_tool(self, tool: ToolLike, tool_id: str, tool_version: str | None = None) -> bool:
-        """True if ``tool`` has id ``tool_id`` and, when given, version ``tool_version``."""
-        return tool.id == tool_id and (not tool_version or tool.version == tool_version)
+        """True if ``tool_id`` is ``tool``'s guid, versionless guid or old id and, when given, ``tool_version`` matches."""
+        tool_ids = (tool.id, tool.old_id, tool.id and remove_version_from_guid(tool.id))
+        return tool_id in tool_ids and (not tool_version or tool.version == tool_version)
 
     def get_unprivileged_tool(self, user: "User", tool_uuid: UUID | str) -> Optional["Tool"]:
         return None

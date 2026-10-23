@@ -556,6 +556,28 @@ class TestToolBox(BaseToolBoxTestCase):
             != "github.com/galaxyproject/example/test_tool/0.3"
         )
 
+    @pytest.mark.parametrize(
+        "tool_id,tool_version,expected",
+        [
+            ("github.com/galaxyproject/example/test_tool/0.1", None, True),
+            ("github.com/galaxyproject/example/test_tool/0.1", "0.1", True),
+            ("github.com/galaxyproject/example/test_tool/0.3", None, False),
+            ("github.com/galaxyproject/example/test_tool/0.1", "0.3", False),
+            ("test_tool", "0.1", True),
+            ("test_tool", "0.3", False),
+            ("test_tool", None, True),
+            ("github.com/galaxyproject/example/test_tool", "0.2", True),
+            ("github.com/galaxyproject/example/test_tool", "0.3", False),
+        ],
+    )
+    def test_is_exact_tool(self, tool_id, tool_version, expected):
+        self._init_tool()
+        self._setup_two_versions_in_config()
+        self._setup_two_versions()
+        tool = self.toolbox.get_tool(tool_id, tool_version=tool_version)
+        assert tool
+        assert self.toolbox.is_exact_tool(tool, tool_id, tool_version) is expected
+
     def test_tool_dir(self):
         self._init_tool()
         self._add_config(f"""<toolbox><tool_dir dir="{self.test_directory}" /></toolbox>""")
