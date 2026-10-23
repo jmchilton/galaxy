@@ -29,24 +29,24 @@ class TestCollectionUpdateTimeLockingIntegration(IntegrationTestCase):
                 history_id, contents=["1 2 3"], wait=True
             ).json()
             hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
-        hdca_id = self._app.security.decode_id(hdca["id"])
-        hda_id = self._app.security.decode_id(hdca["elements"][0]["object"]["id"])
+            hdca_id = self._app.security.decode_id(hdca["id"])
+            hda_id = self._app.security.decode_id(hdca["elements"][0]["object"]["id"])
 
-        engine = self._app.model.engine
-        lock_hdca = "SELECT 1 FROM history_dataset_collection_association WHERE id = :id FOR {} NOWAIT"
-        with Session(engine) as session:
-            hda = session.get(model.HistoryDatasetAssociation, hda_id)
-            assert hda and hda.dataset
-            hda.dataset.touch_collection_update_time(supports_skip_locked=True)
-            # The HDCA row lock is now held until this transaction ends, as it is in a job
-            # handler that fails a job. Inserting a row that references the HDCA (e.g. a
-            # workflow step output association) takes FOR KEY SHARE on it.
-            with engine.connect() as conn:
-                conn.execute(text(lock_hdca.format("KEY SHARE")), {"id": hdca_id})
-            # Guards against the touch silently locking nothing.
-            with (
-                engine.connect() as conn,
-                pytest.raises(OperationalError, match="could not obtain lock"),
-            ):
-                conn.execute(text(lock_hdca.format("UPDATE")), {"id": hdca_id})
-            session.rollback()
+            engine = self._app.model.engine
+            lock_hdca = "SELECT 1 FROM history_dataset_collection_association WHERE id = :id FOR {} NOWAIT"
+            with Session(engine) as session:
+                hda = session.get(model.HistoryDatasetAssociation, hda_id)
+                assert hda and hda.dataset
+                hda.dataset.touch_collection_update_time(supports_skip_locked=True)
+                # The HDCA row lock is now held until this transaction ends, as it is in a job
+                # handler that fails a job. Inserting a row that references the HDCA (e.g. a
+                # workflow step output association) takes FOR KEY SHARE on it.
+                with engine.connect() as conn:
+                    conn.execute(text(lock_hdca.format("KEY SHARE")), {"id": hdca_id})
+                # Guards against the touch silently locking nothing.
+                with (
+                    engine.connect() as conn,
+                    pytest.raises(OperationalError, match="could not obtain lock"),
+                ):
+                    conn.execute(text(lock_hdca.format("UPDATE")), {"id": hdca_id})
+                session.rollback()
