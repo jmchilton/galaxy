@@ -1003,6 +1003,10 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             self.get_tool(tool_id, tool_version=tool_version, tool_uuid=tool_uuid, exact=exact, user=user) is not None
         )
 
+    def is_exact_tool(self, tool: ToolLike, tool_id: str, tool_version: str | None = None) -> bool:
+        """True if ``tool`` has id ``tool_id`` and, when given, version ``tool_version``."""
+        return tool.id == tool_id and (not tool_version or tool.version == tool_version)
+
     def get_unprivileged_tool(self, user: "User", tool_uuid: UUID | str) -> Optional["Tool"]:
         return None
 
