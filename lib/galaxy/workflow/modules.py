@@ -2613,13 +2613,9 @@ def _capture_workflow_tool_request_state(
     # Persistence is best-effort and execution-neutral: an exception here
     # (e.g. ``tool.tool_source.to_string()`` on a tool with no serializable
     # source, or a unique-constraint race we cannot recover) must not abort
-    # workflow scheduling. Savepoint scopes the flush so a failure rolls back
-    # to clean transaction state instead of poisoning the outer session.
-    # begin_nested() flushes everything already pending in the session before
-    # it emits SAVEPOINT, and a failure there rolls back the whole transaction.
-    # Flush that unrelated scheduler state here, outside the best-effort block,
-    # so its errors reach the scheduler instead of being reported as a
-    # ToolRequest failure on a session that can no longer be used.
+    # workflow scheduling. Savepoint scopes the ToolRequest flush so a failure
+    # rolls back to clean transaction state instead of poisoning the outer session.
+    # Flush pending scheduler state first; begin_nested() would flush it inside the best-effort block.
     trans.sa_session.flush()
     try:
         with trans.sa_session.no_autoflush, trans.sa_session.begin_nested():
