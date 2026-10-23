@@ -1264,18 +1264,22 @@ class BaseDatasetPopulator(BasePopulator):
 
     def tool_request_raw(
         self,
-        tool_id: str,
+        tool_id: str | None,
         inputs: dict[str, Any],
         history_id: str,
         strict: bool = True,
         preferred_object_store_id: str | None = None,
+        tool_uuid: str | None = None,
     ) -> Response:
-        payload = {
-            "tool_id": tool_id,
+        payload: dict[str, Any] = {
             "history_id": history_id,
             "inputs": inputs,
             "strict": strict,
         }
+        if tool_id is not None:
+            payload["tool_id"] = tool_id
+        if tool_uuid is not None:
+            payload["tool_uuid"] = tool_uuid
         if preferred_object_store_id is not None:
             payload["preferred_object_store_id"] = preferred_object_store_id
         response = self._post("jobs", data=payload, json=True)

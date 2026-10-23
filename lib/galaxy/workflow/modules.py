@@ -319,6 +319,7 @@ def to_cwl(
     step: WorkflowStep | None = None,
     compute_environment: ComputeEnvironment | None = None,
     shell_quotable: bool = False,
+    element_identifiers: dict[int, str] | None = None,
 ):
     element_identifier = None
     if isinstance(value, NoReplacement):
@@ -373,6 +374,8 @@ def to_cwl(
             set_basename_and_derived_properties(
                 properties, value.dataset.created_from_basename or element_identifier or value.name
             )
+            if identifier := element_identifier or (element_identifiers or {}).get(value.id):
+                properties["element_identifier"] = identifier
             return properties
     elif isinstance(value, model.DatasetCollection):
         if value.collection_type == "list":
@@ -383,6 +386,7 @@ def to_cwl(
                     step=step,
                     compute_environment=compute_environment,
                     shell_quotable=shell_quotable,
+                    element_identifiers=element_identifiers,
                 )
                 for dce in value.dataset_elements
             ]
@@ -396,6 +400,7 @@ def to_cwl(
                     step=step,
                     compute_environment=compute_environment,
                     shell_quotable=shell_quotable,
+                    element_identifiers=element_identifiers,
                 )
             return rval
     elif isinstance(value, list):
@@ -406,6 +411,7 @@ def to_cwl(
                 step=step,
                 compute_environment=compute_environment,
                 shell_quotable=shell_quotable,
+                element_identifiers=element_identifiers,
             )
             for v in value
         ]
@@ -420,6 +426,7 @@ def to_cwl(
                 step=step,
                 compute_environment=compute_environment,
                 shell_quotable=shell_quotable,
+                element_identifiers=element_identifiers,
             )
             for k, v in value.items()
         }
