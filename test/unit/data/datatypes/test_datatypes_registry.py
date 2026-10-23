@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from galaxy.datatypes import sniff
 from galaxy.datatypes.registry import example_datatype_registry_for_sample
 from galaxy.datatypes.text import Json
@@ -135,3 +137,17 @@ def test_rmsx_manifest_visualization_registration():
     assert registry.mimetypes_by_extension["rmsx.json"] == "application/json"
     assert "rmsx.json" in registry.upload_file_formats
     assert registry.get_all_visualization_mappings()["rmsx.json"]["visualization"] == "rmsxflipbook"
+
+
+@dataclass(eq=False)
+class _StubConverter:
+    id: str
+
+
+def test_reregistered_converter_replaces_cached_lookup():
+    registry = example_datatype_registry_for_sample()
+    registry._register_converter_tool(_StubConverter("old_to_tabular"), "fasta", "tabular")
+    assert registry.get_converters_by_datatype("fasta")["tabular"].id == "old_to_tabular"
+    # A toolbox reload registers a new tool object for the same converter.
+    registry._register_converter_tool(_StubConverter("new_to_tabular"), "fasta", "tabular")
+    assert registry.get_converters_by_datatype("fasta")["tabular"].id == "new_to_tabular"

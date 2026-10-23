@@ -746,12 +746,12 @@ class Registry:
                 self._register_converter_tool(converter, source_datatype, target_datatype)
             except Exception:
                 self.log.exception(f"Error loading converter ({config_path})")
-        # Drop any cached (empty) converter lookups computed before registration.
-        self._converters_by_datatype = {}
 
     def _register_converter_tool(self, converter: "AbstractTool", source_datatype: str, target_datatype: str) -> None:
         self.converter_tools.add(converter)
         self.datatype_converters.setdefault(source_datatype, {})[target_datatype] = converter
+        # Drop cached lookups, which may hold a replaced converter.
+        self._converters_by_datatype = {}
 
     def load_display_applications(self, app):
         """
