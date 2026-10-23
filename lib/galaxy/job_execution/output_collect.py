@@ -21,6 +21,7 @@ from galaxy.model import (
     DatasetInstance,
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
+    Job,
     JOB_IO_NAME_MAX_LENGTH,
     JobOutputNameTooLongError,
 )
@@ -66,10 +67,7 @@ from galaxy.util import (
 )
 
 if TYPE_CHECKING:
-    from galaxy.model import (
-        Job,
-        LibraryFolder,
-    )
+    from galaxy.model import LibraryFolder
     from galaxy.model.store import (
         BaseDirectoryImportModelStore,
         DirectoryModelExportStore,
@@ -240,7 +238,7 @@ def collect_dynamic_outputs(
                 change_datatype_actions=job_context.change_datatype_actions,
             )
             collection_builder.populate()
-            if job_context.final_job_state == "error" and not collection.elements:
+            if job_context.final_job_state == Job.states.ERROR and not collection.elements:
                 # errored job with no discovered elements is a failed population, not an empty one
                 collection.handle_population_failed("Job failed before producing any datasets for this collection.")
         except MaxDiscoveredFilesExceededError:
