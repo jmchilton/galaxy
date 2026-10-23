@@ -1098,6 +1098,8 @@ steps:
         updated = self.workflow_populator.download_workflow(workflow_id, style="export")
         subworkflow_steps = [s for s in updated["steps"].values() if s["type"] == "subworkflow"]
         assert len(subworkflow_steps) == 1, updated
+        inner_steps = subworkflow_steps[0]["subworkflow"]["steps"].values()
+        assert [s.get("tool_id") for s in inner_steps if s["type"] == "tool"] == ["cat1"], updated
 
     def test_update_name_empty(self):
         # Update doesn't allow empty names.
