@@ -486,6 +486,17 @@ storage_dashboard:
     free_space_link: '[data-description="free-space card"] button'
     explore_usage_link: '[data-description="explore-storage card"] button'
 
+  # Free up disk space; operation is a cleanup id such as deleted_datasets
+  cleanup:
+    selectors:
+      review_link: '[data-description="${operation} cleanup"] [data-test-id="review-link"]'
+      no_items: '[data-description="${operation} cleanup"] [data-test-id="no-items-indicator"]'
+      select_all: '[data-test-id="review-table"] [data-test-id="select-all-checkbox"]'
+      delete_button: '[data-test-id="delete-button"]'
+      agreement: '[data-test-id="agreement-checkbox"]'
+      confirm: '#confirmation-modal .g-modal-confirm-buttons button:last-child'
+      success: '#cleanup-result-modal [data-test-id="success-info"]'
+
 edit_dataset_attributes:
   selectors:
     _: '[aria-labelledby="dataset-attributes-heading"]'
