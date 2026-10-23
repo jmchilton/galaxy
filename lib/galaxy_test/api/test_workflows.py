@@ -2920,9 +2920,6 @@ test_data:
 
     @skip_without_tool("collection_creates_dynamic_list_failbool")
     def test_workflow_fails_when_discovered_collection_producer_fails_empty(self):
-        # A job that fails before writing anything must not leave its discovered collection
-        # populated and empty: the mapped step would run zero jobs and the reducer would
-        # succeed over nothing, so the invocation would complete with no data.
         with self.dataset_populator.test_history() as history_id:
             job_summary = self._run_workflow(
                 """
