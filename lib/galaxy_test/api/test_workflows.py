@@ -2944,12 +2944,19 @@ steps:
             )
             invocation = self.workflow_populator.get_invocation(job_summary.invocation_id, step_details=True)
             assert invocation["state"] == "failed", invocation
-            assert invocation["messages"][0]["reason"] == "collection_failed", invocation["messages"]
             produce_hdca = invocation["steps"][0]["output_collections"]["list_output"]["id"]
+            messages = invocation["messages"]
+            assert len(messages) == 1, messages
+            assert messages[0]["reason"] == "collection_failed", messages
+            assert messages[0]["hdca_id"] == produce_hdca, messages
             details = self.dataset_populator.get_history_collection_details(
                 history_id, content_id=produce_hdca, assert_ok=False
             )
             assert details["populated_state"] == "failed", details
+            assert (
+                details["populated_state_message"] == "Job failed and no datasets were discovered for this collection."
+            )
+            assert not invocation["steps"][1]["jobs"], invocation["steps"][1]
             assert not invocation["steps"][2]["jobs"], invocation["steps"][2]
 
     @skip_without_tool("multi_data_optional")
