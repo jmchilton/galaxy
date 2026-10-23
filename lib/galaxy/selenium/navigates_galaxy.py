@@ -2895,6 +2895,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.use_bootstrap_dropdown(option="export tool references", menu="history options")
         self.components.citations._.reference.wait_for_visible()
 
+    def click_history_option_resume_paused_jobs(self):
+        """Open History options > Resume Paused Jobs."""
+        self.use_bootstrap_dropdown(option="resume paused jobs", menu="history options")
+
     def click_history_option_extract_workflow(self):
         self.use_bootstrap_dropdown(option="extract workflow", menu="history options")
 
