@@ -19,7 +19,6 @@ import {
     type SelectionItem,
     type SelectionState,
 } from "@/components/SelectionDialog/selectionTypes";
-import { useConfig } from "@/composables/config";
 import { useFileSources } from "@/composables/fileSources";
 import { useToast } from "@/composables/toast";
 import { useUrlTracker } from "@/composables/urlTracker";
@@ -30,7 +29,7 @@ import { USER_FILE_PREFIX } from "@/utils/url";
 import { Model } from "./model";
 
 import GButton from "../BaseComponents/GButton.vue";
-import GAlert from "@/components/BaseComponents/GAlert.vue";
+import FtpUploadHelp from "./FtpUploadHelp.vue";
 import SelectionDialog from "@/components/SelectionDialog/SelectionDialog.vue";
 
 const filesSources = useFileSources();
@@ -65,8 +64,6 @@ const props = withDefaults(defineProps<FilesDialogProps>(), {
     isOpen: true,
     routePush: () => {},
 });
-
-const { config, isConfigLoaded } = useConfig();
 
 const selectionModel = ref<Model>(new Model({ multiple: props.multiple }));
 
@@ -514,16 +511,7 @@ onMounted(() => {
         @onSelectAll="onSelectAll"
         @onUndo="onGoBack">
         <template v-slot:helper>
-            <GAlert v-if="showFTPHelper && isConfigLoaded" id="helper" variant="info" show>
-                This Galaxy server allows you to upload files via FTP. To upload some files, log in to the FTP server at
-                <strong>{{ config.ftp_upload_site }}</strong> using your Galaxy credentials. For help visit the
-                <a href="https://galaxyproject.org/ftp-upload/" target="_blank">tutorial</a>.
-                <span v-if="config.enable_oidc"
-                    ><br />If you are signed-in to Galaxy using a third-party identity and you
-                    <strong>do not have a Galaxy password</strong> please use the reset password option in the login
-                    form with your email to create a password for your account.</span
-                >
-            </GAlert>
+            <FtpUploadHelp v-if="showFTPHelper" id="helper" />
         </template>
         <template v-slot:buttons>
             <GButton
