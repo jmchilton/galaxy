@@ -3,6 +3,8 @@ import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { UploadMethodComponent } from "../types";
+
 import PasteLinksUpload from "./PasteLinksUpload.vue";
 
 vi.mock("@/composables/upload/uploadDefaults");
@@ -14,6 +16,7 @@ const SELECTORS = {
     addUrls: '[data-test-id="add-urls"]',
     invalidWarning: '[data-test-id="invalid-urls-warning"]',
     rowUrl: (row: number) => `[data-test-id="upload-row-${row}-url"]`,
+    nameHeader: 'th[id^="g-table-field-name-"]',
 };
 
 function mountPasteLinksUpload() {
@@ -69,5 +72,16 @@ describe("PasteLinksUpload", () => {
         expect(wrapper.findAll(".is-invalid")).toHaveLength(0);
         expect(wrapper.find(SELECTORS.invalidWarning).exists()).toBe(false);
         expect(lastReadyState(wrapper)).toBe(true);
+    });
+
+    it("uploads URLs in the order the sorted table shows", async () => {
+        const wrapper = mountPasteLinksUpload();
+        const urls = ["https://example.org/c.txt", "https://example.org/a.txt", "https://example.org/b.txt"];
+        await pasteUrlsAndAdd(wrapper, urls);
+
+        await wrapper.find(SELECTORS.nameHeader).trigger("click");
+
+        const prepared = (wrapper.vm as unknown as UploadMethodComponent).prepareUpload();
+        expect((prepared?.uploadItems ?? []).map((item) => item.name)).toEqual(["a.txt", "b.txt", "c.txt"]);
     });
 });
