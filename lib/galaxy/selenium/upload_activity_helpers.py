@@ -195,6 +195,16 @@ class _UploadStaging:
         self.driver_wrapper.set_file_input(file_input, test_path)
         return self._create_item(LocalUploadItem, metadata)
 
+    def stage_local_files(
+        self, test_paths: list[str], metadata_list: list[UploadMetadata | None] | None = None
+    ) -> "_UploadStaging":
+        """Pick several local files in one file chooser selection."""
+        file_input = self.driver_wrapper.wait_for_selector("#local-file-input")
+        self.driver_wrapper.set_file_input(file_input, test_paths)
+        for metadata in metadata_list or [None] * len(test_paths):
+            self._create_item(LocalUploadItem, metadata)
+        return self
+
     def stage_paste_content(self, content: str, metadata: UploadMetadata | None = None) -> PasteContentUploadItem:
         if self._item_count > 0:
             self.components.upload_activity.add_another_dataset_button.wait_for_and_click()
@@ -784,6 +794,12 @@ class BaseUploadContext:
 class LocalFileContext(BaseUploadContext):
     def stage_local_file(self, test_path: str, metadata: UploadMetadata | None = None) -> LocalUploadItem:
         return self._context.stage_local_file(test_path, metadata)
+
+    def stage_local_files(
+        self, test_paths: list[str], metadata_list: list[UploadMetadata | None] | None = None
+    ) -> "LocalFileContext":
+        self._context.stage_local_files(test_paths, metadata_list)
+        return self
 
 
 class PasteContentContext(BaseUploadContext):

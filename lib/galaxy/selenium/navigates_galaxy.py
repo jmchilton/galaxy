@@ -4061,8 +4061,8 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         else:
             self.action_chains().move_to_element(element).key_down(Keys.SHIFT).click().key_up(Keys.SHIFT).perform()
 
-    def set_file_input(self, file_input: WebElementProtocol, test_path: str) -> None:
-        """Attach a local file to a file input element, visible or not.
+    def set_file_input(self, file_input: WebElementProtocol, test_path: str | list[str]) -> None:
+        """Attach local files to a file input element, visible or not; a list needs a ``multiple`` input.
 
         Playwright types into an element rather than setting its value, so a file
         input there has to go through set_input_files.
@@ -4071,7 +4071,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             pw_driver = cast("HasPlaywrightDriver", self._driver_impl)
             pw_driver._unwrap_element(file_input).set_input_files(test_path)
         else:
-            file_input.send_keys(test_path)
+            file_input.send_keys(test_path if isinstance(test_path, str) else "\n".join(test_path))
 
     def send_keys_to_page(self, *value: str) -> None:
         """Send keys to the currently focused element / page.

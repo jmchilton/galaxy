@@ -77,6 +77,17 @@ class TestUploads(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivit
         self.assert_item_dbkey_displayed_as(1, "?")
 
     @selenium_test
+    def test_upload_files_from_one_selection(self):
+        """Several files picked in one file chooser selection each become a dataset."""
+        file_names = ["1.bed", "1.fasta"]
+        self.upload_context("local-file").stage_local_files([self.get_filename(f) for f in file_names]).start()
+
+        self.history_panel_wait_for_hid_ok(1)
+        self.history_panel_wait_for_hid_ok(2)
+        hdas = {hda["name"]: hda["extension"] for hda in self.history_contents()}
+        assert hdas == {"1.bed": "bed", "1.fasta": "fasta"}, hdas
+
+    @selenium_test
     def test_upload_deferred(self):
         uploader = self.upload_context("paste-links")
         url = "https://raw.githubusercontent.com/galaxyproject/galaxy/dev/test-data/1.bed"
