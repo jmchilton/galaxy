@@ -3270,6 +3270,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Delete the selected history items from the Selection menu, permanently with ``purge``, and confirm."""
         self.history_panel_confirm_selected_operation("purge option" if purge else "delete option")
 
+    def history_panel_undelete_selected(self):
+        """Undelete the selected history items from the Selection menu and confirm (Restore)."""
+        self.history_panel_confirm_selected_operation("undelete option")
+
     def history_panel_hide_selected(self, unhide: bool = False):
         """Hide (or ``unhide``) the selected history items from the Selection menu and confirm."""
         self.history_panel_confirm_selected_operation("unhide option" if unhide else "hide option")

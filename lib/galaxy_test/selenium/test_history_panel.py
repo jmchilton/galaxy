@@ -202,6 +202,14 @@ class TestHistoryPanel(SeleniumTestCase, UsesUploadActivity):
         self._wait_on(lambda: deleted_purged(1) == (False, False), "hid 1 to be undeleted")
         self.screenshot("history_panel_deleted_items_shown")
 
+        self.history_panel_filter("deleted:true")
+        self.history_panel_wait_for_hid_hidden(1)
+        self.history_panel_multi_operations_show()
+        self.history_panel_multi_operation_select_hid(2)
+        self.history_panel_undelete_selected()
+        self._wait_on(lambda: deleted_purged(2) == (False, False), "hid 2 to be undeleted")
+        assert deleted_purged(3) == (True, True)
+
     @selenium_test
     def test_hide_and_unhide_items(self):
         history_id = self.current_history_id()
