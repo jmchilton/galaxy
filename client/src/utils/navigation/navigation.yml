@@ -629,6 +629,12 @@ history_copy_elements:
 history_view:
   selectors:
     switch_to_history: '[data-description="switch to history button"]'
+    import_button: '[data-description="import history button"]'
+  copy_modal:
+    selectors:
+      _: 'dialog.g-dialog[open]'
+      name_input: 'dialog.g-dialog[open] input.g-form-input'
+      copy_button: 'dialog.g-dialog[open] .g-modal-confirm-buttons button:last-child'
 
 collection_builders:
   selectors:
