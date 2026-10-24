@@ -2963,6 +2963,21 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.histories.archived_tab.wait_for_and_click()
         self.wait_for_selector(".history-card-list, #no-history-found")
 
+    def navigate_to_history_view(self, history_id):
+        """Open the history view page of history ``history_id``."""
+        self.navigate_to(self.build_url(f"histories/view?id={history_id}"))
+
+    def history_view_import(self, new_name=None):
+        """Import the open history view's history: Import this history > Copy History."""
+        history_view = self.components.history_view
+        history_view.import_button.wait_for_and_click()
+        if new_name is not None:
+            name_input = history_view.copy_modal.name_input.wait_for_visible()
+            self.aggressive_clear(name_input)
+            name_input.send_keys(new_name)
+        history_view.copy_modal.copy_button.wait_for_and_click()
+        history_view.copy_modal._.wait_for_absent_or_hidden()
+
     def click_history_option_extract_workflow(self):
         self.use_bootstrap_dropdown(option="extract workflow", menu="history options")
 
