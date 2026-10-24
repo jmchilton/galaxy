@@ -2376,6 +2376,20 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def click_history_option_sharing(self):
         self.use_bootstrap_dropdown(option="share and manage access", menu="history options")
 
+    def navigate_to_history_view(self, history_id):
+        """Open the history view page of history ``history_id``."""
+        self.navigate_to(self.build_url(f"histories/view?id={history_id}"))
+
+    def history_view_import(self, new_name=None):
+        """Import the open history view's history: Import this history > Copy History."""
+        history_view = self.components.history_view
+        history_view.import_button.wait_for_and_click()
+        copy_modal = history_view.copy_modal
+        if new_name is not None:
+            copy_modal.name_input.wait_for_and_clear_aggressive_and_send_keys(new_name)
+        copy_modal.copy_button.wait_for_and_click()
+        copy_modal._.wait_for_absent_or_hidden()
+
     def click_history_option_extract_workflow(self):
         self.use_bootstrap_dropdown(option="extract workflow", menu="history options")
 
