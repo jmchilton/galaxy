@@ -2916,6 +2916,19 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Open History options > Resume Paused Jobs."""
         self.use_bootstrap_dropdown(option="resume paused jobs", menu="history options")
 
+    def history_panel_archive(self):
+        """Archive the current history: History options > Archive History > Archive history."""
+        self.click_history_option(self.components.history_panel.options_archive_history)
+        archive = self.components.histories.archive
+        archive.archive_button.wait_for_and_click()
+        archive.archived_alert.wait_for_visible()
+
+    def navigate_to_archived_histories(self):
+        """Open Histories > Archived Histories."""
+        self.navigate_to_histories_page()
+        self.components.histories.archived_tab.wait_for_and_click()
+        self.wait_for_selector(".history-card-list, #no-history-found")
+
     def click_history_option_extract_workflow(self):
         self.use_bootstrap_dropdown(option="extract workflow", menu="history options")
 
