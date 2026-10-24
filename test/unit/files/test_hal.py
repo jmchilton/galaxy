@@ -219,3 +219,15 @@ def test_root_skips_malformed_record():
 def test_deposit_path_trailing_slash_accepted():
     _search([{**RECORD, "files_s": [], "fileAnnexes_s": []}])
     assert _list("/hal-01479142v2/") == ([], 0)
+
+
+@responses.activate
+def test_html_attachment_realized_and_sized():
+    record = {**RECORD, "files_s": [], "fileAnnexes_s": ["https://hal.science/hal-01479142/file/report.html"]}
+    _search([record])
+    _size("report.html", "7", **{"Content-Type": "text/html"})
+    entries, _ = _list("/hal-01479142v2")
+    assert [(e.name, e.size) for e in entries] == [("report.html", 7)]
+    _search([record])
+    responses.add(responses.GET, f"{FILE_URL}/report.html", body="<html/>", content_type="text/html")
+    assert_realizes_as(_sources(), "gxfiles://hal/hal-01479142v2/report.html", "<html/>")

@@ -271,7 +271,8 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
                 if response.status_code in (401, 403):
                     raise MessageException("This HAL file is not publicly accessible; it may be under embargo.")
                 response.raise_for_status()
-                if response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                is_html_attachment = urlsplit(url).path.lower().endswith((".html", ".htm"))
+                if not is_html_attachment and response.headers.get("Content-Type", "").lower().startswith("text/html"):
                     raise MessageException("HAL returned an HTML page instead of the requested data.")
                 yield response
         except RequestException as exc:
