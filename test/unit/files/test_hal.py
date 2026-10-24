@@ -170,7 +170,7 @@ def test_redirect_to_private_address_not_requested():
 def test_redirect_loop_capped():
     _search([RECORD])
     responses.add(responses.GET, f"{FILE_URL}/main.pdf", status=302, headers={"Location": f"{FILE_URL}/main.pdf"})
-    with pytest.raises(MessageException, match="too many redirects"):
+    with pytest.raises(MessageException, match="Too many redirects"):
         assert_realizes_as(_sources(), "gxfiles://hal/hal-01479142v2/main.pdf", "")
     assert len(responses.calls) == 7
 

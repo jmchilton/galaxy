@@ -9,7 +9,6 @@ from typing import TypedDict
 from urllib.parse import (
     quote,
     unquote,
-    urljoin,
     urlsplit,
     urlunsplit,
 )
@@ -35,10 +34,9 @@ from galaxy.files.sources import (
     BaseFilesSource,
     DEFAULT_PAGE_LIMIT,
 )
-from galaxy.files.uris import validate_non_local
+from galaxy.files.uris import open_validated_url
 from galaxy.util import (
     DEFAULT_SOCKET_TIMEOUT,
-    requests,
     stream_to_path,
 )
 from galaxy.util.config_templates import TemplateExpansion
@@ -251,45 +249,26 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
         timeout: float = DEFAULT_SOCKET_TIMEOUT,
     ) -> Iterator[Response]:
         """Validate every redirect before making the next request, including metadata-supplied URLs."""
-        allowlist = self._file_sources_config.fetch_url_allowlist or []
+        headers = {"User-Agent": "Galaxy HAL file source"}
+        if method == "HEAD":
+            headers["Accept-Encoding"] = "identity"
         try:
-            with requests.Session() as session:
-                for _ in range(6):
-                    parsed = urlsplit(url)
-                    if (
-                        parsed.scheme not in ("http", "https")
-                        or not parsed.hostname
-                        or parsed.username
-                        or parsed.password
-                    ):
-                        raise MessageException("Invalid HAL HTTP URL.")
-                    validate_non_local(url, allowlist)
-                    headers = {"User-Agent": "Galaxy HAL file source"}
-                    if method == "HEAD":
-                        headers["Accept-Encoding"] = "identity"
-                    with session.request(
-                        method,
-                        url,
-                        params=params,
-                        stream=True,
-                        allow_redirects=False,
-                        timeout=timeout,
-                        headers=headers,
-                    ) as response:
-                        if response.is_redirect:
-                            url = urljoin(response.url, response.headers["Location"])
-                            params = None
-                            continue
-                        if response.status_code == 404:
-                            raise ObjectNotFound("The requested HAL resource was not found.")
-                        if response.status_code in (401, 403):
-                            raise MessageException("This HAL file is not publicly accessible; it may be under embargo.")
-                        response.raise_for_status()
-                        if response.headers.get("Content-Type", "").lower().startswith("text/html"):
-                            raise MessageException("HAL returned an HTML page instead of the requested data.")
-                        yield response
-                        return
-                raise MessageException("HAL returned too many redirects.")
+            with open_validated_url(
+                url,
+                self._file_sources_config.fetch_url_allowlist or [],
+                method=method,
+                params=params,
+                headers=headers,
+                timeout=timeout,
+            ) as response:
+                if response.status_code == 404:
+                    raise ObjectNotFound("The requested HAL resource was not found.")
+                if response.status_code in (401, 403):
+                    raise MessageException("This HAL file is not publicly accessible; it may be under embargo.")
+                response.raise_for_status()
+                if response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                    raise MessageException("HAL returned an HTML page instead of the requested data.")
+                yield response
         except RequestException as exc:
             raise MessageException(f"Unable to fetch HAL resource: {exc}") from exc
 

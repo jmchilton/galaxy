@@ -8,6 +8,7 @@ from galaxy.exceptions import (
     RequestParameterInvalidException,
 )
 from galaxy.files.uris import (
+    open_validated_url,
     validate_non_local,
     validate_uri_access,
 )
@@ -65,6 +66,13 @@ def test_validate_non_local_strips_surrounding_whitespace():
     # slip through to getaddrinfo and raise an opaque error.
     assert validates_as_non_local("  http://google.com/x  ", [])
     assert validates_as_non_local("\thttp://google.com/x\n", [])
+
+
+@pytest.mark.parametrize("bad_url", ["ftp://example.org/a", "https://user:pw@example.org/a", "https:///a"])
+def test_open_validated_url_rejects_before_request(bad_url):
+    with pytest.raises(RequestParameterInvalidException):
+        with open_validated_url(bad_url, []):
+            pass
 
 
 def validates_as_non_local(uri: str, allow_list):
