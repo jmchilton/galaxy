@@ -135,13 +135,13 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
         if filename is not None:
             raise ObjectNotFound(f"HAL path is not a directory: {path}")
         files = self._record_files(record_id, context.config)
-        entries = [
+        file_entries = [
             RemoteFile(name=name, path=file_path, uri=self.uri_from_path(file_path))
             for file_path, (name, _) in files.items()
             if not query or query.casefold() in name.casefold()
         ]
         start = offset or 0
-        page = entries[start : start + limit if limit is not None else None]
+        page = file_entries[start : start + limit if limit is not None else None]
         # Unpaginated API listings get sizes for the first page only.
         probed = page if limit is not None else page[:DEFAULT_PAGE_LIMIT]
         if probed:
@@ -149,9 +149,9 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
             with ThreadPoolExecutor(max_workers=MAX_SIZE_LOOKUP_WORKERS) as executor:
                 sizes = executor.map(self._file_size, (files[entry.path][1] for entry in probed))
                 for entry, size in zip(probed, sizes):
-                    if isinstance(entry, RemoteFile):
-                        entry.size = size
-        return page, len(entries)
+                    entry.size = size
+        visible: list[AnyRemoteEntry] = list(page)
+        return visible, len(file_entries)
 
     def _file_size(self, url: str) -> int:
         """Best-effort metadata lookup; never download a body to calculate a file's size."""
