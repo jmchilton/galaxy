@@ -453,6 +453,7 @@ history_panel:
       selector: '.history-options-button-menu > a:contains("${option_label}")'
     options_show_export_history_to_file: 'a[data-description="export to file"]'
     options_extract_workflow: '[data-description="extract workflow"]'
+    options_archive_history: '[data-description="archive history"]'
     page_button: '[data-description="history page button"]'
 
     collection_menu_button: '.collection-menu'
@@ -689,6 +690,12 @@ histories:
     bulk_delete_button: 'button[id="history-list-footer-bulk-delete-button"]'
     bulk_restore_button: 'button[id="history-list-footer-bulk-restore-button"]'
     bulk_open_multiview_button: 'button[id="history-list-footer-bulk-open-multiview-button"]'
+    archived_tab: '#histories-archived-tab'
+  archive:
+    selectors:
+      _: '.history-archive-wizard'
+      archive_button: '.archive-history-btn'
+      archived_alert: '#history-archived-alert'
   multiview:
     selectors:
       activity: '#activity-multiview'
