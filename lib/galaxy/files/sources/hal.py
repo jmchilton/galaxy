@@ -240,7 +240,7 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
 
     @staticmethod
     def _split_path(path: str) -> tuple[str, str | None]:
-        parts = path.removeprefix("/").split("/")
+        parts = path.strip("/").split("/")
         if not RECORD_RE.fullmatch(parts[0]) or len(parts) > 2 or (len(parts) == 2 and not parts[1]):
             raise ObjectNotFound(f"Invalid HAL path: {path}. Expected /<hal-id>v<version>[/<filename>].")
         return parts[0], parts[1] if len(parts) == 2 else None

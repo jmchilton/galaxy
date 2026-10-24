@@ -213,3 +213,9 @@ def test_root_skips_malformed_record():
     _search([{"halId_s": "hal-00000001", "title_s": ["No version"]}, RECORD])
     entries, _ = _list("/")
     assert [e.path for e in entries] == ["/hal-01479142v2"]
+
+
+@responses.activate
+def test_deposit_path_trailing_slash_accepted():
+    _search([{**RECORD, "files_s": [], "fileAnnexes_s": []}])
+    assert _list("/hal-01479142v2/") == ([], 0)
