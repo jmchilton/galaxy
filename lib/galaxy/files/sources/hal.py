@@ -135,11 +135,13 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
         ]
         start = offset or 0
         page = entries[start : start + limit if limit is not None else None]
-        if page:
+        # Unpaginated API listings get sizes for the first page only.
+        probed = page if limit is not None else page[:DEFAULT_PAGE_LIMIT]
+        if probed:
             # Only probe visible files, with bounded concurrency so a large record remains responsive.
             with ThreadPoolExecutor(max_workers=MAX_SIZE_LOOKUP_WORKERS) as executor:
-                sizes = executor.map(self._file_size, (files[entry.path][1] for entry in page))
-                for entry, size in zip(page, sizes):
+                sizes = executor.map(self._file_size, (files[entry.path][1] for entry in probed))
+                for entry, size in zip(probed, sizes):
                     if isinstance(entry, RemoteFile):
                         entry.size = size
         return page, len(entries)

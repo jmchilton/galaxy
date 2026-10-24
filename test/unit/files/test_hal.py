@@ -5,6 +5,7 @@ from galaxy.exceptions import (
     MessageException,
     ObjectNotFound,
 )
+from galaxy.files.sources import DEFAULT_PAGE_LIMIT
 from ._util import (
     assert_realizes_as,
     configured_file_sources,
@@ -85,6 +86,18 @@ def test_size_is_zero_for_encoded_or_invalid_length():
     _size("main.pdf", "12abc")
     entries, _ = _list("/hal-01479142v2")
     assert [e.size for e in entries] == [0, 0]
+
+
+@responses.activate
+def test_unpaginated_listing_probes_first_page_only():
+    names = [f"f{i:02}.txt" for i in range(DEFAULT_PAGE_LIMIT + 5)]
+    _search([{**RECORD, "files_s": [], "fileAnnexes_s": [f"https://hal.science/hal-01479142/file/{n}" for n in names]}])
+    for name in names:
+        _size(name, "1")
+    entries, total = _list("/hal-01479142v2")
+    assert total == len(entries) == len(names)
+    assert [e.size for e in entries] == [1] * DEFAULT_PAGE_LIMIT + [0] * 5
+    assert len([c for c in responses.calls if c.request.method == "HEAD"]) == DEFAULT_PAGE_LIMIT
 
 
 @responses.activate
