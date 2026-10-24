@@ -206,3 +206,10 @@ def test_hal_subdomain_attachments_listed():
     responses.add(responses.HEAD, "https://hal.archives-ouvertes.fr/hal-01479142v2/file/s.txt", status=500)
     entries, _ = _list("/hal-01479142v2")
     assert [e.name for e in entries] == ["s.txt"]
+
+
+@responses.activate
+def test_root_skips_malformed_record():
+    _search([{"halId_s": "hal-00000001", "title_s": ["No version"]}, RECORD])
+    entries, _ = _list("/")
+    assert [e.path for e in entries] == ["/hal-01479142v2"]

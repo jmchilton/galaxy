@@ -116,7 +116,11 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
             )
             entries: list[AnyRemoteEntry] = []
             for record in result["docs"]:
-                record_id = self._record_id(record)
+                try:
+                    record_id = self._record_id(record)
+                except MessageException:
+                    log.warning("Skipping HAL search result with invalid identifier or version: %r", record)
+                    continue
                 titles = record.get("title_s") or []
                 title = titles[0] if titles else record_id
                 record_path = f"/{record_id}"
