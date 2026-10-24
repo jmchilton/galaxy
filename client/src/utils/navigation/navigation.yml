@@ -498,6 +498,9 @@ edit_dataset_attributes:
     annotation_input: '[aria-labelledby="dataset-attributes-heading"] textarea#annotation'
     # a text metadata field on the Attributes tab, e.g. comment_lines
     metadata_input: '[aria-labelledby="dataset-attributes-heading"] input#${name}'
+    # a select metadata field on the Attributes tab, e.g. chromCol
+    metadata_select: '[aria-labelledby="dataset-attributes-heading"] #form-element-${name} .multiselect'
+    attribute_field: '[aria-labelledby="dataset-attributes-heading"] .ui-form-element[id^="form-element-"]'
     datatypes_tab: '.dataset-edit-datatype-tab'
     permissions_tab:
       type: xpath

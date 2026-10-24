@@ -966,6 +966,36 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         ).wait_for_and_click()
         self.components.edit_dataset_attributes.save_button.wait_for_and_click()
 
+    def edit_dataset_attribute_fields(self) -> list[tuple[str, str, str]]:
+        """On the dataset edit view, return the Attributes tab's fields as (name, label, shown value)."""
+        edit = self.components.edit_dataset_attributes
+        edit.name_input.wait_for_visible()
+        fields = []
+        for element in edit.attribute_field.all():
+            if not element.is_displayed():
+                continue
+            name = (element.get_attribute("id") or "").removeprefix("form-element-")
+            label = (
+                element.find_element(By.CSS_SELECTOR, ".ui-form-title")
+                .text.split("\n")[0]
+                .removesuffix("- optional")
+                .strip(" *")
+            )
+            inputs = element.find_elements(
+                By.CSS_SELECTOR, "input:not([type=checkbox]):not(.multiselect__input), textarea"
+            )
+            if inputs:
+                value = inputs[0].get_attribute("value") or ""
+            else:
+                chosen = element.find_elements(By.CSS_SELECTOR, ".multiselect__single, .multiselect__tag")
+                value = ", ".join(option.text.strip() for option in chosen)
+            fields.append((name, label, value))
+        return fields
+
+    def edit_dataset_set_metadata_select(self, name: str, value: str):
+        """On the dataset edit view's Attributes tab, pick ``value`` in select metadata field ``name``."""
+        self.select_set_value(self.components.edit_dataset_attributes.metadata_select(name=name), value)
+
     def edit_dataset_datatype(self, datatype: str):
         """On the dataset edit view, pick ``datatype`` as New Type on the Datatypes tab and Save."""
         edit = self.components.edit_dataset_attributes
