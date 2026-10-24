@@ -2665,7 +2665,8 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_warns_when_it_restores_an_unstarred_output(self):
         with self.dataset_populator.test_history() as history_id:
-            out_id, cat1_job_id = self._run_cat1(history_id)
+            run = self.dataset_populator.run_cat1(history_id)
+            out_id, cat1_job_id = run.output_id, run.job_id
             page = self.dataset_populator.new_notebook_referencing(history_id, output_ids=[out_id])
 
             # No output_labels: the user un-starred the output the notebook displays.
@@ -2746,7 +2747,7 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_empty_notebook_keeps_default_report(self):
         with self.dataset_populator.test_history() as history_id:
-            _, cat1_job_id = self._run_cat1(history_id)
+            cat1_job_id = self.dataset_populator.run_cat1(history_id).job_id
             page = self.dataset_populator.new_history_page(history_id, content="")
 
             result = self._extract(job_ids=[cat1_job_id], from_page_id=page["id"])
@@ -2757,7 +2758,7 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_notebook_with_only_dropped_directives_keeps_default_report(self):
         with self.dataset_populator.test_history() as history_id:
-            out_id, _ = self._run_cat1(history_id)
+            out_id = self.dataset_populator.run_cat1(history_id).output_id
             unrelated = self.dataset_populator.new_dataset(history_id, content="x\n", wait=True)
             page = self.dataset_populator.new_history_page(
                 history_id, content=f"```galaxy\nhistory_dataset_display(history_dataset_id={out_id})\n```\n"
@@ -2773,7 +2774,8 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_drops_directive_for_unquotable_output_label(self):
         with self.dataset_populator.test_history() as history_id:
-            out_id, cat1_job_id = self._run_cat1(history_id)
+            run = self.dataset_populator.run_cat1(history_id)
+            out_id, cat1_job_id = run.output_id, run.job_id
             page = self.dataset_populator.new_notebook_referencing(history_id, output_ids=[out_id])
 
             result = self._extract(
@@ -2798,7 +2800,7 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_drops_directive_for_unquotable_step_label(self):
         with self.dataset_populator.test_history() as history_id:
-            _, cat1_job_id = self._run_cat1(history_id)
+            cat1_job_id = self.dataset_populator.run_cat1(history_id).job_id
             page = self.dataset_populator.new_notebook_referencing(history_id, job_ids=[cat1_job_id])
 
             result = self._extract(
@@ -2824,7 +2826,8 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_directives_resolve_against_invocation(self):
         with self.dataset_populator.test_history() as history_id:
-            out_id, cat1_job_id = self._run_cat1(history_id)
+            run = self.dataset_populator.run_cat1(history_id)
+            out_id, cat1_job_id = run.output_id, run.job_id
             page = self.dataset_populator.new_history_page(
                 history_id,
                 content=(
@@ -2869,7 +2872,7 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_history_link_to_page_history_becomes_argless(self):
         with self.dataset_populator.test_history() as history_id:
-            _, cat1_job_id = self._run_cat1(history_id)
+            cat1_job_id = self.dataset_populator.run_cat1(history_id).job_id
             other_history_id = self.dataset_populator.new_history()
             page = self.dataset_populator.new_history_page(
                 history_id,
@@ -2893,7 +2896,8 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_drops_inline_object_embeds(self):
         with self.dataset_populator.test_history() as history_id:
-            out_id, cat1_job_id = self._run_cat1(history_id)
+            run = self.dataset_populator.run_cat1(history_id)
+            out_id, cat1_job_id = run.output_id, run.job_id
             page = self.dataset_populator.new_history_page(
                 history_id,
                 content=(
@@ -2921,7 +2925,8 @@ class TestNotebookWorkflowExtractionReport(
     @skip_without_tool("cat1")
     def test_report_drops_visualization_cell_naming_a_dataset(self):
         with self.dataset_populator.test_history() as history_id:
-            out_id, cat1_job_id = self._run_cat1(history_id)
+            run = self.dataset_populator.run_cat1(history_id)
+            out_id, cat1_job_id = run.output_id, run.job_id
             visualization = dumps({"visualization_name": "csv", "dataset_id": out_id, "dataset_name": "merged"})
             page = self.dataset_populator.new_history_page(
                 history_id,
@@ -2948,7 +2953,8 @@ class TestNotebookWorkflowExtractionReport(
     def test_report_drops_indented_galaxy_cell_naming_a_dataset(self):
         """The client renders an indented fence as a galaxy cell; page import leaves its id encoded."""
         with self.dataset_populator.test_history() as history_id:
-            out_id, cat1_job_id = self._run_cat1(history_id)
+            run = self.dataset_populator.run_cat1(history_id)
+            out_id, cat1_job_id = run.output_id, run.job_id
             page = self.dataset_populator.new_history_page(
                 history_id,
                 content=(
@@ -2974,7 +2980,7 @@ class TestNotebookWorkflowExtractionReport(
         """A notebook seeded from an invocation report carries invocation_id-scoped
         label lines; the walk passes them through, so they must not leak the id."""
         with self.dataset_populator.test_history() as history_id:
-            _, cat1_job_id = self._run_cat1(history_id)
+            cat1_job_id = self.dataset_populator.run_cat1(history_id).job_id
             # Any encoded id stands in for a prior invocation; nothing resolves it.
             prior_invocation_id = history_id
             page = self.dataset_populator.new_history_page(
