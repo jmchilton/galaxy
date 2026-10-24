@@ -197,3 +197,12 @@ def test_writable_rejected():
 def test_invalid_path(path):
     with pytest.raises(ObjectNotFound):
         _list(path)
+
+
+@responses.activate
+def test_hal_subdomain_attachments_listed():
+    record = {**RECORD, "files_s": [], "fileAnnexes_s": ["https://hal.archives-ouvertes.fr/hal-01479142/file/s.txt"]}
+    _search([record])
+    responses.add(responses.HEAD, "https://hal.archives-ouvertes.fr/hal-01479142v2/file/s.txt", status=500)
+    entries, _ = _list("/hal-01479142v2")
+    assert [e.name for e in entries] == ["s.txt"]

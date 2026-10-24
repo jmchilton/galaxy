@@ -46,6 +46,9 @@ RECORD_RE = re.compile(r"([a-z][a-z0-9-]*-[0-9]+)v([1-9][0-9]*)")
 FIELDS = "halId_s,version_i,title_s,files_s,fileAnnexes_s"
 SIZE_LOOKUP_TIMEOUT = 5
 MAX_SIZE_LOOKUP_WORKERS = 4
+# Attachments are only read from these hosts (and subdomains of FILE_DOMAINS), whatever api_url is.
+FILE_HOSTS = ("hal.inrae.fr",)
+FILE_DOMAINS = ("hal.science", "archives-ouvertes.fr")
 
 log = logging.getLogger(__name__)
 
@@ -207,11 +210,7 @@ class HALFilesSource(BaseFilesSource[HALFileSourceTemplateConfiguration, HALFile
             parsed = urlsplit(url)
             host = parsed.hostname or ""
             if parsed.scheme != "https" or not (
-                host == "hal.science"
-                or host.endswith(".hal.science")
-                or host == "hal.inrae.fr"
-                or host == "archives-ouvertes.fr"
-                or host.endswith(".archives-ouvertes.fr")
+                host in FILE_HOSTS or any(host == d or host.endswith(f".{d}") for d in FILE_DOMAINS)
             ):
                 continue  # Associated datasets hosted by other repositories are outside this source's scope.
             parts = parsed.path.split("/")

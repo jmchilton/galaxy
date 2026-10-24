@@ -15,6 +15,8 @@
       help: |
         Use the default for all HAL deposits, or a scoped search endpoint such as
         https://api.hal.science/search/FRANCE-GRILLES/ for a collection.
+        Attachments are only imported from HAL hosts (hal.science, hal.inrae.fr,
+        archives-ouvertes.fr), so other HAL deployments are not supported.
   configuration:
     type: hal
     api_url: "{{ variables.api_url }}"
