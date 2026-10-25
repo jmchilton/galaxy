@@ -677,10 +677,13 @@ class WorkflowModule:
                 no_replacement_value=NO_REPLACEMENT,
             )
 
+        self.unapplied_step_updates: list[str] = []
         if step_updates:
+            applied: set[str] = set()
 
             def update_value(input, context, prefixed_name, **kwargs):
                 if prefixed_name in step_updates:
+                    applied.add(prefixed_name)
                     value, error = check_param(
                         trans, input, step_updates.get(prefixed_name), context, simple_errors=False
                     )
@@ -691,6 +694,9 @@ class WorkflowModule:
 
             visit_input_values(
                 self.get_runtime_inputs(step), state.inputs, update_value, no_replacement_value=NO_REPLACEMENT
+            )
+            self.unapplied_step_updates = sorted(
+                key for key in step_updates if isinstance(key, str) and key not in applied and not key.startswith("__")
             )
 
         return state, step_errors
@@ -3577,9 +3583,12 @@ class WorkflowModuleInjector:
     """Injects workflow step objects from the ORM with appropriate module and
     module generated/influenced state."""
 
-    def __init__(self, trans: "ProvidesHistoryContext", allow_tool_state_corrections=False):
+    def __init__(
+        self, trans: "ProvidesHistoryContext", allow_tool_state_corrections=False, strict_step_parameters=False
+    ):
         self.trans = trans
         self.allow_tool_state_corrections = allow_tool_state_corrections
+        self.strict_step_parameters = strict_step_parameters
 
     def inject(self, step: WorkflowStep, step_args=None, steps=None, allow_tool_state_corrections=False, **kwargs):
         """Pre-condition: `step` is an ORM object coming from the database, if
@@ -3619,6 +3628,7 @@ class WorkflowModuleInjector:
                 subworkflow,
                 param_map=unjsonified_subworkflow_param_map,
                 allow_tool_state_corrections=allow_tool_state_corrections,
+                strict_step_parameters=self.strict_step_parameters,
             )
 
     def inject_all(self, workflow: Workflow, param_map=None, ignore_tool_missing_exception=False, **kwargs):
@@ -3648,16 +3658,26 @@ def populate_module_and_state(
     param_map,
     allow_tool_state_corrections=False,
     module_injector=None,
+    strict_step_parameters=False,
 ):
     """Used by API but not web controller, walks through a workflow's steps
     and populates transient module and state attributes on each.
     """
     if module_injector is None:
-        module_injector = WorkflowModuleInjector(trans, allow_tool_state_corrections)
+        module_injector = WorkflowModuleInjector(
+            trans, allow_tool_state_corrections, strict_step_parameters=strict_step_parameters
+        )
     module_injector.inject_all(workflow, param_map=param_map)
     for step in workflow.steps:
         step_args = param_map.get(step.id, {})
         step_errors = module_injector.compute_runtime_state(step, step_args=step_args)
+        unapplied = getattr(step.module, "unapplied_step_updates", None)
+        if strict_step_parameters and step.type == "tool" and unapplied:
+            raise exceptions.RequestParameterInvalidException(
+                f"Step {step.order_index} parameters do not match any parameter of the step's current state: "
+                f"{', '.join(unapplied)}",
+                err_data={step.order_index: dict.fromkeys(unapplied, "Unknown or inactive parameter")},
+            )
         if step_errors:
             raise exceptions.MessageException(
                 "Error computing workflow step runtime state",

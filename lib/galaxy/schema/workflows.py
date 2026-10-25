@@ -53,6 +53,11 @@ ReplacementParametersField = Field(
     title="Replacement Parameters",
     description="Class of parameters mostly used for string replacement in PJAs. In best practice workflows, these should be replaced with input parameters",
 )
+ExposedStepParametersField = Field(
+    None,
+    title="Exposed Step Parameters",
+    description="Step parameters the user explicitly chose to set, as '<step_index>|<prefixed name>' keys ('<i>|<j>|<name>' inside subworkflows). Each key must name a value in 'parameters'.",
+)
 UseCachedJobField = Field(
     False,
     title="Use cached job",
@@ -152,6 +157,7 @@ class InvokeWorkflowPayload(GetTargetHistoryPayload):
         description="The UUID of the workflow landing request associated with this invocation.",
     )
     use_cached_job: bool | None = UseCachedJobField
+    exposed_step_parameters: list[str] | None = ExposedStepParametersField
     parameters_normalized: bool | None = Field(
         False,
         title=STEP_PARAMETERS_NORMALIZED_TITLE,

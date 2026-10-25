@@ -145,6 +145,7 @@ def queue_invoke(
             workflow,
             workflow_run_config.param_map,
             allow_tool_state_corrections=workflow_run_config.allow_tool_state_corrections,
+            strict_step_parameters=workflow_run_config.strict_step_parameters,
         )
     workflow_invocation = workflow_run_config_to_request(trans, workflow_run_config, workflow)
     workflow_invocation.workflow = workflow

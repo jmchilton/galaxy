@@ -1,0 +1,50 @@
+<tool id="exposed_step_params" name="Echo step params" version="0.1.0" profile="23.0">
+    <command><![CDATA[
+        echo 'threshold=$threshold' > '$out_file1' &&
+        echo 'mode=$mode' >> '$out_file1' &&
+        echo 'flag=$flag' >> '$out_file1' &&
+        echo 'advanced.label=$advanced.label' >> '$out_file1' &&
+        #for $i, $q in enumerate($queries)
+        echo 'queries_${i}.column_name=$q.column_name' >> '$out_file1' &&
+        #end for
+        echo 'cond.filter_type=$cond.filter_type' >> '$out_file1' &&
+        #if $cond.filter_type == 'min'
+        echo 'cond.min=$cond.min' >> '$out_file1' &&
+        #else
+        echo 'cond.pattern=$cond.pattern' >> '$out_file1' &&
+        #end if
+        echo 'column=$column' >> '$out_file1'
+    ]]></command>
+    <inputs>
+        <param name="input1" type="data" format="tabular" label="Input table" />
+        <param name="threshold" type="float" value="0.5" label="Threshold" />
+        <param name="mode" type="select" label="Mode">
+            <option value="fast" selected="true">Fast</option>
+            <option value="careful">Careful</option>
+        </param>
+        <param name="flag" type="boolean" checked="false" label="Verbose flag" />
+        <param name="column" type="data_column" data_ref="input1" label="Column" />
+        <section name="advanced" title="Advanced">
+            <param name="label" type="text" value="run" label="Run label" />
+        </section>
+        <repeat name="queries" title="Query" min="1" default="2">
+            <param name="column_name" type="text" value="c1" label="Column name" />
+        </repeat>
+        <conditional name="cond">
+            <param name="filter_type" type="select" label="Filter type">
+                <option value="min" selected="true">Minimum</option>
+                <option value="regex">Regex</option>
+            </param>
+            <when value="min">
+                <param name="min" type="integer" value="1" label="Minimum value" />
+            </when>
+            <when value="regex">
+                <param name="pattern" type="text" value=".*" label="Pattern" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="out_file1" format="txt" />
+    </outputs>
+    <help>Echoes its parameters, for testing workflow step parameter overrides.</help>
+</tool>

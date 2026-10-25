@@ -58,6 +58,7 @@ from .workflows import (
     STEP_PARAMETERS_NORMALIZED_DESCRIPTION,
     STEP_PARAMETERS_NORMALIZED_TITLE,
     STEP_PARAMETERS_TITLE,
+    ExposedStepParametersField,
     UseCachedJobField,
 )
 
@@ -646,6 +647,7 @@ class WorkflowInvocationRequestModel(Model):
         title=STEP_PARAMETERS_TITLE,
         description=f"{STEP_PARAMETERS_DESCRIPTION} If these are set, the workflow was not executed in a best-practice fashion and the resulting invocation request may not fully reflect the executed workflow state.",
     )
+    exposed_step_parameters: list[str] | None = ExposedStepParametersField
     instance: Literal[True] = Field(
         True,
         title="Is instance",

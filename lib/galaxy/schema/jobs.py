@@ -255,6 +255,12 @@ class JobParameter(Model):
         default=None, title="Value", description="The values of the job parameter", union_mode="left_to_right"
     )
     notes: str | None = Field(default=None, title="Notes", description="Notes associated with the job parameter.")
+    name: str | None = Field(
+        default=None, title="Name", description="Prefixed tool parameter path, e.g. 'cond|threshold'."
+    )
+    exposable: bool | None = Field(
+        default=None, title="Exposable", description="Whether the simple workflow run form can expose this parameter."
+    )
 
 
 class JobDisplayParametersSummary(Model):

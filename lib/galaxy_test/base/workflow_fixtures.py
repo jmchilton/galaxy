@@ -1380,3 +1380,72 @@ image_input_1:
   file_type: png
   name: first test image
 """
+
+WORKFLOW_EXPOSED_STEP_PARAMS_INNER_STEP = """
+      tool_id: exposed_step_params
+      label: echo
+      in:
+        input1: table
+      state:
+        threshold: 0.5
+        mode: fast
+        flag: false
+        column: "1"
+        advanced:
+          label: run
+        queries:
+          - column_name: c1
+          - column_name: c2
+        cond:
+          filter_type: min
+          min: 1
+"""
+
+WORKFLOW_EXPOSED_STEP_PARAMS = f"""
+class: GalaxyWorkflow
+inputs:
+  table: data
+outputs:
+  echo:
+    outputSource: echo/out_file1
+steps:
+  echo:
+{WORKFLOW_EXPOSED_STEP_PARAMS_INNER_STEP}"""
+
+WORKFLOW_EXPOSED_STEP_PARAMS_NESTED = """
+class: GalaxyWorkflow
+inputs:
+  table: data
+outputs:
+  echo:
+    outputSource: nested/echo
+steps:
+  nested:
+    in:
+      table: table
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        table: data
+      outputs:
+        echo:
+          outputSource: echo/out_file1
+      steps:
+        echo:
+          tool_id: exposed_step_params
+          in:
+            input1: table
+          state:
+            threshold: 0.5
+            mode: fast
+            flag: false
+            column: "1"
+            advanced:
+              label: run
+            queries:
+              - column_name: c1
+              - column_name: c2
+            cond:
+              filter_type: min
+              min: 1
+"""

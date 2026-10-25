@@ -101,6 +101,8 @@ class WorkflowRunConfig:
         preferred_intermediate_object_store_id: str | None = None,
         effective_outputs: list[EffectiveOutput] | None = None,
         on_complete: list[dict[str, Any]] | None = None,
+        exposed_step_parameters: list[str] | None = None,
+        strict_step_parameters: bool = False,
     ) -> None:
         self.target_history = target_history
         self.replacement_dict = replacement_dict or {}
@@ -116,6 +118,8 @@ class WorkflowRunConfig:
         self.preferred_intermediate_object_store_id = preferred_intermediate_object_store_id
         self.effective_outputs = effective_outputs
         self.on_complete = on_complete
+        self.exposed_step_parameters = exposed_step_parameters
+        self.strict_step_parameters = strict_step_parameters
 
 
 def _normalize_inputs(
@@ -200,6 +204,18 @@ def _normalize_step_parameters(
             _validate_normalized_step_parameters(step, param_dict)
             normalized_param_map[step.id] = param_dict
     return normalized_param_map
+
+
+def _validate_exposed_step_parameters(exposed: list[str], raw_parameters: dict, already_normalized: bool) -> None:
+    """Each exposure key ``<step_index>|<rest>`` must name a value in the normalized ``parameters``."""
+    if not already_normalized:
+        raise exceptions.RequestParameterInvalidException("exposed_step_parameters requires parameters_normalized.")
+    for key in exposed:
+        step_index, _, rest = key.partition("|")
+        if not rest or rest not in (raw_parameters.get(step_index) or {}):
+            raise exceptions.RequestParameterInvalidException(
+                f"Exposed step parameter '{key}' does not name a value in 'parameters'."
+            )
 
 
 def _validate_normalized_step_parameters(step: "WorkflowStep", param_dict: dict) -> None:
@@ -352,6 +368,9 @@ def build_workflow_run_configs(
     raw_parameters = payload.get("parameters") or {}
     requires_materialization: bool = False
     run_configs = []
+    exposed_step_parameters = payload.get("exposed_step_parameters")
+    if exposed_step_parameters is not None:
+        _validate_exposed_step_parameters(exposed_step_parameters, raw_parameters, already_normalized)
     unexpanded_param_map = _normalize_step_parameters(
         workflow.steps, raw_parameters, legacy=legacy, already_normalized=already_normalized
     )
@@ -554,6 +573,8 @@ def build_workflow_run_configs(
                 preferred_outputs_object_store_id=preferred_outputs_object_store_id,
                 preferred_intermediate_object_store_id=preferred_intermediate_object_store_id,
                 on_complete=payload.get("on_complete"),
+                exposed_step_parameters=exposed_step_parameters,
+                strict_step_parameters=already_normalized,
             )
         )
 
@@ -667,6 +688,10 @@ def workflow_run_config_to_request(
         value = getattr(run_config, param)
         if value:
             add_parameter(param, value, param_types.META_PARAMETERS)
+    if run_config.exposed_step_parameters is not None:
+        add_parameter(
+            "exposed_step_parameters", json.dumps(run_config.exposed_step_parameters), param_types.META_PARAMETERS
+        )
     if run_config.effective_outputs is not None:
         # empty list needs to come through here...
         add_parameter("effective_outputs", json.dumps(run_config.effective_outputs), param_types.META_PARAMETERS)

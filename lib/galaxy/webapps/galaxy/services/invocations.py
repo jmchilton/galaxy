@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import (
     Any,
@@ -347,6 +348,7 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
         preferred_intermediate_object_store_id = None
         preferred_outputs_object_store_id = None
         step_param_map: dict[str, dict] = {}
+        exposed_step_parameters = None
         for parameter in invocation.input_parameters:
             parameter_type = parameter.type
 
@@ -363,6 +365,8 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
                     preferred_intermediate_object_store_id = parameter.value
                 if parameter.name == "preferred_outputs_object_store_id":
                     preferred_outputs_object_store_id = parameter.value
+                if parameter.name == "exposed_step_parameters":
+                    exposed_step_parameters = json.loads(parameter.value)
             elif parameter_type == param_types.RESOURCE_PARAMETERS:
                 resource_params[parameter.name] = parameter.value
             elif parameter_type == param_types.STEP_PARAMETERS:
@@ -400,4 +404,5 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
             preferred_outputs_object_store_id=preferred_outputs_object_store_id,
             parameters_normalized=True,
             parameters=None if not step_param_map else step_param_map,
+            exposed_step_parameters=exposed_step_parameters,
         )
