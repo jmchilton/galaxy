@@ -232,7 +232,7 @@ class BaseMetadataGenerator:
         tmp_url = remove_protocol_and_user_from_clone_url(self.repository_clone_url)
         return f"{tmp_url}/{guid_type}/{obj_id}/{version}"
 
-    def generate_metadata_for_changeset_revision(self):
+    def generate_metadata_for_changeset_revision(self) -> None:
         """
         Generate metadata for a repository using its files on disk.  To generate metadata
         for changeset revisions older than the repository tip, the repository will have been
@@ -268,10 +268,10 @@ class BaseMetadataGenerator:
             # Keep track of the location where the repository is temporarily cloned so that we can
             # strip the path when setting metadata.  The value of self.repository_files_dir is the
             # full path to the temporary directory to which self.repository was cloned.
-            work_dir = self.repository_files_dir
             files_dir = self.repository_files_dir
             # Since we're working from a temporary directory, we can safely copy sample files included
             # in the repository to the repository root.
+            work_dir = files_dir
         else:
             # Use a temporary working directory to copy all sample files.
             work_dir = tempfile.mkdtemp(prefix="tmp-toolshed-gmfcr")
@@ -332,7 +332,7 @@ class BaseMetadataGenerator:
                         # See if we have one or more READ_ME files.
                         elif name.lower() in readme_file_names:
                             relative_path_to_readme = self.get_relative_path_to_repository_file(
-                                root, name, self.relative_install_dir, work_dir, self.shed_config_dict
+                                root, name, self.relative_install_dir, files_dir, self.shed_config_dict
                             )
                             readme_files.append(relative_path_to_readme)
                         # See if we have a tool config.
@@ -364,7 +364,7 @@ class BaseMetadataGenerator:
                                             break
                                     if can_set_metadata:
                                         relative_path_to_tool_config = self.get_relative_path_to_repository_file(
-                                            root, name, self.relative_install_dir, work_dir, self.shed_config_dict
+                                            root, name, self.relative_install_dir, files_dir, self.shed_config_dict
                                         )
                                         metadata_dict = self.generate_tool_metadata(
                                             relative_path_to_tool_config, tool, metadata_dict
@@ -396,8 +396,8 @@ class BaseMetadataGenerator:
                     invalid_tool_errors[name] = error_msg
             metadata_dict["invalid_tool_errors"] = invalid_tool_errors
         self.metadata_dict = metadata_dict
-        # Only remove work_dir if not resetting all metadata - in that case the caller handles cleanup
-        if not self.resetting_all_metadata_on_repository:
+        # Staging into the caller's clone leaves cleanup to the caller.
+        if work_dir != files_dir:
             remove_dir(work_dir)
 
     def generate_package_dependency_metadata(self, elem, valid_tool_dependencies_dict, invalid_tool_dependencies_dict):
