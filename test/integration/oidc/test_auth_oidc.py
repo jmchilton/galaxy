@@ -549,6 +549,17 @@ class TestGalaxyOIDCLoginIntegration(AbstractTestCases.BaseKeycloakIntegrationTe
         result = asyncio.run(get_user())
         assert json.loads(result.content[0].text)["email"] == "gxyuser@galaxy.org"
 
+    def test_mcp_auth_by_access_token_never_logged_in(self):
+        access_token = self._get_keycloak_access_token(username="gxyuser_never_logged_in")
+
+        async def get_user():
+            async with Client(f"{self.url}api/mcp", auth=access_token) as client:
+                return await client.call_tool("get_user", {}, raise_on_error=False)
+
+        result = asyncio.run(get_user())
+        assert result.is_error
+        assert "The user should log into Galaxy at least once" in result.content[0].text
+
     def test_auth_by_access_token_never_logged_in(self):
         # If the user has not previously logged in via OIDC at least once, OIDC API calls are not allowed
         access_token = self._get_keycloak_access_token(username="gxyuser_never_logged_in")
