@@ -45,7 +45,10 @@ from galaxy.tools.parameters.basic import (
 )
 from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
-from galaxy.workflow.modules import WorkflowModuleInjector
+from galaxy.workflow.modules import (
+    step_cannot_run_exception,
+    WorkflowModuleInjector,
+)
 from galaxy.workflow.resources import get_resource_mapper_function
 
 if TYPE_CHECKING:
@@ -445,7 +448,10 @@ def build_workflow_run_configs(
                     )
                 module_injector.inject(step)
                 assert step.module
-                input_param = step.module.get_runtime_inputs(step.module)["input"]
+                try:
+                    input_param = step.module.get_runtime_inputs(step.module)["input"]
+                except ParameterValueError as e:
+                    raise step_cannot_run_exception(step, e) from e
                 try:
                     input_param.validate(input_dict, trans=trans)
                     if isinstance(input_param, TextToolParameter) and input_param.multiple:
