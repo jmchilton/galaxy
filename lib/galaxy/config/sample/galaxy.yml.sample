@@ -3508,13 +3508,16 @@ galaxy:
   # with Galaxy programmatically through a standardized protocol. When
   # enabled, Galaxy exposes an MCP endpoint that provides tools for
   # searching, executing tools, managing histories, and more.
-  # The MCP server requires API key authentication and uses the existing
-  # Galaxy REST API internally. Clients should send the key in an
+  # The MCP server requires authentication and uses the existing Galaxy
+  # REST API internally. Clients should send a Galaxy API key in an
   # `x-api-key` header from their MCP server configuration (e.g.
   # `"headers": {"x-api-key": "..."}`), which keeps it out of the
-  # model's context. Tools also accept an optional `api_key` argument,
-  # which is ignored when the header is set. This feature is
-  # experimental and disabled by default.
+  # model's context. On servers with OIDC configured, clients may
+  # instead send an OIDC access token as `Authorization: Bearer
+  # <token>`; a Galaxy API key is not accepted as a Bearer token. Tools
+  # also accept an optional `api_key` argument, which is ignored when
+  # either header is set. This feature is experimental and disabled by
+  # default.
   #enable_mcp_server: false
 
   # URL path where the MCP server endpoint will be mounted (default:
