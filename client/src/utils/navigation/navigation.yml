@@ -980,6 +980,10 @@ reset_password:
     email: '#reset-email'
     submit: '#reset-password'
     alert: '#reset-password-alert'
+    # the page a reset email links to
+    new_password: 'input[id^="change-password-"][id*="-new"]'
+    confirm_password: 'input[id^="change-password-"][id*="-confirm"]'
+    save: 'form:has(input[id^="change-password-"]) button[type="submit"]'
 
 registration:
   selectors:

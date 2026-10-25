@@ -1220,6 +1220,28 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         login.submit.wait_for_and_click()
         self.snapshot("login-submitted")
 
+    def request_password_reset(self, email: str) -> str:
+        """Enter ``email`` on the masthead Login page, follow its reset password link and submit; return the alert."""
+        self.home()
+        self.components.masthead.login_masthead_button.wait_for_and_click()
+        login = self.components.login
+        self.fill(login.form.wait_for_visible(), {"login": email})
+        login.reset_password_link.wait_for_and_click()
+        reset_password = self.components.reset_password
+        assert reset_password.email.wait_for_visible().get_attribute("value") == email
+        reset_password.submit.wait_for_and_click()
+        return reset_password.alert.wait_for_visible().text
+
+    def reset_password_from_link(self, link: str, password: str) -> None:
+        """Open a password reset email's link and save ``password`` as the new password."""
+        self.navigate_to(link)
+        reset_password = self.components.reset_password
+        reset_password.new_password.wait_for_and_send_keys(password)
+        reset_password.confirm_password.wait_for_and_send_keys(password)
+        reset_password.save.wait_for_and_click()
+        # a successful save redirects home
+        reset_password.new_password.wait_for_absent_or_hidden()
+
     def register(self, email=None, password=None, username=None, confirm=None, assert_valid=True, via_masthead=False):
         """Register a user from the login page's "Register here" form, or the masthead's Register button."""
         if email is None:
