@@ -2559,6 +2559,10 @@ class BaseWorkflowPopulator(BasePopulator):
         put_response = self._put(raw_url, data, json=True)
         return put_response
 
+    def update_workflow_fields(self, workflow_id: str, fields: dict) -> Response:
+        """PUT ``fields`` as top-level payload keys, the shape the client sends."""
+        return self._put(f"workflows/{workflow_id}", fields, json=True)
+
     def refactor_workflow(
         self, workflow_id: str, actions: list, dry_run: Optional[bool] = None, style: Optional[str] = None
     ) -> Response:
