@@ -435,6 +435,8 @@ history_storage:
 storage_dashboard:
   selectors:
     free_space_link: '[data-description="free-space card"] button'
+    refresh_disk_usage: '#refresh-disk-usage'
+    recalculating: '.refreshing-alert'
     explore_usage_link: '[data-description="explore-storage card"] button'
 
 edit_dataset_attributes:
@@ -998,6 +1000,9 @@ workflows:
 visualization:
   selectors:
     activity: '#activity-visualizations'
+    display_application_items:
+      type: xpath
+      selector: "//div[contains(@class, 'alert')][contains(., 'You can display your dataset with the following links')]//li"
     matched_plugin: '#center [data-plugin-name*="${id}"]'
     show_all_button: '[data-description="visualizations show list"]'
 
@@ -1203,6 +1208,7 @@ workflow_editor:
     node_inspector_close: ".tool-inspector [title='close']"
     canvas_body: '#workflow-canvas'
     canvas_loading: '#workflow-canvas .galaxy-loading-shade'
+    edit_tags_toggle: '#edit-attributes .stateless-tags .toggle-button'
     edit_annotation: '#workflow-annotation'
     edit_name: '#workflow-name'
     license_selector: '[data-description="license select"]'
