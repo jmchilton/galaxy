@@ -4,6 +4,7 @@ from galaxy_test.base.api_asserts import assert_error_message_contains
 from galaxy_test.base.populators import skip_without_tool
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_EXPOSED_STEP_PARAMS,
+    WORKFLOW_EXPOSED_STEP_PARAMS_DOUBLY_NESTED,
     WORKFLOW_EXPOSED_STEP_PARAMS_NESTED,
 )
 from .test_workflows import BaseWorkflowsApiTestCase
@@ -102,4 +103,16 @@ class TestWorkflowExposedStepParamsApi(BaseWorkflowsApiTestCase):
         _, response = self._invoke(
             history_id, WORKFLOW_EXPOSED_STEP_PARAMS, {"1": {"threshold": 0.9}}, exposed_step_parameters=["1|mode"]
         )
+        self._assert_status_code_is(response, 400)
+
+    @skip_without_tool("exposed_step_params")
+    def test_doubly_nested_subworkflow_key_applies(self, history_id):
+        parameters = {"1": {"1|1|threshold": 0.9}}
+        workflow_id, response = self._invoke(history_id, WORKFLOW_EXPOSED_STEP_PARAMS_DOUBLY_NESTED, parameters)
+        self._assert_status_code_is(response, 200)
+        assert self._echo(history_id, workflow_id, response.json()["id"])["threshold"] == "0.9"
+
+    @skip_without_tool("exposed_step_params")
+    def test_doubly_nested_unknown_key_rejected(self, history_id):
+        _, response = self._invoke(history_id, WORKFLOW_EXPOSED_STEP_PARAMS_DOUBLY_NESTED, {"1": {"1|1|thresold": 0.9}})
         self._assert_status_code_is(response, 400)

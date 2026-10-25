@@ -1449,3 +1449,51 @@ steps:
               filter_type: min
               min: 1
 """
+
+WORKFLOW_EXPOSED_STEP_PARAMS_DOUBLY_NESTED = """
+class: GalaxyWorkflow
+inputs:
+  table: data
+outputs:
+  echo:
+    outputSource: outer_nested/echo
+steps:
+  outer_nested:
+    in:
+      table: table
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        table: data
+      outputs:
+        echo:
+          outputSource: nested/echo
+      steps:
+        nested:
+          in:
+            table: table
+          run:
+            class: GalaxyWorkflow
+            inputs:
+              table: data
+            outputs:
+              echo:
+                outputSource: echo/out_file1
+            steps:
+              echo:
+                tool_id: exposed_step_params
+                in:
+                  input1: table
+                state:
+                  threshold: 0.5
+                  mode: fast
+                  flag: false
+                  column: "1"
+                  advanced:
+                    label: run
+                  queries:
+                    - column_name: c1
+                  cond:
+                    filter_type: min
+                    min: 1
+"""
