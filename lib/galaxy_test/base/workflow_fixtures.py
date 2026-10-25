@@ -1497,3 +1497,63 @@ steps:
                     filter_type: min
                     min: 1
 """
+
+WORKFLOW_EXPOSED_STEP_PARAMS_GRAPH = """
+class: GalaxyWorkflow
+inputs:
+  table:
+    type: data
+    position: {left: 0, top: 80}
+outputs:
+  echo:
+    outputSource: echo/out_file1
+  nested_echo:
+    outputSource: nested/echo
+steps:
+  echo:
+    tool_id: exposed_step_params
+    position: {left: 260, top: 0}
+    in:
+      input1: table
+    state:
+      threshold: 0.5
+      mode: fast
+      flag: false
+      column: "1"
+      advanced:
+        label: run
+      queries:
+        - column_name: c1
+        - column_name: c2
+      cond:
+        filter_type: min
+        min: 1
+  nested:
+    position: {left: 260, top: 260}
+    in:
+      table: table
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        table: data
+      outputs:
+        echo:
+          outputSource: echo/out_file1
+      steps:
+        echo:
+          tool_id: exposed_step_params
+          in:
+            input1: table
+          state:
+            threshold: 0.5
+            mode: fast
+            flag: false
+            column: "1"
+            advanced:
+              label: run
+            queries:
+              - column_name: c1
+            cond:
+              filter_type: min
+              min: 1
+"""
