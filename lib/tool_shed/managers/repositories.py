@@ -771,7 +771,6 @@ def upload_tar_and_set_metadata(
     repository: Repository,
     uploaded_file: str,
     commit_message: str,
-    dry_run: bool = False,
 ) -> str:
     app = trans.app
     user = trans.user
@@ -805,29 +804,23 @@ def upload_tar_and_set_metadata(
             error_message, _ = rmm.set_repository_metadata(host, content_alert_str=content_alert_str)
             if error_message:
                 raise InternalServerError(error_message)
-            dd = dependency_display.DependencyDisplayer(app)
-            if str(repository.type) not in [
-                rt_util.REPOSITORY_SUITE_DEFINITION,
-                rt_util.TOOL_DEPENDENCY_DEFINITION,
-            ]:
-                # Provide a warning message if a tool_dependencies.xml file is provided, but tool dependencies
-                # weren't loaded due to a requirement tag mismatch or some other problem.  Tool dependency
-                # definitions can define orphan tool dependencies (no relationship to any tools contained in the
-                # repository), so warning messages are important because orphans are always valid.  The repository
-                # owner must be warned in case they did not intend to define an orphan dependency, but simply
-                # provided incorrect information (tool shed, name owner, changeset_revision) for the definition.
-                if repository.metadata_revisions:
-                    # A repository's metadata revisions are order descending by update_time, so the zeroth revision
-                    # will be the tip just after an upload.
-                    metadata_dict = repository.metadata_revisions[0].metadata or {}
-                else:
-                    metadata_dict = {}
-                orphan_message = dd.generate_message_for_orphan_tool_dependencies(metadata_dict)
-                if orphan_message:
-                    message += orphan_message
+            if repository.metadata_revisions:
+                # A repository's metadata revisions are order descending by update_time, so the zeroth revision
+                # will be the tip just after an upload.
+                metadata_dict = repository.metadata_revisions[0].metadata or {}
+            else:
+                metadata_dict = {}
+            message += _orphan_tool_dependencies_message(app, repository, metadata_dict)
     else:
         raise InternalServerError(message)
     return message
+
+
+def _orphan_tool_dependencies_message(app: ToolShedApp, repository: Repository, metadata_dict: dict[str, Any]) -> str:
+    """Warn about tool dependencies no tool in the repository requires; the definition may be wrong."""
+    if str(repository.type) in [rt_util.REPOSITORY_SUITE_DEFINITION, rt_util.TOOL_DEPENDENCY_DEFINITION]:
+        return ""
+    return dependency_display.DependencyDisplayer(app).generate_message_for_orphan_tool_dependencies(metadata_dict)
 
 
 def ensure_can_manage(trans: ProvidesUserContext, repository: Repository, error_message: str | None = None) -> None:
