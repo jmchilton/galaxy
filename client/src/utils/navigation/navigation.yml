@@ -1313,6 +1313,7 @@ workflow_editor:
 
   best_practices:
     selectors:
+      sections: '[data-description^="linting "]'
       section_input_metadata: '[data-description="linting input metadata"]'
       item_input_metadata: '[data-description="linting input metadata"] [data-item-index="${index}"]'
       section_conditional_gates: '[data-description="linting conditional gates"]'
@@ -1342,6 +1343,7 @@ workflow_editor:
     canvas_loading: '#workflow-canvas .galaxy-loading-shade'
     edit_annotation: '#workflow-annotation'
     edit_name: '#workflow-name'
+    edit_tags_toggle: '#edit-attributes .stateless-tags .toggle-button'
     license_selector: '[data-description="license select"]'
     license_current_value: '[data-description="license select"] .multiselect__single'
     license_selector_input: '[data-description="license select"] input.multiselect__input'

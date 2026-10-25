@@ -2506,6 +2506,27 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def workflow_editor_set_annotation(self, annotation: str):
         self.components.workflow_editor.edit_annotation.wait_for_and_clear_and_send_keys(annotation)
 
+    def workflow_editor_best_practices(self) -> dict[str, str]:
+        """Open the editor's Best Practices panel; return each check's status (``ok``/``warning``) by name."""
+        sections = self.components.workflow_editor.best_practices.sections
+        if sections.is_absent:
+            self.components.workflow_editor.tool_bar.best_practices.wait_for_and_click()
+        sections.wait_for_present()
+        return {
+            section.get_attribute("data-description").removeprefix("linting "): section.get_attribute(
+                "data-lint-status"
+            )
+            for section in sections.all()
+        }
+
+    def workflow_editor_add_tags(self, tags: list[str]):
+        """Add ``tags`` from the editor's Attributes panel (Tags > Add Tags); the editor saves tags at once."""
+        editor = self.components.workflow_editor
+        if editor.edit_name.is_absent:
+            editor.tool_bar.attributes.wait_for_and_click()
+        editor.edit_tags_toggle.wait_for_and_click()
+        self.tagging_add(tags, parent_selector="#edit-attributes ")
+
     def invocation_index_table_elements(self):
         invocations = self.components.invocations
         invocations.invocations_table.wait_for_visible()
