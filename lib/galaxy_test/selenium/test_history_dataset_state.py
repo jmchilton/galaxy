@@ -57,6 +57,20 @@ class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions, UsesU
 
     @selenium_test
     @managed_history
+    def test_dataset_details_tool_logs(self):
+        history_id = self.current_history_id()
+        run = self.dataset_populator.run_tool("job_properties", {"thebool": True}, history_id)
+        hid = next(o["hid"] for o in run["outputs"] if o["output_name"] == "out_file1")
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        self.home()
+        self.history_panel_wait_for_hid_ok(hid)
+        self.history_panel_item_view_dataset_details(hid)
+        job_details = self.components.job_details
+        assert job_details.tool_stdout.wait_for_visible().text.strip() == "The bool is true"
+        assert job_details.tool_stderr.wait_for_visible().text.strip() == "The bool is really true"
+
+    @selenium_test
+    @managed_history
     def test_dataset_state_discarded(self):
         self.history_panel_create_new()
         history_id = self.current_history_id()
