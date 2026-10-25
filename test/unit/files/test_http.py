@@ -207,6 +207,7 @@ def test_file_source_http_with_spaces_in_url_error():
         file_source_pair.file_source.realize_to(file_source_pair.path, "/tmp/test", user_context=user_context)
 
 
+@pytest.mark.usefixtures("fake_public_dns")
 @responses.activate
 def test_file_source_http_validates_redirect_target():
     test_url = "https://example.com/start"
@@ -219,6 +220,7 @@ def test_file_source_http_validates_redirect_target():
     with pytest.raises(exceptions.ConfigDoesNotAllowException):
         file_source_pair = file_sources.get_file_source_path(test_url)
         file_source_pair.file_source.realize_to(file_source_pair.path, "/tmp/test", user_context=user_context)
+    assert [call.request.url for call in responses.calls] == [test_url]
 
 
 @pytest.mark.parametrize("character", ("\n", "\t", "\x7f"))

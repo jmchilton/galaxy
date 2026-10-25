@@ -10,11 +10,15 @@ from collections.abc import (
     Iterable,
     Iterator,
 )
-from contextlib import contextmanager
+from contextlib import (
+    contextmanager,
+    ExitStack,
+)
 from typing import Optional
 from urllib.error import HTTPError
 from urllib.parse import (
     quote,
+    urljoin,
     urlparse,
 )
 
@@ -36,6 +40,8 @@ from galaxy.files.models import (
     RemoteFile,
 )
 from galaxy.util import (
+    DEFAULT_SOCKET_TIMEOUT,
+    requests as galaxy_requests,
     stream_to_path,
     unicodify,
     unlink,
@@ -65,6 +71,54 @@ def reuse_http_connections() -> Iterator[None]:
 def get_reusable_http_session() -> requests.Session | None:
     """Return the session set by :func:`reuse_http_connections` for this thread, if any."""
     return getattr(_thread_http_session, "session", None)
+
+
+@contextmanager
+def open_validated_url(
+    url: str,
+    ip_allowlist: list[IpAllowedListEntryT],
+    *,
+    method: str = "GET",
+    params: dict[str, str | int] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = DEFAULT_SOCKET_TIMEOUT,
+    max_redirects: int = 5,
+) -> Iterator[requests.Response]:
+    """Stream an HTTP(S) response, validating every redirect hop with :func:`validate_non_local` before requesting it.
+
+    Reuses the session from :func:`reuse_http_connections` when one is set.
+    """
+    with ExitStack() as stack:
+        session = get_reusable_http_session() or stack.enter_context(galaxy_requests.Session())
+        for _ in range(max_redirects + 1):
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+                raise RequestParameterInvalidException(f"Invalid HTTP URL: {parsed.scheme}://{parsed.hostname}")
+            validate_non_local(url, ip_allowlist)
+            response = stack.enter_context(
+                session.request(
+                    method,
+                    url,
+                    params=params,
+                    headers=headers,
+                    stream=True,
+                    allow_redirects=False,
+                    timeout=timeout,
+                )
+            )
+            if not response.is_redirect:
+                yield response
+                return
+            next_url = urljoin(response.url, response.headers["Location"])
+            # Drop Authorization on cross-host redirects, as requests does.
+            if headers and session.should_strip_auth(response.url, next_url):
+                headers = {k: v for k, v in headers.items() if k.lower() != "authorization"}
+            url = next_url
+            params = None
+            # Read the (small) redirect body so the connection returns to the pool.
+            _ = response.content
+            response.close()
+        raise RequestParameterInvalidException(f"Too many redirects (more than {max_redirects}).")
 
 
 def stream_url_to_str(

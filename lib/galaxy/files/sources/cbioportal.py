@@ -9,6 +9,7 @@ from typing import (
 )
 
 from pydantic import Field
+from requests.models import DEFAULT_REDIRECT_LIMIT
 
 from galaxy.exceptions import (
     MessageException,
@@ -23,12 +24,8 @@ from galaxy.files.models import (
     RemoteFile,
 )
 from galaxy.files.sources._defaults import DEFAULT_SCHEME
-from galaxy.files.uris import validate_non_local
-from galaxy.util import (
-    DEFAULT_SOCKET_TIMEOUT,
-    requests,
-    stream_to_path,
-)
+from galaxy.files.uris import open_validated_url
+from galaxy.util import stream_to_path
 from galaxy.util.config_templates import TemplateExpansion
 from . import BaseFilesSource
 
@@ -238,21 +235,18 @@ class CBioPortalFilesSource(
 
     @contextmanager
     def _open_url(self, url: str):
-        validate_non_local(url, self._allowlist or [])
-        with requests.Session() as session:
-            with session.get(
-                url,
-                headers={
-                    "Accept": "application/json" if "/api/" in url else "application/octet-stream",
-                    "User-Agent": "Galaxy cBioPortal file source",
-                },
-                stream=True,
-                timeout=DEFAULT_SOCKET_TIMEOUT,
-            ) as response:
-                response.raise_for_status()
-                validate_non_local(response.url, self._allowlist or [])
-                response.raw.decode_content = True
-                yield response.raw
+        with open_validated_url(
+            url,
+            self._allowlist or [],
+            headers={
+                "Accept": "application/json" if "/api/" in url else "application/octet-stream",
+                "User-Agent": "Galaxy cBioPortal file source",
+            },
+            max_redirects=DEFAULT_REDIRECT_LIMIT,
+        ) as response:
+            response.raise_for_status()
+            response.raw.decode_content = True
+            yield response.raw
 
     def _api_url(self, config: CBioPortalFileSourceConfiguration, *parts: str) -> str:
         return "/".join([config.api_url.rstrip("/"), *(part.strip("/") for part in parts)])
