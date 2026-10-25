@@ -858,11 +858,13 @@ def upload_tar_dry_run(
     plan = rmm.plan_tip_metadata()
     latest = plan.latest_repository_metadata
     overwritten = plan.overwritten_repository_metadata if metadata_dict else None
+    installable = bool(metadata_dict) and rmm.tip_metadata_downloadable(plan, new_tip)
     return RepositoryUpdateDryRun(
         ok=not error_message,
         message=error_message or message + _orphan_tool_dependencies_message(trans.app, repository, metadata_dict),
         no_changes=False,
-        creates_new_installable_revision=bool(metadata_dict) and overwritten is None,
+        installable=installable,
+        creates_new_installable_revision=installable and overwritten is None,
         overwrites_changeset_revision=str(overwritten.changeset_revision) if overwritten else None,
         tools=_dry_run_tools((latest.metadata or {}) if latest else {}, metadata_dict),
         files=files,

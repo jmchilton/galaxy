@@ -177,8 +177,11 @@ class RepositoryUpdateDryRun(BaseModel):
     )
     message: str = Field(..., description="Message or error a real upload would return.")
     no_changes: bool = Field(..., description="The upload matches the repository tip; a real upload would be rejected.")
+    installable: bool = Field(
+        False, description="The repository metadata revision stored for the new tip would be installable."
+    )
     creates_new_installable_revision: bool = Field(
-        False, description="The new tip would get its own repository metadata revision."
+        False, description="The new tip would get its own installable repository metadata revision."
     )
     overwrites_changeset_revision: str | None = Field(
         None,

@@ -1211,6 +1211,13 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
             ),
         )
 
+    def tip_metadata_downloadable(self, plan: TipMetadataPlan, tip: str) -> bool:
+        """Whether the row ``plan`` stores for ``tip`` would be downloadable, without storing it."""
+        if plan.overwritten_repository_metadata is not None:
+            return bool(metadata_util.is_downloadable(self.metadata_dict))
+        new_row, _ = self.create_or_update_repository_metadata_with_details(tip, self.metadata_dict, dry_run=True)
+        return bool(new_row and new_row.downloadable)
+
     def tip_metadata_error(self, num_changesets: int, tip: str) -> str:
         """Error for the repository owner about the metadata generated for ``tip``, empty if none."""
         if self.invalid_file_tups:

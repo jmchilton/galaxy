@@ -3173,7 +3173,7 @@ export interface components {
         RepositoryUpdateDryRun: {
             /**
              * Creates New Installable Revision
-             * @description The new tip would get its own repository metadata revision.
+             * @description The new tip would get its own installable repository metadata revision.
              * @default false
              */
             creates_new_installable_revision: boolean
@@ -3185,6 +3185,12 @@ export interface components {
             dry_run: true
             /** @description Files changed relative to the repository tip. */
             files?: components["schemas"]["RepositoryUpdateDryRunFiles"]
+            /**
+             * Installable
+             * @description The repository metadata revision stored for the new tip would be installable.
+             * @default false
+             */
+            installable: boolean
             /**
              * Message
              * @description Message or error a real upload would return.

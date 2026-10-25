@@ -578,6 +578,7 @@ class TestShedRepositoriesApi(ShedApiTestCase):
         populator = self.populator
         repository = populator.setup_test_data_repo("column_maker", end=1)
         dry_run = populator.upload_test_data_revision_dry_run(repository, "column_maker", 1)
+        assert dry_run.installable is True
         assert dry_run.creates_new_installable_revision is True
         assert dry_run.overwrites_changeset_revision is None
         assert [t.model_dump() for t in dry_run.tools] == [

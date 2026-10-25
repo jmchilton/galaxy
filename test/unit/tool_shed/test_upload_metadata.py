@@ -141,6 +141,8 @@ def test_dry_run_predicts_upload_and_changes_nothing(
     rows_after = metadata_rows(new_repository)
     assert (len(rows_after) == 2) is creates_new_revision
     assert sorted((t.id, t.new_version) for t in dry_run.tools) == rows_after[new_repository.tip()]
+    (tip_row,) = (rm for rm in new_repository.metadata_revisions if rm.changeset_revision == new_repository.tip())
+    assert dry_run.installable is tip_row.downloadable is True
 
 
 def test_dry_run_rejects_invalid_archive(
@@ -245,5 +247,28 @@ def test_dry_run_ignores_tools_shipped_only_as_samples(
         provides_repositories, new_repository, tar_path(revision, "sample_tool"), TEST_COMMIT_MESSAGE
     )
     assert dry_run.tools == []
+    assert dry_run.installable is False
+    assert dry_run.creates_new_installable_revision is False
     upload(provides_repositories, new_repository, revision, arcname="sample_tool")
     assert list(metadata_rows(new_repository).values()) == [[]]
+    assert [rm.downloadable for rm in new_repository.metadata_revisions] == [False]
+
+
+def test_dry_run_reports_overwrite_that_is_no_longer_installable(
+    provides_repositories: ProvidesRepositoriesContext, new_repository: Repository, tmp_path: Path
+):
+    _upload_revision(provides_repositories, new_repository, "column_maker", "1")
+    first_tip = new_repository.tip()
+    revision = tmp_path / "column_maker"
+    revision.mkdir()
+    shutil.copy(revision_path("column_maker", "1") / "column_maker.xml", revision / "column_maker.xml.sample")
+    dry_run = upload_tar_dry_run(
+        provides_repositories, new_repository, tar_path(revision, "column_maker"), TEST_COMMIT_MESSAGE
+    )
+    assert dry_run.installable is False
+    assert dry_run.creates_new_installable_revision is False
+    assert dry_run.overwrites_changeset_revision == first_tip
+    upload(provides_repositories, new_repository, revision, arcname="column_maker")
+    assert [(rm.changeset_revision, rm.downloadable) for rm in new_repository.metadata_revisions] == [
+        (new_repository.tip(), False)
+    ]
