@@ -4,19 +4,20 @@ import urllib.request
 from contextlib import ExitStack
 from urllib.parse import urlparse
 
+from requests.models import DEFAULT_REDIRECT_LIMIT
+
 from galaxy.files.models import (
     BaseFileSourceConfiguration,
     BaseFileSourceTemplateConfiguration,
     FilesSourceRuntimeContext,
 )
 from galaxy.files.uris import (
-    get_reusable_http_session,
+    open_validated_url,
     validate_non_local,
 )
 from galaxy.util import (
     DEFAULT_SOCKET_TIMEOUT,
     get_charset_from_http_headers,
-    requests,
     stream_to_path,
 )
 from galaxy.util.config_parsers import IpAllowedListEntryT
@@ -80,18 +81,19 @@ class HTTPFilesSource(BaseFilesSource[HTTPFileSourceTemplateConfiguration, HTTPF
                 "The URL source should properly percent-encode the path."
             )
 
+        allowlist = self._allowlist or config.fetch_url_allowlist
         with ExitStack() as stack:
             if scheme == "ftp":
                 req = urllib.request.Request(source_path, headers=config.http_headers)
                 page = stack.enter_context(urllib.request.urlopen(req, timeout=DEFAULT_SOCKET_TIMEOUT))
+                validate_non_local(page.geturl(), allowlist)
             else:
-                session = get_reusable_http_session() or stack.enter_context(requests.Session())
                 page = stack.enter_context(
-                    session.get(
+                    open_validated_url(
                         source_path,
+                        allowlist,
                         headers=config.http_headers,
-                        stream=True,
-                        timeout=DEFAULT_SOCKET_TIMEOUT,
+                        max_redirects=DEFAULT_REDIRECT_LIMIT,
                     )
                 )
                 if not page.ok:
@@ -99,9 +101,6 @@ class HTTPFilesSource(BaseFilesSource[HTTPFileSourceTemplateConfiguration, HTTPF
                     _ = page.content
                 page.raise_for_status()
                 page.raw.decode_content = True
-            # Verify url post-redirects is still allowlisted
-            final_url = page.geturl() if scheme == "ftp" else page.url
-            validate_non_local(final_url, self._allowlist or config.fetch_url_allowlist)
             return stream_to_path(
                 page if scheme == "ftp" else page.raw,
                 native_path,
