@@ -56,19 +56,10 @@ class TestManageInformation(SeleniumTestCase):
         # rendered email should be equal
         assert_email(email)
 
-        self.components.preferences.manage_information.wait_for_and_click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-
         new_email = self._get_random_email()
         # new email should be different from initially registered
         assert email != new_email
-        email_input_field = self.components.preferences.email_input.wait_for_visible()
-
-        self.clear_input_field_and_write(email_input_field, new_email)
-        self.components.change_user_email.submit.wait_for_and_click()
-
-        # UX_RENDER time sometimes is not enough
-        self.sleep_for(self.wait_types.UX_TRANSITION)
+        self.manage_information_save(email=new_email)
 
         # email should be changed
         assert_email(new_email)
@@ -89,11 +80,7 @@ class TestManageInformation(SeleniumTestCase):
         # make sure that public name is the same as registered
         assert_public_name(public_name)
         new_public_name = "new-public-name"
-        # change public name
-        self.clear_input_field_and_write(get_name_input_field(), new_public_name)
-        self.components.change_user_email.submit.wait_for_and_click()
-
-        self.sleep_for(self.wait_types.UX_TRANSITION)
+        self.manage_information_save(username=new_public_name)
 
         self.navigate_to_manage_information()
         self.sleep_for(self.wait_types.UX_RENDER)
@@ -173,10 +160,6 @@ class TestManageInformation(SeleniumTestCase):
         roles = self.edit_dataset_permission_roles()
         details = self.dataset_populator.get_history_dataset_details(history_id, dataset_id=hda["id"])
         return details["permissions"], roles
-
-    def navigate_to_manage_information(self):
-        self.navigate_to_user_preferences()
-        self.components.preferences.manage_information.wait_for_and_click()
 
     def clear_input_field_and_write(self, element, new_input_text):
         element.clear()

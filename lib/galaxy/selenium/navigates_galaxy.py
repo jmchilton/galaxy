@@ -1875,6 +1875,22 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         self.components.masthead.user.wait_for_and_click()
         self.components.masthead.preferences.wait_for_and_click()
 
+    def navigate_to_manage_information(self):
+        """Open Preferences > Manage Information."""
+        self.navigate_to_user_preferences()
+        self.components.preferences.manage_information.wait_for_and_click()
+
+    def manage_information_save(self, email: str | None = None, username: str | None = None):
+        """Change the email and/or public name on Preferences > Manage Information and Save."""
+        self.navigate_to_manage_information()
+        self.sleep_for(WAIT_TYPES.UX_RENDER)
+        preferences = self.components.preferences
+        for input_field, value in ((preferences.email_input, email), (preferences.username_input, username)):
+            if value is not None:
+                input_field.wait_for_and_clear_and_send_keys(value)
+        self.components.change_user_email.submit.wait_for_and_click()
+        self.sleep_for(WAIT_TYPES.UX_TRANSITION)
+
     def user_preferences_new_datasets_private(self) -> bool:
         """Open Preferences > Set Dataset Permissions for New Histories; return its Make new datasets private switch."""
         self.navigate_to_user_preferences()
