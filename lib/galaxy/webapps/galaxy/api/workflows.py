@@ -132,6 +132,9 @@ from galaxy.workflow.modules import module_factory
 
 log = logging.getLogger(__name__)
 
+# Update keys that only touch the current user's tool panel, allowed on accessible (not just owned) workflows.
+USER_MENU_UPDATE_KEYS = frozenset({"menu_entry", "show_in_tool_panel"})
+
 router = Router(tags=["workflows"])
 
 
@@ -426,9 +429,13 @@ class WorkflowsAPIController(
         :rtype:     dict
         :returns:   serialized version of the workflow
         """
-        stored_workflow = self.__get_stored_workflow(trans, id, **kwds)
         workflow_dict = payload.get("workflow", {})
         workflow_dict.update({k: v for k, v in payload.items() if k not in workflow_dict})
+        # The merge above copies a wrapped payload's own "workflow" key in too.
+        if set(workflow_dict) - {"workflow"} <= USER_MENU_UPDATE_KEYS:
+            stored_workflow = self.__get_stored_accessible_workflow(trans, id, **kwds)
+        else:
+            stored_workflow = self.__get_stored_owned_workflow(trans, id, **kwds)
         if workflow_dict:
             require_flush = False
             raw_workflow_description = self.__normalize_workflow(trans, workflow_dict)
@@ -734,9 +741,9 @@ class WorkflowsAPIController(
         instance = util.string_as_bool(kwd.get("instance", "false"))
         return self.workflow_manager.get_stored_accessible_workflow(trans, workflow_id, by_stored_id=not instance)
 
-    def __get_stored_workflow(self, trans, workflow_id, **kwd):
+    def __get_stored_owned_workflow(self, trans, workflow_id, **kwd):
         instance = util.string_as_bool(kwd.get("instance", "false"))
-        return self.workflow_manager.get_stored_workflow(trans, workflow_id, by_stored_id=not instance)
+        return self.workflow_manager.get_stored_owned_workflow(trans, workflow_id, by_stored_id=not instance)
 
 
 StoredWorkflowIDPathParam = Annotated[
