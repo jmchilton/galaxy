@@ -59,6 +59,17 @@ describe("stores/EntryPointStore", () => {
         expect(store.entryPoints[0].name).toBe("Oh there you go, bringing class into it again.");
         expect(store.entryPoints[0].active).toBeTruthy();
     });
+    it("adds a newly started entry point to a non-empty list", async () => {
+        const started = {
+            ...testInteractiveToolsResponse[0],
+            id: "f2db41e1fa331b3e",
+            job_id: "a799d38679e985db",
+            name: "Second tool",
+        };
+        store.updateEntryPoints([...testInteractiveToolsResponse, started]);
+        expect(store.entryPoints.length).toBe(testInteractiveToolsResponse.length + 1);
+        expect(store.entryPoints.map((ep) => ep.id)).toContain("f2db41e1fa331b3e");
+    });
     it("removes an entry point of given id", async () => {
         let entryPointForId = store.entryPoints.filter((item) => item.id === "52e496b945151ee8");
         expect(entryPointForId.length).toBe(1);

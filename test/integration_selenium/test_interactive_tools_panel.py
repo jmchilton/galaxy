@@ -22,3 +22,17 @@ class TestInteractiveToolsPanelSeleniumIntegration(BaseInteractiveToolsSeleniumI
         ep = self._app.model.context.get(InteractiveToolEntryPoint, ep_id)
         self._app.model.context.refresh(ep)
         assert ep.deleted
+
+    @selenium_test
+    def test_interactive_tools_panel_shows_second_tool(self):
+        first, second = (f"panel entry {uuid4().hex[:8]}" for _ in range(2))
+        first_job_id, _ = self._create_it_job_with_entry_point(name=first)
+        self._configure_entry_points(first_job_id)
+
+        self.home()
+        self.interactive_tools_panel_open()
+        self.interactive_tool_wait_running(first)
+
+        second_job_id, _ = self._create_it_job_with_entry_point(name=second)
+        self._configure_entry_points(second_job_id)
+        self.interactive_tool_wait_running(second)
