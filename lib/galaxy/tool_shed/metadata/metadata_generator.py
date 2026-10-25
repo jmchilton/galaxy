@@ -96,6 +96,8 @@ class BaseMetadataGenerator:
     relative_install_dir: str | None
     repository_files_dir: str | None
     persist: bool
+    # When resetting, read sample files only from repository_files_dir and stage their copies outside it.
+    isolate_files_dir: bool = False
 
     def initial_metadata_dict(self) -> dict[str, Any]:
         raise NotImplementedError()
@@ -270,8 +272,8 @@ class BaseMetadataGenerator:
             # full path to the temporary directory to which self.repository was cloned.
             files_dir = self.repository_files_dir
             # Since we're working from a temporary directory, we can safely copy sample files included
-            # in the repository to the repository root.
-            work_dir = files_dir
+            # in the repository to the repository root, unless isolate_files_dir keeps the clone untouched.
+            work_dir = tempfile.mkdtemp(prefix="tmp-toolshed-gmfcr") if self.isolate_files_dir else files_dir
         else:
             # Use a temporary working directory to copy all sample files.
             work_dir = tempfile.mkdtemp(prefix="tmp-toolshed-gmfcr")
@@ -796,7 +798,7 @@ class BaseMetadataGenerator:
                             relative_path_to_sample_file = os.path.join(
                                 relative_install_dir, stripped_path_to_sample_file
                             )
-                            if os.path.exists(relative_path_to_sample_file):
+                            if not self.isolate_files_dir and os.path.exists(relative_path_to_sample_file):
                                 sample_file_copy_paths.append(relative_path_to_sample_file)
                             else:
                                 sample_file_copy_paths.append(full_path_to_sample_file)

@@ -3166,6 +3166,91 @@ export interface components {
         RepositoryUpdate:
             | components["schemas"]["ValidRepostiroyUpdateMessage"]
             | components["schemas"]["FailedRepositoryUpdateMessage"]
+        /**
+         * RepositoryUpdateDryRun
+         * @description What uploading a revision would do; nothing is changed.
+         */
+        RepositoryUpdateDryRun: {
+            /**
+             * Creates New Installable Revision
+             * @description The new tip would get its own repository metadata revision.
+             * @default false
+             */
+            creates_new_installable_revision: boolean
+            /**
+             * Dry Run
+             * @default true
+             * @constant
+             */
+            dry_run: true
+            /** @description Files changed relative to the repository tip. */
+            files?: components["schemas"]["RepositoryUpdateDryRunFiles"]
+            /**
+             * Message
+             * @description Message or error a real upload would return.
+             */
+            message: string
+            /**
+             * No Changes
+             * @description The upload matches the repository tip; a real upload would be rejected.
+             */
+            no_changes: boolean
+            /**
+             * Ok
+             * @description False if a real upload would be committed but then fail with ``message`` (e.g. invalid tools).
+             * @default true
+             */
+            ok: boolean
+            /**
+             * Overwrites Changeset Revision
+             * @description Changeset revision of the latest repository metadata revision that would be moved to the new tip and overwritten.
+             */
+            overwrites_changeset_revision?: string | null
+            /**
+             * Tools
+             * @description Tools compared with the latest repository metadata revision.
+             * @default []
+             */
+            tools: components["schemas"]["RepositoryUpdateDryRunTool"][]
+        }
+        /** RepositoryUpdateDryRunFiles */
+        RepositoryUpdateDryRunFiles: {
+            /**
+             * Added
+             * @default []
+             */
+            added: string[]
+            /**
+             * Modified
+             * @default []
+             */
+            modified: string[]
+            /**
+             * Removed
+             * @default []
+             */
+            removed: string[]
+        }
+        /** RepositoryUpdateDryRunTool */
+        RepositoryUpdateDryRunTool: {
+            /** Id */
+            id: string
+            /**
+             * New Version
+             * @description Version the upload would set.
+             */
+            new_version?: string | null
+            /**
+             * Old Version
+             * @description Version in the latest repository metadata revision.
+             */
+            old_version?: string | null
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "added" | "removed" | "updated" | "unchanged"
+        }
         /** ResetMetadataOnRepositoriesResponse */
         ResetMetadataOnRepositoriesResponse: {
             /** Repository Status */
@@ -5420,6 +5505,8 @@ export interface operations {
             query?: {
                 /** @description Set commit message as a query parameter. */
                 commit_message?: string | null
+                /** @description Preview changes without persisting to database */
+                dry_run?: boolean
             }
             header?: never
             path: {
@@ -5440,7 +5527,9 @@ export interface operations {
                     [name: string]: unknown
                 }
                 content: {
-                    "application/json": components["schemas"]["RepositoryUpdate"]
+                    "application/json":
+                        | components["schemas"]["RepositoryUpdate"]
+                        | components["schemas"]["RepositoryUpdateDryRun"]
                 }
             }
             /** @description Request Error */

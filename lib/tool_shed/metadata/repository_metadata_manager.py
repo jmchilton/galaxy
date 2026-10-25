@@ -260,6 +260,7 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
         updating_installed_repository=False,
         persist=False,
         metadata_dict=None,
+        isolate_files_dir: bool = False,
     ):
         super().__init__(
             trans,
@@ -275,6 +276,7 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
             metadata_dict=metadata_dict,
             user=trans.user,
         )
+        self.isolate_files_dir = isolate_files_dir
         app = trans.app
         user = trans.user
         self.sa_session = app.model.context

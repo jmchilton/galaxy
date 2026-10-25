@@ -11,6 +11,7 @@ from sqlalchemy.sql.expression import null
 
 import tool_shed.repository_types.util as rt_util
 from galaxy.tool_shed.tools.data_table_manager import BaseShedToolDataTableManager
+from galaxy.tools.data import ToolDataTableManager
 from galaxy.util import checkers
 from galaxy.util.path import safe_relpath
 from tool_shed.util import (
@@ -169,7 +170,11 @@ def handle_directory_changes(
             # by parsing the file and adding new entries to the in-memory app.tool_data_tables
             # dictionary.
             stdtm = BaseShedToolDataTableManager(app)
-            error, message = stdtm.handle_sample_tool_data_table_conf_file(filename_in_archive, persist=False)
+            # A dry run validates against throwaway tables.
+            tool_data_tables = ToolDataTableManager(app.config.tool_data_path) if dry_run else None
+            error, message = stdtm.handle_sample_tool_data_table_conf_file(
+                filename_in_archive, persist=False, tool_data_tables=tool_data_tables
+            )
             if error:
                 return (
                     False,

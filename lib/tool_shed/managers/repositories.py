@@ -63,7 +63,10 @@ from tool_shed.util.metadata_util import (
     get_updated_changeset_revisions,
 )
 from tool_shed.util.readme_util import build_readme_files_dict
-from tool_shed.util.repository_content_util import upload_tar
+from tool_shed.util.repository_content_util import (
+    temporary_clone,
+    upload_tar,
+)
 from tool_shed.util.repository_util import (
     create_repository as low_level_create_repository,
     get_repo_info_dict,
@@ -100,6 +103,10 @@ from tool_shed_client.schema import (
     RepositoryMetadataPreview,
     RepositoryRevisionMetadata,
     RepositoryRevisionMetadataPreview,
+    RepositoryUpdateDryRun,
+    RepositoryUpdateDryRunFiles,
+    RepositoryUpdateDryRunTool,
+    RepositoryUpdateDryRunToolStatus,
     ResetMetadataOnRepositoriesRequest,
     ResetMetadataOnRepositoriesResponse,
     ResetMetadataOnRepositoryResponse,
@@ -816,11 +823,80 @@ def upload_tar_and_set_metadata(
     return message
 
 
+def upload_tar_dry_run(
+    trans: ProvidesRepositoriesContext,
+    repository: Repository,
+    uploaded_file: str,
+    commit_message: str,
+) -> RepositoryUpdateDryRun:
+    """Report what ``upload_tar_and_set_metadata`` would do, working in a throwaway clone."""
+    user = trans.user
+    assert user
+    assert user.username
+    tip = repository.tip()
+    with temporary_clone(repository) as clone_dir:
+        ok, message, *_ = upload_tar(
+            trans, user.username, repository, uploaded_file, commit_message, dry_run=True, clone_dir=clone_dir
+        )
+        if not ok:
+            raise InternalServerError(message)
+        clone_repo = hg_util.get_repo(clone_dir)
+        new_tip = str(clone_repo[clone_repo.changelog.tip()])
+        if new_tip == tip:
+            return RepositoryUpdateDryRun(message="No changes to repository.", no_changes=True)
+        files = RepositoryUpdateDryRunFiles(**hg_util.get_changed_paths(clone_repo, tip, new_tip))
+        rmm = repository_metadata_manager.RepositoryMetadataManager(
+            trans,
+            repository=repository,
+            changeset_revision=new_tip,
+            repository_files_dir=clone_dir,
+            resetting_all_metadata_on_repository=True,
+            isolate_files_dir=True,
+        )
+        rmm.generate_metadata_for_changeset_revision()
+        error_message = rmm.tip_metadata_error(len(clone_repo), new_tip)
+    metadata_dict = rmm.metadata_dict
+    plan = rmm.plan_tip_metadata()
+    latest = plan.latest_repository_metadata
+    overwritten = plan.overwritten_repository_metadata if metadata_dict else None
+    return RepositoryUpdateDryRun(
+        ok=not error_message,
+        message=error_message or message + _orphan_tool_dependencies_message(trans.app, repository, metadata_dict),
+        no_changes=False,
+        creates_new_installable_revision=bool(metadata_dict) and overwritten is None,
+        overwrites_changeset_revision=str(overwritten.changeset_revision) if overwritten else None,
+        tools=_dry_run_tools((latest.metadata or {}) if latest else {}, metadata_dict),
+        files=files,
+    )
+
+
 def _orphan_tool_dependencies_message(app: ToolShedApp, repository: Repository, metadata_dict: dict[str, Any]) -> str:
     """Warn about tool dependencies no tool in the repository requires; the definition may be wrong."""
     if str(repository.type) in [rt_util.REPOSITORY_SUITE_DEFINITION, rt_util.TOOL_DEPENDENCY_DEFINITION]:
         return ""
     return dependency_display.DependencyDisplayer(app).generate_message_for_orphan_tool_dependencies(metadata_dict)
+
+
+def _dry_run_tools(old_metadata: dict[str, Any], new_metadata: dict[str, Any]) -> list[RepositoryUpdateDryRunTool]:
+    old_versions = {tool["id"]: tool["version"] for tool in old_metadata.get("tools", [])}
+    new_versions = {tool["id"]: tool["version"] for tool in new_metadata.get("tools", [])}
+    tools = []
+    for tool_id in sorted(old_versions.keys() | new_versions.keys()):
+        old_version = old_versions.get(tool_id)
+        new_version = new_versions.get(tool_id)
+        status: RepositoryUpdateDryRunToolStatus
+        if old_version is None:
+            status = "added"
+        elif new_version is None:
+            status = "removed"
+        elif old_version == new_version:
+            status = "unchanged"
+        else:
+            status = "updated"
+        tools.append(
+            RepositoryUpdateDryRunTool(id=tool_id, old_version=old_version, new_version=new_version, status=status)
+        )
+    return tools
 
 
 def ensure_can_manage(trans: ProvidesUserContext, repository: Repository, error_message: str | None = None) -> None:

@@ -12,6 +12,7 @@ from typing import (
 )
 
 from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.tools.data import ToolDataTableManager
 from galaxy.util import safe_makedirs
 from tool_shed.context import ProvidesRepositoriesContext
 from tool_shed.managers.model_cache import ModelCache
@@ -53,6 +54,10 @@ class TestToolShedConfig:
         files_path = os.path.join(temp_directory, "files")
         safe_makedirs(files_path)
         self.file_path = files_path
+        self.tool_data_path = os.path.join(temp_directory, "tool-data")
+        safe_makedirs(self.tool_data_path)
+        self.shed_tool_data_path = self.tool_data_path
+        self.shed_tool_data_table_config = os.path.join(temp_directory, "shed_tool_data_table_conf.xml")
 
     def get(self, key, default):
         assert key == "admin_users"
@@ -80,6 +85,11 @@ class TestToolShedApp(ToolShedApp):
         self.security = IdEncodingHelper(id_secret=self.config.id_secret)
         self.model_cache = ModelCache(os.path.join(temp_directory, "model_cache"))
         self.security_agent = self.model.security_agent
+        self._tool_data_tables = ToolDataTableManager(self.config.tool_data_path)
+
+    @property
+    def tool_data_tables(self) -> ToolDataTableManager:
+        return self._tool_data_tables
 
 
 def user_fixture(app: ToolShedApp, username: str, password: str = "testpassword", email: str | None = None) -> User:
@@ -117,8 +127,13 @@ def provides_repositories_fixture(
     return ProvidesRepositoriesImpl(app, user)
 
 
-def repository_fixture(app: ToolShedApp, user: User, name: str, category: Category | None = None) -> Repository:
-    type = rt_util.UNRESTRICTED
+def repository_fixture(
+    app: ToolShedApp,
+    user: User,
+    name: str,
+    category: Category | None = None,
+    type: str = rt_util.UNRESTRICTED,
+) -> Repository:
     description = f"test repo named {name}"
     long_description = f"test repo named {name} a longer description"
     category_ids = []
@@ -148,26 +163,29 @@ from unittest import mock
 patch_url_for = mock.patch("galaxy.util.tool_shed.common_util.url_for", _mock_url_for)
 
 
-def upload(
-    provides_repositories: ProvidesRepositoriesContext,
-    repository: Repository,
-    path: Path,
-    arcname: str | None = None,
-):
+def tar_path(path: Path, arcname: str | None = None) -> str:
     if path.is_dir():
         tf = NamedTemporaryFile(delete=False)
         with tarfile.open(tf.name, "w:gz") as tar:
             print(path.name)
             print(str(path))
             tar.add(str(path), arcname=arcname or path.name)
-        tar_path = tf.name
+        return tf.name
     else:
-        tar_path = str(path)
+        return str(path)
+
+
+def upload(
+    provides_repositories: ProvidesRepositoriesContext,
+    repository: Repository,
+    path: Path,
+    arcname: str | None = None,
+):
     return upload_tar_and_set_metadata(
         provides_repositories,
         TEST_HOST,
         repository,
-        tar_path,
+        tar_path(path, arcname),
         commit_message=TEST_COMMIT_MESSAGE,
     )
 

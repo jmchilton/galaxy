@@ -551,6 +551,89 @@ class TestShedRepositoriesApi(ShedApiTestCase):
         assert result.get("repository_metadata_before") is None
         assert result.get("repository_metadata_after") is None
 
+    def test_upload_dry_run_overwrite(self):
+        populator = self.populator
+        repository = populator.setup_test_data_repo("column_maker_unchanged", end=1)
+        metadata_before = populator.get_metadata(repository, downloadable_only=False).root
+        (first_revision,) = metadata_before.values()
+
+        dry_run = populator.upload_test_data_revision_dry_run(repository, "column_maker_unchanged", 1)
+
+        assert populator.get_metadata(repository, downloadable_only=False).root == metadata_before
+        assert not dry_run.no_changes
+        assert dry_run.creates_new_installable_revision is False
+        assert dry_run.overwrites_changeset_revision == first_revision.changeset_revision
+        assert [(t.id, t.status) for t in dry_run.tools] == [("Add_a_column1", "unchanged")]
+        assert dry_run.files.model_dump() == {
+            "added": ["column_maker_unchanged/README.txt"],
+            "removed": [],
+            "modified": [],
+        }
+
+        populator.setup_test_data_repo("column_maker_unchanged", repository, start=1, end=2)
+        (overwritten,) = populator.get_metadata(repository, downloadable_only=False).root.values()
+        assert overwritten.changeset_revision != first_revision.changeset_revision
+
+    def test_upload_dry_run_new_revision(self):
+        populator = self.populator
+        repository = populator.setup_test_data_repo("column_maker", end=1)
+        dry_run = populator.upload_test_data_revision_dry_run(repository, "column_maker", 1)
+        assert dry_run.creates_new_installable_revision is True
+        assert dry_run.overwrites_changeset_revision is None
+        assert [t.model_dump() for t in dry_run.tools] == [
+            {"id": "Add_a_column1", "old_version": "1.1.0", "new_version": "1.2.0", "status": "updated"}
+        ]
+        assert dry_run.files.model_dump() == {"added": [], "removed": [], "modified": ["column_maker/column_maker.xml"]}
+        populator.assert_has_n_installable_revisions(repository, 1)
+
+    def test_upload_dry_run_removed_tool(self):
+        populator = self.populator
+        repository = populator.setup_test_data_repo("column_maker_subset", start=1, end=2)
+        (revision,) = populator.get_metadata(repository, downloadable_only=False).root.values()
+        dry_run = populator.upload_test_data_revision_dry_run(repository, "column_maker_subset", 0)
+        assert dry_run.creates_new_installable_revision is False
+        assert dry_run.overwrites_changeset_revision == revision.changeset_revision
+        assert [(t.id, t.status) for t in dry_run.tools] == [("Add_a_column1", "unchanged"), ("Filter1", "removed")]
+        assert dry_run.files.removed == ["column_maker_subset/filter_tool.xml"]
+
+    def test_upload_dry_run_first_upload(self):
+        populator = self.populator
+        category = populator.new_category(prefix="dryrunfirst")
+        repository = populator.new_repository(category.id, prefix="dryrunfirst")
+        dry_run = populator.upload_test_data_revision_dry_run(repository, "column_maker", 0)
+        assert dry_run.creates_new_installable_revision is True
+        assert dry_run.overwrites_changeset_revision is None
+        assert [(t.id, t.old_version, t.new_version, t.status) for t in dry_run.tools] == [
+            ("Add_a_column1", None, "1.1.0", "added")
+        ]
+        assert dry_run.files.added == ["column_maker/column_maker.xml"]
+        assert populator.get_metadata(repository, downloadable_only=False).root == {}
+
+    def test_upload_dry_run_no_changes(self):
+        populator = self.populator
+        repository = populator.setup_test_data_repo("column_maker", end=1)
+        dry_run = populator.upload_test_data_revision_dry_run(repository, "column_maker", 0)
+        assert dry_run.no_changes
+        assert dry_run.message == "No changes to repository."
+        assert dry_run.creates_new_installable_revision is False
+
+    def test_upload_dry_run_requires_push_permission(self):
+        populator = self.populator
+        email = "uploaddryrunuser@galaxyproject.org"
+        username = "uploaddryrunuser"
+        password = "testPassword1"
+        create_user(self.admin_api_interactor, {"email": email, "username": username, "password": password})
+        collaborator = self._get_populator(self._api_interactor_by_credentials(email, password))
+        repository = populator.setup_test_data_repo("column_maker", end=1)
+        metadata_before = populator.get_metadata(repository, downloadable_only=False).root
+        response = collaborator.upload_revision_raw(repository, COLUMN_MAKER_PATH, dry_run=True)
+        api_asserts.assert_status_code_is(response, 403)
+
+        populator.allow_user_to_push(repository, username)
+        dry_run = collaborator.upload_test_data_revision_dry_run(repository, "column_maker", 1)
+        assert dry_run.creates_new_installable_revision is True
+        assert populator.get_metadata(repository, downloadable_only=False).root == metadata_before
+
     def _get_only_revision(self, repository: HasRepositoryId) -> RepositoryRevisionMetadata:
         populator = self.populator
         repository_metadata = populator.get_metadata(repository)

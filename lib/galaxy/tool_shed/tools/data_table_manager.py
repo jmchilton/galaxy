@@ -21,6 +21,7 @@ from galaxy.util.tool_shed import xml_util
 if TYPE_CHECKING:
     from galaxy.model.tool_shed_install import ToolShedRepository
     from galaxy.structured_app import BasicSharedApp
+    from galaxy.tool_util.data import ToolDataTableManager as BaseToolDataTableManager
     from galaxy.util.path import StrPath
 
 log = logging.getLogger(__name__)
@@ -43,17 +44,21 @@ class BaseShedToolDataTableManager:
     def __init__(self, app: RequiredAppT):
         self.app = app
 
-    def handle_sample_tool_data_table_conf_file(self, filename: "StrPath", persist: bool = False):
+    def handle_sample_tool_data_table_conf_file(
+        self, filename: "StrPath", persist: bool = False, tool_data_tables: "BaseToolDataTableManager | None" = None
+    ):
         """
         Parse the incoming filename and add new entries to the in-memory
-        self.app.tool_data_tables dictionary.  If persist is True (should
+        self.app.tool_data_tables dictionary (or ``tool_data_tables`` if given).  If persist is True (should
         only occur if call is from the Galaxy side, not the tool shed), the
         new entries will be appended to Galaxy's shed_tool_data_table_conf.xml
         file on disk.
         """
+        if tool_data_tables is None:
+            tool_data_tables = self.app.tool_data_tables
         error = False
         try:
-            new_table_elems, message = self.app.tool_data_tables.add_new_entries_from_config_file(
+            new_table_elems, message = tool_data_tables.add_new_entries_from_config_file(
                 config_filename=filename,
                 tool_data_path=self.app.config.shed_tool_data_path,
                 shed_tool_data_table_config=self.app.config.shed_tool_data_table_config,

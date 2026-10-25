@@ -55,6 +55,7 @@ from tool_shed.managers.repositories import (
     to_model,
     UpdatesRequest,
     upload_tar_and_set_metadata,
+    upload_tar_dry_run,
     usernames_with_admin_role,
 )
 from tool_shed.structured_app import ToolShedApp
@@ -75,6 +76,7 @@ from tool_shed_client.schema import (
     RepositoryRevisionReadmes,
     RepositorySearchResults,
     RepositoryUpdate,
+    RepositoryUpdateDryRun,
     RepositoryUpdateRequest,
     ResetMetadataOnRepositoriesRequest,
     ResetMetadataOnRepositoriesResponse,
@@ -630,7 +632,8 @@ class FastAPIRepositories:
         trans: SessionRequestContext = DependsOnTrans,
         files: list[UploadFile] | None = None,
         revision_request: RepositoryUpdateRequest = Depends(RepositoryUpdateRequestFormData.as_form),  # type: ignore[attr-defined]
-    ) -> RepositoryUpdate:
+        dry_run: bool = DryRunQueryParam,
+    ) -> RepositoryUpdate | RepositoryUpdateDryRun:
         try:
             # Code stolen from Marius' work in Galaxy's Tools API.
 
@@ -657,13 +660,16 @@ class FastAPIRepositories:
                 shutil.copyfileobj(upload_file_like, dest)
             the_file.file.close()
             filename = dest.name
+            commit_message = commit_message or revision_request.commit_message or "Uploaded"
             try:
+                if dry_run:
+                    return upload_tar_dry_run(trans, repository, filename, commit_message)
                 message = upload_tar_and_set_metadata(
                     trans,
                     trans.request.host,
                     repository,
                     filename,
-                    commit_message or revision_request.commit_message or "Uploaded",
+                    commit_message,
                 )
                 return RepositoryUpdate(root=ValidRepostiroyUpdateMessage(message=message))
             finally:
