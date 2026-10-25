@@ -6,9 +6,9 @@ import { computed, ref, watch } from "vue";
 
 import { fromSimple } from "@/components/Workflow/Editor/modules/model";
 import { getWorkflowFull } from "@/components/Workflow/workflows.services";
-import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { getHeaderClass } from "@/composables/useInvocationGraph";
 import { provideScopedWorkflowStores } from "@/composables/workflowStores";
+import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 
 import { type DroppedExposure, hasSelectableLeaf, type StepParameterNode, treeLeaves } from "./stepParameterTree";
@@ -38,7 +38,9 @@ const emit = defineEmits<{
 const storeId = `${props.workflowId}-step-parameter-picker`;
 const { stateStore } = provideScopedWorkflowStores(storeId);
 const { activeNodeId } = storeToRefs(stateStore);
-const { datatypesMapper } = useDatatypesMapper();
+const datatypesMapperStore = useDatatypesMapperStore();
+const { datatypesMapper } = storeToRefs(datatypesMapperStore);
+datatypesMapperStore.createMapper();
 
 const workflow = ref<any>(null);
 const errorMessage = ref<string | null>(null);
