@@ -1,4 +1,8 @@
+from pathlib import Path
+from unittest import mock
+
 from tool_shed.context import ProvidesRepositoriesContext
+from tool_shed.util import shed_util_common
 from tool_shed.util.repository_content_util import upload_tar
 from tool_shed.webapp.model import (
     Repository,
@@ -89,6 +93,43 @@ def test_upload_dry_run_ok(provides_repositories: ProvidesRepositoriesContext, n
     assert files_removed == 0
     new_tip = new_repository.tip()
     assert old_tip == new_tip
+
+
+def test_upload_dry_run_sends_no_email_alerts(
+    provides_repositories: ProvidesRepositoriesContext, new_repository: Repository
+):
+    tar_resource = TEST_DATA_FILES.joinpath("column_maker/column_maker.tar")
+    assert new_repository.user is not None
+    assert new_repository.user.username is not None
+    with mock.patch.object(shed_util_common, "handle_email_alerts") as handle_email_alerts:
+        upload_ok, *_ = upload_tar(
+            provides_repositories,
+            new_repository.user.username,
+            new_repository,
+            tar_resource,
+            commit_message="Commit Message",
+            dry_run=True,
+        )
+    assert upload_ok
+    handle_email_alerts.assert_not_called()
+
+
+def test_upload_dry_run_removes_its_clone(
+    provides_repositories: ProvidesRepositoriesContext, new_repository: Repository, isolated_tempdir: Path
+):
+    tar_resource = TEST_DATA_FILES.joinpath("column_maker/column_maker.tar")
+    assert new_repository.user is not None
+    assert new_repository.user.username is not None
+    upload_ok, *_ = upload_tar(
+        provides_repositories,
+        new_repository.user.username,
+        new_repository,
+        tar_resource,
+        commit_message="Commit Message",
+        dry_run=True,
+    )
+    assert upload_ok
+    assert list(isolated_tempdir.iterdir()) == []
 
 
 def test_category_count(provides_repositories: ProvidesRepositoriesContext, new_repository: Repository):

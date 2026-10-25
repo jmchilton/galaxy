@@ -1,11 +1,15 @@
 import os
 import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
 )
 
 import tool_shed.repository_types.util as rt_util
+from galaxy.exceptions import InternalServerError
+from galaxy.tool_shed.util.basic_util import remove_dir
 from galaxy.tool_shed.util.hg_util import clone_repository
 from galaxy.util.compression_utils import CompressedFile
 from tool_shed.dependencies.attribute_handlers import (
@@ -24,6 +28,19 @@ if TYPE_CHECKING:
     from tool_shed.webapp.model import Repository
 
 
+@contextmanager
+def temporary_clone(repository: "Repository") -> Iterator[str]:
+    """Clone ``repository`` into a temporary directory removed on exit."""
+    clone_dir = tempfile.mkdtemp(prefix="tmp-toolshed-dry-run")
+    try:
+        cloned_ok, error_message = clone_repository(repository.repo_path(), clone_dir)
+        if not cloned_ok:
+            raise InternalServerError(error_message)
+        yield clone_dir
+    finally:
+        remove_dir(clone_dir)
+
+
 def upload_tar(
     trans: "ProvidesRepositoriesContext",
     username: str,
@@ -35,7 +52,24 @@ def upload_tar(
     new_repo_alert: bool = False,
     rdah: RepositoryDependencyAttributeHandler | None = None,
     tdah: ToolDependencyAttributeHandler | None = None,
+    clone_dir: str | None = None,
 ) -> ChangeResponseT:
+    """Commit the archive to ``repository``, or with ``dry_run`` to ``clone_dir`` (a throwaway clone if unset)."""
+    if dry_run and clone_dir is None:
+        with temporary_clone(repository) as clone_dir:
+            return upload_tar(
+                trans,
+                username,
+                repository,
+                uploaded_file,
+                commit_message,
+                dry_run=True,
+                remove_repo_files_not_in_tar=remove_repo_files_not_in_tar,
+                new_repo_alert=new_repo_alert,
+                rdah=rdah,
+                tdah=tdah,
+                clone_dir=clone_dir,
+            )
     host = trans.repositories_hostname
     app = trans.app
     tar = CompressedFile.open_tar(uploaded_file)
@@ -56,12 +90,11 @@ def upload_tar(
         )
         return False, message, [], "", undesirable_dirs_removed, undesirable_files_removed
     else:
-        repo_dir = repository.repo_path(app)
         if dry_run:
-            full_path = tempfile.mkdtemp()
-            clone_repository(repo_dir, full_path)
+            assert clone_dir
+            full_path = clone_dir
         else:
-            full_path = os.path.abspath(repo_dir)
+            full_path = os.path.abspath(repository.repo_path(app))
         undesirable_files_removed = len(check_results.undesirable_files)
         undesirable_dirs_removed = len(check_results.undesirable_dirs)
         filenames_in_archive = [ti.name for ti in check_results.valid]
@@ -107,4 +140,5 @@ def upload_tar(
             undesirable_dirs_removed,
             undesirable_files_removed,
             repo_path=full_path,
+            dry_run=dry_run,
         )
