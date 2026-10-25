@@ -81,6 +81,7 @@ from galaxy.exceptions import (
 from galaxy.managers.session import GalaxySessionManager
 from galaxy.managers.users import UserManager
 from galaxy.model import User
+from galaxy.schema import BootstrapAdminUser
 from galaxy.schema.fields import DecodedDatabaseIdField
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.structured_app import StructuredApp
@@ -175,7 +176,7 @@ def get_api_user(
             "Only admins and designated users can make API calls on behalf of other users."
         ),
     ),
-) -> User | None:
+) -> User | BootstrapAdminUser | None:
     api_key = key or x_api_key
     access_token = bearer_token.credentials if bearer_token else None
     if not (api_key or access_token):

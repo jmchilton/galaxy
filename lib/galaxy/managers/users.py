@@ -444,7 +444,9 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
             raise exceptions.AuthenticationFailed("Provided API key has expired.")
         return provided_key.user
 
-    def by_credentials(self, api_key: str | None, access_token: str | None) -> model.User | None:
+    def by_credentials(
+        self, api_key: str | None, access_token: str | None
+    ) -> model.User | schema.BootstrapAdminUser | None:
         """Find the user for a Galaxy API key or, failing that, an OIDC access token.
 
         The API key is tried first. A bad API key raises, but an access token that matches no user
