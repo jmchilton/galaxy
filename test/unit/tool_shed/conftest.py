@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -37,3 +39,12 @@ def new_repository(shed_app: TestToolShedApp, new_user: User) -> Repository:
 @pytest.fixture
 def provides_repositories(shed_app: TestToolShedApp, new_user: User) -> "ProvidesRepositoriesContext":
     return provides_repositories_fixture(shed_app, new_user)
+
+
+@pytest.fixture
+def isolated_tempdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Empty directory the ``tempfile`` module creates new temporary files in."""
+    tempdir = tmp_path / "tempdir"
+    tempdir.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(tempdir))
+    return tempdir
