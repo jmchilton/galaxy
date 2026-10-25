@@ -556,6 +556,27 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
     ensure_registered = True
 
     @selenium_test
+    @managed_history
+    def test_run_reuses_equivalent_job(self):
+        history_id = self.current_history_id()
+        self.dataset_populator.new_dataset(history_id, content="a b c", wait=True)
+        for reuse in (False, True):
+            self.home()
+            self.tool_open("cat1")
+            self.tool_form_fill(data={"input1": 1})
+            if reuse:
+                self.tool_form_set_use_cached_job()
+            self.tool_form_execute()
+            self.history_panel_wait_for_hid_ok(3 if reuse else 2)
+        original, rerun = (
+            self.dataset_populator.get_job_details(
+                self.dataset_populator.get_history_dataset_details(history_id, hid=hid)["creating_job"], full=True
+            ).json()
+            for hid in (2, 3)
+        )
+        assert rerun["copied_from_job_id"] == original["id"]
+
+    @selenium_test
     def test_dataset_state_filtering(self):
         # upload an ok (HID 1) and a discarded (HID 2) dataset and run a tool
         # normally HID 2 would be selected but since it is discarded - it won't

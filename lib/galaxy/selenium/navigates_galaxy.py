@@ -2809,6 +2809,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Click Run on the open tool form."""
         self.components.tool_form.execute.wait_for_and_click()
 
+    def tool_form_set_use_cached_job(self, value: bool = True):
+        """Set the open tool form's "Attempt to re-use jobs with identical parameters?" switch."""
+        self._set_boolean_value("use_cached_job", value)
+
     def tool_form_select_data(self, parameter: str, value: str, multiple: bool = False):
         select_field = self.components.tool_form.parameter_data_select(parameter=parameter)
         self.select_set_value(select_field, value, multiple=multiple)
