@@ -272,3 +272,25 @@ def test_dry_run_reports_overwrite_that_is_no_longer_installable(
     assert [(rm.changeset_revision, rm.downloadable) for rm in new_repository.metadata_revisions] == [
         (new_repository.tip(), False)
     ]
+
+
+def test_dry_run_reports_metadata_generation_failure(
+    provides_repositories: ProvidesRepositoriesContext, new_repository: Repository, tmp_path: Path
+):
+    _upload_revision(provides_repositories, new_repository, "column_maker", "1")
+    rows_before = _persisted_rows(provides_repositories, new_repository)
+    revision = tmp_path / "column_maker"
+    revision.mkdir()
+    tool_xml = (revision_path("column_maker", "1") / "column_maker.xml").read_text()
+    tool_xml = tool_xml.replace("<command", "<macros><import>missing_macros.xml</import></macros><command", 1)
+    (revision / "column_maker.xml").write_text(tool_xml)
+    dry_run = upload_tar_dry_run(
+        provides_repositories, new_repository, tar_path(revision, "column_maker"), TEST_COMMIT_MESSAGE
+    )
+    assert dry_run.ok is False
+    assert dry_run.message == "Generating metadata for the uploaded revision failed (FileNotFoundError)."
+    assert dry_run.creates_new_installable_revision is False
+    assert dry_run.overwrites_changeset_revision is None
+    with pytest.raises(FileNotFoundError, match="missing_macros.xml"):
+        upload(provides_repositories, new_repository, revision, arcname="column_maker")
+    assert _persisted_rows(provides_repositories, new_repository) == rows_before

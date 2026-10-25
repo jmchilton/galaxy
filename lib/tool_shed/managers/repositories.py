@@ -852,7 +852,13 @@ def upload_tar_dry_run(
             repository_files_dir=clone_dir,
             resetting_all_metadata_on_repository=True,
         )
-        rmm.generate_metadata_for_changeset_revision()
+        try:
+            rmm.generate_metadata_for_changeset_revision()
+        except Exception as e:
+            # A real upload would be committed, then fail without touching metadata.
+            log.exception("Dry run metadata generation failed for repository %s", repository.id)
+            message = f"Generating metadata for the uploaded revision failed ({type(e).__name__})."
+            return RepositoryUpdateDryRun(ok=False, message=message, no_changes=False, files=files)
         error_message = rmm.tip_metadata_error(len(clone_repo), new_tip)
     metadata_dict = rmm.metadata_dict
     plan = rmm.plan_tip_metadata()
