@@ -469,7 +469,7 @@ class WorkflowsAPIController(
             if "menu_entry" in workflow_dict or "show_in_tool_panel" in workflow_dict:
                 show_in_panel = workflow_dict.get("menu_entry") or workflow_dict.get("show_in_tool_panel")
                 stored_workflow_menu_entries = trans.user.stored_workflow_menu_entries
-                decoded_id = trans.security.decode_id(id)
+                decoded_id = stored_workflow.id
                 if show_in_panel:
                     workflow_ids = [wf.stored_workflow_id for wf in stored_workflow_menu_entries]
                     if decoded_id not in workflow_ids:
