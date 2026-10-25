@@ -82,6 +82,27 @@ class TestWorkflowSharing(SeleniumTestCase, UsesWorkflowAssertions):
         self.components.workflows.workflows_list_empty.wait_for_visible()
 
     @selenium_test
+    def test_unshare_with_me(self):
+        _, user2_email = self.setup_two_users_with_one_shared_workflow(share_by_id=True)
+        self.submit_login(user2_email)
+        self.workflow_shared_with_me_open()
+        self._assert_showing_n_workflows(1)
+        [workflow_id] = self.workflow_populator.index_ids(show_shared=True)
+
+        workflows = self.components.workflows
+        workflows.workflow_card_by_id(id=workflow_id).wait_for_visible()
+        workflows.dropdown(id=workflow_id).wait_for_and_click()
+        workflows.unshare_with_me_button(id=workflow_id).wait_for_and_click()
+        assert "from your shared workflows" in self.components.confirm_dialog.message.wait_for_text()
+        self.screenshot("workflow_sharing_unshare_with_me_confirm")
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
+
+        workflows.workflow_card_by_id(id=workflow_id).wait_for_absent()
+        workflows.workflows_list_empty.wait_for_visible()
+        self.screenshot("workflow_sharing_unshare_with_me_removed")
+        assert workflow_id not in self.workflow_populator.index_ids(show_shared=True)
+
+    @selenium_test
     def test_sharing_with_invalid_user(self):
         user1_email = self._get_random_email()
         self.register(user1_email)
