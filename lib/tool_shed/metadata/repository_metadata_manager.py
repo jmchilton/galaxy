@@ -65,6 +65,20 @@ class ResetMetadataResult:
     regenerated_metadata: dict[str, RepositoryMetadata] = field(default_factory=dict)
 
 
+@dataclass
+class TipMetadataPlan:
+    """Where metadata generated for a new repository tip gets stored."""
+
+    # Galaxy utilities changed, so the tip gets its own repository_metadata row.
+    new_metadata_required: bool
+    latest_repository_metadata: RepositoryMetadata | None
+
+    @property
+    def overwritten_repository_metadata(self) -> RepositoryMetadata | None:
+        """The latest row, moved to the tip and overwritten; None if the tip gets a new row."""
+        return None if self.new_metadata_required else self.latest_repository_metadata
+
+
 class ToolShedMetadataGenerator(BaseMetadataGenerator):
     """A MetadataGenerator building on ToolShed's app and repository constructs."""
 
@@ -1129,58 +1143,48 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
         repo = self.repository.hg_repo
         self.generate_metadata_for_changeset_revision()
         if self.metadata_dict:
-            repository_metadata = None
-            repository_type_class = self.app.repository_types_registry.get_class_by_label(self.repository.type)
-            tip_only = isinstance(repository_type_class, TipOnly)
-            if not tip_only and self.new_metadata_required_for_utilities():
+            plan = self.plan_tip_metadata()
+            repository_metadata = plan.overwritten_repository_metadata
+            if repository_metadata is None:
                 # Create a new repository_metadata table row.
                 repository_metadata = self.create_or_update_repository_metadata(
                     self.repository.tip(), self.metadata_dict
                 )
                 # If this is the first record stored for this repository, see if we need to send any email alerts.
-                if len(self.repository.downloadable_revisions) == 1:
+                if plan.new_metadata_required and len(self.repository.downloadable_revisions) == 1:
                     suc.handle_email_alerts(
                         self.app, host, self.repository, content_alert_str="", new_repo_alert=True, admin_only=False
                     )
             else:
                 # Update the latest stored repository metadata with the contents and attributes of self.metadata_dict.
-                repository_metadata = metadata_util.get_latest_repository_metadata(
-                    self.app, repository_id, downloadable=False
-                )
-                if repository_metadata:
-                    downloadable = metadata_util.is_downloadable(self.metadata_dict)
-                    # Update the last saved repository_metadata table row.
-                    repository_metadata.changeset_revision = self.repository.tip()
-                    repository_metadata.metadata = self.metadata_dict
-                    repository_metadata.downloadable = downloadable
-                    repository_metadata.includes_datatypes = False
-                    # We don't store information about the special type of repository dependency that is needed only for
-                    # compiling a tool dependency defined for the dependent repository.
-                    repository_dependencies_dict = self.metadata_dict.get("repository_dependencies", {})
-                    repository_dependencies = repository_dependencies_dict.get("repository_dependencies", [])
-                    (
-                        has_repository_dependencies,
-                        has_repository_dependencies_only_if_compiling_contained_td,
-                    ) = repository_util.get_repository_dependency_types(repository_dependencies)
-                    repository_metadata.has_repository_dependencies = has_repository_dependencies
-                    if "tool_dependencies" in self.metadata_dict:
-                        repository_metadata.includes_tool_dependencies = True
-                    else:
-                        repository_metadata.includes_tool_dependencies = False
-                    if "tools" in self.metadata_dict:
-                        repository_metadata.includes_tools = True
-                    else:
-                        repository_metadata.includes_tools = False
-                    repository_metadata.includes_workflows = False
-                    repository_metadata.missing_test_components = False
-                    self.sa_session.add(repository_metadata)
-                    session = self.sa_session()
-                    session.commit()
+                downloadable = metadata_util.is_downloadable(self.metadata_dict)
+                # Update the last saved repository_metadata table row.
+                repository_metadata.changeset_revision = self.repository.tip()
+                repository_metadata.metadata = self.metadata_dict
+                repository_metadata.downloadable = downloadable
+                repository_metadata.includes_datatypes = False
+                # We don't store information about the special type of repository dependency that is needed only for
+                # compiling a tool dependency defined for the dependent repository.
+                repository_dependencies_dict = self.metadata_dict.get("repository_dependencies", {})
+                repository_dependencies = repository_dependencies_dict.get("repository_dependencies", [])
+                (
+                    has_repository_dependencies,
+                    has_repository_dependencies_only_if_compiling_contained_td,
+                ) = repository_util.get_repository_dependency_types(repository_dependencies)
+                repository_metadata.has_repository_dependencies = has_repository_dependencies
+                if "tool_dependencies" in self.metadata_dict:
+                    repository_metadata.includes_tool_dependencies = True
                 else:
-                    # There are no metadata records associated with the repository.
-                    repository_metadata = self.create_or_update_repository_metadata(
-                        self.repository.tip(), self.metadata_dict
-                    )
+                    repository_metadata.includes_tool_dependencies = False
+                if "tools" in self.metadata_dict:
+                    repository_metadata.includes_tools = True
+                else:
+                    repository_metadata.includes_tools = False
+                repository_metadata.includes_workflows = False
+                repository_metadata.missing_test_components = False
+                self.sa_session.add(repository_metadata)
+                session = self.sa_session()
+                session.commit()
             if "tools" in self.metadata_dict and repository_metadata and status != "error":
                 # Set tool versions on the new downloadable change set.  The order of the list of changesets is
                 # critical, so we use the repo's changelog.
@@ -1190,18 +1194,35 @@ class RepositoryMetadataManager(ToolShedMetadataGenerator):
                     if repository_metadata_by_changeset_revision(self.app.model, repository_id, changeset_revision):
                         changeset_revisions.append(changeset_revision)
                 self._add_tool_versions(repository_id, repository_metadata, changeset_revisions)
-        elif len(repo) == 1 and not self.invalid_file_tups:
-            message = (
-                f"Revision <b>{self.repository.tip()}</b> includes no Galaxy utilities for which metadata can "
-                "be defined so this revision cannot be automatically installed into a local Galaxy instance."
-            )
-            status = "error"
-        if self.invalid_file_tups:
-            message = tool_util.generate_message_for_invalid_tools(
-                self.app, self.invalid_file_tups, self.repository, self.metadata_dict
-            )
+        message = self.tip_metadata_error(len(repo), self.repository.tip())
+        if message:
             status = "error"
         return message, status
+
+    def plan_tip_metadata(self) -> TipMetadataPlan:
+        """Decide where ``self.metadata_dict`` for a new tip is stored, without storing it."""
+        assert self.repository
+        repository_type_class = self.app.repository_types_registry.get_class_by_label(self.repository.type)
+        tip_only = isinstance(repository_type_class, TipOnly)
+        return TipMetadataPlan(
+            new_metadata_required=not tip_only and self.new_metadata_required_for_utilities(),
+            latest_repository_metadata=metadata_util.get_latest_repository_metadata(
+                self.app, self.repository.id, downloadable=False
+            ),
+        )
+
+    def tip_metadata_error(self, num_changesets: int, tip: str) -> str:
+        """Error for the repository owner about the metadata generated for ``tip``, empty if none."""
+        if self.invalid_file_tups:
+            return tool_util.generate_message_for_invalid_tools(
+                self.app, self.invalid_file_tups, self.repository, self.metadata_dict, changeset_revision=tip
+            )
+        if not self.metadata_dict and num_changesets == 1:
+            return (
+                f"Revision <b>{tip}</b> includes no Galaxy utilities for which metadata can "
+                "be defined so this revision cannot be automatically installed into a local Galaxy instance."
+            )
+        return ""
 
 
 def get_user_by_username(session, username):

@@ -92,7 +92,9 @@ def generate_message_for_invalid_tools(
     metadata_dict: dict | None,
     as_html: bool = True,
     displaying_invalid_tool: bool = False,
+    changeset_revision: str | None = None,
 ) -> str:
+    """``changeset_revision`` names the revision in the message, defaulting to the repository's."""
     if as_html:
         new_line = "<br/>"
         bold_start = "<b>"
@@ -102,7 +104,9 @@ def generate_message_for_invalid_tools(
         bold_start = ""
         bold_end = ""
     message = ""
-    if app.name == "galaxy":
+    if changeset_revision:
+        tip_rev = changeset_revision
+    elif app.name == "galaxy":
         tip_rev = str(repository.changeset_revision)
     else:
         tip_rev = str(repository.tip())
