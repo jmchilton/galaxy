@@ -515,10 +515,14 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         for reuse in (False, True):
             self.home()
             self.tool_open("cat1")
+            selected = self.components.tool_form.parameter_data_select_value(parameter="input1")
+            # Wait for the form's default pick so it can't override ours.
+            selected.wait_for_visible()
             self.tool_form_select_data("input1", "reuse_input.txt")
             if reuse:
                 self.tool_form_set_use_cached_job()
                 self.screenshot("tool_form_use_cached_job")
+            assert selected.wait_for_text() == "1: reuse_input.txt"
             self.tool_form_execute()
             self.history_panel_wait_for_hid_ok(3 if reuse else 2)
         original, rerun = (
@@ -527,6 +531,7 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
             ).json()
             for hid in (2, 3)
         )
+        assert original["copied_from_job_id"] is None
         assert rerun["copied_from_job_id"] == original["id"]
 
     @selenium_test
