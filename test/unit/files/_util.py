@@ -2,7 +2,9 @@
 
 import os
 import tempfile
+import urllib.request
 from typing import Optional
+from unittest import mock
 
 from galaxy.files import (
     ConfiguredFileSources,
@@ -15,6 +17,11 @@ from galaxy.files.plugins import FileSourcePluginsConfig
 
 TEST_USERNAME = "alice"
 TEST_EMAIL = "alice@galaxyproject.org"
+
+
+def patch_http_open(fn):
+    """Route the http file source's opener requests to ``fn(request, **kwargs)``."""
+    return mock.patch.object(urllib.request.OpenerDirector, "open", new=lambda self, req, **kwargs: fn(req, **kwargs))
 
 
 def serialize_and_recover(file_sources_o: ConfiguredFileSources, user_context: OptionalUserContext = None):
