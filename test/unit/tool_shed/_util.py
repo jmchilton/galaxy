@@ -40,6 +40,18 @@ TEST_HOST = "localhost"
 TEST_COMMIT_MESSAGE = "Test Commit Message"
 
 
+def revision_path(test_data_path: str, revision: str) -> Path:
+    return Path(str(TEST_DATA_FILES.joinpath(f"repos/{test_data_path}/{revision}")))
+
+
+def metadata_rows(repository: Repository) -> dict[str, list[tuple[str, str]]]:
+    """Sorted tool ``(id, version)`` pairs keyed by each metadata row's changeset revision."""
+    return {
+        str(rm.changeset_revision): sorted((t["id"], t["version"]) for t in (rm.metadata or {}).get("tools", []))
+        for rm in repository.metadata_revisions
+    }
+
+
 class TestToolShedConfig:
     user_activation_on = False
     file_path: str
