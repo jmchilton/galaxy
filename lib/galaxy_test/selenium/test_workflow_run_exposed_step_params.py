@@ -63,6 +63,28 @@ class TestWorkflowRunExposedStepParams(SeleniumTestCase, UsesHistoryItemAssertio
         [new] = [i["id"] for i in self.workflow_populator.history_invocations(history_id) if i["id"] not in known]
         return new
 
+    def _assert_tree_row_details(self):
+        threshold_row = '.step-param-row:has(> label[data-exposure-key="1|threshold"])'
+        row_text = self.wait_for_selector_visible(threshold_row).text
+        assert "workflow sets to 0.5" in row_text, row_text
+        assert "1|threshold" not in row_text, row_text
+
+        self.wait_for_selector_clickable(f'{threshold_row} [data-description="step parameter help"]').click()
+        popover = self.wait_for_selector_visible(".popover-body")
+        assert popover.text == "Scores below this are dropped.", popover.text
+        self.screenshot("exposed_step_params_picker_help")
+        self.send_escape()
+        self.wait_for_selector_absent_or_hidden(".popover-body")
+        self.wait_for_selector_visible('[data-description="step parameter picker"]')
+
+        cond_row = ".step-param-conditional > .step-param-row.step-param-locked"
+        assert "workflow sets to Minimum" in self.wait_for_selector_visible(cond_row).text
+        self.hover(self.wait_for_selector_visible(f'{cond_row} [data-description="step parameter locked"]'))
+        tooltip = self.wait_for_selector_visible('.g-tooltip[data-show="true"]')
+        assert "Set it in the expanded form" in tooltip.text, tooltip.text
+        self.screenshot("exposed_step_params_picker_locked_conditional")
+        self.hover_away()
+
     @selenium_test
     @managed_history
     def test_add_step_parameters_and_run(self):
@@ -76,6 +98,7 @@ class TestWorkflowRunExposedStepParams(SeleniumTestCase, UsesHistoryItemAssertio
         self.wait_for_selector_clickable('[data-description="add step parameter"]').click()
         self.wait_for_selector_visible('[data-exposure-key="1|threshold"] input')
         self.screenshot("exposed_step_params_picker")
+        self._assert_tree_row_details()
         for key in ["1|threshold", "1|queries_1|column_name", "1|cond|min"]:
             self.wait_for_selector_clickable(f'label[data-exposure-key="{key}"] input').click()
         self.screenshot("exposed_step_params_picker_selected")

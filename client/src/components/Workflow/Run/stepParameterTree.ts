@@ -9,14 +9,30 @@ export interface StepParameterNode {
     label: string;
     /** Exposure key ``<step_index>|<prefixed name>`` of a leaf. */
     key?: string;
-    /** Set on leaves shown but not selectable. */
+    /** Set on leaves and conditional test params shown but not selectable. */
     disabledReason?: string;
-    /** Current value of a conditional's test param, shown as a badge. */
-    badge?: string;
+    /** Value the workflow sets, for leaves and conditional test params. */
+    value?: string;
+    help?: string;
     /** Breadcrumb from the step down to this leaf, for card titles. */
     path?: string[];
     input?: any;
     children: StepParameterNode[];
+}
+
+export const CONDITIONAL_LOCKED_REASON =
+    "Changing this would change which parameters below apply. Set it in the expanded form.";
+
+/** Display text of an input's value (option labels for selects); undefined when empty. */
+export function displayValue(input: any): string | undefined {
+    const raw = Array.isArray(input.value) ? input.value : [input.value];
+    const parts = raw
+        .filter((v: unknown) => v !== null && v !== undefined && v !== "")
+        .map((v: unknown) => {
+            const option = (input.options || []).find((o: any[]) => String(o[1]) === String(v));
+            return option ? String(option[0]) : String(v);
+        });
+    return parts.length ? parts.join(", ") : undefined;
 }
 
 function leafDisabledReason(input: any, context: Record<string, any>): string | undefined {
@@ -65,7 +81,9 @@ function walk(inputs: any[], stepIndex: number, prefix: string, path: string[], 
                 id,
                 kind: "conditional",
                 label: testParam.label || input.name,
-                badge: String(testParam.value),
+                value: displayValue(testParam),
+                disabledReason: CONDITIONAL_LOCKED_REASON,
+                help: testParam.help || undefined,
                 children: walk(activeInputs, stepIndex, name, [...path, label], id),
             });
         } else if (input.type === "data" || input.type === "data_collection" || input.type === "hidden") {
@@ -80,6 +98,8 @@ function walk(inputs: any[], stepIndex: number, prefix: string, path: string[], 
                 label,
                 key: `${stepIndex}|${name}`,
                 disabledReason: leafDisabledReason(input, context),
+                value: displayValue(input),
+                help: input.help || undefined,
                 path: [...path, label],
                 input,
                 children: [],

@@ -17,7 +17,7 @@
     ]]></command>
     <inputs>
         <param name="input1" type="data" format="tabular" label="Input table" />
-        <param name="threshold" type="float" value="0.5" label="Threshold" />
+        <param name="threshold" type="float" value="0.5" label="Threshold" help="Scores below this are dropped." />
         <param name="mode" type="select" label="Mode">
             <option value="fast" selected="true">Fast</option>
             <option value="careful">Careful</option>
@@ -31,7 +31,7 @@
             <param name="column_name" type="text" value="c1" label="Column name" />
         </repeat>
         <conditional name="cond">
-            <param name="filter_type" type="select" label="Filter type">
+            <param name="filter_type" type="select" label="Filter type" help="How rows are filtered.">
                 <option value="min" selected="true">Minimum</option>
                 <option value="regex">Regex</option>
             </param>

@@ -4,6 +4,8 @@ import { visitInputs } from "@/components/Form/utilities";
 
 import {
     buildStepParameterTree,
+    CONDITIONAL_LOCKED_REASON,
+    displayValue,
     exposedParametersPayload,
     filterTree,
     parseStepParamValues,
@@ -15,7 +17,7 @@ import {
 function echoStepInputs() {
     return [
         { name: "input1", type: "hidden", connected: true },
-        { name: "threshold", type: "float", label: "Threshold", value: "0.5" },
+        { name: "threshold", type: "float", label: "Threshold", value: "0.5", help: "Minimum score." },
         { name: "column", type: "data_column", data_ref: "input1", label: "Column", value: "1" },
         {
             name: "advanced",
@@ -35,7 +37,16 @@ function echoStepInputs() {
         {
             name: "cond",
             type: "conditional",
-            test_param: { name: "filter_type", type: "select", label: "Filter type", value: "min" },
+            test_param: {
+                name: "filter_type",
+                type: "select",
+                label: "Filter type",
+                value: "min",
+                options: [
+                    ["Minimum", "min", true],
+                    ["Regular expression", "regex", false],
+                ],
+            },
             cases: [
                 { value: "min", inputs: [{ name: "min", type: "integer", value: "1" }] },
                 { value: "regex", inputs: [{ name: "pattern", type: "text", value: ".*" }] },
@@ -82,11 +93,35 @@ describe("buildStepParameterTree", () => {
         expect(leaves.sort()).toEqual(visited.sort());
     });
 
-    it("shows the conditional test value as a fixed badge", () => {
+    it("locks the conditional test param and shows its option label", () => {
         const step = buildStepParameterTree(model)[0]!;
         const cond = step.children.find((node) => node.kind === "conditional")!;
-        expect(cond.badge).toBe("min");
+        expect(cond.value).toBe("Minimum");
+        expect(cond.disabledReason).toBe(CONDITIONAL_LOCKED_REASON);
         expect(cond.children.map((node) => node.key)).toEqual(["1|cond|min"]);
+    });
+
+    it("carries leaf values and help", () => {
+        const leaves = treeLeaves(buildStepParameterTree(model));
+        const threshold = leaves.find((leaf) => leaf.key === "1|threshold")!;
+        expect(threshold.value).toBe("0.5");
+        expect(threshold.help).toBe("Minimum score.");
+        expect(leaves.find((leaf) => leaf.key === "1|advanced|label")!.help).toBeUndefined();
+    });
+});
+
+describe("displayValue", () => {
+    it("formats scalars, option labels, lists and empty values", () => {
+        expect(displayValue({ type: "float", value: 0.5 })).toBe("0.5");
+        expect(displayValue({ type: "boolean", value: false })).toBe("false");
+        expect(displayValue({ type: "text", value: "" })).toBeUndefined();
+        expect(displayValue({ type: "text", value: null })).toBeUndefined();
+        const options = [
+            ["Alpha", "a", false],
+            ["Beta", "b", false],
+        ];
+        expect(displayValue({ type: "select", value: ["a", "b"], options })).toBe("Alpha, Beta");
+        expect(displayValue({ type: "select", value: "zzz", options })).toBe("zzz");
     });
 
     it("filters by label and keeps ancestors", () => {
