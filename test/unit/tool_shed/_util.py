@@ -12,6 +12,7 @@ from typing import (
 )
 
 from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.tools.data import ToolDataTableManager
 from galaxy.util import safe_makedirs
 from tool_shed.context import ProvidesRepositoriesContext
 from tool_shed.managers.model_cache import ModelCache
@@ -65,6 +66,10 @@ class TestToolShedConfig:
         files_path = os.path.join(temp_directory, "files")
         safe_makedirs(files_path)
         self.file_path = files_path
+        self.tool_data_path = os.path.join(temp_directory, "tool-data")
+        safe_makedirs(self.tool_data_path)
+        self.shed_tool_data_path = self.tool_data_path
+        self.shed_tool_data_table_config = os.path.join(temp_directory, "shed_tool_data_table_conf.xml")
 
     def get(self, key, default):
         assert key == "admin_users"
@@ -92,6 +97,11 @@ class TestToolShedApp(ToolShedApp):
         self.security = IdEncodingHelper(id_secret=self.config.id_secret)
         self.model_cache = ModelCache(os.path.join(temp_directory, "model_cache"))
         self.security_agent = self.model.security_agent
+        self._tool_data_tables = ToolDataTableManager(self.config.tool_data_path)
+
+    @property
+    def tool_data_tables(self) -> ToolDataTableManager:
+        return self._tool_data_tables
 
 
 def user_fixture(app: ToolShedApp, username: str, password: str = "testpassword", email: str | None = None) -> User:
