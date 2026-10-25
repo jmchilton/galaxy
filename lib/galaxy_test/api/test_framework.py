@@ -1,6 +1,9 @@
 # This file doesn't test any API in particular but is meant to functionally
 # test the API framework itself.
-from requests import post
+from requests import (
+    get,
+    post,
+)
 
 from galaxy_test.base.decorators import requires_admin
 from ._framework import ApiTestCase
@@ -72,6 +75,28 @@ class TestApiFramework(ApiTestCase):
         response = self._get("users/current", headers={"run-as": run_as_user["id"]}, anon=True)
         self._assert_status_code_is(response, 200)
         assert "email" not in response.json()
+
+    def test_run_as_with_unmatched_bearer_token(self):
+        run_as_user = self._setup_user("for_run_as@bx.psu.edu")
+        response = self._get(
+            "users/current",
+            headers={"run-as": run_as_user["id"], "Authorization": "Bearer not-a-real-token"},
+            anon=True,
+        )
+        self._assert_status_code_is(response, 403)
+
+    def test_legacy_run_as_with_anonymous_session(self):
+        # /api/tools POST is still served by the legacy WSGI app.
+        run_as_user = self._setup_user("for_run_as@bx.psu.edu")
+        cookies = {"galaxysession": get(self.url).cookies["galaxysession"]}
+        response = post(
+            self._api_url("tools"),
+            json={"tool_id": "cat1"},
+            headers={"run-as": run_as_user["id"]},
+            cookies=cookies,
+        )
+        self._assert_status_code_is(response, 403)
+        assert response.json()["err_code"] == 400001
 
     def test_api_key_wins_over_bearer_token(self):
         # The API key is looked up first, so the Bearer token is never consulted.
