@@ -76,10 +76,11 @@
 
         // Test for the presence of /training-material/. If that is available we
         // can opt in the fancy click-to-run features. Otherwise we fallback to
-        // displaying the real GTN.
-        fetch("/training-material/")
+        // displaying the real GTN. Galaxy serves its client page for unknown paths, so a 200 isn't enough.
+        fetch("/training-material/api/topics.json")
             .then((response) => {
-                if (!response.ok) {
+                const proxied = response.ok && (response.headers.get("content-type") || "").includes("json");
+                if (!proxied) {
                     url = `https://training.galaxyproject.org/training-material/${autoLoadTutorial}?utm_source=webhook&utm_medium=noproxy&utm_campaign=gxy`;
                     message = `
                         <span>
