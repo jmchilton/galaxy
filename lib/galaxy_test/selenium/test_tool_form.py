@@ -146,6 +146,22 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self.screenshot("tool_form_fill_maps_over_collection")
 
     @selenium_test
+    def test_tool_form_fill_multiple_datasets_runs_one_job_each(self):
+        history_id = self.current_history_id()
+        first = self.dataset_populator.new_dataset(history_id, content="first\n", wait=True)
+        second = self.dataset_populator.new_dataset(history_id, content="second\n", wait=True)
+        self.home()
+        self.tool_open("cat1")
+        self.tool_form_fill(data={"input1": [first["hid"], second["hid"]]})
+        hint = self.tool_form_wait_for_batch_info("input1", "batch mode")
+        assert hint.startswith("This is a batch mode input field"), hint
+        self.screenshot("tool_form_fill_multiple_datasets")
+        self.tool_form_execute()
+        self.history_panel_wait_for_hid_ok(4)
+        assert self.dataset_populator.get_history_dataset_content(history_id, hid=3) == "first\n"
+        assert self.dataset_populator.get_history_dataset_content(history_id, hid=4) == "second\n"
+
+    @selenium_test
     def test_tool_form_parameters_match_form(self):
         self.home()
         self.tool_open("gx_conditional_select")

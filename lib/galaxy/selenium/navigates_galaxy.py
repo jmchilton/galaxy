@@ -2612,11 +2612,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             build = self.api_get(f"tools/{quote(tool_id, safe='')}/build?{urlencode(query)}")
         return tool_form_parameters_from_build(build["inputs"])
 
-    def tool_form_fill(self, values: dict[str, Any] | None = None, data: dict[str, int | str] | None = None) -> None:
+    def tool_form_fill(
+        self, values: dict[str, Any] | None = None, data: dict[str, int | str | list[int | str]] | None = None
+    ) -> None:
         """Fill the open tool form by parameter path, such as ``cond|param`` or ``repeat_0|param``.
 
         ``values`` sets non-data parameters, detecting each one's widget. ``data`` selects a dataset or
-        collection per parameter, by hid or by option label such as ``"3: reads.fq"``. Adds the repeat
+        collection per parameter, by hid or by option label such as ``"3: reads.fq"``; a list selects
+        several datasets, in the field's Multiple datasets mode when it has one. Adds the repeat
         instances the paths need, expands sections, and retries parameters a conditional reveals late.
         """
         values = values or {}
@@ -2652,6 +2655,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
         collection_hids = None
         for key, value in data.items():
+            if isinstance(value, list):
+                self._tool_form_select_multiple_data(key, value)
+                continue
             label = f"{value}: " if isinstance(value, int) else value
             if isinstance(value, int):
                 if collection_hids is None:
@@ -2671,6 +2677,18 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             self.tool_set_value(key, label, expected_type="data", multiple=is_multiple)
             if isinstance(value, int):
                 self._assert_data_selected(key, label)
+
+    def _tool_form_select_multiple_data(self, expanded_id: str, values: list[int | str]) -> None:
+        multiple_mode = self.components.tool_form.parameter_data_input_multiple(parameter=expanded_id)
+        if not multiple_mode.is_absent:
+            multiple_mode.wait_for_and_click()
+            self.sleep_for(self.wait_types.UX_RENDER)
+        self._clear_multiselect_tags(expanded_id)
+        for value in values:
+            label = f"{value}: " if isinstance(value, int) else value
+            self.tool_set_value(expanded_id, label, expected_type="data", multiple=True)
+            if isinstance(value, int):
+                self._assert_data_selected(expanded_id, label)
 
     def _assert_data_selected(self, expanded_id: str, label: str) -> None:
         select = self.components.tool_form.parameter_data_select(parameter=expanded_id).wait_for_visible()
