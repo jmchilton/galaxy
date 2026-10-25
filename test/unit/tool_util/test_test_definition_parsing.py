@@ -148,3 +148,19 @@ class TestTestParsing(TestCase):
         exception = target_dict.get("exception")
         assert not exception, f"Test failed to generate with exception {exception}"
         dict_verify_each(target_dict, expectations)
+
+
+FTPFILE_TOOL = """<tool id="ftpfile_test" name="ftpfile_test" version="1.0.0">
+    <command>echo '$files' > '$out'</command>
+    <inputs><param name="files" type="ftpfile"/></inputs>
+    <outputs><data name="out" format="txt"/></outputs>
+    <tests><test><param name="files" value="a.txt,b.txt"/></test></tests>
+</tool>
+"""
+
+
+def test_ftpfile_value_split_on_commas(tmp_path):
+    tool_path = tmp_path / "ftpfile_test.xml"
+    tool_path.write_text(FTPFILE_TOOL)
+    test_dicts = parse_tool_test_descriptions(get_tool_source(str(tool_path)))
+    assert test_dicts[0].to_dict()["inputs"]["files"] == ["a.txt", "b.txt"]

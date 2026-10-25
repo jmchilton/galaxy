@@ -595,7 +595,9 @@ def split_if_str(value):
 
 def _test_value_as_list(input_source: InputSource, value: Any) -> Any:
     """Comma-split string test values for data and multiple-valued inputs, wrap others in a list."""
-    if input_source.get("type") == "data" or input_source.get_bool("multiple", False):
+    param_type = input_source.get("type")
+    # ftpfile defaults to multiple, as in FTPFileToolParameter
+    if param_type == "data" or input_source.get_bool("multiple", param_type == "ftpfile"):
         return split_if_str(value)
     return [value] if isinstance(value, str) else value
 
