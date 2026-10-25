@@ -86,6 +86,25 @@ class TestHistorySharing(SeleniumTestCase, UsesUploadActivity):
         assert len(rows) > 0
         assert any(user1_email.split("@")[0] in row.text for row in rows)
 
+    @selenium_test
+    def test_unshare_with_me(self):
+        user1_email, user2_email, history_id = self.setup_two_users_with_one_shared_history()
+        self.submit_login(user2_email, retries=VALID_LOGIN_RETRIES)
+        self.navigate_to_histories_shared_with_me_page()
+        shared_histories = self.components.shared_histories
+        shared_histories.history_card(history_id=history_id).wait_for_visible()
+
+        shared_histories.extra_actions(history_id=history_id).wait_for_and_click()
+        shared_histories.unshare_with_me_button(history_id=history_id).wait_for_and_click()
+        assert "from your shared histories" in self.components.confirm_dialog.message.wait_for_text()
+        self.screenshot("history_sharing_unshare_with_me_confirm")
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
+
+        shared_histories.history_card(history_id=history_id).wait_for_absent()
+        self.screenshot("history_sharing_unshare_with_me_removed")
+        response = self.api_get(f"histories/{history_id}", raw=True)
+        assert response.status_code == 403
+
     def setup_two_users_with_one_shared_history(self, share_by_id=False):
         user1_email = self._get_random_email()
         user2_email = self._get_random_email()
