@@ -121,6 +121,11 @@ class TestMCPApiKey(IntegrationTestCase):
         result = self._call_tool("get_user", {"api_key": argument_key}, headers={"x-api-key": header_key})
         assert self._email_from_get_user(result) == "mcp-header-wins@bx.psu.edu"
 
+    def test_header_key_wins_over_bearer_token(self) -> None:
+        _, key = self._setup_user_get_key("mcp-header-beats-bearer@bx.psu.edu")
+        result = self._call_tool("get_user", {}, headers={"x-api-key": key, "Authorization": "Bearer not-a-real-token"})
+        assert self._email_from_get_user(result) == "mcp-header-beats-bearer@bx.psu.edu"
+
     def test_empty_argument_falls_back_to_header(self) -> None:
         _, other_key = self._setup_user_get_key("mcp-header-fallback@bx.psu.edu")
         result = self._call_tool("get_user", {"api_key": ""}, headers={"x-api-key": other_key})
