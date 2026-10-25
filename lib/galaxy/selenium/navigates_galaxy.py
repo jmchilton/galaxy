@@ -3411,6 +3411,34 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
 
         _click_action_in_menu()
 
+    def interactive_tools_panel_open(self):
+        """Open the Activity Bar's Interactive Tools panel, unless it is already open."""
+        panel = self.components.interactive_tools_panel._
+        if panel.is_absent:
+            self.components.activity_bar.item(id="interactivetools").wait_for_and_click()
+        panel.wait_for_visible()
+
+    def interactive_tool_wait_running(self, name: str):
+        """Wait until the panel lists active interactive tool ``name`` as Running."""
+        status = self.components.interactive_tools_panel.active_tool_status(name=name)
+        self._wait_on(
+            lambda driver=None: True if status.wait_for_visible().text.strip().startswith("Running") else None,
+            f"interactive tool {name} to be running",
+            wait_type=WAIT_TYPES.JOB_COMPLETION,
+        )
+
+    def interactive_tool_open(self, name: str) -> str:
+        """Open active interactive tool ``name`` from the panel in the center frame; returns the frame's URL."""
+        panel = self.components.interactive_tools_panel
+        panel.active_tool_link(name=name).wait_for_and_click()
+        return panel.active_tool_frame.wait_for_visible().get_attribute("src")
+
+    def interactive_tool_stop(self, name: str):
+        """Stop active interactive tool ``name`` with its panel stop button; waits for it to leave the list."""
+        panel = self.components.interactive_tools_panel
+        panel.active_tool_stop(name=name).wait_for_and_click()
+        panel.active_tool(name=name).wait_for_absent()
+
     def open_history_multi_view(self):
         """Open History Multiview from the history panel's histories menu."""
         self.components.history_panel.histories_operation_menu.wait_for_and_click()

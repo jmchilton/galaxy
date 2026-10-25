@@ -139,6 +139,30 @@ activity_bar:
         type: xpath
         selector: '//button[contains(@class, "activity-settings-item")][.//span[normalize-space(.)="${title}"]]//button[@data-title="Show in Activity Bar"]'
 
+interactive_tools_panel:
+  selectors:
+    _: '.activity-panel[data-description="Interactive Tools"]'
+    active_tools: '.active-tool-item'
+    active_tool_frame: 'iframe#galaxy_interactive_tool'
+    launch_tool:
+      type: xpath
+      selector: '//button[contains(@class, "tool-item")][.//div[contains(@class, "font-weight-bold")][normalize-space(.)="${name}"]]'
+    active_tool:
+      type: xpath
+      selector: '//div[contains(@class, "active-tool-item")][.//a[contains(@class, "tool-link")][normalize-space(.)="${name}"]]'
+    active_tool_link:
+      type: xpath
+      selector: '//div[contains(@class, "active-tool-item")][.//a[contains(@class, "tool-link")][normalize-space(.)="${name}"]]//a[contains(@class, "tool-link")]'
+    active_tool_status:
+      type: xpath
+      selector: '//div[contains(@class, "active-tool-item")][.//a[contains(@class, "tool-link")][normalize-space(.)="${name}"]]//div[contains(@class, "text-muted")]'
+    active_tool_open_in_new_tab:
+      type: xpath
+      selector: '//div[contains(@class, "active-tool-item")][.//a[contains(@class, "tool-link")][normalize-space(.)="${name}"]]//a[@title="Open in new tab"]'
+    active_tool_stop:
+      type: xpath
+      selector: '//div[contains(@class, "active-tool-item")][.//a[contains(@class, "tool-link")][normalize-space(.)="${name}"]]//button[@title="Stop this interactive tool"]'
+
 object_store_instances:
   index:
     selectors:

@@ -19,35 +19,26 @@ Covers two flows:
   panel implies the SSE-driven refresh path fired.
 """
 
-from uuid import uuid4
-
-from galaxy.model import (
-    InteractiveToolEntryPoint,
-    Job,
-)
 from galaxy.util.wait import wait_on
 from galaxy_test.selenium.framework import (
     managed_history,
     selenium_test,
 )
-from .framework import SeleniumIntegrationTestCase
+from ._base_interactive_tools import BaseInteractiveToolsSeleniumIntegration
 
 SSE_CONNECT_TIMEOUT_SECONDS = 15
 SSE_EVENT_TIMEOUT_SECONDS = 15
 
 
-class TestEntryPointSSESeleniumIntegration(SeleniumIntegrationTestCase):
-    ensure_registered = True
-
+class TestEntryPointSSESeleniumIntegration(BaseInteractiveToolsSeleniumIntegration):
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
         config["enable_celery_tasks"] = False
         # App.vue only calls entryPointStore.startWatchingEntryPoints() when
-        # interactivetools_enable is True, and the store only opens an SSE
+        # interactivetools_enable is True (set by the base), and the store only opens an SSE
         # connection when enable_sse_updates is True. Without both,
         # __galaxy_sse_connected never becomes true and the gate below times out.
-        config["interactivetools_enable"] = True
         config["enable_sse_updates"] = True
 
     def _wait_for_sse_connected(self) -> None:
@@ -68,33 +59,6 @@ class TestEntryPointSSESeleniumIntegration(SeleniumIntegrationTestCase):
             timeout=SSE_EVENT_TIMEOUT_SECONDS,
         )
 
-    def _create_it_job_with_entry_point(self, tool_port: int = 8888) -> tuple[int, int]:
-        # Use the browser's cookie-authenticated user, not the API interactor's
-        # default: SSE connects under the Selenium-registered user, and the
-        # dispatch's user_id must match or push_to_user finds no queues.
-        user_info = self.api_get("users/current")
-        user_id = self._decode_id(user_info["id"])
-        sa_session = self._app.model.context
-        job = Job()
-        job.user_id = user_id
-        job.tool_id = "interactivetool_simple"
-        job.state = Job.states.RUNNING
-        sa_session.add(job)
-        sa_session.flush()
-        ep = InteractiveToolEntryPoint(
-            job=job,
-            tool_port=tool_port,
-            entry_url="/",
-            name=f"selenium entry {uuid4()}",
-            label="selenium",
-            requires_domain=True,
-            requires_path_in_url=False,
-            requires_path_in_header_named=None,
-        )
-        sa_session.add(ep)
-        sa_session.commit()
-        return job.id, ep.id
-
     @selenium_test
     @managed_history
     def test_entry_point_update_pushed_via_sse(self):
@@ -107,14 +71,7 @@ class TestEntryPointSSESeleniumIntegration(SeleniumIntegrationTestCase):
 
         job_id, _ep_id = self._create_it_job_with_entry_point(tool_port=8888)
 
-        # Stub the runner hook: call configure_entry_points on the live app.
-        sa_session = self._app.model.context
-        job = sa_session.get(Job, job_id)
-        assert job is not None
-        self._app.interactivetool_manager.configure_entry_points(
-            job,
-            {"8888": {"host": "host.invalid", "port": 12345, "protocol": "http"}},
-        )
+        self._configure_entry_points(job_id, tool_port=8888)
 
         # Prove the update arrived via SSE (not polling): the composable's
         # event-timestamp hook only advances when useSSE's listener fires.
