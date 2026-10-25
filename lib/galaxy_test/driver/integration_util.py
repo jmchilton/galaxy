@@ -435,6 +435,14 @@ class ConfiguresMockEmails:
         assert match, f"No activation link found in email body:\n{email['body']}"
         return match.group(1)
 
+    def _read_password_reset_link(self, email_address: str) -> str:
+        email = self._read_mock_email()
+        assert email["to"] == email_address
+        assert email["subject"] == "Galaxy Password Reset"
+        match = re.search(r"(https?://[^/\s]+/login/start\?token=\w+)", email["body"])
+        assert match, f"No password reset link found in email body:\n{email['body']}"
+        return match.group(1)
+
 
 class UsesFakeAIProvider:
     """Serve a FakeAIProvider for the test class.

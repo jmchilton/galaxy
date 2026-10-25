@@ -13,7 +13,7 @@ vi.mock("utils/redirect", () => ({
 }));
 
 const localVue = getLocalVue(true);
-const router = injectTestRouter(localVue);
+injectTestRouter(localVue);
 const { server, http } = useServerMock();
 
 interface PostRequest {
@@ -25,9 +25,11 @@ let postRequests: PostRequest[] = [];
 
 describe("ChangePassword", () => {
     let wrapper: VueWrapper;
+    let navigate: ReturnType<typeof vi.spyOn>;
 
     beforeEach(async () => {
         postRequests = [];
+        navigate = vi.spyOn(window.location, "assign").mockImplementation(() => {});
         server.use(
             http.untyped.post(/.*/, async ({ request }) => {
                 const data = (await request.json()) as Record<string, unknown>;
@@ -35,9 +37,6 @@ describe("ChangePassword", () => {
                 return HttpResponse.json({});
             }),
         );
-        // Navigate to a different route to avoid NavigationDuplicated error
-        // when the component calls router.push("/") on successful submit
-        await router.push("/change-password").catch(() => {});
         wrapper = mount(MountTarget as object, {
             props: {
                 messageText: "message_text",
@@ -108,5 +107,13 @@ describe("ChangePassword", () => {
 
         const alert = wrapper.find(".alert");
         expect(alert.text()).toBe("message_text");
+    });
+
+    it("reloads home after saving, since the server logs the user in", async () => {
+        await wrapper.setProps({ token: "test_token" });
+        await wrapper.find("button[type='submit']").trigger("submit");
+        await flushPromises();
+        expect(postRequests.length).toBe(1);
+        expect(navigate).toHaveBeenCalledWith("/");
     });
 });

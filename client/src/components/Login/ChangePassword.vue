@@ -2,7 +2,6 @@
 import axios from "axios";
 import { BCard, BForm, BFormGroup, BFormInput } from "bootstrap-vue";
 import { ref } from "vue";
-import { useRouter } from "vue-router";
 
 import { withPrefix } from "@/utils/redirect";
 import { errorMessageAsString } from "@/utils/simple-error";
@@ -20,7 +19,6 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const router = useRouter();
 const fieldId = `change-password-${uid()}`;
 
 const confirm = ref(null);
@@ -39,7 +37,8 @@ async function submit() {
             confirm: confirm.value,
         });
 
-        router.push("/");
+        // The server logs the user in; reload so the client picks up that session.
+        window.location.assign(withPrefix("/"));
     } catch (error: any) {
         variant.value = "danger";
         message.value = errorMessageAsString(error, "Password change failed for an unknown reason.");
