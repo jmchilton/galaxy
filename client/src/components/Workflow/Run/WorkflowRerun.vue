@@ -9,9 +9,14 @@ import { errorMessageAsString } from "@/utils/simple-error.js";
 import WorkflowRun from "./WorkflowRun.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 
-const props = defineProps<{
-    invocationId: string;
-}>();
+const props = withDefaults(
+    defineProps<{
+        invocationId: string;
+        exposedStepParams?: string[];
+        exposedStepParamValues?: Record<string, string>;
+    }>(),
+    { exposedStepParams: () => [], exposedStepParamValues: () => ({}) },
+);
 
 const historyStore = useHistoryStore();
 const invocationStore = useInvocationStore();
@@ -52,5 +57,7 @@ watch(
         :rerun-invocation-id="invocationId"
         prefer-simple-form
         is-rerun
+        :exposed-step-params="props.exposedStepParams"
+        :exposed-step-param-values="props.exposedStepParamValues"
         :simple-form-use-job-cache="requestData.use_cached_job" />
 </template>

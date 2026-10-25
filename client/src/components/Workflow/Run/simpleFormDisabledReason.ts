@@ -1,6 +1,7 @@
 import type { WorkflowInvocationRequest } from "@/api/invocations";
 
-import { rerunHasStepParameters, type WorkflowRunModel } from "./model";
+import type { WorkflowRunModel } from "./model";
+import { rerunHasUnexposedStepParameters } from "./stepParameterTree";
 
 /** Why the simple run form can't run a workflow; ``WorkflowRunForm`` explains each one. */
 export type SimpleFormDisabledReason =
@@ -33,8 +34,8 @@ export function simpleFormDisabledReason(
     if (model.hasReplacementParametersInToolForm) {
         return "hasReplacementParameters";
     }
-    // The simple form never submits tool step parameters, so a rerun would drop them.
-    if (rerunHasStepParameters(rerunRequest)) {
+    // The simple form only submits the step parameters a run recorded as exposed, so a rerun would drop others.
+    if (rerunHasUnexposedStepParameters(rerunRequest as any)) {
         return "rerunHasStepParameters";
     }
     return undefined;

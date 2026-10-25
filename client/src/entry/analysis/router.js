@@ -6,6 +6,7 @@ import { zipImportResultsProps } from "@/components/ImportData/zip/resultsRoute"
 import { APIKey } from "@/components/User/APIKey";
 import { ExternalIdentities } from "@/components/User/ExternalIdentities";
 import { hasSingleOidcProfile } from "@/components/User/ExternalIdentities/ExternalIDHelper";
+import { parseStepParamValues } from "@/components/Workflow/Run/stepParameterTree";
 import AdminRoutes from "@/entry/analysis/routes/admin-routes";
 import LibraryRoutes from "@/entry/analysis/routes/library-routes";
 import LoginRoutes from "@/entry/analysis/routes/login-routes";
@@ -125,6 +126,15 @@ function redirectAnon(redirect = "") {
             return "/login/start";
         }
     }
+}
+
+// Repeatable `step_param` (exposure keys) and `step_param_value` (`<key>=<value>`) run form query args.
+function stepParamQueryProps(route) {
+    const asList = (value) => (value === undefined ? [] : [].concat(value));
+    return {
+        exposedStepParams: asList(route.query.step_param),
+        exposedStepParamValues: parseStepParamValues(asList(route.query.step_param_value)),
+    };
 }
 
 function redirectIf(condition, path) {
@@ -875,6 +885,7 @@ export function getRouter(Galaxy) {
                             preferSimpleForm: Galaxy.config.simplified_workflow_run_ui === "prefer",
                             simpleFormTargetHistory: Galaxy.config.simplified_workflow_run_ui_target_history,
                             simpleFormUseJobCache: Galaxy.config.simplified_workflow_run_ui_job_cache === "on",
+                            ...stepParamQueryProps(route),
                         }),
                     },
                     {
@@ -883,6 +894,7 @@ export function getRouter(Galaxy) {
                         redirect: redirectAnon(),
                         props: (route) => ({
                             invocationId: route.query.invocation_id,
+                            ...stepParamQueryProps(route),
                         }),
                     },
                     {

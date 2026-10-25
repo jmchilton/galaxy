@@ -10,6 +10,7 @@
                         <th>Input Parameter</th>
                         <th>Value</th>
                         <th v-if="anyNotes">Note for rerun</th>
+                        <th v-if="rerunInvocationId" class="sr-only">Rerun</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -28,6 +29,17 @@
                         </td>
                         <td v-if="anyNotes">
                             <em v-if="parameter.notes">{{ parameter.notes }}</em>
+                        </td>
+                        <td v-if="rerunInvocationId">
+                            <router-link
+                                v-if="parameter.exposable && parameter.name"
+                                v-b-tooltip.hover
+                                :to="rerunWithChangedLink(parameter)"
+                                title="Rerun the workflow with this parameter changed"
+                                data-description="rerun with this changed"
+                                :data-parameter-name="parameter.name">
+                                <span class="fa fa-redo" />
+                            </router-link>
                         </td>
                     </tr>
                 </tbody>
@@ -98,6 +110,15 @@ export default {
             type: Boolean,
             default: true,
         },
+        /** Invocation and step ``order_index`` this job ran for, offers "rerun with this changed" */
+        rerunInvocationId: {
+            type: String,
+            default: undefined,
+        },
+        rerunStepIndex: {
+            type: Number,
+            default: undefined,
+        },
     },
     setup() {
         return { jobParametersStore: useJobParametersStore() };
@@ -137,6 +158,15 @@ export default {
         this.initJob();
     },
     methods: {
+        rerunWithChangedLink(parameter) {
+            return {
+                path: "/workflows/rerun",
+                query: {
+                    invocation_id: this.rerunInvocationId,
+                    step_param: `${this.rerunStepIndex}|${parameter.name}`,
+                },
+            };
+        },
         isRequestJson(parameter) {
             return parameter.text == "request_json" && typeof parameter.value == "string";
         },

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { faReadme } from "@fortawesome/free-brands-svg-icons";
-import { faArrowRight, faCog, faSitemap } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRight, faCog, faPlus, faSitemap, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BFormInput } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
@@ -29,10 +29,18 @@ import { errorMessageAsString } from "@/utils/simple-error";
 
 import { rerunInputValue, withRerunValues } from "./model";
 import { invokeWorkflow, searchHistoryContents } from "./services";
+import {
+    buildStepParameterTree,
+    exposedParametersPayload,
+    rerunStepParameterValue,
+    resolveExposureKeys,
+    type StepParameterNode,
+} from "./stepParameterTree";
 
 import WorkflowAnnotation from "../WorkflowAnnotation.vue";
 import WorkflowNavigationTitle from "../WorkflowNavigationTitle.vue";
 import ExportOnCompleteWizard from "./ExportOnCompleteWizard.vue";
+import StepParameterPicker from "./StepParameterPicker.vue";
 import WorkflowHelpDisplay from "./WorkflowHelpDisplay.vue";
 import WorkflowRunGraph from "./WorkflowRunGraph.vue";
 import WorkflowStorageConfiguration from "./WorkflowStorageConfiguration.vue";
@@ -58,6 +66,10 @@ interface Props {
     rerunRequest?: WorkflowInvocationRequest;
     isRerun?: boolean;
     landingUuid?: string;
+    /** Exposure keys (``<step_index>|<prefixed name>``) of step parameters to show on load */
+    exposedStepParams?: string[];
+    /** Preset values for exposed step parameters, by exposure key */
+    exposedStepParamValues?: Record<string, string>;
 }
 
 type PaginatedDataOption = Pick<DataOption, "id" | "src" | "name" | "hid" | "keep" | "tags">;
@@ -69,6 +81,8 @@ const props = withDefaults(defineProps<Props>(), {
     rerunRequest: undefined,
     isRerun: false,
     landingUuid: undefined,
+    exposedStepParams: () => [],
+    exposedStepParamValues: () => ({}),
 });
 
 const emit = defineEmits<{
@@ -204,6 +218,75 @@ function buildFormInputs() {
 
 buildFormInputs();
 watch(() => [props.model, props.requestState, props.rerunRequest], buildFormInputs);
+
+// Step parameters the user chose to set for this run, sent as ``parameters`` overrides.
+const stepParameterTree = computed(() => buildStepParameterTree(props.model as { steps: any[] }));
+const showStepParameterPicker = ref(false);
+const exposedLeaves = ref<StepParameterNode[]>([]);
+const droppedStepParams = ref<{ key: string; reason: string }[]>([]);
+const stepParamInputs = new Map<string, any[]>();
+const stepParamKeyByName = new Map<string, string>();
+const stepParamValues = ref<Record<string, unknown>>({});
+const exposedKeys = computed(() => exposedLeaves.value.map((leaf) => leaf.key as string));
+
+function stepParamInput(leaf: StepParameterNode, value: unknown): any[] {
+    const name = `step_param_${stepParamKeyByName.size}`;
+    stepParamKeyByName.set(name, leaf.key as string);
+    const input = { ...JSON.parse(JSON.stringify(leaf.input)), name, label: leaf.label, flavor: undefined };
+    delete input.collapsible_value;
+    delete input.collapsible_preview;
+    if (value !== undefined) {
+        input.value = value;
+    }
+    return [input];
+}
+
+function addStepParams(keys: string[], presets: Record<string, unknown> = {}) {
+    const resolved = resolveExposureKeys(stepParameterTree.value, [...exposedKeys.value, ...keys]);
+    droppedStepParams.value = [...droppedStepParams.value, ...resolved.dropped];
+    for (const leaf of resolved.leaves) {
+        const key = leaf.key as string;
+        if (!stepParamInputs.has(key)) {
+            stepParamInputs.set(key, stepParamInput(leaf, presets[key]));
+        }
+    }
+    exposedLeaves.value = resolved.leaves;
+}
+
+function removeStepParam(key: string) {
+    exposedLeaves.value = exposedLeaves.value.filter((leaf) => leaf.key !== key);
+    stepParamInputs.delete(key);
+    const { [key]: _removed, ...rest } = stepParamValues.value;
+    stepParamValues.value = rest;
+}
+
+function onStepParamChange(data: Record<string, unknown>) {
+    const values = { ...stepParamValues.value };
+    for (const [name, value] of Object.entries(data)) {
+        const key = stepParamKeyByName.get(name);
+        if (key) {
+            values[key] = value;
+        }
+    }
+    stepParamValues.value = values;
+}
+
+function displayValue(value: unknown): string {
+    return value === null || value === undefined || value === "" ? "(empty)" : String(value);
+}
+
+{
+    const rerunKeys = ((props.rerunRequest as any)?.exposed_step_parameters as string[] | undefined) || [];
+    const presets: Record<string, unknown> = {};
+    for (const key of rerunKeys) {
+        presets[key] = rerunStepParameterValue(props.rerunRequest?.parameters as any, key);
+    }
+    Object.assign(presets, props.exposedStepParamValues);
+    const initialKeys = [...new Set([...rerunKeys, ...props.exposedStepParams])];
+    if (initialKeys.length) {
+        addStepParams(initialKeys, presets);
+    }
+}
 
 /**
  * Returns the list of steps that do not match the workflow rerun `props.requestState`.
@@ -463,6 +546,17 @@ async function onExecute() {
     if (props.landingUuid) {
         data.landing_uuid = props.landingUuid;
     }
+    if (exposedLeaves.value.length) {
+        const values: Record<string, unknown> = {};
+        for (const leaf of exposedLeaves.value) {
+            const key = leaf.key as string;
+            values[key] =
+                key in stepParamValues.value ? stepParamValues.value[key] : stepParamInputs.get(key)?.[0].value;
+        }
+        data.parameters = exposedParametersPayload(values);
+        data.parameters_normalized = true;
+        data.exposed_step_parameters = exposedKeys.value;
+    }
     if (sendToNewHistory.value) {
         data.new_history_name = newHistoryName.value;
     } else {
@@ -713,13 +807,74 @@ onBeforeMount(() => {
                             :active-node-id="computedActiveNodeId"
                             workflow-run
                             :steps-not-matching-request="stepsNotMatchingRequest"
-                            @onChange="onChange"
-                            @onValidation="onValidation"
+                            @on-change="onChange"
+                            @on-validation="onValidation"
                             @load-more="onLoadMore"
                             @search-change="onSearchChange"
                             @stop-flagging="checkInputMatching = false"
                             @update:active-node-id="updateActiveNodeId" />
                     </GOverlay>
+                    <div class="workflow-run-step-parameters mt-3 mb-3" data-description="workflow run step parameters">
+                        <Heading h2 separator bold size="sm">Step parameters ({{ exposedLeaves.length }})</Heading>
+                        <GAlert
+                            v-if="droppedStepParams.length"
+                            variant="warning"
+                            show
+                            dismissible
+                            data-description="dropped step parameters"
+                            @dismissed="droppedStepParams = []">
+                            These step parameters can't be set from this form and will not be sent:
+                            <ul class="mb-0">
+                                <li v-for="dropped in droppedStepParams" :key="dropped.key">
+                                    <code>{{ dropped.key }}</code> - {{ dropped.reason }}
+                                </li>
+                            </ul>
+                        </GAlert>
+                        <p v-if="!exposedLeaves.length" class="text-muted small mb-2">
+                            All tool steps use the workflow's saved settings. Add a step parameter to change one for
+                            this run.
+                        </p>
+                        <div
+                            v-for="leaf in exposedLeaves"
+                            :key="leaf.key"
+                            class="card mb-2 step-parameter-card"
+                            :data-exposure-key="leaf.key">
+                            <div class="card-header d-flex align-items-center py-1 px-2">
+                                <span class="flex-grow-1 small">{{ (leaf.path || []).slice(0, -1).join(" › ") }}</span>
+                                <span class="small text-muted mr-2">
+                                    {{ isRerun ? "original run" : "saved" }}: {{ displayValue(leaf.input.value) }}
+                                </span>
+                                <GButton
+                                    transparent
+                                    size="small"
+                                    color="grey"
+                                    tooltip
+                                    title="Remove - use the workflow's saved value"
+                                    data-description="remove step parameter"
+                                    @click="removeStepParam(leaf.key || '')">
+                                    <FontAwesomeIcon :icon="faTimes" fixed-width />
+                                </GButton>
+                            </div>
+                            <div class="card-body p-2">
+                                <FormDisplay
+                                    :inputs="stepParamInputs.get(leaf.key || '') || []"
+                                    @on-change="onStepParamChange" />
+                            </div>
+                        </div>
+                        <GButton
+                            outline
+                            size="small"
+                            color="blue"
+                            data-description="add step parameter"
+                            @click="showStepParameterPicker = true">
+                            <FontAwesomeIcon :icon="faPlus" fixed-width /> Add step parameter
+                        </GButton>
+                        <StepParameterPicker
+                            v-model:show="showStepParameterPicker"
+                            :tree="stepParameterTree"
+                            :exposed-keys="exposedKeys"
+                            @add="addStepParams" />
+                    </div>
                 </div>
                 <div v-if="showRightPanel" class="h-100 w-50 d-flex flex-shrink-0">
                     <WorkflowRunGraph

@@ -43,6 +43,9 @@ interface Props {
     instance?: boolean;
     isRerun?: boolean;
     landingUuid?: string;
+    /** Exposure keys of step parameters the simple form shows on load */
+    exposedStepParams?: string[];
+    exposedStepParamValues?: Record<string, string>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -56,6 +59,8 @@ const props = withDefaults(defineProps<Props>(), {
     instance: false,
     isRerun: false,
     landingUuid: undefined,
+    exposedStepParams: () => [],
+    exposedStepParamValues: () => ({}),
 });
 
 const loading = ref(true);
@@ -277,6 +282,8 @@ defineExpose({
                         :rerun-request="rerunRequest"
                         :is-rerun="props.isRerun"
                         :landing-uuid="props.landingUuid"
+                        :exposed-step-params="props.exposedStepParams"
+                        :exposed-step-param-values="props.exposedStepParamValues"
                         @submissionSuccess="handleInvocations"
                         @submissionError="handleSubmissionError"
                         @showAdvanced="showAdvanced" />

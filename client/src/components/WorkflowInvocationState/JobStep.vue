@@ -16,6 +16,8 @@ const PER_PAGE = 10;
 const props = defineProps<{
     jobs: JobBaseModel[];
     invocationId: string;
+    /** Step ``order_index``, offers rerunning the invocation with one of its parameters changed */
+    stepIndex?: number;
 }>();
 
 const firstJob = computed(() => props.jobs[0]);
@@ -72,7 +74,10 @@ watch(
 <template>
     <GAlert v-if="!jobCount" variant="info" show> No jobs found for this step. </GAlert>
     <div v-else-if="jobCount === 1 && firstJob">
-        <JobDetailsDisplayed :job-id="firstJob.id" :invocation-id="props.invocationId" />
+        <JobDetailsDisplayed
+            :job-id="firstJob.id"
+            :invocation-id="props.invocationId"
+            :rerun-step-index="props.stepIndex" />
     </div>
     <div v-else>
         <div class="mb-2 p-2 d-flex justify-content-between align-items-center flex-wrap">
