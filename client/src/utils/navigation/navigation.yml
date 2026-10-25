@@ -512,6 +512,8 @@ storage_dashboard:
   selectors:
     free_space_link: '[data-description="free-space card"] button'
     explore_usage_link: '[data-description="explore-storage card"] button'
+    refresh_disk_usage: '#refresh-disk-usage'
+    recalculating: '.refreshing-alert'
 
   # Free up disk space; operation is a cleanup id such as deleted_datasets
   cleanup:

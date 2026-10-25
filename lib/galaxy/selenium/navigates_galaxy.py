@@ -1828,6 +1828,14 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         cleanup.confirm.wait_for_and_click()
         cleanup.success.wait_for_visible()
 
+    def storage_dashboard_recalculate_disk_usage(self):
+        """Open the Storage Dashboard from the masthead usage meter and click Refresh (recalculate disk usage)."""
+        self.home()
+        self.components.masthead.storage_dashboard_link.wait_for_and_click()
+        storage_dashboard = self.components.storage_dashboard
+        storage_dashboard.refresh_disk_usage.wait_for_and_click()
+        storage_dashboard.recalculating.wait_for_visible()
+
     def navigate_to_saved_visualizations(self):
         self.home()
         visualizations = self.components.visualization

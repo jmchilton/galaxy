@@ -116,3 +116,12 @@ class TestHistoryStorage(SeleniumTestCase, UsesUploadActivity):
         self._wait_on(
             lambda: self.dataset_populator.total_disk_usage() == kept_size, "usage to drop the purged dataset"
         )
+
+    @selenium_test
+    def test_recalculate_disk_usage_from_storage_dashboard(self):
+        self.logout_if_needed()
+        self.register()
+        history_id = self.current_history_id()
+        self.dataset_populator.new_dataset(history_id, content="count me\n", wait=True)
+        self.storage_dashboard_recalculate_disk_usage()
+        self.screenshot("storage_dashboard_recalculating_disk_usage")
