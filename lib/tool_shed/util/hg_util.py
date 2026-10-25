@@ -7,7 +7,11 @@ from datetime import datetime
 from time import gmtime
 from typing import TYPE_CHECKING
 
-from mercurial import scmutil
+from mercurial import (
+    hg,
+    scmutil,
+    ui,
+)
 
 from galaxy.tool_shed.util import basic_util
 from galaxy.tool_shed.util.hg_util import (
@@ -25,6 +29,8 @@ from galaxy.tool_shed.util.hg_util import (
 from galaxy.util import unicodify
 
 if TYPE_CHECKING:
+    from mercurial.interfaces.repository import IRepo
+
     from galaxy.util.path import StrPath
 
 log = logging.getLogger(__name__)
@@ -71,6 +77,21 @@ def commit_changeset(repo_path: "StrPath", full_path_to_changeset: "StrPath", us
                 return
             error_message += f"\nOutput was:\n{unicodify(e.output)}"
         raise Exception(error_message)
+
+
+def get_repo(repo_path: "StrPath") -> "IRepo":
+    """Open the repository at ``repo_path``, bypassing the model's repository cache."""
+    return hg.repository(ui.ui(), str(repo_path).encode("utf-8"))
+
+
+def get_changed_paths(repo: "IRepo", from_rev: str, to_rev: str) -> dict[str, list[str]]:
+    """Map ``added``, ``removed`` and ``modified`` to the sorted paths with that change between two revisions."""
+    status = repo.status(repo[changeset2rev(repo, from_rev)], repo[changeset2rev(repo, to_rev)])
+    return {
+        "added": sorted(unicodify(path) for path in status.added),
+        "removed": sorted(unicodify(path) for path in status.removed),
+        "modified": sorted(unicodify(path) for path in status.modified),
+    }
 
 
 def get_hgrc_path(repo_path):
@@ -279,11 +300,13 @@ __all__ = (
     "copy_file_from_manifest",
     "create_hgrc_file",
     "get_changectx_for_changeset",
+    "get_changed_paths",
     "get_config_from_disk",
     "get_ctx_file_path_from_manifest",
     "get_file_context_from_ctx",
     "get_named_tmpfile_from_ctx",
     "get_readable_ctx_date",
+    "get_repo",
     "get_repository_heads",
     "get_reversed_changelog_changesets",
     "get_revision_label",

@@ -151,6 +151,47 @@ class RepositoryUpdate(RootModel):
         return isinstance(self.root, ValidRepostiroyUpdateMessage)
 
 
+RepositoryUpdateDryRunToolStatus = Literal["added", "removed", "updated", "unchanged"]
+
+
+class RepositoryUpdateDryRunTool(BaseModel):
+    id: str
+    old_version: str | None = Field(None, description="Version in the latest repository metadata revision.")
+    new_version: str | None = Field(None, description="Version the upload would set.")
+    status: RepositoryUpdateDryRunToolStatus
+
+
+class RepositoryUpdateDryRunFiles(BaseModel):
+    added: list[str] = []
+    removed: list[str] = []
+    modified: list[str] = []
+
+
+class RepositoryUpdateDryRun(BaseModel):
+    """What uploading a revision would do; nothing is changed."""
+
+    dry_run: Literal[True] = True
+    ok: bool = Field(
+        True,
+        description="False if a real upload would be committed but then fail with ``message`` (e.g. invalid tools).",
+    )
+    message: str = Field(..., description="Message or error a real upload would return.")
+    no_changes: bool = Field(..., description="The upload matches the repository tip; a real upload would be rejected.")
+    creates_new_installable_revision: bool = Field(
+        False, description="The new tip would get its own repository metadata revision."
+    )
+    overwrites_changeset_revision: str | None = Field(
+        None,
+        description="Changeset revision of the latest repository metadata revision that would be moved to the new tip and overwritten.",
+    )
+    tools: list[RepositoryUpdateDryRunTool] = Field(
+        [], description="Tools compared with the latest repository metadata revision."
+    )
+    files: RepositoryUpdateDryRunFiles = Field(
+        default_factory=RepositoryUpdateDryRunFiles, description="Files changed relative to the repository tip."
+    )
+
+
 class RepositoryTool(BaseModel):
     # Added back in post v2 in order for the frontend to render
     # tool descriptions on the repository page.

@@ -139,8 +139,13 @@ def provides_repositories_fixture(
     return ProvidesRepositoriesImpl(app, user)
 
 
-def repository_fixture(app: ToolShedApp, user: User, name: str, category: Category | None = None) -> Repository:
-    type = rt_util.UNRESTRICTED
+def repository_fixture(
+    app: ToolShedApp,
+    user: User,
+    name: str,
+    category: Category | None = None,
+    type: str = rt_util.UNRESTRICTED,
+) -> Repository:
     description = f"test repo named {name}"
     long_description = f"test repo named {name} a longer description"
     category_ids = []
@@ -170,26 +175,29 @@ from unittest import mock
 patch_url_for = mock.patch("galaxy.util.tool_shed.common_util.url_for", _mock_url_for)
 
 
-def upload(
-    provides_repositories: ProvidesRepositoriesContext,
-    repository: Repository,
-    path: Path,
-    arcname: str | None = None,
-):
+def tar_path(path: Path, arcname: str | None = None) -> str:
     if path.is_dir():
         tf = NamedTemporaryFile(delete=False)
         with tarfile.open(tf.name, "w:gz") as tar:
             print(path.name)
             print(str(path))
             tar.add(str(path), arcname=arcname or path.name)
-        tar_path = tf.name
+        return tf.name
     else:
-        tar_path = str(path)
+        return str(path)
+
+
+def upload(
+    provides_repositories: ProvidesRepositoriesContext,
+    repository: Repository,
+    path: Path,
+    arcname: str | None = None,
+):
     return upload_tar_and_set_metadata(
         provides_repositories,
         TEST_HOST,
         repository,
-        tar_path,
+        tar_path(path, arcname),
         commit_message=TEST_COMMIT_MESSAGE,
     )
 

@@ -36,6 +36,7 @@ from tool_shed_client.schema import (
     RepositorySearchRequest,
     RepositorySearchResults,
     RepositoryUpdate,
+    RepositoryUpdateDryRun,
     RepositoryUpdateRequest,
     ResetMetadataOnRepositoryRequest,
     ResetMetadataOnRepositoryResponse,
@@ -204,7 +205,11 @@ class ToolShedPopulator:
         return response
 
     def upload_revision_raw(
-        self, repository: HasRepositoryId, path: Traversable, commit_message: str = DEFAULT_COMMIT_MESSAGE
+        self,
+        repository: HasRepositoryId,
+        path: Traversable,
+        commit_message: str = DEFAULT_COMMIT_MESSAGE,
+        dry_run: bool = False,
     ) -> requests.Response:
         body = RepositoryUpdateRequest(
             commit_message=commit_message,
@@ -212,9 +217,27 @@ class ToolShedPopulator:
         files = {"file": path.open("rb")}
         repository_id = self._repository_id(repository)
         response = self._api_interactor.post(
-            f"repositories/{repository_id}/changeset_revision", params=body.model_dump(), files=files
+            f"repositories/{repository_id}/changeset_revision",
+            params={**body.model_dump(), "dry_run": dry_run},
+            files=files,
         )
         return response
+
+    def upload_revision_dry_run(
+        self, repository: HasRepositoryId, path: Traversable, commit_message: str = DEFAULT_COMMIT_MESSAGE
+    ) -> RepositoryUpdateDryRun:
+        response = self.upload_revision_raw(repository, path, commit_message=commit_message, dry_run=True)
+        api_asserts.assert_status_code_is_ok(response)
+        assert response.json().get("dry_run") is True, f"Expected a dry run response, got {response.json()}"
+        return RepositoryUpdateDryRun(**response.json())
+
+    def upload_test_data_revision_dry_run(
+        self, repository: HasRepositoryId, test_data_path: str, index: int
+    ) -> RepositoryUpdateDryRun:
+        for repo_index, repo_tar in enumerate(repo_tars(test_data_path)):
+            if repo_index == index:
+                return self.upload_revision_dry_run(repository, repo_tar)
+        raise AssertionError(f"{test_data_path} has no revision {index}")
 
     def update_raw(self, repository: HasRepositoryId, request: UpdateRepositoryRequest) -> requests.Response:
         repository_id = self._repository_id(repository)
