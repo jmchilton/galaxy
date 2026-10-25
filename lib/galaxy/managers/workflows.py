@@ -309,7 +309,7 @@ class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], dele
             raise exceptions.ObjectNotFound("No such workflow found.")
         return stored_workflow
 
-    def get_stored_accessible_workflow(self, trans, workflow_id, by_stored_id=True):
+    def get_stored_accessible_workflow(self, trans, workflow_id, by_stored_id=True) -> StoredWorkflow:
         """Get a stored workflow from a encoded stored workflow id and
         make sure it accessible to the user.
         """
@@ -324,6 +324,12 @@ class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], dele
                 message = "Workflow is not owned by or shared with current user"
                 raise exceptions.ItemAccessibilityException(message)
 
+        return stored_workflow
+
+    def get_stored_owned_workflow(self, trans, workflow_id, by_stored_id=True) -> StoredWorkflow:
+        """Get a stored workflow and make sure the user owns it (or is an admin)."""
+        stored_workflow = self.get_stored_workflow(trans, workflow_id, by_stored_id=by_stored_id)
+        self.check_security(trans, stored_workflow, check_ownership=True)
         return stored_workflow
 
     def attach_stored_workflow(self, trans, workflow):
