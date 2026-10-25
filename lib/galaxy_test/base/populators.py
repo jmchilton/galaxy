@@ -2563,6 +2563,9 @@ class BaseWorkflowPopulator(BasePopulator):
         """PUT ``fields`` as top-level payload keys, the shape the client sends."""
         return self._put(f"workflows/{workflow_id}", fields, json=True)
 
+    def set_workflow_menu(self, workflow_ids: list[str]) -> Response:
+        return self._put("workflows/menu", {"workflow_ids": workflow_ids}, json=True)
+
     def refactor_workflow(
         self, workflow_id: str, actions: list, dry_run: Optional[bool] = None, style: Optional[str] = None
     ) -> Response:

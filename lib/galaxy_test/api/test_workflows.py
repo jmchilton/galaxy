@@ -488,6 +488,16 @@ steps:
         self._assert_status_code_is_ok(response)
         assert self._shows_in_tool_panel(workflow_id, show_published=True)
 
+    def test_set_workflow_menu_drops_duplicate_ids(self):
+        workflow_id_1 = self.workflow_populator.simple_workflow("test_set_menu_dup_1")
+        workflow_id_2 = self.workflow_populator.simple_workflow("test_set_menu_dup_2")
+        menu_response = self.workflow_populator.set_workflow_menu([workflow_id_1, workflow_id_2, workflow_id_1])
+        self._assert_status_code_is_ok(menu_response)
+        menu = self._get("workflows/menu").json()
+        assert len(menu["ids_in_menu"]) == 2
+        assert self._shows_in_tool_panel(workflow_id_1)
+        assert self._shows_in_tool_panel(workflow_id_2)
+
     def test_index(self):
         index_response = self._get("workflows")
         self._assert_status_code_is(index_response, 200)
