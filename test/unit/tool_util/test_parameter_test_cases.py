@@ -708,6 +708,48 @@ def test_duplicate_conflicting_qualified_test_param_legacy_profile_still_runs(pl
     assert test_description.inputs[placement.flat_name] == "A2"
 
 
+DUPLICATE_DATA_TOOL_TEMPLATE = """
+<tool id="duplicate_data" name="duplicate_data" version="1.0.0" profile="25.1">
+    <command>echo</command>
+    <inputs>
+        <param name="input" type="data" format="txt" />
+    </inputs>
+    <outputs />
+    <tests>
+        <test>
+            <param name="input" value="simple_line.txt">{first}</param>
+            <param name="input" value="simple_line.txt">{second}</param>
+        </test>
+    </tests>
+</tool>
+"""
+
+
+@pytest.mark.parametrize(
+    "children",
+    [
+        '<edit_attributes type="name" value="renamed" />',
+        '<composite_data value="simple_line.txt" />',
+    ],
+)
+def test_duplicate_identical_data_test_param_with_children_is_tolerated(children):
+    tool_source = raw_xml_tool_source(DUPLICATE_DATA_TOOL_TEMPLATE.format(first=children, second=children))
+    [test_description] = parse_tool_test_descriptions(tool_source)
+    assert not test_description.error, test_description.exception
+
+
+def test_duplicate_data_test_param_with_conflicting_edit_attributes_is_rejected():
+    tool_source = raw_xml_tool_source(
+        DUPLICATE_DATA_TOOL_TEMPLATE.format(
+            first='<edit_attributes type="name" value="first" />',
+            second='<edit_attributes type="name" value="second" />',
+        )
+    )
+    [test_description] = parse_tool_test_descriptions(tool_source)
+    assert test_description.error
+    assert "Ambiguous test parameter (input)" in str(test_description.exception)
+
+
 def test_legacy_boolean_test_values_are_coerced_to_booleans():
     # The test-case builder must submit a real boolean for a boolean param. A test may
     # supply the param's truevalue/falsevalue command-line string, a plain true/false,

@@ -27,7 +27,10 @@ from galaxy.tool_util.parser.interface import (
     xml_data_input_to_json,
     XmlTestCollectionDefDict,
 )
-from galaxy.tool_util.parser.util import multiple_select_value_split
+from galaxy.tool_util.parser.util import (
+    COMPOSITE_DATA_RENAME_PREFIX,
+    multiple_select_value_split,
+)
 from galaxy.tool_util_models.parameters import (
     BooleanParameterModel,
     ConditionalParameterModel,
@@ -642,12 +645,23 @@ def _resolve_matching_inputs(
     first = matching_inputs[0]
     if len(matching_inputs) == 1:
         return first
-    if all(
-        input.get("value") == first.get("value") and input.get("attributes") == first.get("attributes")
-        for input in matching_inputs[1:]
-    ):
+    first_comparable = _comparable_test_input(first)
+    if all(_comparable_test_input(input) == first_comparable for input in matching_inputs[1:]):
         return first
     raise Exception(ambiguity_message)
+
+
+def _comparable_test_input(input: ToolSourceTestInput) -> Tuple[Any, Dict[str, Any]]:
+    """Value and attributes with XML ``edit_attributes`` children as dicts and generated composite renames dropped."""
+    attributes = dict(input.get("attributes") or {})
+    if "edit_attributes" in attributes:
+        edit_attributes = [
+            dict(edit.attrib) if hasattr(edit, "attrib") else edit for edit in attributes["edit_attributes"]
+        ]
+        attributes["edit_attributes"] = [
+            edit for edit in edit_attributes if not str(edit.get("value", "")).startswith(COMPOSITE_DATA_RENAME_PREFIX)
+        ]
+    return input.get("value"), attributes
 
 
 def _path_ends_with_param(qualified_path: str, param_name: str) -> bool:
