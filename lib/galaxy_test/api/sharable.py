@@ -135,6 +135,22 @@ class SharingApiTests(UsesApiTestCaseMixin):
         assert sharing_response["errors"]
         assert invalid_user_email in sharing_response["errors"][0]
 
+    def test_share_recipient_access(self):
+        recipient_email = f"recipient-{uuid4()}@user.com"
+        self._setup_user(recipient_email)
+        resource_id = self.create("resource-to-share-recipient-access")
+        self._share_with(resource_id, [recipient_email])
+
+        with self._different_user(recipient_email):
+            self._assert_status_code_is(self._get(f"{self.api_name}/{resource_id}"), 200)
+            self._set_resource_sharing(
+                resource_id, "share_with_users", payload={"user_ids": []}, expect_response_status=403
+            )
+
+        self._share_with(resource_id, [])
+        with self._different_user(recipient_email):
+            self._assert_status_code_is(self._get(f"{self.api_name}/{resource_id}"), 403)
+
     def test_set_slug(self):
         resource_id = self.create("resource-to-set-slug")
         other_resource_id = self.create("other-resource-to-set-slug")
@@ -163,6 +179,9 @@ class SharingApiTests(UsesApiTestCaseMixin):
         sharing_response = self._put(f"{self.api_name}/{resource_id}/{action}", data=payload, json=True)
         self._assert_status_code_is(sharing_response, expect_response_status)
         return sharing_response.json()
+
+    def _share_with(self, resource_id: str, user_ids: list[str]):
+        return self._set_resource_sharing(resource_id, action="share_with_users", payload={"user_ids": user_ids})
 
     def _set_slug(self, resource_id: str, new_slug: str):
         payload = {"new_slug": new_slug}
