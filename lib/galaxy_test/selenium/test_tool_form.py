@@ -547,8 +547,7 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
     def _run_multiple_version_test_tool(self, version):
         self.home()
         self.tool_open("multiple_versions")
-        self.components.tool_form.tool_version_button.wait_for_and_click()
-        self.select_dropdown_item(f"Switch to {version}")
+        self.tool_form_select_version(version)
         self.tool_form_execute()
 
 
@@ -575,6 +574,16 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
             for hid in (2, 3)
         )
         assert rerun["copied_from_job_id"] == original["id"]
+
+    @selenium_test
+    def test_favorite_tool_from_tool_form(self):
+        self.home()
+        self.tool_open("cat1")
+        self.tool_form_toggle_favorite()
+        self.tool_panel_show_favorites()
+        tool_panel = self.components.tool_panel
+        tool_panel.tool_link(tool_id="cat1").wait_for_visible()
+        tool_panel.favorited_tool_button(tool_id="cat1").wait_for_present()
 
     @selenium_test
     def test_dataset_state_filtering(self):

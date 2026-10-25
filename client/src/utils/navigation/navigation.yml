@@ -588,6 +588,7 @@ tool_panel:
     tool_box: '[data-description="panel toolbox"]'
     tool_link: 'a.tool-link[data-tool-id="${tool_id}"][href$$="&version=latest"]'
     outer_tool_link: '.toolTitle a.tool-link[data-tool-id="${tool_id}"][href$$="&version=latest"]'
+    favorited_tool_button: '.tool-favorite-button-hover[data-tool-id="${tool_id}"]'
     data_source_tool_link: 'a.tool-link[data-tool-id="${tool_id}"][href*="tool_runner/data_source_redirect?"]'
     search: '.search-query'
     toolbox: '[data-description="panel toolbox"]'
@@ -1006,6 +1007,7 @@ window_manager:
 tool_form:
   selectors:
     tool_version: '[data-description="galaxy tool version"]'
+    favorite_button: '#favorite-tool'
     options: '.tool-dropdown'
     execute: 'button#execute'
     parameter_div: 'div.ui-form-element[id="form-element-${parameter}"]'
@@ -1543,6 +1545,7 @@ tools:
     help: 'div.form-help'
     search: '#toolbox-panel .search-query'
     clear_search: '#toolbox-panel .search-clear'
+    show_favorites: '#toolbox-panel [aria-label="Show favorite tools"]'
     title: '.toolSectionTitle'
 
 custom_tools:

@@ -2813,6 +2813,19 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Set the open tool form's "Attempt to re-use jobs with identical parameters?" switch."""
         self._set_boolean_value("use_cached_job", value)
 
+    def tool_form_select_version(self, version: str):
+        """Switch the open tool form to ``version`` from its versions menu."""
+        self.components.tool_form.tool_version_button.wait_for_and_click()
+        self.select_dropdown_item(f"Switch to {version}")
+
+    def tool_form_toggle_favorite(self):
+        """Click the open tool form's Add to / Remove from Favorites star."""
+        self.components.tool_form.favorite_button.wait_for_and_click()
+
+    def tool_panel_show_favorites(self):
+        """Filter the tool panel to the user's favorite tools."""
+        self.components.tools.show_favorites.wait_for_and_click()
+
     def tool_form_select_data(self, parameter: str, value: str, multiple: bool = False):
         select_field = self.components.tool_form.parameter_data_select(parameter=parameter)
         self.select_set_value(select_field, value, multiple=multiple)
