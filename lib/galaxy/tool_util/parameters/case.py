@@ -228,9 +228,13 @@ class LegacyTestInputResolver:
         # Discriminators consumed by enclosing conditionals are excluded from the loose fallbacks
         # below, so a descendant's omitted discriminator does not re-match an ancestor's.
         exclude = self.consumed_discriminators
-        for input in self.inputs:
-            if input["name"] == flat_state_path:
-                return input
+        exact_matching_inputs = [input for input in self.inputs if input["name"] == flat_state_path]
+        resolved = _resolve_matching_inputs(
+            exact_matching_inputs,
+            f"Ambiguous test parameter ({flat_state_path}) specified more than once with different values",
+        )
+        if resolved is not None:
+            return resolved
         # Fallback for legacy test cases that specify conditional/section params without the
         # pipe-separated prefix (e.g. <param name="fasta"> instead of <param name="mode|fasta">).
         if "|" in flat_state_path:
@@ -358,9 +362,10 @@ def _input_name_was_handled_by_legacy_fallback(input_name: str, handled_inputs: 
 def test_case_validation(
     test_dict: ToolSourceTest, tool_parameter_bundle: List[ToolParameterT], profile: str, name: Optional[str] = None
 ) -> TestCaseStateValidationResult:
-    test_case_state_and_warnings = test_case_state(test_dict, tool_parameter_bundle, profile, validate=False)
+    test_case_state_and_warnings = TestCaseStateAndWarnings(TestCaseToolState({}), [], [])
     exception: Optional[Exception] = None
     try:
+        test_case_state_and_warnings = test_case_state(test_dict, tool_parameter_bundle, profile, validate=False)
         test_case_state_and_warnings.tool_state.validate(tool_parameter_bundle, name=name)
         for input_name in test_case_state_and_warnings.unhandled_inputs:
             raise Exception(f"Invalid parameter name found {input_name}")
@@ -388,12 +393,13 @@ def _merge_level_into_state(
     return handled_inputs
 
 
-def _inputs_as_dict(inputs: ToolSourceTestInputs) -> Dict[str, ToolSourceTestInput]:
-    as_dict: Dict[str, ToolSourceTestInput] = {}
+def _inputs_by_name(inputs: ToolSourceTestInputs) -> Dict[str, ToolSourceTestInputs]:
+    """Group test inputs by name, keeping duplicates so ``input_for`` can reject conflicts."""
+    by_name: Dict[str, ToolSourceTestInputs] = {}
     for input in inputs:
-        as_dict[input["name"]] = input
+        by_name.setdefault(input["name"], []).append(input)
 
-    return as_dict
+    return by_name
 
 
 def _merge_into_state(
@@ -508,8 +514,8 @@ def _merge_into_state(
 def _repeat_inputs_to_array(
     state_path: str, parameters: List[ToolParameterT], inputs: ToolSourceTestInputs
 ) -> List[ToolSourceTestInputs]:
-    inputs_as_dict = _inputs_as_dict(inputs)
-    repeat_instance_input_dicts = repeat_inputs_to_array(state_path, inputs_as_dict)
+    inputs_by_name = _inputs_by_name(inputs)
+    repeat_instance_input_dicts = repeat_inputs_to_array(state_path, inputs_by_name)
     if not repeat_instance_input_dicts and "|" in state_path:
         # A legacy test may name a repeat inside a conditional/section by its unqualified name.
         # Progressively strip leading conditional/section segments (longest candidate first, to
@@ -518,10 +524,13 @@ def _repeat_inputs_to_array(
         parts = state_path.split("|")
         for start in range(1, len(parts)):
             candidate_path = "|".join(parts[start:])
-            repeat_instance_input_dicts = repeat_inputs_to_array(candidate_path, inputs_as_dict)
+            repeat_instance_input_dicts = repeat_inputs_to_array(candidate_path, inputs_by_name)
             if repeat_instance_input_dicts:
                 break
-    repeat_instance_inputs = [list(instance_inputs.values()) for instance_inputs in repeat_instance_input_dicts]
+    repeat_instance_inputs = [
+        [input for same_name_inputs in instance_inputs.values() for input in same_name_inputs]
+        for instance_inputs in repeat_instance_input_dicts
+    ]
     if repeat_instance_inputs:
         return repeat_instance_inputs
 
