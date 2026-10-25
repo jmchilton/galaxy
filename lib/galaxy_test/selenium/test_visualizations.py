@@ -64,6 +64,15 @@ class TestVisualizations(SeleniumTestCase, UsesUploadActivity):
 
     @selenium_test
     @managed_history
+    def test_display_application_links(self):
+        self.dataset_populator.new_dataset(
+            self.current_history_id(), content="chr1\t100\t200\ta\n", file_type="bed", dbkey="hg38", wait=True
+        )
+        # the test datatypes config gives bed only UCSC; production configs add IGB and IGV here too
+        assert self.dataset_display_applications(1) == {"display at UCSC": ["main"]}
+
+    @selenium_test
+    @managed_history
     @skip_without_visualization_plugin("igv")
     def test_igv_loads_correct_genome(self):
         hid = 1

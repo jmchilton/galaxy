@@ -1135,6 +1135,10 @@ visualization:
     activity: '#activity-visualizations'
     matched_plugin: '#center [data-plugin-name*="${id}"]'
     show_all_button: '[data-description="visualizations show list"]'
+    # display application links (IGB, IGV, UCSC, ...) above a dataset's visualization list
+    display_application_items:
+      type: xpath
+      selector: "//div[contains(@class, 'alert')][contains(., 'You can display your dataset with the following links')]//li"
 
 igv:
   selectors:

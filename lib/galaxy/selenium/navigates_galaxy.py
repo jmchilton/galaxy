@@ -3657,6 +3657,18 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         )
         visualize_tab_button.click()
 
+    def dataset_display_applications(self, hid: int) -> dict[str, list[str]]:
+        """Open dataset ``hid``'s Visualize tab; return its display application links, label to link texts."""
+        self.show_dataset_visualizations(hid)
+        items = self.components.visualization.display_application_items
+        items.wait_for_present()
+        return {
+            item.find_element(By.CSS_SELECTOR, ".font-weight-bold").text: [
+                link.text for link in item.find_elements(By.CSS_SELECTOR, "a")
+            ]
+            for item in items.all()
+        }
+
     def show_dataset_visualization(self, hid: int, visualization_id: str, screenshot_name: str | None = None):
         self.show_dataset_visualizations(hid)
         self.components.visualization.matched_plugin(id=visualization_id).wait_for_visible()
