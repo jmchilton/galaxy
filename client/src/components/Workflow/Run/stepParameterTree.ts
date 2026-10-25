@@ -5,12 +5,14 @@ const EXPOSABLE_TYPES = new Set(["text", "integer", "float", "boolean", "select"
 
 export interface StepParameterNode {
     id: string;
-    kind: "step" | "section" | "repeat" | "instance" | "conditional" | "leaf";
+    kind: "step" | "subworkflow" | "section" | "repeat" | "instance" | "conditional" | "leaf";
     label: string;
     /** Exposure key ``<step_index>|<prefixed name>`` of a leaf. */
     key?: string;
     /** Set on leaves and conditional test params shown but not selectable. */
     disabledReason?: string;
+    /** Set on subworkflow steps, whose parameters the graph picker can't pick. */
+    lockedReason?: string;
     /** Value the workflow sets, for leaves and conditional test params. */
     value?: string;
     help?: string;
@@ -113,14 +115,27 @@ export function hasSelectableLeaf(node: StepParameterNode): boolean {
     return node.kind === "leaf" ? !node.disabledReason : node.children.some(hasSelectableLeaf);
 }
 
+export const SUBWORKFLOW_LOCKED_REASON = "Parameters inside subworkflows can't be picked from the graph";
+
 /** Steps → parameters tree of a ``WorkflowRunModel`` for picking step parameters to expose. */
 export function buildStepParameterTree(model: { steps: any[] }): StepParameterNode[] {
     const tree: StepParameterNode[] = [];
     for (const step of model.steps) {
-        if (step.step_type !== "tool" && step.step_type !== "subworkflow") {
+        const stepLabel = `Step ${step.step_index + 1}: ${step.step_label || step.step_name}`;
+        if (step.step_type === "subworkflow") {
+            const id = String(step.step_index);
+            tree.push({
+                id,
+                kind: "subworkflow",
+                label: stepLabel,
+                lockedReason: SUBWORKFLOW_LOCKED_REASON,
+                children: [],
+            });
             continue;
         }
-        const stepLabel = `Step ${step.step_index + 1}: ${step.step_label || step.step_name}`;
+        if (step.step_type !== "tool") {
+            continue;
+        }
         const children = walk(step.inputs || [], step.step_index, "", [stepLabel], `${step.step_index}`);
         tree.push({ id: String(step.step_index), kind: "step", label: stepLabel, children });
     }
@@ -150,17 +165,30 @@ export function filterTree(nodes: StepParameterNode[], query: string): StepParam
 
 export interface ResolvedExposures {
     leaves: StepParameterNode[];
-    dropped: { key: string; reason: string }[];
+    dropped: DroppedExposure[];
+}
+
+export interface DroppedExposure {
+    key: string;
+    reason: string;
+    /** Inside a subworkflow: the graph picker can't show or remove it. */
+    locked?: boolean;
 }
 
 /** Resolve exposure keys against the tree, in workflow order, dropping unknown or unexposable ones. */
 export function resolveExposureKeys(tree: StepParameterNode[], keys: string[]): ResolvedExposures {
     const byKey = new Map(treeLeaves(tree).map((leaf) => [leaf.key as string, leaf]));
     const wanted = new Set<string>();
-    const dropped: { key: string; reason: string }[] = [];
+    const locked = new Map(
+        tree.filter((node) => node.lockedReason).map((node) => [node.id, node.lockedReason as string]),
+    );
+    const dropped: DroppedExposure[] = [];
     for (const key of keys) {
         const leaf = byKey.get(key);
-        if (!leaf) {
+        const lockedReason = locked.get(key.split("|")[0] as string);
+        if (lockedReason) {
+            dropped.push({ key, reason: lockedReason, locked: true });
+        } else if (!leaf) {
             dropped.push({ key, reason: "no such parameter in the workflow's current state" });
         } else if (leaf.disabledReason) {
             dropped.push({ key, reason: leaf.disabledReason });
@@ -216,4 +244,13 @@ export function parseStepParamValues(entries: string[]): Record<string, string> 
         }
     }
     return values;
+}
+
+/** Keys added to and removed from ``current`` by a picked set. */
+export function diffExposures(current: string[], picked: Set<string>): { added: string[]; removed: string[] } {
+    const before = new Set(current);
+    return {
+        added: [...picked].filter((key) => !before.has(key)),
+        removed: current.filter((key) => !picked.has(key)),
+    };
 }

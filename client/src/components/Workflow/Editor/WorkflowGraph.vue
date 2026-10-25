@@ -53,6 +53,7 @@ const props = defineProps({
     showZoomControls: { type: Boolean, default: true },
     fixedHeight: { type: Number, default: undefined },
     populatedInputs: { type: Boolean, default: false },
+    annotated: { type: Boolean, default: false },
     loading: { type: Boolean, default: false },
     detailedView: { type: Boolean, default: false },
 });
@@ -307,6 +308,7 @@ defineExpose({
                     :readonly="readonly"
                     :is-invocation="props.isInvocation && (!props.detailedView || activeNodeId !== step.id)"
                     :populated-inputs="props.populatedInputs"
+                    :annotated="props.annotated"
                     :is-out-of-focus="focusedNodeIds !== null && !focusedNodeIds.has(step.id)"
                     @pan-by="panBy"
                     @stopDragging="onStopDragging"

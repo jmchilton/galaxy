@@ -220,6 +220,8 @@ const props = defineProps({
     isInvocation: { type: Boolean, default: false },
     readonly: { type: Boolean, default: false },
     populatedInputs: { type: Boolean, default: false },
+    /** Render any step's ``nodeText`` and header state, not just populated inputs. */
+    annotated: { type: Boolean, default: false },
     isOutOfFocus: { type: Boolean, default: false },
 });
 
@@ -272,8 +274,7 @@ const isActive = computed(() => props.id === props.activeNodeId);
 
 const isPopulatedInput = computed(
     () =>
-        props.populatedInputs &&
-        isWorkflowInput(props.step.type) &&
+        (props.annotated || (props.populatedInputs && isWorkflowInput(props.step.type))) &&
         "nodeText" in props.step &&
         props.step.nodeText !== undefined,
 );

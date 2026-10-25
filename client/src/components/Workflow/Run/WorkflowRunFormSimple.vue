@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { faReadme } from "@fortawesome/free-brands-svg-icons";
-import { faArrowRight, faCog, faPlus, faSitemap, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRight, faCog, faLock, faProjectDiagram, faSitemap, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BFormInput } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
@@ -31,6 +31,8 @@ import { rerunInputValue, withRerunValues } from "./model";
 import { invokeWorkflow, searchHistoryContents } from "./services";
 import {
     buildStepParameterTree,
+    diffExposures,
+    type DroppedExposure,
     exposedParametersPayload,
     rerunStepParameterValue,
     resolveExposureKeys,
@@ -40,7 +42,7 @@ import {
 import WorkflowAnnotation from "../WorkflowAnnotation.vue";
 import WorkflowNavigationTitle from "../WorkflowNavigationTitle.vue";
 import ExportOnCompleteWizard from "./ExportOnCompleteWizard.vue";
-import StepParameterPicker from "./StepParameterPicker.vue";
+import StepParameterGraphPicker from "./StepParameterGraphPicker.vue";
 import WorkflowHelpDisplay from "./WorkflowHelpDisplay.vue";
 import WorkflowRunGraph from "./WorkflowRunGraph.vue";
 import WorkflowStorageConfiguration from "./WorkflowStorageConfiguration.vue";
@@ -223,7 +225,9 @@ watch(() => [props.model, props.requestState, props.rerunRequest], buildFormInpu
 const stepParameterTree = computed(() => buildStepParameterTree(props.model as { steps: any[] }));
 const showStepParameterPicker = ref(false);
 const exposedLeaves = ref<StepParameterNode[]>([]);
-const droppedStepParams = ref<{ key: string; reason: string }[]>([]);
+const droppedStepParams = ref<DroppedExposure[]>([]);
+const lockedDroppedStepParams = computed(() => droppedStepParams.value.filter((dropped) => dropped.locked));
+const otherDroppedStepParams = computed(() => droppedStepParams.value.filter((dropped) => !dropped.locked));
 const stepParamInputs = new Map<string, any[]>();
 const stepParamKeyByName = new Map<string, string>();
 const stepParamValues = ref<Record<string, unknown>>({});
@@ -251,6 +255,15 @@ function addStepParams(keys: string[], presets: Record<string, unknown> = {}) {
         }
     }
     exposedLeaves.value = resolved.leaves;
+}
+
+// The graph picker edits the whole set: it can remove keys as well as add them.
+function applyPickedStepParams(keys: string[]) {
+    const { added, removed } = diffExposures(exposedKeys.value, new Set(keys));
+    removed.forEach(removeStepParam);
+    if (added.length) {
+        addStepParams(added);
+    }
 }
 
 function removeStepParam(key: string) {
@@ -817,22 +830,38 @@ onBeforeMount(() => {
                     <div class="workflow-run-step-parameters mt-3 mb-3" data-description="workflow run step parameters">
                         <Heading h2 separator bold size="sm">Step parameters ({{ exposedLeaves.length }})</Heading>
                         <GAlert
-                            v-if="droppedStepParams.length"
+                            v-if="lockedDroppedStepParams.length"
+                            variant="danger"
+                            show
+                            data-description="dropped subworkflow step parameters">
+                            <FontAwesomeIcon :icon="faLock" fixed-width />
+                            <b>Subworkflow parameters will not be sent.</b>
+                            {{ isRerun ? "The original run" : "This link" }} set parameters inside subworkflows. This
+                            form can't show them, so this run uses the subworkflow's saved values instead. Use the
+                            expanded form to keep them.
+                            <ul class="mb-0">
+                                <li v-for="dropped in lockedDroppedStepParams" :key="dropped.key">
+                                    <code>{{ dropped.key }}</code>
+                                </li>
+                            </ul>
+                        </GAlert>
+                        <GAlert
+                            v-if="otherDroppedStepParams.length"
                             variant="warning"
                             show
                             dismissible
                             data-description="dropped step parameters"
-                            @dismissed="droppedStepParams = []">
+                            @dismissed="droppedStepParams = lockedDroppedStepParams">
                             These step parameters can't be set from this form and will not be sent:
                             <ul class="mb-0">
-                                <li v-for="dropped in droppedStepParams" :key="dropped.key">
+                                <li v-for="dropped in otherDroppedStepParams" :key="dropped.key">
                                     <code>{{ dropped.key }}</code> - {{ dropped.reason }}
                                 </li>
                             </ul>
                         </GAlert>
                         <p v-if="!exposedLeaves.length" class="text-muted small mb-2">
-                            All tool steps use the workflow's saved settings. Add a step parameter to change one for
-                            this run.
+                            All tool steps use the workflow's saved settings. Pick a step parameter from the graph to
+                            change one for this run.
                         </p>
                         <div
                             v-for="leaf in exposedLeaves"
@@ -865,15 +894,18 @@ onBeforeMount(() => {
                             outline
                             size="small"
                             color="blue"
-                            data-description="add step parameter"
+                            data-description="pick step parameters from graph"
                             @click="showStepParameterPicker = true">
-                            <FontAwesomeIcon :icon="faPlus" fixed-width /> Add step parameter
+                            <FontAwesomeIcon :icon="faProjectDiagram" fixed-width /> Pick step parameters from graph
                         </GButton>
-                        <StepParameterPicker
+                        <StepParameterGraphPicker
                             v-model:show="showStepParameterPicker"
+                            :workflow-id="model.workflowId"
+                            :version="model.runData.version"
                             :tree="stepParameterTree"
                             :exposed-keys="exposedKeys"
-                            @add="addStepParams" />
+                            :locked-dropped="lockedDroppedStepParams"
+                            @apply="applyPickedStepParams" />
                     </div>
                 </div>
                 <div v-if="showRightPanel" class="h-100 w-50 d-flex flex-shrink-0">

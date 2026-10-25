@@ -5,6 +5,7 @@ import { visitInputs } from "@/components/Form/utilities";
 import {
     buildStepParameterTree,
     CONDITIONAL_LOCKED_REASON,
+    diffExposures,
     displayValue,
     exposedParametersPayload,
     filterTree,
@@ -69,7 +70,7 @@ const model = {
 };
 
 describe("buildStepParameterTree", () => {
-    it("lists exposable leaves of tool and subworkflow steps by exposure key", () => {
+    it("lists exposable leaves of tool steps by exposure key", () => {
         const keys = treeLeaves(buildStepParameterTree(model)).map((leaf) => [leaf.key, leaf.disabledReason]);
         expect(keys).toEqual([
             ["1|threshold", undefined],
@@ -78,7 +79,6 @@ describe("buildStepParameterTree", () => {
             ["1|queries_0|column_name", undefined],
             ["1|queries_1|column_name", undefined],
             ["1|cond|min", undefined],
-            ["2|1|num_lines", undefined],
         ]);
     });
 
@@ -165,6 +165,33 @@ describe("payload helpers", () => {
         expect(parseStepParamValues(["1|cond|min=5", "1|advanced|label=a=b", "bad"])).toEqual({
             "1|cond|min": "5",
             "1|advanced|label": "a=b",
+        });
+    });
+});
+
+describe("subworkflow steps", () => {
+    it("are locked with no pickable children", () => {
+        const sub = buildStepParameterTree(model)[1]!;
+        expect(sub.kind).toBe("subworkflow");
+        expect(sub.lockedReason).toBeTruthy();
+        expect(sub.children).toEqual([]);
+    });
+
+    it("drop inner keys as locked", () => {
+        const { leaves, dropped } = resolveExposureKeys(buildStepParameterTree(model), [
+            "2|1|num_lines",
+            "1|threshold",
+        ]);
+        expect(leaves.map((leaf) => leaf.key)).toEqual(["1|threshold"]);
+        expect(dropped).toEqual([{ key: "2|1|num_lines", reason: expect.any(String), locked: true }]);
+    });
+});
+
+describe("diffExposures", () => {
+    it("reports added and removed keys of a picked set", () => {
+        expect(diffExposures(["1|threshold", "1|cond|min"], new Set(["1|cond|min", "3|mode"]))).toEqual({
+            added: ["3|mode"],
+            removed: ["1|threshold"],
         });
     });
 });
