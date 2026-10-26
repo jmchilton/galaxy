@@ -1514,6 +1514,8 @@ invocations:
     workflow_rerun_button: '[data-button-rerun][data-title="Rerun Workflow with same inputs"]'
     cancel_button: '[data-description="header cancel invocation button"]'
     invocation_tab: '.nav-item[title="${label}"] > a.nav-link'
+    report: '.markdown-wrapper'
+    report_component: '.markdown-wrapper .markdown-component'
     invocation_details_tab:
       type: xpath
       selector: '//a[text()="${label}"]'

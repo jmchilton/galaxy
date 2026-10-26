@@ -80,6 +80,25 @@ class TestWorkflowInvocationDetails(SeleniumTestCase):
         assert datatype == "txt"
 
     @selenium_test
+    def test_report_tab(self):
+        history_id = self.dataset_populator.new_history()
+        self.workflow_populator.run_workflow(
+            WORKFLOW_WITH_OUTPUT_COLLECTION, history_id=history_id, assert_ok=True, wait=True
+        )
+        self.invocation_open_latest()
+        invocations = self.components.invocations
+        invocations.invocation_tab(label="Report").wait_for_and_click()
+        invocations.report_component.wait_for_visible()
+
+        def loaded_report():
+            text = invocations.report.wait_for_visible().text
+            return text if "Loading" not in text else None
+
+        report = self._wait_on(loaded_report, "invocation report to load")
+        assert "Workflow Inputs" in report and "text_input" in report, report
+        assert "split_up" in report, report
+
+    @selenium_test
     @managed_history  # failed job messes with some history wait code we probably shouldn't be using
     def test_invocation_step_jobs_with_failed_jobs(self):
         """Test invocation step jobs view with mixed successful and failed jobs.
