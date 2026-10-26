@@ -2439,9 +2439,6 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         # Wait for workflow list to appear after import completes
         self.components.workflows.workflow_cards.wait_for_visible()
 
-    def workflow_sharing_click_publish(self):
-        self.wait_for_and_click_selector("input[name='make_accessible_and_publish']")
-
     def tagging_add(self, tags, auto_closes=True, parent_selector=""):
         for i, tag in enumerate(tags):
             if auto_closes or i == 0:

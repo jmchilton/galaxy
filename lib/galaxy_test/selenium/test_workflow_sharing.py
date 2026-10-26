@@ -82,6 +82,18 @@ class TestWorkflowSharing(SeleniumTestCase, UsesWorkflowAssertions):
         self.components.workflows.workflows_list_empty.wait_for_visible()
 
     @selenium_test
+    def test_publish_workflow(self):
+        self.register(self._get_random_email())
+        self._import_workflow_open_sharing()
+        self.make_accessible_and_publishable()
+        workflow_id = self.api_get("workflows")[0]["id"]
+        self._wait_on(
+            lambda: self.api_get(f"workflows/{workflow_id}/sharing")["published"] or None, "workflow to be published"
+        )
+        self.navigate_to_published_workflows()
+        self.components.workflows.dropdown(id=workflow_id).wait_for_visible()
+
+    @selenium_test
     def test_sharing_with_invalid_user(self):
         user1_email = self._get_random_email()
         self.register(user1_email)
