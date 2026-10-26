@@ -13,6 +13,18 @@ class TestLogin(SeleniumTestCase):
         login.form.assert_no_axe_violations_with_impact_of_at_least("moderate")
 
     @selenium_test
+    def test_masthead_logged_out_and_home_logo(self):
+        """GTN FAQs introduction/login and introduction/analyze_data."""
+        self.get("about")
+        masthead = self.components.masthead
+        assert masthead.login_masthead_button.wait_for_text() == "Login"
+        assert masthead.register_masthead_button.wait_for_text() == "Register"
+        masthead.user.assert_absent()
+        masthead.home.wait_for_and_click()
+        self.wait_for_masthead()
+        assert self.current_url.rstrip("/") == self.build_url("").rstrip("/")
+
+    @selenium_test
     def test_reset_password_link(self):
         alert_text = self.request_password_reset(self._get_random_email())
         # Test servers usually lack SMTP, so either response proves the request round-tripped.

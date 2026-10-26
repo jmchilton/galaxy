@@ -694,6 +694,32 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         hint = self.tool_form_wait_for_batch_info("input", "mapped over")
         assert hint.startswith("The supplied input will be mapped over this tool"), hint
 
+    @selenium_test
+    @managed_history
+    def test_run_apply_rules_flatten_list_list_paired_from_menus(self):
+        """GTN FAQ flatten-list-list-paired-to-list-paired."""
+        history_id = self.current_history_id()
+        hdca = self.dataset_collection_populator.create_nested_collection(history_id, "list:list:paired").json()
+        self.dataset_populator.wait_for_history(history_id)
+        self.home()
+        self._tool_open_apply_rules()
+        self.tool_set_value("input", f"{hdca['hid']}:", expected_type="data_collection")
+        self.tool_parameter_edit_rules()
+        rule_builder = self.components.rule_builder
+        rule_builder._.wait_for_visible()
+        self.rule_builder_concatenate_columns("A", "B")
+        self.rule_builder_set_mapping("paired-identifier", "C")
+        self.rule_builder_set_mapping("list-identifiers", "D")
+        rule_builder.main_button_ok.wait_for_and_click()
+        self.tool_form_execute()
+        flat_hid = self.history_wait_for_new_collection(hdca["hid"])["hid"]
+        self.history_panel_wait_for_hid_ok(flat_hid)
+        flat = self.dataset_populator.get_history_collection_details(history_id, hid=flat_hid)
+        assert flat["collection_type"] == "list:paired"
+        assert [e["element_identifier"] for e in flat["elements"]] == ["test_level_2test_level_1"]
+        pair = flat["elements"][0]["object"]["elements"]
+        assert [e["element_identifier"] for e in pair] == ["forward", "reverse"]
+
     def _apply_rules_tutorial_table(self) -> str:
         rows = [
             ("treated1fb.txt", "treated_single_1"),
