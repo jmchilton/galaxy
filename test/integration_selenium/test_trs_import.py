@@ -111,13 +111,29 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         import_url = f"workflows/trs_import?trs_server=workflowhub&trs_version={TRS_VERSION_WORKFLOWHUB}&trs_id={TRS_ID_WORKFLOWHUB}"
         self._import_workflow_by_url(import_url)
 
-    def _import_workflow_by_url(self, import_url):
+    def _import_workflow_by_url(self, import_url, run_form=False):
+        # Launch links import without a click on the wizard's Import button.
         self.get(import_url)
-        self.components.workflows.workflow_trs_import.wait_for_visible()
-        self._click_wizard_import_button()
-        self._wait_for_import_redirect()
+        if run_form:
+            self.components.workflow_run.run_workflow.wait_for_visible(wait_type=self.wait_types.SHED_SEARCH)
+            assert "workflows/run" in self.current_url
+            run_workflow_id = parse_qs(urlparse(self.current_url).query)["id"][0]
+            self.screenshot("trs_launch_run_form")
+        else:
+            self._wait_for_import_redirect()
         self.workflow_index_open()
         self.assert_workflow_imported(WORKFLOW_NAME)
+        imported = self.workflow_populator.index()
+        assert len(imported) == 1, imported
+        if run_form:
+            assert run_workflow_id == imported[0]["id"]
+        workflow = self.workflow_populator.download_workflow(imported[0]["id"])
+        query = parse_qs(urlparse(import_url).query)
+        if "trs_url" in query:
+            version = urlparse(query["trs_url"][0]).path.rsplit("/", 1)[-1]
+        else:
+            version = (query.get("trs_version") or query["trs_version_id"])[0]
+        assert workflow["source_metadata"]["trs_version_id"] == version
 
     @skip_if_dockstore_down
     def test_import_by_search_dockstore(self):
@@ -188,20 +204,24 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         self._import_workflow_by_url(import_url)
 
     @skip_if_dockstore_down
+    def test_auto_import_by_trs_url_run_form_dockstore(self):
+        self._import_workflow_by_url(f"workflows/trs_import?trs_url={TRS_URL_DOCKSTORE}&run_form=true", run_form=True)
+
+    @skip_if_workflowhub_down
+    @with_page_errors
+    def test_auto_import_by_trs_url_run_form_workflowhub(self):
+        self._import_workflow_by_url(f"workflows/trs_import?trs_url={TRS_URL_WORKFLOWHUB}&run_form=true", run_form=True)
+
+    @skip_if_dockstore_down
+    def test_auto_import_by_trs_version_run_form(self):
+        import_url = f"workflows/trs_import?trs_server=dockstore.org&trs_version={TRS_VERSION_DOCKSTORE}&trs_id=%23{TRS_ID_DOCKSTORE}&run_form=true"
+        self._import_workflow_by_url(import_url, run_form=True)
+
+    @skip_if_dockstore_down
     @selenium_test
     def test_auto_import_by_trs_version_id_run_form(self) -> None:
         import_url = f"workflows/trs_import?trs_server=dockstore.org&trs_version_id={TRS_VERSION_DOCKSTORE}&trs_id=%23{TRS_ID_DOCKSTORE}&run_form=true"
-        self.get(import_url)
-        self._wait_on(
-            lambda: urlparse(self.current_url).path.endswith("/workflows/run"),
-            "the imported workflow's run page",
-            wait_type=self.wait_types.SHED_SEARCH,
-        )
-        imported = self.workflow_populator.index()
-        assert len(imported) == 1, imported
-        assert parse_qs(urlparse(self.current_url).query)["id"][0] == imported[0]["id"]
-        workflow = self.workflow_populator.download_workflow(imported[0]["id"])
-        assert workflow["source_metadata"]["trs_version_id"] == TRS_VERSION_DOCKSTORE
+        self._import_workflow_by_url(import_url, run_form=True)
 
     def _import_by_id(self, trs_id, server):
         self.go_to_trs_by_id()

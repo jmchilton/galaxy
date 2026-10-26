@@ -59,7 +59,7 @@ class TestWorkflowManagement(SeleniumTestCase, TestsGalaxyPagers, UsesWorkflowAs
             assert self.current_url == self.example_workflow_url
         self.components.workflows.external_link.wait_for_visible()
 
-        self.components.workflows.view_button.wait_for_and_click()
+        self.workflow_preview_open("TestWorkflow1")
 
         workflow_preview = self.components.workflows.workflow_preview_container.wait_for_visible()
         assert "TestWorkflow1" in workflow_preview.text

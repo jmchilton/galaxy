@@ -46,6 +46,11 @@ function triggerImport() {
 }
 
 defineExpose({ triggerImport });
+
+// Launch links import immediately, without the wizard's Import button.
+if (props.queryTrsUrl) {
+    emit("onImport", props.queryTrsUrl);
+}
 </script>
 
 <template>

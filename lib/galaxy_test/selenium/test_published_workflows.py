@@ -25,16 +25,8 @@ class TestPublishedWorkflowsGrid(SharedStateSeleniumTestCase):
     def test_run_from_preview_and_import(self):
         self.submit_login(self.user2_email)
         assert not any(self.name_1 in w["name"] for w in self.workflow_populator.index())
-        self.navigate_to_published_workflows()
-        self.workflow_index_search_for(self.name_1)
-        card = self._wait_on(
-            lambda: self._workflow_card_named(self.name_1),
-            "the public workflow card",
-            wait_type=self.wait_types.DATABASE_OPERATION,
-        )
-        card.find_element(*self.navigation.workflows.view_button.element_locator).click()
+        self.workflow_preview_open(self.name_1, tab=self.navigation.workflows.published_tab)
         workflows = self.components.workflows
-        workflows.workflow_preview_container.wait_for_visible()
         workflows.preview_import_button.wait_for_visible()
         self.screenshot("public_workflow_preview")
         workflows.preview_run_button.wait_for_and_click()

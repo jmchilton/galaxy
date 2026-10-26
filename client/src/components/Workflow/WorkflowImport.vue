@@ -66,7 +66,7 @@ const queryParams = computed(() => ({
     trsId: route.query.trs_id as string | undefined,
     trsUrl: route.query.trs_url as string | undefined,
     trsServer: route.query.trs_server as string | undefined,
-    trsVersionId: route.query.trs_version_id as string | undefined,
+    trsVersionId: (route.query.trs_version ?? route.query.trs_version_id) as string | undefined,
     isRun: route.query.run_form === "true",
 }));
 
