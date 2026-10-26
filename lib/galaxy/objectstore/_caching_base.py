@@ -239,6 +239,32 @@ class CachingConcreteObjectStore(ConcreteObjectStore):
         # away while response headers are being sent and the generator is never started.
         return _ClosingIterator(iterator, stream.close)
 
+    def _get_data_head(self, obj, size: int, **kwargs) -> bytes:
+        rel_path = self._construct_path(obj, **kwargs)
+        head = self._read_remote_head(rel_path, size)
+        if head is None:
+            # Pulls the object into the cache unless it is there already, as anything but an empty file.
+            with open(self._get_filename(obj, **kwargs), "rb") as f:
+                return f.read(size)
+        return head
+
+    def _read_remote_head(self, rel_path: str, size: int) -> bytes | None:
+        """Read the first `size` bytes of the remote object, or None if this backend cannot read part of it.
+
+        Streams the object and stops reading once it has enough bytes; backends able to ask for a byte
+        range read only those.
+        """
+        stream = self._stream_remote(rel_path)
+        if stream is None:
+            return None
+        head = bytearray()
+        with stream as chunks:
+            for chunk in chunks:
+                head.extend(chunk)
+                if len(head) >= size:
+                    break
+        return bytes(head[:size])
+
     def _stream_remote(self, rel_path: str) -> RemoteDataStream | None:
         """Open a read of the remote object, or None if this backend cannot stream it.
 

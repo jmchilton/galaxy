@@ -354,6 +354,20 @@ class S3ObjectStore(CachingConcreteObjectStore):
         body = self._client.get_object(Bucket=self.bucket, Key=rel_path)["Body"]
         return RemoteDataStream(body.iter_chunks(chunk_size=STREAM_CHUNK_SIZE), body.close)
 
+    def _read_remote_head(self, rel_path: str, size: int) -> bytes | None:
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=rel_path, Range=f"bytes=0-{size - 1}")
+        except ClientError as e:
+            # No byte range can be satisfied in an empty object.
+            if e.response["Error"]["Code"] == "InvalidRange":
+                return b""
+            raise
+        body = response["Body"]
+        try:
+            return body.read()
+        finally:
+            body.close()
+
     def _push_string_to_path(self, rel_path: str, from_string: str) -> bool:
         try:
             self._client.put_object(Body=from_string.encode("utf-8"), Bucket=self.bucket, Key=rel_path)

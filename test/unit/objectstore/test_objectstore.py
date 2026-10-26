@@ -1276,6 +1276,115 @@ def test_stream_remote_s3_returns_none_for_a_missing_key():
         assert object_store._stream_remote("000/dataset_1.dat") is None
 
 
+def test_get_data_head_disk_store_reads_the_start_of_the_file():
+    with TestConfig(DISK_TEST_CONFIG) as (directory, object_store):
+        directory.write("the stored data", "files1/000/dataset_1.dat")
+        assert object_store.get_data_head(MockDataset(1), 10) == b"the stored"
+        assert object_store.get_data_head(MockDataset(1), 100) == b"the stored data"
+
+
+def test_get_data_head_distributed_store_reads_from_the_backend_holding_the_object():
+    with TestConfig(DISTRIBUTED_TEST_CONFIG) as (directory, object_store):
+        dataset = MockDataset(1)
+        working_path = directory.write("the stored data", "job_working_directory/example_output")
+        object_store.update_from_file(dataset, file_name=working_path, create=True)
+        assert object_store.get_data_head(dataset, 10) == b"the stored"
+
+
+def _write_cached(object_store, dataset, content: bytes):
+    cache_path = _cache_path_for(object_store, dataset)
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    with open(cache_path, "wb") as f:
+        f.write(content)
+    return cache_path
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_boto3_reads_a_byte_range_instead_of_a_stale_cached_copy():
+    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
+        dataset = MockDataset(1)
+        # Left by creating the object, while the data was written to the bucket from another host.
+        cache_path = _write_cached(object_store, dataset, b"")
+        body = MagicMock()
+        body.read.return_value = b"the stored"
+        object_store._client = MagicMock()
+        object_store._client.get_object.return_value = {"Body": body}
+
+        assert object_store.get_data_head(dataset, 10) == b"the stored"
+
+        _, call_kwargs = object_store._client.get_object.call_args
+        assert call_kwargs["Key"] == object_store._construct_path(dataset)
+        assert call_kwargs["Range"] == "bytes=0-9"
+        body.close.assert_called_once_with()
+        # Only the requested bytes were read: the object is neither pulled nor cached.
+        object_store._client.download_file.assert_not_called()
+        assert os.path.getsize(cache_path) == 0
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_boto3_reads_nothing_from_an_empty_object():
+    from botocore.exceptions import ClientError
+
+    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
+        object_store._client = MagicMock()
+        object_store._client.get_object.side_effect = ClientError({"Error": {"Code": "InvalidRange"}}, "GetObject")
+        assert object_store.get_data_head(MockDataset(1), 10) == b""
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_boto3_fails_for_a_missing_object():
+    from botocore.exceptions import ClientError
+
+    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
+        object_store._client = MagicMock()
+        object_store._client.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        with pytest.raises(ClientError):
+            object_store.get_data_head(MockDataset(1), 10)
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_stops_streaming_once_it_has_enough_bytes():
+    with TestConfig(get_example("azure_simple.yml")) as (directory, object_store):
+        dataset = MockDataset(1)
+        _write_cached(object_store, dataset, b"")
+        closed = []
+        chunks = iter([b"the ", b"stored", b" data"])
+        with patch.object(
+            object_store, "_stream_remote", return_value=_remote_stream(chunks, lambda: closed.append(True))
+        ):
+            assert object_store.get_data_head(dataset, 7) == b"the sto"
+        assert closed == [True]
+        assert next(chunks) == b" data"
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_reads_the_cached_copy_when_the_backend_cannot_stream():
+    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
+        dataset = MockDataset(1)
+        _write_cached(object_store, dataset, b"the cached data")
+        with patch.object(object_store, "_read_remote_head", return_value=None):
+            assert object_store.get_data_head(dataset, 10) == b"the cached"
+
+
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_refreshes_an_empty_cached_copy_when_the_backend_cannot_stream():
+    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
+        dataset = MockDataset(1)
+        _write_cached(object_store, dataset, b"")
+
+        def download(rel_path, *, cache_path, cache_target):
+            with open(cache_path, "wb") as f:
+                f.write(b"the stored data")
+            return True
+
+        with (
+            patch.object(object_store, "_read_remote_head", return_value=None),
+            patch.object(object_store, "_exists", return_value=True),
+            patch.object(object_store, "_download", side_effect=download),
+        ):
+            assert object_store.get_data_head(dataset, 10) == b"the stored"
+
+
 @patch_object_stores_to_skip_initialize
 def test_config_parse_boto3_custom_connection():
     for config_str in [get_example("boto3_custom_connection.xml"), get_example("boto3_custom_connection.yml")]:
