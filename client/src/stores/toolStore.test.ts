@@ -53,6 +53,23 @@ describe("toolStore", () => {
         expect(store.helpDataCached["test-tool"]).toMatchObject({ help: "Recovered help" });
     });
 
+    it("refetches tools and searches after invalidate", async () => {
+        const bwa = { id: "bwa", name: "Map with BWA" } as Tool;
+        vi.mocked(axios.get)
+            .mockResolvedValueOnce({ data: [] })
+            .mockResolvedValueOnce({ data: [] })
+            .mockResolvedValueOnce({ data: ["bwa"] })
+            .mockResolvedValueOnce({ data: [bwa] });
+        const store = useToolStore();
+
+        await store.fetchTools("bwa");
+        expect(store.getToolsById("bwa")).toEqual({});
+
+        store.invalidate();
+        await store.fetchTools("bwa");
+        expect(store.getToolsById("bwa")).toEqual({ bwa });
+    });
+
     it("does not resolve an uncached query through the prototype chain", () => {
         const store = useToolStore();
         store.saveToolForId("fastqc", { id: "fastqc", name: "FastQC" } as Tool);

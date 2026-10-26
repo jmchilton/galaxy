@@ -30,7 +30,7 @@ const props = defineProps({
 
 const services = new Services();
 
-const { toolSections, fetchToolSections } = useToolStore();
+const { toolSections, fetchToolSections, invalidate: invalidateTools } = useToolStore();
 
 const repositoryWatcher = useResourceWatcher(loadInstalledRepositories, {
     shortPollingInterval: 2000,
@@ -105,6 +105,12 @@ function refreshRepositoryStatus(updatedRevisions) {
         }
         revisionStateMap.set(x.changeset_revision, repoRevision);
         if (repoRevision.status !== x.status) {
+            const watched = x.status !== undefined || revisionWaitStateMap.has(x.changeset_revision);
+            if (watched && [statusInstalled, statusUninstalled].includes(repoRevision.status)) {
+                // The toolbox changed; drop the tool panel's cached tools and searches.
+                invalidateTools();
+                fetchToolSections("default");
+            }
             x.status = repoRevision.status;
             x.installed = repoRevision.installed;
         }

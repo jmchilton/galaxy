@@ -360,6 +360,14 @@ export const useToolStore = defineStore("toolStore", () => {
         }
     }
 
+    /** Drop cached tools, panels and searches, e.g. after the toolbox changed; the panel refetches on next mount. */
+    function invalidate() {
+        toolsById.value = {};
+        toolResults.value = {};
+        toolSections.value = {};
+        toolTagsLoaded.value = false;
+    }
+
     function saveAllTools(toolsData: Tool[]) {
         toolsById.value = toolsData.reduce(
             (acc, item) => {
@@ -421,6 +429,7 @@ export const useToolStore = defineStore("toolStore", () => {
         getTargetById,
         helpDataCached,
         initializePanel,
+        invalidate,
         isPanelPopulated,
         loading,
         getToolForId,

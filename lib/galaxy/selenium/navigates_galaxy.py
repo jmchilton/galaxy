@@ -2017,6 +2017,29 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def admin_open(self):
         self.components.admin.activity.wait_for_and_click()
 
+    def admin_toolshed_install(self, query: str, name: str, owner: str, section: str | None = None, index: int = 1):
+        """Admin > Install and Uninstall: search QUERY, open NAME by OWNER, install revision INDEX (1 = newest)."""
+        toolshed = self._admin_toolshed_open_repository(query, name, owner)
+        toolshed.install_button(index=index).wait_for_and_click(wait_type=WAIT_TYPES.SHED_SEARCH)
+        if section is not None:
+            toolshed.install_target_section.wait_for_and_clear_and_send_keys(section)
+        toolshed.install_ok.wait_for_and_click()
+        toolshed.uninstall_button.wait_for_visible(wait_type=WAIT_TYPES.REPO_INSTALL)
+
+    def admin_toolshed_uninstall(self, query: str, name: str, owner: str):
+        """Admin > Install and Uninstall: search QUERY, open NAME by OWNER, Uninstall its installed revision."""
+        toolshed = self._admin_toolshed_open_repository(query, name, owner)
+        toolshed.uninstall_button.wait_for_and_click(wait_type=WAIT_TYPES.SHED_SEARCH)
+        toolshed.revision_status(status="Uninstalled").wait_for_visible(wait_type=WAIT_TYPES.REPO_INSTALL)
+
+    def _admin_toolshed_open_repository(self, query: str, name: str, owner: str):
+        toolshed = self.components.admin.toolshed
+        self.admin_open()
+        self.components.admin.index.toolshed.wait_for_and_click()
+        toolshed.repo_search.wait_for_and_clear_and_send_keys(query)
+        toolshed.repository_link(name=name, owner=owner).wait_for_and_click(wait_type=WAIT_TYPES.SHED_SEARCH)
+        return toolshed
+
     def create_quota(
         self,
         name: str | None = None,

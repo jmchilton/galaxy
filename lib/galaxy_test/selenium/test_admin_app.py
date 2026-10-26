@@ -54,33 +54,12 @@ class TestAdminApp(SeleniumTestCase):
         repository_name = "a_selenium_test_repo"
         admin_component = self.components.admin
         self.admin_login()
+        self.admin_toolshed_install(repository_name, repository_name, "devteam", section="Selenium Test", index=2)
+        self.screenshot("admin_toolshed_repo_installed_revision")
+        # The tool panel picks up the new tool without a page reload.
+        self.tool_open("toolshed.g2.bx.psu.edu/repos/devteam/a_selenium_test_repo/a_test_tool/1.0.0")
         self.admin_open()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.screenshot("admin_landing")
         admin_component.index.toolshed.wait_for_and_click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.screenshot("admin_toolshed_landing")
-        repo_search_input = self.find_element_by_id("toolshed-repo-search")
-        repo_search_input.clear()
-        repo_search_input.send_keys(repository_name)
-        # If this hasn't succeeded after 30 seconds, the @flakey context should
-        # allow the test to still pass, since there should definitely be results
-        # after 30 seconds.
-        self.sleep_for(self.wait_types.SHED_SEARCH)
-        self.screenshot("admin_toolshed_search")
-        admin_component.toolshed.search_results.wait_for_visible()
-        repository_row = self.find_element_by_link_text(repository_name)
-        repository_row.click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.screenshot("admin_toolshed_repo_details")
-        install_button = self.find_element_by_xpath("(//button[contains(., 'Install')])[2]")
-        install_button.click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        self.screenshot("admin_toolshed_repo_install_settings")
-        self.sleep_for(self.wait_types.UX_TRANSITION)
-        ok_button = self.find_element_by_selector("#repo-install-settings .g-modal-confirm-buttons button:last-child")
-        ok_button.click()
-        self.sleep_for(self.wait_types.REPO_INSTALL)
         installed_only = self.find_element_by_xpath("//span[contains(. ,'Installed Only')]/../../input")
         self.move_to_and_click(installed_only)
         self.sleep_for(self.wait_types.UX_TRANSITION)
