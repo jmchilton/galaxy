@@ -1,5 +1,5 @@
 ---
-name: check_deployment_decorators
+name: check-deployment-decorators
 description: Audit Galaxy API and browser tests for deployment requirement decorators and tool availability skips. Use when changing tests that may run against an external Galaxy or adding tests to the deployment runner.
 ---
 
