@@ -112,6 +112,43 @@ class TestJobWrapperFinish(TestCase, UsesTools):
         assert committed[-1][:2] == (model.Job.states.OK, model.Dataset.states.OK)
         assert self.job.state == model.Job.states.OK
 
+    def test_update_time_commit_failure_rolls_back_and_keeps_session_usable(self):
+        session = self.app.model.context()
+        old_update_time = datetime(2020, 1, 1)
+        hdca = model.HistoryDatasetCollectionAssociation(
+            history=self.job.history, collection=model.DatasetCollection(collection_type="list"), job=self.job
+        )
+        session.add(hdca)
+        session.commit()
+        hdca.update_time = old_update_time
+        session.commit()
+        commit_count = 0
+
+        def fail_timestamp_commit(current_session):
+            nonlocal commit_count
+            commit_count += 1
+            if commit_count == 2:
+                # Flush a duplicate email after the timestamp UPDATEs to fail a real transaction.
+                current_session.add(model.User(email="finish@example.org", password="password"))
+
+        event.listen(session, "before_commit", fail_timestamp_commit)
+        try:
+            self._finish_and_record_commits()
+        finally:
+            event.remove(session, "before_commit", fail_timestamp_commit)
+
+        assert commit_count == 2
+        assert session.is_active
+        session.expire_all()
+        assert self.job.state == model.Job.states.OK
+        assert self.dataset.state == model.Dataset.states.OK
+        assert hdca.update_time == old_update_time
+        # A new write also succeeds after finish rolls back the failed transaction.
+        self.job.info = "session recovered"
+        session.commit()
+        session.refresh(self.job)
+        assert self.job.info == "session recovered"
+
     def test_extended_metadata_outputs_and_final_job_state_are_committed_together(self):
         self.app.config.metadata_strategy = "extended"
         wrapper = MinimalJobWrapper(self.job, self.app, tool=self.tool)
