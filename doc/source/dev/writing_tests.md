@@ -596,9 +596,12 @@ Common decorators for conditional test execution (from ``galaxy_test.base.decora
 ```python
 from galaxy_test.base.decorators import (
     requires_admin,
+    requires_celery,
     requires_new_user,
     requires_new_history,
     requires_new_library,
+    requires_new_published_objects,
+    requires_tool_id,
 )
 from galaxy_test.base.populators import skip_without_tool
 
@@ -624,6 +627,28 @@ class TestMyApi(ApiTestCase):
         # Skips if cat1 tool not installed
         ...
 ```
+
+The ``@requires_*`` annotations are especially useful when running API and browser tests
+against a [deployed Galaxy](#deployment-tests). They add pytest markers for
+selection and check the corresponding ``GALAXY_TEST_SKIP_IF_REQUIRES_*``
+variable when the test runs. Use them on the test that exercises the capability,
+including when it calls a helper that does so.
+
+| Annotation | Mark when the test needs |
+|------------|--------------------------|
+| ``@requires_admin`` | An admin API key or an admin-only operation, including creating or switching to a named user |
+| ``@requires_new_user`` | Registration of a new user. This also adds ``requires_admin`` for selection. |
+| ``@requires_new_library`` | Creation of a library. This also adds ``requires_admin`` for selection. |
+| ``@requires_new_history`` | A distinct history instead of a configured shared test history |
+| ``@requires_new_published_objects`` | Publication of a dataset, workflow, or other object |
+| ``@requires_celery`` | A Celery worker for the behavior under test |
+
+``@requires_tool_id("cat1")`` is different: its fixture checks whether a tool
+is installed and skips the test if it is missing. ``@skip_without_tool("cat1")``
+does the same check when the decorated test runs. Neither substitutes for a
+requirement annotation when the test also needs admin access or creates a
+restricted object. Browser ``@managed_history`` already applies
+``@requires_new_history``.
 
 ### Context Managers
 
@@ -769,6 +794,64 @@ red. This test suite is fairly stable and typically there are not
 transiently failed tests unrelated to the pull request being tested. The
 GitHub actions workflow definition for these tests is located in
 ``.github/workflows/api.yaml`` below Galaxy's root.
+
+{#deployment-tests}
+## Deployment Tests
+
+Deployment tests run selected API and Selenium tests against a running Galaxy
+instead of starting a test server. The manually dispatched
+``.github/workflows/deployment.yaml`` offers ``usegalaxytest``,
+``usegalaxymain`` (the default), and ``usegalaxyeu``, with ``api``,
+``selenium``, or ``all`` as the test type. It calls
+``test/deployment/usegalaxystar.bash``, which installs development test
+dependencies, sets ``GALAXY_TEST_EXTERNAL`` and credentials for the target,
+and writes ``deployment_tests.html``. The workflow uploads that report even
+when pytest fails. The current workflow runs Selenium with ChromeDriver.
+
+The runner selects a fixed list of test files and excludes tests marked
+``requires_admin``, ``requires_new_user``, ``requires_new_library``,
+``requires_new_published_objects``, or ``requires_celery``. It also sets the
+matching ``GALAXY_TEST_SKIP_IF_REQUIRES_*`` variables. The markers deselect
+tests before execution, while runtime checks skip a selected test if it reaches
+a guarded helper. Runtime checks are a fallback, so annotate the test itself.
+They also apply when running a test directly with the skip variables set.
+
+When adding a deployment candidate, inspect its direct calls and the helpers
+they invoke. Mark named-user setup and admin API calls with
+``@requires_admin``, registration with ``@requires_new_user``, library creation
+with ``@requires_new_library``, publication with
+``@requires_new_published_objects``, and Celery-dependent behavior with
+``@requires_celery``. Mark a test that must create a distinct history with
+``@requires_new_history``. Ordinary jobs, datasets, and workflows are expected
+and need no requirement marker. For tool-specific tests, use
+``@requires_tool_id`` or ``@skip_without_tool`` so an absent tool causes a skip.
+Check the resulting selection with pytest collection before adding the file to
+the runner's lists.
+
+For a local run against a server you control, install the development test
+dependencies, activate the virtual environment, and provide a user API key:
+
+```bash
+./scripts/common_startup.sh --skip-client-build --dev-wheels
+. .venv/bin/activate
+export GALAXY_TEST_EXTERNAL=https://your-galaxy.example.org
+export GALAXY_TEST_USER_API_KEY='your-user-api-key'
+export GALAXY_TEST_USER_EMAIL='you@example.org'
+export GALAXY_TEST_SKIP_IF_REQUIRES_ADMIN=1
+export GALAXY_TEST_SKIP_IF_REQUIRES_NEW_USER=1
+export GALAXY_TEST_SKIP_IF_REQUIRES_NEW_LIBRARY=1
+export GALAXY_TEST_SKIP_IF_REQUIRES_NEW_PUBLISHED_OBJECTS=1
+export GALAXY_TEST_SKIP_IF_REQUIRES_CELERY=1
+pytest -m "not requires_admin and not requires_new_user and not requires_new_library and not requires_new_published_objects and not requires_celery" lib/galaxy_test/api/test_histories.py
+```
+
+Replace the example URL and credentials with values for that server. Browser tests also
+need ``GALAXY_TEST_SELENIUM_USER_EMAIL`` and
+``GALAXY_TEST_SELENIUM_USER_PASSWORD`` for an existing account. Without those,
+the browser framework may try to register a user and skip when new-user use is
+disabled. To run admin or object-creation tests on a disposable deployment,
+provide the required privileges and remove the corresponding marker exclusion
+and runtime skip variable.
 
 {#integration}
 ## Integration Tests
