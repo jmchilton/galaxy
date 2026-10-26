@@ -2258,10 +2258,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         return retry_call_during_transitions(click_action)
 
     def _workflow_card_named(self, name: str, search: str | None = None):
-        """Card titled exactly ``name``, else the only card, once every listed title contains ``search`` (default ``name``).
+        """The one card titled exactly ``name``, else the only card once every listed title contains ``search``.
 
-        Until then the list still shows unfiltered workflows (search input is debounced). Like the
-        server's search, containment ignores case.
+        The server ignores raw search words under four characters, so a short ``name`` may never filter
+        the list. Like the server's search, containment ignores case.
         """
         cards = self.components.workflows.workflow_card.all()
         title_locator = self.navigation.workflows.workflow_card_title.element_locator
@@ -2271,11 +2271,11 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             if not exception_indicates_stale_element(e):
                 raise
             return None
+        if titles.count(name) == 1:
+            return cards[titles.index(name)]
         search = (search or name).lower()
         if not titles or any(search not in title.lower() for title in titles):
             return None
-        if name in titles:
-            return cards[titles.index(name)]
         return cards[0] if len(cards) == 1 else None
 
     def workflow_shared_with_me_open(self):
