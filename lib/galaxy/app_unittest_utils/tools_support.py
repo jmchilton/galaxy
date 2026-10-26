@@ -72,6 +72,8 @@ SIMPLE_CAT_TOOL_CONTENTS = """<tool id="${tool_id}" name="Test Tool" version="$v
 
 
 class MockActionI:
+    checks_preconditions = False
+
     def execute(self, tool, trans, **kwds):
         pass
 

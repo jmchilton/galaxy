@@ -7778,6 +7778,7 @@ steps:
             )
             self._assert_status_code_is(response, 200)
             assert response.json()["history_id"] == history_id
+
     def test_run_with_missing_tool_creates_no_history(self):
         workflow = self.workflow_populator.load_workflow_from_resource(name="test_workflow_missing_tool")
         workflow_id = self.workflow_populator.create_workflow(workflow)
