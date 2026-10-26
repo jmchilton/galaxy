@@ -89,9 +89,13 @@ class TestWorkflowManagement(SeleniumTestCase, TestsGalaxyPagers, UsesWorkflowAs
     def test_download(self):
         self.workflow_index_open()
         self._workflow_import_from_url()
-        # TODO: fill this test out - getting downloaded files in general through Selenium is a bit tough,
-        # going through the motions though should catch a couple potential problems.
+        name = "TestWorkflow1 (imported from URL)"
+        workflow_id = self.api_get("workflows")[0]["id"]
+        route = f"workflows/{workflow_id}/download?format=json-download"
+        href = self.workflow_card_download_href(name)
+        assert href.endswith(f"/api/{route}"), href
         self.components.workflows.download_button.wait_for_and_click()
+        assert self.api_get(route)["name"] == name
 
     @selenium_test
     def test_tagging(self):

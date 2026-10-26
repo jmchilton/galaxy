@@ -2383,6 +2383,18 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def workflow_share_click(self):
         self.components.workflows.share_button.wait_for_and_click()
 
+    def workflow_card_download_href(self, name: str) -> str:
+        """The URL behind the Download button on the card of workflow ``name``."""
+        self.workflow_index_open()
+        search = workflow_search_term(name)
+        self.workflow_index_search_for(search)
+        card = self._wait_on(
+            lambda: self._workflow_card_named(name, search),
+            f"search results with a workflow titled or uniquely containing [{name}]",
+            wait_type=self.wait_types.DATABASE_OPERATION,
+        )
+        return card.find_element(*self.navigation.workflows.download_button.element_locator).get_attribute("href")
+
     def workflow_index_view_external_link(self, workflow_index=0):
         self.components.workflows.workflow_drop_down.wait_for_and_click()
         self.components.workflows.view_external_link.wait_for_and_click()
