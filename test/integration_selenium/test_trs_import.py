@@ -78,17 +78,9 @@ class TestTrsImport(SeleniumIntegrationTestCase):
     def trs_config_dir(cls):
         return cls.temp_config_dir("trs")
 
-    def _click_wizard_import_button(self, wait_for_validation=False):
-        """Click the wizard's Import button after ensuring it's enabled.
-
-        The Import button is disabled until the current step's validation passes.
-        Set wait_for_validation=True to sleep briefly before clicking (needed when
-        user input was just entered and Vue validation hasn't propagated yet).
-        """
-        if wait_for_validation:
-            self.sleep_for(self.wait_types.UX_RENDER)
-        import_button = self.wait_for_selector_clickable(".wizard-actions .go-next-btn.btn-primary:not([disabled])")
-        import_button.click()
+    def _click_wizard_import_button(self) -> None:
+        """Wait for the current wizard step to validate before clicking Import."""
+        self.components.workflows.import_next_button.wait_for_and_click()
 
     def _wait_for_import_redirect(self):
         # The client redirects to the workflow list only once the import request returns,
@@ -111,14 +103,16 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         import_url = f"workflows/trs_import?trs_server=workflowhub&trs_version={TRS_VERSION_WORKFLOWHUB}&trs_id={TRS_ID_WORKFLOWHUB}"
         self._import_workflow_by_url(import_url)
 
-    def _import_workflow_by_url(self, import_url, run_form=False):
+    def _import_workflow_by_url(self, import_url: str, run_form: bool = False) -> None:
         # Launch links import without a click on the wizard's Import button.
         self.get(import_url)
         if run_form:
-            self.components.workflow_run.run_workflow.wait_for_visible(wait_type=self.wait_types.SHED_SEARCH)
-            assert "workflows/run" in self.current_url
+            self._wait_on(
+                lambda: urlparse(self.current_url).path.endswith("/workflows/run"),
+                "the imported workflow's run page",
+                wait_type=self.wait_types.SHED_SEARCH,
+            )
             run_workflow_id = parse_qs(urlparse(self.current_url).query)["id"][0]
-            self.screenshot("trs_launch_run_form")
         else:
             self._wait_for_import_redirect()
         self.workflow_index_open()
@@ -142,7 +136,7 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         self.components.trs_search.search_result(
             workflow_name="galaxy-workflow-dockstore-example-1"
         ).wait_for_and_click()
-        self._click_wizard_import_button(wait_for_validation=True)
+        self._click_wizard_import_button()
         self._wait_for_import_redirect()
         self.workflow_index_open()
         self.assert_workflow_imported("Test Workflow")
@@ -154,7 +148,7 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         self.components.trs_search.search_result(workflow_name=TRS_NAME).wait_for_and_click()
         # Select version from dropdown
         self.components.trs_search.version_select.select_by_visible_text("v0.4")
-        self._click_wizard_import_button(wait_for_validation=True)
+        self._click_wizard_import_button()
         self._wait_for_import_redirect()
         self.workflow_index_open()
         self.assert_workflow_imported(WORKFLOW_NAME)
@@ -169,7 +163,7 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         self.components.trs_search.select_server(server="workflowhub").wait_for_and_click()
         self.components.trs_search.search.wait_for_and_send_keys(WORKFLOW_NAME)
         self.components.trs_search.search_result(workflow_name=WORKFLOW_NAME).wait_for_and_click()
-        self._click_wizard_import_button(wait_for_validation=True)
+        self._click_wizard_import_button()
         self._wait_for_import_redirect()
         self.workflow_index_open()
         self.assert_workflow_imported(WORKFLOW_NAME)
@@ -204,16 +198,19 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         self._import_workflow_by_url(import_url)
 
     @skip_if_dockstore_down
-    def test_auto_import_by_trs_url_run_form_dockstore(self):
+    @selenium_test
+    def test_auto_import_by_trs_url_run_form_dockstore(self) -> None:
         self._import_workflow_by_url(f"workflows/trs_import?trs_url={TRS_URL_DOCKSTORE}&run_form=true", run_form=True)
 
     @skip_if_workflowhub_down
     @with_page_errors
-    def test_auto_import_by_trs_url_run_form_workflowhub(self):
+    @selenium_test
+    def test_auto_import_by_trs_url_run_form_workflowhub(self) -> None:
         self._import_workflow_by_url(f"workflows/trs_import?trs_url={TRS_URL_WORKFLOWHUB}&run_form=true", run_form=True)
 
     @skip_if_dockstore_down
-    def test_auto_import_by_trs_version_run_form(self):
+    @selenium_test
+    def test_auto_import_by_trs_version_run_form(self) -> None:
         import_url = f"workflows/trs_import?trs_server=dockstore.org&trs_version={TRS_VERSION_DOCKSTORE}&trs_id=%23{TRS_ID_DOCKSTORE}&run_form=true"
         self._import_workflow_by_url(import_url, run_form=True)
 
@@ -230,7 +227,7 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         self.components.trs_import.input.wait_for_and_send_keys(trs_id)
         # Select version from dropdown
         self.components.trs_import.version_select.select_by_visible_text("v0.4")
-        self._click_wizard_import_button(wait_for_validation=True)
+        self._click_wizard_import_button()
         self._wait_for_import_redirect()
         self.workflow_index_open()
         self.assert_workflow_imported(WORKFLOW_NAME)
@@ -238,7 +235,7 @@ class TestTrsImport(SeleniumIntegrationTestCase):
     def _import_by_trs_url(self, trs_url):
         self.go_to_trs_by_url()
         self.components.trs_import.url_input.wait_for_and_send_keys(trs_url)
-        self._click_wizard_import_button(wait_for_validation=True)
+        self._click_wizard_import_button()
         self._wait_for_import_redirect()
         self.workflow_index_open()
         self.assert_workflow_imported(WORKFLOW_NAME)
