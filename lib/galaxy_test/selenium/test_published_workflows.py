@@ -14,6 +14,24 @@ class TestPublishedWorkflowsGrid(SharedStateSeleniumTestCase):
         self.navigate_to_published_workflows()
         self.components.workflows.dropdown(id=self.id_1).wait_for_visible()
 
+    @selenium_test
+    def test_run_from_preview_and_import(self):
+        self.submit_login(self.user2_email)
+        self.workflow_preview_open(self.name_1, tab=self.navigation.workflows.published_tab)
+        workflows = self.components.workflows
+        workflows.preview_import_button.wait_for_visible()
+        workflows.preview_run_button.wait_for_and_click()
+        workflow_run = self.components.workflow_run
+        workflow_run.run_workflow.wait_for_visible()
+        assert f"id={self.id_1}" in self.current_url
+        workflow_run.import_button.wait_for_and_click()
+        copies = self._wait_on(
+            lambda: [w for w in self.workflow_populator.index() if self.name_1 in w["name"]] or None,
+            "an imported copy of the public workflow",
+            wait_type=self.wait_types.DATABASE_OPERATION,
+        )
+        assert len(copies) == 1 and copies[0]["id"] != self.id_1, copies
+
     def setup_shared_state(self):
         self.user1_email = self._get_random_email("test1")
         self.user2_email = self._get_random_email("test2")

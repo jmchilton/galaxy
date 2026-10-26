@@ -2261,9 +2261,16 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         """Open the workflow titled ``name`` (else the only one whose title contains it) in the editor."""
         self._workflow_card_action(name, self.navigation.workflows.edit_button)
 
-    def _workflow_card_action(self, name: str, action: Target):
-        """Search the workflow list for ``name``, click ``action`` in its card and return the card."""
+    def workflow_preview_open(self, name: str, tab: Target | None = None):
+        """Click the title of workflow ``name`` (on list ``tab``, default My workflows) to open its preview."""
+        self._workflow_card_action(name, self.navigation.workflows.view_button, tab=tab)
+        self.components.workflows.workflow_preview_container.wait_for_visible()
+
+    def _workflow_card_action(self, name: str, action: Target, tab: Target | None = None):
+        """Search the workflow list (``tab``, default My workflows) for ``name``, click ``action`` in its card."""
         self.workflow_index_open()
+        if tab:
+            self.wait_for_and_click(tab)
         search = workflow_search_term(name)
         self.workflow_index_search_for(search)
 
