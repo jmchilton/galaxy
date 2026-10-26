@@ -38,6 +38,19 @@ from .framework import (
     UsesWorkflowAssertions,
 )
 
+WORKFLOW_CAT_AND_CONSTRUCTS = """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+steps:
+  cat:
+    tool_id: cat1
+    in:
+      input1: input1
+  constructs:
+    tool_id: simple_constructs
+"""
+
 CHIPSEQ_COLUMNS = [
     ColumnDefinition(
         "Condition",
@@ -401,6 +414,37 @@ steps:
         self.workflow_editor_remove_node("input1")
         self.sleep_for(self.wait_types.UX_RENDER)
         self.screenshot("workflow_editor_parameter_input_deleted")
+
+    @selenium_test
+    def test_hide_output(self):
+        name = self.open_in_workflow_editor(WORKFLOW_CAT_AND_CONSTRUCTS)
+        workflow_id = self.workflow_populator.index_ids(search=name)[0]
+
+        def cat_post_job_actions():
+            steps = self.workflow_populator.download_workflow(workflow_id)["steps"].values()
+            return next(step for step in steps if step["label"] == "cat")["post_job_actions"]
+
+        self.workflow_editor_node("cat").output_visible_toggle(name="out_file1").wait_for_visible()
+        self.workflow_editor_set_output_hidden("cat", "out_file1")
+        self.assert_workflow_has_changes_and_save()
+        assert "HideDatasetActionout_file1" in cat_post_job_actions()
+
+        self.workflow_editor_set_output_hidden("cat", "out_file1", hidden=False)
+        self.assert_workflow_has_changes_and_save()
+        assert "HideDatasetActionout_file1" not in cat_post_job_actions()
+
+    @selenium_test
+    def test_set_parameter_at_runtime(self):
+        name = self.open_in_workflow_editor(WORKFLOW_CAT_AND_CONSTRUCTS)
+        self.workflow_editor_set_runtime_value("inttest", node="constructs")
+        self.assert_workflow_has_changes_and_save()
+
+        workflow_id = self.workflow_populator.index_ids(search=name)[0]
+        steps = {
+            step["label"]: step for step in self.workflow_populator.download_workflow(workflow_id)["steps"].values()
+        }
+        tool_state = json.loads(steps["constructs"]["tool_state"])
+        assert tool_state["inttest"] == {"__class__": "RuntimeValue"}, tool_state
 
     @selenium_test
     def test_non_data_connections(self):

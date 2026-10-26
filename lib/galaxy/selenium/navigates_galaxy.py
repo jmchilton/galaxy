@@ -1685,6 +1685,28 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         editor = self.components.workflow_editor
         editor.annotation_input.wait_for_and_clear_and_send_keys(annotation)
 
+    def workflow_editor_set_output_hidden(self, node: EditorNodeReference, output: str, hidden: bool = True):
+        """Click the eye icon of ``node``'s ``output`` so runs hide (or show) that dataset in the history."""
+        target = self.workflow_editor_node(node)
+        before, after = (
+            (target.output_visible_toggle, target.output_hidden_toggle)
+            if hidden
+            else (target.output_hidden_toggle, target.output_visible_toggle)
+        )
+        if before(name=output).is_absent:
+            return
+        before(name=output).wait_for_and_click()
+        after(name=output).wait_for_present()
+
+    def workflow_editor_set_runtime_value(self, parameter: str, node: EditorNodeReference | None = None):
+        """Toggle the open step's tool ``parameter`` to *set at runtime* (the caret icon by its name)."""
+        editor = self.components.workflow_editor
+        if node is not None:
+            self.workflow_editor_node(node).title.wait_for_and_click()
+        editor.node_inspector.wait_for_visible()
+        editor.collapse_icon(name=parameter).wait_for_and_click()
+        editor.parameter_field(name=parameter).wait_for_absent()
+
     def workflow_editor_ensure_tool_form_open(self, node: EditorNodeReference | None = None):
         """Open step ``node`` in the editor's inspector, or check one is open."""
         editor = self.components.workflow_editor

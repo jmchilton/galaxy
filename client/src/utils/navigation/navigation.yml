@@ -1281,6 +1281,8 @@ workflow_editor:
       connector_destroy_callout: "${_} [input-name='${name}'] + .delete-terminal-button"
       workflow_output_toggle: "${_} [data-output-name='${name}'] .callout-terminal "
       workflow_output_toggle_active: "${_} [data-output-name='${name}'] .mark-terminal-active"
+      output_visible_toggle: "${_} [data-output-name='${name}'] .mark-terminal-visible"
+      output_hidden_toggle: "${_} [data-output-name='${name}'] .mark-terminal-hidden"
   changes:
     selectors:
       action_insert_data_input: ".action[data-type='step-insert'][data-step-type='data_input']"
@@ -1365,6 +1367,7 @@ workflow_editor:
         //a/span[text()='${workflow_title}']/following-sibling::span[@title='Insert individual steps.']
     connect_icon: 'div.ui-form-element[id="form-element-${name}"] [data-connected]'
     collapse_icon: 'div.ui-form-element[id="form-element-${name}"] [data-collapsible]'
+    parameter_field: 'div.ui-form-element[id="form-element-${name}"] .ui-form-field'
     edit_subworkflow: 'button[title="Edit this Subworkflow. You will need to upgrade this Workflow Step afterwards."]'
     node_title:
       type: xpath
