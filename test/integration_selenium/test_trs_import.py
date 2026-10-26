@@ -124,7 +124,8 @@ class TestTrsImport(SeleniumIntegrationTestCase):
         workflow = self.workflow_populator.download_workflow(imported[0]["id"])
         query = parse_qs(urlparse(import_url).query)
         if "trs_url" in query:
-            version = urlparse(query["trs_url"][0]).path.rsplit("/", 1)[-1]
+            # The outer query decodes Dockstore's %23 to # within the embedded TRS URL.
+            version = query["trs_url"][0].rsplit("/", 1)[-1]
         else:
             version = (query.get("trs_version") or query["trs_version_id"])[0]
         assert workflow["source_metadata"]["trs_version_id"] == version
