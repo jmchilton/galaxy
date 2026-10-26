@@ -1,4 +1,3 @@
-import json
 from typing import (
     Any,
 )
@@ -892,7 +891,7 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         self.tool_parameter_edit_rules()
         rule_builder._.wait_for_visible()
         self.screenshot("tool_apply_rules_builder_landing")
-        self.rule_builder_set_source(json.dumps(example["rules"]))
+        self.rule_builder_set_source(example["rules"])
         self.screenshot("tool_apply_rules_after")
         rule_builder.main_button_ok.wait_for_and_click()
         self.tool_form_execute()
@@ -915,7 +914,7 @@ class TestLoggedInToolForm(SeleniumTestCase, UsesUploadActivity):
         rule_builder._.wait_for_visible()
         if rule_init_screenshot:
             self.screenshot(rule_init_screenshot)
-        self.rule_builder_set_source(json.dumps(rules_json))
+        self.rule_builder_set_source(rules_json)
         if rule_complete_screenshot:
             self.screenshot(rule_complete_screenshot)
         rule_builder.main_button_ok.wait_for_and_click()

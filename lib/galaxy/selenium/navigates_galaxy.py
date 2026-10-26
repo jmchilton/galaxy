@@ -1462,10 +1462,11 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
             self.screenshot_if(screenshot_name)
         rule_builder.mapping_ok.wait_for_and_click()
 
-    def rule_builder_set_source(self, json):
+    def rule_builder_set_source(self, source: str | dict | list):
+        """Replace the rules via the JSON source view; ``source`` is JSON text or the rules object."""
         rule_builder = self.components.rule_builder
         rule_builder.view_source.wait_for_and_click()
-        self.rule_builder_enter_source_text(json)
+        self.rule_builder_enter_source_text(source if isinstance(source, str) else json.dumps(source))
         rule_builder.main_button_ok.wait_for_and_click()
         rule_builder.view_source.wait_for_visible()
 
@@ -1482,11 +1483,11 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def rule_builder_show_and_get_source_as_json(self) -> dict:
         return json.loads(self.rule_builder_show_and_get_source())
 
-    def rule_builder_enter_source_text(self, json):
+    def rule_builder_enter_source_text(self, text: str):
         rule_builder = self.components.rule_builder
         text_area_elem = rule_builder.source.wait_for_visible()
         text_area_elem.clear()
-        text_area_elem.send_keys(json)
+        text_area_elem.send_keys(text)
 
     def workflow_editor_add_input(self, item_name="data_input"):
         """Add an input step of kind ``item_name`` from the editor's Inputs panel."""

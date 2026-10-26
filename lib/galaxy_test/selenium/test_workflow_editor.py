@@ -1077,7 +1077,7 @@ steps:
             rules=[{"type": "add_column_metadata", "value": "identifier0"}],
             mapping=[{"type": "list_identifiers", "columns": [0]}],
         )
-        self.rule_builder_set_source(json.dumps(new_rules))
+        self.rule_builder_set_source(new_rules)
         rule_builder.main_button_ok.wait_for_and_click()
         apply_node.title.wait_for_and_click()
         self.sleep_for(self.wait_types.UX_RENDER)
