@@ -1,11 +1,18 @@
 import os
 from functools import wraps
+from urllib.parse import (
+    parse_qs,
+    urlparse,
+)
 
 from galaxy.util.unittest_utils import (
     skip_if_dockstore_down,
     skip_if_workflowhub_down,
 )
-from .framework import SeleniumIntegrationTestCase
+from .framework import (
+    selenium_test,
+    SeleniumIntegrationTestCase,
+)
 
 TRS_API_URL_DOCKSTORE = "https://dockstore.org/api"
 TRS_API_URL_WORKFLOWHUB = "https://workflowhub.eu"
@@ -179,6 +186,22 @@ class TestTrsImport(SeleniumIntegrationTestCase):
     def test_auto_import_by_trs_url_workflowhub(self):
         import_url = f"workflows/trs_import?trs_url={TRS_URL_WORKFLOWHUB}"
         self._import_workflow_by_url(import_url)
+
+    @skip_if_dockstore_down
+    @selenium_test
+    def test_auto_import_by_trs_version_id_run_form(self) -> None:
+        import_url = f"workflows/trs_import?trs_server=dockstore.org&trs_version_id={TRS_VERSION_DOCKSTORE}&trs_id=%23{TRS_ID_DOCKSTORE}&run_form=true"
+        self.get(import_url)
+        self._wait_on(
+            lambda: urlparse(self.current_url).path.endswith("/workflows/run"),
+            "the imported workflow's run page",
+            wait_type=self.wait_types.SHED_SEARCH,
+        )
+        imported = self.workflow_populator.index()
+        assert len(imported) == 1, imported
+        assert parse_qs(urlparse(self.current_url).query)["id"][0] == imported[0]["id"]
+        workflow = self.workflow_populator.download_workflow(imported[0]["id"])
+        assert workflow["source_metadata"]["trs_version_id"] == TRS_VERSION_DOCKSTORE
 
     def _import_by_id(self, trs_id, server):
         self.go_to_trs_by_id()

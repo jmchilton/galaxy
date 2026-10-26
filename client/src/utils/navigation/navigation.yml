@@ -975,6 +975,8 @@ workflows:
     view_button: '[id^="g-card-title-link-"]'
     workflow_preview_container: '.workflow-card-preview-modal .workflow-published .published-workflow'
     workflow_preview_information: '.workflow-information'
+    preview_run_button: '.workflow-card-preview-modal a[href*="/workflows/run?id="]'
+    preview_import_button: '.workflow-card-preview-modal [data-description="workflow import"]'
     view_external_link: "[id^='g-card-action-workflow-view-external-link-']"
     bookmark_link: '[id^="g-card-bookmark-${action}-"]'
     import_file: '.workflow-import-file'
@@ -1100,6 +1102,7 @@ workflow_run:
     # TODO: put step labels in the DOM ideally
     subworkflow_step_icon: ".portlet-title-icon.fa-sitemap"
     run_workflow: "#run-workflow"
+    import_button: '[data-description="import workflow button"]'
     run_workflow_disabled: "#run-workflow.g-disabled"
     validation_error: ".validation-error"
     expand_form_link: '.workflow-expand-form-link'
