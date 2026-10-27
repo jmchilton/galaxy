@@ -15,6 +15,7 @@ from collections.abc import (
     Sequence,
 )
 from pathlib import Path
+from threading import Lock
 from typing import (
     Any,
     cast,
@@ -1069,6 +1070,7 @@ class Tool(UsesDictVisibleKeys, ToolParameterBundle):
         self._is_workflow_compatible = None
         self.__tests: Optional[str] = None
         self.__tests_parsed: bool = False
+        self.__tests_lock = Lock()
         try:
             self.parse(tool_source, guid=guid, dynamic=dynamic)
         except Exception as e:
@@ -1575,7 +1577,13 @@ class Tool(UsesDictVisibleKeys, ToolParameterBundle):
         self.config_files.extend(tool_source.parse_file_sources())
 
     def parse_tests(self):
-        self.__tests_parsed = True
+        with self.__tests_lock:
+            if self.__tests_parsed:
+                return
+            self.__parse_tests()
+            self.__tests_parsed = True
+
+    def __parse_tests(self):
         source = self.tool_source
         if source is None:
             return
