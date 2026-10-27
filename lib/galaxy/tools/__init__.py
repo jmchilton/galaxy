@@ -2552,6 +2552,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         rerun_remap_job_id: int | None = None,
         credentials_context: CredentialsContext | None = None,
         input_format: str = "legacy",
+        job_handler: str | None = None,
     ):
         """The tool request API+tasks version of handle_input."""
         all_params, all_errors, collection_info, job_tool_states = self.expand_incoming_async(
@@ -2572,6 +2573,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             preferred_object_store_id=preferred_object_store_id,
             credentials_context=credentials_context,
             collection_info=collection_info,
+            job_handler=job_handler,
         )
 
     def handle_input(

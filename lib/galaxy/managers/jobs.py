@@ -2286,6 +2286,7 @@ class JobSubmitter:
                 rerun_remap_job_id=rerun_remap_job_id,
                 preferred_object_store_id=request.preferred_object_store_id,
                 credentials_context=credentials_context,
+                job_handler=request.job_handler,
             )
             if request.tags:
                 execution_tracker.apply_tags(request_context.tag_handler, request_context.user, request.tags)
@@ -2317,7 +2318,6 @@ class JobSubmitter:
             user,
             history=target_history,
             galaxy_session=galaxy_session,
-            origin_job_handler=request.handler,
         )
         return trans
 

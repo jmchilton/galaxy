@@ -41,7 +41,6 @@ class WorkRequestContext(ProvidesHistoryContext):
         url_builder=None,
         galaxy_session: Optional["GalaxySession"] = None,
         short_term_cache: dict[tuple[Hashable, ...], Any] | None = None,
-        origin_job_handler: str | None = None,
     ):
         self._app = app
         self.__user = user
@@ -56,7 +55,6 @@ class WorkRequestContext(ProvidesHistoryContext):
         )
         self.workflow_building_mode = workflow_building_mode
         self.galaxy_session = galaxy_session
-        self.origin_job_handler = origin_job_handler
 
     @property
     def app(self):

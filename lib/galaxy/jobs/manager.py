@@ -56,7 +56,7 @@ class JobManager:
         return JobHandlerMessage(task="setup", job_id=job.id)
 
     def enqueue(
-        self, job: "Job", tool: Union["Tool", None] = None, flush: bool = True, handler: str | None = None
+        self, job: "Job", tool: Union["Tool", None] = None, flush: bool = True, job_handler: str | None = None
     ) -> str:
         """Queue a job for execution.
 
@@ -73,7 +73,7 @@ class JobManager:
         :returns: str or None -- Handler ID, tag, or pool assigned to the job.
         """
         tool_id = tool.id if tool else None
-        configured_handler = handler
+        configured_handler = job_handler
         if tool and configured_handler is None:
             configured_handler = tool.get_configured_job_handler()
             if configured_handler is not None:

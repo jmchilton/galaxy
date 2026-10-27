@@ -179,6 +179,7 @@ def execute_async(
     job_callback: Callable | None = None,
     workflow_resource_parameters: dict[str, Any] | None = None,
     validate_outputs: bool = False,
+    job_handler: str | None = None,
 ) -> "ExecutionTracker":
     """The tool request/async version of execute."""
     completed_jobs = completed_jobs or {}
@@ -200,6 +201,7 @@ def execute_async(
         completed_jobs,
         workflow_resource_parameters,
         validate_outputs,
+        job_handler=job_handler,
     )
 
 
@@ -263,6 +265,8 @@ def _execute(
     completed_jobs: dict[int, model.Job | None],
     workflow_resource_parameters: dict[str, Any] | None,
     validate_outputs: bool,
+    *,
+    job_handler: str | None = None,
 ) -> "ExecutionTracker":
     if max_num_jobs is not None:
         assert invocation_step is not None
@@ -419,7 +423,7 @@ def _execute(
             )()
             job2.set_runner_external_id(async_result.task_id)
             continue
-        tool.app.job_manager.enqueue(job2, tool=tool, flush=False, handler=getattr(trans, "origin_job_handler", None))
+        tool.app.job_manager.enqueue(job2, tool=tool, flush=False, job_handler=job_handler)
         trans.log_event(f"Added job to the job queue, id: {str(job2.id)}", tool_id=tool_id)
     trans.sa_session.commit()
 
