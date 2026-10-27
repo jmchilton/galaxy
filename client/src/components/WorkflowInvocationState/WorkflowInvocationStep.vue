@@ -21,6 +21,7 @@ import WorkflowStepTitle from "./WorkflowStepTitle.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GTab from "@/components/BaseComponents/GTab.vue";
 import GTabs from "@/components/BaseComponents/GTabs.vue";
+import StepAllRunsTab from "@/components/Comparison/StepAllRunsTab.vue";
 import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import FormDefault from "@/components/Workflow/Editor/Forms/FormDefault.vue";
@@ -337,6 +338,10 @@ onUnmounted(() => {
                                             <FormDefault v-else :step="activeStepWithConfig" :datatypes="datatypes" />
                                         </fieldset>
                                     </GTab>
+                                    <StepAllRunsTab
+                                        :invocation="invocation"
+                                        :workflow-step="workflowStep"
+                                        :graph-step="graphStep" />
                                 </GTabs>
                             </div>
                         </div>
