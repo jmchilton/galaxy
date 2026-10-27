@@ -58,7 +58,7 @@ const params = computed<StepRunsParams | undefined>(() => {
         metadata_elements: metadata.length ? metadata : undefined,
     };
 });
-const { total, loading, error } = useComparisonFetch(params, fetchStepRuns, table);
+const { total, loading, error, reload } = useComparisonFetch(params, fetchStepRuns, table);
 
 watch(
     () => [props.workflowId, props.stepLabel],
@@ -84,7 +84,10 @@ const pageLink = computed(() => {
             that version on will show here.
         </GAlert>
         <template v-else>
-            <GAlert v-if="error" variant="danger" show>{{ error }}</GAlert>
+            <GAlert v-if="error" variant="danger" show>
+                {{ error }}
+                <GButton class="comparison-retry ml-2" size="small" outline @click="reload">Retry</GButton>
+            </GAlert>
             <LoadingSpan v-if="loading && !table" message="Loading runs of this step" />
             <template v-if="table">
                 <ComparisonTable

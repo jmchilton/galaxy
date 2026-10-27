@@ -158,9 +158,15 @@ describe("StepRunsTab", () => {
         expect(tab.findComponent(ComparisonTable).exists()).toBe(false);
     });
 
-    it("shows the server's error", async () => {
+    it("shows the server's error and retries it", async () => {
         fail = true;
         const tab = await mountTab();
         expect(tab.find(".alert-danger").text()).toContain("Step label not found");
+        fail = false;
+        await tab.find(".alert-danger .comparison-retry").trigger("click");
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(tab.find(".alert-danger").exists()).toBe(false);
+        expect(tab.findComponent(ComparisonTable).exists()).toBe(true);
     });
 });

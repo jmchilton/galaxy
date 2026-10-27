@@ -74,7 +74,7 @@ const fetchRequest = computed<ComparisonRequest | undefined>(() => {
         params: { ...request.value.params, metadata_elements: metadata.length ? metadata : undefined },
     } as ComparisonRequest;
 });
-const { total, loading, error } = useComparisonFetch(fetchRequest, fetchComparison, table);
+const { total, loading, error, reload } = useComparisonFetch(fetchRequest, fetchComparison, table);
 
 watch(kind, () => {
     table.value = undefined;
@@ -259,7 +259,10 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
                 </template>
             </div>
 
-            <GAlert v-if="error" variant="danger" show>{{ error }}</GAlert>
+            <GAlert v-if="error" variant="danger" show>
+                {{ error }}
+                <GButton class="comparison-retry ml-2" size="small" outline @click="reload">Retry</GButton>
+            </GAlert>
             <LoadingSpan v-if="loading && !table" message="Loading runs" />
             <template v-if="table">
                 <ComparisonTable

@@ -39,6 +39,8 @@ export function useComparisonFetch<P>(
         } catch (e) {
             if (controller === own) {
                 error.value = errorMessageAsString(e, "Failed to load runs.");
+                // Let the same params fetch again.
+                lastParams = undefined;
             }
         } finally {
             if (controller === own) {

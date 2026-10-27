@@ -20,6 +20,7 @@ const { server, http } = useServerMock();
 vi.unmock("@/composables/userLocalStorage");
 
 let requests: { path: string; query: URLSearchParams }[];
+let fail: boolean;
 let wrapper: VueWrapper | undefined;
 
 function tableFor(query: Record<string, unknown>): Table {
@@ -29,6 +30,7 @@ function tableFor(query: Record<string, unknown>): Table {
 beforeEach(() => {
     localStorage.clear();
     requests = [];
+    fail = false;
     const record = (request: Request) => {
         const url = new URL(request.url);
         requests.push({ path: url.pathname, query: url.searchParams });
@@ -46,6 +48,9 @@ beforeEach(() => {
         }),
         http.get("/api/tool_runs", ({ request, response }) => {
             record(request);
+            if (fail) {
+                return response("5XX").json({ err_msg: "Server down", err_code: 500 }, { status: 500 });
+            }
             const table = {
                 ...tableFor({ kind: "tool_runs", tool_id: "cat1" }),
                 tool_versions_available: ["1.0", "2.0"],
@@ -146,6 +151,18 @@ describe("ComparisonView", () => {
         const [only, ...rest] = comparisonRequests();
         expect(rest).toHaveLength(0);
         expect(only!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
+    });
+
+    it("retries a failed fetch", async () => {
+        fail = true;
+        const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
+        expect(view.find(".alert-danger").text()).toContain("Server down");
+        fail = false;
+        await view.find(".alert-danger .comparison-retry").trigger("click");
+        await flushPromises();
+        expect(comparisonRequests()).toHaveLength(2);
+        expect(view.find(".alert-danger").exists()).toBe(false);
+        expect(view.findComponent(ComparisonTable).exists()).toBe(true);
     });
 
     it.each([
