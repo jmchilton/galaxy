@@ -2,12 +2,15 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toRaw } from "vue";
 
+import { testDatatypesMapper } from "@/components/Datatypes/test_fixtures";
+import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { LazyUndoRedoAction, type UndoRedoAction, useUndoRedoStore } from "@/stores/undoRedoStore";
 import { useConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowCommentStore } from "@/stores/workflowEditorCommentStore";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
-import { useWorkflowStepStore } from "@/stores/workflowStepStore";
+import { type Step, useWorkflowStepStore } from "@/stores/workflowStepStore";
 
+import { CollectionTypeDescription, NULL_COLLECTION_TYPE_DESCRIPTION } from "../modules/collectionTypeDescription";
 import { fromSimple, type Workflow } from "../modules/model";
 import {
     AddCommentAction,
@@ -29,6 +32,7 @@ import {
     RemoveStepAction,
     ToggleStepSelectedAction,
     UpdateStepAction,
+    useStepActions,
 } from "./stepActions";
 import {
     AddToSelectionAction,
@@ -303,6 +307,125 @@ describe("Workflow Undo Redo Actions", () => {
             const step = addStep();
             const action = new ToggleStepSelectedAction(stateStore, stepStore, step.id);
             testUndoRedo(action);
+        });
+
+        it("updateStep drops connections its input_connections no longer lists, undoably", () => {
+            const gated = mockToolStep(stepStore.getStepIndex + 1);
+            stepStore.addStep({
+                ...gated,
+                when: "$(inputs.when)",
+                input_connections: { ...gated.input_connections, when: [{ output_name: "output", id: 0 }] },
+            });
+            const gateConnections = () =>
+                connectionStore.connections.filter(
+                    (connection) => connection.input.stepId === gated.id && connection.input.name === "when",
+                );
+            expect(gateConnections()).toHaveLength(1);
+            const before = getWorkflowSnapshot(workflow);
+
+            const { updateStep } = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore, workflowId);
+            updateStep(gated.id, { when: "$(inputs.input1 !== null)", input_connections: gated.input_connections });
+            expect(gateConnections()).toHaveLength(0);
+            expect(stepStore.getStep(gated.id)?.input_connections).not.toHaveProperty("when");
+            const after = getWorkflowSnapshot(workflow);
+
+            undoRedoStore.undo();
+            expect(gateConnections()).toHaveLength(1);
+            expect(getWorkflowSnapshot(workflow)).toEqual(before);
+
+            undoRedoStore.redo();
+            expect(getWorkflowSnapshot(workflow)).toEqual(after);
+        });
+
+        describe("updateStep changing `when`", () => {
+            const sourceLink = [{ output_name: "output", id: 0 }];
+
+            function addGatedStep(when: string, gateNames: string[]) {
+                const gated = mockToolStep(stepStore.getStepIndex + 1);
+                const gateConnections = Object.fromEntries(gateNames.map((name) => [name, sourceLink]));
+                stepStore.addStep({
+                    ...gated,
+                    when,
+                    input_connections: { ...gated.input_connections, ...gateConnections },
+                });
+                return gated.id;
+            }
+
+            function connectedInputNames(stepId: number) {
+                return connectionStore.connections
+                    .filter((connection) => connection.input.stepId === stepId)
+                    .map((connection) => connection.input.name)
+                    .sort();
+            }
+
+            function updateStep(stepId: number, toPartial: Partial<Step>) {
+                useStepActions(stepStore, undoRedoStore, stateStore, connectionStore, workflowId).updateStep(
+                    stepId,
+                    toPartial,
+                );
+            }
+
+            it("drops the boolean gate's connection when the condition is cleared, undoably", () => {
+                const stepId = addGatedStep("$(inputs.when)", ["when"]);
+                const before = getWorkflowSnapshot(workflow);
+
+                updateStep(stepId, { when: undefined });
+                expect(connectedInputNames(stepId)).toEqual(["input1"]);
+                expect(stepStore.getStep(stepId)?.input_connections).toEqual({ input1: sourceLink });
+                const after = getWorkflowSnapshot(workflow);
+
+                undoRedoStore.undo();
+                expect(getWorkflowSnapshot(workflow)).toEqual(before);
+                undoRedoStore.redo();
+                expect(getWorkflowSnapshot(workflow)).toEqual(after);
+            });
+
+            it("drops every link a cleared custom condition read, but not tool inputs it read", () => {
+                const stepId = addGatedStep("$(inputs.input1 !== null && inputs.flag && inputs.other)", [
+                    "flag",
+                    "other",
+                ]);
+                const before = getWorkflowSnapshot(workflow);
+
+                updateStep(stepId, { when: undefined });
+                expect(connectedInputNames(stepId)).toEqual(["input1"]);
+                expect(stepStore.getStep(stepId)?.input_connections).toEqual({ input1: sourceLink });
+
+                undoRedoStore.undo();
+                expect(getWorkflowSnapshot(workflow)).toEqual(before);
+            });
+
+            it("keeps the links the new condition still reads", () => {
+                const stepId = addGatedStep("$(inputs.flag && inputs.other)", ["flag", "other"]);
+
+                updateStep(stepId, { when: "$(inputs.flag)" });
+                expect(connectedInputNames(stepId)).toEqual(["flag", "input1"]);
+                expect(stepStore.getStep(stepId)?.input_connections).not.toHaveProperty("other");
+            });
+
+            it("leaves connections to unknown inputs for the user to disconnect", () => {
+                const stepId = addGatedStep("$(inputs.when)", ["when"]);
+                connectionStore.addConnection({
+                    input: { stepId, name: "removed_tool_input", connectorType: "input" },
+                    output: { stepId: 0, name: "output", connectorType: "output" },
+                });
+
+                updateStep(stepId, { when: undefined });
+                expect(connectedInputNames(stepId)).toEqual(["input1", "removed_tool_input"]);
+            });
+
+            it("resets the map-over the dropped gate connection left behind", () => {
+                useDatatypesMapperStore().datatypesMapper = testDatatypesMapper;
+                const stepId = addGatedStep("$(inputs.when)", ["when"]);
+                stepStore.changeStepMapOver(stepId, new CollectionTypeDescription("list"));
+                const before = getWorkflowSnapshot(workflow);
+
+                updateStep(stepId, { when: undefined });
+                expect(stepStore.stepMapOver[stepId]).toEqual(NULL_COLLECTION_TYPE_DESCRIPTION);
+
+                undoRedoStore.undo();
+                expect(getWorkflowSnapshot(workflow)).toEqual(before);
+            });
         });
     });
 });

@@ -317,6 +317,17 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
         stepExtraInputs.value[step.id] = findStepExtraInputs(step);
     }
 
+    /** Names of the step's extra input ports that applying `update` would remove. */
+    function extraInputsRemovedBy(stepId: number, update: Partial<Step>): string[] {
+        const step = getStep.value(stepId);
+        assertDefined(step);
+        const remaining = findStepExtraInputs({ ...step, ...update }).map((input) => input.name);
+        return getStepExtraInputs
+            .value(stepId)
+            .map((input) => input.name)
+            .filter((name) => !remaining.includes(name));
+    }
+
     function updateStepValue<K extends keyof Step>(stepId: number, key: K, value: Step[K]) {
         const step = steps.value[stepId];
         assertDefined(step);
@@ -449,6 +460,7 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
         $reset,
         getStep,
         getStepExtraInputs,
+        extraInputsRemovedBy,
         getStepIndex,
         hasActiveOutputs,
         hasGatedSteps,

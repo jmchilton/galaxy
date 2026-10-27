@@ -2,18 +2,30 @@ import { toRaw } from "vue";
 
 import { replaceLabel } from "@/components/Markdown/parse";
 import { autoLayout } from "@/components/Workflow/Editor/modules/layout";
+import { terminalFactory } from "@/components/Workflow/Editor/modules/terminals";
 import { useToast } from "@/composables/toast";
+import { useWorkflowStores } from "@/composables/workflowStores";
+import { useDatatypesMapperStore } from "@/stores/datatypesMapperStore";
 import { useRefreshFromStore } from "@/stores/refreshFromStore";
 import { LazyUndoRedoAction, UndoRedoAction, type UndoRedoStore, useUndoRedoStore } from "@/stores/undoRedoStore";
-import type { WorkflowConnectionStore } from "@/stores/workflowConnectionStore";
+import { getConnectionId, type WorkflowConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowCommentStore } from "@/stores/workflowEditorCommentStore";
 import type { WorkflowStateStore } from "@/stores/workflowEditorStateStore";
-import { type NewStep, type Step, useWorkflowStepStore, type WorkflowStepStore } from "@/stores/workflowStepStore";
+import {
+    getCombinedStepInputs,
+    type NewStep,
+    normalizeConnectionOutputLinks,
+    type Step,
+    useWorkflowStepStore,
+    type WorkflowStepStore,
+} from "@/stores/workflowStepStore";
 import type { Connection } from "@/stores/workflowStoreTypes";
 import { assertDefined } from "@/utils/assertions";
 import { cloneRaw } from "@/utils/toRawDeep";
 
 import { cloneStepWithUniqueLabel, getLabelSet } from "./cloneStep";
+
+type WorkflowStores = ReturnType<typeof useWorkflowStores>;
 
 export class LazyMutateStepAction<K extends keyof Step> extends LazyUndoRedoAction {
     key: K;
@@ -227,6 +239,84 @@ export class UpdateStepAction extends UndoRedoAction {
     redo() {
         this.run();
         this.onUndoRedo?.();
+    }
+}
+
+/**
+ * Updates a step's `when` or `input_connections`, dropping each connection left without a port.
+ * A connection loses its port when the new `input_connections` omits it or the new `when` no longer reads it.
+ */
+export class UpdateStepConnectionsAction extends UpdateStepAction {
+    stores;
+    droppedConnections: Connection[];
+    mapOverBefore?: Pick<WorkflowStepStore, "stepMapOver" | "stepInputMapOver">;
+
+    constructor(stores: WorkflowStores, stepId: number, fromPartial: Partial<Step>, toPartial: Partial<Step>) {
+        const step = stores.stepStore.getStep(stepId);
+        assertDefined(step);
+        const orphanedPorts = stores.stepStore.extraInputsRemovedBy(stepId, toPartial);
+        if (orphanedPorts.length > 0) {
+            const inputConnections = { ...(toPartial.input_connections ?? step.input_connections) };
+            orphanedPorts.forEach((name) => delete inputConnections[name]);
+            toPartial = { ...toPartial, input_connections: inputConnections };
+            fromPartial = { ...fromPartial, input_connections: cloneRaw(step.input_connections) };
+        }
+        super(stores.stepStore, stores.stateStore, stepId, fromPartial, toPartial);
+        this.stores = stores;
+        const kept = toPartial.input_connections;
+        const dropped = kept
+            ? stores.connectionStore
+                  .getConnectionsForStep(stepId)
+                  .filter(
+                      (connection) =>
+                          connection.input.stepId === stepId &&
+                          !normalizeConnectionOutputLinks(kept[connection.input.name]).some(
+                              (link) =>
+                                  link.id === connection.output.stepId && link.output_name === connection.output.name,
+                          ),
+                  )
+            : [];
+        this.droppedConnections = cloneRaw(dropped);
+    }
+
+    run() {
+        if (this.droppedConnections.length > 0) {
+            const { stepMapOver, stepInputMapOver } = this.stores.stepStore;
+            this.mapOverBefore = {
+                stepMapOver: { ...stepMapOver },
+                stepInputMapOver: Object.fromEntries(
+                    Object.entries(stepInputMapOver).map(([stepId, inputs]) => [stepId, { ...inputs }]),
+                ),
+            };
+        }
+        this.droppedConnections.forEach((connection) => this.dropConnection(connection));
+        super.run();
+    }
+
+    undo() {
+        // Re-adding rewrites the links, so the step's own fields are restored last.
+        this.droppedConnections.forEach((connection) =>
+            this.stores.connectionStore.addConnection(cloneRaw(connection)),
+        );
+        super.undo();
+        if (this.mapOverBefore) {
+            this.stores.stepStore.stepMapOver = this.mapOverBefore.stepMapOver;
+            this.stores.stepStore.stepInputMapOver = this.mapOverBefore.stepInputMapOver;
+        }
+    }
+
+    /** Drops through the input terminal, as a manual disconnect does, so map-over is reset too. */
+    private dropConnection(connection: Connection) {
+        const step = this.stores.stepStore.getStep(this.stepId);
+        const port =
+            step &&
+            getCombinedStepInputs(step, this.stores.stepStore).find((input) => input.name === connection.input.name);
+        const datatypesMapper = useDatatypesMapperStore().datatypesMapper;
+        if (port && datatypesMapper) {
+            terminalFactory(this.stepId, port, datatypesMapper, this.stores).dropConnection(connection);
+        } else {
+            this.stores.connectionStore.removeConnection(getConnectionId(connection));
+        }
     }
 }
 
@@ -541,6 +631,7 @@ export function useStepActions(
     undoRedoStore: UndoRedoStore,
     stateStore: WorkflowStateStore,
     connectionStore: WorkflowConnectionStore,
+    workflowId: string,
 ) {
     /**
      * If the pending action is a `LazyMutateStepAction` and matches the step id and field key, returns it.
@@ -688,7 +779,10 @@ export function useStepActions(
             fromPartial[key as keyof Step] = cloneRaw(fromStep[key as keyof Step]) as any;
         });
 
-        const action = new UpdateStepAction(stepStore, stateStore, id, fromPartial, toPartial);
+        const action =
+            "when" in toPartial || "input_connections" in toPartial
+                ? new UpdateStepConnectionsAction(useWorkflowStores(workflowId), id, fromPartial, toPartial)
+                : new UpdateStepAction(stepStore, stateStore, id, fromPartial, toPartial);
 
         if (!action.isEmpty()) {
             action.onUndoRedo = () => {

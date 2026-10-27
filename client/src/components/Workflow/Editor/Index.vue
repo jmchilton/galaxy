@@ -397,7 +397,7 @@ onUnmounted(async () => {
     emit("update:confirmation", false);
 });
 
-const stepActions = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore);
+const stepActions = useStepActions(stepStore, undoRedoStore, stateStore, connectionStore, id.value);
 
 /** Workflow data object that is used for saving and creating workflows.
  * It is a computed property that returns an object with the current values of the workflow properties. */
