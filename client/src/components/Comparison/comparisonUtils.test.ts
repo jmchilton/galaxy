@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonColumn, ComparisonQuery, ComparisonRow, ComparisonTable, MissingCell } from "@/api/comparisons";
+import type { ComparisonColumn, ComparisonQuery, ComparisonRow, MissingCell } from "@/api/comparisons";
 
 import {
     defaultDisplay,
@@ -14,9 +14,9 @@ import {
     runLink,
     versionLabel,
 } from "./comparisonUtils";
-import STEP_RUNS from "./test-data/step_runs.json";
+import { STEP_RUNS_TABLE } from "./test-utils";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 
 function column(overrides: Partial<ComparisonColumn>): ComparisonColumn {
     return { key: "output:x", label: "x", role: "output", duplicate: false, metadata_keys: [], ...overrides };

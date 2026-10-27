@@ -4,15 +4,13 @@ import flushPromises from "flush-promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useServerMock } from "@/api/client/__mocks__";
-import type { ComparisonTable as Table } from "@/api/comparisons";
-import { useHashedUserId } from "@/composables/hashedUserIdFromUserStore";
 
-import STEP_RUNS from "./test-data/step_runs.json";
+import { seedDisplayPrefs, STEP_RUNS_TABLE } from "./test-utils";
 
 import ComparisonTable from "./ComparisonTable.vue";
 import StepRunsTab from "./StepRunsTab.vue";
 
-const TABLE = STEP_RUNS as unknown as Table;
+const TABLE = STEP_RUNS_TABLE;
 const STORED_WORKFLOW_ID = TABLE.query.kind === "step_runs" ? TABLE.query.workflow_id : "";
 const { server, http } = useServerMock();
 
@@ -64,8 +62,7 @@ afterEach(() => {
 async function mountTab(props: Record<string, unknown> = {}, storedPrefs?: Record<string, unknown>) {
     const localVue = getLocalVue();
     if (storedPrefs) {
-        const { hashedUserId } = useHashedUserId();
-        localStorage.setItem(`comparison-display-${hashedUserId.value}`, JSON.stringify(storedPrefs));
+        seedDisplayPrefs(storedPrefs);
     }
     wrapper = mount(StepRunsTab as object, {
         props: {

@@ -4,13 +4,12 @@ import { setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type EffectScope, effectScope, ref } from "vue";
 
-import type { ComparisonResult, ComparisonTable } from "@/api/comparisons";
-import { useHashedUserId } from "@/composables/hashedUserIdFromUserStore";
+import type { ComparisonResult } from "@/api/comparisons";
 
-import STEP_RUNS from "./test-data/step_runs.json";
+import { displayPrefsKey, seedDisplayPrefs, STEP_RUNS_TABLE } from "./test-utils";
 import { MAX_STORED_DISPLAYS, useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 
 vi.unmock("@/composables/userLocalStorage");
 
@@ -45,22 +44,18 @@ describe("useComparisonFetch", () => {
 });
 
 describe("useComparisonDisplay", () => {
-    function storageKey() {
-        return `comparison-display-${useHashedUserId().hashedUserId.value}`;
-    }
-
     it("keeps only the most recently changed comparisons", async () => {
         const seeded = Object.fromEntries(
             Array.from({ length: MAX_STORED_DISPLAYS }, (_, i) => [`k${i}`, { transpose: true }]),
         );
-        localStorage.setItem(storageKey(), JSON.stringify(seeded));
+        seedDisplayPrefs(seeded);
         const key = ref("k0");
         const display = scope.run(() => useComparisonDisplay(key, ref(TABLE)))!;
         display.transpose.value = false;
         key.value = "new";
         display.transpose.value = true;
         await flushPromises();
-        const stored = JSON.parse(localStorage.getItem(storageKey())!);
+        const stored = JSON.parse(localStorage.getItem(displayPrefsKey())!);
         const keys = Object.keys(stored);
         expect(keys).toHaveLength(MAX_STORED_DISPLAYS);
         expect(keys.slice(-2)).toEqual(["k0", "new"]);

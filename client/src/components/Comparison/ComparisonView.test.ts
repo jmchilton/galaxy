@@ -5,15 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import type { ComparisonTable as Table } from "@/api/comparisons";
-import { useHashedUserId } from "@/composables/hashedUserIdFromUserStore";
 
-import STEP_RUNS from "./test-data/step_runs.json";
+import { seedDisplayPrefs, STEP_RUNS_TABLE } from "./test-utils";
 
 import ComparisonPager from "./ComparisonPager.vue";
 import ComparisonTable from "./ComparisonTable.vue";
 import ComparisonView from "./ComparisonView.vue";
 
-const STEP_TABLE = STEP_RUNS as unknown as Table;
+const STEP_TABLE = STEP_RUNS_TABLE;
 const { server, http } = useServerMock();
 
 // Display preferences persist per user; use the real storage.
@@ -86,8 +85,7 @@ async function mountView(query: Record<string, string | string[]>, storedPrefs?:
     const replace = vi.spyOn(router, "replace").mockResolvedValue(undefined);
     const localVue = getLocalVue();
     if (storedPrefs) {
-        const { hashedUserId } = useHashedUserId();
-        localStorage.setItem(`comparison-display-${hashedUserId.value}`, JSON.stringify(storedPrefs));
+        seedDisplayPrefs(storedPrefs);
     }
     wrapper = mount(ComparisonView as object, {
         props: { query },
