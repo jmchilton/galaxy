@@ -3,22 +3,13 @@
 from collections import defaultdict
 from collections.abc import Collection
 from datetime import datetime
-from typing import (
-    Any,
-    NamedTuple,
-)
+from typing import Any
 
 from sqlalchemy import (
-    and_,
-    or_,
     Row,
-    select,
     Select,
 )
-from sqlalchemy.orm import (
-    aliased,
-    InstrumentedAttribute,
-)
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from galaxy.exceptions import ObjectNotFound
@@ -34,18 +25,23 @@ from galaxy.managers.comparison_columns import (
 )
 from galaxy.managers.comparison_queries import (
     invocation_state_predicate,
+    InvocationPageRow,
+    invocations_stmt,
     invoked_workflows_stmt,
     output_labels_stmt,
     selected_versions,
     step_state_predicate,
-    submission_state_predicate,
     tool_predicates,
+    tool_submissions_stmt,
+    tool_versions_stmt,
+    ToolRunPageRow,
 )
 from galaxy.managers.comparison_records import (
     ComparisonRecordLoader,
     INPUT_STEP_TYPES,
     InvocationStepRecord,
     IoValue,
+    LabelledStep,
     Submission,
     submission_key,
     SubmissionKey,
@@ -53,13 +49,8 @@ from galaxy.managers.comparison_records import (
 from galaxy.managers.comparison_states import missing_reason
 from galaxy.managers.workflows import get_count
 from galaxy.model import (
-    History,
-    ImplicitCollectionJobsJobAssociation,
     Job,
-    Workflow,
     WorkflowInvocation,
-    WorkflowInvocationStep,
-    WorkflowStep,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.comparisons import (
@@ -84,35 +75,6 @@ NOT_SCHEDULED_INVOCATION_STATES = (
 )
 
 
-class InvocationPageRow(NamedTuple):
-    id: int
-    workflow_id: int
-    state: str | None
-    create_time: datetime
-    update_time: datetime
-    history_id: int
-    history_name: str | None
-    history_deleted: bool
-    history_purged: bool
-
-
-class ToolRunPageRow(NamedTuple):
-    job_id: int
-    implicit_collection_jobs_id: int | None
-    create_time: datetime
-    update_time: datetime
-    history_id: int
-    history_name: str | None
-    history_deleted: bool
-    history_purged: bool
-
-    @property
-    def submission_key(self) -> SubmissionKey:
-        key = submission_key(self.job_id, self.implicit_collection_jobs_id)
-        assert key is not None
-        return key
-
-
 class ComparisonsManager:
     def __init__(
         self, sa_session: galaxy_scoped_session, records: ComparisonRecordLoader, cell_builder: ComparisonCellBuilder
@@ -121,105 +83,54 @@ class ComparisonsManager:
         self.records = records
         self.cell_builder = cell_builder
 
-    def step_runs(
-        self, access: ComparisonAccess, stored_workflow_id: int, query: StepRunsQuery
-    ) -> tuple[ComparisonTable, int]:
+    def step_runs(self, access: ComparisonAccess, query: StepRunsQuery) -> tuple[ComparisonTable, int]:
         """One row per invocation of the versions with a step labelled ``query.step_label``."""
-        stmt = (
-            select(WorkflowStep.id, WorkflowStep.workflow_id, WorkflowStep.type)
-            .join(Workflow, Workflow.id == WorkflowStep.workflow_id)
-            .where(Workflow.stored_workflow_id == stored_workflow_id, WorkflowStep.label == query.step_label)
-        )
-        steps_by_workflow = {
-            workflow_id: (step_id, step_type) for step_id, workflow_id, step_type in self.sa_session.execute(stmt)
-        }
-        if not steps_by_workflow:
+        steps = self.records.labelled_steps(query.workflow_id, query.step_label)
+        if not steps:
             raise ObjectNotFound(f"No version of this workflow has a step labelled [{query.step_label}].")
-        step_ids = [step_id for step_id, _ in steps_by_workflow.values()]
-        step_types = {workflow_id: step_type for workflow_id, (_, step_type) in steps_by_workflow.items()}
+        step_ids = [step.id for step in steps.values()]
         state_predicate = step_state_predicate(step_ids, query.states) if query.states else None
-        version_map = self.records.version_map(stored_workflow_id)
-        workflow_ids = selected_versions({wid: version_map[wid] for wid in steps_by_workflow}, query.versions)
+        version_map = self.records.version_map(query.workflow_id)
+        workflow_ids = selected_versions({wid: version_map[wid] for wid in steps}, query.versions)
         page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
-        step_by_workflow = {workflow_id: step_id for workflow_id, (step_id, _) in steps_by_workflow.items()}
-        columns, rows = self._step_rows(access, page, step_by_workflow, step_types, query, version_map)
-        invoked = self.sa_session.scalars(invoked_workflows_stmt(access.user_id, steps_by_workflow).distinct())
-        versions_available = sorted(version_map[workflow_id] for workflow_id in invoked)
+        columns, rows = self._step_rows(access, page, steps, query, version_map)
+        versions_available = self._versions_available(access.user_id, version_map, steps)
         table = ComparisonTable(query=query, columns=columns, rows=rows, versions_available=versions_available)
         return table, total
 
-    def output_runs(
-        self, access: ComparisonAccess, stored_workflow_id: int, query: OutputRunsQuery
-    ) -> tuple[ComparisonTable, int]:
+    def output_runs(self, access: ComparisonAccess, query: OutputRunsQuery) -> tuple[ComparisonTable, int]:
         """One row per invocation of any version, with labelled workflow inputs and outputs as columns."""
-        version_map = self.records.version_map(stored_workflow_id)
+        version_map = self.records.version_map(query.workflow_id)
         state_predicate = invocation_state_predicate(query.states) if query.states else None
         workflow_ids = selected_versions(version_map, query.versions)
         page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         columns, rows = self._output_rows(access, page, query, version_map)
-        output_labels = self._invoked_output_labels(access.user_id, version_map)
-        invoked = self.sa_session.scalars(invoked_workflows_stmt(access.user_id, version_map).distinct())
         table = ComparisonTable(
             query=query,
             columns=columns,
             rows=rows,
-            output_labels_available=output_labels,
-            versions_available=sorted(version_map[workflow_id] for workflow_id in invoked),
+            output_labels_available=self._invoked_output_labels(access.user_id, version_map),
+            versions_available=self._versions_available(access.user_id, version_map, version_map),
         )
         return table, total
 
     def tool_runs(self, access: ComparisonAccess, query: ToolRunsQuery) -> tuple[ComparisonTable, int]:
         """One row per submission of a tool: a plain job, or a mapped batch shown by its first job."""
         predicates = tool_predicates(access.user_id, query.tool_id)
-        icjja = ImplicitCollectionJobsJobAssociation
-        sibling = aliased(ImplicitCollectionJobsJobAssociation)
-        earlier_sibling = (
-            select(sibling.id)
-            .where(
-                sibling.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id,
-                or_(
-                    sibling.order_index < icjja.order_index,
-                    and_(sibling.order_index == icjja.order_index, sibling.job_id < icjja.job_id),
-                ),
-            )
-            .exists()
-        )
-        stmt = (
-            select(
-                Job.id,
-                icjja.implicit_collection_jobs_id,
-                Job.create_time,
-                Job.update_time,
-                History.id,
-                History.name,
-                History.deleted,
-                History.purged,
-            )
-            .join(History, History.id == Job.history_id)
-            .outerjoin(icjja, icjja.job_id == Job.id)
-            .where(*predicates, ~earlier_sibling)
-        )
-        if query.tool_versions:
-            stmt = stmt.where(Job.tool_version.in_(query.tool_versions))
-        if query.history_id is not None:
-            stmt = stmt.where(Job.history_id == query.history_id)
-        if query.states:
-            stmt = stmt.where(submission_state_predicate(query.states))
-        if not query.include_workflow_jobs:
-            wis = WorkflowInvocationStep
-            in_workflow = (
-                select(wis.id)
-                .where(or_(wis.job_id == Job.id, wis.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id))
-                .exists()
-            )
-            stmt = stmt.where(~in_workflow)
+        stmt = tool_submissions_stmt(predicates, query)
         page_rows, total = self._count_and_page(stmt, Job.id, Job.update_time, query)
         page = [ToolRunPageRow(*row) for row in page_rows]
         columns, rows = self._tool_rows(access, page, query)
-        table = ComparisonTable(
-            query=query, columns=columns, rows=rows, tool_versions_available=self._tool_versions(predicates)
-        )
+        tool_versions = sorted(self.sa_session.scalars(tool_versions_stmt(predicates)), key=parse_tool_version)
+        table = ComparisonTable(query=query, columns=columns, rows=rows, tool_versions_available=tool_versions)
         return table, total
+
+    def _versions_available(
+        self, user_id: int, version_map: dict[int, int], workflow_ids: Collection[int]
+    ) -> list[int]:
+        """0-based versions among ``workflow_ids`` the user has invoked."""
+        invoked = self.sa_session.scalars(invoked_workflows_stmt(user_id, workflow_ids).distinct())
+        return sorted(version_map[workflow_id] for workflow_id in invoked)
 
     def _invoked_output_labels(self, user_id: int, version_map: dict[int, int]) -> list[str]:
         """Output labels of every version the user has invoked, newest version first, then step order."""
@@ -277,13 +188,14 @@ class ComparisonsManager:
     def _tool_rows(
         self, access: ComparisonAccess, page: list[ToolRunPageRow], query: ToolRunsQuery
     ) -> tuple[list[ComparisonColumn], list[ComparisonRow]]:
-        submissions = self.records.submissions(row.submission_key for row in page)
+        keys = [_submission_key(row) for row in page]
+        submissions = self.records.submissions(keys)
         inputs = self.records.submission_inputs(submissions.values())
         outputs = self.records.submission_outputs(submissions.values())
         via = self.records.workflow_runs_via(submissions.values())
 
         # the loaders return every paged id, so total_matches and rows agree
-        paged = [submissions[row.submission_key] for row in page]
+        paged = [submissions[key] for key in keys]
         ios: list[dict[str, IoValue]] = []
         specs: dict[str, ColumnSpec] = {}
         declared: dict[str | None, set[str]] = defaultdict(set)
@@ -327,13 +239,12 @@ class ComparisonsManager:
         self,
         access: ComparisonAccess,
         page: list[InvocationPageRow],
-        step_by_workflow: dict[int, int],
-        step_types: dict[int, str],
+        labelled_steps: dict[int, LabelledStep],
         query: StepRunsQuery,
         version_map: dict[int, int],
     ) -> tuple[list[ComparisonColumn], list[ComparisonRow]]:
         invocation_ids = [invocation.id for invocation in page]
-        step_ids = list(step_by_workflow.values())
+        step_ids = [step.id for step in labelled_steps.values()]
         steps = self.records.invocation_steps(invocation_ids, step_ids)
         outputs = self.records.step_outputs([step.id for step in steps.values()])
         step_submissions = {
@@ -350,7 +261,7 @@ class ComparisonsManager:
         declared: dict[int, dict[str, ColumnSpec]] = defaultdict(dict)
         for invocation in page:
             version = version_map[invocation.workflow_id]
-            step_type = step_types[invocation.workflow_id]
+            step_type = labelled_steps[invocation.workflow_id].type
             step = steps.get(invocation.id)
             key = step_submissions.get(invocation.id)
             submission = submissions.get(key) if key else None
@@ -381,7 +292,7 @@ class ComparisonsManager:
                     cells={},
                 )
             )
-        self._declare_defined_step_io(declared, page, step_by_workflow, version_map)
+        self._declare_defined_step_io(declared, page, labelled_steps, version_map)
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
 
@@ -391,7 +302,7 @@ class ComparisonsManager:
             terminal = row.state not in Job.non_ready_states
             reason = missing_reason((step.state or "new") if step else None, row.state, terminal)
             # an input step's one column is in every version with the step
-            is_input_step = step_types[invocation.workflow_id] in INPUT_STEP_TYPES
+            is_input_step = labelled_steps[invocation.workflow_id].type in INPUT_STEP_TYPES
             row_ios.append(RowIo(io, None if is_input_step else declared[version_map[invocation.workflow_id]], reason))
         self._fill_cells(rows, columns, row_ios, access, query)
         return columns, rows
@@ -400,16 +311,18 @@ class ComparisonsManager:
         self,
         declared: dict[int, dict[str, ColumnSpec]],
         page: list[InvocationPageRow],
-        step_by_workflow: dict[int, int],
+        labelled_steps: dict[int, LabelledStep],
         version_map: dict[int, int],
     ) -> None:
         """Declare, for each version, the page's columns its step definition has though its runs left them empty."""
         observed = list(dict.fromkeys(key for specs in declared.values() for key in specs))
         page_workflow_ids = {invocation.workflow_id for invocation in page}
-        defined = self.records.defined_step_inputs([step_by_workflow[workflow_id] for workflow_id in page_workflow_ids])
+        defined = self.records.defined_step_inputs(
+            [labelled_steps[workflow_id].id for workflow_id in page_workflow_ids]
+        )
         for workflow_id in page_workflow_ids:
             version_specs = declared[version_map[workflow_id]]
-            step_defines = defined.get(step_by_workflow[workflow_id], set())
+            step_defines = defined.get(labelled_steps[workflow_id].id, set())
             # a version none of whose runs here recorded outputs yet may have any of them
             outputs_unknown = not any(key.startswith("output:") for key in version_specs)
             for key in observed:
@@ -427,10 +340,6 @@ class ComparisonsManager:
         for row, cells in zip(rows, self.cell_builder.row_cells(columns, row_ios, access, query)):
             row.cells = cells
 
-    def _tool_versions(self, predicates: list[ColumnElement[bool]]) -> list[str]:
-        stmt = select(Job.tool_version).where(*predicates, Job.tool_version.is_not(None)).distinct()
-        return sorted(self.sa_session.scalars(stmt), key=parse_tool_version)
-
     def _page_invocations(
         self,
         user_id: int,
@@ -438,21 +347,7 @@ class ComparisonsManager:
         query: ComparisonQueryBase,
         state_predicate: ColumnElement[bool] | None,
     ) -> tuple[list[InvocationPageRow], int]:
-        stmt = (
-            select(
-                WorkflowInvocation.id,
-                WorkflowInvocation.workflow_id,
-                WorkflowInvocation.state,
-                WorkflowInvocation.create_time,
-                WorkflowInvocation.update_time,
-                History.id,
-                History.name,
-                History.deleted,
-                History.purged,
-            )
-            .join(History, History.id == WorkflowInvocation.history_id)
-            .where(WorkflowInvocation.workflow_id.in_(workflow_ids), History.user_id == user_id)
-        )
+        stmt = invocations_stmt(user_id, workflow_ids)
         if state_predicate is not None:
             stmt = stmt.where(state_predicate)
         page_rows, total = self._count_and_page(stmt, WorkflowInvocation.id, WorkflowInvocation.update_time, query)
@@ -473,6 +368,12 @@ class ComparisonsManager:
             order_by.insert(0, update_time_column)
         stmt = stmt.order_by(*(column.desc() if query.sort_desc else column.asc() for column in order_by))
         return list(self.sa_session.execute(stmt.limit(query.limit).offset(query.offset))), total
+
+
+def _submission_key(row: ToolRunPageRow) -> SubmissionKey:
+    key = submission_key(row.job_id, row.implicit_collection_jobs_id)
+    assert key is not None
+    return key
 
 
 def _mark_skipped_outputs(io: dict[str, IoValue], submission: Submission | None) -> None:

@@ -170,6 +170,13 @@ def submission_key(job_id: int | None, implicit_collection_jobs_id: int | None) 
     return ("job", job_id) if job_id is not None else None
 
 
+class LabelledStep(NamedTuple):
+    """The step of one Workflow version that carries the compared label."""
+
+    id: int
+    type: str
+
+
 class InvocationStepRecord(NamedTuple):
     id: int
     workflow_invocation_id: int
@@ -237,6 +244,18 @@ class ComparisonRecordLoader:
         """0-based version of each Workflow of a StoredWorkflow, as ``StoredWorkflow.version_of`` numbers them."""
         stmt = select(Workflow.id).where(Workflow.stored_workflow_id == stored_workflow_id).order_by(Workflow.id)
         return {workflow_id: version for version, workflow_id in enumerate(self.sa_session.scalars(stmt))}
+
+    def labelled_steps(self, stored_workflow_id: int, label: str) -> dict[int, LabelledStep]:
+        """The step labelled ``label`` in each Workflow version of a StoredWorkflow that has one."""
+        stmt = (
+            select(WorkflowStep.workflow_id, WorkflowStep.id, WorkflowStep.type)
+            .join(Workflow, Workflow.id == WorkflowStep.workflow_id)
+            .where(Workflow.stored_workflow_id == stored_workflow_id, WorkflowStep.label == label)
+        )
+        return {
+            workflow_id: LabelledStep(step_id, step_type)
+            for workflow_id, step_id, step_type in self.sa_session.execute(stmt)
+        }
 
     def declared_workflow_io(self, workflow_ids: Collection[int]) -> dict[int, list[ColumnSpec]]:
         """Labelled input steps then labelled outputs of each Workflow, in step order; duplicates kept."""

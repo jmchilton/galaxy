@@ -4,7 +4,11 @@ from collections.abc import (
     Collection,
     Mapping,
 )
-from typing import Any
+from datetime import datetime
+from typing import (
+    Any,
+    NamedTuple,
+)
 
 from sqlalchemy import (
     and_,
@@ -37,11 +41,39 @@ from galaxy.model import (
     WorkflowOutput,
     WorkflowStep,
 )
+from galaxy.schema.comparisons import ToolRunsQuery
 from galaxy.schema.states import (
     InvocationState,
     JobState,
 )
 from galaxy.util.tool_version import versionless_tool_id
+
+
+class InvocationPageRow(NamedTuple):
+    """A row of ``invocations_stmt``."""
+
+    id: int
+    workflow_id: int
+    state: str | None
+    create_time: datetime
+    update_time: datetime
+    history_id: int
+    history_name: str | None
+    history_deleted: bool
+    history_purged: bool
+
+
+class ToolRunPageRow(NamedTuple):
+    """A row of ``tool_submissions_stmt``."""
+
+    job_id: int
+    implicit_collection_jobs_id: int | None
+    create_time: datetime
+    update_time: datetime
+    history_id: int
+    history_name: str | None
+    history_deleted: bool
+    history_purged: bool
 
 
 def selected_versions(version_map: Mapping[int, int], versions: list[int] | None) -> list[int]:
@@ -121,11 +153,84 @@ def _batch_state_predicate(
 
 def invoked_workflows_stmt(user_id: int, workflow_ids: Collection[int]) -> Select[tuple[int]]:
     """Each invocation by the user of one of ``workflow_ids``, as its workflow id."""
+    return _user_invocations(user_id, workflow_ids, WorkflowInvocation.workflow_id)
+
+
+def invocations_stmt(user_id: int, workflow_ids: Collection[int]) -> Select[Any]:
+    """The user's invocations of ``workflow_ids`` with their history, as ``InvocationPageRow`` columns."""
+    return _user_invocations(
+        user_id,
+        workflow_ids,
+        WorkflowInvocation.id,
+        WorkflowInvocation.workflow_id,
+        WorkflowInvocation.state,
+        WorkflowInvocation.create_time,
+        WorkflowInvocation.update_time,
+        History.id,
+        History.name,
+        History.deleted,
+        History.purged,
+    )
+
+
+def _user_invocations(user_id: int, workflow_ids: Collection[int], *columns: Any) -> Select[Any]:
     return (
-        select(WorkflowInvocation.workflow_id)
+        select(*columns)
         .join(History, History.id == WorkflowInvocation.history_id)
         .where(WorkflowInvocation.workflow_id.in_(workflow_ids), History.user_id == user_id)
     )
+
+
+def tool_submissions_stmt(predicates: list[ColumnElement[bool]], query: ToolRunsQuery) -> Select[Any]:
+    """One row per submission of ``query``'s filters, a mapped batch by its first job, as ``ToolRunPageRow`` columns."""
+    icjja = ImplicitCollectionJobsJobAssociation
+    sibling = aliased(ImplicitCollectionJobsJobAssociation)
+    earlier_sibling = (
+        select(sibling.id)
+        .where(
+            sibling.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id,
+            or_(
+                sibling.order_index < icjja.order_index,
+                and_(sibling.order_index == icjja.order_index, sibling.job_id < icjja.job_id),
+            ),
+        )
+        .exists()
+    )
+    stmt = (
+        select(
+            Job.id,
+            icjja.implicit_collection_jobs_id,
+            Job.create_time,
+            Job.update_time,
+            History.id,
+            History.name,
+            History.deleted,
+            History.purged,
+        )
+        .join(History, History.id == Job.history_id)
+        .outerjoin(icjja, icjja.job_id == Job.id)
+        .where(*predicates, ~earlier_sibling)
+    )
+    if query.tool_versions:
+        stmt = stmt.where(Job.tool_version.in_(query.tool_versions))
+    if query.history_id is not None:
+        stmt = stmt.where(Job.history_id == query.history_id)
+    if query.states:
+        stmt = stmt.where(submission_state_predicate(query.states))
+    if not query.include_workflow_jobs:
+        wis = WorkflowInvocationStep
+        in_workflow = (
+            select(wis.id)
+            .where(or_(wis.job_id == Job.id, wis.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id))
+            .exists()
+        )
+        stmt = stmt.where(~in_workflow)
+    return stmt
+
+
+def tool_versions_stmt(predicates: list[ColumnElement[bool]]) -> Select[Any]:
+    """Distinct tool versions the jobs matching ``predicates`` ran."""
+    return select(Job.tool_version).where(*predicates, Job.tool_version.is_not(None)).distinct()
 
 
 def output_labels_stmt(workflow_ids: Collection[int] | Select[Any]) -> Select[Any]:

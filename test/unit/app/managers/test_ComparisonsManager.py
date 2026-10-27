@@ -58,7 +58,7 @@ class TestComparisonsManager(BaseTestCase):
             workflow_id=stored_workflow_id, step_label="target", metadata_elements=_metadata_elements(metadata)
         )
         (table, total), statement_count = self._count_statements(
-            lambda: self.comparisons_manager.step_runs(access, stored_workflow_id, query)
+            lambda: self.comparisons_manager.step_runs(access, query)
         )
         assert total == invocations
         assert len(table.rows) == invocations
@@ -145,9 +145,7 @@ class TestComparisonsManager(BaseTestCase):
     def test_admin_sees_inaccessible_items(self):
         stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
         query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target")
-        table, _ = self.comparisons_manager.step_runs(
-            _access(self.trans.user, is_admin=True), stored_workflow_id, query
-        )
+        table, _ = self.comparisons_manager.step_runs(_access(self.trans.user, is_admin=True), query)
         (row,) = table.rows
         assert row.cells["input:foreign"].type == "dataset"
 
@@ -202,7 +200,7 @@ class TestComparisonsManager(BaseTestCase):
         stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
         access = _access(self.trans.user)
         query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id)
-        table, _ = self.comparisons_manager.output_runs(access, stored_workflow.id, query)
+        table, _ = self.comparisons_manager.output_runs(access, query)
         columns = {column.key: column for column in table.columns}
         assert columns["output:out"].duplicate
         assert not columns["output:val"].duplicate
@@ -221,7 +219,7 @@ class TestComparisonsManager(BaseTestCase):
         access = _access(self.trans.user)
         for state, expected in (("new", unset_id), ("scheduled", scheduled_id)):
             query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id, states=[state])
-            table, total = self.comparisons_manager.output_runs(access, stored_workflow.id, query)
+            table, total = self.comparisons_manager.output_runs(access, query)
             assert [(row.run.id, row.state) for row in table.rows] == [(expected, state)]
             assert total == 1
 
@@ -234,7 +232,7 @@ class TestComparisonsManager(BaseTestCase):
             workflow_id=stored_workflow_id, metadata_elements=_metadata_elements(metadata)
         )
         (table, total), statement_count = self._count_statements(
-            lambda: self.comparisons_manager.output_runs(access, stored_workflow_id, query)
+            lambda: self.comparisons_manager.output_runs(access, query)
         )
         assert total == len(table.rows) == invocations
         for row in table.rows:

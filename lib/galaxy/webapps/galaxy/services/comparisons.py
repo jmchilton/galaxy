@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import TypeVar
 
 from galaxy.managers.comparison_cells import ComparisonAccess
@@ -14,6 +15,7 @@ from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.webapps.galaxy.services.base import ServiceBase
 
 WorkflowQueryT = TypeVar("WorkflowQueryT", StepRunsQuery, OutputRunsQuery)
+QueryT = TypeVar("QueryT", StepRunsQuery, OutputRunsQuery, ToolRunsQuery)
 
 
 class ComparisonsService(ServiceBase):
@@ -33,25 +35,16 @@ class ComparisonsService(ServiceBase):
         self, trans: ProvidesUserContext, query: StepRunsQuery, instance: bool = False
     ) -> tuple[ComparisonTable, int]:
         query = self._with_stored_workflow_id(trans, query, instance)
-        access = _access(trans)
-        if access is None:
-            return _empty(query)
-        return self._comparisons_manager.step_runs(access, query.workflow_id, query)
+        return _compare(trans, query, self._comparisons_manager.step_runs)
 
     def output_runs(
         self, trans: ProvidesUserContext, query: OutputRunsQuery, instance: bool = False
     ) -> tuple[ComparisonTable, int]:
         query = self._with_stored_workflow_id(trans, query, instance)
-        access = _access(trans)
-        if access is None:
-            return _empty(query)
-        return self._comparisons_manager.output_runs(access, query.workflow_id, query)
+        return _compare(trans, query, self._comparisons_manager.output_runs)
 
     def tool_runs(self, trans: ProvidesUserContext, query: ToolRunsQuery) -> tuple[ComparisonTable, int]:
-        access = _access(trans)
-        if access is None:
-            return _empty(query)
-        return self._comparisons_manager.tool_runs(access, query)
+        return _compare(trans, query, self._comparisons_manager.tool_runs)
 
     def _with_stored_workflow_id(
         self, trans: ProvidesUserContext, query: WorkflowQueryT, instance: bool
@@ -63,13 +56,14 @@ class ComparisonsService(ServiceBase):
         return query.model_copy(update={"workflow_id": stored_workflow.id})
 
 
-def _empty(query: StepRunsQuery | OutputRunsQuery | ToolRunsQuery) -> tuple[ComparisonTable, int]:
-    return ComparisonTable(query=query, columns=[], rows=[]), 0
-
-
-def _access(trans: ProvidesUserContext) -> ComparisonAccess | None:
-    """The caller's access context; None for anonymous callers, who have no runs."""
+def _compare(
+    trans: ProvidesUserContext,
+    query: QueryT,
+    resolve: Callable[[ComparisonAccess, QueryT], tuple[ComparisonTable, int]],
+) -> tuple[ComparisonTable, int]:
+    """Resolve ``query`` for the caller; anonymous callers have no runs, so an empty table."""
     if trans.user is None:
-        return None
+        return ComparisonTable(query=query, columns=[], rows=[]), 0
     role_ids = frozenset(role.id for role in trans.get_current_user_roles())
-    return ComparisonAccess(user_id=trans.user.id, role_ids=role_ids, is_admin=trans.user_is_admin)
+    access = ComparisonAccess(user_id=trans.user.id, role_ids=role_ids, is_admin=trans.user_is_admin)
+    return resolve(access, query)
