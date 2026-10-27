@@ -1,3 +1,4 @@
+from itertools import product
 from unittest import mock
 
 from sqlalchemy import event
@@ -14,6 +15,7 @@ from galaxy.managers.histories import HistoryManager
 from galaxy.schema.comparisons import (
     OutputRunsQuery,
     StepRunsQuery,
+    ToolRunsQuery,
 )
 from galaxy.schema.fields import Security
 from .base import BaseTestCase
@@ -27,18 +29,19 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         self.comparisons_manager = ComparisonsManager(self.session, cell_builder)
         Security.security = self.app.security
         self.foreign_users = 0
+        self.tool_id = "cat1"
 
     def test_step_runs_statement_count_independent_of_row_count(self):
-        for mapped in (False, True):
-            counts = [self._step_runs_statement_count(invocations, mapped) for invocations in (1, 5)]
-            assert counts[0] == counts[1], f"mapped={mapped}: statements grow with rows {counts}"
+        for mapped, metadata in product((False, True), (False, True)):
+            counts = [self._step_runs_statement_count(invocations, mapped, metadata) for invocations in (1, 5)]
+            assert counts[0] == counts[1], f"mapped={mapped}, metadata={metadata}: statements grow with rows {counts}"
 
-    def _step_runs_statement_count(self, invocations: int, mapped: bool) -> int:
+    def _step_runs_statement_count(self, invocations: int, mapped: bool, metadata: bool) -> int:
         stored_workflow_id = self._stored_workflow_with_runs(invocations, mapped).id
         access = _access(self.trans.user)
         self.session.expunge_all()
         query = StepRunsQuery.model_construct(
-            workflow_id=stored_workflow_id, step_label="target", metadata_elements=["data_lines"]
+            workflow_id=stored_workflow_id, step_label="target", metadata_elements=_metadata_elements(metadata)
         )
         (table, total), statement_count = self._count_statements(
             lambda: self.comparisons_manager.step_runs(access, stored_workflow_id, query)
@@ -50,9 +53,106 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             assert all(cell.type != "missing" for cell in row.cells.values())
         return statement_count
 
+    def test_tool_runs_statement_count_independent_of_row_count(self):
+        for mapped, metadata in product((False, True), (False, True)):
+            counts = [self._tool_runs_statement_count(submissions, mapped, metadata) for submissions in (1, 5)]
+            assert counts[0] == counts[1], f"mapped={mapped}, metadata={metadata}: statements grow with rows {counts}"
+
+    def test_tool_runs_matches_tool_shed_versions_without_wildcards(self):
+        user = self.trans.user
+        history = model.History(name="shed runs", user=user)
+        self.session.add(history)
+        base = "toolshed.example.org/repos/owner/repo/my_tool"
+        tool_ids = [
+            f"{base}/1.0",
+            f"{base}/2.0",
+            "toolshed.example.org/repos/owner/repo/myXtool/1.0",
+            f"{base}_extra/1.0",
+        ]
+        jobs = {}
+        for tool_id in tool_ids:
+            self.tool_id = tool_id
+            jobs[tool_id] = self._job(history, user)
+            self.session.add(jobs[tool_id])
+        self.session.commit()
+        query = ToolRunsQuery.model_construct(tool_id=f"{base}/3.0", include_workflow_jobs=True)
+        table, total = self.comparisons_manager.tool_runs(_access(user), query)
+        encoded = {self.app.security.encode_id(jobs[tool_id].id) for tool_id in tool_ids[:2]}
+        assert total == 2
+        assert {row.run.id for row in table.rows} == encoded
+        percent_query = ToolRunsQuery.model_construct(
+            tool_id="toolshed.example.org/repos/owner/repo/my%tool/1.0", include_workflow_jobs=True
+        )
+        assert self.comparisons_manager.tool_runs(_access(user), percent_query)[1] == 0
+
+    def test_tool_runs_state_filter_matches_any_mapped_member(self):
+        self.tool_id = "mapped_states"
+        self._stored_workflow_with_runs(1, mapped=True, member_states=("ok", "error"))
+        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, states=["error"], include_workflow_jobs=True)
+        table, total = self.comparisons_manager.tool_runs(_access(self.trans.user), query)
+        assert total == 1
+        (row,) = table.rows
+        assert row.run.model == "ImplicitCollectionJobs"
+        assert row.run.states == {"ok": 1, "error": 1}
+        assert row.state == "error"
+
+    def test_step_runs_state_filter_matches_any_mapped_member(self):
+        stored_workflow_id = self._stored_workflow_with_runs(1, mapped=True, member_states=("ok", "error")).id
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", states=["error"])
+        table, total = self.comparisons_manager.step_runs(_access(self.trans.user), stored_workflow_id, query)
+        assert total == 1
+        (row,) = table.rows
+        assert row.step_job.model == "ImplicitCollectionJobs"
+        assert row.state == "error"
+
+    def test_tool_runs_excludes_mapped_workflow_jobs(self):
+        self.tool_id = "mapped_in_workflow"
+        user = self.trans.user
+        self._stored_workflow_with_runs(1, mapped=True)
+        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, include_workflow_jobs=False)
+        assert self.comparisons_manager.tool_runs(_access(user), query)[1] == 0
+        history = model.History(name="outside workflows", user=user)
+        plain = self._job(history, user)
+        self.session.add_all([history, plain])
+        self.session.commit()
+        table, total = self.comparisons_manager.tool_runs(_access(user), query)
+        assert total == 1
+        assert [row.run.id for row in table.rows] == [self.app.security.encode_id(plain.id)]
+
+    def test_admin_sees_inaccessible_items(self):
+        stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target")
+        table, _ = self.comparisons_manager.step_runs(
+            _access(self.trans.user, is_admin=True), stored_workflow_id, query
+        )
+        (row,) = table.rows
+        assert row.cells["input:foreign"].type == "dataset"
+
+    def _tool_runs_statement_count(self, submissions: int, mapped: bool, metadata: bool) -> int:
+        self.tool_id = f"compared_{submissions}_{mapped}_{metadata}"
+        self._stored_workflow_with_runs(submissions, mapped)
+        access = _access(self.trans.user)
+        self.session.expunge_all()
+        query = ToolRunsQuery.model_construct(
+            tool_id=self.tool_id, metadata_elements=_metadata_elements(metadata), include_workflow_jobs=True
+        )
+        (table, total), statement_count = self._count_statements(
+            lambda: self.comparisons_manager.tool_runs(access, query)
+        )
+        assert total == len(table.rows) == submissions
+        assert table.tool_versions_available == ["1.0.0"]
+        for row in table.rows:
+            assert row.run.model == ("ImplicitCollectionJobs" if mapped else "Job")
+            assert row.via is not None and row.via.step_label == "target"
+            assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
+            assert set(row.cells) == {"input:input1", "output:out_file1"}
+            assert all(cell.type != "missing" for cell in row.cells.values())
+        return statement_count
+
     def test_output_runs_statement_count_independent_of_row_count(self):
-        counts = [self._output_runs_statement_count(invocations) for invocations in (1, 5)]
-        assert counts[0] == counts[1], f"statements grow with rows {counts}"
+        for metadata in (False, True):
+            counts = [self._output_runs_statement_count(invocations, metadata) for invocations in (1, 5)]
+            assert counts[0] == counts[1], f"metadata={metadata}: statements grow with rows {counts}"
 
     def test_output_runs_flags_duplicate_output_labels(self):
         stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
@@ -67,12 +167,14 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
 
-    def _output_runs_statement_count(self, invocations: int) -> int:
+    def _output_runs_statement_count(self, invocations: int, metadata: bool) -> int:
         stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
         stored_workflow_id = stored_workflow.id
         access = _access(self.trans.user)
         self.session.expunge_all()
-        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow_id, metadata_elements=["data_lines"])
+        query = OutputRunsQuery.model_construct(
+            workflow_id=stored_workflow_id, metadata_elements=_metadata_elements(metadata)
+        )
         (table, total), statement_count = self._count_statements(
             lambda: self.comparisons_manager.output_runs(access, stored_workflow_id, query)
         )
@@ -155,7 +257,9 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             event.remove(engine, "before_cursor_execute", count)
         return result, len(statements)
 
-    def _stored_workflow_with_runs(self, invocations: int, mapped: bool) -> model.StoredWorkflow:
+    def _stored_workflow_with_runs(
+        self, invocations: int, mapped: bool, member_states: tuple[str, ...] = ("ok", "ok")
+    ) -> model.StoredWorkflow:
         user = self.trans.user
         stored_workflow = model.StoredWorkflow()
         stored_workflow.user = user
@@ -188,13 +292,15 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             invocation_step.state = "scheduled"
             self.session.add_all([history, invocation, invocation_step])
             if mapped:
-                self._mapped_step(invocation_step, history, user, foreign_history)
+                self._mapped_step(invocation_step, history, user, foreign_history, member_states)
             else:
                 job = self._job(history, user)
                 job.add_input_dataset("input1", self._hda(history))
                 job.add_input_dataset("foreign", self._private_hda(foreign_history))
                 invocation_step.job = job
-                invocation_step.add_output("out_file1", self._hda(history))
+                output = self._hda(history)
+                job.add_output_dataset("out_file1", output)
+                invocation_step.add_output("out_file1", output)
         self.session.commit()
         return stored_workflow
 
@@ -213,10 +319,11 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         security_agent.set_dataset_permission(hda.dataset, {security_agent.permitted_actions.DATASET_ACCESS: [role]})
         return hda
 
-    def _mapped_step(self, invocation_step, history, user, foreign_history) -> None:
+    def _mapped_step(self, invocation_step, history, user, foreign_history, member_states) -> None:
         icj = model.ImplicitCollectionJobs(populated_state="ok")
-        for order_index in range(2):
+        for order_index, state in enumerate(member_states):
             job = self._job(history, user)
+            job.state = state
             job.add_input_dataset("input1", self._hda(history))
             association = model.ImplicitCollectionJobsJobAssociation()
             association.order_index = order_index
@@ -240,7 +347,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         job = model.Job()
         job.user = user
         job.history = history
-        job.tool_id = "cat1"
+        job.tool_id = self.tool_id
         job.tool_version = "1.0.0"
         job.state = "ok"
         return job
@@ -330,5 +437,11 @@ def _cell_builder(app) -> ComparisonCellBuilder:
     return ComparisonCellBuilder(app.model.session, HDASerializer(app), app.security_agent, app[HistoryManager])
 
 
-def _access(user: model.User) -> ComparisonAccess:
-    return ComparisonAccess(user_id=user.id, role_ids=frozenset(role.id for role in user.all_roles()), is_admin=False)
+def _metadata_elements(metadata: bool) -> list[str]:
+    return ["data_lines"] if metadata else []
+
+
+def _access(user: model.User, is_admin: bool = False) -> ComparisonAccess:
+    return ComparisonAccess(
+        user_id=user.id, role_ids=frozenset(role.id for role in user.all_roles()), is_admin=is_admin
+    )
