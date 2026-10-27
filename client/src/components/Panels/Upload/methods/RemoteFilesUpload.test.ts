@@ -127,6 +127,19 @@ describe("RemoteFilesUpload", () => {
         expect(listingsOf(SOURCE_URI)).toHaveLength(1);
     });
 
+    it("lists the file sources once after an upload started from a folder", async () => {
+        const wrapper = await mountComponent();
+        await clickRow(wrapper, "Source");
+        await clickRow(wrapper, "folder");
+        vi.mocked(fetchFileSources).mockClear();
+
+        (wrapper.vm as unknown as { startUpload: () => void }).startUpload();
+        await flushPromises();
+
+        expect(fetchFileSources).toHaveBeenCalledTimes(1);
+        expect(rowLabels(wrapper)).toEqual(["Source"]);
+    });
+
     it("lists the source again for a search and for another page", async () => {
         const wrapper = await mountComponent();
         await clickRow(wrapper, "Source");
