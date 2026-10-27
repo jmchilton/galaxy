@@ -14,11 +14,13 @@ vi.mock("@/api/remoteFiles", () => ({
     fetchFileSources: vi.fn(),
 }));
 
-// a source that searches and pages on the server, like Invenio or Dataverse
+// defaults to a source that searches and pages on the server, like Invenio or Dataverse
+const capabilities = vi.hoisted(() => ({ server: true }));
+
 vi.mock("@/composables/fileSources", () => ({
     useFileSources: () => ({
-        supportsPagination: () => true,
-        supportsSearch: () => true,
+        supportsPagination: () => capabilities.server,
+        supportsSearch: () => capabilities.server,
     }),
 }));
 
@@ -69,6 +71,10 @@ async function mountComponent() {
     return wrapper;
 }
 
+function rowLabels(wrapper: Wrapper<Vue>) {
+    return wrapper.findAll("tbody td .d-flex > span").wrappers.map((span) => span.text());
+}
+
 async function clickRow(wrapper: Wrapper<Vue>, label: string) {
     // click the name, as a user would: BTable ignores clicks targeting the focusable row itself
     const name = wrapper.findAll("tbody td span").filter((span) => span.text() === label);
@@ -104,6 +110,21 @@ describe("RemoteFilesUpload", () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.clearAllMocks();
+        capabilities.server = true;
+    });
+
+    it("pages and searches a client-side source without listing it again", async () => {
+        capabilities.server = false;
+        const wrapper = await mountComponent();
+        await clickRow(wrapper, "Source");
+
+        await goToPage(wrapper, 2);
+        expect(rowLabels(wrapper)).toEqual(["file24"]);
+
+        await search(wrapper, "file2");
+        expect(rowLabels(wrapper)).toEqual(["file2", "file20", "file21", "file22", "file23", "file24"]);
+
+        expect(listingsOf(SOURCE_URI)).toHaveLength(1);
     });
 
     it("lists the source again for a search and for another page", async () => {
