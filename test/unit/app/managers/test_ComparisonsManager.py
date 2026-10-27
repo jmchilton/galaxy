@@ -11,6 +11,7 @@ from galaxy.managers.comparison_cells import (
     ComparisonCellBuilder,
     inlinable_expression,
 )
+from galaxy.managers.comparison_columns import SUMMARY_STATES
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
 from galaxy.managers.histories import HistoryManager
@@ -92,6 +93,49 @@ class TestComparisonsManager(BaseTestCase):
             tool_id="toolshed.example.org/repos/owner/repo/my%tool/1.0", include_workflow_jobs=True
         )
         assert self.comparisons_manager.tool_runs(_access(user), percent_query)[1] == 0
+
+    def test_tool_runs_state_filter_matches_batch_summary_state(self):
+        user = self.trans.user
+        history = model.History(name="mixed batches", user=user)
+        self.session.add(history)
+        self.tool_id = "mixed_batches"
+        batch_states = [
+            ["ok", "ok"],
+            ["ok", "error"],
+            ["ok", "failed"],
+            ["ok", "running", "queued"],
+            ["new", "queued"],
+            ["new"],
+            ["ok", "skipped"],
+            ["skipped", "skipped"],
+            ["ok", "paused"],
+            ["stopped", "paused"],
+            ["deleted"],
+        ]
+        batches = []
+        for states in batch_states:
+            icj = model.ImplicitCollectionJobs(populated_state="ok")
+            for order_index, state in enumerate(states):
+                job = self._job(history, user)
+                job.state = state
+                association = model.ImplicitCollectionJobsJobAssociation()
+                association.order_index = order_index
+                association.implicit_collection_jobs = icj
+                association.job = job
+                self.session.add(association)
+            batches.append(icj)
+        self.session.commit()
+        shown_states: dict[str, str | None] = {self.app.security.encode_id(icj.id): None for icj in batches}
+        for state in (*SUMMARY_STATES, "failed"):
+            query = ToolRunsQuery.model_construct(tool_id=self.tool_id, include_workflow_jobs=True, states=[state])
+            table, total = self.comparisons_manager.tool_runs(_access(user), query)
+            assert total == len(table.rows)
+            for row in table.rows:
+                assert row.state == state
+                assert shown_states[row.run.id] is None
+                shown_states[row.run.id] = state
+        # every batch matches exactly the state it shows
+        assert None not in shown_states.values()
 
     def test_admin_sees_inaccessible_items(self):
         stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
