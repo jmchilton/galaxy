@@ -34,7 +34,7 @@ from galaxy.schema.states import (
 )
 
 ComparisonSortBy = Literal["create_time", "update_time"]
-MissingReason = Literal["not_in_version", "skipped", "not_run_yet", "no_output"]
+MissingReason = Literal["not_in_version", "skipped", "not_run_yet", "no_output", "inaccessible"]
 ComparisonColumnRole = Literal["input", "output", "parameter"]
 ReusedState = Literal["no", "partial", "yes"]
 
