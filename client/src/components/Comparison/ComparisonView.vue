@@ -4,11 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, ref, watch } from "vue";
 import { type LocationQuery, useRouter } from "vue-router";
 
-import {
-    type ComparisonRequest,
-    type ComparisonTable as ComparisonTableModel,
-    fetchComparison,
-} from "@/api/comparisons";
+import { type ComparisonRequest, fetchComparison } from "@/api/comparisons";
 import { getWorkflowInfo } from "@/api/workflows";
 import type { BreadcrumbItem } from "@/components/Common";
 import { useToolStore } from "@/stores/toolStore";
@@ -23,7 +19,7 @@ import {
     parseComparisonQuery,
 } from "./comparisonQuery";
 import { offeredOptions } from "./comparisonUtils";
-import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
+import { useComparison } from "./useComparison";
 
 import ComparisonFilters from "./ComparisonFilters.vue";
 import ComparisonPager from "./ComparisonPager.vue";
@@ -49,31 +45,26 @@ const request = computed(() => (parsed.value.kind ? (parsed.value as ComparisonR
 const kind = computed(() => request.value?.kind);
 const urlParams = computed(() => (request.value?.params ?? {}) as Record<string, ComparisonUrlValue>);
 
-const table = ref<ComparisonTableModel>();
 // With `instance` the URL names a workflow version, so wait for the echoed stored workflow id.
 const knownStorageKey = computed(() =>
     request.value && urlParams.value.instance !== true
         ? displayStorageKey({ kind: request.value.kind, ...request.value.params } as DisplayKeyQuery)
         : undefined,
 );
-const { transpose, columnDisplay, metadataElements, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
-    knownStorageKey,
-    table,
-);
-
 // The URL's parameters as they are, plus the metadata the column displays need.
-const fetchRequest = computed<ComparisonRequest | undefined>(() => {
+function fetchRequest(metadataElements: string[]): ComparisonRequest | undefined {
     if (!request.value) {
         return undefined;
     }
     const fromUrl = (request.value.params.metadata_elements as string[] | undefined) ?? [];
-    const metadata = [...new Set([...fromUrl, ...metadataElements.value])].sort();
+    const metadata = [...new Set([...fromUrl, ...metadataElements])].sort();
     return {
         ...request.value,
         params: { ...request.value.params, metadata_elements: metadata.length ? metadata : undefined },
     } as ComparisonRequest;
-});
-const { total, loading, error, reload } = useComparisonFetch(fetchRequest, fetchComparison, table);
+}
+const { table, total, loading, error, reload, transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } =
+    useComparison(knownStorageKey, fetchRequest, fetchComparison);
 
 // The page stays mounted across URL changes; drop the old table once the URL names another comparison.
 const identity = computed(() => {
@@ -110,10 +101,7 @@ function updateUrl(patch: Record<string, ComparisonUrlValue>) {
 }
 
 const states = urlList("states");
-const versions = computed({
-    get: () => (kind.value === "tool_runs" ? undefined : listParam("versions")),
-    set: (value: string[] | undefined) => updateUrl({ versions: value }),
-});
+const versions = urlList("versions");
 
 const toolVersions = urlList("tool_versions");
 const toolVersionOptions = computed(() =>
@@ -274,13 +262,10 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
                     @toggle-column="toggleColumn"
                     @reset-columns="resetColumns" />
                 <ComparisonPager
+                    :table="table"
                     :total="total"
                     :limit="limit"
                     :offset="offset"
-                    :loaded-offset="table.query.offset"
-                    :sort-by="table.query.sort_by"
-                    :sort-desc="table.query.sort_desc"
-                    :row-count="table.rows.length"
                     @update:offset="updateUrl({ offset: $event })">
                     <label class="mb-0 mr-1 text-nowrap" for="comparison-page-size"><small>Per page</small></label>
                     <GSelect
