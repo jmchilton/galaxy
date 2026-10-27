@@ -380,6 +380,57 @@ steps:
         assert "The bool is very not true\n" in job_details["stderr"]
 
     @requires_new_history
+    def test_index_and_show_job_field_sets(self, history_id):
+        dataset_id = self.__history_with_ok_dataset(history_id)
+        run_response = self.dataset_populator.run_tool("cat1", {"input1": {"src": "hda", "id": dataset_id}}, history_id)
+        job_id = run_response["jobs"][0]["id"]
+        self.dataset_populator.wait_for_job(job_id, assert_ok=True)
+        index_jobs = self._get("jobs", data={"history_id": history_id, "tool_id": "cat1"}).json()
+        assert [j["id"] for j in index_jobs] == [job_id]
+        show = self.dataset_populator.get_job_details(job_id).json()
+        show_full = self.dataset_populator.get_job_details(job_id, full=True).json()
+        index_keys = {
+            "command_line",
+            "create_time",
+            "exit_code",
+            "external_id",
+            "galaxy_version",
+            "handler",
+            "history_id",
+            "id",
+            "job_runner_name",
+            "model_class",
+            "state",
+            "tool_id",
+            "update_time",
+            "user_email",
+            "user_id",
+        }
+        show_keys = index_keys | {
+            "command_version",
+            "copied_from_job_id",
+            "implicit_collection_jobs_id",
+            "inputs",
+            "output_collections",
+            "outputs",
+            "params",
+        }
+        show_full_keys = show_keys | {
+            "dependencies",
+            "job_messages",
+            "job_metrics",
+            "job_stderr",
+            "job_stdout",
+            "stderr",
+            "stdout",
+            "tool_stderr",
+            "tool_stdout",
+        }
+        assert set(index_jobs[0].keys()) == index_keys
+        assert set(show.keys()) == show_keys
+        assert set(show_full.keys()) == show_full_keys
+
+    @requires_new_history
     def test_show_security(self, history_id):
         self.__history_with_new_dataset(history_id)
         jobs_response = self._get("jobs", data={"history_id": history_id})
