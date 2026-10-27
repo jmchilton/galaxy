@@ -55,6 +55,9 @@ export function useComparisonFetch<P>(
     return { table, total, loading, error, reload: () => load(true) };
 }
 
+/** Comparisons whose display preferences are kept; the least recently changed are dropped. */
+export const MAX_STORED_DISPLAYS = 50;
+
 interface DisplayPrefs {
     transpose?: boolean;
     columnDisplay?: Record<string, CellDisplay>;
@@ -72,8 +75,11 @@ export function useComparisonDisplay(storageKey: Ref<string | undefined>, table:
 
     function update(patch: DisplayPrefs) {
         const next = { ...prefs.value, ...patch };
-        if (storageKey.value) {
-            stored.value = { ...stored.value, [storageKey.value]: next };
+        const key = storageKey.value;
+        if (key) {
+            // Re-inserted last, so the oldest entries come first.
+            const entries = Object.entries(stored.value).filter(([other]) => other !== key);
+            stored.value = Object.fromEntries([...entries.slice(1 - MAX_STORED_DISPLAYS), [key, next]]);
         } else {
             unsaved.value = next;
         }
