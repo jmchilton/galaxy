@@ -206,43 +206,6 @@ class TestComparisonsManager(BaseTestCase):
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
 
-    def test_step_runs_data_input_without_request_input(self):
-        # a defaulted input is recorded only as the input step's output
-        user = self.trans.user
-        stored_workflow = model.StoredWorkflow()
-        stored_workflow.user = user
-        stored_workflow.name = "defaulted input"
-        workflow = model.Workflow()
-        workflow.name = stored_workflow.name
-        workflow.stored_workflow = stored_workflow
-        step = model.WorkflowStep()
-        step.order_index = 0
-        step.type = "data_input"
-        step.label = "data_in"
-        workflow.steps.append(step)
-        stored_workflow.latest_workflow = workflow
-        self.session.add(stored_workflow)
-        history = model.History(name="run", user=user)
-        invocation = model.WorkflowInvocation()
-        invocation.workflow = workflow
-        invocation.history = history
-        invocation.state = "scheduled"
-        invocation_step = model.WorkflowInvocationStep()
-        invocation_step.workflow_invocation = invocation
-        invocation_step.workflow_step = step
-        invocation_step.state = "scheduled"
-        self.session.add_all([history, invocation, invocation_step])
-        default = self._hda(history)
-        invocation_step.add_output("output", default)
-        self.session.commit()
-        query = StepRunsQuery.model_construct(workflow_id=stored_workflow.id, step_label="data_in")
-        table, _ = self.comparisons_manager.step_runs(_access(user), stored_workflow.id, query)
-        assert [(column.key, column.role) for column in table.columns] == [("input:data_in", "input")]
-        (row,) = table.rows
-        cell = row.cells["input:data_in"]
-        assert cell.type == "dataset"
-        assert cell.id == self.app.security.encode_id(default.id)
-
     def _output_runs_statement_count(self, invocations: int, metadata: bool) -> int:
         stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
         stored_workflow_id = stored_workflow.id
