@@ -7,6 +7,7 @@ import {
     type HistorySummary,
     type HistorySummaryExtended,
     isRegisteredUser,
+    totalMatches,
     userOwnsHistory,
 } from ".";
 
@@ -107,5 +108,13 @@ describe("API Types Helpers", () => {
             expect(userOwnsHistory(SESSIONLESS_USER, HISTORY_SUMMARY_WITHOUT_USER_ID)).toBe(false);
             expect(userOwnsHistory(SESSIONLESS_USER, HISTORY_OWNED_BY_ANONYMOUS_USER)).toBe(false);
         });
+    });
+});
+
+describe("totalMatches", () => {
+    it("reads the total_matches header, 0 when absent or unparsable", () => {
+        expect(totalMatches(new Response(null, { headers: { total_matches: "60" } }))).toBe(60);
+        expect(totalMatches(new Response(null))).toBe(0);
+        expect(totalMatches(new Response(null, { headers: { total_matches: "many" } }))).toBe(0);
     });
 });
