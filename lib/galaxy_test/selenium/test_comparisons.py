@@ -173,6 +173,16 @@ class TestComparisons(SeleniumTestCase):
         comparisons.row_detail_job_pager.wait_for_visible()
         comparisons.row_detail_reused_badge.assert_absent()
 
+        # on a table narrower than its columns, the detail's pager stays in view at either scroll end
+        self.execute_script(f"document.querySelector('{comparisons._.selector}').style.width = '400px';")
+        self._assert_table_overflows(times=2)
+        for scroll in ("0", "scroller.scrollWidth"):
+            self.execute_script(
+                f"const scroller = document.querySelector('{comparisons.table_scroller.selector}');"
+                f"scroller.scrollLeft = {scroll};"
+            )
+            self._assert_within_table_scroller(comparisons.row_detail_job_pager)
+
     def _runs_across_two_versions(self) -> tuple[str, list[str], str]:
         """Two runs of v1, then a rename makes v2 and it runs once more."""
         summary = self.workflow_populator.run_workflow(
@@ -214,6 +224,24 @@ class TestComparisons(SeleniumTestCase):
     def _assert_invocation_grid_rows(self, count: int):
         rows = self.find_elements_by_selector('.grid-table [data-description="grid item"]')
         assert len(rows) == count, f"Expected {count} invocation rows, found {len(rows)}"
+
+    @retry_assertion_during_transitions
+    def _assert_table_overflows(self, times: int):
+        widths = self.execute_script(
+            f"const scroller = document.querySelector('{self.components.comparisons.table_scroller.selector}');"
+            "return {scroll: scroller.scrollWidth, client: scroller.clientWidth};"
+        )
+        assert widths["scroll"] > times * widths["client"], widths
+
+    @retry_assertion_during_transitions
+    def _assert_within_table_scroller(self, component):
+        rects = self.execute_script(
+            "const rect = (selector) => document.querySelector(selector).getBoundingClientRect();"
+            f"const outer = rect('{self.components.comparisons.table_scroller.selector}');"
+            f"const inner = rect('{component.selector}');"
+            "return {outer: [outer.left, outer.right], inner: [inner.left, inner.right]};"
+        )
+        assert rects["outer"][0] <= rects["inner"][0] and rects["inner"][1] <= rects["outer"][1], rects
 
     @retry_assertion_during_transitions
     def _assert_transposed(self, transposed: bool):

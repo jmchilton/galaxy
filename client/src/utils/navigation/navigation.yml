@@ -1984,6 +1984,7 @@ comparisons:
     step_all_runs_tab: '.invocation-step-card .invocation-step-all-runs-tab > a.nav-link'
     view_all_link: '.step-runs-tab a.comparison-view-all'
     table: '.comparison-table'
+    table_scroller: '.comparison-table-scroll'
     rows: '.comparison-table tbody tr[data-pk]'
     row: '.comparison-table tr[data-pk="${run_id}"]'
     row_link: '.comparison-table tr[data-pk="${run_id}"] a.comparison-run-link'

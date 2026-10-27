@@ -791,6 +791,7 @@ interface Rootcomparisons extends Component {
     step_all_runs_tab: SelectorTemplate;
     view_all_link: SelectorTemplate;
     table: SelectorTemplate;
+    table_scroller: SelectorTemplate;
     rows: SelectorTemplate;
     row: SelectorTemplate;
     row_link: SelectorTemplate;
