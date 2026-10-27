@@ -10,6 +10,11 @@ import ComparisonRowDetail from "./ComparisonRowDetail.vue";
 
 const TABLE = STEP_RUNS as unknown as ComparisonTable;
 const JOB_TABS_STUB = { name: "JobDetailsTabs", props: ["jobId"], template: "<div />" };
+const BATCH_STUB = {
+    name: "ToolExecutionJobs",
+    props: ["implicitCollectionJobsId", "jobCount", "initialJobId"],
+    template: "<div />",
+};
 const ITEM_STUB = { name: "GenericHistoryItem", props: ["itemId", "itemSrc"], template: "<div />" };
 
 function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query) {
@@ -18,7 +23,12 @@ function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query) {
         props: { row, columns: TABLE.columns, query },
         global: {
             ...localVue,
-            stubs: { ...localVue.stubs, JobDetailsTabs: JOB_TABS_STUB, GenericHistoryItem: ITEM_STUB },
+            stubs: {
+                ...localVue.stubs,
+                JobDetailsTabs: JOB_TABS_STUB,
+                ToolExecutionJobs: BATCH_STUB,
+                GenericHistoryItem: ITEM_STUB,
+            },
         },
     });
 }
@@ -38,10 +48,15 @@ describe("ComparisonRowDetail", () => {
         expect(wrapper.findComponent(JOB_TABS_STUB).props("jobId")).toBe(row.step_job!.id);
     });
 
-    it("uses a mapped step's first job", () => {
-        const wrapper = mountDetail(TABLE.rows[4]!);
-        expect(wrapper.findComponent(JOB_TABS_STUB).props("jobId")).toBe("cb227cec8ca83994");
-        expect(wrapper.text()).toContain("Job 1 of 3");
+    it("pages through a mapped step's jobs, from its first", () => {
+        const row = TABLE.rows[4]!;
+        const wrapper = mountDetail(row);
+        expect(wrapper.findComponent(JOB_TABS_STUB).exists()).toBe(false);
+        const batch = wrapper.findComponent(BATCH_STUB);
+        expect(batch.props("implicitCollectionJobsId")).toBe(row.step_job!.id);
+        expect(batch.props("initialJobId")).toBe("cb227cec8ca83994");
+        expect(batch.props("jobCount")).toBe(3);
+        expect(wrapper.text()).toContain("3 jobs");
         expect(wrapper.findComponent(ITEM_STUB).props("itemSrc")).toBe("hdca");
     });
 
