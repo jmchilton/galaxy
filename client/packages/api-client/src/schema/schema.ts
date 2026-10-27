@@ -9604,7 +9604,7 @@ export interface components {
             label: string;
             /**
              * Metadata Keys
-             * @description Scalar metadata element names seen in this column's datasets.
+             * @description Scalar metadata element names declared by the datatypes of this column's datasets, set or not.
              * @default []
              */
             metadata_keys: string[];
@@ -21500,7 +21500,7 @@ export interface components {
             offset: number;
             /**
              * Output Labels
-             * @description Only include these labelled outputs and inputs.
+             * @description Only include these labelled outputs; labelled inputs and parameters are always included.
              */
             output_labels?: string[] | null;
             /**
@@ -56994,7 +56994,7 @@ export interface operations {
     output_runs_api_workflows__workflow_id__output_runs_get: {
         parameters: {
             query?: {
-                /** @description Only include these labelled workflow inputs and outputs; repeat the parameter for several. */
+                /** @description Only include these labelled workflow outputs; labelled inputs and parameters are always included. Repeat the parameter for several. */
                 output_labels?: string[] | null;
                 instance?: boolean;
                 /** @description Maximum number of rows to return. */
