@@ -42,10 +42,16 @@ describe("NodeInspector", () => {
     });
 
     it.each([
-        ["the workflow has unsaved changes", { step: labelled, storedWorkflowId: "wf1", hasChanges: true }],
-        ["the step is unlabelled", { step: { ...step, label: null }, storedWorkflowId: "wf1" }],
-        ["the workflow was never saved", { step: labelled }],
-    ])("offers no runs link when %s", (_description, props) => {
-        expect(mountInspector(props).find(".node-inspector-compare-runs").exists()).toBe(false);
+        ["the workflow has unsaved changes", { hasChanges: true }],
+        ["the step is unlabelled", { step: { ...step, label: null } }],
+        ["the workflow was never saved", { storedWorkflowId: undefined }],
+    ])("offers no runs link when %s", (_description, change) => {
+        const linked = { step: labelled, storedWorkflowId: "wf1" };
+        expect(mountInspector(linked).find(".node-inspector-compare-runs").exists()).toBe(true);
+        expect(
+            mountInspector({ ...linked, ...change })
+                .find(".node-inspector-compare-runs")
+                .exists(),
+        ).toBe(false);
     });
 });

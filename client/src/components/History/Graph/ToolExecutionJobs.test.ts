@@ -116,6 +116,7 @@ describe("ToolExecutionJobs", () => {
     it("marks a batch job the job cache reused", async () => {
         copiedFrom = { j2: "earlier" };
         const wrapper = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1" });
+        expect(batchRequests).toHaveLength(1);
         expect(wrapper.find(".tool-execution-job-reused").exists()).toBe(false);
         await wrapper.find("button[aria-label='Go to page 2']").trigger("click");
         expect(wrapper.find(".tool-execution-job-reused").text()).toBe("reused");
@@ -123,6 +124,7 @@ describe("ToolExecutionJobs", () => {
 
     it("asks for every job of a batch whose size is known", async () => {
         await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1", jobCount: 3 });
+        expect(batchRequests).toHaveLength(1);
         expect(batchRequests[0]!.get("limit")).toBe("3");
     });
 
@@ -132,6 +134,7 @@ describe("ToolExecutionJobs", () => {
             implicitCollectionJobsId: "icj1",
             initialJobId: "j2",
         });
+        expect(batchRequests).toHaveLength(1);
         expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j2");
     });
 
@@ -141,6 +144,7 @@ describe("ToolExecutionJobs", () => {
         const wrapper = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1" });
         await wrapper.setProps({ implicitCollectionJobsId: "icj-other" } as object);
         await flushPromises();
+        expect(batchRequests).toHaveLength(2);
         expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("k1");
         release();
         await flushPromises();

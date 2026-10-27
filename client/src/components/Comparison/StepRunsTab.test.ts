@@ -100,7 +100,7 @@ describe("StepRunsTab", () => {
         expect(tab.find(".comparison-summary").text()).toBe("Showing 1–6 of 60 · newest first · your runs only");
         const pagination = tab.find("[aria-label='Pages of runs']");
         expect(pagination.exists()).toBe(true);
-        await pagination.find("[aria-posinset='3'], button[aria-label='Go to page 3']").trigger("click");
+        await pagination.find("button[aria-label='Go to page 3']").trigger("click");
         await flushPromises();
         expect(requests.map((r) => r.query.get("offset"))).toEqual(["0", "50"]);
     });
