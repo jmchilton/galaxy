@@ -19,13 +19,10 @@ from typing import (
 
 from sqlalchemy import (
     and_,
-    CompoundSelect,
-    literal_column,
     or_,
     Row,
     select,
     Select,
-    union_all,
 )
 from sqlalchemy.orm import (
     aliased,
@@ -70,7 +67,6 @@ from galaxy.model import (
     WorkflowRequestToInputDatasetAssociation,
     WorkflowRequestToInputDatasetCollectionAssociation,
     WorkflowStep,
-    WorkflowStepConnection,
     WorkflowStepInput,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
@@ -578,10 +574,10 @@ class ComparisonsManager:
             io_by_invocation[invocation.id] = io
             for key in io:
                 declared[version].setdefault(key, _column_spec(key))
-        # a version's step definition also declares columns its runs on this page left empty
+        # a version's step definition also declares inputs its runs on this page left empty
         observed = {key for specs in declared.values() for key in specs}
         page_workflow_ids = {invocation.workflow_id for invocation in page}
-        defined = self._defined_step_io([step_by_workflow[workflow_id] for workflow_id in page_workflow_ids])
+        defined = self._defined_step_inputs([step_by_workflow[workflow_id] for workflow_id in page_workflow_ids])
         for workflow_id in page_workflow_ids:
             for key in defined.get(step_by_workflow[workflow_id], ()):
                 if key in observed:
@@ -630,31 +626,17 @@ class ComparisonsManager:
         _set_metadata_keys(columns, metadata_keys)
         return columns, rows
 
-    def _defined_step_io(self, step_ids: Collection[int]) -> dict[int, set[str]]:
-        """Column keys each step's definition declares: connected inputs, connected or marked outputs, and a
-        subworkflow's labelled outputs. Unconnected tool inputs and unmarked, unconnected outputs aren't known."""
+    def _defined_step_inputs(self, step_ids: Collection[int]) -> dict[int, set[str]]:
+        """Input column keys each step's definition connects."""
         defined: dict[int, set[str]] = defaultdict(set)
         if not step_ids:
             return defined
-        inner_step = aliased(WorkflowStep)
-        stmt: CompoundSelect[Any] = union_all(
-            select(literal_column("'input'"), WorkflowStepInput.workflow_step_id, WorkflowStepInput.name).where(
-                WorkflowStepInput.workflow_step_id.in_(step_ids)
-            ),
-            select(literal_column("'output'"), WorkflowOutput.workflow_step_id, WorkflowOutput.output_name).where(
-                WorkflowOutput.workflow_step_id.in_(step_ids)
-            ),
-            select(
-                literal_column("'output'"), WorkflowStepConnection.output_step_id, WorkflowStepConnection.output_name
-            ).where(WorkflowStepConnection.output_step_id.in_(step_ids)),
-            select(literal_column("'output'"), WorkflowStep.id, WorkflowOutput.label)
-            .join(inner_step, inner_step.workflow_id == WorkflowStep.subworkflow_id)
-            .join(WorkflowOutput, WorkflowOutput.workflow_step_id == inner_step.id)
-            .where(WorkflowStep.id.in_(step_ids)),
+        stmt = select(WorkflowStepInput.workflow_step_id, WorkflowStepInput.name).where(
+            WorkflowStepInput.workflow_step_id.in_(step_ids)
         )
-        for role, step_id, name in self.sa_session.execute(stmt):
-            if step_id is not None and name:
-                defined[step_id].add(f"{role}:{normalize_io_name(name)}")
+        for step_id, name in self.sa_session.execute(stmt):
+            if name:
+                defined[step_id].add(f"input:{normalize_io_name(name)}")
         return defined
 
     def _submission_inputs(
