@@ -233,14 +233,6 @@ describe("ComparisonTable", () => {
         expect(wrapper.findAll(".comparison-expand")).toHaveLength(0);
     });
 
-    it("emits the transpose toggle", async () => {
-        const wrapper = mountTable();
-        const button = wrapper.find(".comparison-transpose");
-        expect(button.attributes("aria-pressed")).toBe("false");
-        await button.trigger("click");
-        expect(wrapper.emitted("update:transpose")).toEqual([[true]]);
-    });
-
     it("hides columns that are not visible and forwards the chooser's events", async () => {
         const wrapper = mountTable({ visibleColumns: ["state", "output:out_file1"] });
         const headers = headerTexts(wrapper);

@@ -1977,3 +1977,32 @@ file_set_wizard:
     select_file:
       type: xpath
       selector: "//div[@role='button' and contains(@id, 'g-card-${file_path}')]"
+
+comparisons:
+  selectors:
+    _: '.comparison-view'
+    step_all_runs_tab: '.invocation-step-card .invocation-step-all-runs-tab > a.nav-link'
+    view_all_link: '.step-runs-tab a.comparison-view-all'
+    table: '.comparison-table'
+    rows: '.comparison-table tbody tr[data-pk]'
+    row: '.comparison-table tr[data-pk="${run_id}"]'
+    row_link: '.comparison-table tr[data-pk="${run_id}"] a.comparison-run-link'
+    row_expand: '.comparison-table tr[data-pk="${run_id}"] .comparison-expand'
+    row_detail: '.comparison-table .comparison-row-detail'
+    row_detail_changed_parameter: '.comparison-row-detail .job-parameters-diff tr.job-parameters-diff-changed'
+    row_detail_job_pager: '.comparison-row-detail .job-header-end .pagination'
+    row_detail_reused_badge: '.comparison-row-detail .tool-execution-job-reused'
+    column_header: '.comparison-table thead .comparison-column-header[data-column-key="${key}"]'
+    row_select: '.comparison-table tr[data-pk="${run_id}"] .g-table-select-column label'
+    compare_selected: '.comparison-table .comparison-compare-selected'
+    diff_panel: '.comparison-table .comparison-diff'
+    diff_changed_line: '.comparison-diff tr.comparison-diff-differs[data-diff-key="${key}"]'
+    transposed_run_links: '.comparison-table thead a.comparison-run-link'
+    transpose_toggle: '.comparison-table .comparison-transpose'
+    empty_message: '.comparison-table .comparison-empty'
+    summary: '.comparison-summary'
+    state_filter: '.comparison-filter-states input[value="${state}"]'
+    output_filter: '.comparison-filter-outputs input[value="${label}"]'
+    compare_outputs_button: 'a.stored-workflow-compare-outputs'
+    other_runs_action: 'a[id^="g-card-action-job-other-runs"]'
+    editor_compare_runs_link: '.node-inspector-compare-runs'
