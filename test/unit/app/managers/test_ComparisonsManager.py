@@ -118,9 +118,10 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         (row,) = table.rows
         cell = row.cells["input:f1"]
         assert cell.type == "dataset_list"
-        assert [item.type for item in cell.items] == ["dataset", "missing"]
-        assert cell.items[0].id == self.app.security.encode_id(own.id)
-        assert cell.items[1].model_dump() == {"type": "missing", "reason": "inaccessible"}
+        own_cell, foreign_cell = cell.items
+        assert own_cell.type == "dataset"
+        assert own_cell.id == self.app.security.encode_id(own.id)
+        assert foreign_cell.model_dump() == {"type": "missing", "reason": "inaccessible"}
 
     def _tool_runs_statement_count(self, submissions: int, mapped: bool, metadata: bool) -> int:
         self.tool_id = f"compared_{submissions}_{mapped}_{metadata}"
