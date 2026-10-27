@@ -10,12 +10,9 @@ import { versionlessToolId } from "@/utils/tool-version";
 import {
     type CellDisplay,
     isScalar,
-    META_LABELS,
+    META_FIELD_SPECS,
     metadataKeyOf,
-    type MetaField,
     missingText,
-    stateText,
-    versionLabel,
     visibleFields,
 } from "./comparisonUtils";
 
@@ -56,29 +53,6 @@ export function cellText(
     return cell.hid === null || cell.hid === undefined ? name : `${cell.hid}: ${name}`;
 }
 
-/** A run field as text; times in full rather than elapsed. */
-export function metaText(field: MetaField, row: ComparisonRow): string {
-    switch (field) {
-        case "invoked":
-        case "run":
-            return row.create_time;
-        case "version":
-            return versionLabel(row.version);
-        case "tool_version":
-            return row.tool_version ?? "";
-        case "state":
-            return stateText(row.state);
-        case "reused":
-            return row.reused ?? "";
-        case "history":
-            return row.history.name || row.history.id;
-        default: {
-            const unknown: never = field;
-            return String(unknown);
-        }
-    }
-}
-
 export interface ExportOptions {
     /** Keys of the shown meta fields and data columns; the anchor field is always written. */
     visibleColumns: string[];
@@ -90,10 +64,7 @@ export interface ExportOptions {
 export function exportLines(table: ComparisonTable, options: ExportOptions): string[][] {
     const { anchor, metaFields, columns } = visibleFields(table.query.kind, table.columns, options.visibleColumns);
     const fields = [
-        ...[anchor, ...metaFields].map((field) => ({
-            label: META_LABELS[field],
-            text: (row: ComparisonRow) => metaText(field, row),
-        })),
+        ...[anchor, ...metaFields].map((field) => META_FIELD_SPECS[field]),
         ...columns.map((column) => ({
             label: `${column.label} (${column.role})`,
             text: (row: ComparisonRow) => cellText(row.cells[column.key], row, options.displayOf(column), column.role),

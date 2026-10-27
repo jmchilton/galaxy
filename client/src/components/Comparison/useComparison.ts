@@ -4,7 +4,8 @@ import type { ComparisonResult, ComparisonTable } from "@/api/comparisons";
 import { useUserLocalStorage } from "@/composables/userLocalStorage";
 import { errorMessageAsString } from "@/utils/simple-error";
 
-import { type CellDisplay, META_FIELDS } from "./comparisonUtils";
+import { displayStorageKey } from "./comparisonQuery";
+import { type CellDisplay, META_FIELDS, requestedMetadata } from "./comparisonUtils";
 
 /** Fetches a comparison page whenever the params change; only the latest request's result is kept. */
 export function useComparisonFetch<P>(
@@ -64,10 +65,17 @@ interface DisplayPrefs {
     hidden?: string[];
 }
 
-/** Transpose, cell displays and hidden columns, remembered per `storageKey` in local storage. */
-export function useComparisonDisplay(storageKey: Ref<string | undefined>, table: Ref<ComparisonTable | undefined>) {
+/**
+ * Transpose, cell displays and hidden columns, remembered in local storage per comparison.
+ *
+ * `knownKey` names the comparison before the first fetch; without it the loaded table's echoed query does.
+ */
+export function useComparisonDisplay(knownKey: Ref<string | undefined>, table: Ref<ComparisonTable | undefined>) {
     const stored = useUserLocalStorage<Record<string, DisplayPrefs>>("comparison-display", {});
     const unsaved = ref<DisplayPrefs>({});
+    const storageKey = computed(
+        () => knownKey.value ?? (table.value ? displayStorageKey(table.value.query) : undefined),
+    );
 
     const prefs = computed<DisplayPrefs>(() =>
         storageKey.value ? (stored.value[storageKey.value] ?? {}) : unsaved.value,
@@ -93,6 +101,8 @@ export function useComparisonDisplay(storageKey: Ref<string | undefined>, table:
         get: () => prefs.value.columnDisplay ?? {},
         set: (value: Record<string, CellDisplay>) => update({ columnDisplay: value }),
     });
+    /** Metadata elements the server must fill for the current displays. */
+    const metadataElements = computed(() => requestedMetadata(columnDisplay.value));
 
     const allColumns = computed(() =>
         table.value
@@ -118,5 +128,5 @@ export function useComparisonDisplay(storageKey: Ref<string | undefined>, table:
         update({ hidden: [] });
     }
 
-    return { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns };
+    return { transpose, columnDisplay, metadataElements, visibleColumns, toggleColumn, resetColumns };
 }

@@ -4,7 +4,7 @@ import { computed } from "vue";
 import type { ComparisonKind } from "@/api/comparisons";
 
 import { STATE_OPTIONS } from "./comparisonQuery";
-import { stateText, versionLabel } from "./comparisonUtils";
+import { offeredOptions, stateText, versionLabel } from "./comparisonUtils";
 
 import GCheckboxGroup from "@/components/BaseComponents/GCheckboxGroup.vue";
 
@@ -25,17 +25,14 @@ const emit = defineEmits<{
 }>();
 
 // Selected values stay offered even when the loaded page doesn't report them.
-const stateOptions = computed(() =>
-    [...new Set([...STATE_OPTIONS[props.kind], ...props.states])].map((state) => ({
-        text: stateText(state),
-        value: state,
-    })),
-);
+const stateOptions = computed(() => offeredOptions(STATE_OPTIONS[props.kind], props.states, stateText));
 
 const versionOptions = computed(() =>
-    [...new Set([...(props.versionsAvailable ?? []).map(String), ...(props.versions ?? [])])]
-        .sort((a, b) => Number(a) - Number(b))
-        .map((version) => ({ text: versionLabel(Number(version)) || version, value: version })),
+    offeredOptions(
+        (props.versionsAvailable ?? []).map(String),
+        props.versions ?? [],
+        (version) => versionLabel(Number(version)) || version,
+    ).sort((a, b) => Number(a.value) - Number(b.value)),
 );
 // One version has nothing to choose between.
 const showVersions = computed(
