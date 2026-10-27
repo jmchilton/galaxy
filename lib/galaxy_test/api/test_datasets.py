@@ -42,6 +42,10 @@ COMPOSITE_DATA_FETCH_REQUEST_1 = {
         ]
     },
 }
+TABULAR_METADATA_KEYS = {
+    f"metadata_{name}"
+    for name in ("dbkey", "data_lines", "comment_lines", "columns", "column_types", "column_names", "delimiter")
+}
 
 
 class TestDatasetsApi(ApiTestCase):
@@ -305,6 +309,17 @@ class TestDatasetsApi(ApiTestCase):
         show_response = self._get(f"datasets/{hda1['id']}")
         self._assert_status_code_is(show_response, 200)
         self.__assert_matches_hda(hda1, show_response.json())
+
+    def test_show_metadata_key_expands_every_element(self, history_id):
+        hda = self.dataset_populator.new_dataset(history_id, content="1\t2\n3\t4\n", file_type="tabular", wait=True)
+        shown = self._get(f"histories/{history_id}/contents/datasets/{hda['id']}?keys=name,metadata").json()
+        assert set(shown) == {"name", *TABULAR_METADATA_KEYS}
+        assert shown["metadata_columns"] == 2
+        # keys add to the detailed view here
+        shown = self._get(f"datasets/{hda['id']}?view=summary&keys=metadata").json()
+        assert {key for key in shown if key.startswith("metadata_")} == TABULAR_METADATA_KEYS
+        summary = self._get(f"datasets/{hda['id']}?view=summary").json()
+        assert not [key for key in summary if key.startswith("metadata_")]
 
     def test_show_permission_denied(self, history_id):
         hda = self.dataset_populator.new_dataset(history_id)
