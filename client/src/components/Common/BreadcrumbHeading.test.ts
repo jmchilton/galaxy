@@ -94,6 +94,18 @@ describe("BreadcrumbHeading.vue", () => {
         expect(separatorCount).toBe(2);
     });
 
+    it("names the current page in a tooltip, as its title may be truncated", async () => {
+        const items = [{ title: "Home", to: "/" }, { title: "Section" }, { title: "Current Page" }];
+        const wrapper = await mountComponent(items, "/current");
+
+        const inactive = wrapper.findAll(INACTIVE_CLASS);
+        expect(inactive.map((item) => item.classes().includes("breadcrumb-heading-header-current"))).toEqual([
+            false,
+            true,
+        ]);
+        expect(inactive[1]!.attributes("title")).toBe("Current Page");
+    });
+
     it("renders superText when provided", async () => {
         const items = [{ title: "Beta Feature", superText: "BETA" }];
         const wrapper = await mountComponent(items);

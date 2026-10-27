@@ -37,7 +37,11 @@ function isPathActive(path: RouteLocationRaw): boolean {
                     <FontAwesomeIcon v-if="item.icon" :icon="item.icon" />
                     {{ localize(item.title) }}
                 </BLink>
-                <span v-else class="breadcrumb-heading-header-inactive">
+                <span
+                    v-else
+                    class="breadcrumb-heading-header-inactive"
+                    :class="{ 'breadcrumb-heading-header-current': index === items.length - 1 }"
+                    :title="index === items.length - 1 ? localize(item.title) : undefined">
                     <FontAwesomeIcon v-if="item.icon" :icon="item.icon" />
                     {{ localize(item.title) }}
                 </span>
@@ -87,6 +91,13 @@ function isPathActive(path: RouteLocationRaw): boolean {
         .breadcrumb-heading-header-inactive {
             white-space: nowrap;
             flex-shrink: 0;
+        }
+
+        // ancestors shrink first; any shrink of the current crumb, even sub-pixel, shows an ellipsis
+        .breadcrumb-heading-header-current {
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .breadcrumb-separator {
