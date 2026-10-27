@@ -2528,6 +2528,11 @@ class JobBaseModel(Model, WithModelClass):
         description="The (major) version of Galaxy used to create this job.",
         examples=["21.05"],
     )
+    tool_version: str | None = Field(
+        default=None,
+        title="Tool Version",
+        description="Version of the tool that generated this job.",
+    )
 
 
 class JobImportHistoryResponse(JobBaseModel):
