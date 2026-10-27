@@ -90,11 +90,8 @@ const stderr_text = computed(() =>
 
 const routeToInvocation = computed(() => `/workflows/invocations/${fetchedInvocationId.value}`);
 
-// Curious as to why we're trying to access tool_version and traceback like this, when they don't exist on
-// `ShowFullJobResponse`? Possibly historical reasons or maybe the `JobProvider` can return different types (doesn't seem like it)?
-const toolVersion = computed(() =>
-    job.value && "tool_version" in job.value ? (job.value?.tool_version as string) : null,
-);
+const toolVersion = computed(() => job.value?.tool_version ?? null);
+// `traceback` isn't on `ShowFullJobResponse`; possibly historical.
 const traceback = computed(() => (job.value && "traceback" in job.value ? (job.value?.traceback as string) : null));
 
 const primaryActions = computed<CardAction[]>(() => {
