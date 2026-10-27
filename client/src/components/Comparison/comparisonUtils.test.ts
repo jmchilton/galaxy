@@ -163,6 +163,14 @@ describe("offeredOptions", () => {
     it("names options with the given text", () => {
         expect(offeredOptions(["ok"], [], (state) => state.toUpperCase())).toEqual([{ text: "OK", value: "ok" }]);
     });
+
+    it("names a later option whose text repeats an earlier one by its value too", () => {
+        const text = (state: string) => (state === "error" ? "failed" : state);
+        expect(offeredOptions(["error", "failed"], [], text)).toEqual([
+            { text: "failed", value: "error" },
+            { text: "failed (failed)", value: "failed" },
+        ]);
+    });
 });
 
 describe("noJobReason", () => {

@@ -13,6 +13,7 @@ export type InvocationJobsSummary = components["schemas"]["InvocationJobsRespons
 type InvocationReport = components["schemas"]["InvocationReport"];
 export type InvocationState = components["schemas"]["InvocationState"];
 export type InvocationStep = components["schemas"]["InvocationStep"];
+export type InvocationStepState = components["schemas"]["InvocationStepState"];
 export type InvocationMessage = components["schemas"]["InvocationMessageResponseUnion"];
 export type WorkflowInvocationRequest = components["schemas"]["WorkflowInvocationRequestModel"];
 export type WorkflowInvocationRequestInputs = components["schemas"]["WorkflowInvocationRequestModel"]["inputs"];
