@@ -14,6 +14,7 @@ import {
     requestedMetadata,
     rowJob,
     runLink,
+    stateFilterOptions,
     versionLabel,
 } from "./comparisonUtils";
 import { STEP_RUNS_TABLE } from "./test-utils";
@@ -163,12 +164,20 @@ describe("offeredOptions", () => {
     it("names options with the given text", () => {
         expect(offeredOptions(["ok"], [], (state) => state.toUpperCase())).toEqual([{ text: "OK", value: "ok" }]);
     });
+});
 
-    it("names a later option whose text repeats an earlier one by its value too", () => {
-        const text = (state: string) => (state === "error" ? "failed" : state);
-        expect(offeredOptions(["error", "failed"], [], text)).toEqual([
-            { text: "failed", value: "error" },
-            { text: "failed (failed)", value: "failed" },
+describe("stateFilterOptions", () => {
+    it("shares one option between states that read alike, named by the first", () => {
+        expect(stateFilterOptions(["ok", "error", "failed"], [])).toEqual([
+            { text: "successful", value: "ok", states: ["ok"] },
+            { text: "failed", value: "error", states: ["error", "failed"] },
+        ]);
+    });
+
+    it("keeps selected states the page didn't report", () => {
+        expect(stateFilterOptions(["ok"], ["failed"])).toEqual([
+            { text: "successful", value: "ok", states: ["ok"] },
+            { text: "failed", value: "failed", states: ["failed"] },
         ]);
     });
 });
