@@ -86,28 +86,43 @@ def test_browse_down_to_the_original_files():
     assert files[1].hashes is None
 
 
-@responses.activate
-def test_download_checks_every_redirect_and_keeps_the_token_on_dspace():
-    _fake_repository()
+FASTQ_URI = "gxfiles://dspace/bitstreams/f1/reads.fastq"
+
+
+def _redirect_download_to_cdn():
     responses.get(f"{API}/core/bitstreams/f1/content", status=302, headers={"Location": CDN})
     responses.get(CDN, body=b"abc")
-    file_sources = _source(token="secret")
-    assert realize_to_temp_file(file_sources, "gxfiles://dspace/bitstreams/f1/reads.fastq") == "abc"
-    auth = {str(call.request.url).split("?")[0]: call.request.headers.get("Authorization") for call in responses.calls}
-    assert auth[f"{API}/core/bitstreams/f1/content"] == "Bearer secret"
-    assert auth[CDN] is None
 
-    responses.replace(responses.GET, f"{API}/core/bitstreams/f1/content", status=400)
+
+@responses.activate
+def test_download_follows_redirect_and_sends_token_only_to_dspace():
+    _redirect_download_to_cdn()
+    assert realize_to_temp_file(_source(token="secret"), FASTQ_URI) == "abc"
+    auth = {str(call.request.url): call.request.headers.get("Authorization") for call in responses.calls}
+    assert auth == {f"{API}/core/bitstreams/f1/content": "Bearer secret", CDN: None}
+
+
+@responses.activate
+def test_rejected_token_on_download_raises_authentication_required():
+    responses.get(f"{API}/core/bitstreams/f1/content", status=400)
     with pytest.raises(AuthenticationRequired):
-        realize_to_temp_file(file_sources, "gxfiles://dspace/bitstreams/f1/reads.fastq")
-    responses.replace(responses.GET, f"{API}/core/bitstreams/f1/content", status=302, headers={"Location": CDN})
+        realize_to_temp_file(_source(token="secret"), FASTQ_URI)
+
+
+@responses.activate
+def test_expired_token_on_listing_raises_authentication_required():
+    _fake_repository()
     # an expired token still lists, but only what is public
     responses.get(f"{API}/authn/status", json={"authenticated": False})
     with pytest.raises(AuthenticationRequired):
-        file_sources.get_file_source_path("gxfiles://dspace").file_source.list("/")
+        _source(token="secret").get_file_source_path("gxfiles://dspace").file_source.list("/")
 
-    responses.replace(responses.GET, CDN, status=302, headers={"Location": "http://169.254.169.254/latest"})
+
+@responses.activate
+def test_redirect_to_private_address_is_refused():
+    responses.get(f"{API}/core/bitstreams/f1/content", status=302, headers={"Location": CDN})
+    responses.get(CDN, status=302, headers={"Location": "http://169.254.169.254/latest"})
     responses.get("http://169.254.169.254/latest", body=b"secret")
     with pytest.raises(ConfigDoesNotAllowException):
-        realize_to_temp_file(file_sources, "gxfiles://dspace/bitstreams/f1/reads.fastq")
+        realize_to_temp_file(_source(token="secret"), FASTQ_URI)
     assert not any("169.254" in str(call.request.url) for call in responses.calls)
