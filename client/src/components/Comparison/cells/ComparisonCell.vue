@@ -17,6 +17,8 @@ const props = defineProps<{
     display: CellDisplay;
     /** Metadata elements the loaded table was fetched with. */
     requestedMetadata?: string[];
+    /** Whether the next table is being fetched. */
+    loading?: boolean;
 }>();
 
 const metadataElement = computed(() => metadataKeyOf(props.display));
@@ -35,6 +37,7 @@ const metadataElement = computed(() => metadataKeyOf(props.display));
         v-else-if="metadataElement"
         :cell="cell"
         :element="metadataElement"
-        :requested="Boolean(requestedMetadata?.includes(metadataElement))" />
+        :requested="Boolean(requestedMetadata?.includes(metadataElement))"
+        :loading="loading" />
     <ItemCell v-else :cell="cell" />
 </template>

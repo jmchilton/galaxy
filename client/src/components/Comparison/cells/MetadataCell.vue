@@ -10,6 +10,8 @@ const props = defineProps<{
     element: string;
     /** Whether the loaded table asked the server for this element. */
     requested: boolean;
+    /** Whether a table that may hold it is being fetched. */
+    loading?: boolean;
 }>();
 
 const isSet = computed(
@@ -27,7 +29,8 @@ const isSet = computed(
         title="Collections have no dataset metadata">
         {{ cell.collection_type }} &middot; {{ cell.element_count ?? "?" }}
     </span>
-    <span v-else-if="!requested" class="comparison-metadata-loading text-muted">loading&hellip;</span>
+    <span v-else-if="!requested && loading" class="comparison-metadata-loading text-muted">loading&hellip;</span>
+    <span v-else-if="!requested" class="comparison-metadata-unloaded text-muted" title="Not loaded">&mdash;</span>
     <ValueCell v-else-if="isSet" :value="cell.metadata[element]" />
     <span v-else class="comparison-metadata-unset text-muted font-italic" title="Not set for this dataset"
         >not set</span

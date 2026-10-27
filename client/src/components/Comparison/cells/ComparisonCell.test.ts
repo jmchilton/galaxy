@@ -24,10 +24,15 @@ const LINK_STUB = {
     template: "<a class='item-link'><slot /></a>",
 };
 
-function mountCell(cell: Cell | undefined, display: CellDisplay = "link", requestedMetadata: string[] = []) {
+function mountCell(
+    cell: Cell | undefined,
+    display: CellDisplay = "link",
+    requestedMetadata: string[] = [],
+    loading = false,
+) {
     const localVue = getLocalVue();
     return mount(ComparisonCell as object, {
-        props: { cell, row: { version: 1 }, display, requestedMetadata },
+        props: { cell, row: { version: 1 }, display, requestedMetadata, loading },
         global: { ...localVue, stubs: { ...localVue.stubs, ItemPopoverLink: LINK_STUB, FontAwesomeIcon: true } },
     });
 }
@@ -84,8 +89,14 @@ describe("ComparisonCell metadata", () => {
         expect(mountCell({ ...DATASET, metadata: {} }, "meta:data_lines", ["data_lines"]).text()).toBe("not set");
     });
 
-    it("waits while the element has not been fetched yet", () => {
-        expect(mountCell(withLines, "meta:data_lines", []).text()).toBe("loading…");
+    it("waits while the element is being fetched", () => {
+        expect(mountCell(withLines, "meta:data_lines", [], true).text()).toBe("loading…");
+    });
+
+    it("shows a dash, not loading, when the element was not fetched and nothing is loading", () => {
+        const wrapper = mountCell(withLines, "meta:data_lines", [], false);
+        expect(wrapper.text()).toBe("—");
+        expect(wrapper.find(".comparison-metadata-unloaded").attributes("title")).toBe("Not loaded");
     });
 
     it("explains that collections have no dataset metadata", () => {

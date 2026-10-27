@@ -197,7 +197,8 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                         :cell="item.row.cells[column.key]"
                         :row="item.row"
                         :display="display(column)"
-                        :requested-metadata="requestedMetadata" />
+                        :requested-metadata="requestedMetadata"
+                        :loading="loading" />
                 </template>
                 <template v-slot:row-details="{ item }">
                     <ComparisonRowDetail :row="item.row" :columns="table.columns" :query="table.query" />
@@ -240,7 +241,8 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                         :cell="row.cells[item.column.key]"
                         :row="row"
                         :display="display(item.column)"
-                        :requested-metadata="requestedMetadata" />
+                        :requested-metadata="requestedMetadata"
+                        :loading="loading" />
                     <ComparisonMetaCell
                         v-else
                         :field="item.meta!"
