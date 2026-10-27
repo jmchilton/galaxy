@@ -17,6 +17,7 @@ interface Root_ extends Component {
     right_panel_drag: SelectorTemplate;
     right_panel_collapse: SelectorTemplate;
     by_attribute: SelectorTemplate;
+    loading_message: SelectorTemplate;
     messages: Root_messages;
 }
 interface Rootmasthead extends Component {
@@ -482,6 +483,7 @@ interface Rootworkflow_show extends Component {
 interface Rootinvocations extends Component {
     invocations_table: SelectorTemplate;
     invocations_table_rows: SelectorTemplate;
+    workflow_invocations_table_rows: SelectorTemplate;
     invocations_panel_list: SelectorTemplate;
     invocations_panel_list_items: SelectorTemplate;
     pager: SelectorTemplate;
@@ -791,6 +793,7 @@ interface Rootcomparisons extends Component {
     step_all_runs_tab: SelectorTemplate;
     view_all_link: SelectorTemplate;
     table: SelectorTemplate;
+    table_scroller: SelectorTemplate;
     rows: SelectorTemplate;
     row: SelectorTemplate;
     row_link: SelectorTemplate;
@@ -808,6 +811,7 @@ interface Rootcomparisons extends Component {
     transpose_toggle: SelectorTemplate;
     empty_message: SelectorTemplate;
     summary: SelectorTemplate;
+    state_filter_toggle: SelectorTemplate;
     state_filter: SelectorTemplate;
     output_filter: SelectorTemplate;
     compare_outputs_button: SelectorTemplate;

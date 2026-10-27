@@ -21,6 +21,7 @@ _:  # global stuff
     by_attribute: '${scope} [${name}="${value}"]'
     active_nav_item: '.nav-item-active'
     toolbox_panel: '#toolbox-panel'
+    loading_message: '[data-description="loading message"]'
 
     confirm_button:
       type: xpath
@@ -1359,6 +1360,7 @@ invocations:
     activity_expand: ".activity-panel-footer"
     invocations_table: '#invocations-grid .grid-table'
     invocations_table_rows: '#invocations-grid .grid-table [data-description="grid item"]'
+    workflow_invocations_table_rows: '#invocations-workflow-grid .grid-table [data-description="grid item"]'
     invocations_panel_list: '[data-description="Workflow Invocations"] .scroll-list'
     invocations_panel_list_items: '[data-description="Workflow Invocations"] .scroll-list .g-card[id^="g-card-invocation-"]'
     pager: '[data-description="grid pager"]'
@@ -1984,6 +1986,7 @@ comparisons:
     step_all_runs_tab: '.invocation-step-card .invocation-step-all-runs-tab > a.nav-link'
     view_all_link: '.step-runs-tab a.comparison-view-all'
     table: '.comparison-table'
+    table_scroller: '.comparison-table-scroll'
     rows: '.comparison-table tbody tr[data-pk]'
     row: '.comparison-table tr[data-pk="${run_id}"]'
     row_link: '.comparison-table tr[data-pk="${run_id}"] a.comparison-run-link'
@@ -2001,6 +2004,7 @@ comparisons:
     transpose_toggle: '.comparison-table .comparison-transpose'
     empty_message: '.comparison-table .comparison-empty'
     summary: '.comparison-summary'
+    state_filter_toggle: '.comparison-filter-states-toggle'
     state_filter: '.comparison-filter-states input[value="${state}"]'
     output_filter: '.comparison-filter-outputs input[value="${label}"]'
     compare_outputs_button: 'a.stored-workflow-compare-outputs'
