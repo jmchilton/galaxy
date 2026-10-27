@@ -25,7 +25,7 @@ def versionless_tool_id(tool_id: str) -> str:
     # owner/repo/tool_id/version
     if len(tool_id.split("/repos/", 1)[1].split("/")) < 4:
         return tool_id
-    return tool_id.rsplit("/", 1)[0]
+    return remove_version_from_guid(tool_id) or tool_id
 
 
 def short_tool_id(guid: str) -> str:
