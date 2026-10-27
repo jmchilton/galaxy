@@ -57,6 +57,10 @@ if TYPE_CHECKING:
 # https://fastapi.tiangolo.com/tutorial/metadata/#metadata-for-tags
 api_tags_metadata = [
     {
+        "name": "comparisons",
+        "description": "Compare runs of a workflow step, a workflow's outputs, or a tool.",
+    },
+    {
         "name": "configuration",
         "description": "Configuration-related endpoints.",
     },
