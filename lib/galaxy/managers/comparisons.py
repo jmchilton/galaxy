@@ -397,7 +397,7 @@ class ComparisonsManager:
         icj_outputs = self.cell_builder.implicit_collection_outputs(list(icjs))
         via = self._workflow_runs_via(list(jobs), list(icjs))
 
-        io_by_row: list[dict[str, ItemRef | ItemRefs]] = []
+        io_by_row: list[dict[str, IoValue]] = []
         specs: dict[str, ColumnSpec] = {}
         declared: dict[str | None, set[str]] = defaultdict(set)
         for row in page:
@@ -409,7 +409,9 @@ class ComparisonsManager:
                 inputs, outputs = icj_inputs.get(icj_id, {}), icj_outputs.get(icj_id, {})
                 representative = icjs[icj_id].representative if icj_id in icjs else None
                 tool_version = representative.tool_version if representative else None
-            io = {**_keyed("input", inputs), **_keyed("output", outputs)}
+            io: dict[str, IoValue] = {**_keyed("input", inputs), **_keyed("output", outputs)}
+            if icj_id is None:
+                _mark_skipped_outputs(io, jobs.get(row.job_id))
             io_by_row.append(io)
             declared[tool_version].update(io)
             for key in io:
@@ -565,6 +567,7 @@ class ComparisonsManager:
                 inputs = job_inputs.get(job.id, {}) if job else icj_inputs.get(icj.id, {}) if icj else {}
                 io.update(_keyed("input", inputs))
                 io.update(_keyed("output", outputs.get(step.id, {})))
+                _mark_skipped_outputs(io, job)
             io_by_invocation[invocation.id] = io
             for key in io:
                 declared[version].setdefault(key, _column_spec(key))
@@ -802,6 +805,14 @@ def _cells(
         in_row_version = in_version is None or column.key in in_version
         cells[column.key] = MissingCell(reason=reason if in_row_version else "not_in_version")
     return cells
+
+
+def _mark_skipped_outputs(io: dict[str, IoValue], job: JobRecord | None) -> None:
+    """A skipped job's outputs are null placeholder datasets; show them as skipped."""
+    if job and job.state == Job.states.SKIPPED:
+        for key in io:
+            if key.startswith("output:"):
+                io[key] = MissingCell(reason="skipped")
 
 
 def _set_metadata_keys(columns: list[ComparisonColumn], metadata_keys: dict[str, set[str]]) -> None:
