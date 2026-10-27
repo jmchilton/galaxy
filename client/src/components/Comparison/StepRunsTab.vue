@@ -9,6 +9,7 @@ import { comparisonPath, DEFAULT_LIMIT, displayStorageKey } from "./comparisonQu
 import { requestedMetadata } from "./comparisonUtils";
 import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
+import ComparisonFilters from "./ComparisonFilters.vue";
 import ComparisonPager from "./ComparisonPager.vue";
 import ComparisonTable from "./ComparisonTable.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -30,6 +31,9 @@ const props = withDefaults(
 );
 
 const offset = ref(0);
+const states = ref<string[]>([]);
+// 0-based workflow versions, as strings like the page's URL holds them.
+const versions = ref<string[]>([]);
 const table = ref<ComparisonTableModel>();
 // Keyed by the stored workflow, so every version shares one setting; the echoed id only when not given.
 const storageKey = computed(() => {
@@ -56,6 +60,8 @@ const params = computed<StepRunsParams | undefined>(() => {
         limit: DEFAULT_LIMIT,
         offset: offset.value,
         metadata_elements: metadata.length ? metadata : undefined,
+        states: states.value.length ? states.value : undefined,
+        versions: versions.value.length ? versions.value.map(Number) : undefined,
     };
 });
 const { total, loading, error, reload } = useComparisonFetch(params, fetchStepRuns, table);
@@ -66,14 +72,29 @@ watch(
     () => {
         table.value = undefined;
         offset.value = 0;
+        states.value = [];
+        versions.value = [];
     },
+);
+// Synchronous, so the refetch for new filters already asks for the first page.
+watch(
+    [states, versions],
+    () => {
+        offset.value = 0;
+    },
+    { flush: "sync" },
 );
 
 // The echoed stored workflow id, so the page needs no `instance`.
 const pageLink = computed(() => {
     const query = table.value?.query;
     return query?.kind === "step_runs"
-        ? comparisonPath("step_runs", { workflow_id: query.workflow_id, step_label: query.step_label })
+        ? comparisonPath("step_runs", {
+              workflow_id: query.workflow_id,
+              step_label: query.step_label,
+              states: states.value,
+              versions: versions.value,
+          })
         : undefined;
 });
 </script>
@@ -92,6 +113,11 @@ const pageLink = computed(() => {
             </GAlert>
             <LoadingSpan v-if="loading && !table" message="Loading runs of this step" />
             <template v-if="table">
+                <ComparisonFilters
+                    v-model:states="states"
+                    v-model:versions="versions"
+                    kind="step_runs"
+                    :versions-available="table.versions_available" />
                 <ComparisonTable
                     v-model:transpose="transpose"
                     v-model:column-display="columnDisplay"
