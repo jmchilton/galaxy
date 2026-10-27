@@ -8,8 +8,6 @@ from typing import (
     Any,
     Literal,
 )
-from urllib.parse import urljoin
-
 from pydantic import Field
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
@@ -30,9 +28,11 @@ from galaxy.files.models import (
     RemoteFile,
     RemoteFileHash,
 )
-from galaxy.files.uris import validate_non_local
+from galaxy.files.uris import (
+    get_checking_every_redirect,
+    validate_non_local,
+)
 from galaxy.util import (
-    DEFAULT_SOCKET_TIMEOUT,
     requests,
     stream_to_path,
 )
@@ -266,29 +266,19 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
         accept: str = "application/octet-stream",
     ) -> Iterator[Any]:
         token = (config.token or "").strip()
+        api_origin = self._origin(config.api_url)
+
+        def headers_for(hop: str) -> dict[str, str]:
+            headers = {"Accept": accept, "User-Agent": "Galaxy DSpace file source"}
+            if token and self._origin(hop) == api_origin:
+                headers["Authorization"] = f"Bearer {token}"
+            return headers
+
         try:
-            # redirects are followed here, so every address is checked before it is requested
-            for _ in range(MAX_REDIRECTS + 1):
-                self._refuse_a_private_address(url)
-                headers = {"Accept": accept, "User-Agent": "Galaxy DSpace file source"}
-                if token and self._origin(url) == self._origin(config.api_url):
-                    headers["Authorization"] = f"Bearer {token}"
-                response = requests.get(
-                    url,
-                    params=params,
-                    headers=headers,
-                    stream=True,
-                    timeout=DEFAULT_SOCKET_TIMEOUT,
-                    allow_redirects=False,
-                )
-                if not response.is_redirect:
-                    break
-                response.close()
-                url, params = urljoin(response.url, response.headers["Location"]), None
-            else:
-                raise MessageException(f"DSpace redirected more than {MAX_REDIRECTS} times [{url}].")
-            with response:
-                if response.status_code == 400 and "Authorization" in headers:
+            with get_checking_every_redirect(
+                url, self._refuse_a_private_address, headers_for, params, MAX_REDIRECTS
+            ) as response:
+                if response.status_code == 400 and "Authorization" in headers_for(response.url):
                     # DSpace answers 400 to a login token it no longer accepts
                     raise self._token_not_accepted()
                 if response.status_code == 404:

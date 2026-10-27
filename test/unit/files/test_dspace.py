@@ -135,7 +135,11 @@ def test_redirect_to_private_address_is_refused():
     [
         ({"status": 404}, ObjectNotFound, "not found"),
         ({"body": "<html>"}, MessageException, "DSpace 7 or newer"),
-        ({"status": 302, "headers": {"Location": f"{API}/core/items/i1/bundles"}}, MessageException, "redirected more"),
+        (
+            {"status": 302, "headers": {"Location": f"{API}/core/items/i1/bundles"}},
+            MessageException,
+            "More than 5 redirects",
+        ),
     ],
 )
 @responses.activate
