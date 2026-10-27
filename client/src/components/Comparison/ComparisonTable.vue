@@ -213,12 +213,12 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     outline
                     :disabled="selectedRunIds.length < MAX_SELECTED"
                     disabled-title="Tick two runs to compare them side by side"
-                    :pressed="Boolean(diffRows)"
-                    :aria-pressed="diffRows ? 'true' : 'false'"
-                    title="Show the selected runs side by side"
+                    :aria-expanded="diffRows ? 'true' : 'false'"
+                    :title="diffRows ? 'Hide the side-by-side comparison' : 'Show the selected runs side by side'"
                     @click="diffOpen = !diffOpen">
                     <FontAwesomeIcon :icon="faColumns" />
-                    Compare selected ({{ selectedRunIds.length }}/{{ MAX_SELECTED }})
+                    <template v-if="diffRows">Hide comparison</template>
+                    <template v-else>Compare selected ({{ selectedRunIds.length }}/{{ MAX_SELECTED }})</template>
                 </GButton>
                 <GButton
                     class="comparison-transpose"

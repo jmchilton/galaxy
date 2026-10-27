@@ -270,9 +270,14 @@ describe("ComparisonTable", () => {
         expect(diff.props("rows")).toEqual([TABLE.rows[1], TABLE.rows[3]]);
         expect(diff.props("displays")).toEqual({ "input:input1": "link", "output:out_file1": "link" });
         expect(diff.props("currentRunId")).toBe(TABLE.rows[1]!.run.id);
+        expect(compare().attributes("aria-expanded")).toBe("true");
+        expect(compare().attributes("aria-disabled")).toBeUndefined();
+        expect(compare().text()).toBe("Hide comparison");
         diff.vm.$emit("close");
         await wrapper.vm.$nextTick();
         expect(wrapper.findComponent(DIFF_STUB).exists()).toBe(false);
+        expect(compare().attributes("aria-expanded")).toBe("false");
+        expect(compare().text()).toContain("Compare selected (2/2)");
     });
 
     it("keeps the two runs selected last", async () => {

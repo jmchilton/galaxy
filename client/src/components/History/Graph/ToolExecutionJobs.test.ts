@@ -25,15 +25,23 @@ function toolRequest(jobIds: string[]) {
 let failRequest: boolean;
 let jobIds: string[];
 let batchRequests: URLSearchParams[];
+// While set, the first batch's response waits for it.
+let firstBatchGate: Promise<void> | undefined;
 
 beforeEach(() => {
     failRequest = false;
     jobIds = ["j1", "j2", "j3"];
     batchRequests = [];
+    firstBatchGate = undefined;
     server.use(
-        http.untyped.get("/api/jobs", ({ request }) => {
+        http.untyped.get("/api/jobs", async ({ request }) => {
             const query = new URL(request.url).searchParams;
             batchRequests.push(query);
+            if (query.get("implicit_collection_jobs_id") === "icj1") {
+                await firstBatchGate;
+            } else if (query.get("implicit_collection_jobs_id") === "icj-other") {
+                return HttpResponse.json([{ id: "k1", model_class: "Job", state: "ok" }]);
+            }
             if (failRequest) {
                 return HttpResponse.json({ err_msg: "nope", err_code: 500 }, { status: 500 });
             }
@@ -106,6 +114,18 @@ describe("ToolExecutionJobs", () => {
             initialJobId: "j2",
         });
         expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j2");
+    });
+
+    it("keeps the newer batch's jobs when an older response lands late", async () => {
+        let release: () => void = () => {};
+        firstBatchGate = new Promise((resolve) => (release = resolve));
+        const wrapper = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1" });
+        await wrapper.setProps({ implicitCollectionJobsId: "icj-other" } as object);
+        await flushPromises();
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("k1");
+        release();
+        await flushPromises();
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("k1");
     });
 
     it("explains an empty batch and a failed batch load", async () => {
