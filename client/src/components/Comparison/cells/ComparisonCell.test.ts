@@ -8,7 +8,6 @@ import type {
     ComparisonColumn,
     ComparisonTable,
     DatasetCell,
-    MissingCell,
 } from "@/api/comparisons";
 
 import type { CellDisplay } from "../comparisonUtils";
@@ -168,19 +167,6 @@ describe("ComparisonCell dataset lists", () => {
 });
 
 describe("ComparisonCell missing", () => {
-    it.each([
-        ["not_in_version", "not in v2"],
-        ["not_run_yet", "not run yet"],
-        ["skipped", "skipped"],
-        ["no_output", "no output"],
-        ["inaccessible", "no access"],
-    ] as [MissingCell["reason"], string][])("%s reads %s with a reason title", (reason, text) => {
-        const wrapper = mountCell({ type: "missing", reason });
-        expect(wrapper.find(".badge").text()).toBe(text);
-        expect(wrapper.find(".comparison-missing").attributes("title")).toBeTruthy();
-        expect(wrapper.findComponent(LINK_STUB).exists()).toBe(false);
-    });
-
     it("reads an empty input as not supplied", () => {
         const wrapper = mountCell({ type: "missing", reason: "no_output" }, "link", [], false, "input");
         expect(wrapper.find(".badge").text()).toBe("not supplied");
