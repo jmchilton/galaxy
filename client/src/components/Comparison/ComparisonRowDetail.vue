@@ -103,7 +103,8 @@ const diffJobId = computed(() => {
     gap: 1rem;
     white-space: normal;
 }
-@media (max-width: 768px) {
+/* Its space, not the window's: the table's panels may leave it narrow on a wide screen. */
+@container (max-width: 768px) {
     .comparison-row-detail {
         grid-template-columns: minmax(0, 1fr);
     }
