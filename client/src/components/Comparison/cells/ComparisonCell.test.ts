@@ -133,5 +133,8 @@ describe("ComparisonCell missing", () => {
     it("never reveals anything about an inaccessible item", () => {
         const wrapper = mountCell({ type: "missing", reason: "inaccessible" }, "meta:data_lines", ["data_lines"]);
         expect(wrapper.find(".comparison-missing-inaccessible").exists()).toBe(true);
+        expect(wrapper.text()).toBe("—no access");
+        expect(wrapper.findComponent(LINK_STUB).exists()).toBe(false);
+        expect(wrapper.find("code").exists()).toBe(false);
     });
 });

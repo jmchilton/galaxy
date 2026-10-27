@@ -77,6 +77,16 @@ describe("ComparisonTable", () => {
         expect(rows[1]!.text()).not.toContain("this run");
     });
 
+    it("highlights the current run's column when transposed", () => {
+        const wrapper = mountTable({ transpose: true, currentRunId: TABLE.rows[2]!.run.id });
+        const isCurrent = (cell: { classes: () => string[] }) => cell.classes().includes("comparison-current-cell");
+        expect(wrapper.findAll("thead th").map(isCurrent)).toEqual([false, false, false, true, false, false, false]);
+        wrapper.findAll("tbody tr").forEach((line) => {
+            expect(line.findAll("td").map(isCurrent)).toEqual([false, false, false, true, false, false, false]);
+        });
+        expect(wrapper.findAll("thead th")[3]!.text()).toContain("this run");
+    });
+
     it("links rows to the invocation with the step selected", () => {
         const link = mountTable().find("tbody tr .comparison-run-link");
         expect(link.attributes("href")).toContain(
