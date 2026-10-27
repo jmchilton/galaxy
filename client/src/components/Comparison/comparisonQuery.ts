@@ -8,7 +8,7 @@ import type {
     StepRunsParams,
     ToolRunsParams,
 } from "@/api/comparisons";
-import type { InvocationState } from "@/api/invocations";
+import type { InvocationState, InvocationStepState } from "@/api/invocations";
 import type { JobState } from "@/api/jobs";
 import { versionlessToolId } from "@/utils/tool-version";
 
@@ -165,28 +165,47 @@ export function displayStorageKey(query: DisplayKeyQuery): string {
     }
 }
 
-const JOB_STATE_OPTIONS: readonly JobState[] = [
-    "new",
-    "queued",
-    "running",
-    "ok",
-    "error",
-    "paused",
-    "skipped",
-    "deleted",
-];
-const INVOCATION_STATE_OPTIONS: readonly InvocationState[] = [
-    "new",
-    "ready",
-    "scheduled",
-    "completed",
-    "failed",
-    "cancelled",
-];
+// One key per member of the server's enums, so a state added there fails type-check here.
+const JOB_STATES = {
+    new: true,
+    resubmitted: true,
+    upload: true,
+    waiting: true,
+    queued: true,
+    running: true,
+    finishing: true,
+    ok: true,
+    error: true,
+    failed: true,
+    paused: true,
+    deleting: true,
+    deleted: true,
+    stop: true,
+    stopped: true,
+    skipped: true,
+} as const satisfies Record<JobState, true>;
+const INVOCATION_STEP_STATES = { new: true, ready: true, scheduled: true } as const satisfies Record<
+    InvocationStepState,
+    true
+>;
+const INVOCATION_STATES = {
+    new: true,
+    requires_materialization: true,
+    ready: true,
+    scheduled: true,
+    cancelling: true,
+    cancelled: true,
+    failed: true,
+    completed: true,
+} as const satisfies Record<InvocationState, true>;
 
-/** States offered by the state filter: job states for steps and tools, invocation states for workflows. */
+function stateKeys(...vocabularies: Record<string, true>[]): string[] {
+    return [...new Set(vocabularies.flatMap((vocabulary) => Object.keys(vocabulary)))];
+}
+
+/** States the state filter offers: those a row of each kind can show; a step without a job shows its own state. */
 export const STATE_OPTIONS: Record<ComparisonKind, readonly string[]> = {
-    step_runs: JOB_STATE_OPTIONS,
-    output_runs: INVOCATION_STATE_OPTIONS,
-    tool_runs: JOB_STATE_OPTIONS,
+    step_runs: stateKeys(INVOCATION_STEP_STATES, JOB_STATES),
+    output_runs: stateKeys(INVOCATION_STATES),
+    tool_runs: stateKeys(JOB_STATES),
 };
