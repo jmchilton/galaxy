@@ -1,8 +1,8 @@
 """Serve a running job's inputs to a remote job runner from the object store.
 
-Galaxy gives a remote runner (Pulsar) one signed URL per input (``input_url``,
-kept beside the code that verifies it) instead of a path on its own disk. A request for such a URL is answered from the
-object store by identity (``staged_input``): with a redirect to a presigned URL
+Galaxy gives a remote runner (Pulsar) one signed URL per input
+(``galaxy.security.staging_signer.input_url``) instead of a path on its own disk.
+A request for such a URL is answered from the object store by identity (``staged_input``): with a redirect to a presigned URL
 when the URL asks for one and the store can issue it, else with a stream read
 straight from the store, else from a local file (disk stores).
 Nothing here needs a filesystem shared between Galaxy hosts.
@@ -10,10 +10,7 @@ Nothing here needs a filesystem shared between Galaxy hosts.
 
 import logging
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Literal,
-)
+from typing import Any
 
 from galaxy import exceptions
 from galaxy.managers.job_files import (
@@ -31,15 +28,12 @@ from galaxy.objectstore import (
     DataStream,
 )
 from galaxy.security.idencoding import IdEncodingHelper
-from galaxy.security.staging_signer import StagingUrlSigner
+from galaxy.security.staging_signer import (
+    StagedInputKind,
+    StagingUrlSigner,
+)
 
 log = logging.getLogger(__name__)
-
-StagedInputKind = Literal["dataset", "metadata_file"]
-
-# The staging URLs a runner receives must outlive the job's wait in a queue; the
-# job leaving Job.non_ready_states ends them sooner.
-INPUT_URL_LIFETIME_SECONDS = 7 * 24 * 60 * 60
 
 # A presigned URL Galaxy redirects to outlives the job, as Galaxy cannot revoke it.
 # The runner follows it at once and comes back to the staging URL to resume or
@@ -56,31 +50,6 @@ class StagedInput:
     redirect_url: str | None = None
     stream: DataStream | None = None
     path: str | None = None
-
-
-def input_url(
-    security: IdEncodingHelper,
-    galaxy_url: str,
-    job_id: int,
-    kind: StagedInputKind,
-    object_id: int,
-    expires: int,
-    redirect: bool = False,
-) -> str:
-    """A signed URL for one input of a job, answered by ``JobObjectStagingManager.staged_input``.
-
-    With ``redirect``, the runner may be sent to a presigned object store URL; only ask for that when
-    the runner can reach the store and follows redirects. The flag is not signed: it only changes how
-    the job receives its own input.
-    """
-    signature = StagingUrlSigner(security.id_secret).sign(job_id, kind, object_id, "", expires)
-    encoded_job_id = security.encode_id(job_id)
-    encoded_object_id = security.encode_id(object_id)
-    url = (
-        f"{galaxy_url}/api/jobs/{encoded_job_id}/staging/inputs/{kind}/{encoded_object_id}"
-        f"?exp={expires}&sig={signature}"
-    )
-    return f"{url}&redirect=1" if redirect else url
 
 
 class JobObjectStagingManager:

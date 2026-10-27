@@ -10,7 +10,6 @@ import pytest
 
 from galaxy import exceptions
 from galaxy.managers.job_object_staging import (
-    input_url,
     JobObjectStagingManager,
 )
 from galaxy.model import (
@@ -20,6 +19,7 @@ from galaxy.model import (
     MetadataFile,
 )
 from galaxy.model.unittest_utils import GalaxyDataTestApp
+from galaxy.security.staging_signer import input_url
 
 GALAXY_URL = "https://galaxy.test"
 CONTENT = b"input content"

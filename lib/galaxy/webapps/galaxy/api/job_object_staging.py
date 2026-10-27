@@ -11,11 +11,12 @@ from fastapi.responses import (
     Response,
 )
 
-from galaxy.managers.job_object_staging import (
-    JobObjectStagingManager,
+from galaxy.managers.job_object_staging import JobObjectStagingManager
+from galaxy.schema.fields import DecodedDatabaseIdField
+from galaxy.security.staging_signer import (
+    INPUT_ROUTE,
     StagedInputKind,
 )
-from galaxy.schema.fields import DecodedDatabaseIdField
 from galaxy.webapps.base.api import (
     GalaxyFileResponse,
     GalaxyStreamingResponse,
@@ -27,7 +28,6 @@ from galaxy.webapps.galaxy.api import (
 
 router = Router(tags=["remote files"])
 
-INPUT_PATH = "/api/jobs/{job_id}/staging/inputs/{kind}/{object_id}"
 EXPIRES = Query(description="Expiry of the staging URL, in seconds since the epoch.")
 SIGNATURE = Query(description="Signature Galaxy issued for this job, input and expiry.")
 
@@ -36,7 +36,7 @@ SIGNATURE = Query(description="Signature Galaxy issued for this job, input and e
 class FastAPIJobObjectStaging:
     manager: JobObjectStagingManager = depends(JobObjectStagingManager)
 
-    @router.get(INPUT_PATH, summary="Stage a job input for a remote job runner.", include_in_schema=False)
+    @router.get(INPUT_ROUTE, summary="Stage a job input for a remote job runner.", include_in_schema=False)
     def get_input(
         self,
         job_id: DecodedDatabaseIdField,
@@ -55,7 +55,7 @@ class FastAPIJobObjectStaging:
         assert staged.path is not None
         return GalaxyFileResponse(staged.path, media_type="application/octet-stream")
 
-    @router.head(INPUT_PATH, summary="Size of a job input for a remote job runner.", include_in_schema=False)
+    @router.head(INPUT_ROUTE, summary="Size of a job input for a remote job runner.", include_in_schema=False)
     def head_input(
         self,
         job_id: DecodedDatabaseIdField,

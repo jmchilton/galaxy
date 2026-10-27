@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from galaxy import model
 from galaxy.managers import job_object_staging
-from galaxy.managers.job_object_staging import input_url
+from galaxy.security.staging_signer import input_url
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util

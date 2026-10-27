@@ -64,12 +64,12 @@ from galaxy.jobs.runners import (
     AsynchronousJobState,
     JobState,
 )
-from galaxy.managers.job_object_staging import (
+from galaxy.model.base import check_database_connection
+from galaxy.model.store.discover import safe_path_from_directory
+from galaxy.security.staging_signer import (
     input_url,
     INPUT_URL_LIFETIME_SECONDS,
 )
-from galaxy.model.base import check_database_connection
-from galaxy.model.store.discover import safe_path_from_directory
 from galaxy.tool_util.deps import dependencies
 from galaxy.tool_util.parser.output_collection_def import FilePatternDatasetCollectionDescription
 from galaxy.tool_util.parser.output_objects import ToolOutput
