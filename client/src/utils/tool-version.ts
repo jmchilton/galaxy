@@ -39,6 +39,17 @@ export function extractBaseToolId(toolId: string): string {
     return baseId;
 }
 
+/** Tool id without a Tool Shed version suffix, as the server's `versionless_tool_id`; other ids pass through. */
+export function versionlessToolId(toolId: string): string {
+    const marker = "/repos/";
+    const index = toolId.indexOf(marker);
+    // owner/repo/tool_id/version
+    if (index < 0 || toolId.slice(index + marker.length).split("/").length < 4) {
+        return toolId;
+    }
+    return toolId.slice(0, toolId.lastIndexOf("/"));
+}
+
 export interface RequestedToolParts {
     tool_shed_id?: string;
     name: string;

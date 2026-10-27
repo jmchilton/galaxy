@@ -1,4 +1,4 @@
-import { type components, GalaxyApi, type GalaxyApiPaths } from "@/api";
+import { type components, GalaxyApi, type GalaxyApiPaths, totalMatches } from "@/api";
 import { rethrowSimple } from "@/utils/simple-error";
 
 export type ComparisonTable = components["schemas"]["ComparisonTable"];
@@ -12,25 +12,20 @@ export type MissingCell = components["schemas"]["MissingCell"];
 export type MissingReason = MissingCell["reason"];
 export type ComparisonQuery = ComparisonTable["query"];
 export type ComparisonKind = ComparisonQuery["kind"];
+export type ComparisonSortBy = NonNullable<ComparisonQuery["sort_by"]>;
 
-type QueryOf<P extends keyof GalaxyApiPaths> = GalaxyApiPaths[P] extends {
-    get: { parameters: { query?: infer Q } };
-}
-    ? NonNullable<Q>
-    : never;
-
-export type StepRunsParams = QueryOf<"/api/workflows/{workflow_id}/step_runs"> & { workflow_id: string };
-export type OutputRunsParams = QueryOf<"/api/workflows/{workflow_id}/output_runs"> & { workflow_id: string };
-export type ToolRunsParams = QueryOf<"/api/tool_runs">;
+export type StepRunsParams = NonNullable<
+    GalaxyApiPaths["/api/workflows/{workflow_id}/step_runs"]["get"]["parameters"]["query"]
+> & { workflow_id: string };
+export type OutputRunsParams = NonNullable<
+    GalaxyApiPaths["/api/workflows/{workflow_id}/output_runs"]["get"]["parameters"]["query"]
+> & { workflow_id: string };
+export type ToolRunsParams = NonNullable<GalaxyApiPaths["/api/tool_runs"]["get"]["parameters"]["query"]>;
 
 export interface ComparisonResult {
     table: ComparisonTable;
     /** Rows matching the query before paging, from the `total_matches` header. */
     total: number;
-}
-
-function totalMatches(response: Response): number {
-    return parseInt(response.headers.get("total_matches") ?? "0", 10) || 0;
 }
 
 export async function fetchStepRuns(params: StepRunsParams, signal?: AbortSignal): Promise<ComparisonResult> {
@@ -63,4 +58,26 @@ export async function fetchToolRuns(params: ToolRunsParams, signal?: AbortSignal
         rethrowSimple(error);
     }
     return { table: data, total: totalMatches(response) };
+}
+
+export type ComparisonRequest =
+    | { kind: "step_runs"; params: StepRunsParams }
+    | { kind: "output_runs"; params: OutputRunsParams }
+    | { kind: "tool_runs"; params: ToolRunsParams };
+
+/** Fetches whichever comparison `request.kind` names. */
+export function fetchComparison(request: ComparisonRequest, signal?: AbortSignal): Promise<ComparisonResult> {
+    switch (request.kind) {
+        case "step_runs":
+            return fetchStepRuns(request.params, signal);
+        case "output_runs":
+            return fetchOutputRuns(request.params, signal);
+        case "tool_runs":
+            return fetchToolRuns(request.params, signal);
+        default: {
+            // A new kind fails type-check here.
+            const unknownKind: never = request;
+            throw new Error(`Unknown comparison kind ${JSON.stringify(unknownKind)}`);
+        }
+    }
 }
