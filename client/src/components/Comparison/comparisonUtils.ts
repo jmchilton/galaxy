@@ -43,7 +43,7 @@ export function stateText(state: string): string {
 
 /** Versions are 0-based on the wire and 1-based in the UI. */
 export function versionLabel(version: number | null | undefined): string {
-    return version === null || version === undefined ? "" : `v${version + 1}`;
+    return Number.isFinite(version) ? `v${version! + 1}` : "";
 }
 
 /** GTable slot names are `cell(${key})`, so map arbitrary column keys to safe field keys. */
@@ -157,7 +157,9 @@ export function formatValue(value: unknown): string {
 }
 
 /** The job behind a row: the step's job (mode 1) or the run itself (mode 3), with ICJ batches by their first job. */
-export function rowJob(row: ComparisonRow): { jobId?: string; jobCount?: number } | undefined {
+export function rowJob(
+    row: ComparisonRow,
+): { jobId?: string; jobCount?: number; implicitCollectionJobsId?: string } | undefined {
     const ref = row.step_job ?? (row.run.model === "WorkflowInvocation" ? undefined : row.run);
     if (!ref) {
         return undefined;
@@ -165,7 +167,7 @@ export function rowJob(row: ComparisonRow): { jobId?: string; jobCount?: number 
     if (ref.model === "Job") {
         return { jobId: ref.id };
     }
-    return { jobId: ref.representative_job_id ?? undefined, jobCount: ref.job_count };
+    return { jobId: ref.representative_job_id ?? undefined, jobCount: ref.job_count, implicitCollectionJobsId: ref.id };
 }
 
 // As the invocation view counts scheduling done.
