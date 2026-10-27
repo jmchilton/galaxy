@@ -113,6 +113,23 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         assert row.step_job is not None and row.step_job.model == "ImplicitCollectionJobs"
         assert row.state == "error"
 
+    def test_step_runs_versions_filter(self):
+        stored_workflow_id = self._stored_workflow_with_runs(3, mapped=False).id
+        access = _access(self.trans.user)
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", versions=[1])
+        table, total = self.comparisons_manager.step_runs(access, stored_workflow_id, query)
+        assert total == 1
+        assert [row.version for row in table.rows] == [1]
+        assert table.versions_available == [0, 1]
+
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", versions=[0, 1])
+        assert self.comparisons_manager.step_runs(access, stored_workflow_id, query)[1] == 3
+
+        # a version without the step matches nothing, but the step's versions are still offered
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", versions=[7])
+        table, total = self.comparisons_manager.step_runs(access, stored_workflow_id, query)
+        assert (total, table.rows, table.versions_available) == (0, [], [0, 1])
+
     def test_tool_runs_excludes_mapped_workflow_jobs(self):
         self.tool_id = "mapped_in_workflow"
         user = self.trans.user
