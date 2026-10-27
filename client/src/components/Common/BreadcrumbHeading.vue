@@ -93,11 +93,11 @@ function isPathActive(path: RouteLocationRaw): boolean {
             flex-shrink: 0;
         }
 
+        // ancestors shrink first; any shrink of the current crumb, even sub-pixel, shows an ellipsis
         .breadcrumb-heading-header-current {
-            min-width: 0;
+            max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
-            flex-shrink: 1;
         }
 
         .breadcrumb-separator {
