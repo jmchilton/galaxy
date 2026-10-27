@@ -145,15 +145,24 @@ const pageSizeOptions = computed(() =>
 
 const workflowName = ref<string>();
 watch(
-    () => (kind.value === "tool_runs" ? undefined : urlParams.value.workflow_id),
-    async (workflowId) => {
+    [
+        () => (kind.value === "tool_runs" ? undefined : urlParams.value.workflow_id),
+        () => urlParams.value.instance === true,
+    ],
+    async ([workflowId, instance], _previous, onCleanup) => {
+        let stale = false;
+        onCleanup(() => {
+            stale = true;
+        });
         workflowName.value = undefined;
         if (!workflowId) {
             return;
         }
         try {
-            const workflow = await getWorkflowInfo(String(workflowId), undefined, urlParams.value.instance === true);
-            workflowName.value = workflow.name;
+            const workflow = await getWorkflowInfo(String(workflowId), undefined, instance);
+            if (!stale) {
+                workflowName.value = workflow.name;
+            }
         } catch {
             // The heading falls back to a generic name; the table shows any access error.
         }

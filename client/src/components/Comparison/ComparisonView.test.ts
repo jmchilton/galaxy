@@ -193,6 +193,27 @@ describe("ComparisonView", () => {
         await flushPromises();
     });
 
+    it("names the workflow of the current URL when an older name request resolves last", async () => {
+        const releases: Record<string, () => void> = {};
+        server.use(
+            http.get("/api/workflows/{workflow_id}", async ({ params, response }) => {
+                const workflowId = String(params.workflow_id);
+                await new Promise<void>((resolve) => (releases[workflowId] = resolve));
+                return response(200).json({ name: `Workflow ${workflowId}` } as never);
+            }),
+        );
+        const { view } = await mountView({ kind: "output_runs", workflow_id: "wfA" });
+        await view.setProps({ query: { kind: "output_runs", workflow_id: "wfB" } });
+        await flushPromises();
+        releases.wfB!();
+        await flushPromises();
+        releases.wfA!();
+        await flushPromises();
+        const heading = view.find(".breadcrumb-heading").text();
+        expect(heading).toContain("Workflow wfB");
+        expect(heading).not.toContain("Workflow wfA");
+    });
+
     it("describes the loaded sort order", async () => {
         const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
         expect(view.findComponent(ComparisonPager).props()).toMatchObject({ sortBy: "create_time", sortDesc: true });
