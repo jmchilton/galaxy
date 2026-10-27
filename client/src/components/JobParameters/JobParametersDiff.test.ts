@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 
+import type { JobParameter } from "./jobParameterDiff";
+
 import JobParametersDiff from "./JobParametersDiff.vue";
 
 const { server, http } = useServerMock();
@@ -12,15 +14,12 @@ const { server, http } = useServerMock();
 const NOT_USED = "not used (parameter was added after this job was run)";
 
 function display(lines: number, input: string) {
-    return {
-        has_parameter_errors: false,
-        outputs: {},
-        parameters: [
-            { text: "Lines", depth: 1, value: lines },
-            { text: "Input", depth: 1, value: [{ src: "hda", id: input, hid: 1, name: "reads" }] },
-            { text: "Mode", depth: 1, value: "fast" },
-        ],
-    };
+    const parameters: JobParameter[] = [
+        { text: "Lines", depth: 1, value: lines },
+        { text: "Input", depth: 1, value: [{ src: "hda", id: input, hid: 1, name: "reads" }] },
+        { text: "Mode", depth: 1, value: "fast" },
+    ];
+    return { has_parameter_errors: false, outputs: {}, parameters };
 }
 
 beforeEach(() => {
@@ -30,7 +29,7 @@ beforeEach(() => {
         http.untyped.get("/api/jobs/b/parameters_display", () => HttpResponse.json(display(12, "y"))),
         http.untyped.get("/api/jobs/old/parameters_display", () => {
             const old = display(10, "x");
-            old.parameters[2] = { text: "Mode", depth: 1, notes: NOT_USED } as (typeof old.parameters)[number];
+            old.parameters[2] = { text: "Mode", depth: 1, notes: NOT_USED };
             return HttpResponse.json(old);
         }),
         http.untyped.get("/api/jobs/broken/parameters_display", () =>
