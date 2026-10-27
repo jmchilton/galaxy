@@ -11,7 +11,10 @@ from galaxy.managers.comparison_cells import (
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
 from galaxy.managers.histories import HistoryManager
-from galaxy.schema.comparisons import StepRunsQuery
+from galaxy.schema.comparisons import (
+    OutputRunsQuery,
+    StepRunsQuery,
+)
 from galaxy.schema.fields import Security
 from .base import BaseTestCase
 
@@ -37,6 +40,107 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         query = StepRunsQuery.model_construct(
             workflow_id=stored_workflow_id, step_label="target", metadata_elements=["data_lines"]
         )
+        (table, total), statement_count = self._count_statements(
+            lambda: self.comparisons_manager.step_runs(access, stored_workflow_id, query)
+        )
+        assert total == invocations
+        assert len(table.rows) == invocations
+        for row in table.rows:
+            assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
+            assert all(cell.type != "missing" for cell in row.cells.values())
+        return statement_count
+
+    def test_output_runs_statement_count_independent_of_row_count(self):
+        counts = [self._output_runs_statement_count(invocations) for invocations in (1, 5)]
+        assert counts[0] == counts[1], f"statements grow with rows {counts}"
+
+    def test_output_runs_flags_duplicate_output_labels(self):
+        stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
+        access = _access(self.trans.user)
+        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id)
+        table, _ = self.comparisons_manager.output_runs(access, stored_workflow.id, query)
+        columns = {column.key: column for column in table.columns}
+        assert columns["output:out"].duplicate
+        assert not columns["output:val"].duplicate
+        for row in table.rows:
+            cell = row.cells["output:out"]
+            assert cell.type == "dataset"
+            assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
+
+    def _output_runs_statement_count(self, invocations: int) -> int:
+        stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
+        stored_workflow_id = stored_workflow.id
+        access = _access(self.trans.user)
+        self.session.expunge_all()
+        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow_id, metadata_elements=["data_lines"])
+        (table, total), statement_count = self._count_statements(
+            lambda: self.comparisons_manager.output_runs(access, stored_workflow_id, query)
+        )
+        assert total == len(table.rows) == invocations
+        for row in table.rows:
+            assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
+            assert row.cells.pop("output:val").model_dump() == {"type": "missing", "reason": "skipped"}
+            assert row.cells["parameter:p"].model_dump() == {
+                "type": "value",
+                "value": 5,
+                "source": "parameter",
+                "dataset_id": None,
+            }
+            assert all(cell.type != "missing" for cell in row.cells.values())
+        return statement_count
+
+    def _stored_workflow_with_output_runs(self, invocations: int) -> tuple[model.StoredWorkflow, dict[int, int]]:
+        """Two versions with labelled inputs and outputs; the second declares output label ``out`` twice."""
+        user = self.trans.user
+        stored_workflow = model.StoredWorkflow()
+        stored_workflow.user = user
+        stored_workflow.name = "outputs compared"
+        versions = []
+        for version in range(2):
+            workflow = model.Workflow()
+            workflow.name = "outputs compared"
+            workflow.stored_workflow = stored_workflow
+            steps = {}
+            for order_index, (label, step_type) in enumerate(
+                [("in", "data_input"), ("foreign", "data_input"), ("p", "parameter_input"), ("tool", "tool")]
+            ):
+                step = model.WorkflowStep()
+                step.order_index = order_index
+                step.type = step_type
+                step.label = label
+                workflow.steps.append(step)
+                steps[label] = step
+            outputs = [model.WorkflowOutput(steps["tool"], output_name="out_file1", label="out")]
+            if version:
+                outputs.append(model.WorkflowOutput(steps["tool"], output_name="out_file2", label="out"))
+            value_output = model.WorkflowOutput(steps["tool"], output_name="out_value", label="val")
+            versions.append((workflow, steps, outputs, value_output))
+        stored_workflow.latest_workflow = versions[-1][0]
+        self.session.add(stored_workflow)
+        self.session.flush()
+        foreign_history = self._foreign_private_history()
+        invocation_outputs = []
+        for i in range(invocations):
+            workflow, steps, outputs, value_output = versions[i % 2]
+            history = model.History(name=f"run {i}", user=user)
+            invocation = model.WorkflowInvocation()
+            invocation.workflow = workflow
+            invocation.history = history
+            invocation.state = "scheduled"
+            self.session.add_all([history, invocation])
+            invocation.add_input(self._hda(history), step=steps["in"])
+            invocation.add_input(self._private_hda(foreign_history), step=steps["foreign"])
+            invocation.add_input(5, step=steps["p"])
+            output_hdas = [self._hda(history) for _ in outputs]
+            for workflow_output, hda in zip(outputs, output_hdas):
+                invocation.add_output(workflow_output, steps["tool"], hda)
+            invocation.add_output(value_output, steps["tool"], {"__class__": "NoReplacement"})
+            invocation_outputs.append((invocation, output_hdas[0]))
+        self.session.commit()
+        return stored_workflow, {self.app.security.encode_id(inv.id): hda.id for inv, hda in invocation_outputs}
+
+    def _count_statements(self, call):
+        """Result of ``call`` (serialized too, which must not lazy-load) and the SQL statements it ran."""
         statements: list[str] = []
 
         def count(conn, cursor, statement, *args):
@@ -45,17 +149,11 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         engine = self.session.get_bind()
         event.listen(engine, "before_cursor_execute", count)
         try:
-            table, total = self.comparisons_manager.step_runs(access, stored_workflow_id, query)
-            # serialization must not lazy-load either
-            table.model_dump(mode="json")
+            result = call()
+            result[0].model_dump(mode="json")
         finally:
             event.remove(engine, "before_cursor_execute", count)
-        assert total == invocations
-        assert len(table.rows) == invocations
-        for row in table.rows:
-            assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
-            assert all(cell.type != "missing" for cell in row.cells.values())
-        return len(statements)
+        return result, len(statements)
 
     def _stored_workflow_with_runs(self, invocations: int, mapped: bool) -> model.StoredWorkflow:
         user = self.trans.user
