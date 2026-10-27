@@ -1,22 +1,24 @@
 ---
-name: check-deployment-decorators
-description: Audit Galaxy API and browser tests for deployment requirement decorators and tool availability skips. Use when changing tests that may run against an external Galaxy or adding tests to the deployment runner.
+name: check-python-test-decorators
+description: Check requirement decorators and availability guards whenever adding or editing Galaxy Python API or Selenium tests.
 ---
 
-# Check deployment decorators
+# Check Python test decorators
 
-Check the selected tests against the behavior they actually exercise. Read
+Run this check whenever adding or editing Python API or Selenium tests. Check
+the changed tests against the behavior they actually exercise. Read
 `doc/source/dev/writing_tests.md` under **Test Decorators** and **Deployment
-Tests**, then inspect `lib/galaxy_test/base/decorators.py` and
-`test/deployment/usegalaxystar.bash` in the current branch. The runner's marker
-expression and runtime skip settings define which tests it can run.
+Tests**, then inspect `lib/galaxy_test/base/decorators.py` in the current
+branch. When deployment selection matters, inspect
+`test/deployment/usegalaxystar.bash` for its marker expression and runtime skip
+settings.
 
 ## Scope the audit
 
-- Identify changed API and browser test methods from the user's target or the
-  branch diff against its intended base. Include tests in files proposed for
-  the runner, even if the runner has not yet been edited. Do not treat unit or
-  integration tests as deployment candidates without an explicit reason.
+- Identify added or edited test methods in `lib/galaxy_test/api/` and
+  `lib/galaxy_test/selenium/` from the user's target or the branch diff against
+  its intended base. Include affected tests when shared setup or helpers
+  change. Leave unit and integration tests outside this audit unless requested.
 - Trace each selected test through setup, fixtures, parametrized cases, and
   called helpers. Inspect helper implementations when their name does not make
   the effect clear. A text search is a starting point, not proof that a test
