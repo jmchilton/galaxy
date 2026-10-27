@@ -6,7 +6,7 @@ import { computed } from "vue";
 import type { CollectionCell, DatasetCell } from "@/api/comparisons";
 import { type GraphStepState, iconClasses } from "@/composables/useInvocationGraph";
 
-import { historyLink } from "../comparisonTable";
+import { historyLink } from "../comparisonUtils";
 
 import ItemPopoverLink from "@/components/Common/ItemPopoverLink.vue";
 

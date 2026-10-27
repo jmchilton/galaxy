@@ -14,7 +14,7 @@ import {
     transpose,
     untranspose,
     versionLabel,
-} from "./comparisonTable";
+} from "./comparisonUtils";
 import STEP_RUNS from "./test-data/step_runs.json";
 
 const TABLE = STEP_RUNS as unknown as ComparisonTable;

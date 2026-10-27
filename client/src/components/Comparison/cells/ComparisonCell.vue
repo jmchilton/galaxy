@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import type { ComparisonCell, ComparisonRow } from "@/api/comparisons";
 
-import { type CellDisplay, metadataKeyOf } from "../comparisonTable";
+import { type CellDisplay, metadataKeyOf } from "../comparisonUtils";
 
 import ItemCell from "./ItemCell.vue";
 import MetadataCell from "./MetadataCell.vue";

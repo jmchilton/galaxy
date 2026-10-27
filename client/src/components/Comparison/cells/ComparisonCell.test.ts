@@ -10,7 +10,7 @@ import type {
     MissingCell,
 } from "@/api/comparisons";
 
-import type { CellDisplay } from "../comparisonTable";
+import type { CellDisplay } from "../comparisonUtils";
 import STEP_RUNS from "../test-data/step_runs.json";
 
 import ComparisonCell from "./ComparisonCell.vue";

@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import type { ComparisonRow, MissingCell } from "@/api/comparisons";
 
-import { MISSING_TITLES, missingText } from "../comparisonTable";
+import { MISSING_TITLES, missingText } from "../comparisonUtils";
 
 const props = defineProps<{
     cell: MissingCell;

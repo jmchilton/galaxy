@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { formatValue, isScalar } from "../comparisonTable";
+import { formatValue, isScalar } from "../comparisonUtils";
 
 const props = defineProps<{
     value: unknown;
