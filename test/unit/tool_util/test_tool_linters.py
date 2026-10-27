@@ -1214,14 +1214,34 @@ OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY = """
 </tool>
 """
 
-OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0 = OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY.replace(
-    '<tool id="id" name="name">', '<tool id="id" name="name" profile="27.0">'
-).replace(
-    """<collection name="discovered" type="list" format_source="input1">
-            <discover_datasets pattern="__name__" />
-        </collection>""",
-    '<data name="output1" format_source="input1" />',
-)
+OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0 = """
+<tool id="id" name="name" profile="27.0">
+    <inputs>
+        <conditional name="cond">
+            <param name="cond_param" type="select">
+                <option value="flat">Flat</option>
+                <option value="nested">Nested</option>
+            </param>
+            <when value="flat">
+                <param name="input1" type="data" format="data" />
+            </when>
+            <when value="nested">
+                <conditional name="inner">
+                    <param name="inner_param" type="select">
+                        <option value="yes">Yes</option>
+                    </param>
+                    <when value="yes">
+                        <param name="input1" type="data" format="data" />
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output1" format_source="input1" />
+    </outputs>
+</tool>
+"""
 
 OUTPUTS_FORMAT_SOURCE_NOT_DATA = """
 <tool id="id" name="name">
@@ -2928,7 +2948,6 @@ def test_outputs_format_source_discovered_shadowed_legacy(lint_ctx):
 
 def test_outputs_format_source_shadowed_legacy_profile_27_0(lint_ctx):
     tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0)
-    assert '<data name="output1" format_source="input1" />' in OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0
     run_lint_module(lint_ctx, output, tool_source)
     assert (
         "Output 'output1' format_source='input1' is ambiguous. Use the qualified name 'cond|input1'."
