@@ -1,4 +1,3 @@
-import json
 from typing import Any
 from uuid import uuid4
 
@@ -80,6 +79,21 @@ steps:
     tool_id: cat1
     in:
       input1: the_pause
+"""
+
+WORKFLOW_MAPPED_FAIL = """
+class: GalaxyWorkflow
+inputs:
+  input_list:
+    type: collection
+    collection_type: list
+steps:
+  mapped_fail:
+    tool_id: fail_identifier
+    state:
+      failbool: true
+    in:
+      input1: input_list
 """
 
 
@@ -197,6 +211,10 @@ class TestComparisonsApi(ApiTestCase):
             assert response.json()["query"]["versions"] == [1]
             both = self._step_runs(summary.workflow_id, "second_cat", versions=[0, 1])
             assert both.headers["total_matches"] == "3"
+            # a version without the step matches nothing, but the step's versions are still offered
+            absent = self._step_runs(summary.workflow_id, "second_cat", versions=7)
+            assert absent.headers["total_matches"] == "0"
+            assert (absent.json()["rows"], absent.json()["versions_available"]) == ([], [0, 1])
             self._step_runs(summary.workflow_id, "second_cat", expected_status=400, versions="v1")
 
             # metadata elements
@@ -248,11 +266,9 @@ class TestComparisonsApi(ApiTestCase):
             self.workflow_populator.make_public(summary.workflow_id)
             with self._different_user():
                 with self.dataset_populator.test_history() as other_history_id:
-                    other_request = {**summary.workflow_request, "history": f"hist_id={other_history_id}"}
                     other_input = self.dataset_populator.new_dataset(other_history_id, content="other", wait=True)
-                    other_request["inputs"] = json.dumps({"input1": {"src": "hda", "id": other_input["id"]}})
                     for _ in range(2):
-                        self.workflow_populator.invoke_workflow_and_wait(summary.workflow_id, request=other_request)
+                        self._invoke_and_wait(summary.workflow_id, other_history_id, {"input1": _hda(other_input)})
                     response = self._step_runs(summary.workflow_id, "first_cat")
                     assert response.headers["total_matches"] == "2"
                     rows = response.json()["rows"]
@@ -276,12 +292,7 @@ class TestComparisonsApi(ApiTestCase):
             with self._different_user(other_email):
                 with self.dataset_populator.test_history() as history_id:
                     workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_TWO_CAT)
-                    request = {
-                        "history": f"hist_id={history_id}",
-                        "inputs": json.dumps({"input1": {"src": "hda", "id": owner_dataset["id"]}}),
-                        "inputs_by": "name",
-                    }
-                    self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=request)
+                    self._invoke_and_wait(workflow_id, history_id, {"input1": _hda(owner_dataset)})
                     (row,) = self._step_runs_table(workflow_id, "first_cat")["rows"]
                     # the invocation copies the input into this history; permissions stay on the shared dataset
                     input_cell = row["cells"]["input:input1"]
@@ -300,10 +311,8 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_two_cat(history_id)
         with self.dataset_populator.test_history() as second_history_id:
-            second_request = {**summary.workflow_request, "history": f"hist_id={second_history_id}"}
             second_input = self.dataset_populator.new_dataset(second_history_id, content="second", wait=True)
-            second_request["inputs"] = json.dumps({"input1": {"src": "hda", "id": second_input["id"]}})
-            self.workflow_populator.invoke_workflow_and_wait(summary.workflow_id, request=second_request)
+            self._invoke_and_wait(summary.workflow_id, second_history_id, {"input1": _hda(second_input)})
             self.dataset_populator.delete_history(history_id)
             rows = self._step_runs_table(summary.workflow_id, "first_cat")["rows"]
             assert [(row["history"]["id"], row["history"]["deleted"]) for row in rows] == [
@@ -327,18 +336,10 @@ class TestComparisonsApi(ApiTestCase):
             two_list = self._list_from(history_id, identifiers[:2])
             three_list = self._list_from(history_id, identifiers)
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAPPED_CAT)
-            request = {
-                "history": f"hist_id={history_id}",
-                "inputs": json.dumps({"input_list": {"src": "hdca", "id": two_list}}),
-                "inputs_by": "name",
-            }
-            self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=request)
-            superset_request = {
-                **request,
-                "inputs": json.dumps({"input_list": {"src": "hdca", "id": three_list}}),
-                "use_cached_job": True,
-            }
-            self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=superset_request)
+            self._invoke_and_wait(workflow_id, history_id, {"input_list": {"src": "hdca", "id": two_list}})
+            self._invoke_and_wait(
+                workflow_id, history_id, {"input_list": {"src": "hdca", "id": three_list}}, use_cached_job=True
+            )
 
             table = self._step_runs_table(workflow_id, "mapped_cat")
             assert [c["key"] for c in table["columns"]] == ["input:input1", "output:out_file1"]
@@ -363,19 +364,19 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="paused\n", wait=True)
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_PAUSE_THEN_CAT)
-            request = {
-                "history": f"hist_id={history_id}",
-                "inputs": json.dumps({"input1": {"src": "hda", "id": hda["id"]}}),
-                "inputs_by": "name",
-            }
-            resumed_id = self.workflow_populator.invoke_workflow_raw(workflow_id, request, assert_ok=True).json()["id"]
+            inputs = {"input1": _hda(hda)}
+            resumed_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id, history_id, inputs, inputs_by="name"
+            )
             pause_step = wait_on(lambda: self._invocation_step(resumed_id, order_index=1), "pause step scheduled")
             response = self._put(f"invocations/{resumed_id}/steps/{pause_step['id']}", {"action": True}, json=True)
             self._assert_status_code_is_ok(response)
             self.workflow_populator.wait_for_invocation_and_jobs(history_id, workflow_id, resumed_id)
             # the paused run is the only row of its version
             self._refactor(workflow_id, {"action_type": "update_name", "name": "paused version"})
-            paused_id = self.workflow_populator.invoke_workflow_raw(workflow_id, request, assert_ok=True).json()["id"]
+            paused_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id, history_id, inputs, inputs_by="name"
+            )
 
             response = self._step_runs(workflow_id, "after_pause")
             assert response.headers["total_matches"] == "2"
@@ -412,12 +413,7 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             empty_list = self._list_from(history_id, [])
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAPPED_CAT)
-            request = {
-                "history": f"hist_id={history_id}",
-                "inputs": json.dumps({"input_list": {"src": "hdca", "id": empty_list}}),
-                "inputs_by": "name",
-            }
-            self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=request)
+            self._invoke_and_wait(workflow_id, history_id, {"input_list": {"src": "hdca", "id": empty_list}})
             (row,) = self._step_runs_table(workflow_id, "mapped_cat")["rows"]
             step_job = row["step_job"]
             assert step_job["model"] == "ImplicitCollectionJobs"
@@ -429,6 +425,32 @@ class TestComparisonsApi(ApiTestCase):
             assert row["reused"] is None
             assert row["cells"]["input:input1"]["id"] == empty_list
             assert row["cells"]["output:out_file1"]["element_count"] == 0
+
+    @skip_without_tool("fail_identifier")
+    def test_runs_state_filter_matches_any_mapped_member(self):
+        with self.dataset_populator.test_history() as history_id:
+            hdas = [self.dataset_populator.new_dataset(history_id, content=f"{i}\n", wait=True) for i in range(2)]
+            identifiers = [{"name": name, "src": "hda", "id": hda["id"]} for name, hda in zip(("fail", "pass"), hdas)]
+            list_id = self._list_from(history_id, identifiers)
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAPPED_FAIL)
+            self._invoke_and_wait(
+                workflow_id, history_id, {"input_list": {"src": "hdca", "id": list_id}}, assert_ok=False
+            )
+
+            for state in ("error", "ok"):
+                (row,) = self._step_runs_table(workflow_id, "mapped_fail", states=state)["rows"]
+                assert row["step_job"]["model"] == "ImplicitCollectionJobs"
+                assert row["step_job"]["states"] == {"ok": 1, "error": 1}
+                assert row["state"] == "error"
+                (tool_row,) = self._tool_runs_table("fail_identifier", history_id=history_id, states=state)["rows"]
+                assert tool_row["run"]["model"] == "ImplicitCollectionJobs"
+                assert tool_row["run"]["states"] == {"ok": 1, "error": 1}
+                assert tool_row["state"] == "error"
+                assert tool_row["via"]["step_label"] == "mapped_fail"
+            assert self._step_runs(workflow_id, "mapped_fail", states="running").headers["total_matches"] == "0"
+            # a mapped workflow step is a workflow job too
+            without = self._tool_runs("fail_identifier", history_id=history_id, include_workflow_jobs=False)
+            assert without.headers["total_matches"] == "0"
 
     @skip_without_tool("cat1")
     @skip_without_tool("expression_forty_two")
@@ -630,8 +652,7 @@ class TestComparisonsApi(ApiTestCase):
             )
             assert self._tool_runs("cat1", history_id=owner_history_id).headers["total_matches"] == "1"
             # admins only get their own jobs too
-            response = self._get("tool_runs", data={"tool_id": "cat1", "history_id": owner_history_id}, admin=True)
-            self._assert_status_code_is_ok(response)
+            response = self._tool_runs("cat1", admin=True, history_id=owner_history_id)
             assert response.headers["total_matches"] == "0"
             other_email = f"{uuid4()}@example.org"
             with self._different_user(other_email):
@@ -655,8 +676,8 @@ class TestComparisonsApi(ApiTestCase):
             with self._different_user(anon=True):
                 assert self._tool_runs("cat1").headers["total_matches"] == "0"
 
-    def _tool_runs(self, tool_id: str, expected_status: int = 200, **params) -> Response:
-        response = self._get("tool_runs", data={"tool_id": tool_id, **params})
+    def _tool_runs(self, tool_id: str, expected_status: int = 200, admin: bool = False, **params) -> Response:
+        response = self._get("tool_runs", data={"tool_id": tool_id, **params}, admin=admin)
         self._assert_status_code_is(response, expected_status)
         return response
 
@@ -695,6 +716,14 @@ class TestComparisonsApi(ApiTestCase):
     def _step_runs_table(self, workflow_id: str, step_label: str, **params) -> dict[str, Any]:
         return self._step_runs(workflow_id, step_label, **params).json()
 
+    def _invoke_and_wait(
+        self, workflow_id: str, history_id: str, inputs: dict[str, Any], assert_ok: bool = True, **request: Any
+    ) -> str:
+        response = self.workflow_populator.invoke_workflow_and_wait(
+            workflow_id, history_id, inputs, request=request, assert_ok=assert_ok, inputs_by="name"
+        )
+        return response.json()["id"]
+
     def _run_two_cat(self, history_id: str, invocations: int = 1) -> RunJobsSummary:
         return self.workflow_populator.run_workflow(WORKFLOW_TWO_CAT, history_id=history_id, invocations=invocations)
 
@@ -716,3 +745,7 @@ class TestComparisonsApi(ApiTestCase):
         job_id = response["jobs"][0]["id"]
         self.dataset_populator.wait_for_job(job_id, assert_ok=True)
         return self.dataset_populator.get_job_details(job_id, full=True).json()
+
+
+def _hda(dataset: dict[str, Any]) -> dict[str, str]:
+    return {"src": "hda", "id": dataset["id"]}
