@@ -141,6 +141,7 @@ const batchNote = computed(() =>
                                 :cell="row.cells[line.column.key]"
                                 :row="row"
                                 :display="displays[line.column.key]!"
+                                :role="line.column.role"
                                 :requested-metadata="requestedMetadata"
                                 :loading="loading" />
                             <ComparisonMetaCell v-else :field="line.meta!" :row="row" :query="query" />

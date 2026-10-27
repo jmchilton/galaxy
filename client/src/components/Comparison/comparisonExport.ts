@@ -30,12 +30,13 @@ export function cellText(
     cell: ComparisonCell | undefined,
     row: Pick<ComparisonRow, "version" | "tool_version">,
     display: CellDisplay,
+    role?: ComparisonColumn["role"],
 ): string {
     if (!cell) {
         return "";
     }
     if (cell.type === "missing") {
-        return missingText(cell, row);
+        return missingText(cell, row, role);
     }
     if (cell.type === "value") {
         return valueText(cell.value);
@@ -95,7 +96,7 @@ export function exportLines(table: ComparisonTable, options: ExportOptions): str
         })),
         ...columns.map((column) => ({
             label: `${column.label} (${column.role})`,
-            text: (row: ComparisonRow) => cellText(row.cells[column.key], row, options.displayOf(column)),
+            text: (row: ComparisonRow) => cellText(row.cells[column.key], row, options.displayOf(column), column.role),
         })),
     ];
     if (options.transpose) {
