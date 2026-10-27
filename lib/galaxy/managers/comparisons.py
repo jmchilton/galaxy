@@ -172,9 +172,23 @@ class ComparisonsManager:
         version_map = self._version_map(stored_workflow_id)
         state_predicate = WorkflowInvocation.state.in_(query.states) if query.states else None
         page, total = self._page_invocations(access.user_id, list(version_map), query, state_predicate)
-        columns, rows, output_labels = self._output_rows(access, page, query, version_map)
+        columns, rows = self._output_rows(access, page, query, version_map)
+        output_labels = self._invoked_output_labels(access.user_id, version_map)
         table = ComparisonTable(query=query, columns=columns, rows=rows, output_labels_available=output_labels)
         return table, total
+
+    def _invoked_output_labels(self, user_id: int, version_map: dict[int, int]) -> list[str]:
+        """Output labels of every version the user has invoked, newest version first, then step order."""
+        invoked = (
+            select(WorkflowInvocation.workflow_id)
+            .join(History, History.id == WorkflowInvocation.history_id)
+            .where(WorkflowInvocation.workflow_id.in_(version_map), History.user_id == user_id)
+        )
+        labels: dict[int, list[str]] = defaultdict(list)
+        for workflow_id, label in self.sa_session.execute(_output_labels_stmt(invoked)):
+            labels[workflow_id].append(label)
+        newest_first = sorted(labels, key=version_map.__getitem__, reverse=True)
+        return list(dict.fromkeys(label for workflow_id in newest_first for label in labels[workflow_id]))
 
     def _output_rows(
         self,
@@ -182,13 +196,8 @@ class ComparisonsManager:
         page: list[InvocationPageRow],
         query: OutputRunsQuery,
         version_map: dict[int, int],
-    ) -> tuple[list[ComparisonColumn], list[ComparisonRow], list[str]]:
+    ) -> tuple[list[ComparisonColumn], list[ComparisonRow]]:
         declared = self._declared_workflow_io({invocation.workflow_id for invocation in page})
-        # newest version first, as columns are ordered
-        newest_first = sorted(declared, key=version_map.__getitem__, reverse=True)
-        output_labels = list(
-            dict.fromkeys(spec.label for wid in newest_first for spec in declared[wid] if spec.role == "output")
-        )
         if query.output_labels is not None:
             labels = set(query.output_labels)
             declared = {
@@ -233,7 +242,7 @@ class ComparisonsManager:
                 )
             )
         _set_metadata_keys(columns, metadata_keys)
-        return columns, rows, output_labels
+        return columns, rows
 
     def _declared_workflow_io(self, workflow_ids: Collection[int]) -> dict[int, list[ColumnSpec]]:
         """Labelled input steps then labelled outputs of each Workflow, in step order; duplicates kept."""
@@ -252,13 +261,7 @@ class ComparisonsManager:
         for workflow_id, label, step_type in self.sa_session.execute(input_stmt):
             role: ComparisonColumnRole = "parameter" if step_type == "parameter_input" else "input"
             declared[workflow_id].append(ColumnSpec(key=f"{role}:{label}", label=label, role=role))
-        output_stmt = (
-            select(WorkflowStep.workflow_id, WorkflowOutput.label)
-            .join(WorkflowStep, WorkflowStep.id == WorkflowOutput.workflow_step_id)
-            .where(WorkflowStep.workflow_id.in_(workflow_ids), WorkflowOutput.label.is_not(None))
-            .order_by(WorkflowStep.order_index, WorkflowOutput.id)
-        )
-        for workflow_id, label in self.sa_session.execute(output_stmt):
+        for workflow_id, label in self.sa_session.execute(_output_labels_stmt(workflow_ids)):
             declared[workflow_id].append(ColumnSpec(key=f"output:{label}", label=label, role="output"))
         return declared
 
@@ -685,6 +688,16 @@ def _step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnEleme
     if "new" in states:
         clauses.append(~select(wis.id).where(step_of_invocation).exists())
     return or_(*clauses)
+
+
+def _output_labels_stmt(workflow_ids: Collection[int] | Select[Any]) -> Select[Any]:
+    """Labelled outputs of the given Workflows as (workflow id, label), in step order."""
+    return (
+        select(WorkflowStep.workflow_id, WorkflowOutput.label)
+        .join(WorkflowStep, WorkflowStep.id == WorkflowOutput.workflow_step_id)
+        .where(WorkflowStep.workflow_id.in_(workflow_ids), WorkflowOutput.label.is_not(None))
+        .order_by(WorkflowStep.order_index, WorkflowOutput.id)
+    )
 
 
 def _tool_predicates(user_id: int, tool_id: str) -> list[ColumnElement[bool]]:

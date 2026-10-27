@@ -9702,7 +9702,7 @@ export interface components {
             columns: components["schemas"]["ComparisonColumn"][];
             /**
              * Output Labels Available
-             * @description Output labels of the page's workflow versions, whatever `output_labels` selects.
+             * @description Output labels of the workflow versions the caller has run, whatever `output_labels` selects.
              */
             output_labels_available?: string[] | null;
             /** Query */

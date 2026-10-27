@@ -225,5 +225,5 @@ class ComparisonTable(Model):
         None, description="0-based workflow versions with the compared step, whatever `versions` selects."
     )
     output_labels_available: list[str] | None = Field(
-        None, description="Output labels of the page's workflow versions, whatever `output_labels` selects."
+        None, description="Output labels of the workflow versions the caller has run, whatever `output_labels` selects."
     )

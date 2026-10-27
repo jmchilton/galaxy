@@ -520,6 +520,11 @@ class TestComparisonsApi(ApiTestCase):
             assert [set(row["cells"]) for row in filtered["rows"]] == [set(filtered_keys)] * 2
             assert filtered["output_labels_available"] == ["n", "cat_out"]
 
+            # the facet covers versions off the page
+            oldest = self._output_runs_table(summary.workflow_id, limit=1, sort_desc=False)
+            assert [row["version"] for row in oldest["rows"]] == [0]
+            assert oldest["output_labels_available"] == ["n", "cat_out"]
+
             # states filter on the invocation state
             assert len(self._output_runs_table(summary.workflow_id, states="completed")["rows"]) == 2
             response = self._output_runs(summary.workflow_id, states="failed")
