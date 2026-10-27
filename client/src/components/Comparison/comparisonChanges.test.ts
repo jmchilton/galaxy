@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ComparisonCell, ComparisonColumn, ComparisonRow, ComparisonTable, DatasetCell } from "@/api/comparisons";
 
-import { changedCells, compareCells, compareMeta } from "./comparisonDiff";
+import { changedCells, compareCells, compareMeta } from "./comparisonChanges";
 import STEP_RUNS from "./test-data/step_runs.json";
 
 const TABLE = STEP_RUNS as unknown as ComparisonTable;

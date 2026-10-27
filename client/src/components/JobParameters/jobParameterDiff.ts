@@ -3,6 +3,8 @@ import type { components } from "@/api/schema";
 export type JobParameter = components["schemas"]["JobParameter"];
 
 export interface JobParameterDiffEntry {
+    /** Unique per entry: the path and its occurrence. */
+    key: string;
     /** Ancestor labels and this one, e.g. `Section › Mode`. */
     path: string;
     label: string;
@@ -55,6 +57,7 @@ export function diffJobParameters(a: JobParameter[], b: JobParameter[]): JobPara
         const other = right.get(key)?.parameter;
         right.delete(key);
         return {
+            key,
             path,
             label: parameter.text,
             depth: parameter.depth,
@@ -63,8 +66,9 @@ export function diffJobParameters(a: JobParameter[], b: JobParameter[]): JobPara
             differs: !other || valueIdentity(parameter.value) !== valueIdentity(other.value),
         };
     });
-    for (const { path, parameter } of right.values()) {
+    for (const { key, path, parameter } of right.values()) {
         entries.push({
+            key,
             path,
             label: parameter.text,
             depth: parameter.depth,

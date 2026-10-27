@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { faAngleDown, faAngleRight, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
+import { faAngleDown, faAngleRight, faColumns, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 
 import type { ComparisonColumn, ComparisonRow, ComparisonTable } from "@/api/comparisons";
 
-import { changedCells } from "./comparisonDiff";
+import { changedCells } from "./comparisonChanges";
 import { type CellDisplay, displayFor, fieldKeys, META_FIELDS, META_LABELS, type MetaField } from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
 import ComparisonColumnHeader from "./ComparisonColumnHeader.vue";
+import ComparisonDiff from "./ComparisonDiff.vue";
 import ComparisonMetaCell from "./ComparisonMetaCell.vue";
 import ComparisonRowDetail from "./ComparisonRowDetail.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
+import GCheckbox from "@/components/BaseComponents/GCheckbox.vue";
 import GTable from "@/components/Common/GTable.vue";
 import ListHeader from "@/components/Common/ListHeader.vue";
 
@@ -99,6 +101,43 @@ function isChanged(row: ComparisonRow, column: ComparisonColumn) {
     return Boolean(changed.value.get(row.run.id)?.has(column.key));
 }
 
+// Up to two runs picked for a side-by-side diff, by id so the choice survives transposing.
+const MAX_SELECTED = 2;
+const selectedRunIds = ref<string[]>([]);
+const selectedSet = computed(() => new Set(selectedRunIds.value));
+const diffOpen = ref(false);
+
+/** Selecting past the limit drops the run selected first. */
+function setSelected(runId: string, selected: boolean) {
+    const others = selectedRunIds.value.filter((id) => id !== runId);
+    selectedRunIds.value = selected ? [...others, runId].slice(-MAX_SELECTED) : others;
+}
+
+watch(
+    () => props.table.rows,
+    (rows) => {
+        const onPage = new Set(rows.map((row) => row.run.id));
+        selectedRunIds.value = selectedRunIds.value.filter((id) => onPage.has(id));
+    },
+);
+watch(
+    () => selectedRunIds.value.length,
+    (count) => {
+        if (count < MAX_SELECTED) {
+            diffOpen.value = false;
+        }
+    },
+);
+
+const selectedIndices = computed(() =>
+    props.table.rows.flatMap((row, index) => (selectedSet.value.has(row.run.id) ? [index] : [])),
+);
+const diffRows = computed(() => {
+    const rows = props.table.rows.filter((row) => selectedSet.value.has(row.run.id));
+    return diffOpen.value && rows.length === MAX_SELECTED ? (rows as [ComparisonRow, ComparisonRow]) : undefined;
+});
+const displays = computed(() => Object.fromEntries(props.table.columns.map((column) => [column.key, display(column)])));
+
 // Runs as rows.
 const runFields = computed(() => [
     { key: "_expand", label: "" },
@@ -154,6 +193,20 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
             <template v-slot:extra-filter>
                 <slot name="toolbar" />
                 <GButton
+                    class="comparison-compare-selected"
+                    size="small"
+                    color="blue"
+                    outline
+                    :disabled="selectedRunIds.length < MAX_SELECTED"
+                    disabled-title="Tick two runs to compare them side by side"
+                    :pressed="Boolean(diffRows)"
+                    :aria-pressed="diffRows ? 'true' : 'false'"
+                    title="Show the selected runs side by side"
+                    @click="diffOpen = !diffOpen">
+                    <FontAwesomeIcon :icon="faColumns" />
+                    Compare selected ({{ selectedRunIds.length }}/{{ MAX_SELECTED }})
+                </GButton>
+                <GButton
                     class="comparison-transpose"
                     size="small"
                     color="blue"
@@ -168,6 +221,17 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
             </template>
         </ListHeader>
 
+        <ComparisonDiff
+            v-if="diffRows"
+            :rows="diffRows"
+            :columns="table.columns"
+            :query="table.query"
+            :displays="displays"
+            :current-run-id="currentRunId"
+            :requested-metadata="requestedMetadata"
+            :loading="loading"
+            @close="diffOpen = false" />
+
         <GAlert v-if="!table.rows.length && !loading" class="comparison-empty" variant="info" show>
             {{ emptyMessage }}
         </GAlert>
@@ -179,11 +243,16 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                 :fields="runFields"
                 :items="runItems"
                 primary-key="runId"
+                selectable
+                no-select-on-click
+                :selected-items="selectedIndices"
+                select-checkbox-title="Select to compare"
                 :local-sorting="false"
                 :local-filtering="false"
                 :striped="false"
                 :overlay-loading="loading"
-                compact>
+                compact
+                @row-select="setSelected($event.item.runId, $event.selected)">
                 <template v-slot:cell(_expand)="{ detailsShowing, toggleDetails }">
                     <GButton
                         class="comparison-expand"
@@ -243,6 +312,12 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                 :overlay-loading="loading"
                 compact>
                 <template v-for="(row, index) in table.rows" :key="`h-${row.run.id}`" v-slot:[`head(r${index})`]>
+                    <GCheckbox
+                        class="comparison-select-run d-inline-block mr-1"
+                        :model-value="selectedSet.has(row.run.id)"
+                        aria-label="Select to compare"
+                        title="Select to compare"
+                        @update:model-value="setSelected(row.run.id, $event)" />
                     <ComparisonMetaCell
                         :field="anchorField"
                         :row="row"
