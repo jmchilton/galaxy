@@ -235,8 +235,8 @@ class ComparisonTable(Model):
     versions_available: list[int] | None = Field(
         None,
         description=(
-            "0-based workflow versions to filter by, whatever `versions` selects: those with the compared step"
-            " for step runs, every version for output runs."
+            "0-based workflow versions to filter by, whatever `versions` selects: those the user has invoked,"
+            " and for step runs only those with the compared step."
         ),
     )
     output_labels_available: list[str] | None = Field(
