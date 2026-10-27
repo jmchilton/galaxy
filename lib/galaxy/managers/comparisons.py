@@ -586,13 +586,17 @@ class ComparisonsManager:
             for key in io:
                 declared[version].setdefault(key, _column_spec(key))
         # a version's step definition also declares inputs its runs on this page left empty
-        observed = {key for specs in declared.values() for key in specs}
+        observed = list(dict.fromkeys(key for specs in declared.values() for key in specs))
         page_workflow_ids = {invocation.workflow_id for invocation in page}
         defined = self._defined_step_inputs([step_by_workflow[workflow_id] for workflow_id in page_workflow_ids])
         for workflow_id in page_workflow_ids:
-            for key in defined.get(step_by_workflow[workflow_id], ()):
-                if key in observed:
-                    declared[version_map[workflow_id]].setdefault(key, _column_spec(key))
+            version_specs = declared[version_map[workflow_id]]
+            step_defines = defined.get(step_by_workflow[workflow_id], set())
+            # a version none of whose runs here recorded outputs yet may have any of them
+            outputs_unknown = not any(key.startswith("output:") for key in version_specs)
+            for key in observed:
+                if key in step_defines or (outputs_unknown and key.startswith("output:")):
+                    version_specs.setdefault(key, _column_spec(key))
 
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
@@ -613,8 +617,8 @@ class ComparisonsManager:
             representative = job or (icj.representative if icj else None)
             terminal = state not in Job.non_ready_states
             reason = missing_reason(True, (step.state or "new") if step else None, state, terminal)
-            # a version's columns are only known from its scheduled steps on this page
-            in_version = declared.get(version, {}) if step else None
+            # an input step's one column is in every version with the step
+            in_version = None if step_types[invocation.workflow_id] in INPUT_STEP_TYPES else declared[version]
             cells = _cells(columns, io_by_invocation[invocation.id], item_cells, metadata_keys, in_version, reason)
             rows.append(
                 ComparisonRow(
