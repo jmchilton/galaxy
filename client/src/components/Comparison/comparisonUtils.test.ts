@@ -9,6 +9,7 @@ import {
     formatValue,
     missingText,
     missingTitle,
+    noJobReason,
     offeredOptions,
     requestedMetadata,
     rowJob,
@@ -161,5 +162,55 @@ describe("offeredOptions", () => {
 
     it("names options with the given text", () => {
         expect(offeredOptions(["ok"], [], (state) => state.toUpperCase())).toEqual([{ text: "OK", value: "ok" }]);
+    });
+});
+
+describe("noJobReason", () => {
+    const base = TABLE.rows[0]!;
+
+    function row(runState: string, fields: Partial<ComparisonRow>): ComparisonRow {
+        return { ...base, run: { ...base.run, state: runState }, ...fields } as ComparisonRow;
+    }
+
+    it.each([
+        ["new", { state: "new" }, "This run has no job for this step yet."],
+        ["failed", { state: "new" }, "This run ended before reaching this step."],
+        [
+            "ready",
+            { state: "scheduled", step_type: "pause", step_action: null },
+            "Waiting for review: the run is paused at this step.",
+        ],
+        [
+            "scheduled",
+            { state: "scheduled", step_type: "pause", step_action: true },
+            "Reviewed: the run continued past this pause.",
+        ],
+        [
+            "cancelled",
+            { state: "scheduled", step_type: "pause", step_action: false },
+            "Review rejected: the run was cancelled at this pause.",
+        ],
+        [
+            "cancelled",
+            { state: "scheduled", step_type: "pause", step_action: null },
+            "This pause step was not reviewed before the run ended.",
+        ],
+        ["scheduled", { state: "scheduled", step_type: "data_input" }, "Input steps run without a job."],
+        ["scheduled", { state: "scheduled", step_type: "data_collection_input" }, "Input steps run without a job."],
+        ["scheduled", { state: "scheduled", step_type: "parameter_input" }, "Input steps run without a job."],
+        ["scheduled", { state: "scheduled", step_type: "tool" }, "This step ran without a job."],
+    ])("explains a jobless row in a %s run: %j", (runState, fields, reason) => {
+        expect(
+            noJobReason(
+                row(runState, { step_job: null, subworkflow_invocation_id: null, ...fields } as Partial<ComparisonRow>),
+            ),
+        ).toBe(reason);
+    });
+
+    it("has no reason for a row with a job or a subworkflow run", () => {
+        expect(noJobReason(TABLE.rows[1]!)).toBeUndefined();
+        expect(
+            noJobReason(row("scheduled", { state: "scheduled", subworkflow_invocation_id: "sub1" })),
+        ).toBeUndefined();
     });
 });
