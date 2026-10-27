@@ -12,6 +12,8 @@ import responses
 from galaxy.exceptions import (
     AuthenticationRequired,
     ConfigDoesNotAllowException,
+    MessageException,
+    ObjectNotFound,
 )
 from galaxy.files.plugins import FileSourcePluginsConfig
 from ._util import (
@@ -126,3 +128,28 @@ def test_redirect_to_private_address_is_refused():
     with pytest.raises(ConfigDoesNotAllowException):
         realize_to_temp_file(_source(token="secret"), FASTQ_URI)
     assert not any("169.254" in str(call.request.url) for call in responses.calls)
+
+
+@pytest.mark.parametrize(
+    "response, error, match",
+    [
+        ({"status": 404}, ObjectNotFound, "not found"),
+        ({"body": "<html>"}, MessageException, "DSpace 7 or newer"),
+        ({"status": 302, "headers": {"Location": f"{API}/core/items/i1/bundles"}}, MessageException, "redirected more"),
+    ],
+)
+@responses.activate
+def test_dspace_responses_map_to_galaxy_errors(response, error, match):
+    responses.get(f"{API}/core/items/i1/bundles", **response)
+    with pytest.raises(error, match=match):
+        _source().get_file_source_path("gxfiles://dspace").file_source.list("/items/i1")
+
+
+@responses.activate
+def test_paths_outside_the_dspace_layout_are_not_found():
+    file_sources = _source()
+    with pytest.raises(ObjectNotFound):
+        realize_to_temp_file(file_sources, "gxfiles://dspace/items/i1/reads.fastq")
+    with pytest.raises(ObjectNotFound):
+        file_sources.get_file_source_path("gxfiles://dspace").file_source.list("/bitstreams/f1")
+    assert not responses.calls
