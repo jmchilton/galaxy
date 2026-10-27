@@ -21,7 +21,7 @@ const RUNS_STUB = {
     template: "<div />",
 };
 
-function mountInTabs(props: { graphLabel?: string | null; invocationLabel?: string | null }) {
+function mountInTabs(props: { graphLabel?: string | null; invocationLabel?: string | null; hidden?: boolean }) {
     const invocation = {
         id: "inv-1",
         workflow_id: "wf-instance",
@@ -41,7 +41,9 @@ function mountInTabs(props: { graphLabel?: string | null; invocationLabel?: stri
             }),
     });
     const localVue = getLocalVue();
-    useWorkflowStore().workflowsByInstanceId = { "wf-instance": { id: "stored-wf" } } as never;
+    useWorkflowStore().workflowsByInstanceId = {
+        "wf-instance": { id: "stored-wf", hidden: Boolean(props.hidden) },
+    } as never;
     return mount(Host, { global: { ...localVue, stubs: { ...localVue.stubs, StepRunsTab: RUNS_STUB } } });
 }
 
@@ -51,6 +53,16 @@ describe("StepAllRunsTab", () => {
         await wrapper.vm.$nextTick();
         const link = wrapper.find(".invocation-step-all-runs-tab .nav-link");
         expect(link.text()).toBe("Label this step to compare its runs");
+        expect(link.attributes("aria-disabled")).toBe("true");
+        await link.trigger("click");
+        expect(wrapper.findComponent(RUNS_STUB).exists()).toBe(false);
+    });
+
+    it("is disabled with an explanation on a subworkflow's own run", async () => {
+        const wrapper = mountInTabs({ graphLabel: "count_reads", hidden: true });
+        await wrapper.vm.$nextTick();
+        const link = wrapper.find(".invocation-step-all-runs-tab .nav-link");
+        expect(link.text()).toBe("Steps inside a subworkflow can't be compared across runs yet");
         expect(link.attributes("aria-disabled")).toBe("true");
         await link.trigger("click");
         expect(wrapper.findComponent(RUNS_STUB).exists()).toBe(false);
