@@ -56,7 +56,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         invocations.graph_node_state(label="mixed_collection", state="error").wait_for_present()
         # Only the step with the failed job is marked, not the steps downstream of it.
         invocations.graph_node_state(label="cat", state="ok").wait_for_present()
-        self._wait_for_polling_to_stop()
+        self.invocation_graph_wait_for_polling_to_stop()
         self.screenshot("invocation_graph_failed_step")
 
     @selenium_test
@@ -65,17 +65,17 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         invocations = self.components.invocations
 
         invocations.step_card.assert_absent()
-        self._click_node("left_cat")
-        self._assert_step_card_title("left_cat")
+        self.invocation_graph_click_node("left_cat")
+        self.assert_invocation_step_card_title("left_cat")
         invocations.step_card_icon(icon="wrench").wait_for_visible()
         self.screenshot("invocation_graph_step_card")
 
         invocations.step_card_next.wait_for_and_click()
-        self._assert_step_card_title("right_cat")
+        self.assert_invocation_step_card_title("right_cat")
         invocations.step_card_previous.wait_for_and_click()
-        self._assert_step_card_title("left_cat")
+        self.assert_invocation_step_card_title("left_cat")
         invocations.step_card_previous.wait_for_and_click()
-        self._assert_step_card_title("right_input")
+        self.assert_invocation_step_card_title("right_input")
         invocations.step_card_icon(icon="file").wait_for_visible()
 
         invocations.step_card_hide.wait_for_and_click()
@@ -88,7 +88,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         for label in TWO_BRANCHES_LABELS:
             invocations.graph_node_out_of_focus(label=label).assert_absent()
 
-        self._click_node("left_cat")
+        self.invocation_graph_click_node("left_cat")
         invocations.graph_node_out_of_focus(label="right_input").wait_for_present()
         invocations.graph_node_out_of_focus(label="right_cat").wait_for_present()
         invocations.graph_node_out_of_focus(label="left_input").assert_absent()
@@ -100,7 +100,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
     def test_show_connections(self):
         self._open_two_branches_invocation()
         left_cat = self.components.workflow_editor.node._(label="left_cat")
-        self._click_node("left_cat")
+        self.invocation_graph_click_node("left_cat")
         self._assert_output_terminal_blank("left_cat", "out_file1", blank=True)
         assert "out_file1" not in left_cat.wait_for_visible().text
 
@@ -121,7 +121,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
     def test_step_config_is_read_only(self):
         self._open_two_branches_invocation()
         invocations = self.components.invocations
-        self._click_node("left_cat")
+        self.invocation_graph_click_node("left_cat")
         invocations.step_card_config_tab.wait_for_and_click()
         invocations.step_card_config_form.wait_for_visible()
         label_input = self.components.workflow_editor.label_input.wait_for_visible()
@@ -134,7 +134,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
     def test_expand_step_to_modal(self):
         self._open_two_branches_invocation()
         invocations = self.components.invocations
-        self._click_node("left_cat")
+        self.invocation_graph_click_node("left_cat")
         invocations.step_card_body_config_tab.wait_for_visible()
 
         invocations.step_card_expand.wait_for_and_click()
@@ -162,7 +162,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         assert_single_result()
         self.screenshot("invocation_graph_search")
         invocations.graph_search_result.wait_for_and_click()
-        self._assert_step_card_title("right_cat")
+        self.assert_invocation_step_card_title("right_cat")
 
     def _open_two_branches_invocation(self):
         self.workflow_populator.run_workflow(WORKFLOW_TWO_BRANCHES, history_id=self.current_history_id())
@@ -170,19 +170,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         timeout = self.wait_length(self.wait_types.JOB_COMPLETION)
         for label in TWO_BRANCHES_LABELS:
             self.components.invocations.graph_node_state(label=label, state="ok").wait_for_present(timeout=timeout)
-        self._wait_for_polling_to_stop()
-
-    def _wait_for_polling_to_stop(self):
-        # The graph keeps re-rendering until job polling ends; settle it before clicking or screenshotting.
-        self.components.invocations.polling_indicator.wait_for_absent(wait_type=self.wait_types.JOB_COMPLETION)
-
-    def _click_node(self, label: str):
-        self.components.workflow_editor.node._(label=label).title.wait_for_and_click()
-
-    @retry_assertion_during_transitions
-    def _assert_step_card_title(self, label: str):
-        title = self.components.invocations.step_card_title.wait_for_visible().text
-        assert label in title, f"Expected step card for {label}, found {title!r}"
+        self.invocation_graph_wait_for_polling_to_stop()
 
     @retry_assertion_during_transitions
     def _assert_output_terminal_blank(self, label: str, output_name: str, blank: bool):

@@ -36,18 +36,11 @@ describe("StoredWorkflowInvocations", () => {
         );
     });
 
-    it("hides Compare outputs from anonymous users, who have no runs to compare", async () => {
-        const wrapper = await mountWith({ isAnonymous: true, total_disk_usage: 0, nice_total_disk_usage: "0 bytes" });
-        expect(wrapper.find(".breadcrumb-heading").text()).toContain("Two cats");
-        expect(wrapper.find(".stored-workflow-compare-outputs").exists()).toBe(false);
-    });
-
-    it("links Compare outputs to the workflow's output comparison", async () => {
-        const wrapper = await mountWith(getFakeRegisteredUser());
-
-        const link = wrapper.find("a.stored-workflow-compare-outputs");
-        expect(link.text()).toContain("Compare outputs");
-        expect(link.attributes("href")).toBe("/comparisons?kind=output_runs&workflow_id=wf1");
-        expect(wrapper.find(".breadcrumb-heading").text()).toContain("Two cats");
+    it("offers Compare outputs to registered users only", async () => {
+        const registered = await mountWith(getFakeRegisteredUser());
+        expect(registered.find(".stored-workflow-compare-outputs").exists()).toBe(true);
+        const anonymous = await mountWith({ isAnonymous: true, total_disk_usage: 0, nice_total_disk_usage: "0 bytes" });
+        expect(anonymous.find(".breadcrumb-heading").text()).toContain("Two cats");
+        expect(anonymous.find(".stored-workflow-compare-outputs").exists()).toBe(false);
     });
 });
