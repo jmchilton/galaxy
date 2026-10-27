@@ -2,27 +2,16 @@ import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type {
-    CollectionCell,
-    ComparisonCell as Cell,
-    ComparisonColumn,
-    ComparisonTable,
-    DatasetCell,
-} from "@/api/comparisons";
+import type { CollectionCell, ComparisonCell as Cell, ComparisonColumn, DatasetCell } from "@/api/comparisons";
 
 import type { CellDisplay } from "../comparisonUtils";
-import STEP_RUNS from "../test-data/step_runs.json";
+import { ITEM_LINK_STUB, STEP_RUNS_TABLE } from "../test-utils";
 
 import ComparisonCell from "./ComparisonCell.vue";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 const DATASET = TABLE.rows[1]!.cells["output:out_file1"] as DatasetCell;
 const COLLECTION = TABLE.rows[4]!.cells["output:out_file1"] as CollectionCell;
-const LINK_STUB = {
-    name: "ItemPopoverLink",
-    props: ["itemId", "itemSrc", "to", "linkClass"],
-    template: "<a class='item-link'><slot /></a>",
-};
 const POPOVER_STUB = { name: "GPopover", props: ["target"], template: "<div class='popover-stub'><slot /></div>" };
 
 function mountCell(
@@ -37,7 +26,12 @@ function mountCell(
         props: { cell, row: { version: 1 }, display, role, requestedMetadata, loading },
         global: {
             ...localVue,
-            stubs: { ...localVue.stubs, ItemPopoverLink: LINK_STUB, GPopover: POPOVER_STUB, FontAwesomeIcon: true },
+            stubs: {
+                ...localVue.stubs,
+                ItemPopoverLink: ITEM_LINK_STUB,
+                GPopover: POPOVER_STUB,
+                FontAwesomeIcon: true,
+            },
         },
     });
 }
@@ -45,7 +39,7 @@ function mountCell(
 describe("ComparisonCell links", () => {
     it("links a dataset by hid and name with a popover", () => {
         const wrapper = mountCell(DATASET);
-        const link = wrapper.findComponent(LINK_STUB);
+        const link = wrapper.findComponent(ITEM_LINK_STUB);
         expect(link.props("itemId")).toBe(DATASET.id);
         expect(link.props("itemSrc")).toBe("hda");
         expect(link.props("to")).toBeUndefined();
@@ -61,7 +55,7 @@ describe("ComparisonCell links", () => {
     });
 
     it("links a collection to its history", () => {
-        const link = mountCell(COLLECTION).findComponent(LINK_STUB);
+        const link = mountCell(COLLECTION).findComponent(ITEM_LINK_STUB);
         expect(link.props("itemSrc")).toBe("hdca");
         expect(link.props("to")).toBe(`/histories/view?id=${COLLECTION.history_id}`);
         expect(link.text()).toContain(COLLECTION.name!);
@@ -70,7 +64,7 @@ describe("ComparisonCell links", () => {
     it("badges deleted and purged datasets", () => {
         const deleted = mountCell({ ...DATASET, deleted: true });
         expect(deleted.find(".badge").text()).toBe("deleted");
-        expect(deleted.findComponent(LINK_STUB).props("linkClass")).toBe("comparison-item-deleted");
+        expect(deleted.findComponent(ITEM_LINK_STUB).props("linkClass")).toBe("comparison-item-deleted");
         expect(
             mountCell({ ...DATASET, deleted: true, purged: true })
                 .find(".badge")
@@ -132,8 +126,8 @@ describe("ComparisonCell values", () => {
 
     it("links an inlined expression value to its dataset in link mode", () => {
         const cell = value(18204, { source: "expression_json", dataset_id: "ds1" } as Partial<Cell>);
-        expect(mountCell(cell, "value").findComponent(LINK_STUB).exists()).toBe(false);
-        const link = mountCell(cell, "link").findComponent(LINK_STUB);
+        expect(mountCell(cell, "value").findComponent(ITEM_LINK_STUB).exists()).toBe(false);
+        const link = mountCell(cell, "link").findComponent(ITEM_LINK_STUB);
         expect(link.props("itemId")).toBe("ds1");
         expect(link.text()).toBe("18204");
     });
@@ -145,7 +139,7 @@ describe("ComparisonCell dataset lists", () => {
 
     it("shows the first dataset and lists every dataset behind a count", () => {
         const wrapper = mountCell(list);
-        const [first, ...listed] = wrapper.findAllComponents(LINK_STUB);
+        const [first, ...listed] = wrapper.findAllComponents(ITEM_LINK_STUB);
         expect(first!.props("itemId")).toBe(DATASET.id);
         expect(wrapper.find(".comparison-dataset-list-more").text()).toBe("+2 more");
         const items = wrapper.findAll(".comparison-dataset-list-items li");
@@ -177,7 +171,7 @@ describe("ComparisonCell missing", () => {
         const wrapper = mountCell({ type: "missing", reason: "inaccessible" }, "meta:data_lines", ["data_lines"]);
         expect(wrapper.find(".comparison-missing-inaccessible").exists()).toBe(true);
         expect(wrapper.text()).toBe("—no access");
-        expect(wrapper.findComponent(LINK_STUB).exists()).toBe(false);
+        expect(wrapper.findComponent(ITEM_LINK_STUB).exists()).toBe(false);
         expect(wrapper.find("code").exists()).toBe(false);
     });
 });

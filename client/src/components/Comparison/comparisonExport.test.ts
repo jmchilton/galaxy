@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonCell, ComparisonQuery, ComparisonRow, ComparisonTable, DatasetCell } from "@/api/comparisons";
+import type { ComparisonCell, ComparisonQuery, ComparisonRow, DatasetCell } from "@/api/comparisons";
 
 import {
     cellText,
@@ -11,9 +11,9 @@ import {
     spreadsheetSafe,
     toDelimited,
 } from "./comparisonExport";
-import STEP_RUNS from "./test-data/step_runs.json";
+import { STEP_RUNS_TABLE } from "./test-utils";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 const [NOT_RUN, V2_RUN] = TABLE.rows as [ComparisonRow, ComparisonRow];
 const MAPPED = TABLE.rows[4]!;
 const link = () => "link" as const;
