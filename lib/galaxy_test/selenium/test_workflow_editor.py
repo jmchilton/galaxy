@@ -1358,27 +1358,6 @@ steps:
         workflow = self.workflow_populator.download_workflow(workflow_id)
         return workflow
 
-    def _pick_value_select_mode(self, label):
-        mode_selector = "div.ui-form-element[id='form-element-mode']"
-        container = self.wait_for_selector(mode_selector)
-        trigger = container.find_element(By.CSS_SELECTOR, ".multiselect__select")
-        trigger.click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        js = """
-            var label = arguments[0];
-            var container = document.querySelector('#form-element-mode');
-            var items = container.querySelectorAll('.multiselect__element');
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].textContent.trim() === label) {
-                    items[i].querySelector('.multiselect__option').click();
-                    return true;
-                }
-            }
-            return false;
-        """
-        result = self.execute_script(js, label)
-        assert result, f"Mode option '{label}' not found"
-
     @selenium_test
     def test_pick_value_add_from_palette(self):
         self.workflow_create_new(annotation="pick value test")
@@ -1393,7 +1372,8 @@ steps:
         editor = self.components.workflow_editor
         node = editor.node._(label="Pick Value")
         node.wait_for_and_click()
-        self._pick_value_select_mode("All non-null (as collection)")
+        mode_select = self.components.tool_form.parameter_select(parameter="mode")
+        self.select_set_value(mode_select, "All non-null (as collection)")
         self.sleep_for(self.wait_types.UX_RENDER)
         self.assert_workflow_has_changes_and_save()
         workflow = self._download_current_workflow()
@@ -1516,7 +1496,8 @@ steps:
         editor = self.components.workflow_editor
         pick_node = editor.node._(label="pick")
         pick_node.wait_for_and_click()
-        self._pick_value_select_mode("All non-null (as collection)")
+        mode_select = self.components.tool_form.parameter_select(parameter="mode")
+        self.select_set_value(mode_select, "All non-null (as collection)")
         self.sleep_for(self.wait_types.UX_RENDER)
         self.assert_workflow_has_changes_and_save()
         workflow = self._download_current_workflow()
