@@ -10,6 +10,8 @@ import {
 } from "./tool-version";
 import VERSIONLESS_SPEC from "./versionless_tool_id_spec.yml";
 
+const VERSIONLESS_CASES = VERSIONLESS_SPEC as { doc: string; tool_id: string; versionless: string }[];
+
 describe("Tool Version Utilities", () => {
     describe("extractBaseToolId", () => {
         it("should handle simple tool IDs without version", () => {
@@ -182,7 +184,7 @@ describe("Tool Version Utilities", () => {
 
     describe("versionlessToolId", () => {
         // Shared with the server's versionless_tool_id tests.
-        it.each(VERSIONLESS_SPEC)("$doc ($tool_id)", ({ tool_id, versionless }) => {
+        it.each(VERSIONLESS_CASES)("$doc ($tool_id)", ({ tool_id, versionless }) => {
             expect(versionlessToolId(tool_id)).toBe(versionless);
         });
     });
