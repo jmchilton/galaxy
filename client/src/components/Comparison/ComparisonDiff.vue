@@ -15,7 +15,7 @@ import {
     visibleFields,
 } from "./comparisonUtils";
 
-import ComparisonCell from "./cells/ComparisonCell.vue";
+import ComparisonColumnCell from "./ComparisonColumnCell.vue";
 import ComparisonColumnLabel from "./ComparisonColumnLabel.vue";
 import ComparisonMetaCell from "./ComparisonMetaCell.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -143,12 +143,11 @@ const batchNote = computed(() =>
                             <span v-else class="font-weight-bold">{{ META_FIELD_SPECS[line.meta!].label }}</span>
                         </th>
                         <td v-for="row in rows" :key="row.run.id">
-                            <ComparisonCell
+                            <ComparisonColumnCell
                                 v-if="line.column"
-                                :cell="row.cells[line.column.key]"
                                 :row="row"
+                                :column="line.column"
                                 :display="displays[line.column.key]!"
-                                :role="line.column.role"
                                 :requested-metadata="requestedMetadata"
                                 :loading="loading" />
                             <ComparisonMetaCell v-else :field="line.meta!" :row="row" :query="query" />
