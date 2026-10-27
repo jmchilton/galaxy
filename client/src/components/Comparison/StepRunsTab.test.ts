@@ -23,6 +23,7 @@ let requests: { workflowId: string; query: URLSearchParams }[];
 let total: string;
 let fail: boolean;
 let gate: Promise<void> | undefined;
+let versionsAvailable: number[];
 let wrapper: VueWrapper | undefined;
 
 beforeEach(() => {
@@ -31,6 +32,7 @@ beforeEach(() => {
     total = String(TABLE.rows.length);
     fail = false;
     gate = undefined;
+    versionsAvailable = [0, 1];
     server.use(
         http.get("/api/workflows/{workflow_id}/step_runs", async ({ request, params, response }) => {
             const query = new URL(request.url).searchParams;
@@ -44,6 +46,7 @@ beforeEach(() => {
                 {
                     ...TABLE,
                     query: { ...TABLE.query, metadata_elements: metadata, offset: Number(query.get("offset")) },
+                    versions_available: versionsAvailable,
                 },
                 {
                     headers: { total_matches: total },
@@ -140,6 +143,34 @@ describe("StepRunsTab", () => {
         expect(tab.find("a.comparison-view-all").attributes("href")).toBe(
             "/comparisons?kind=step_runs&workflow_id=adb5f5c93f827949&step_label=second_cat",
         );
+    });
+
+    it("filters by state and workflow version from the first page, and links the page with them", async () => {
+        total = "60";
+        const tab = await mountTab();
+        await tab.find("button[aria-label='Go to page 3']").trigger("click");
+        await flushPromises();
+        const versions = tab.findAll(".comparison-filter-versions input");
+        expect(versions.map((input) => input.element.closest("label")!.textContent!.trim())).toEqual(["v1", "v2"]);
+        await tab.find(".comparison-filter-versions input[value='1']").setValue(true);
+        await flushPromises();
+        await tab.find(".comparison-filter-states input[value='error']").setValue(true);
+        await flushPromises();
+        expect(requests).toHaveLength(4);
+        const last = requests.at(-1)!.query;
+        expect(last.getAll("versions")).toEqual(["1"]);
+        expect(last.getAll("states")).toEqual(["error"]);
+        expect(last.get("offset")).toBe("0");
+        expect(tab.find("a.comparison-view-all").attributes("href")).toBe(
+            "/comparisons?kind=step_runs&workflow_id=adb5f5c93f827949&step_label=second_cat&states=error&versions=1",
+        );
+    });
+
+    it("offers no version filter for a step in one version", async () => {
+        versionsAvailable = [1];
+        const tab = await mountTab();
+        expect(tab.find(".comparison-filter-states").exists()).toBe(true);
+        expect(tab.find(".comparison-filter-versions").exists()).toBe(false);
     });
 
     it("hides pagination when one page holds every run", async () => {

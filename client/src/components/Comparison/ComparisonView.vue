@@ -21,11 +21,11 @@ import {
     displayStorageKey,
     PAGE_SIZES,
     parseComparisonQuery,
-    STATE_OPTIONS,
 } from "./comparisonQuery";
-import { requestedMetadata, stateText } from "./comparisonUtils";
+import { requestedMetadata } from "./comparisonUtils";
 import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
+import ComparisonFilters from "./ComparisonFilters.vue";
 import ComparisonPager from "./ComparisonPager.vue";
 import ComparisonTable from "./ComparisonTable.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -106,9 +106,9 @@ const states = computed({
     get: () => listParam("states"),
     set: (value: string[]) => updateUrl({ states: value }),
 });
-const stateOptions = computed(() => {
-    const options = kind.value ? STATE_OPTIONS[kind.value] : [];
-    return [...new Set([...options, ...states.value])].map((state) => ({ text: stateText(state), value: state }));
+const versions = computed({
+    get: () => (kind.value === "tool_runs" ? undefined : listParam("versions")),
+    set: (value: string[] | undefined) => updateUrl({ versions: value }),
 });
 
 const toolVersions = computed({
@@ -228,13 +228,11 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
                 </template>
             </p>
 
-            <div class="comparison-filters d-flex flex-wrap align-items-start mb-2">
-                <GCheckboxGroup
-                    v-model="states"
-                    class="comparison-filter-states mr-4"
-                    label="State"
-                    :options="stateOptions"
-                    size="small" />
+            <ComparisonFilters
+                v-model:states="states"
+                v-model:versions="versions"
+                :kind="kind!"
+                :versions-available="table?.versions_available">
                 <GCheckboxGroup
                     v-if="kind === 'output_runs' && outputLabelOptions.length"
                     v-model="outputLabels"
@@ -266,7 +264,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
                         </GButton>
                     </div>
                 </template>
-            </div>
+            </ComparisonFilters>
 
             <GAlert v-if="error" variant="danger" show>
                 {{ error }}
