@@ -16,6 +16,18 @@ def is_shed_guid(tool_id: str) -> bool:
     return "/repos/" in tool_id
 
 
+def versionless_tool_id(tool_id: str) -> str:
+    """
+    Tool id without a Tool Shed version suffix; ids without one pass through unchanged.
+    """
+    if not is_shed_guid(tool_id):
+        return tool_id
+    # owner/repo/tool_id/version
+    if len(tool_id.split("/repos/", 1)[1].split("/")) < 4:
+        return tool_id
+    return tool_id.rsplit("/", 1)[0]
+
+
 def short_tool_id(guid: str) -> str:
     """
     Tool-id segment of a toolshed-derived tool_id(=guid),
