@@ -899,6 +899,7 @@ export function getRouter(Galaxy) {
                         path: "comparisons",
                         component: ComparisonView,
                         props: (route) => ({ query: route.query }),
+                        meta: { keepMountedOnQueryChange: true },
                     },
                     {
                         path: "workflows/:storedWorkflowId/invocations",
