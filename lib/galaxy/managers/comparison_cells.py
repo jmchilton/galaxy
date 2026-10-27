@@ -143,7 +143,7 @@ class ComparisonCellBuilder:
             return dataset_ids, history_ids
         return (
             self.security_agent.accessible_dataset_ids(access.role_ids, dataset_ids),
-            self.history_manager.accessible_history_ids(access.user_id, history_ids),
+            self.history_manager.accessible_ids(access.user_id, history_ids),
         )
 
     def load_jobs(self, job_ids: Collection[int]) -> dict[int, JobRecord]:

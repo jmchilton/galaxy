@@ -182,7 +182,7 @@ class TestHistoryManager(BaseTestCase):
         assert self.history_manager.error_unless_accessible(item1, self.admin_user) == item1
         assert self.history_manager.get_accessible(item1.id, self.admin_user) == item1
 
-    def test_accessible_history_ids(self):
+    def test_accessible_ids(self):
         owner = self.user_manager.create(**user2_data)
         non_owner = self.user_manager.create(**user3_data)
         stranger = self.user_manager.create(**user4_data)
@@ -192,12 +192,12 @@ class TestHistoryManager(BaseTestCase):
         histories = [private, importable, shared]
         ids = [history.id for history in histories]
 
-        assert self.history_manager.accessible_history_ids(owner.id, ids) == set(ids)
-        assert self.history_manager.accessible_history_ids(non_owner.id, ids) == {importable.id, shared.id}
-        assert self.history_manager.accessible_history_ids(non_owner.id, []) == set()
+        assert self.history_manager.accessible_ids(owner.id, ids) == set(ids)
+        assert self.history_manager.accessible_ids(non_owner.id, ids) == {importable.id, shared.id}
+        assert self.history_manager.accessible_ids(non_owner.id, []) == set()
         # parity with the per-item rule; admins excluded, since is_accessible lets them through
         for user in (owner, non_owner, stranger):
-            accessible = self.history_manager.accessible_history_ids(user.id, ids)
+            accessible = self.history_manager.accessible_ids(user.id, ids)
             for history in histories:
                 assert (history.id in accessible) == self.history_manager.is_accessible(history, user)
 
