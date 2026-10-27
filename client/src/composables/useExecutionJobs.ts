@@ -15,6 +15,8 @@ interface ExecutionJob {
     id: string;
     /** Set for a batch's jobs. */
     create_time?: string;
+    /** Set for a batch's jobs the job cache copied from an earlier job. */
+    copied_from_job_id?: string | null;
 }
 
 const MESSAGES = {
