@@ -8,6 +8,7 @@ import {
     fieldKeys,
     formatValue,
     missingText,
+    missingTitle,
     requestedMetadata,
     rowJob,
     runLink,
@@ -74,6 +75,14 @@ describe("missingText", () => {
     ];
     it.each(cases)("%s reads %s", (reason, text) => {
         expect(missingText({ type: "missing", reason }, { version: 1 })).toBe(text);
+    });
+
+    it("reads an empty input as not supplied", () => {
+        const cell: MissingCell = { type: "missing", reason: "no_output" };
+        expect(missingText(cell, { version: 1 }, "input")).toBe("not supplied");
+        expect(missingTitle(cell, "input")).toBe("This run did not supply this input");
+        expect(missingText(cell, { version: 1 }, "output")).toBe("no output");
+        expect(missingTitle(cell, "output")).toBe("This run produced nothing here");
     });
 
     it("names the tool version in mode 3", () => {
