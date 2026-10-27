@@ -152,8 +152,8 @@ class TestComparisons(SeleniumTestCase):
 
         self.get(f"workflows/edit?id={workflow_id}")
         self.workflow_editor_ensure_tool_form_open("second_cat")
-        comparisons.editor_compare_runs_link.wait_for_visible()
-        self.screenshot("comparisons_editor_compare_runs_link")
+        self.components.workflow_editor.label_input.wait_for_visible()
+        self._screenshot_settled("comparisons_editor_compare_runs_link", comparisons.editor_compare_runs_link)
         comparisons.editor_compare_runs_link.wait_for_and_click()
         self._assert_comparison_page("step_runs")
         self.assert_current_url_contains("step_label=second_cat")
@@ -173,7 +173,10 @@ class TestComparisons(SeleniumTestCase):
         self.invocation_graph_click_node("random_lines")
         self.assert_invocation_step_card_title("random_lines")
         self._assert_all_runs_tab_disabled()
-        self.screenshot("comparisons_subworkflow_all_runs_disabled")
+        self.components.invocations.step_job_information_tool_id(order_index="1").wait_for_visible()
+        self._screenshot_settled(
+            "comparisons_subworkflow_all_runs_disabled", self.components.comparisons.step_all_runs_tab
+        )
 
     @selenium_test
     def test_mapped_step_reused_job(self):
