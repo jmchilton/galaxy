@@ -1,20 +1,13 @@
 import pytest
+import yaml
 
+from galaxy.util.resources import resource_string
 from galaxy.util.tool_version import versionless_tool_id
 
+# Shared with the client's versionlessToolId tests.
+SPEC = yaml.safe_load(resource_string("galaxy.util", "versionless_tool_id_spec.yml"))
 
-@pytest.mark.parametrize(
-    "tool_id,expected",
-    [
-        ("cat1", "cat1"),
-        (
-            "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc/0.74+galaxy0",
-            "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc",
-        ),
-        ("toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc", "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc"),
-        ("localhost:9009/repos/owner/repo_name/tool_a/1.0.0", "localhost:9009/repos/owner/repo_name/tool_a"),
-        ("some/local/tool", "some/local/tool"),
-    ],
-)
-def test_versionless_tool_id(tool_id, expected):
-    assert versionless_tool_id(tool_id) == expected
+
+@pytest.mark.parametrize("case", SPEC, ids=[case["tool_id"] for case in SPEC])
+def test_versionless_tool_id(case):
+    assert versionless_tool_id(case["tool_id"]) == case["versionless"], case["doc"]
