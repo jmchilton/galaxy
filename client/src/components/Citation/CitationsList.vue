@@ -8,6 +8,7 @@ import { getCitations } from "@/components/Citation/services";
 import { useConfig } from "@/composables/config";
 import { useHistoryBreadCrumbsTo } from "@/composables/historyBreadcrumbs";
 import { copy } from "@/utils/clipboard";
+import { downloadBlob } from "@/utils/download";
 
 import type { Citation } from ".";
 import { Cite } from "./cite";
@@ -104,15 +105,7 @@ function copyAPA() {
 
 function downloadBibtex() {
     const text = citationsToBibtexAsText();
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "citations.bib";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([text], { type: "text/plain" }), "citations.bib");
 }
 
 function citationsToBibtexAsText() {
