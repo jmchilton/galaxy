@@ -97,6 +97,22 @@ steps:
 """
 
 
+WORKFLOW_MAYBE_CAT = """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+  run_cat:
+    type: boolean
+steps:
+  maybe_cat:
+    tool_id: cat1
+    in:
+      input1: input1
+      when: run_cat
+    when: $(inputs.when)
+"""
+
+
 class TestComparisonsApi(ApiTestCase):
     dataset_populator: DatasetPopulator
     workflow_populator: WorkflowPopulator
@@ -448,6 +464,25 @@ class TestComparisonsApi(ApiTestCase):
                 hda["id"],
                 summary.inputs["input1"]["id"],
             ]
+
+    @skip_without_tool("cat1")
+    def test_step_runs_skipped_step(self):
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="maybe\n", wait=True)
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAYBE_CAT)
+            skipped_id = self._invoke_and_wait(workflow_id, history_id, {"input1": _hda(hda), "run_cat": False})
+            self._refactor(workflow_id, {"action_type": "update_name", "name": "second version"})
+            ran_id = self._invoke_and_wait(workflow_id, history_id, {"input1": _hda(hda), "run_cat": True})
+
+            ran_row, skipped_row = self._step_runs_table(workflow_id, "maybe_cat")["rows"]
+            assert (ran_row["run"]["id"], ran_row["version"]) == (ran_id, 1)
+            assert (skipped_row["run"]["id"], skipped_row["version"]) == (skipped_id, 0)
+            assert skipped_row["state"] == skipped_row["step_job"]["state"] == "skipped"
+            assert skipped_row["cells"]["input:input1"]["id"] == hda["id"]
+            # a skipped job still records its outputs, as null expression.json datasets
+            skipped_output = skipped_row["cells"]["output:out_file1"]
+            assert (skipped_output["type"], skipped_output["value"]) == ("value", None)
+            assert ran_row["cells"]["output:out_file1"]["type"] == "dataset"
 
     @skip_without_tool("fail_identifier")
     def test_runs_state_filter_matches_any_mapped_member(self):
