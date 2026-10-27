@@ -100,6 +100,11 @@ const toolVersion = computed(() => job.value?.tool_version ?? null);
 // `traceback` isn't on `ShowFullJobResponse`; possibly historical.
 const traceback = computed(() => (job.value && "traceback" in job.value ? (job.value?.traceback as string) : null));
 
+// Uploads and other internal tools aren't worth comparing.
+function isInternalTool(toolId: string): boolean {
+    return toolId === "upload1" || /^__\w+__$/.test(toolId);
+}
+
 const primaryActions = computed<CardAction[]>(() => {
     const actions: CardAction[] = [];
     if (props.includeViewFullDetailsButton && route.path !== `/jobs/${props.jobId}/view`) {
@@ -115,14 +120,15 @@ const primaryActions = computed<CardAction[]>(() => {
         });
     }
     // Comparisons list the current user's runs; anonymous users have none.
-    if (props.includeOtherRunsLink && job.value?.tool_id && isRegisteredUser(userStore.currentUser)) {
+    const toolId = job.value?.tool_id;
+    if (props.includeOtherRunsLink && toolId && !isInternalTool(toolId) && isRegisteredUser(userStore.currentUser)) {
         actions.push({
             id: "job-other-runs",
             class: "text-decoration-none",
             label: "Other runs of this tool",
             icon: faColumns,
             title: "Compare your runs of this tool across versions",
-            to: comparisonPath("tool_runs", { tool_id: job.value.tool_id }),
+            to: comparisonPath("tool_runs", { tool_id: toolId }),
             size: "md",
             variant: "link",
         });

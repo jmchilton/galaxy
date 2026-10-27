@@ -291,13 +291,15 @@ describe("JobInformation/JobInformation.vue rerun indicator", () => {
 });
 
 describe("JobInformation/JobInformation.vue other runs link", () => {
+    let toolId;
     beforeEach(() => {
+        toolId = "toolshed.example.org/repos/u/r/cat/1.0";
         server.use(
             http.get("/api/configuration/decode/{encoded_id}", ({ response }) => {
                 return response(200).json({ decoded_id: 123 });
             }),
             http.get("/api/jobs/{job_id}", ({ response }) => {
-                return response(200).json({ ...jobResponse, tool_id: "toolshed.example.org/repos/u/r/cat/1.0" });
+                return response(200).json({ ...jobResponse, tool_id: toolId });
             }),
             http.get("/api/invocations", ({ response }) => {
                 return response(200).json([]);
@@ -328,5 +330,11 @@ describe("JobInformation/JobInformation.vue other runs link", () => {
         expect(hasLink(await mountWith({}))).toBe(false);
         const anonymous = { isAnonymous: true, total_disk_usage: 0, nice_total_disk_usage: "0 bytes" };
         expect(hasLink(await mountWith({ includeOtherRunsLink: true }, anonymous))).toBe(false);
+    });
+
+    it.each(["__DATA_FETCH__", "upload1", "__SET_METADATA__"])("leaves it off for internal tool %s", async (id) => {
+        toolId = id;
+        const wrapper = await mountWith({ includeOtherRunsLink: true });
+        expect(wrapper.find("[id^='g-card-action-job-other-runs']").exists()).toBe(false);
     });
 });
