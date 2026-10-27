@@ -10,6 +10,8 @@ import { useChatStore } from "@/stores/chatStore";
 import { useUserStore } from "@/stores/userStore";
 import { eventBus } from "@/utils/eventBus";
 
+import { centerRouterViewKey } from "../routerViewKey";
+
 import CenterFrame from "./CenterFrame.vue";
 import ActivityBar from "@/components/ActivityBar/ActivityBar.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
@@ -47,13 +49,7 @@ const isNoPaddingPath = computed(() => {
     );
 });
 
-/**
- * Every `/galaxyai` route renders one and the same GalaxyAI instance: it rewrites its own route as a
- * conversation is created (`/galaxyai` to `/galaxyai/<id>`) or reset (`/galaxyai/new`) and follows
- * those changes through its `exchangeId` prop, so the live conversation stays in place. All other
- * routes get a fresh component per path.
- */
-const routerViewKey = computed(() => (route.path.startsWith("/galaxyai") ? "/galaxyai" : route.fullPath));
+const routerViewKey = computed(() => centerRouterViewKey(route));
 
 const showCenter = ref(false);
 const { showPanels } = usePanels();
