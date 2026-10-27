@@ -11,13 +11,7 @@ import GTabs from "@/components/BaseComponents/GTabs.vue";
 import JobHeader from "@/components/JobInformation/JobHeader.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
-interface Props {
-    /** Encoded tool-execution (tool_request) id whose jobs should be listed. */
-    toolExecutionId?: string;
-    /** Encoded id of a mapped-over batch (ImplicitCollectionJobs) whose jobs should be listed instead. */
-    implicitCollectionJobsId?: string;
-    /** The batch's size, when known, so every job is listed. */
-    jobCount?: number;
+interface CommonProps {
     /** The job to open on, e.g. the one a summary already showed; the first otherwise. */
     initialJobId?: string;
     /** Custom text for the Information tab title (forwarded to JobDetailsTabs). */
@@ -26,7 +20,22 @@ interface Props {
     infoIcon?: IconDefinition;
 }
 
-const props = defineProps<Props>();
+interface ToolRequestProps extends CommonProps {
+    /** Encoded tool-execution (tool_request) id whose jobs should be listed. */
+    toolExecutionId: string;
+    implicitCollectionJobsId?: never;
+    jobCount?: never;
+}
+
+interface BatchProps extends CommonProps {
+    toolExecutionId?: never;
+    /** Encoded id of a mapped-over batch (ImplicitCollectionJobs) whose jobs should be listed. */
+    implicitCollectionJobsId: string;
+    /** The batch's size, when known, so every job is listed. */
+    jobCount?: number;
+}
+
+const props = defineProps<ToolRequestProps | BatchProps>();
 
 const source = computed<ExecutionJobsSource | undefined>(() => {
     if (props.toolExecutionId) {
