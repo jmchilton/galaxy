@@ -1227,6 +1227,28 @@ OUTPUTS_FORMAT_SOURCE_NOT_DATA = """
 </tool>
 """
 
+OUTPUTS_METADATA_SOURCE = """
+<tool id="id" name="name">
+    <inputs>
+        <param name="coll" type="data_collection" collection_type="list" />
+        <conditional name="cond">
+            <param name="select" type="select"><option value="a">a</option></param>
+            <when value="a"><param name="input1" type="data" /></when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="missing" format="txt" metadata_source="input2" />
+        <data name="collection" format="txt" metadata_source="coll" />
+        <data name="unqualified" format="txt" metadata_source="input1" />
+        <data name="qualified" format="txt" metadata_source="cond|input1" />
+        <data name="selector" format="txt" metadata_source="cond|input1['x']" />
+        <collection name="discovered" type="list" format="txt" metadata_source="input1">
+            <discover_datasets pattern="__name__" />
+        </collection>
+    </outputs>
+</tool>
+"""
+
 # tool xml for repeats linter
 REPEATS = """
 <tool id="id" name="name">
@@ -2904,6 +2926,31 @@ def test_outputs_format_source_not_data(lint_ctx):
     )
 
 
+def test_outputs_metadata_source(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_METADATA_SOURCE)
+    run_lint_module(lint_ctx, output, tool_source)
+    assert (
+        "Output 'missing' references metadata_source='input2' which does not match any input parameter."
+        in lint_ctx.error_messages
+    )
+    assert (
+        "Output 'collection' metadata_source='coll' must name a data or hidden_data input." in lint_ctx.error_messages
+    )
+    assert (
+        "Output 'unqualified' uses unqualified metadata_source='input1'. Use the qualified name 'cond|input1'."
+        in lint_ctx.warn_messages
+    )
+    assert (
+        "Output 'selector' metadata_source='cond|input1['x']' selects an element of an input that is not a collection."
+        in lint_ctx.error_messages
+    )
+    assert (
+        "Output 'discovered' uses unqualified metadata_source='input1', which discovered elements cannot resolve "
+        "before Galaxy 26.2. Use the qualified name 'cond|input1'." in lint_ctx.error_messages
+    )
+    assert not any("'qualified'" in str(m) for m in lint_ctx.error_messages + lint_ctx.warn_messages)
+
+
 def test_stdio_default_for_default_profile(lint_ctx):
     tool_source = get_xml_tool_source(STDIO_DEFAULT_FOR_DEFAULT_PROFILE)
     run_lint_module(lint_ctx, stdio, tool_source)
@@ -3623,6 +3670,7 @@ def test_list_linters():
         "OutputsFormatSourceReference",
         "OutputsLabelDuplicatedFilter",
         "OutputsLabelDuplicatedNoFilter",
+        "OutputsMetadataSourceReference",
         "OutputsMissing",
         "OutputsNameDuplicated",
         "OutputsNameInvalidCheetah",

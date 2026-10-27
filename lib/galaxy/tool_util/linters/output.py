@@ -12,6 +12,7 @@ from ..parser.output_references import (
     InputReference,
     InputReferences,
     output_reference_problem,
+    OutputReferenceAttribute,
 )
 
 if TYPE_CHECKING:
@@ -280,25 +281,36 @@ class OutputsStructuredLikeReference(Linter):
 class OutputsFormatSourceReference(Linter):
     @classmethod
     def lint(cls, tool_source: "ToolSource", lint_ctx: "LintContext") -> None:
-        tool_xml = getattr(tool_source, "xml_tree", None)
-        if not tool_xml:
-            return
-        input_references = InputReferences(tool_source)
-        for output in (
-            tool_xml.findall("./outputs/data[@format_source]")
-            + tool_xml.findall("./outputs/collection[@format_source]")
-            + tool_xml.findall("./outputs/collection/data[@format_source]")
-        ):
-            _check_format_source_reference(
-                lint_ctx, cls.name(), output, output.attrib["format_source"], input_references
-            )
+        _lint_output_references(tool_source, lint_ctx, cls.name(), "format_source")
 
 
-def _check_format_source_reference(
+class OutputsMetadataSourceReference(Linter):
+    @classmethod
+    def lint(cls, tool_source: "ToolSource", lint_ctx: "LintContext") -> None:
+        _lint_output_references(tool_source, lint_ctx, cls.name(), "metadata_source")
+
+
+def _lint_output_references(
+    tool_source: "ToolSource", lint_ctx: "LintContext", linter_name: str, attribute: OutputReferenceAttribute
+) -> None:
+    tool_xml = getattr(tool_source, "xml_tree", None)
+    if not tool_xml:
+        return
+    input_references = InputReferences(tool_source)
+    for output in (
+        tool_xml.findall(f"./outputs/data[@{attribute}]")
+        + tool_xml.findall(f"./outputs/collection[@{attribute}]")
+        + tool_xml.findall(f"./outputs/collection/data[@{attribute}]")
+    ):
+        _check_output_reference(lint_ctx, linter_name, output, output.attrib[attribute], attribute, input_references)
+
+
+def _check_output_reference(
     lint_ctx: "LintContext",
     linter_name: str,
     node: "Element",
     ref_value: str,
+    attribute: OutputReferenceAttribute,
     input_references: InputReferences,
 ) -> None:
     resolved = input_references.resolve(ref_value)
@@ -310,7 +322,7 @@ def _check_format_source_reference(
             linter_name,
             node,
             ref_value,
-            "format_source",
+            attribute,
             input_references,
             input_references.normalize(resolved.path),
             selector,
@@ -318,31 +330,29 @@ def _check_format_source_reference(
         return
     if resolved.legacy:
         if node.tag == "collection" and node.find("discover_datasets") is not None:
-            # Discovered elements resolve format_source against the job's input associations, which are
+            # Discovered elements resolve output references against the job's input associations, which are
             # keyed by qualified name only. Tool loading rewrites the reference to that name unless it
             # is ambiguous, but older Galaxy releases do not.
             when = "" if resolved.runtime_key == ref_value else " before Galaxy 26.2"
             qualified_names = " or ".join(f"'{name}{selector}'" for name in sorted({r.qualified for r in matches}))
             lint_ctx.error(
-                f"Output '{_output_name(node)}' uses unqualified format_source='{ref_value}', which discovered "
+                f"Output '{_output_name(node)}' uses unqualified {attribute}='{ref_value}', which discovered "
                 f"elements cannot resolve{when}. Use the qualified name {qualified_names}.",
                 linter=linter_name,
                 node=node,
             )
             return
-        _warn_unqualified(
-            lint_ctx, linter_name, node, ref_value, "format_source", matches, selector, resolved.qualified_key
-        )
-    if selector and not any(r.is_collection for r in matches):
+        _warn_unqualified(lint_ctx, linter_name, node, ref_value, attribute, matches, selector, resolved.qualified_key)
+    if selector and attribute == "format_source" and not any(r.is_collection for r in matches):
         lint_ctx.error(
-            f"Output '{_output_name(node)}' selects an element with format_source='{ref_value}' "
+            f"Output '{_output_name(node)}' selects an element with {attribute}='{ref_value}' "
             f"but '{resolved.path}' is not a collection input.",
             linter=linter_name,
             node=node,
         )
-    elif problem := output_reference_problem(resolved, "format_source"):
+    elif problem := output_reference_problem(resolved, attribute):
         lint_ctx.error(
-            f"Output '{_output_name(node)}' format_source='{ref_value}' {problem}.",
+            f"Output '{_output_name(node)}' {attribute}='{ref_value}' {problem}.",
             linter=linter_name,
             node=node,
         )
