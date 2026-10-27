@@ -21,7 +21,7 @@ describe("centerRouterViewKey", () => {
     });
 
     it("keeps routes that ask for it mounted across query changes, but not path changes", () => {
-        const meta = { keepMountedOnQueryChange: true };
+        const meta = { reuseOnQueryChange: true };
         expect(centerRouterViewKey(route("/comparisons?kind=tool_runs&tool_id=cat1", meta))).toBe(
             centerRouterViewKey(route("/comparisons?kind=tool_runs&tool_id=cat1&states=ok", meta)),
         );

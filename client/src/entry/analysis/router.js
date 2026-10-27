@@ -899,7 +899,7 @@ export function getRouter(Galaxy) {
                         path: "comparisons",
                         component: ComparisonView,
                         props: (route) => ({ query: route.query }),
-                        meta: { keepMountedOnQueryChange: true },
+                        meta: { reuseOnQueryChange: true },
                         redirect: redirectAnon(),
                     },
                     {
