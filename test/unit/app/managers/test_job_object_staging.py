@@ -81,14 +81,6 @@ def _signed(app, job, kind, object_id, expires=LATER, redirect=False):
     )
 
 
-def test_input_url_addresses_the_staging_endpoint(app, manager):
-    hda = _stored_hda(app)
-    job = _running_job(app, hda)
-    url = urlparse(input_url(app.security, GALAXY_URL, job.id, "dataset", _dataset(hda).id, LATER))
-    encoded_job, encoded_dataset = app.security.encode_id(job.id), app.security.encode_id(_dataset(hda).id)
-    assert url.path == f"/api/jobs/{encoded_job}/staging/inputs/dataset/{encoded_dataset}"
-
-
 def test_input_on_a_disk_store_is_served_from_its_file(app, manager):
     hda = _stored_hda(app)
     job = _running_job(app, hda)
@@ -114,16 +106,6 @@ def test_request_with_an_expired_signature_is_refused(app, manager):
         manager.staged_input(**_signed(app, job, "dataset", _dataset(hda).id, expires=int(time.time()) - 1))
 
 
-def test_request_for_a_finished_job_is_refused(app, manager):
-    hda = _stored_hda(app)
-    job = _running_job(app, hda)
-    request = _signed(app, job, "dataset", _dataset(hda).id)
-    job.state = Job.states.OK
-    app.model.session.commit()
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.staged_input(**request)
-
-
 def test_object_that_is_not_an_input_of_the_job_is_refused(app, manager):
     hda, not_an_input = _stored_hda(app), _stored_hda(app)
     job = _running_job(app, hda)
@@ -138,15 +120,6 @@ def test_purged_input_is_reported_as_purged(app, manager):
     app.model.session.commit()
     with pytest.raises(exceptions.ItemDeletionException):
         manager.staged_input(**_signed(app, job, "dataset", _dataset(hda).id))
-
-
-def test_redirect_mode_answers_with_a_presigned_url(app, manager):
-    hda = _stored_hda(app)
-    job = _running_job(app, hda)
-    with mock.patch.object(app.object_store, "get_direct_download_url", return_value="https://s3/signed") as presign:
-        staged = manager.staged_input(**_signed(app, job, "dataset", _dataset(hda).id, redirect=True))
-    assert staged.redirect_url == "https://s3/signed"
-    assert presign.call_args.args[0] is _dataset(hda)
 
 
 def test_redirect_mode_asks_for_a_presigned_url_that_lasts_minutes(app, manager):

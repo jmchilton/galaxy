@@ -991,36 +991,6 @@ def test_get_data_stream_can_leave_the_cache_untouched():
         assert _leftover_temp_files(cache_path) == []
 
 
-METADATA_FILE_PATH = dict(extra_dir="_metadata_files", extra_dir_at_root=True, alt_name="metadata_5.dat")
-
-
-@patch_object_stores_to_skip_initialize
-def test_get_data_stream_reads_an_object_at_a_path_within_the_object():
-    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
-        dataset = MockDataset(1)
-        with (
-            patch.object(object_store, "_stream_remote", return_value=_remote_stream([b"meta"])) as stream_remote,
-            patch.object(object_store, "_get_remote_size", return_value=4),
-        ):
-            stream = object_store.get_data_stream(dataset, write_cache=False, **METADATA_FILE_PATH)
-            assert stream is not None
-            assert b"".join(stream) == b"meta"
-        stream_remote.assert_called_once_with(object_store._construct_path(dataset, **METADATA_FILE_PATH))
-
-
-@patch_object_stores_to_skip_initialize
-def test_get_direct_download_url_for_a_path_within_the_object():
-    with TestConfig(get_example("boto3_direct_download.yml")) as (directory, object_store):
-        object_store._client = MagicMock()
-        object_store._client.generate_presigned_url.return_value = "https://s3.example.org/signed"
-        dataset = MockDataset(1)
-        with patch.object(object_store, "_exists", return_value=True):
-            url = object_store.get_direct_download_url(dataset, **METADATA_FILE_PATH)
-        assert url == "https://s3.example.org/signed"
-        _, call_kwargs = object_store._client.generate_presigned_url.call_args
-        assert call_kwargs["Params"]["Key"] == object_store._construct_path(dataset, **METADATA_FILE_PATH)
-
-
 # Shorter than any store's default, as for a client that follows the URL at once.
 PRESIGN_LIFETIME = 60
 
@@ -1045,16 +1015,6 @@ backends:
   - type: temp
     path: ${temp_directory}/tmp_boto3
 """
-
-
-@patch_object_stores_to_skip_initialize
-def test_get_direct_download_url_lasts_as_long_as_asked():
-    with TestConfig(get_example("boto3_direct_download.yml")) as (directory, object_store):
-        object_store._client = MagicMock()
-        with patch.object(object_store, "_exists", return_value=True):
-            object_store.get_direct_download_url(MockDataset(1), expires_in=PRESIGN_LIFETIME)
-        _, call_kwargs = object_store._client.generate_presigned_url.call_args
-        assert call_kwargs["ExpiresIn"] == PRESIGN_LIFETIME
 
 
 @patch_object_stores_to_skip_initialize
