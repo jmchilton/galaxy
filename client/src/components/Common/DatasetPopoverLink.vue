@@ -1,78 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import ItemPopoverLink from "./ItemPopoverLink.vue";
 
-import { useDatasetStore } from "@/stores/datasetStore";
-import localize from "@/utils/localization";
-
-import GPopover from "@/components/BaseComponents/GPopover.vue";
-import DatasetInformation from "@/components/DatasetInformation/DatasetInformation.vue";
-import LoadingSpan from "@/components/LoadingSpan.vue";
-
-const props = defineProps<{
+defineProps<{
     datasetId: string;
 }>();
-
-const datasetStore = useDatasetStore();
-
-const targetId = computed(() => `storage-run-item-dataset-${props.datasetId}`);
-
-const popoverShown = ref(false);
-
-// The getter fetches when read, and refetches after a retry backoff; use it only while the popover is shown.
-const details = computed(() =>
-    popoverShown.value ? datasetStore.getDataset(props.datasetId) : datasetStore.storedDatasets[props.datasetId],
-);
-const loading = computed(() => datasetStore.isLoadingDataset(props.datasetId));
-const loadError = computed(() => datasetStore.getDatasetError(props.datasetId)?.message);
-// The trigger reads as the encoded id, so name the dialog by the dataset.
-const popoverName = computed(() => details.value?.name || localize("Dataset details"));
-
-async function ensureDatasetDetails() {
-    if (details.value || loading.value) {
-        return;
-    }
-
-    await datasetStore.fetchDataset({ id: props.datasetId });
-}
 </script>
 
 <template>
     <div>
-        <router-link
-            :id="targetId"
-            class="text-monospace"
-            :to="`/datasets/${datasetId}/details`"
-            @mouseenter="ensureDatasetDetails"
-            @focus="ensureDatasetDetails">
-            {{ datasetId }}
-        </router-link>
-
-        <GPopover
-            interactive
-            :aria-label="popoverName"
-            :target="targetId"
-            triggers="hover focus"
-            boundary="window"
-            placement="right"
-            @shown="popoverShown = true"
-            @hidden="popoverShown = false">
-            <div class="dataset-details-popover">
-                <div v-if="loading">
-                    <LoadingSpan :message="localize('Loading dataset details')" />
-                </div>
-                <div v-else-if="loadError" class="text-danger">
-                    {{ loadError }}
-                </div>
-                <div v-else-if="details">
-                    <DatasetInformation :dataset="details" />
-                </div>
-            </div>
-        </GPopover>
+        <ItemPopoverLink :item-id="datasetId" item-src="hda" link-class="text-monospace" />
     </div>
 </template>
-
-<style scoped>
-.dataset-details-popover {
-    max-width: 420px;
-}
-</style>

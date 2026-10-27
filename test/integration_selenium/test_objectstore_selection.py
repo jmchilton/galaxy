@@ -174,7 +174,7 @@ class TestObjectStoreSelectionSeleniumIntegration(SeleniumIntegrationTestCase, C
         )["run"]
         self.dataset_populator.wait_for_bulk_storage_operation_run(history_id, run["run_id"])
         self.get(f"histories/{history_id}/storage/runs/{run['run_id']}")
-        self.hover_over(self.wait_for_selector_visible(f"#storage-run-item-dataset-{hda['id']}"))
+        self.hover_over(self.wait_for_selector_visible(f".item-popover-link a[href$='/datasets/{hda['id']}/details']"))
         self.wait_for_selector_visible(".popover #dataset-details")
         self.sleep_for(self.wait_types.UX_RENDER)
         rect = self.execute_script(
