@@ -36,7 +36,6 @@ from tusclient import client
 
 from galaxy import model
 from galaxy.job_execution.setup import JobWorkingDirectory
-from galaxy.model.base import ensure_object_added_to_session
 from galaxy.webapps.galaxy.api.job_files import UPLOAD_STAGING_PREFIX
 from galaxy_test.base import api_asserts
 from galaxy_test.base.populators import DatasetPopulator
@@ -419,21 +418,11 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         assert hda
         history = sa_session.scalars(select(model.History)).all()[0]
         assert history
-        user = sa_session.scalars(select(model.User)).all()[0]
-        assert user
         output_hda = model.HistoryDatasetAssociation(history=history, create_dataset=True, flush=False)
         output_hda.hid = 2
         sa_session.add(output_hda)
         sa_session.commit()
-        job = model.Job()
-        job.history = history
-        ensure_object_added_to_session(job, object_in_session=history)
-        job.user = user
-        job.handler = "unknown-handler"
-        job.state = state
-        sa_session.add(job)
-        if with_input:
-            job.add_input_dataset("input1", hda)
+        job = integration_util.create_static_job(sa_session, history, state, hda if with_input else None)
         job.add_output_dataset("output1", output_hda)
         sa_session.commit()
         self._app.object_store.create(output_hda.dataset)

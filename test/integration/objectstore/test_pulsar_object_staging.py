@@ -18,7 +18,6 @@ from sqlalchemy import select
 from galaxy import model
 from galaxy.managers import job_object_staging
 from galaxy.managers.job_object_staging import JobObjectStagingManager
-from galaxy.model.base import ensure_object_added_to_session
 from galaxy.security.staging_signer import input_url
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
@@ -179,10 +178,7 @@ class TestPulsarObjectStagingRedirect(TestPulsarObjectStagingStream):
         hda = self._hda(hda_dict)
         assert hda.dataset is not None
         job = self._running_job_with_input(hda)
-        expires = int(time.time()) + 3600
-        url = input_url(
-            self._app.security, self.url.rstrip("/"), job.id, "dataset", hda.dataset.id, expires, redirect=True
-        )
+        url = self._redirect_staging_url(job, hda)
 
         response = requests.get(url, allow_redirects=False)
         assert response.status_code == 302
@@ -197,10 +193,7 @@ class TestPulsarObjectStagingRedirect(TestPulsarObjectStagingStream):
         hda = self._hda(hda_dict)
         assert hda.dataset is not None
         job = self._running_job_with_input(hda)
-        expires = int(time.time()) + 3600
-        url = input_url(
-            self._app.security, self.url.rstrip("/"), job.id, "dataset", hda.dataset.id, expires, redirect=True
-        )
+        url = self._redirect_staging_url(job, hda)
 
         with mock.patch.object(job_object_staging, "REDIRECT_URL_LIFETIME_SECONDS", 1):
             location = requests.get(url, allow_redirects=False).headers["Location"]
@@ -210,18 +203,13 @@ class TestPulsarObjectStagingRedirect(TestPulsarObjectStagingStream):
             assert requests.get(url).text == INPUT_CONTENT
 
     def _running_job_with_input(self, hda):
-        """A job whose handler is unknown, so its state stays as set here."""
-        sa_session = self._app.model.session
-        job = model.Job()
-        job.history = hda.history
-        ensure_object_added_to_session(job, object_in_session=hda.history)
-        job.user = sa_session.scalars(select(model.User)).first()
-        job.handler = "unknown-handler"
-        job.state = model.Job.states.RUNNING
-        job.add_input_dataset("input1", hda)
-        sa_session.add(job)
-        sa_session.commit()
-        return job
+        return integration_util.create_static_job(self._app.model.session, hda.history, model.Job.states.RUNNING, hda)
+
+    def _redirect_staging_url(self, job, hda):
+        expires = int(time.time()) + 3600
+        return input_url(
+            self._app.security, self.url.rstrip("/"), job.id, "dataset", hda.dataset.id, expires, redirect=True
+        )
 
 
 @contextmanager

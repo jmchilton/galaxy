@@ -28,8 +28,10 @@ from urllib.parse import urljoin
 import pytest
 import requests
 
+from galaxy import model
 from galaxy.app import UniverseApplication
 from galaxy.app_unittest_utils.fake_ai_provider import FakeAIProvider
+from galaxy.model.base import ensure_object_added_to_session
 from galaxy.tool_util.verify.test_data import TestDataResolver
 from galaxy.util import safe_makedirs
 from galaxy.util.unittest import TestCase
@@ -113,6 +115,23 @@ def docker_ip_address(container_name):
 
 def docker_rm(container_name):
     subprocess.check_call(["docker", "rm", "-f", container_name])
+
+
+def create_static_job(
+    sa_session, history: model.History, state: str, input_hda: model.HistoryDatasetAssociation | None = None
+) -> model.Job:
+    """Create a job on an unknown handler, so its state stays as set here."""
+    job = model.Job()
+    job.history = history
+    ensure_object_added_to_session(job, object_in_session=history)
+    job.user = history.user
+    job.handler = "unknown-handler"
+    job.state = state
+    if input_hda is not None:
+        job.add_input_dataset("input1", input_hda)
+    sa_session.add(job)
+    sa_session.commit()
+    return job
 
 
 def skip_if_jenkins(cls):

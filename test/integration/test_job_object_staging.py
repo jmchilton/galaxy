@@ -4,11 +4,9 @@ import os
 import time
 
 import requests
-from sqlalchemy import select
 
 from galaxy import model
 from galaxy.security.staging_signer import input_url
-from galaxy.model.base import ensure_object_added_to_session
 from galaxy_test.base import api_asserts
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
@@ -73,16 +71,6 @@ class TestJobObjectStagingIntegration(integration_util.IntegrationTestCase):
         return input_url(self._app.security, self.url.rstrip("/"), job.id, "dataset", dataset.id, expires)
 
     def _running_job_with_input(self):
-        """A job whose handler is unknown, so its state stays as set here."""
-        sa_session = self.sa_session
-        history = self.input_hda.history
-        job = model.Job()
-        job.history = history
-        ensure_object_added_to_session(job, object_in_session=history)
-        job.user = sa_session.scalars(select(model.User)).first()
-        job.handler = "unknown-handler"
-        job.state = model.Job.states.RUNNING
-        job.add_input_dataset("input1", self.input_hda)
-        sa_session.add(job)
-        sa_session.commit()
-        return job
+        return integration_util.create_static_job(
+            self.sa_session, self.input_hda.history, model.Job.states.RUNNING, self.input_hda
+        )
