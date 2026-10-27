@@ -23,7 +23,7 @@ function mountLink(storedDatasets = {}) {
         props: { datasetId: "dataset_id" },
         global: {
             plugins: [createTestingPinia({ createSpy: vi.fn, initialState: { datasetStore: { storedDatasets } } })],
-            stubs: { RouterLink: true },
+            stubs: { RouterLink: true, ItemPopoverLink: false },
         },
     });
     return wrapper.findComponent(GPopover);
@@ -48,7 +48,7 @@ describe("DatasetPopoverLink link wiring", () => {
             props: { datasetId: DATASET_ID },
             global: {
                 plugins: [createTestingPinia({ createSpy: vi.fn })],
-                stubs: { RouterLink: RouterLinkStub },
+                stubs: { RouterLink: RouterLinkStub, ItemPopoverLink: false },
             },
         });
     }
@@ -117,29 +117,29 @@ describe("DatasetPopoverLink loading", () => {
 
     it("loads and displays dataset details on hover", async () => {
         const link = mountWithServer();
-        await link.find(`#storage-run-item-dataset-${DATASET_ID}`).trigger("mouseenter");
+        await link.findComponent(RouterLinkStub).trigger("mouseenter");
         link.findComponent(POPOVER_STUB).vm.$emit("shown");
         await flushPromises();
         expect(datasetRequests).toBe(1);
         expect(link.find("#dataset-details").exists()).toBe(true);
-        expect(link.find(".dataset-details-popover").text()).not.toContain("Loading dataset details");
+        expect(link.find(".item-details-popover").text()).not.toContain("Loading dataset details");
     });
 
     it("shows loading during a retry backoff and the dataset once the retry succeeds", async () => {
         vi.useFakeTimers();
         failNext = 1;
         const link = mountWithServer();
-        await link.find(`#storage-run-item-dataset-${DATASET_ID}`).trigger("mouseenter");
+        await link.findComponent(RouterLinkStub).trigger("mouseenter");
         link.findComponent(POPOVER_STUB).vm.$emit("shown");
         await flushPromises();
         expect(datasetRequests).toBe(1);
         expect(historyRequests).toBe(0);
-        expect(link.find(".dataset-details-popover").text()).toContain("Loading dataset details");
+        expect(link.find(".item-details-popover").text()).toContain("Loading dataset details");
 
         await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_CAP_MS);
         await flushPromises();
         expect(datasetRequests).toBe(2);
-        expect(link.find(".dataset-details-popover").text()).not.toContain("Loading dataset details");
+        expect(link.find(".item-details-popover").text()).not.toContain("Loading dataset details");
         expect(link.find("#dataset-details").exists()).toBe(true);
         // Nothing in the popover reads the dataset's history.
         expect(historyRequests).toBe(0);
@@ -149,7 +149,7 @@ describe("DatasetPopoverLink loading", () => {
         vi.useFakeTimers();
         failNext = 1;
         const link = mountWithServer();
-        await link.find(`#storage-run-item-dataset-${DATASET_ID}`).trigger("mouseenter");
+        await link.findComponent(RouterLinkStub).trigger("mouseenter");
         const popover = link.findComponent(POPOVER_STUB);
         popover.vm.$emit("shown");
         await flushPromises();
