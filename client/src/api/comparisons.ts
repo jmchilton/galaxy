@@ -1,4 +1,4 @@
-import { type components, GalaxyApi, type GalaxyApiPaths } from "@/api";
+import { type components, GalaxyApi, type GalaxyApiPaths, totalMatches } from "@/api";
 import { rethrowSimple } from "@/utils/simple-error";
 
 export type ComparisonTable = components["schemas"]["ComparisonTable"];
@@ -13,24 +13,18 @@ export type MissingReason = MissingCell["reason"];
 export type ComparisonQuery = ComparisonTable["query"];
 export type ComparisonKind = ComparisonQuery["kind"];
 
-type QueryOf<P extends keyof GalaxyApiPaths> = GalaxyApiPaths[P] extends {
-    get: { parameters: { query?: infer Q } };
-}
-    ? NonNullable<Q>
-    : never;
-
-export type StepRunsParams = QueryOf<"/api/workflows/{workflow_id}/step_runs"> & { workflow_id: string };
-export type OutputRunsParams = QueryOf<"/api/workflows/{workflow_id}/output_runs"> & { workflow_id: string };
-export type ToolRunsParams = QueryOf<"/api/tool_runs">;
+export type StepRunsParams = NonNullable<
+    GalaxyApiPaths["/api/workflows/{workflow_id}/step_runs"]["get"]["parameters"]["query"]
+> & { workflow_id: string };
+export type OutputRunsParams = NonNullable<
+    GalaxyApiPaths["/api/workflows/{workflow_id}/output_runs"]["get"]["parameters"]["query"]
+> & { workflow_id: string };
+export type ToolRunsParams = NonNullable<GalaxyApiPaths["/api/tool_runs"]["get"]["parameters"]["query"]>;
 
 export interface ComparisonResult {
     table: ComparisonTable;
     /** Rows matching the query before paging, from the `total_matches` header. */
     total: number;
-}
-
-function totalMatches(response: Response): number {
-    return parseInt(response.headers.get("total_matches") ?? "0", 10) || 0;
 }
 
 export async function fetchStepRuns(params: StepRunsParams, signal?: AbortSignal): Promise<ComparisonResult> {
