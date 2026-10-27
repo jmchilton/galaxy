@@ -77,7 +77,8 @@ const differing = computed(() => entries.value.filter((entry) => entry.differs).
                                 { value: entry.a, notes: entry.notesA },
                                 { value: entry.b, notes: entry.notesB },
                             ]"
-                            :key="index">
+                            :key="index"
+                            class="job-parameters-diff-value">
                             <span v-if="side.value === undefined" class="text-muted font-italic">absent</span>
                             <template v-else>{{ side.value }}</template>
                             <em v-if="side.notes" class="job-parameters-diff-notes text-muted small">
@@ -92,9 +93,13 @@ const differing = computed(() => entries.value.filter((entry) => entry.differs).
 </template>
 
 <style scoped>
+/* Labels break between words; values anywhere, so a long value doesn't squeeze the label column. */
 .job-parameters-diff td {
     white-space: normal;
-    word-break: break-word;
+    overflow-wrap: break-word;
+}
+.job-parameters-diff-value {
+    overflow-wrap: anywhere;
 }
 .job-parameters-diff-changed td {
     background: var(--color-yellow-200);
