@@ -2,23 +2,17 @@ import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonRow, ComparisonTable } from "@/api/comparisons";
+import type { ComparisonRow } from "@/api/comparisons";
 
-import STEP_RUNS from "./test-data/step_runs.json";
+import { ITEM_LINK_STUB, JOB_PARAMETERS_DIFF_STUB, STEP_RUNS_TABLE } from "./test-utils";
 
 import ComparisonDiff from "./ComparisonDiff.vue";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 const [NOT_RUN, V2_RUN, V1_RUN] = TABLE.rows as [ComparisonRow, ComparisonRow, ComparisonRow];
 const MAPPED = TABLE.rows[4]!;
 const LINKS = { "input:input1": "link", "output:out_file1": "link" } as const;
 const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
-const PARAMS_STUB = {
-    name: "JobParametersDiff",
-    props: ["jobIdA", "jobIdB", "labelA", "labelB", "onlyDifferences"],
-    template: "<div />",
-};
-const LINK_STUB = { name: "ItemPopoverLink", props: ["itemId", "itemSrc", "to"], template: "<a><slot /></a>" };
 
 function mountDiff(rows: [ComparisonRow, ComparisonRow], props: Record<string, unknown> = {}) {
     const localVue = getLocalVue();
@@ -33,7 +27,7 @@ function mountDiff(rows: [ComparisonRow, ComparisonRow], props: Record<string, u
         },
         global: {
             ...localVue,
-            stubs: { ...localVue.stubs, JobParametersDiff: PARAMS_STUB, ItemPopoverLink: LINK_STUB },
+            stubs: { ...localVue.stubs, JobParametersDiff: JOB_PARAMETERS_DIFF_STUB, ItemPopoverLink: ITEM_LINK_STUB },
         },
     });
 }
@@ -67,7 +61,7 @@ describe("ComparisonDiff", () => {
             "input:input1",
             "output:out_file1",
         ]);
-        expect(wrapper.findComponent(PARAMS_STUB).props("onlyDifferences")).toBe(false);
+        expect(wrapper.findComponent(JOB_PARAMETERS_DIFF_STUB).props("onlyDifferences")).toBe(false);
     });
 
     it("lists only the table's visible fields and columns", async () => {
@@ -87,7 +81,7 @@ describe("ComparisonDiff", () => {
     });
 
     it("diffs the two jobs' parameters", () => {
-        const params = mountDiff([V2_RUN, V1_RUN]).findComponent(PARAMS_STUB);
+        const params = mountDiff([V2_RUN, V1_RUN]).findComponent(JOB_PARAMETERS_DIFF_STUB);
         expect(params.props("jobIdA")).toBe(V2_RUN.step_job!.id);
         expect(params.props("jobIdB")).toBe(V1_RUN.step_job!.id);
         expect(params.props("onlyDifferences")).toBe(true);
@@ -96,13 +90,13 @@ describe("ComparisonDiff", () => {
     it("compares a batch by its first job, and says so", () => {
         const wrapper = mountDiff([V2_RUN, MAPPED]);
         const ref = MAPPED.step_job as { representative_job_id: string };
-        expect(wrapper.findComponent(PARAMS_STUB).props("jobIdB")).toBe(ref.representative_job_id);
+        expect(wrapper.findComponent(JOB_PARAMETERS_DIFF_STUB).props("jobIdB")).toBe(ref.representative_job_id);
         expect(wrapper.find(".comparison-diff-batch").text()).toBe("Run B is a batch of 3 jobs: job 1 shown.");
     });
 
     it("explains why parameters can't be compared when a run has no job", () => {
         const wrapper = mountDiff([NOT_RUN, V2_RUN]);
-        expect(wrapper.findComponent(PARAMS_STUB).exists()).toBe(false);
+        expect(wrapper.findComponent(JOB_PARAMETERS_DIFF_STUB).exists()).toBe(false);
         expect(wrapper.find(".comparison-diff-no-job").text()).toContain(
             "Run A: This run has no job for this step yet.",
         );
@@ -110,7 +104,7 @@ describe("ComparisonDiff", () => {
 
     it("explains that workflow runs have no job", () => {
         const wrapper = mountDiff([V2_RUN, V1_RUN], { query: { ...TABLE.query, kind: "output_runs" } });
-        expect(wrapper.findComponent(PARAMS_STUB).exists()).toBe(false);
+        expect(wrapper.findComponent(JOB_PARAMETERS_DIFF_STUB).exists()).toBe(false);
         expect(wrapper.text()).toContain("A workflow run has no single job.");
     });
 

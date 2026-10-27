@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonCell, ComparisonColumn, ComparisonRow, ComparisonTable, DatasetCell } from "@/api/comparisons";
+import type { ComparisonCell, ComparisonColumn, ComparisonRow, DatasetCell } from "@/api/comparisons";
 
 import { changedCells, compareCells, compareMeta } from "./comparisonChanges";
-import STEP_RUNS from "./test-data/step_runs.json";
+import { STEP_RUNS_TABLE } from "./test-utils";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 const [NOT_RUN, V2_RUN, V1_RUN] = TABLE.rows as [ComparisonRow, ComparisonRow, ComparisonRow];
 const INPUT = TABLE.columns[0]!;
 const OUTPUT = TABLE.columns[1]!;

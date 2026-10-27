@@ -2,13 +2,13 @@ import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonQuery, ComparisonRow, ComparisonTable } from "@/api/comparisons";
+import type { ComparisonQuery, ComparisonRow } from "@/api/comparisons";
 
-import STEP_RUNS from "./test-data/step_runs.json";
+import { JOB_PARAMETERS_DIFF_STUB, STEP_RUNS_TABLE } from "./test-utils";
 
 import ComparisonRowDetail from "./ComparisonRowDetail.vue";
 
-const TABLE = STEP_RUNS as unknown as ComparisonTable;
+const TABLE = STEP_RUNS_TABLE;
 const JOB_TABS_STUB = { name: "JobDetailsTabs", props: ["jobId"], template: "<div />" };
 const BATCH_STUB = {
     name: "ToolExecutionJobs",
@@ -16,11 +16,6 @@ const BATCH_STUB = {
     template: "<div />",
 };
 const ITEM_STUB = { name: "GenericHistoryItem", props: ["itemId", "itemSrc"], template: "<div />" };
-const PARAMS_STUB = {
-    name: "JobParametersDiff",
-    props: ["jobIdA", "jobIdB", "labelA", "labelB", "onlyDifferences"],
-    template: "<div />",
-};
 
 function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query, props: Record<string, unknown> = {}) {
     const localVue = getLocalVue();
@@ -33,7 +28,7 @@ function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query, p
                 JobDetailsTabs: JOB_TABS_STUB,
                 ToolExecutionJobs: BATCH_STUB,
                 GenericHistoryItem: ITEM_STUB,
-                JobParametersDiff: PARAMS_STUB,
+                JobParametersDiff: JOB_PARAMETERS_DIFF_STUB,
             },
         },
     });
@@ -141,7 +136,9 @@ describe("ComparisonRowDetail parameters against the run being viewed", () => {
 
     it("diffs this run's job against the viewed run's, every parameter shown", () => {
         const row = TABLE.rows[3]!;
-        const params = mountDetail(row, TABLE.query, { currentJobId: CURRENT_JOB }).findComponent(PARAMS_STUB);
+        const params = mountDetail(row, TABLE.query, { currentJobId: CURRENT_JOB }).findComponent(
+            JOB_PARAMETERS_DIFF_STUB,
+        );
         expect(params.props("jobIdA")).toBe(row.step_job!.id);
         expect(params.props("jobIdB")).toBe(CURRENT_JOB);
         expect(params.props("onlyDifferences")).toBe(false);
@@ -149,7 +146,7 @@ describe("ComparisonRowDetail parameters against the run being viewed", () => {
 
     it("diffs a batch by its first job, and says so", () => {
         const wrapper = mountDetail(TABLE.rows[4]!, TABLE.query, { currentJobId: CURRENT_JOB });
-        expect(wrapper.findComponent(PARAMS_STUB).props("jobIdA")).toBe("cb227cec8ca83994");
+        expect(wrapper.findComponent(JOB_PARAMETERS_DIFF_STUB).props("jobIdA")).toBe("cb227cec8ca83994");
         expect(wrapper.find(".comparison-row-detail-parameters").text()).toContain("job 1 of the batch");
     });
 
@@ -159,9 +156,11 @@ describe("ComparisonRowDetail parameters against the run being viewed", () => {
                 .find(".comparison-row-detail-parameters")
                 .exists(),
         ).toBe(false);
-        expect(mountDetail(TABLE.rows[3]!).findComponent(PARAMS_STUB).exists()).toBe(false);
+        expect(mountDetail(TABLE.rows[3]!).findComponent(JOB_PARAMETERS_DIFF_STUB).exists()).toBe(false);
         expect(
-            mountDetail(TABLE.rows[0]!, TABLE.query, { currentJobId: CURRENT_JOB }).findComponent(PARAMS_STUB).exists(),
+            mountDetail(TABLE.rows[0]!, TABLE.query, { currentJobId: CURRENT_JOB })
+                .findComponent(JOB_PARAMETERS_DIFF_STUB)
+                .exists(),
         ).toBe(false);
     });
 });
