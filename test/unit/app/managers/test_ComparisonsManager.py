@@ -5,10 +5,12 @@ from sqlalchemy import event
 from galaxy import model
 from galaxy.managers.comparison_cells import (
     COMPARISON_INLINE_EXPRESSION_MAX_BYTES,
+    ComparisonAccess,
     ComparisonCellBuilder,
 )
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
+from galaxy.managers.histories import HistoryManager
 from galaxy.schema.comparisons import StepRunsQuery
 from galaxy.schema.fields import Security
 from .base import BaseTestCase
@@ -18,9 +20,10 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
     def set_up_managers(self):
         super().set_up_managers()
         self.session = self.app.model.session
-        cell_builder = ComparisonCellBuilder(self.session, HDASerializer(self.app))
+        cell_builder = _cell_builder(self.app)
         self.comparisons_manager = ComparisonsManager(self.session, cell_builder)
         Security.security = self.app.security
+        self.foreign_users = 0
 
     def test_step_runs_statement_count_independent_of_row_count(self):
         for mapped in (False, True):
@@ -29,7 +32,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
 
     def _step_runs_statement_count(self, invocations: int, mapped: bool) -> int:
         stored_workflow_id = self._stored_workflow_with_runs(invocations, mapped).id
-        user_id = self.trans.user.id
+        access = _access(self.trans.user)
         self.session.expunge_all()
         query = StepRunsQuery.model_construct(
             workflow_id=stored_workflow_id, step_label="target", metadata_elements=["data_lines"]
@@ -42,14 +45,16 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         engine = self.session.get_bind()
         event.listen(engine, "before_cursor_execute", count)
         try:
-            table, total = self.comparisons_manager.step_runs(user_id, stored_workflow_id, query)
+            table, total = self.comparisons_manager.step_runs(access, stored_workflow_id, query)
             # serialization must not lazy-load either
             table.model_dump(mode="json")
         finally:
             event.remove(engine, "before_cursor_execute", count)
         assert total == invocations
         assert len(table.rows) == invocations
-        assert all(cell.type != "missing" for row in table.rows for cell in row.cells.values())
+        for row in table.rows:
+            assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
+            assert all(cell.type != "missing" for cell in row.cells.values())
         return len(statements)
 
     def _stored_workflow_with_runs(self, invocations: int, mapped: bool) -> model.StoredWorkflow:
@@ -71,6 +76,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             versions.append((workflow, step))
         stored_workflow.latest_workflow = versions[-1][0]
         self.session.add(stored_workflow)
+        foreign_history = self._foreign_private_history()
         for i in range(invocations):
             workflow, step = versions[i % 2]
             history = model.History(name=f"run {i}", user=user)
@@ -84,16 +90,32 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             invocation_step.state = "scheduled"
             self.session.add_all([history, invocation, invocation_step])
             if mapped:
-                self._mapped_step(invocation_step, history, user)
+                self._mapped_step(invocation_step, history, user, foreign_history)
             else:
                 job = self._job(history, user)
                 job.add_input_dataset("input1", self._hda(history))
+                job.add_input_dataset("foreign", self._private_hda(foreign_history))
                 invocation_step.job = job
                 invocation_step.add_output("out_file1", self._hda(history))
         self.session.commit()
         return stored_workflow
 
-    def _mapped_step(self, invocation_step, history, user) -> None:
+    def _foreign_private_history(self) -> model.History:
+        self.foreign_users += 1
+        name = f"foreign{self.foreign_users}"
+        foreign_user = self.user_manager.create(email=f"{name}@example.org", username=name, password="password")
+        foreign_history = model.History(name="foreign", user=foreign_user)
+        self.session.add(foreign_history)
+        return foreign_history
+
+    def _private_hda(self, history) -> model.HistoryDatasetAssociation:
+        hda = self._hda(history)
+        security_agent = self.app.security_agent
+        role = security_agent.get_private_user_role(history.user, auto_create=True)
+        security_agent.set_dataset_permission(hda.dataset, {security_agent.permitted_actions.DATASET_ACCESS: [role]})
+        return hda
+
+    def _mapped_step(self, invocation_step, history, user, foreign_history) -> None:
         icj = model.ImplicitCollectionJobs(populated_state="ok")
         for order_index in range(2):
             job = self._job(history, user)
@@ -109,6 +131,9 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         output_hdca.implicit_output_name = "out_file1"
         output_hdca.implicit_input_collections.append(
             model.ImplicitlyCreatedDatasetCollectionInput("input1", input_hdca)
+        )
+        output_hdca.implicit_input_collections.append(
+            model.ImplicitlyCreatedDatasetCollectionInput("foreign", self._hdca(foreign_history))
         )
         invocation_step.implicit_collection_jobs = icj
         invocation_step.add_output("out_file1", output_hdca)
@@ -142,7 +167,7 @@ class TestComparisonCellBuilder(BaseTestCase):
     def set_up_managers(self):
         super().set_up_managers()
         self.session = self.app.model.session
-        self.cell_builder = ComparisonCellBuilder(self.session, HDASerializer(self.app))
+        self.cell_builder = _cell_builder(self.app)
         Security.security = self.app.security
 
     def test_dataset_cell_skips_file_metadata(self):
@@ -201,3 +226,11 @@ class TestComparisonCellBuilder(BaseTestCase):
         self.session.add(hda)
         self.session.commit()
         return hda
+
+
+def _cell_builder(app) -> ComparisonCellBuilder:
+    return ComparisonCellBuilder(app.model.session, HDASerializer(app), app.security_agent, app[HistoryManager])
+
+
+def _access(user: model.User) -> ComparisonAccess:
+    return ComparisonAccess(user_id=user.id, role_ids=frozenset(role.id for role in user.all_roles()), is_admin=False)

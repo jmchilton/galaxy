@@ -18,6 +18,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from galaxy.exceptions import ObjectNotFound
 from galaxy.managers.comparison_cells import (
+    ComparisonAccess,
     ComparisonCellBuilder,
     ImplicitCollectionJobsRecord,
     ItemRef,
@@ -45,7 +46,6 @@ from galaxy.model import (
     WorkflowStep,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
-from galaxy.schema.states import DatasetCollectionPopulatedState
 from galaxy.schema.comparisons import (
     AnyComparisonCell,
     ComparisonColumn,
@@ -60,6 +60,7 @@ from galaxy.schema.comparisons import (
     ReusedState,
     StepRunsQuery,
 )
+from galaxy.schema.states import DatasetCollectionPopulatedState
 
 
 class InvocationPageRow(NamedTuple):
@@ -87,7 +88,9 @@ class ComparisonsManager:
         self.sa_session = sa_session
         self.cell_builder = cell_builder
 
-    def step_runs(self, user_id: int, stored_workflow_id: int, query: StepRunsQuery) -> tuple[ComparisonTable, int]:
+    def step_runs(
+        self, access: ComparisonAccess, stored_workflow_id: int, query: StepRunsQuery
+    ) -> tuple[ComparisonTable, int]:
         """One row per invocation of the versions with a step labelled ``query.step_label``."""
         stmt = (
             select(WorkflowStep.id, WorkflowStep.workflow_id)
@@ -99,8 +102,8 @@ class ComparisonsManager:
             raise ObjectNotFound(f"No version of this workflow has a step labelled [{query.step_label}].")
         step_ids = list(step_ids_by_workflow.values())
         state_predicate = _step_state_predicate(step_ids, query.states) if query.states else None
-        page, total = self._page_invocations(user_id, list(step_ids_by_workflow), query, state_predicate)
-        columns, rows = self._step_rows(page, step_ids, query, self._version_map(stored_workflow_id))
+        page, total = self._page_invocations(access.user_id, list(step_ids_by_workflow), query, state_predicate)
+        columns, rows = self._step_rows(access, page, step_ids, query, self._version_map(stored_workflow_id))
         return ComparisonTable(query=query, columns=columns, rows=rows), total
 
     def _version_map(self, stored_workflow_id: int) -> dict[int, int]:
@@ -143,6 +146,7 @@ class ComparisonsManager:
 
     def _step_rows(
         self,
+        access: ComparisonAccess,
         page: list[InvocationPageRow],
         step_ids: list[int],
         query: StepRunsQuery,
@@ -187,9 +191,11 @@ class ComparisonsManager:
 
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
-        hdas, hdcas = self.cell_builder.load_items(
+        item_cells = self.cell_builder.item_cells(
             (ref for io in io_by_invocation.values() for ref in io.values()),
-            with_metadata=bool(query.metadata_elements),
+            access,
+            query.metadata_elements,
+            query.inline_expression_values,
         )
         metadata_keys: dict[str, set[str]] = defaultdict(set)
         rows = []
@@ -205,14 +211,10 @@ class ComparisonsManager:
             io = io_by_invocation[invocation.id]
             for column in columns:
                 ref = io.get(column.key)
-                if ref and ref.src == "hda" and ref.id in hdas:
-                    hda = hdas[ref.id]
-                    cells[column.key] = self.cell_builder.dataset_cell(
-                        hda, query.metadata_elements, query.inline_expression_values
-                    )
-                    metadata_keys[column.key].update(self.cell_builder.metadata_keys(hda))
-                elif ref and ref.src == "hdca" and ref.id in hdcas:
-                    cells[column.key] = self.cell_builder.collection_cell(hdcas[ref.id])
+                item_cell = item_cells.get(ref) if ref else None
+                if item_cell:
+                    cells[column.key] = item_cell.cell
+                    metadata_keys[column.key].update(item_cell.metadata_keys)
                 else:
                     # a version's columns are only known from its scheduled steps on this page
                     column_in_version = step is None or column.key in declared.get(version, ())

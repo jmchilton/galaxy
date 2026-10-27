@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from uuid import uuid4
 
 from requests import Response
 
@@ -230,6 +231,34 @@ class TestComparisonsApi(ApiTestCase):
                 response = self._step_runs(summary.workflow_id, "first_cat")
                 assert response.headers["total_matches"] == "0"
                 assert response.json()["rows"] == []
+
+    @skip_without_tool("cat1")
+    def test_step_runs_hides_inaccessible_items(self):
+        other_email = f"{uuid4()}@example.org"
+        with self.dataset_populator.test_history() as owner_history_id:
+            owner_dataset = self.dataset_populator.new_dataset(owner_history_id, content="shared\n", wait=True)
+            self.dataset_populator.make_public(owner_history_id)
+            with self._different_user(other_email):
+                with self.dataset_populator.test_history() as history_id:
+                    workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_TWO_CAT)
+                    request = {
+                        "history": f"hist_id={history_id}",
+                        "inputs": json.dumps({"input1": {"src": "hda", "id": owner_dataset["id"]}}),
+                        "inputs_by": "name",
+                    }
+                    self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=request)
+                    (row,) = self._step_runs_table(workflow_id, "first_cat")["rows"]
+                    # the invocation copies the input into this history; permissions stay on the shared dataset
+                    input_cell = row["cells"]["input:input1"]
+                    assert (input_cell["type"], input_cell["history_id"]) == ("dataset", history_id)
+                    assert input_cell["id"] != owner_dataset["id"]
+            self.dataset_populator.make_private(owner_history_id, owner_dataset["id"])
+            with self._different_user(other_email):
+                (row,) = self._step_runs_table(workflow_id, "first_cat")["rows"]
+                assert row["cells"]["input:input1"] == {"type": "missing", "reason": "inaccessible"}
+                output_cell = row["cells"]["output:out_file1"]
+                assert output_cell["type"] == "dataset"
+                assert output_cell["history_id"] == history_id
 
     @skip_without_tool("cat1")
     def test_step_runs_deleted_history(self):

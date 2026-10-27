@@ -20,6 +20,7 @@ from sqlalchemy.orm import (
 
 from galaxy.managers.comparison_columns import multiple_input_aliases
 from galaxy.managers.hdas import HDASerializer
+from galaxy.managers.histories import HistoryManager
 from galaxy.model import (
     DatasetCollectionElement,
     HistoryDatasetAssociation,
@@ -37,9 +38,11 @@ from galaxy.model.metadata import (
     PythonObjectParameter,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
+from galaxy.model.security import GalaxyRBACAgent
 from galaxy.schema.comparisons import (
     CollectionCell,
     DatasetCell,
+    MissingCell,
     ValueCell,
 )
 from galaxy.workflow.modules import read_expression_json
@@ -55,6 +58,19 @@ JOB_RECORD_COLUMNS = (Job.id, Job.state, Job.tool_id, Job.tool_version, Job.copi
 class ItemRef(NamedTuple):
     src: Literal["hda", "hdca"]
     id: int
+
+
+class ComparisonAccess(NamedTuple):
+    """Who is asking; items they can't access render as missing."""
+
+    user_id: int
+    role_ids: frozenset[int]
+    is_admin: bool
+
+
+class ItemCell(NamedTuple):
+    cell: DatasetCell | CollectionCell | ValueCell | MissingCell
+    metadata_keys: list[str]
 
 
 class JobRecord(NamedTuple):
@@ -75,9 +91,58 @@ class ImplicitCollectionJobsRecord(NamedTuple):
 
 
 class ComparisonCellBuilder:
-    def __init__(self, sa_session: galaxy_scoped_session, hda_serializer: HDASerializer):
+    def __init__(
+        self,
+        sa_session: galaxy_scoped_session,
+        hda_serializer: HDASerializer,
+        security_agent: GalaxyRBACAgent,
+        history_manager: HistoryManager,
+    ):
         self.sa_session = sa_session
         self.hda_serializer = hda_serializer
+        self.security_agent = security_agent
+        self.history_manager = history_manager
+
+    def item_cells(
+        self,
+        refs: Iterable[ItemRef],
+        access: ComparisonAccess,
+        metadata_elements: list[str],
+        inline_expression_values: bool,
+    ) -> dict[ItemRef, ItemCell]:
+        """Cells of the items that exist, with the caller's access checked once for the whole batch."""
+        hdas, hdcas = self.load_items(refs, with_metadata=bool(metadata_elements))
+        accessible_dataset_ids, accessible_history_ids = self._accessible(hdas, hdcas, access)
+        inaccessible = ItemCell(MissingCell(reason="inaccessible"), [])
+        item_cells: dict[ItemRef, ItemCell] = {}
+        for hda in hdas.values():
+            if hda.dataset_id not in accessible_dataset_ids:
+                item_cells[ItemRef("hda", hda.id)] = inaccessible
+                continue
+            cell = self.dataset_cell(hda, metadata_elements, inline_expression_values)
+            item_cells[ItemRef("hda", hda.id)] = ItemCell(cell, self.metadata_keys(hda))
+        for hdca in hdcas.values():
+            if hdca.history_id not in accessible_history_ids:
+                item_cells[ItemRef("hdca", hdca.id)] = inaccessible
+                continue
+            item_cells[ItemRef("hdca", hdca.id)] = ItemCell(self.collection_cell(hdca), [])
+        return item_cells
+
+    def _accessible(
+        self,
+        hdas: dict[int, HistoryDatasetAssociation],
+        hdcas: dict[int, HistoryDatasetCollectionAssociation],
+        access: ComparisonAccess,
+    ) -> tuple[set[int], set[int]]:
+        """Dataset ids and HDCA history ids the caller may see, by the HDA and HDCA show rules."""
+        dataset_ids = {hda.dataset_id for hda in hdas.values() if hda.dataset_id is not None}
+        history_ids = {hdca.history_id for hdca in hdcas.values() if hdca.history_id is not None}
+        if access.is_admin:
+            return dataset_ids, history_ids
+        return (
+            self.security_agent.accessible_dataset_ids(access.role_ids, dataset_ids),
+            self.history_manager.accessible_ids(access.user_id, history_ids),
+        )
 
     def load_jobs(self, job_ids: Collection[int]) -> dict[int, JobRecord]:
         if not job_ids:
