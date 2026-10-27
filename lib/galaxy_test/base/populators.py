@@ -1289,6 +1289,12 @@ class BaseDatasetPopulator(BasePopulator):
         api_asserts.assert_status_code_is(tool_response, 200)
         return tool_response.json()
 
+    def run_tool_and_show_job(self, tool_id: str, inputs: dict, history_id: str) -> dict[str, Any]:
+        """Run a tool's first job to ok and return its full job details."""
+        job_id = self.run_tool(tool_id, inputs, history_id)["jobs"][0]["id"]
+        self.wait_for_job(job_id, assert_ok=True)
+        return self.get_job_details(job_id, full=True).json()
+
     def tools_post(self, payload: dict, url="tools") -> Response:
         tool_response = self._post(url, data=payload)
         return tool_response

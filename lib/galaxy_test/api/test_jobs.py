@@ -961,6 +961,48 @@ steps:
         assert index[0]["id"] == job_id
         assert index[0]["state"] == "error", index
 
+    @skip_without_tool("cat1")
+    @skip_without_tool("multi_data_param")
+    @skip_without_tool("multi_output_assign_primary")
+    def test_show_io_association_names(self, history_id):
+        """Pin the io association names a job records for repeats, multiple params and discovered outputs."""
+        hda1 = {"src": "hda", "id": self.dataset_populator.new_dataset(history_id, content="a\n", wait=True)["id"]}
+        hda2 = {"src": "hda", "id": self.dataset_populator.new_dataset(history_id, content="b\n", wait=True)["id"]}
+
+        job = self.dataset_populator.run_tool_and_show_job(
+            "cat1", {"input1": hda1, "queries_0|input2": hda2}, history_id
+        )
+        assert set(job["inputs"]) == {"input1", "queries_0|input2"}
+        assert set(job["outputs"]) == {"out_file1"}
+
+        multi_inputs = {"f1": {"batch": False, "values": [hda1, hda2]}, "f2": hda1}
+        job = self.dataset_populator.run_tool_and_show_job("multi_data_param", multi_inputs, history_id)
+        # a multiple data param records the first dataset under its name and every dataset under name + index
+        assert set(job["inputs"]) == {"f1", "f11", "f12", "f2", "f21"}
+        assert job["inputs"]["f1"]["id"] == job["inputs"]["f11"]["id"]
+        assert set(job["outputs"]) == {"out1", "out2"}
+
+        job = self.dataset_populator.run_tool_and_show_job("multi_output_assign_primary", {"input": hda1}, history_id)
+        assert set(job["outputs"]) == {
+            "other",
+            "sample",
+            "__new_primary_file_sample|sample2__",
+            "__new_primary_file_sample|sample3__",
+        }
+
+        fetch = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()
+        hdca_id = fetch["outputs"][0]["id"]
+        response = self.dataset_populator.run_tool(
+            "cat1", {"input1": {"batch": True, "values": [{"src": "hdca", "id": hdca_id}]}}, history_id
+        )
+        assert response["implicit_collections"][0]["output_name"] == "out_file1"
+        for job_summary in response["jobs"]:
+            self.dataset_populator.wait_for_job(job_summary["id"], assert_ok=True)
+            job = self.dataset_populator.get_job_details(job_summary["id"], full=True).json()
+            assert set(job["inputs"]) == {"input1"}
+            assert set(job["outputs"]) == {"out_file1"}
+            assert set(job["output_collections"]) == {"out_file1"}
+
     def test_show_job_exposes_implicit_collection_jobs_id(self, history_id):
         run_response = self._run_map_over_error(history_id)
         job_id = run_response["jobs"][0]["id"]
