@@ -140,6 +140,36 @@ export interface ConnectionOutputLink {
     input_subworkflow_step_id?: number;
 }
 
+/** Normalize the persisted single-or-array connection shape for read-only traversal. */
+export function normalizeConnectionOutputLinks(
+    links: ConnectionOutputLink | ConnectionOutputLink[] | undefined,
+): readonly ConnectionOutputLink[] {
+    return Array.isArray(links) ? links : links ? [links] : [];
+}
+
+/** True when a step output may carry no value at run time: it is optional, or its step may be skipped. */
+export function stepOutputCanBeAbsent(step: Step, outputName: string): boolean {
+    return Boolean(step.when) || Boolean(step.outputs.find((output) => output.name === outputName)?.optional);
+}
+
+/** An output's datatypes after any `ChangeDatatypeAction` on its step. */
+export function effectiveOutputExtensions(step: Step, output: DataOutput | CollectionOutput): string[] {
+    const changeDatatype = step.post_job_actions?.[`ChangeDatatypeAction${output.name}`];
+    if (changeDatatype) {
+        const newtype = changeDatatype.action_arguments.newtype;
+        return newtype ? [newtype] : [];
+    }
+    return output.extensions ?? [];
+}
+
+export function isParameterOutput(source: object): source is ParameterOutput {
+    return "parameter" in source && source.parameter === true;
+}
+
+export function isCollectionOutput(source: object): source is CollectionOutput {
+    return "collection" in source && Boolean(source.collection);
+}
+
 export interface WorkflowOutputs {
     [index: string]: {
         stepId: number;
@@ -461,10 +491,7 @@ function stepToConnections(step: Step): Connection[] {
             if (outputArray === undefined) {
                 return;
             }
-            if (!Array.isArray(outputArray)) {
-                outputArray = [outputArray];
-            }
-            outputArray.forEach((output) => {
+            normalizeConnectionOutputLinks(outputArray).forEach((output) => {
                 const connection = makeConnection(step.id, inputName, output.id, output.output_name);
                 const connectionInput = step.inputs.find((input) => input.name == inputName);
                 if (connectionInput && "input_subworkflow_step_id" in connectionInput) {

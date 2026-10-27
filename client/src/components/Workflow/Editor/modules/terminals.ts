@@ -8,7 +8,10 @@ import {
     type DataCollectionStepInput,
     type DataOutput,
     type DataStepInput,
+    effectiveOutputExtensions,
     getCombinedStepInputs,
+    isCollectionOutput,
+    isParameterOutput,
     type ParameterOutput,
     type ParameterStepInput,
     type TerminalSource,
@@ -417,17 +420,10 @@ class BaseInputTerminal extends Terminal {
                     stores: this.stores,
                 });
             }
-            const postJobActionKey = `ChangeDatatypeAction${connection.output.name}`;
-            if (
-                "extensions" in terminalSource &&
-                outputStep.post_job_actions &&
-                postJobActionKey in outputStep.post_job_actions
-            ) {
-                const extensionType = outputStep.post_job_actions![postJobActionKey]!.action_arguments.newtype;
-
-                (terminalSource as DataOutput | CollectionOutput) = {
+            if ("extensions" in terminalSource) {
+                terminalSource = {
                     ...terminalSource,
-                    extensions: extensionType ? [extensionType] : [],
+                    extensions: effectiveOutputExtensions(outputStep, terminalSource),
                 };
             }
 
@@ -970,14 +966,6 @@ function isInvalidOutputArg(arg: TerminalSourceAndInvalid): arg is InvalidOutput
     return "name" in arg && "valid" in arg && arg.valid === false;
 }
 
-function isOutputParameterArg(arg: TerminalSourceAndInvalid): arg is ParameterOutput {
-    return "name" in arg && "parameter" in arg && arg.parameter === true;
-}
-
-function isOutputCollectionArg(arg: TerminalSourceAndInvalid): arg is CollectionOutput {
-    return "name" in arg && "collection" in arg && arg.collection;
-}
-
 function isOutputArg(arg: TerminalSourceAndInvalid): arg is DataOutput {
     return "name" in arg && "extensions" in arg;
 }
@@ -1062,13 +1050,13 @@ export function terminalFactory<T extends TerminalSourceAndInvalid>(
             datatypesMapper: datatypesMapper,
             stores,
         };
-        if (isOutputParameterArg(terminalSource)) {
+        if (isParameterOutput(terminalSource)) {
             return new OutputParameterTerminal({
                 ...outputArgs,
                 multiple: terminalSource.multiple,
                 type: terminalSource.type,
             }) as TerminalOf<T>;
-        } else if (isOutputCollectionArg(terminalSource)) {
+        } else if (isCollectionOutput(terminalSource)) {
             return new OutputCollectionTerminal({
                 ...outputArgs,
                 datatypes: terminalSource.extensions,
