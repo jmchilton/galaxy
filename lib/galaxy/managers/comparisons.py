@@ -16,7 +16,9 @@ from typing import (
 from sqlalchemy import (
     and_,
     or_,
+    Row,
     select,
+    Select,
 )
 from sqlalchemy.orm import (
     aliased,
@@ -323,14 +325,8 @@ class ComparisonsManager:
                 .exists()
             )
             stmt = stmt.where(~in_workflow)
-        total = get_count(self.sa_session, stmt)
-        # create_time is unindexed; id order matches it
-        order_by: list[InstrumentedAttribute[Any]] = [Job.id]
-        if query.sort_by == "update_time":
-            order_by.insert(0, Job.update_time)
-        stmt = stmt.order_by(*(column.desc() if query.sort_desc else column.asc() for column in order_by))
-        stmt = stmt.limit(query.limit).offset(query.offset)
-        page = [ToolRunPageRow(*row) for row in self.sa_session.execute(stmt)]
+        page_rows, total = self._count_and_page(stmt, Job.id, Job.update_time, query)
+        page = [ToolRunPageRow(*row) for row in page_rows]
         columns, rows = self._tool_rows(access, page, query)
         table = ComparisonTable(
             query=query, columns=columns, rows=rows, tool_versions_available=self._tool_versions(tool_predicates)
@@ -365,8 +361,7 @@ class ComparisonsManager:
             io_by_row.append(io)
             declared[tool_version].update(io)
             for key in io:
-                role, name = key.split(":", 1)
-                specs.setdefault(key, ColumnSpec(key=key, label=name, role="input" if role == "input" else "output"))
+                specs.setdefault(key, _column_spec(key))
         columns = align_columns({0: list(specs.values())}, 0)
         item_cells = self.cell_builder.item_cells(
             (ref for io in io_by_row for ref in io.values()),
@@ -462,14 +457,24 @@ class ComparisonsManager:
         )
         if state_predicate is not None:
             stmt = stmt.where(state_predicate)
+        page_rows, total = self._count_and_page(stmt, WorkflowInvocation.id, WorkflowInvocation.update_time, query)
+        return [InvocationPageRow(*row) for row in page_rows], total
+
+    def _count_and_page(
+        self,
+        stmt: Select[Any],
+        id_column: InstrumentedAttribute[int],
+        update_time_column: InstrumentedAttribute[datetime],
+        query: ComparisonQueryBase,
+    ) -> tuple[list[Row[Any]], int]:
+        """Total matches of ``stmt`` and the requested page of it, in the query's sort order."""
         total = get_count(self.sa_session, stmt)
         # create_time is unindexed; id order matches it
-        order_by: list[InstrumentedAttribute[Any]] = [WorkflowInvocation.id]
+        order_by: list[InstrumentedAttribute[Any]] = [id_column]
         if query.sort_by == "update_time":
-            order_by.insert(0, WorkflowInvocation.update_time)
+            order_by.insert(0, update_time_column)
         stmt = stmt.order_by(*(column.desc() if query.sort_desc else column.asc() for column in order_by))
-        stmt = stmt.limit(query.limit).offset(query.offset)
-        return [InvocationPageRow(*row) for row in self.sa_session.execute(stmt)], total
+        return list(self.sa_session.execute(stmt.limit(query.limit).offset(query.offset))), total
 
     def _step_rows(
         self,
@@ -503,10 +508,7 @@ class ComparisonsManager:
                 io.update(_keyed("output", outputs.get(step.id, {})))
             io_by_invocation[invocation.id] = io
             for key in io:
-                role, name = key.split(":", 1)
-                declared[version].setdefault(
-                    key, ColumnSpec(key=key, label=name, role="input" if role == "input" else "output")
-                )
+                declared[version].setdefault(key, _column_spec(key))
 
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
@@ -737,6 +739,12 @@ def _keyed(role: str, items: dict[str, ItemRef]) -> dict[str, ItemRef]:
         else:
             keyed.setdefault(key, ref)
     return keyed
+
+
+def _column_spec(key: str) -> ColumnSpec:
+    """Column of a role-prefixed key from ``_keyed``."""
+    role, name = key.split(":", 1)
+    return ColumnSpec(key=key, label=name, role="input" if role == "input" else "output")
 
 
 def _step_state(
