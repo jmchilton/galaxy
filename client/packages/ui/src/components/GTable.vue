@@ -872,6 +872,7 @@ defineExpose({
                                         :value="item[field.key]"
                                         :item="item"
                                         :index="getGlobalIndex(paginatedIndex)"
+                                        :details-showing="isRowExpanded(getGlobalIndex(paginatedIndex))"
                                         :toggle-details="() => toggleRowDetails(getGlobalIndex(paginatedIndex))">
                                         <span>{{ getCellValue(item, field) }}</span>
                                     </slot>
