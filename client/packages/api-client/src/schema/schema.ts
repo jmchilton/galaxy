@@ -5648,6 +5648,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tool_runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare runs of a tool across its versions. */
+        get: operations["tool_runs_api_tool_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tool_shed_repositories": {
         parameters: {
             query?: never;
@@ -7170,6 +7187,23 @@ export interface paths {
          * @description An alias for `PUT /api/invocations/{invocation_id}/steps/{step_id}`. `workflow_id` is ignored.
          */
         put: operations["update_workflow_invocation_step_api_workflows__workflow_id__invocations__invocation_id__steps__step_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/output_runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare a workflow's labelled inputs and outputs across its invocations. */
+        get: operations["output_runs_api_workflows__workflow_id__output_runs_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -13316,6 +13350,11 @@ export interface components {
              */
             tool_id: string;
             /**
+             * Tool Version
+             * @description Version of the tool that generated this job.
+             */
+            tool_version?: string | null;
+            /**
              * Update Time
              * Format: date-time
              * @description The last time and date this item was updated.
@@ -18963,6 +19002,11 @@ export interface components {
              */
             tool_id: string;
             /**
+             * Tool Version
+             * @description Version of the tool that generated this job.
+             */
+            tool_version?: string | null;
+            /**
              * Update Time
              * Format: date-time
              * @description The last time and date this item was updated.
@@ -19154,6 +19198,11 @@ export interface components {
              * @description Identifier of the tool that generated this job.
              */
             tool_id: string;
+            /**
+             * Tool Version
+             * @description Version of the tool that generated this job.
+             */
+            tool_version?: string | null;
             /**
              * Update Time
              * Format: date-time
@@ -19454,6 +19503,11 @@ export interface components {
              */
             command_line?: string | null;
             /**
+             * Copied from Job-ID
+             * @description Reference to cached job if job execution was cached.
+             */
+            copied_from_job_id?: string | null;
+            /**
              * Create Time
              * Format: date-time
              * @description The time and date this item was created.
@@ -19511,6 +19565,11 @@ export interface components {
              * @description Identifier of the tool that generated this job.
              */
             tool_id: string;
+            /**
+             * Tool Version
+             * @description Version of the tool that generated this job.
+             */
+            tool_version?: string | null;
             /**
              * Update Time
              * Format: date-time
@@ -20736,7 +20795,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "not_in_version" | "skipped" | "not_run_yet" | "no_output";
+            reason: "not_in_version" | "skipped" | "not_run_yet" | "no_output" | "inaccessible";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -24581,6 +24640,11 @@ export interface components {
              * @description The captured standard output of the tool executed by the job.
              */
             tool_stdout?: string | null;
+            /**
+             * Tool Version
+             * @description Version of the tool that generated this job.
+             */
+            tool_version?: string | null;
             /**
              * Update Time
              * Format: date-time
@@ -45810,6 +45874,8 @@ export interface operations {
                 tool_id?: string[] | null;
                 /** @description Limit listing of jobs to those that match one of the included tool ID sql-like patterns. If none, all are returned */
                 tool_id_like?: string[] | null;
+                /** @description Limit listing of jobs to those run with one of the included tool versions. If none, all are returned */
+                tool_version?: string[] | null;
             };
             header?: {
                 /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
@@ -51932,6 +51998,70 @@ export interface operations {
             };
         };
     };
+    tool_runs_api_tool_runs_get: {
+        parameters: {
+            query: {
+                /** @description Tool id; a Tool Shed version suffix is ignored. */
+                tool_id: string;
+                /** @description Only include runs in this history. */
+                history_id?: string | null;
+                /** @description Include jobs run as part of a workflow invocation. */
+                include_workflow_jobs?: boolean;
+                /** @description Only include runs of these tool versions. A comma-separated list or repeated parameter. */
+                tool_versions?: string[] | null;
+                /** @description Maximum number of rows to return. */
+                limit?: number;
+                /** @description Number of rows to skip. */
+                offset?: number;
+                /** @description Sort rows by this run attribute. */
+                sort_by?: "create_time" | "update_time";
+                /** @description Sort rows in descending order. */
+                sort_desc?: boolean;
+                /** @description Render small `expression.json` outputs as their value instead of a dataset. */
+                inline_expression_values?: boolean;
+                /** @description Only include runs in one of these states. A comma-separated list or repeated parameter. */
+                states?: string[] | null;
+                /** @description Metadata element names to include in dataset cells, e.g. `data_lines`. A comma-separated list or repeated parameter. */
+                metadata_elements?: string[] | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonTable"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     index_api_tool_shed_repositories_get: {
         parameters: {
             query?: {
@@ -56839,6 +56969,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvocationStep"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    output_runs_api_workflows__workflow_id__output_runs_get: {
+        parameters: {
+            query?: {
+                /** @description Only include these labelled workflow inputs and outputs; repeat the parameter for several. */
+                output_labels?: string[] | null;
+                instance?: boolean;
+                /** @description Maximum number of rows to return. */
+                limit?: number;
+                /** @description Number of rows to skip. */
+                offset?: number;
+                /** @description Sort rows by this run attribute. */
+                sort_by?: "create_time" | "update_time";
+                /** @description Sort rows in descending order. */
+                sort_desc?: boolean;
+                /** @description Render small `expression.json` outputs as their value instead of a dataset. */
+                inline_expression_values?: boolean;
+                /** @description Only include runs in one of these states. A comma-separated list or repeated parameter. */
+                states?: string[] | null;
+                /** @description Metadata element names to include in dataset cells, e.g. `data_lines`. A comma-separated list or repeated parameter. */
+                metadata_elements?: string[] | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded id of the Stored Workflow, or of a Workflow version with `instance=true`. */
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonTable"];
                 };
             };
             /** @description Request Error */
