@@ -194,11 +194,6 @@ class EncodedJobDetails(JobSummary):
         title="Outputs",
         description="Dictionary mapping all the tool outputs (by name) to the corresponding data references.",
     )
-    copied_from_job_id: EncodedDatabaseIdField | None = Field(
-        default=None,
-        title="Copied from Job-ID",
-        description="Reference to cached job if job execution was cached.",
-    )
     output_collections: dict[str, EncodedHdcaSourceId] = Field(
         default={},
         title="Output collections",
